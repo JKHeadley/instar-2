@@ -2,7 +2,13 @@
 import { resolve } from 'node:path';
 import { createProductionTelegramIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { createPreviewComposition } from './composition.js';
-import { openPreviewState } from './state.js';
+import { MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
+
+const MAX_PREVIEW_BACKOFF_MS = 300_000;
+const DIAGNOSTIC_REASON_CODES = Object.freeze([
+  'TRANSPORT', 'TIMEOUT', 'REFUSED', 'STOPPED', 'EXPIRED', 'BOUND', 'UNKNOWN',
+]);
+const DIAGNOSTIC_PHASES = Object.freeze(['DRAIN', 'POLL']);
 
 function argumentsOf(values) {
   const command = values[0] ?? 'run';
@@ -16,9 +22,9 @@ function argumentsOf(values) {
   return { command, options };
 }
 
-function integer(value, name, minimum = 0) {
+function integer(value, name, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < minimum) throw new Error(`preview: invalid ${name}`);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new Error(`preview: invalid ${name}`);
   return parsed;
 }
 
@@ -62,15 +68,17 @@ function configuration(options) {
 
 function stateFor(config, options, create) {
   const expiresAt = expiry(required(options, 'expires-at'));
+  const totalErrorLimit = integer(options['total-error-limit'] ?? '1000', 'total-error-limit', 1,
+    MAX_PREVIEW_TOTAL_ERROR_LIMIT);
   const stateConfiguration = { ...config, expiresAt,
     replyLimit: integer(options['reply-limit'] ?? '6', 'reply-limit', 1),
     replyWindowMs: integer(options['reply-window-ms'] ?? '60000', 'reply-window-ms', 1),
-    errorLimit: integer(options['error-limit'] ?? '5', 'error-limit', 1),
+    errorLimit: integer(options['error-limit'] ?? '5', 'error-limit', 1, MAX_PREVIEW_ERROR_LIMIT),
     maxPendingTurns: integer(options['max-pending-turns'] ?? '16', 'max-pending-turns', 1),
     maxTrialTurns: integer(options['max-trial-turns'] ?? '128', 'max-trial-turns', 1) };
   return openPreviewState({ root: config.root, configuration: stateConfiguration, expiresAt,
     replyLimit: stateConfiguration.replyLimit, replyWindowMs: stateConfiguration.replyWindowMs,
-    errorLimit: stateConfiguration.errorLimit, maxPendingTurns: stateConfiguration.maxPendingTurns,
+    errorLimit: stateConfiguration.errorLimit, totalErrorLimit, maxPendingTurns: stateConfiguration.maxPendingTurns,
     maxTrialTurns: stateConfiguration.maxTrialTurns, create });
 }
 
@@ -100,11 +108,39 @@ function publicStatus(document) {
   for (const turn of Object.values(document.turns)) counts[turn.phase] = (counts[turn.phase] ?? 0) + 1;
   return { trial: document.trial.id, createdAt: document.trial.createdAt,
     expiresAt: document.trial.expiresAt, stop: document.stop, consecutiveErrors: document.consecutiveErrors,
+    totalErrors: document.totalErrors, errorLimit: document.trial.errorLimit,
+    totalErrorLimit: document.trial.totalErrorLimit,
     turns: counts, configuration: document.trial.configurationDigest };
 }
 
 const delay = milliseconds => new Promise(resolveDelay => setTimeout(resolveDelay, milliseconds));
 const yieldBoundary = () => new Promise(resolveBoundary => setImmediate(resolveBoundary));
+
+function diagnosticReason(document, observed = 'UNKNOWN') {
+  if (document.stop?.reason === 'expiry') return 'EXPIRED';
+  if (document.stop?.reason === 'capacity') return 'BOUND';
+  if (document.stop?.reason === 'operator' || document.stop?.reason === 'signal') return 'STOPPED';
+  return DIAGNOSTIC_REASON_CODES.includes(observed) ? observed : 'UNKNOWN';
+}
+
+function emitCycleDiagnostic(reason, phase, document, backoffMs) {
+  const safeReason = DIAGNOSTIC_REASON_CODES.includes(reason) ? reason : 'UNKNOWN';
+  const safePhase = DIAGNOSTIC_PHASES.includes(phase) ? phase : 'DRAIN';
+  const record = { type: 'PREVIEW_CYCLE_DIAGNOSTIC', schemaVersion: 1,
+    reason: safeReason, phase: safePhase,
+    consecutiveErrors: document.consecutiveErrors, totalErrors: document.totalErrors, backoffMs };
+  try { process.stderr.write(`${JSON.stringify(record)}\n`); } catch { /* accounting is already durable */ }
+}
+
+async function interruptibleBackoff(milliseconds, state, stopped) {
+  const deadline = Date.now() + milliseconds;
+  while (!stopped()) {
+    try { state.gate('poll'); } catch { return; }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return;
+    await delay(Math.min(remaining, 100));
+  }
+}
 
 async function main() {
   const { command, options } = argumentsOf(process.argv.slice(2));
@@ -129,33 +165,61 @@ async function main() {
   };
   process.once('SIGINT', signal);
   process.once('SIGTERM', signal);
+  let observedPollReason = 'UNKNOWN';
+  const observedTelegramIO = storage => {
+    const physical = createProductionTelegramIO(config.root, storage.captures);
+    return Object.freeze({ invoke(request, credential) {
+      if (request.method === 'getUpdates') observedPollReason = 'UNKNOWN';
+      let outcome;
+      try { outcome = physical.invoke(request, credential); }
+      catch {
+        // An untyped exception is deliberately replaced, never inspected.
+        if (request.method === 'getUpdates') observedPollReason = 'UNKNOWN';
+        throw new Error('preview: Telegram invocation failed');
+      }
+      if (request.method === 'getUpdates') {
+        if (outcome?.kind === 'uncertain' && outcome.limitation === 'timeout') observedPollReason = 'TIMEOUT';
+        else if (outcome?.kind === 'uncertain' && outcome.limitation === 'transport') observedPollReason = 'TRANSPORT';
+        else if (outcome?.kind === 'response' && Number.isSafeInteger(outcome.status)
+          && (outcome.status < 200 || outcome.status >= 300)) observedPollReason = 'REFUSED';
+      }
+      return outcome;
+    } });
+  };
   let composition;
   try {
     composition = createPreviewComposition({ configuration: config, state, storageKey: storageKey(),
       storageIO: productionStorageIO, resolveSecret: resolveHostSecret,
-      telegramIOFactory: storage => createProductionTelegramIO(config.root, storage.captures) });
+      telegramIOFactory: observedTelegramIO });
     // Successful physical bridges are synchronous. Yield after each such boundary so
     // Node can service SIGINT/SIGTERM before any subsequent admission or dispatch.
     await yieldBoundary();
-    const maximumCycles = integer(options['max-cycles'] ?? '1000', 'max-cycles', 1);
-    const baseBackoff = integer(options['backoff-ms'] ?? '250', 'backoff-ms', 1);
-    const maximumBackoff = integer(options['max-backoff-ms'] ?? '5000', 'max-backoff-ms', 1);
+    const maximumCycles = integer(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
+    const baseBackoff = integer(options['backoff-ms'] ?? '250', 'backoff-ms', 1, MAX_PREVIEW_BACKOFF_MS);
+    const maximumBackoff = integer(options['max-backoff-ms'] ?? '5000', 'max-backoff-ms', 1, MAX_PREVIEW_BACKOFF_MS);
+    if (baseBackoff > maximumBackoff) throw new Error('preview: base backoff exceeds maximum');
     for (let cycle = 0; cycle < maximumCycles && !signalled; cycle += 1) {
+      let phase = 'DRAIN';
       try {
         while (!signalled) {
           await yieldBoundary();
           if (signalled || !composition.resumeOne()) break;
           await yieldBoundary();
+          if (state.read().stop !== null) break;
         }
-        if (signalled) break;
+        if (signalled || state.read().stop !== null) break;
+        phase = 'POLL';
         composition.pollOnce();
         await yieldBoundary();
       } catch {
+        // Persist both breaker counters before constructing or emitting diagnostics.
         const current = state.noteError();
-        process.stderr.write('preview cycle failed; diagnostic details suppressed\n');
+        const wait = current.stop === null
+          ? Math.min(maximumBackoff, baseBackoff * (2 ** Math.min(current.consecutiveErrors - 1, 8))) : 0;
+        emitCycleDiagnostic(diagnosticReason(current, phase === 'POLL' ? observedPollReason : 'UNKNOWN'), phase, current, wait);
         if (current.stop !== null) break;
-        const wait = Math.min(maximumBackoff, baseBackoff * (2 ** Math.min(current.consecutiveErrors - 1, 8)));
-        await delay(wait);
+        await interruptibleBackoff(wait, state, () => signalled);
+        if (signalled || state.read().stop !== null) break;
       }
     }
     return 0;

@@ -488,7 +488,7 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       reconcileDurableIntake(false);
       input.state.gatePollCapacity(configuration.maxBatchItems);
       const cycle = value(ingress.pollOnce());
-      input.state.advanceCursor(cycle.nextOffset);
+      input.state.completePoll(cycle.nextOffset);
       reconcileDurableIntake(true);
       return cycle;
     };

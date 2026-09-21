@@ -53,11 +53,12 @@ function setup(path: string, transport, hooks = {}, overrides: any = {}) {
     operatorSenderId: '7', chatId: '7001', chatKind: 'private', forum: false, messageThreadId: null,
     maxPollSeconds: 1, maxBatchItems: 8, maxContextTurns: 8, maxContextBytes: 65_536,
     ...overrides.configuration };
-  const limits = { replyLimit: 20, replyWindowMs: 60_000, errorLimit: 3,
+  const limits = { replyLimit: 20, replyWindowMs: 60_000, errorLimit: 3, totalErrorLimit: 100,
     maxPendingTurns: 32, maxTrialTurns: 128, ...overrides.limits };
-  const stateConfiguration = { ...configuration, expiresAt, ...limits };
+  const { totalErrorLimit, ...configurationLimits } = limits;
+  const stateConfiguration = { ...configuration, expiresAt, ...configurationLimits };
   const state = openPreviewState({ root: path, configuration: stateConfiguration, expiresAt,
-    now: () => 1_800_000_000_000, ...limits });
+    now: () => 1_800_000_000_000, ...limits, totalErrorLimit });
   const composition = (nextHooks = hooks) => createPreviewComposition({ configuration, state,
     storageKey: new Uint8Array(32).fill(19), storageIO: productionStorageIO, telegramIO: transport.io,
     resolveSecret: reference => {
@@ -72,6 +73,29 @@ const polls = telegram => telegram.calls.filter(call => call.method === 'getUpda
 const resumeYielding = async composition => {
   while (composition.resumeOne()) await new Promise(resolve => setImmediate(resolve));
 };
+
+function recordedLauncherArguments(stateRoot: string, overrides: Record<string, string | number> = {}) {
+  const options = { root: stateRoot, 'bot-id': '9001', 'bot-username': '@fixture_bot',
+    'operator-sender-id': '7', 'chat-id': '7001', 'chat-kind': 'private', forum: 'false',
+    'message-thread-id': 'none', 'expires-at': String(Date.now() + 60_000), 'max-cycles': 4,
+    'max-poll-seconds': 1, 'max-batch-items': 1, 'max-context-turns': 2, 'max-context-bytes': 4096,
+    'max-pending-turns': 2, 'max-trial-turns': 4, 'reply-limit': 2, 'reply-window-ms': 60_000,
+    'error-limit': 3, 'total-error-limit': 20, 'backoff-ms': 1, 'max-backoff-ms': 2,
+    ...overrides };
+  return ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/agent.mjs', 'run',
+    ...Object.entries(options).flatMap(([name, value]) => [`--${name}`, String(value)])];
+}
+
+function runRecordedLauncher(stateRoot: string, preloadSource: string,
+  overrides: Record<string, string | number> = {}) {
+  const preloadRoot = root('preview-error-preload-'), preload = join(preloadRoot, 'preload.mjs');
+  writeFileSync(preload, preloadSource);
+  return spawnSync(process.execPath, recordedLauncherArguments(stateRoot, overrides), {
+    cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `--import=${preload}`,
+      INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '9001:synthetic_recorded_test_only_value',
+      INSTAR_SECRET_PREVIEW_STORAGE_KEY: '13'.repeat(32) }, encoding: 'utf8', timeout: 30_000,
+  });
+}
 
 describe('Stage 1 preview driver (recorded transport only)', () => {
   it('supports the narrow private-chat target, durable owner reconstruction, two turns, and an excluded outsider', () => {
@@ -146,10 +170,131 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
     try { first.pollOnce(); first.resume(); } finally { first.close(); }
     expect(built.state.read().turns[previewTurnId('9001', 100)].phase).toBe('dispatch-outcome-unknown');
     expect(built.state.read().consecutiveErrors).toBe(1);
+    expect(built.state.read().totalErrors).toBe(1);
     const restarted = setup(path, telegram).composition();
     try { restarted.resume(); } finally { restarted.close(); }
     expect(sends(telegram)).toHaveLength(1);
     expect(built.state.read().turns[previewTurnId('9001', 100)].phase).toBe('dispatch-outcome-unknown');
+  }, 60_000);
+
+  it('persists separate consecutive and total error ceilings across restart', () => {
+    const options = (path, errorLimit = 3, totalErrorLimit = 10) => ({ root: path,
+      configuration: { marker: 'error-counters', errorLimit }, expiresAt: 2_000_000_000_000,
+      now: () => 1_800_000_000_000, replyLimit: 2, replyWindowMs: 60_000,
+      errorLimit, totalErrorLimit, maxPendingTurns: 2, maxTrialTurns: 4 });
+
+    const interleavedPath = root(); let interleaved = openPreviewState(options(interleavedPath, 2, 10));
+    interleaved.noteError(); interleaved.noteSuccess(); interleaved.noteError(); interleaved.noteSuccess();
+    expect(interleaved.read()).toMatchObject({ consecutiveErrors: 0, totalErrors: 2, stop: null });
+    interleaved = openPreviewState(options(interleavedPath, 2, 10));
+    expect(interleaved.read()).toMatchObject({ consecutiveErrors: 0, totalErrors: 2, stop: null });
+    interleaved.noteError();
+    expect(openPreviewState(options(interleavedPath, 2, 10)).read())
+      .toMatchObject({ consecutiveErrors: 1, totalErrors: 3, stop: null });
+
+    const consecutivePath = root(); const consecutive = openPreviewState(options(consecutivePath, 3, 10));
+    consecutive.noteError(); consecutive.noteError();
+    expect(consecutive.read().stop).toBeNull(); consecutive.noteError();
+    expect(consecutive.read()).toMatchObject({ consecutiveErrors: 3, totalErrors: 3,
+      stop: { reason: 'breaker' } });
+
+    const totalPath = root(); const total = openPreviewState(options(totalPath, 3, 4));
+    for (let index = 0; index < 3; index += 1) { total.noteError(); total.noteSuccess(); }
+    expect(total.read()).toMatchObject({ consecutiveErrors: 0, totalErrors: 3, stop: null });
+    total.noteError();
+    expect(openPreviewState(options(totalPath, 3, 4)).read()).toMatchObject({
+      consecutiveErrors: 1, totalErrors: 4, stop: { reason: 'breaker' },
+    });
+
+    const legacyPath = root(); const legacyOptions = options(legacyPath, 3, 10);
+    const legacySeed = openPreviewState(legacyOptions).read();
+    const { errorLimit: _errorLimit, totalErrorLimit: _totalErrorLimit, ...legacyTrial } = legacySeed.trial;
+    const { totalErrors: _totalErrors, ...legacyBody } = legacySeed;
+    writeFileSync(join(legacyPath, 'preview-state.json'), JSON.stringify({ ...legacyBody,
+      version: 2, trial: legacyTrial, consecutiveErrors: 2 }));
+    expect(openPreviewState(legacyOptions).read()).toMatchObject({
+      version: 3, consecutiveErrors: 0, totalErrors: 2, stop: null,
+    });
+  });
+
+  it('resets consecutive failures after successful empty polls and emits only closed hostile-safe diagnostics', () => {
+    const stateRoot = root('preview-errors-state-');
+    const token = '9001:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi';
+    const storageKey = 'ab'.repeat(32);
+    const encoded = 'OTAwMTpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWmFiY2RlZmdoaQ==';
+    const control = '\u001b[31mSECRET\nINJECTED\rLINE';
+    const preload = `import childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\nlet polls=0;const values=${JSON.stringify({ token, storageKey, encoded, control })};\nconst hostile=()=>({name:values.token+values.control,message:values.storageKey+values.control,stack:values.encoded+values.control,cause:{secret:values.token},stderr:values.storageKey,url:'https://'+values.token+'@invalid.example/',path:'/tmp/'+values.encoded,payload:values.control+values.token});\nchildProcess.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));if(q.method==='getMe')return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:{id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'}})})};if(q.method==='getUpdates'){polls++;if(polls===1||polls===3)throw hostile();return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:[]})})};}throw hostile();};syncBuiltinESMExports();\n`;
+    const result = runRecordedLauncher(stateRoot, preload, { 'error-limit': 2, 'total-error-limit': 3,
+      'max-cycles': 4 });
+    expect(result.status, result.stderr).toBe(0);
+    const state = JSON.parse(readFileSync(join(stateRoot, 'preview-state.json'), 'utf8'));
+    expect(state).toMatchObject({ consecutiveErrors: 0, totalErrors: 2, stop: null });
+    for (const forbidden of [token, storageKey, encoded, 'SECRET', 'INJECTED', '\u001b']) {
+      expect(result.stderr).not.toContain(forbidden);
+    }
+    const diagnostics = result.stderr.trim().split('\n').filter(line => line.length > 0).map(line => JSON.parse(line));
+    expect(diagnostics).toEqual([
+      { type: 'PREVIEW_CYCLE_DIAGNOSTIC', schemaVersion: 1, reason: 'UNKNOWN', phase: 'POLL',
+        consecutiveErrors: 1, totalErrors: 1, backoffMs: 1 },
+      { type: 'PREVIEW_CYCLE_DIAGNOSTIC', schemaVersion: 1, reason: 'UNKNOWN', phase: 'POLL',
+        consecutiveErrors: 1, totalErrors: 2, backoffMs: 1 },
+    ]);
+  }, 60_000);
+
+  it('latches after the configured number of truly consecutive launcher cycle failures', () => {
+    const stateRoot = root('preview-consecutive-state-');
+    const preload = `import childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\nchildProcess.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));if(q.method==='getMe')return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:{id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'}})})};throw {name:'hostile',message:'9001:NEVER_LOG_THIS',stack:'${'ef'.repeat(32)}'};};syncBuiltinESMExports();\n`;
+    const result = runRecordedLauncher(stateRoot, preload, { 'error-limit': 3,
+      'total-error-limit': 20, 'max-cycles': 5 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(join(stateRoot, 'preview-state.json'), 'utf8'))).toMatchObject({
+      consecutiveErrors: 3, totalErrors: 3,
+    });
+    expect(JSON.parse(readFileSync(join(stateRoot, 'preview-stop.json'), 'utf8')).reason).toBe('breaker');
+    expect(result.stderr).not.toContain('NEVER_LOG_THIS');
+    expect(result.stderr.trim().split('\n')).toHaveLength(3);
+  }, 60_000);
+
+  for (const [typedOutcome, reason] of [
+    [{ kind: 'uncertain', limitation: 'timeout', stage: 'fetch-timeout' }, 'TIMEOUT'],
+    [{ kind: 'uncertain', limitation: 'transport', stage: 'child-exit' }, 'TRANSPORT'],
+    [{ kind: 'response', status: 503, bytes: 'not emitted' }, 'REFUSED'],
+  ] as const) it(`uses the trusted typed poll outcome for diagnostic code ${reason}`, () => {
+    const stateRoot = root(`preview-${reason.toLowerCase()}-state-`);
+    const preload = `import childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\nchildProcess.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));if(q.method==='getMe')return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:{id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'}})})};return {status:0,stdout:JSON.stringify(${JSON.stringify(typedOutcome)})};};syncBuiltinESMExports();\n`;
+    const result = runRecordedLauncher(stateRoot, preload, { 'max-cycles': 1 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stderr.trim())).toMatchObject({
+      type: 'PREVIEW_CYCLE_DIAGNOSTIC', reason, phase: 'POLL',
+      consecutiveErrors: 1, totalErrors: 1,
+    });
+    expect(result.stderr).not.toContain('not emitted');
+  }, 60_000);
+
+  it('records error accounting before a diagnostic write failure', () => {
+    const stateRoot = root('preview-diagnostic-failure-state-');
+    const preload = `import childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\nchildProcess.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));if(q.method==='getMe')return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:{id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'}})})};throw {name:'9001:HOSTILE',message:'${'cd'.repeat(32)}',stack:'\\u001b[2J'};};process.stderr.write=()=>{throw new Error('diagnostic sink unavailable');};syncBuiltinESMExports();\n`;
+    const result = runRecordedLauncher(stateRoot, preload, { 'max-cycles': 1 });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(readFileSync(join(stateRoot, 'preview-state.json'), 'utf8')))
+      .toMatchObject({ consecutiveErrors: 1, totalErrors: 1, stop: null });
+  }, 60_000);
+
+  for (const interruption of ['signal', 'expiry'] as const) it(`honours ${interruption} during a long error backoff`, () => {
+    const stateRoot = root(`preview-backoff-${interruption}-state-`);
+    const trigger = interruption === 'signal'
+      ? "setTimeout(()=>process.kill(process.pid,'SIGTERM'),25);"
+      : 'setTimeout(()=>{clock=2000;},25);';
+    const clock = interruption === 'expiry' ? 'let clock=1000;Date.now=()=>clock;' : '';
+    const preload = `import childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\n${clock}\nlet polls=0;childProcess.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));if(q.method==='getMe')return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:{id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'}})})};if(q.method==='getUpdates'){polls++;${trigger}throw {message:'HOSTILE\\nSECRET',stack:'\\u001b[31m'};}throw new Error('unexpected method');};syncBuiltinESMExports();\n`;
+    const started = Date.now();
+    const result = runRecordedLauncher(stateRoot, preload, { 'expires-at': interruption === 'expiry' ? 2000 : Date.now() + 60_000,
+      'max-cycles': 2, 'backoff-ms': 10_000, 'max-backoff-ms': 10_000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    const state = JSON.parse(readFileSync(join(stateRoot, 'preview-state.json'), 'utf8'));
+    expect(state).toMatchObject({ consecutiveErrors: 1, totalErrors: 1,
+      stop: { reason: interruption } });
   }, 60_000);
 
   it('reconstructs the durable Five/Six run after a grounded cut before the first send', () => {
@@ -194,7 +339,8 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
     expect(() => capacityComposition.pollOnce()).toThrow('durable trial capacity'); capacityComposition.close();
     expect(capacity.state.read().stop?.reason).toBe('capacity');
 
-    const expiredPath = root(); const limits = { replyLimit: 1, replyWindowMs: 10, errorLimit: 1, maxPendingTurns: 1, maxTrialTurns: 1 };
+    const expiredPath = root(); const limits = { replyLimit: 1, replyWindowMs: 10, errorLimit: 1,
+      totalErrorLimit: 1, maxPendingTurns: 1, maxTrialTurns: 1 };
     openPreviewState({ root: expiredPath, configuration: { marker: 'expiry' }, expiresAt: 20, now: () => 10, ...limits });
     const expired = openPreviewState({ root: expiredPath, configuration: { marker: 'expiry' }, expiresAt: 20, now: () => 20, ...limits });
     expect(() => expired.gate('poll')).toThrow('preview stopped before poll'); expect(expired.read().stop?.reason).toBe('expiry');

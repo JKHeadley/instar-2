@@ -5,7 +5,9 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-export const PREVIEW_STATE_VERSION = 2 as const;
+export const PREVIEW_STATE_VERSION = 3 as const;
+export const MAX_PREVIEW_ERROR_LIMIT = 10_000 as const;
+export const MAX_PREVIEW_TOTAL_ERROR_LIMIT = 1_000_000 as const;
 
 export type PreviewIntakeDisposition =
   | 'admitted-bound' | 'admitted-unbound' | 'held' | 'stopped' | 'refused' | 'preserved-unresolved';
@@ -32,10 +34,11 @@ export interface PreviewTurn {
 export interface PreviewStateDocument {
   readonly version: typeof PREVIEW_STATE_VERSION;
   readonly trial: Readonly<{ id: string; configurationDigest: string; createdAt: number; expiresAt: number;
-    maxPendingTurns: number; maxTrialTurns: number }>;
+    maxPendingTurns: number; maxTrialTurns: number; errorLimit: number; totalErrorLimit: number }>;
   readonly cursor: Readonly<{ nextOffset: number }>;
   readonly stop: null | Readonly<{ latchedAt: number; reason: 'operator' | 'signal' | 'expiry' | 'breaker' | 'capacity' }>;
   readonly consecutiveErrors: number;
+  readonly totalErrors: number;
   readonly replyWindow: Readonly<{ startedAt: number; count: number }>;
   readonly turns: Readonly<Record<string, PreviewTurn>>;
 }
@@ -48,6 +51,7 @@ export interface PreviewStateOptions {
   readonly replyLimit: number;
   readonly replyWindowMs: number;
   readonly errorLimit: number;
+  readonly totalErrorLimit: number;
   readonly maxPendingTurns: number;
   readonly maxTrialTurns: number;
   readonly create?: boolean;
@@ -56,8 +60,8 @@ export interface PreviewStateOptions {
 const digest = (input: unknown): string =>
   `sha256:${createHash('sha256').update(JSON.stringify(input)).digest('hex')}`;
 
-function assertInteger(input: number, label: string, minimum = 0): void {
-  if (!Number.isSafeInteger(input) || input < minimum) throw new Error(`preview state: invalid ${label}`);
+function assertInteger(input: number, label: string, minimum = 0, maximum = Number.MAX_SAFE_INTEGER): void {
+  if (!Number.isSafeInteger(input) || input < minimum || input > maximum) throw new Error(`preview state: invalid ${label}`);
 }
 
 function validate(document: PreviewStateDocument): PreviewStateDocument {
@@ -70,8 +74,11 @@ function validate(document: PreviewStateDocument): PreviewStateDocument {
   assertInteger(document.trial.expiresAt, 'expiresAt', 1);
   assertInteger(document.trial.maxPendingTurns, 'max pending turns', 1);
   assertInteger(document.trial.maxTrialTurns, 'max trial turns', 1);
+  assertInteger(document.trial.errorLimit, 'error limit', 1, MAX_PREVIEW_ERROR_LIMIT);
+  assertInteger(document.trial.totalErrorLimit, 'total error limit', 1, MAX_PREVIEW_TOTAL_ERROR_LIMIT);
   assertInteger(document.cursor.nextOffset, 'cursor offset');
-  assertInteger(document.consecutiveErrors, 'consecutiveErrors');
+  assertInteger(document.consecutiveErrors, 'consecutiveErrors', 0, MAX_PREVIEW_ERROR_LIMIT);
+  assertInteger(document.totalErrors, 'totalErrors', 0, MAX_PREVIEW_TOTAL_ERROR_LIMIT);
   assertInteger(document.replyWindow.startedAt, 'reply window start');
   assertInteger(document.replyWindow.count, 'reply window count');
   return document;
@@ -102,7 +109,9 @@ export function openPreviewState(options: PreviewStateOptions) {
   assertInteger(options.expiresAt, 'expiry', 1);
   assertInteger(options.replyLimit, 'reply limit', 1);
   assertInteger(options.replyWindowMs, 'reply window', 1);
-  assertInteger(options.errorLimit, 'error limit', 1);
+  assertInteger(options.errorLimit, 'error limit', 1, MAX_PREVIEW_ERROR_LIMIT);
+  assertInteger(options.totalErrorLimit, 'total error limit', 1, MAX_PREVIEW_TOTAL_ERROR_LIMIT);
+  if (options.totalErrorLimit < options.errorLimit) throw new Error('preview state: total error limit is below consecutive limit');
   assertInteger(options.maxPendingTurns, 'max pending turns', 1);
   assertInteger(options.maxTrialTurns, 'max trial turns', 1);
   if (options.maxPendingTurns > options.maxTrialTurns) throw new Error('preview state: pending bound exceeds trial bound');
@@ -112,6 +121,26 @@ export function openPreviewState(options: PreviewStateOptions) {
   const stopPath = join(root, 'preview-stop.json');
   const now = options.now ?? Date.now;
   const configurationDigest = digest(options.configuration);
+  if (existsSync(path)) {
+    const legacy = JSON.parse(readFileSync(path, 'utf8')) as any;
+    if (legacy.version === 2) {
+      if (typeof legacy.trial?.id !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(legacy.trial?.configurationDigest ?? '')
+        || typeof legacy.turns !== 'object' || legacy.turns === null) throw new Error('preview state: corrupt legacy state');
+      assertInteger(legacy.consecutiveErrors, 'legacy error count', 0, MAX_PREVIEW_TOTAL_ERROR_LIMIT);
+      if (legacy.trial.configurationDigest !== configurationDigest || legacy.trial.expiresAt !== options.expiresAt
+        || legacy.trial.maxPendingTurns !== options.maxPendingTurns
+        || legacy.trial.maxTrialTurns !== options.maxTrialTurns) {
+        throw new Error('preview state: immutable legacy trial configuration differs');
+      }
+      const migrated = { ...legacy, version: PREVIEW_STATE_VERSION,
+        trial: { ...legacy.trial, errorLimit: options.errorLimit, totalErrorLimit: options.totalErrorLimit },
+        consecutiveErrors: 0, totalErrors: legacy.consecutiveErrors };
+      durablePreviewWrite(path, validate(migrated));
+      if (migrated.totalErrors >= options.totalErrorLimit && !existsSync(stopPath)) {
+        durablePreviewWrite(stopPath, { latchedAt: now(), reason: 'breaker' as const });
+      }
+    }
+  }
   const read = (): PreviewStateDocument => {
     const document = validate(JSON.parse(readFileSync(path, 'utf8')) as PreviewStateDocument);
     if (!existsSync(stopPath)) return document;
@@ -128,13 +157,15 @@ export function openPreviewState(options: PreviewStateOptions) {
     if (options.expiresAt <= instant) throw new Error('preview state: trial already expired');
     durablePreviewWrite(path, { version: PREVIEW_STATE_VERSION,
       trial: { id: `preview-trial:${randomUUID()}`, configurationDigest, createdAt: instant,
-        expiresAt: options.expiresAt, maxPendingTurns: options.maxPendingTurns, maxTrialTurns: options.maxTrialTurns },
-      cursor: { nextOffset: 0 }, stop: null, consecutiveErrors: 0,
+        expiresAt: options.expiresAt, maxPendingTurns: options.maxPendingTurns, maxTrialTurns: options.maxTrialTurns,
+        errorLimit: options.errorLimit, totalErrorLimit: options.totalErrorLimit },
+      cursor: { nextOffset: 0 }, stop: null, consecutiveErrors: 0, totalErrors: 0,
       replyWindow: { startedAt: instant, count: 0 }, turns: {} });
   }
   const initial = read();
   if (initial.trial.configurationDigest !== configurationDigest || initial.trial.expiresAt !== options.expiresAt
-    || initial.trial.maxPendingTurns !== options.maxPendingTurns || initial.trial.maxTrialTurns !== options.maxTrialTurns) {
+    || initial.trial.maxPendingTurns !== options.maxPendingTurns || initial.trial.maxTrialTurns !== options.maxTrialTurns
+    || initial.trial.errorLimit !== options.errorLimit || initial.trial.totalErrorLimit !== options.totalErrorLimit) {
     throw new Error('preview state: immutable trial configuration differs');
   }
 
@@ -203,6 +234,11 @@ export function openPreviewState(options: PreviewStateOptions) {
     if (nextOffset < current.cursor.nextOffset) throw new Error('preview state: cursor regression');
     return nextOffset === current.cursor.nextOffset ? current : { ...current, cursor: { nextOffset } };
   });
+  const completePoll = (nextOffset: number) => mutate(current => {
+    assertInteger(nextOffset, 'cursor offset');
+    if (nextOffset < current.cursor.nextOffset) throw new Error('preview state: cursor regression');
+    return { ...current, cursor: { nextOffset }, consecutiveErrors: 0 };
+  });
   const reserveReply = (): PreviewStateDocument => mutate(current => {
     const instant = now();
     const window = instant - current.replyWindow.startedAt >= options.replyWindowMs
@@ -212,13 +248,15 @@ export function openPreviewState(options: PreviewStateOptions) {
   });
   const noteSuccess = () => mutate(current => ({ ...current, consecutiveErrors: 0 }));
   const noteError = () => mutate(current => {
-    const count = current.consecutiveErrors + 1;
-    if (count >= options.errorLimit && current.stop === null && !existsSync(stopPath)) {
+    const consecutiveErrors = current.consecutiveErrors + 1;
+    const totalErrors = current.totalErrors + 1;
+    if ((consecutiveErrors >= options.errorLimit || totalErrors >= options.totalErrorLimit)
+      && current.stop === null && !existsSync(stopPath)) {
       durablePreviewWrite(stopPath, { latchedAt: now(), reason: 'breaker' as const });
     }
-    return { ...current, consecutiveErrors: count, ...(existsSync(stopPath) ? { stop: read().stop } : {}) };
+    return { ...current, consecutiveErrors, totalErrors, ...(existsSync(stopPath) ? { stop: read().stop } : {}) };
   });
-  return Object.freeze({ path, read, gate, gatePollCapacity, latchStop, recordIntake, advance, advanceCursor,
+  return Object.freeze({ path, read, gate, gatePollCapacity, latchStop, recordIntake, advance, advanceCursor, completePoll,
     reserveReply, noteSuccess, noteError,
     pending: () => Object.values(read().turns).filter(turn => pendingPhase(turn.phase)) });
 }
