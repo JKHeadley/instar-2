@@ -4,6 +4,10 @@ _Generated from `10-the-transport-and-leases.changelog.json` by `scripts/render-
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-09-20 · draft — operator-directed M3-I owner resolution for SIX–TEN–ELEVEN responder-capacity admission
+
+- **Define Six-owned CapacityReservation v1 and P6-NF-41–44 for guarded production, origin/historical decoding, finite parent/child conservation, restart retention and scheduling isolation; keep operation AdmissionReservation unchanged.** — The operation-bound reservation cannot represent standing installation capacity without inventing a run and effect; Six must own the new allocation semantics and its decoder. _(git-history: docs/10-the-transport-and-leases.md §4a; commit subject: Design: responder-capacity admission (M3-I owner resolution))_
+
 ## Revision 3 · 2026-09-19 · draft — operator-directed M2 closure of the fixed single-machine installation contract
 
 - **Specify direct consumption of Six's assignment-derived fence and exact AdmissionReservation instead of standalone or fixture-shaped installation facts.** — The production resolver expected a stored FenceToken name and an unspecified resource reservation even though Six already owns both authority relationships. _(`1b960e7`)_

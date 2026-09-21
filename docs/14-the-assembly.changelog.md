@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-09-20 · draft — operator-directed M3-I owner resolution for SIX–TEN–ELEVEN responder-capacity admission
+
+- **Resolve standing responder capacity separately from selection and execution, with P10-SI-25–31, exact proposed source/helper/test grants, explicit installation-capacity acceptance and retained activation holds.** — The M3-I cross-owner finding exposed both conversation-loop occupation and an installation operation misclassified as semantic reply work; Part B needs genuine capacity and complete unchanged consumer evidence. _(git-history: docs/14-the-assembly/16-the-fixed-single-machine-installation-contract.md §11; commit subject: Design: responder-capacity admission (M3-I owner resolution))_
+
 ## Revision 5 · 2026-09-19 · draft — operator amendment making the fixed single-machine profile a supported deployment shape
 
 - **Make the single-machine arm carry no peer dependency, bind its closed local-durable operation set to one install-time acceptance, and select the peer-backed replicated(1) arm whenever a second machine is enrolled.** — The fixed profile must be usable with one available machine without weakening replication-demand operations or falling back after peer loss. _(`1b5ac4c`)_
