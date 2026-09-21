@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Nine exact-response output-use supplement from astra-m4-g6-nine-adjudication.md; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec. Unstaged docs-first draft; desk owns merge and final implementation grants."
+    },
+    "changes": [
+      {
+        "what": "Bind the bounded optional response-evidence envelope, public read-only decodeCapturedProviderDecision operation and exact captured Decision to Nine’s current output assessment and the same Eight settlement assessment.",
+        "why": "The actual return/capture boundary must preserve source and completion evidence without promoting Seven’s decode into Nine’s verdict or weakening the fully settled path.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-19",
     "status": "draft",
