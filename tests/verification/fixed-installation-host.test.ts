@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as one from '../../src/index.js';
 import * as nine from '../../src/verification/index.js';
+import { createOperatorSurface } from '../../src/operator/index.js';
 import type { IndependentSurfaceVerifierPort, SurfaceChallenge } from '../../src/operator/index.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
+import { operatorFixture } from '../operator/fixture.js';
 // @ts-expect-error The separately launched physical host is JavaScript.
 import { createFixedInstallationHost } from '../../scripts/fixed-installation-verifier-clock-observer.mjs';
 
@@ -28,8 +30,8 @@ function setup() {
   const host = reopen();
   const port: IndependentSurfaceVerifierPort = host.verifier;
   const subject = () => ({ request: 'request:one', requestDigest: f.capture('request'), renderingDigest: f.capture('rendering'),
-    artifact: f.capture('artifact'), action: 'approve', scope: f.scope, audience: 'independent-emergency-stop',
-    operator: f.alice.id, requestedBy: f.bob.id, base: 'base:one', issuedAt: Date.now(), expiresAt: Date.now() + 5000,
+    artifact: f.capture('artifact'), action: 'emergency-stop', scope: f.scope, audience: 'independent-emergency-stop',
+    operator: f.alice.id, requestedBy: f.alice.id, base: 'base:one', issuedAt: Date.now(), expiresAt: Date.now() + 5000,
     singleUse: true as const, surface: 'phone-surface', generation: f.ctx.decode.register.generation });
   const issue = () => value(port.issue(subject()));
   const proof = (challenge: SurfaceChallenge, decision = 'approve', delta = {}) => {
@@ -41,13 +43,45 @@ function setup() {
   return { f, host, port, input, reopen, issue, proof, subject };
 }
 
-it('P10-SI-13 verifies one exact signed challenge, refuses replay, and preserves refusal after host restart', () => {
-  const f = setup(), challenge = f.issue(), proof = f.proof(challenge);
-  expect(value(f.port.verify(challenge, proof, 'approve')).challenge).toBe(challenge.id);
+it('P10-SI-13 verifies the public operator stop challenge without an act and refuses replay after restart', () => {
+  const f = setup(), operator = operatorFixture();
+  const surface = value(createOperatorSurface({ ...operator.composition, verifier: f.port, challengeLifetime: 5000,
+    history: { ...operator.history, decode: () => f.f.ctx.decode, clock: () => value<one.Clock>(f.host.clock()),
+      generation: () => f.f.ctx.decode.register.generation } }));
+  const challenge = value(surface.stopChallenge({ operator: f.f.alice.id, scope: f.f.scope })), proof = f.proof(challenge);
+  expect(challenge).toMatchObject({ action: 'emergency-stop', audience: 'independent-emergency-stop',
+    operator: f.f.alice.id, requestedBy: f.f.alice.id });
+  expect(value(f.port.verify(challenge, proof, 'approve'))).toMatchObject({ challenge: challenge.id, act: null });
   refused(f.port.verify(challenge, proof, 'approve'), 'already consumed');
   refused(f.reopen().verifier.verify(challenge, proof, 'approve'), 'already consumed');
   expect(f.host.identities.subject).not.toBe(f.host.identities.observer);
   expect(f.host.identities.commonFailures).toEqual(['shared host compromise or loss']);
+});
+
+it.each([
+  { name: 'different stop requester', delta: { requestedBy: 'bob' } },
+  { name: 'wrong stop audience', delta: { audience: 'authority-request' } },
+  { name: 'approval action with stop audience', delta: { action: 'approve' } },
+  { name: 'stop action with ordinary audience and different requester', delta: { audience: 'authority-request', requestedBy: 'bob' } },
+  { name: 'approval action with stop audience and different requester', delta: { action: 'approve', requestedBy: 'bob' } },
+  { name: 'ordinary self-approval', delta: { action: 'approve', audience: 'authority-request' } },
+])('P10-SI-13 refuses $name', ({ delta }) => {
+  const f = setup();
+  refused(f.port.issue({ ...f.subject(), ...delta }), 'challenge identity, generation or expiry differs');
+});
+
+it('P10-SI-13 preserves ordinary requester separation and the requirement for an approval act', () => {
+  const f = setup(), challenge = value(f.port.issue({ ...f.subject(), action: 'approve',
+    audience: 'authority-request', requestedBy: f.f.bob.id }));
+  refused(f.port.verify(challenge, f.proof(challenge), 'approve'), 'approval requires its exact authorization act');
+  expect(value(f.port.verify(challenge, f.proof(challenge, 'decline'), 'decline')).act).toBeNull();
+});
+
+it('P10-SI-13 refuses an authorization act on the emergency-stop path without consuming the challenge', () => {
+  const f = setup(), challenge = f.issue(), proof = JSON.parse(f.proof(challenge));
+  proof.act = f.f.proof({}, { id: f.f.alice.id, kind: 'person' }, 'approval', false, 'phone-surface').input;
+  refused(f.port.verify(challenge, JSON.stringify(proof), 'approve'), 'emergency stop cannot carry authority');
+  expect(value(f.port.verify(challenge, f.proof(challenge), 'approve')).act).toBeNull();
 });
 
 it.each(['request', 'renderingDigest', 'artifact', 'base', 'scope', 'decision'])(

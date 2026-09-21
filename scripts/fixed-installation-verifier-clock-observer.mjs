@@ -63,6 +63,10 @@ export function createFixedInstallationHost(input) {
       && p.provenance.class === 'verified'), 'independent operator identity unavailable');
     return c;
   };
+  const requesterAllowed = subject => subject.action === 'emergency-stop' || subject.audience === 'independent-emergency-stop'
+    ? subject.action === 'emergency-stop' && subject.audience === 'independent-emergency-stop'
+      && subject.requestedBy === subject.operator && subject.operator === config.operator
+    : subject.requestedBy !== config.operator;
   const verifier = Object.freeze({ owner: 'part-nine', administration: 'independent',
     issue: subject => result('FixedInstallationChallengeIssue', () => {
       const c = binding(), at = now();
@@ -71,7 +75,7 @@ export function createFixedInstallationHost(input) {
       'closed challenge subject required');
       check(subject.singleUse === true && subject.surface === config.surface && subject.operator === config.operator
         && Number.isSafeInteger(subject.issuedAt) && Number.isSafeInteger(subject.expiresAt)
-        && subject.requestedBy !== config.operator && subject.issuedAt <= at.value
+        && requesterAllowed(subject) && subject.issuedAt <= at.value
         && subject.expiresAt > at.value && subject.expiresAt - subject.issuedAt <= config.maxLifetime
         && canonical(subject.generation).bytes === canonical(c.register.generation).bytes,
       'challenge identity, generation or expiry differs');
@@ -88,11 +92,14 @@ export function createFixedInstallationHost(input) {
     verify: (challenge, proof, decision) => result('FixedInstallationChallengeVerify', () => {
       const c = binding(), at = now(), name = nameFor(challenge.id);
       check(canonical(read(`${name}.challenge`)).bytes === canonical(challenge).bytes, 'challenge bytes changed');
+      check(requesterAllowed(challenge), 'challenge requester or emergency-stop tuple differs');
       check(decision === 'approve' || decision === 'decline', 'challenge decision invalid');
       check(challenge.issuedAt <= at.value && at.value < challenge.expiresAt
         && canonical(challenge.generation).bytes === canonical(c.register.generation).bytes, 'challenge expired or generation changed');
       check(typeof proof === 'string' && Buffer.byteLength(proof) <= 65536, 'bounded challenge proof required');
       const supplied = JSON.parse(proof);
+      check(challenge.audience !== 'independent-emergency-stop' || supplied.act === null,
+        'emergency stop cannot carry authority');
       check(supplied.type === 'VerifiedActProofBundle' && supplied.schemaVersion === 1
         && supplied.challenge?.evidence?.keyId === config.factorKey
         && supplied.challenge?.evidence?.kind === 'signature', 'proof requires independently installed factor');
