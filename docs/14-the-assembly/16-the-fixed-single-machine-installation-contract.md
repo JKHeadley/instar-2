@@ -58,13 +58,14 @@ execution machine, voter, bot, conversation, provider tuple, platform, or protec
 capability. A separately enrolled durability peer is permitted, and required whenever a selected
 operation demands replication; it is not a second execution voter. When only one machine is
 enrolled, the admitted installation carries no peer dependency and uses the accepted closed
-local-durable P-08 set. The proposed ordinary bounded `native-confined-launch` remains under the
-unresolved `ordinary-local-durability-scope` governing-document gap in §2; Eight §4a's
-ordinary-operation rule and §12's evidence contract do not by themselves authorize local launch. Whenever a second machine is enrolled, the peer-backed arm uses
+irreversible local-durable P-08 set. Ordinary bounded operations follow the purpose's fully
+functional single-machine Rule and §2's ordinary-operation rule. The proposed
+`native-confined-launch` remains under M4-L's implementation/admission hold and §12's evidence
+contract. Whenever a second machine is enrolled, the peer-backed arm uses
 `replicated(1)` by default. Positive neighbors are the exact admitted single-machine tuple and the
 same one-voter execution tuple with its real remote durability peer. A same-machine second process
 is not that peer. A broader execution tuple remains not admitted in this scope.
-Owner basis: `docs/00-the-purpose.md:99-126` defines the supported single-machine shape and
+Owner basis: `docs/00-the-purpose.md` defines the fully functional single-machine shape and
 peer-backed default; `docs/12-the-effect-doorway.md:241-266` gives Eight both installed
 operation-demand arms; `docs/15-the-operator-surfaces.md:201-231` makes Eleven consume the selected
 arm without adding an execution voter.
@@ -93,20 +94,15 @@ Positive neighbors are a profile operation with its complete local receipt in th
 arm and a replicated operation with its real peer receipt in the peer-backed arm. No arm or record
 is named `replicated(0)`.
 
-**Rule — ordinary local launch retains an unresolved governing-document gap.** Owner: the
-operator for reconciliation of the purpose and Eight for the owner contract; predicates:
-P10-SI-04/36. `ordinary-local-durability-scope` is UNRESOLVED. The purpose's local-durable
-closed-set clause (`docs/00-the-purpose.md:106–124`) and Eight §5's installed-shape rule limit
-local dispatch to the provider/reply set, while Eight §5's ordinary reversible/costly rule
-requires at least local durability. The ordinary four-test classification, finite expiry and
-full causal closure are necessary but do not reconcile those exclusions. This profile supplies
-no local-launch exemption; its design/admission hold remains until operator-approved owner-document
-clarification explicitly limits the provider/reply closed-set acceptance and membership check
-to irreversible effects and separately states the ordinary four-test/finite-bound/full-causal-closure
-rule. Keep the irreversible provider/reply set unchanged. Corresponding P-08 interpretations/checks
-that enforce the unqualified exclusion require a named grant before changing. This document grants
-neither those edits nor the reconciliation. Adding a peer, extending message purposes or treating
-the new local operation as already covered cannot close this gap.
+**Rule — ordinary bounded operations have their own local durability rule.** Owner: Eight;
+predicates: P10-SI-04/36. `ordinary-local-durability-scope` is RESOLVED by the purpose's fully
+functional single-machine Rule and its ordinary bounded-operation Rule. The provider/reply pair
+and its exact membership check govern irreversible effects. An ordinary operation requires all
+four consequential-effect tests to be false, finite enforced bounds and the whole causal record
+retained durably at least locally, with its complete required prefix durable before dispatch.
+Corresponding P-08 interpretations/checks enforcing the broader exclusion still require a named
+grant before changing; this document grants no such edits. M4-L and all implementation/evidence
+holds remain open. Approval starts nothing and adds no peer prerequisite.
 
 **Value — the accepted loss model in plain words.** Permanent loss of this one machine can
 destroy the authority, work, captures, observations, and accounting evidence needed to
@@ -1349,9 +1345,9 @@ M3-S, P10-SI-36 for launch, P10-SI-37 for this output-use composition, and P9-NF
 Retain both preceding maps and their owner meanings, registration inputs and held dependencies.
 M3-S's `historical-installation-admission-context` original-context reconstruction hold,
 `installation-generation-transition` hold, actual opened-root inspection requirements and
-strict-consumer/performance closure gates remain operative. Eight's unresolved
-`ordinary-local-durability-scope` launch design/admission hold also remains operative; supported
-single-machine response assessment cannot settle that launch gap. Nine assessment resolves none
+strict-consumer/performance closure gates remain operative. The purpose's fully functional
+single-machine Rule resolves `ordinary-local-durability-scope`; Eight's M4-L implementation/admission
+hold remains operative. Nine assessment resolves none
 of these holds. This document order does not require completed M3-S implementation or
 performance closure for independent M4
 evidence and authorizes no new implementation unit.
@@ -1928,9 +1924,9 @@ singleton boundary. Separate context-delivery/model/reply admissions remain requ
 
 P10-SI-04/08/13/14/15/18 and P8-NF-03–17/25–30 remain operative. P10-SI-18 forbids replacement
 while execution, resource accounting or quiescence is unknown without pretending this local
-worker is a billed model call. Local launch remains under the unresolved
-`ordinary-local-durability-scope` design/admission hold; ordinary classification and a complete
-local receipt do not override the governing closed-set exclusion. Unit/schema evidence, full-port integration, actual lifecycle/OS-boundary evidence and
+worker is a billed model call. The purpose's fully functional single-machine Rule resolves
+`ordinary-local-durability-scope`; local launch still requires the ordinary-operation checks in
+§2 and M4-L's implementation/admission evidence. Unit/schema evidence, full-port integration, actual lifecycle/OS-boundary evidence and
 Nine's applicable assessment are four distinct reported tiers. A design check, mocked syscall,
 standalone sudo spawn or message-decoder refusal cannot close the live predicate.
 
@@ -1952,14 +1948,15 @@ only machine can lose the evidence needed to reconstruct work; it promises neith
 a delivered outage notice. Broader cleanup/restart, arbitrary processes and unsupported platforms
 remain unavailable. These costs follow the existing scope, finite-resource, evidence and no-repeat
 rules; the desk presents their acceptance in plain words, not as a choice of competing owners.
-The ordinary launch requires explicit reconciliation of the purpose's local-durable closed-set clause with Eight's ordinary-operation rule; this document does not supply that authority.
+The purpose's ordinary bounded-operation Rule permits this durability class; it supplies no
+implementation approval or runtime admission.
 
 **Rule — evidence closes named holds independently.** P10-SI-22 keeps these dispositions visible:
 
 | Hold | Closure evidence and owner |
 |---|---|
-| `ordinary-local-durability-scope` | UNRESOLVED governing-document gap: operator-approved clarification of the purpose's local-durable closed-set clause and Eight's installed-shape rule, separately stating the ordinary four-test/finite-bound/full-causal-closure rule while preserving the irreversible provider/reply set. Any corresponding P-08 check change needs a named grant. Launch design/admission remains held; this document supplies no reconciliation. |
-| `M4-L — fixed confined-launch owner operation and exact grant` | Eight's approved definition/v2 admission/no-repeat implementation, Ten's real integrated restricted execution and expiry/attack/allowed-port evidence, applicable Nine assessment, desk-reviewed exact grants/pins and operator approval of protected content. Design closure also requires `ordinary-local-durability-scope` reconciliation; documentation alone supplies no implementation/admission evidence or authority-conferring runtime flag. |
+| `ordinary-local-durability-scope` | RESOLVED by the purpose's fully functional single-machine Rule and its ordinary bounded-operation Rule: the irreversible provider/reply set and membership check stay intact; ordinary operations require all four tests to be false, finite enforced bounds and the whole causal record durable at least locally. Any corresponding P-08 check change still needs a named grant. Approval starts nothing and closes no implementation/evidence hold. |
+| `M4-L — fixed confined-launch owner operation and exact grant` | OPEN: Eight's approved definition/v2 admission/no-repeat implementation, Ten's real integrated restricted execution and expiry/attack/allowed-port evidence, applicable Nine assessment, desk-reviewed exact grants/pins and operator approval of protected content. Resolution of the governing-document gap supplies no implementation/admission evidence or authority-conferring runtime flag. |
 | `general-process-execution` | Separate Eight contracts/grants and actual evidence for arbitrary executables/shells, broader modes, cancellation/cleanup, automatic restart/replacement/retry. This breadth is deferred, not a prerequisite for this one operation. |
 | `M3-S — fixed-installation record granularity and strict-consumer performance` | Existing structural/performance owner evidence and full affected checks; no timeout increase or bypass supplied here. |
 | `M3-I — responder reservation representation and consumer completeness` | Six/Ten/Eleven and desk closure of §11's genuine capacity representation, strict complete consumers and independently reviewed pins. A launch operation reservation is not installation capacity. |

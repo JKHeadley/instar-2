@@ -246,8 +246,9 @@ The operation starts one exact Native artifact under the operator-installed rest
 and OS boundary. It supplies only loading and observation handles. It does not ground a run,
 consume a model context, call a provider, send a reply or declare the installation live.
 Those actions require their separate owner admissions. Single-machine deployment remains
-supported, but local launch retains the unresolved `ordinary-local-durability-scope` design/admission
-hold below; an independently administered process on that machine is not a durability peer.
+supported under the purpose's fully functional single-machine Rule; local launch remains under
+M4-L's implementation/admission hold. An independently administered process on that machine is
+not a durability peer.
 
 This boundary follows the purpose's four consequential-effect tests, Eight §§2–3/5–6, and
 Ten §§3–4/12. Generic ownership of process effects supplies neither an approved definition nor
@@ -272,8 +273,8 @@ Seven-supervised finite stage even when this individual launch is ordinary; admi
 supervisor's own call does not require a second model to authorize it.
 
 **Rule — expiry is part of the admitted effect, not a hidden kill port.** Eight's ordinary
-reversible/costly rule requires at least local durability of the complete causal closure, but
-the local-launch authority remains subject to `ordinary-local-durability-scope` below. The
+reversible/costly rule requires all four consequential-effect tests to be false, finite enforced
+bounds and at least local durability of the complete causal closure. The
 resource contract names finite wall lifetime, CPU time, memory, processes/descendants, open
 handles, input/output and scratch bytes, queue length and outstanding dispatches, plus observation
 count/time/bytes and maximum reserved exposure. Values come from the approved installation
@@ -290,25 +291,20 @@ needs its own registered Eight operation, resource/durability/claim contract and
 none is supplied by this launch. Such a mode stays under `general-process-execution` and M4-L.
 No new Seven supervision interface is granted.
 
-`ordinary-local-durability-scope` is an UNRESOLVED governing-document gap. The purpose's
-local-durable closed-set clause (`docs/00-the-purpose.md:106–124`) and this part's §5 installed-shape
-rule exclude operations outside the provider/reply set, while §5's ordinary reversible/costly rule
-requires at least local durability. Neither ordinary classification nor bounded expiry erases the
-exclusions. Local-launch design/admission remains held until operator-approved owner-document
-clarification expressly limits the closed-set acceptance and membership check to irreversible
-effects and separately states the ordinary four-test/finite-bound/full-causal-closure rule.
-The irreversible provider/reply set stays unchanged. P-08 interpretation/check changes enforcing
-the unqualified exclusion need their own named grant; this supplement supplies none. This gap
-cannot be resolved by adding a peer, extending message purposes or treating launch as already covered.
+`ordinary-local-durability-scope` is RESOLVED by the purpose's fully functional single-machine
+Rule and its ordinary bounded-operation Rule. The provider/reply closed-set acceptance and exact
+membership check govern irreversible effects; ordinary operations require all four tests to be
+false, finite enforced bounds and the whole causal record durable at least locally. P-08 checks enforcing
+the broader exclusion still need their own named grant; this document supplies none.
+M4-L and all implementation/evidence holds remain open. Approval starts nothing.
 
-Subject to that reconciliation, the required local receipt covers pending work, approvals,
+The required local receipt covers pending work, approvals,
 definition and generation, immutable payload,
 Ten specification, resource and authority references, validation, verification obligation, Six
 reservation, claim and consumption before execution. Strengthen the demand if actual loss
 consequences require it. Permanent machine loss can destroy launch history and leave unfinished
 work unknown; it grants no replacement attempt. This bounded local occupation does not add a
-third irreversible operation to P-08's provider/reply set or establish local-dispatch authority
-while `ordinary-local-durability-scope` remains unresolved. If bounded expiry or exclusion of
+third irreversible operation to P-08's provider/reply set. If bounded expiry or exclusion of
 irreversible effects cannot be established, this mode is unsupported under this contract. An
 irreversible local launch requires separate operator approval of the purpose's local-loss rule,
 Eight §5, and Ten installation §§1/2/9 and their loss checks; it cannot be obtained by renaming
@@ -454,15 +450,16 @@ protects the prerequisite record against loss of the originating machine under t
 independent-peer failure model. It does not promise survival of all copies failing or copies
 sharing one failed disk. No check chooses the availability/storage trade. An operation can demand
 replicated(n) for larger n. A single-machine installation is supported without a peer dependency
-for the fixed profile's accepted closed `local-durable` operation set. Discovery or loss of a peer
+for the fixed profile's accepted closed irreversible `local-durable` operation set and ordinary
+bounded operations under the purpose's Rule. Discovery or loss of a peer
 never changes an installed demand automatically.
 
 **Rule — the installed shape selects the local demand before dispatch.** Owner: the operator
 owns the P-08 installation policy; Ten owns the fixed profile; Eight owns the operation demand;
-and Two owns its durability evidence. **Checks: P8-NF-25/26/27**. The single-machine shape makes
-`local-durable` available only to the profile-enumerated installed provider call and reply-only
-Telegram `ordinary-reply` send after one operator acceptance binds that complete set and the
-permanent-machine-loss model for the installation. The operator does not list those operations
+and Two owns its durability evidence. **Checks: P8-NF-25/26/27**. For irreversible effects, the
+single-machine shape makes `local-durable` available only to the profile-enumerated installed
+provider call and reply-only Telegram `ordinary-reply` send after one operator acceptance binds
+that complete set and the permanent-machine-loss model for the installation. The operator does not list those operations
 again by hand. Each exact local prefix covers authorization, preparation, disclosure,
 maximum-charge reservation, reply preparation, observations and later settlement predecessors
 available at dispatch. Missing or stale policy, an operation outside the profile set, a partial
@@ -518,8 +515,11 @@ after each evidence, settlement and accounting append and verifies no unsupporte
 **Checks: P8-NF-12/28**, with P4-NF-14. Four's authenticated emergency stop appends
 local-durable and inhibits local admission without waiting for replication or quorum. It
 cannot acquire an ordinary irreversible-operation requirement from this default. The primitive
-floor uses its original part's durability contract. Reversible/costly ordinary operations have
-at least local-durable demand, strengthened where their declared loss consequences require it.
+floor uses its original part's durability contract. Reversible/costly ordinary operations follow
+the purpose's ordinary bounded-operation Rule: all four consequential-effect tests must be false,
+bounds must be finite and enforced, and the whole causal record must be retained durably at least
+locally, with its complete required prefix durable before dispatch. Their demand is strengthened
+where declared loss consequences require it.
 A compensation is a new operation with its own demand; it never weakens the first operation's.
 
 **Rule — enough copies do not cleanse authority.** Rules 28, 31, 63, 95 and 104;
@@ -1060,8 +1060,9 @@ tradeoffs. Technical completion of this document does not request an interruptio
 work; these are the policy questions for its approval surface.
 
 1. **Durability versus single-machine availability.** Support a no-peer installation whose one
-   install-time policy accepts the fixed profile's closed local-durable operation set and
-   permanent-machine-loss model. Use replicated(1) by default whenever a second machine is
+   install-time policy accepts the fixed profile's closed irreversible local-durable operation set
+   and permanent-machine-loss model; ordinary bounded operations follow the purpose's Rule.
+   Use replicated(1) by default whenever a second machine is
    enrolled and for every operation whose demand names replication. Stops retain their approved
    local-durable fast path.
 2. **Indefinite uncertainty.** Accept blocked automatic repetition and retained exposure when
