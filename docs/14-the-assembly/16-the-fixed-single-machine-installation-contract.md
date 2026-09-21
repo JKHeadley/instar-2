@@ -499,8 +499,19 @@ final reply Decision. Tools, additional turns, streaming assembly and alternate 
 outside this mode. The existing tools-empty/one-turn/no-hidden-retry arguments and Six/Eight
 admission remain mandatory; this assessment adds no command execution or process launch.
 
-The IO preserves the actual stdout bytes before any lossy string decoding; the pinned capture
-parser requires valid UTF-8 and exactly one complete stdout JSON frame, and rejects
+The physical `productionProviderIO` boundary at `scripts/production-boot-io.mjs:23–29`
+collects stdout chunks, then currently applies `Buffer.concat(chunks).toString('utf8')`.
+That replacement decoding can collapse invalid bytes and a valid U+FFFD sequence into the same
+parseable JSON string. The landed `ProductionProviderIO` result at
+`src/assembly/production-provider.ts:12–14` carries only that string; its parser at :58 cannot
+recover the original bytes. S21 therefore preserves the bounded collected stdout bytes in the
+IO result before any replacement decoding. S9 consumes that byte field, validates UTF-8
+strictly before parsing, and preserves the exact raw bytes and their computed digest through
+S8's local capture/evidence path to Nine's assessment. A legacy text field may remain for existing
+settlement-only consumers, but cannot establish output-use provenance. Limited/error results
+retain their explicit disposition and cannot qualify as complete responses.
+
+The pinned capture parser requires exactly one complete stdout JSON frame and rejects
 malformed/extra frames, missing required result fields, invalid encoding, a limited execution,
 nonzero/null exit, error/cancellation/timeout, byte/token/turn limits and tool-call completion.
 It preserves the raw terminal frame before extraction. The existing extraction contract is
@@ -688,8 +699,8 @@ the exact migration grant below; no other landed fixture edit is authorized.
 
 No landed test may be edited except the exact allowlist, digest, and declaration-baseline lines
 and the two fixture helpers named here, or a
-separately approved, individually named §11 or M4-G6-N grant. Owner: Ten for the fixture migration; referenced records
-retain their public owners. Predicate: P10-SI-20 requires tests/assembly/production-fixture.ts and
+separately approved, individually named M3-S, M4-L, M4-G6-N or §11 grant, each within its own
+exact map. Owner: Ten for the fixture migration; referenced records retain their public owners. Predicate: P10-SI-20 requires tests/assembly/production-fixture.ts and
 tests/assembly/round8-extended-fixture.ts to construct the P10-SI-07 inputs through real owner
 producers and registered decoders. Only their binding-evidence setup and required owner-context
 wiring may change. tests/assembly/production.test.ts and every assertion in it stay byte-identical.
@@ -706,11 +717,21 @@ The declaration changes are source inputs, not generated authority. After each u
 declaration inputs, the ordinary Three generator may update only the deterministic changed files
 among `generated/capabilities.md`, `generated/conversion.json`, `generated/coverage.md`,
 `generated/fact-schemas.json`, `generated/glossary.md`, `generated/register.json`,
-`generated/rules.md`, `generated/shape.json`, and `generated/source.json`. M3 introduces only the
-three P10-SI-23 fact-kind bindings. M4 output-use registration comprises the P10-SI-17
-`judgment-provider-ProviderAnswerAcceptance` binding and P10-SI-37's three Nine schema-2
-bindings, their owner decoders/producers and the precisely named fixtures below. Other M4 owner
-registration is confined to its separately approved exact map. Hand-edited generated output refuses.
+`generated/rules.md`, `generated/shape.json`, and `generated/source.json`. The combined closed
+registration list is the three singleton/signer/governance P10-SI-23 bindings
+(`assembly-InstallationSelection`, `assembly-ProductionSignerReference` and
+`rungraph-installed-governance-reference`), plus M3-S's `assembly-InstallationSelectionSet`
+schema 1 under P10-SI-32/33; Seven's `judgment-provider-ProviderAnswerAcceptance` v1 under
+P10-SI-17; Eight's `effect-OperationDefinition` v2, `effect-EffectRequest` v2 and
+`effect-OperationObservation` v2 with discriminator `native-confined-launch`, that exact operation
+feature and Eight §4a's producer/decoder bindings; and Nine's `verification-VerificationPlan`,
+`verification-VerificationRequest` and `verification-VerificationAssessment` schema 2 under
+P10-SI-37, with their exact producer/decoder/feature/holder and fixture bindings. Eight's
+`EffectValidation` and `EffectSettlement` remain v1 with their explicitly defined version-aware
+joins. Preserve all older versions, outbound/provider meanings, exact owner-reference entries
+and each map's separate approval and hold conditions. No additional family is implied and no
+registration permits implementation before its required review and operator approval.
+Hand-edited generated output refuses.
 
 Owner basis for this path grant: `src/assembly/production-application.ts:28-49` owns the admitted
 boot composition; `src/assembly/production-holds.ts:1-30` says its names confer no authority;
@@ -770,35 +791,27 @@ The builder's reviewed fence and pin grant is also exact:
    `tests/rungraph/production-grounding-scope.test.ts` in A2's `grantedContent`. No directory
    exemption, obligation-row deletion, assertion change, or weaker main-versus-HEAD comparison is
    granted.
-6. M3 lands first with its final source digests, single inventory digest, checker constant, A2
-   digest, declarations, and generated register outputs. M4 then rebases onto landed M3, changes
-   the shared `src/assembly/production.ts`, `src/assembly/production-boot.ts`, and
-   `src/rungraph/index.ts` from that baseline, and recomputes every M4 source digest and the one
-   inventory digest. M4 never carries forward M3's aggregate inventory digest after changing the
-   inventory bytes.
+6. P10-SI-35 permits the independently reviewed read-only inspection prerequisite to land before
+   strict Part B consumer migration. M3-S implementation/performance closure is not a prerequisite
+   for independent confined-boundary, custody, Nine-host or G6 evidence. Every landed unit has its
+   own final reviewed source digests, single inventory digest, checker/A2/P13 pins and committed-input
+   register outputs. Each implementation unit rebases before changing shared sources and recomputes
+   final pins serially. No concurrent aggregate-inventory edits and no carrying an earlier aggregate
+   digest across changed inventory bytes are permitted. M4 positive boot still requires the actual
+   opened-root inspection/selection/capacity product; independent evidence supplies no substitute.
 7. Re-pin any affected owner-reference manifest through the ordinary Three generator from the
    approved declaration inputs. Do not hand-edit generated authority or widen a source-hash
    exemption.
-   The declaration baseline in tests/rungraph/closure-registration-additivity.test.ts may move only
-   from 6c25455 to the reviewed M3 additive declaration commit. Preserve all existing declaration
-   records and every test assertion; only the one commit literal changes. Add that test's exact
-   reviewed final hash to A2's grantedContent and regenerate its existing Part Five fixture artifact
-   hash in register-source/owner-references.json. Preserve the main-versus-HEAD comparison and
-   refresh only A2's resulting enclosing checker pin. A later baseline move requires independent
-   review of the exact additive declaration delta; an arbitrary new HEAD is not an approved pin.
-   M3-E supplement (Astra adjudication, 2026-09-20): the additional source grant is only
-   src/facts/historical.ts (private memo support, fingerprint construction/reuse and cache storage,
-   equivalent canonical bytes and both identity guards preserved; no new public export, no caller
-   mutation). Ten's installation-record validation caches in src/assembly/installation-selection.ts
-   and src/assembly/production-signer-reference.ts must key historical reuse on the complete consumed
-   validation inputs (origin and input bytes, relevant cone contents, context and admission data,
-   valid owner identities); origin-mode validation never obtains a verdict or admission basis from a
-   historical cache. The only new test path is tests/facts/historical-memo-context.test.ts; the two
-   source fences tests/operator/round15-regressions.test.ts and tests/rungraph/production-grounding-
-   scope.test.ts add exactly src/facts/historical.ts to storeProjectionGrant; the inventory digest for
-   src/facts/historical.ts and the changed Ten sources, the single inventory digest, A2's inventory
-   and scope-test entries and the enclosing P13 hash move once each. tests/assembly/production.test.ts
-   stays byte-identical, timeouts included.
+   The declaration baseline at `tests/rungraph/closure-registration-additivity.test.ts:12`
+   is `3ded685bb0e4daa944cbe90e191d56d93ef54f70`. Preserve it and every existing declaration and
+   assertion for the set/inspection cut. A later baseline move needs independent review of the
+   exact additive Five declaration delta, its own named test grant and consequential pins; an
+   arbitrary new HEAD is not an approved pin.
+   Existing historical integrity remains mandatory: equivalent canonical bytes and both identity
+   guards in `src/facts/historical.ts`; complete consumed validation inputs in Ten’s historical
+   selection/signer caches; fresh origin guards/current authority without a historical verdict.
+   `tests/facts/historical-memo-context.test.ts` remains a regression witness. This amendment
+   grants no new Part Two performance work, cache, fence expansion or timeout change.
 8. Preserve historical decoders, default replicated-mode positives, protected-scope positives,
    unprotected protected-mutation refusals, all current production provenance checks, and the
    byte-identical landed provider-path readers named above.
@@ -816,9 +829,18 @@ absent file, not landed lines. A rebase must resolve the named region against re
 
 Document merge order: approved M3-S (`design-m3s-selection-set-and-inspection`, reviewed coordinate
 `1e7feb2`) first, then the approved Eight launch supplement (`design-m4-fixed-launch-operation`,
-reviewed coordinate `e5ea93f`), then this supplement rebased onto both. Reserve P10-SI-32–35 for
+reviewed coordinate `e5ea93f`) semantically rebased onto M3-S, then this supplement semantically
+rebased onto both. Reserve P10-SI-32–35 for
 M3-S, P10-SI-36 for launch, P10-SI-37 for this output-use composition, and P9-NF-64–66 for Nine.
 Retain both preceding maps and their owner meanings, registration inputs and held dependencies.
+M3-S's `historical-installation-admission-context` original-context reconstruction hold,
+`installation-generation-transition` hold, actual opened-root inspection requirements and
+strict-consumer/performance closure gates remain operative. Eight's unresolved
+`ordinary-local-durability-scope` launch design/admission hold also remains operative; supported
+single-machine response assessment cannot settle that launch gap. Nine assessment resolves none
+of these holds. This document order does not require completed M3-S implementation or
+performance closure for independent M4
+evidence and authorizes no new implementation unit.
 If another approved allocation intervenes, resolve it before merge; never reuse its number.
 This document order adds no runtime dependency between G6 and any separate preparation unit.
 Implementation units land serially after their
@@ -833,8 +855,8 @@ own review/gate, rebase, and recomputation of final shared pins; no concurrent a
 | M4-G6-N-S5 | `src/verification/index.ts:1–15,31–34`: only the named new derivation, port/types and `decodeVerificationRecordAtOrigin` / `decodeHistoricalVerificationRecord` exports. | LIVE `src/verification/**` |
 | M4-G6-N-S6 | `src/verification/verification.declarations.json:1–12`: additive explicit schema-2 registrations for the three named families, producer/decoder and bounded feature/holder bindings for P9-NF-64–66. No `verification.core` activation, no claimed held edge from unexecuted evidence; retain all existing LIVE protection. | LIVE `src/verification/**` |
 | M4-G6-N-S7 | `src/judgment/contracts.ts:135–142`: optional bounded `responseEvidence` envelope and its legacy absence, using existing Evidence/capture contracts. | LIVE `src/judgment/**` |
-| M4-G6-N-S8 | `src/assembly/provider-invocation.ts:12–17,35–70,103–144`: finite evidence/capture reservation, descriptor-only copying, real source/terminal capture and admitted Evidence, exact claim/request/answer binding at return. Keep actual claim consumption, byte/token bounds, custody and zero hidden retries. | DARK `src/assembly/**` |
-| M4-G6-N-S9 | `src/assembly/production-provider.ts:9–14,19–71`: selected CLI source/completion observation and pinned parser only, including the bounded evidence IO return contract. No extra provider, process-launch capability, arbitrary executable or loosened admission. Unsupported source/terminal semantics stays held. | DARK `src/assembly/**` |
+| M4-G6-N-S8 | `src/assembly/provider-invocation.ts:12–17,35–70,103–144`: finite evidence/capture reservation, descriptor-only copying, and local capture/admitted Evidence preserving S21/S9's exact raw stdout bytes and digest through the response subject to Nine; retain exact claim/request/answer binding at return. Keep actual claim consumption, byte/token bounds, custody and zero hidden retries. | DARK `src/assembly/**` |
+| M4-G6-N-S9 | `src/assembly/production-provider.ts:9–14,19–71`: selected CLI source/completion observation and pinned parser only; consume S21's bounded stdout byte field with strict UTF-8 validation before parsing and preserve its exact bytes/digest to S8. A retained legacy text field is settlement-only and cannot establish output-use provenance. No extra provider, process-launch capability, arbitrary executable or loosened admission. Unsupported source/terminal semantics stays held. | DARK `src/assembly/**` |
 | M4-G6-N-S10 | `src/assembly/production-provider-owners.ts:6–7,12–26,39–59`: construct the genuine same-store Nine response port, supply it to Seven/Eight and preserve the real legacy owner composition. | DARK `src/assembly/**` |
 | M4-G6-N-S11 | `src/judgment/provider-path.ts:37–50,55–74,75–172,248–281`: P10-SI-17 acceptance schema/producer/origin/historical decoder and current Nine consumer with exact Decision/settlement/accounting joins; extract `decodeCapturedProviderDecision` at :263–272 for pre-settlement read-only Nine consumption and reuse in both Seven paths. Preserve ProviderJudgmentResolution's `unresolved === 0`. | LIVE `src/judgment/**` |
 | M4-G6-N-S12 | `src/judgment/index.ts:1,7–8`: only acceptance producer, `decodeProviderAnswerAcceptanceAtOrigin`, `decodeHistoricalProviderAnswerAcceptance`, `decodeCapturedProviderDecision` and associated public types. | LIVE `src/judgment/**` |
@@ -846,6 +868,7 @@ own review/gate, rebase, and recomputation of final shared pins; no concurrent a
 | M4-G6-N-S18 | `src/rungraph/service.ts:14,144–179`: P10-SI-24 current conditional one-use reply opening/reconstruction only; preserve original pending provider step and exposure. | Outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` |
 | M4-G6-N-S19 | `src/rungraph/index.ts:1–7`: only the named reply-opening public exports/types. | Outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` |
 | M4-G6-N-S20 | `src/assembly/production-composition.ts:22–37,65–66,84–91`: wire the assessed acceptance to the separately admitted reply through public owners on the same store. No boot, dependency-selection, launch or capacity change. | DARK `src/assembly/**` |
+| M4-G6-N-S21 | `scripts/production-boot-io.mjs:17–30`: preserve the bounded collected stdout bytes through the `productionProviderIO` result before replacement decoding, carrying those bytes on success and preserving explicit limited/error disposition. Retain executable/args/cwd/env, timeout, maximum-byte enforcement, no shell and no retry. No launch capability or storage/Telegram/native-context IO change. | No declared protected-artifact pattern matches this host at the base; outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` and the DARK `src/assembly/**` pattern. |
 
 LIVE declarations are `src/verification/verification.declarations.json:7–10`,
 `src/judgment/judgment.declarations.json:3–5`, and `src/effects/effect.declarations.json:2–3`.
@@ -892,20 +915,23 @@ No other manifest, Part Five declaration baseline or register-owner source is gr
 | Grant | Exact test or pin region and sole proposed delta |
 |---|---|
 | M4-G6-N-T1 | `tests/verification/provider-response-assessment.test.ts:1 (new)`: real producer/registered version decoders/current-port tests for P9-NF-64–66, mixed v1/v2 source-only durable rebuild, duplicate/conflict closure and H2–H5 helper registration positives/refusals. No permissive fixture owner; caller-supplied Seven decoder substitutes refuse. |
-| M4-G6-N-T2 | `tests/assembly/provider-response-evidence.test.ts:1 (new)`: actual return-boundary descriptor copying/capture and selected CLI parser/evidence contract, cap arithmetic and legacy H1 compatibility; retain actual raw terminal bytes. |
+| M4-G6-N-T2 | `tests/assembly/provider-response-evidence.test.ts:1 (new)`: actual return-boundary descriptor copying/capture and selected CLI parser/evidence contract, cap arithmetic and legacy H1 compatibility. Exercise the real `productionProviderIO` boundary with valid non-ASCII bytes, invalid UTF-8 inside otherwise parseable JSON, split multibyte chunks, truncation/limits and extra frames; assert raw-byte/digest equality through capture to assessment and invalid-encoding refusal. Retain actual raw terminal bytes; no additional test file. |
 | M4-G6-N-T3 | `tests/rungraph/provider-answer-reply.test.ts:1 (new at base)`: preserve the v1 decoder/occurrence-without-answer diagnostic, add same-fact positive/negative G6 joins and Five's one-use/stop/predecessor cases. The diagnostic's :12–25 is in the adjudicated confined-runtime worktree, not landed base lines. |
 | M4-G6-N-T4 | `tests/e2e/fixed-installation-reply.test.ts:1 (new at base)`: real-owner composition, exact accounting/exposure and restart reconstruction for P10-SI-17/18/24/37; zero second model calls or reply operations. Test evidence never claims installed route admission. |
 | M4-G6-N-T5 | `tests/operator/round15-regressions.test.ts:80,89–99`: V79 exact allowlist additions S1–S7, S11–S15 and H1 only, retaining already allowed paths. No Nine/Seven/Eight directory prefix, changed comparison or weakened assertion. |
 | M4-G6-N-T6 | `tests/rungraph/production-grounding-scope.test.ts:9–17`: named `providerResponseAssessmentGrant` enumerates the same exact S1–S7/S11–S15/H1 paths; add only its membership test to the existing outside-path filter. Preserve main-versus-HEAD basis, existing grants and empty-outside assertion. |
 | M4-G6-N-T7 | `tests/verification/coverage.test.ts:10,15`: only the two exhaustive count assertions change 63 to 66 for H6. Retain all false-certification/ownership/declaration assertions; no baseline or status relaxation. |
-| M4-G6-N-P1 | `tests/assembly/production-grounding-inventory.json:5241`: after independent review add/re-pin only actually changed S1–S20/H1–H6/T1–T7 support entries as applicable. Preserve all obligation rows, their mappings, landed source assertions and unrelated hashes. |
+| M4-G6-N-P1 | `tests/assembly/production-grounding-inventory.json:5241`: after independent review add/re-pin only actually changed S1–S20/H1–H6/T1–T7 support entries as applicable, plus only S21's independently reviewed changed `scripts/production-boot-io.mjs` support digest through the existing P2/T8/P3 consequent pin chain. Preserve all obligation rows, their mappings, landed source assertions and unrelated hashes. |
 | M4-G6-N-P2 | `scripts/check-assembly-contracts.mjs:178`: only the resulting reviewed inventory digest; no dependency population or checker logic change. |
 | M4-G6-N-T8 | `tests/harness-adapters/a2-governance-and-additivity.test.ts:7,10–19`: only final reviewed P1 inventory, T6 scope-test and T7 coverage-test entries in `grantedContent`. If T1–T4 have landed before this unit, their exact additions require desk-reviewed entries here, retaining diagnostics. No prefix or assertion change. |
 | M4-G6-N-P3 | `scripts/check-p13-contract-map.mjs:266`: only the enclosing hash of final reviewed T8 bytes; preserve every architecture/additivity check. |
 
 The landed provider fixture/readers `tests/model-provider/fixture.ts:1` and
 `tests/model-provider/review/assertions.mjs:1` stay byte-identical and must pass, as must every
-existing settlement assertion. No other landed helper/test change is implied. T7 is an exhaustive
+existing settlement assertion. `tests/assembly/production-boot-provider.test.ts:1` also remains
+unchanged and must run as S21/S9's compatibility witness. T5/V79 and T6 inspect only `src` paths,
+so S21 requires no new entry in those source fences; no additional fence expansion is granted.
+No other landed helper/test change is implied. T7 is an exhaustive
 count extension, not a waived obligation. Additional declaration/registration/checker effects
 found on rebase need exact file:line review before changing them; an unrelated baseline never
 moves to make this unit pass. No fabricated reviewed hash belongs in a draft.
