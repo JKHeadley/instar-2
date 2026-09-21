@@ -103,25 +103,48 @@ principle is not. **Check:** the effect doorway refuses a non-emergency irrevers
 it consumes the exact durable authorization and causal preparation at the operation's installed
 durability demand before dispatch.
 
+**Rule — a single-machine installation must be fully functional.** An Instar agent with only
+one available machine must still be fully functional. Any reading of this constitution under
+which a supported one-machine installation cannot perform a function the agent needs is wrong;
+the defect is in the wording. **Check:** every part design shows how its needed functions work
+on one machine without a peer dependency and with their safeguards intact. The review desk
+refuses convergence where a needed function has no such path and requires the wording to be
+corrected, not the safeguard bypassed.
+
 **Rule — a single-machine installation is a supported deployment shape.** Owner: the operator
 owns the installation policy, Ten owns the fixed profile, Eight owns operation demands, and Two
 owns durability receipts. Predicate: when only one machine is enrolled, the installation carries
-no peer dependency and may dispatch `local-durable` only for the fixed profile's closed set: its
-installed paid provider call and its reply-only Telegram `ordinary-reply` send. At install time,
+no peer dependency and may dispatch irreversible effects `local-durable` only for the fixed
+profile's closed set: its installed paid provider call and its reply-only Telegram `ordinary-reply`
+send. These two are singled out because the agent cannot undo them alone. At install time,
 the profile presents that set and this loss model for one independently verified operator
 acceptance that enters force for the installation: permanent loss of the machine can destroy the
 authority, work, captures, observations and accounting evidence needed to reconstruct a paid call
 or send; no peer survives; and an unknown earlier effect cannot safely be repeated from memory or
 a new installation. The operator accepts the profile set as a whole and does not hand-list its
-operations. **Check:** the effect doorway accepts a local operation only when the current signed
-P-08 policy binds the installation, profile, closed operation set, full causal-prefix requirement,
-and accepted loss model, and the exact local prefix is durable before dispatch. Missing or stale
+operations. **Check:** the effect doorway accepts a local irreversible operation only when the
+current signed P-08 policy binds the installation, profile, closed operation set, full causal-prefix
+requirement, and accepted loss model, and the exact local prefix is durable before dispatch. Missing or stale
 policy, an operation outside the set, an incomplete local prefix, or automatic fallback after a
 peer is lost refuses. The same profile operation with its complete local receipt is the positive
 neighbor. Whenever a second machine is enrolled, `replicated(1)` is the default; every operation
 whose demand names replication requires an acknowledged copy on that second independently failing
 machine. Such an operation refuses in the single-machine shape instead of adding a peer dependency.
 A second process on the same machine is not a peer. No demand is named `replicated(0)`.
+
+**Rule — ordinary bounded operations retain their whole cause at least locally.** An ordinary
+reversible operation may run on one machine outside the irreversible provider/reply set.
+**Check:** the effect doorway admits it only when all four consequential-effect tests below are
+false, its resource and lifetime bounds are finite and enforced, and its whole causal record is
+retained durably at least locally, with the complete required prefix durable before dispatch.
+Declared loss consequences may require stronger durability; calling an operation ordinary
+cannot lower its demand or excuse missing evidence.
+
+**Value — one disk may carry ordinary work.** A slightly wider class of operations may rely on
+one disk: if that disk dies, the record of a reversible, bounded operation can be lost. This is
+acceptable because the agent can undo the effect alone, its resource use stays within the
+operator's limit, it stays within granted scope, and it touches no policy-sensitive matter.
+The loss grants no permission to repeat uncertain work or weaken protection for irreversible effects.
 
 **Rule — automatic suggestions never widen themselves.** A standing-permission candidate the
 system derives on its own proposes no action or scope beyond the exact authorization it was

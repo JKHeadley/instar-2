@@ -1,5 +1,31 @@
 [
   {
+    "revision": 8,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, verified operator, 2026-09-21 ~09:30 PDT: \"again, the driving rule/standard should be: an instar agent with only one avaiblable machine should still be FULLY FUNCTIONAL\". Reaffirms the 2026-09-19 supported single-machine ruling. Draft for operator approval; actual HEAD/base 76b60b6984a4628e976fb5fdd83a5976390cc7d1; edits unstaged, desk owns commit."
+    },
+    "changes": [
+      {
+        "what": "Require a fully functional single-machine installation as a general Rule with a review Check.",
+        "why": "A reading that makes a needed function impossible on the supported one-machine shape is a wording defect; safeguards remain intact.",
+        "ref": "Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1"
+      },
+      {
+        "what": "Limit the existing provider/reply closed-set acceptance and membership check to irreversible effects; separately require all four ordinary-operation tests, finite enforced bounds and the whole causal record durable at least locally.",
+        "why": "The two operations were singled out because the agent cannot undo them alone. Ordinary reversible bounded work must have a supported local path without widening that irreversible set.",
+        "ref": "Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1"
+      },
+      {
+        "what": "State the one-disk loss cost and why it is acceptable under all four tests.",
+        "why": "The record of a reversible bounded operation may be lost with the disk; uncertainty does not authorize repetition or weaken irreversible-effect protection.",
+        "ref": "Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-09-19",
     "status": "draft",
