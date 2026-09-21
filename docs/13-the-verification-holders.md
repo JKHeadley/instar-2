@@ -85,6 +85,25 @@ arms; each arm has its own evidence and can-fail scope.
 | Privacy | Reader/provider disclosure scopes, local capture class, secret custody and allowed canary destinations. |
 | Activation | Required unit, integration, live lifecycle and semantic cases; declared limits and evidence needed before the instance is live. |
 
+**Rule — output use has a response question of its own.** Owner: Nine; **checks:
+P9-NF-64/65/66**, with P9-NF-07/09/23 and P10-SI-37. For the fixed installation's one
+provider/model/route, one bounded completed answer and one reply, the output-use plan asks
+`response-authenticity` and `response-completeness` separately. Its approved bar must require
+all the source, byte, terminal-event and current-evidence conditions in §5. An occurrence bar,
+its `complete` flag, a successful Decision decode or a Grade cannot answer these questions.
+The four settlement predicates retain their existing meanings. This is a versioned use of
+Nine's existing three verification records, not an eleventh conceptual owner type.
+
+The plan names the actual observer, tested principal, witness controller, authenticated endpoint
+and account binding, selected route/artifact, parser/response-contract version, finite capture
+and evaluation bounds, and common failures that can fool the observer and adapter together.
+An unsigned response over the admitted authenticated channel can meet an explicitly approved
+observation-strength bar. That is channel-attested observation under Ten §5, not a new Evidence
+strength, a provider signature, proof of hidden model identity, or proof of the answer's truth.
+The observer cannot change its own bar or claim independence from its controller. No second
+model, second machine, independently failing host or universal billing service is required by
+this output-use contract; independently administered safeguards retain their existing duties.
+
 **Rule — proof of running is not proof of passing.** **Checks: P9-NF-07/09/10** enforce
 rules 9, 26 and 43. ProbeRecord contains plan/version, logical scheduled slot and attempt identity,
 subject and challenge digest, admitted run/operation references, start and completion observations,
@@ -260,6 +279,141 @@ scope and exposes no execute, accept, release or resume capability. A conflictin
 recorded; neither fold order nor a later clock chooses its winner. Eight closes only from a
 current, untainted accepted assessment. Retraction or compromise of source evidence invalidates
 future use, opens reassessment and preserves any already-performed effect as history.
+
+### Exact-response assessment for output use
+
+**Rule — one immutable subject binds the answer to its real origin.** Owner: Nine for the
+assessment, Seven/Ten for captured answer evidence, Six/Eight for operation facts. **Checks:
+P9-NF-64/65**, P9-NF-04/06/09/23 and P10-SI-37. The closed response subject contains exactly
+these groups; every fact reference resolves by kind, owner, version and full canonical identity
+in the same admitted store. References import authority from their owners; labels do not issue it.
+
+| Subject field group | Required binding |
+|---|---|
+| Seven | Exact provider request fact, prepared attempt fact and attempt id, and response-observed fact; their original request/attempt relationship |
+| Eight | Exact provider effect request, executor-accepted observation and response observation facts; the latter's judgment receipt must be that Seven response fact |
+| Six | Original operation id, consumed reservation fact and dispatch-claimed reservation fact identifying the consumed one-use claim |
+| Submitted identity | Original submitted capture reference/hash and submitted operation digest, unchanged from Seven/Eight/Six |
+| Route and interpretation | Exact provider, model, route and route-basis reference, floor digest, evidence-set identities/digest, settings and output-schema digests from Seven's request |
+| Response and answer | Seven's response capture reference/hash, exact UTF-8 answer-byte digest, parser declaration/reference and version, response-evidence contract reference/version |
+| Terminal evidence | Admitted terminal Evidence source fact/reference and its captured-byte digest; source-observation Evidence references include the authenticated channel and call binding |
+
+Scope and generation are bound by the existing plan/request and rechecked against these owner
+facts. A digest is recomputed from available bytes, never accepted because the caller copied it.
+Response-capture hash, submitted digest, terminal-capture hash and answer digest are distinct.
+The answer is the exact byte string passed to Seven's Decision decoder, before JSON parsing;
+no whitespace normalization or reserialization can silently change that digest. For a route
+that transforms a provider field, its pinned parser must reproduce those bytes from the saved
+raw response. The subject has no acceptance, settlement or accounting reference to a fact that
+will only be produced after this assessment.
+
+**Rule — both response verdicts require their own evidence.** Owner: Nine. **Checks:
+P9-NF-64/66**, with P9-NF-09/10/19/21/23. Each row yields `satisfied`, `contradicted`, or
+`insufficient`, with admitted Evidence references, pinned bar and reasons. A malformed or
+wrong-owner binding refuses construction/use. Evidence of a conflicting binding or unsuccessful
+terminal event contradicts the affected claim; missing, weak, unavailable or partial evidence
+is insufficient. Neither case can pass. Authenticity may pass while completeness fails.
+
+| Predicate | Required conjunction | Refusing or insufficient neighbors |
+|---|---|---|
+| `response-authenticity` | The admitted custodian/adapter's source observation identifies the actual authenticated provider endpoint/account and installed route/artifact, binds this one request/attempt/consumed claim, and covers the exact captured response. Verify any available provider-origin signature only for its covered fields. Check observer authority, declared common failures, all subject joins and the parser's exact answer digest. | Worker text, an owner label, session id, client API-key possession, local fact signature, different attempt/endpoint/model/route, an unrelated receipt, or a caller-supplied digest cannot establish this claim. |
+| `response-completeness` | The same subject has captured successful terminal evidence under the exact response contract; the entire bounded frame is assembled without missing/truncated pieces; answer bytes are non-null and within admitted bounds; Seven's Decision decoder succeeds with its existing floor, judgment point, route/model and evidence-subset checks. | HTTP/exit success, EOF, timeout, partial stream, parseable truncated JSON, unsupported terminal reason, token/byte/turn limit, error, cancellation, tool-call stop, or caller-supplied `state: complete` is insufficient or contradictory under the bar. |
+| Common prerequisites for either pass | Real admitted Evidence and required causal closure, permitted source and honest strength, available unchanged captures, current comparable clock, current plan/bar/generation and no relevant taint, conflict, withdrawal or superseding contradiction. Recheck at consumption. | New timestamps on old evidence, missing lineage, unavailable captures, incomparable/future/expired clocks and ambiguous assessments never become a pass. |
+
+Completeness describes a finished protocol/application answer of the supported reply kind. It
+makes no claim that the answer is correct, exhaustive or useful. Seven still interprets the
+answer; grades, benchmarks and later consequential-action/supervision gates keep their owners.
+A model answer cannot become an operator approval. There is no recursive model approval stage.
+Assessment of bytes already in custody makes no provider call, billing query or replay.
+
+**Rule — versions preserve history without promoting occurrence.** Owner: Nine, using Two's
+registered owned-body and historical machinery. **Check: P9-NF-65**. Only VerificationPlan,
+VerificationRequest and VerificationAssessment have an output-use schema version 2. Their fact
+families stay `verification-VerificationPlan`, `verification-VerificationRequest` and
+`verification-VerificationAssessment`; register envelope schema 2 explicitly for each, retaining
+schema 1. The other seven Nine records remain version 1. The closed v2 wire variant is marked
+`purpose: output-use`; unknown fields, purposes or versions refuse.
+
+- The v2 plan keeps all existing plan groups and adds the pinned response contract/parser and
+  source/completion requirements above. Its bar requires all six named predicates, including
+  both response predicates; changing the bar requires a new linked plan/question. Response
+  requirements explicitly name each response predicate's accepted source/strength, separately
+  from the unchanged four settlement bars; accepting channel observation for output cannot
+  lower the charge or quiescence bar.
+- The v2 request keeps the original operation/attempt/reservation/digest, scope, owner, loop,
+  clock, source generation and plan/bar references. Its requested predicate set contains exactly both
+  response predicates, and it carries the complete immutable response subject.
+- The v2 assessment keeps the original assessment fields, operation digest, request/bar,
+  observer, vector/lineages, capture/taint status, validity window and supersedes link. It also
+  carries the complete identical response subject and exactly six distinct verdict rows. The
+  original four derive under their original bars; terminal response evidence alone cannot satisfy
+  charge, non-occurrence or quiescence. Every satisfied row requires its own admitted evidence.
+
+`decodeVerificationRecord` dispatches the exact wire version. The public owner branches
+`decodeVerificationRecordAtOrigin` and `decodeHistoricalVerificationRecord`, registered by
+`registerVerificationBodies`, cover all three names. Origin decoding verifies the authorized
+recorder/machine, family/envelope/body version, generation/scope, source facts and actual captures,
+full required predecessor closure and the derivation. A generic typed object, copied digest,
+structural decoder or `runtime.record` call is not issuance of an accepted assessment. The
+output port rederives and resolves the genuine owner fact before use.
+
+Two's single registration per owner/name (`src/facts/owned.ts:23–59`) and One's contiguous
+decoder versions (`src/decode/framework.ts:63–89`) still apply.
+For the registered v2 decoder, the v1 migration validates the original closed v1 body, carries
+it through a decoder-local `legacy-settlement` arm and returns its unchanged v1 owner value.
+That arm is never a newly issuable wire record: origin schema 2 requires `output-use`. It has
+no response subject or response verdict, and never enters the output consumer. This is a
+lossless decoding adapter, not a stored upgrade. Both pre- and post-decode owned-shape checks
+must accept the original v1 shape and exact v2 output shape; optional union fields in that bound
+shape do not relax the version-specific closed decoder. Existing v1 producers keep writing v1.
+
+Historical decoding uses the original verified envelope, schema, generation and causal cone;
+it preserves v1 canonical bytes/identity and prior settlement interpretation. Missing captures
+remain readable as unavailable/tainted history under Two, never usable output. Current freshness
+is not substituted for historical validity. For v2, canonical identity includes purpose, full
+subject and all admitted content. The request logical key commits the canonical subject,
+operation digest and exact plan/bar/generation; the assessment logical key extends that request
+with bar and pinned vector. Equal reruns reuse the fact. Unequal content under either the same id
+or logical key conflicts; an advanced clock or fold order cannot choose a winner. A changed
+assessment is a new fact with an explicit required predecessor/supersedes link.
+
+The required cone includes the request, plan, all subject/source facts and evidence; the request
+in turn binds its subject's predecessors. Historical origin checks cannot be bypassed with a
+forged stored intermediate. Existing `verification-due` folds these families by immutable
+identity; `guard-posture` folds the plan without treating a response verdict as a probe pass.
+Other existing views retain their explicit fold/ignore decisions. No last-writer-wins or
+projection-store shortcut is permitted; all declared schema versions must be accounted for.
+
+**Rule — the public port supplies one current, bounded consumption.** Owner: Nine. **Check:
+P9-NF-66**. `deriveProviderResponseAssessment` deterministically derives the six rows from the
+resolved owner subject, admitted Evidence, exact captured bytes and pinned parser/bar. For
+completeness it consumes Seven's genuine same-store read-only `decodeCapturedProviderDecision`
+operation, which resolves the actual request/response capture and applies Seven's existing
+Decision/floor/route/model/evidence constraints before any acceptance. This returns the exact
+Decision and source/answer digest binding, never a caller-supplied pass flag. It requires neither
+settlement nor acceptance, so it introduces no cycle. The derivation accepts
+no caller evaluator or arbitrary claim strings as substitutes. `createProviderResponseAssessmentPort`
+constructs the same-store owner boundary with `assess` and `consumeProviderResponseAssessment`.
+`assess` resolves and pins the v2 question, derives and appends or reuses the genuine assessment,
+and returns its fact reference. It does not settle or open a reply.
+
+`consumeProviderResponseAssessment(reference, subject, consumer)` resolves that exact Nine fact
+and request/plan from the admitted store, closes identities/predecessors, rejects ambiguity,
+rechecks the current evidence/clock/generation/captures and rederives both response verdicts.
+Only both satisfied permit a bounded synchronous view containing the exact assessment fact
+id/hash, subject, answer digest, evidence and current validity. The callback receives no provider,
+launch, retry, resource-release or approval capability. Reentry, an asynchronous continuation or
+retaining the view does not confer later authority; each later use re-enters the owner guard.
+Seven consumes this result alongside its own decode of the same captured Decision. It cannot
+substitute a second local check for Nine. Five's durable one-use acceptance/reply join, rather
+than this ephemeral view, excludes a second reply.
+
+The settlement consumer accepts the four settlement rows of that same v2 fact through Nine's
+public boundary, preserving their meanings and current checks. Its v2 input check resolves the
+stored full subject as well as the ordinary operation input; it must not compare a v2 request
+against the old operation-only request-key algorithm or create a second v1 assessment. The
+output predicates are never counted as settlement evidence. Ten's fixed-installation §6 gives
+the acyclic Seven/Nine/Eight/Six/Five order and exact first-use eligibility.
 
 ---
 
@@ -734,6 +888,9 @@ lifecycle tiers are mandatory for significant features. A document lint proves n
 | P9-NF-61 | fault | Partition hides lineage or remote grade claims local bytes; horizon/taint and custody limits propagate |
 | P9-NF-62 | e2e/wiring | Real initialization has null ports or no live canary/grade; authenticated bounded slice survives crash cuts |
 | P9-NF-63 | build | Unexecuted fixture, absent test tier or author lint labeled runtime proof; actual check-run evidence required |
+| P9-NF-64 | contract/integration | Occurrence without answer, authentic partial/error answer, complete unauthenticated answer, wrong subject/capture/parser/terminal event or invented completion refuses output; exact authenticated-channel completed answer passes its declared bar without a truth claim |
+| P9-NF-65 | decode/rebuild | Real v2 producer/origin/historical registration preserves v1 settlement, exact closure and canonical conflicts; forged history, duplicate unequal identity and v1 promotion refuse; source-only reconstruction finds the same genuine assessment |
+| P9-NF-66 | lifecycle/consumption | Missing/changed bytes, stale/incomparable clock, taint/withdrawal or retained view refuses new use; same-assessment G6 join passes with unknown charge/quiescence and retained exposure; stop/predecessor change or second use refuses and restart makes zero second model calls |
 
 **Rule — non-functional claims carry measured subjects and failure actions.** Rules 13, 34,
 39, 43, 46, 55, 60, 75 and 113; **checks: P9-NF-09/13/20/46/50/59/62/63**. Activation
@@ -777,6 +934,7 @@ honesty remains separate from these design dispositions.
 | 9.7 — live canary/authentication per adapter class | **Partial:** enumerated live matrix and independent challenges P9-NF-17–21; channel-attestation compromise and opaque provider internals cannot be eliminated by sampling. Unsupported classes never claim full protection. |
 | 9.8 — semanticallyReviewed generation tracking and coverage | **Held:** exact-generation independent records, every-edge population and separated totals P9-NF-14/30/57/58; wisdom of the semantic judgment remains inference. |
 | 9.9 — proposed redacts closed-list addition | **Held/resolved:** drop the redundant proposed addition and use approved part-three amendment three; P3-NF-05 and P9-NF-48 enforce existing eligibility, no second growth value. |
+| Shared seven/eight/nine/ten — exact-response output use | **Held contract; runtime held:** P9-NF-64–66 with P10-SI-17/18/24/37. Nine owns both response verdicts; Ten/Seven must supply real source/completion captures. Occurrence never closes this duty. M4-G6-N and provider-response-source-and-completion-evidence remain open until approved owner implementation and tier-appropriate proof. |
 | Shared eight/nine — uncertainty reconciliation | **Held evidence contract, claimed here:** distinct predicates P9-NF-04–06/22–25; eight owns settled Outcome, six release and five progression. Adapter without decisive evidence stays uncertain, automatic retry ineligible. |
 | Shared nine/eleven — external protection anchor | **Held enforcement contract, claimed here:** separate administrator, mandatory write/load boundary, broker journal and probes P9-NF-15/51–56. Deployment without ten's isolation/eleven's verified surface is explicitly unprotected, never assumed complete. |
 | Five — dispatch neutrality, exhaustion, answerable gaps, comprehension/continuity | **Partial:** actual full-context review duties P9-NF-26/30/37; no proof of omniscient avenue enumeration or model comprehension. Five retains work closure. |

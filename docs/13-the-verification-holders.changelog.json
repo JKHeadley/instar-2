@@ -1,5 +1,26 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Nine exact-response output-use supplement from astra-m4-g6-nine-adjudication.md; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec. Unstaged docs-first draft; desk owns merge and final implementation grants."
+    },
+    "changes": [
+      {
+        "what": "Define two exact output-use predicates, a closed response subject, three version-2 record variants, registered version/history handling and public derivation/current-consumption ports.",
+        "why": "Occurrence and structural answer decoding cannot establish the authenticity and completeness required by G6; preserve all four settlement rows and all v1 histories.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      },
+      {
+        "what": "Add P9-NF-64–66 and the shared response-use duty, with source-strength, freshness, version, conflict and restart obligations.",
+        "why": "Approval of a contract cannot be mistaken for runtime evidence or semantic answer quality.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-19",
     "status": "draft",

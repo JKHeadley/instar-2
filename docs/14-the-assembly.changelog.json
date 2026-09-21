@@ -1,5 +1,82 @@
 [
   {
+    "revision": 13,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Nine exact-response output-use supplement from astra-m4-g6-nine-adjudication.md; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec. Unstaged docs-first draft; desk owns merge and final implementation grants. Round 2 applies exactly the three findings in astra-m4-nine-amendment-review-bc0b59c.md at bc0b59c439ac74bce05085226b70023547ad51ae; reviewed pending M3-S 1e7feb2 / PR 96 and Eight e5ea93f remain separate document landings."
+    },
+    "changes": [
+      {
+        "what": "Specify P10-SI-37’s one-route exact-response capture and same-assessment G6 ordering, limits, operator costs and named holds.",
+        "why": "The CLI capture lacks authenticated-source and terminal evidence; those concrete contract inputs remain held rather than inferred from occurrence, JSON or exit success.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      },
+      {
+        "what": "Enumerate every proposed source/helper/registration/landed-test/pin/generated grant at actual base coordinates, with LIVE protection and unchanged generic consumers.",
+        "why": "The exact Nine version delta and Seven return copier need reviewable owner grants; the coverage mapper and count assertions require narrowly named population extensions.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      },
+      {
+        "what": "Require M3-S at 1e7feb2, then Eight launch at e5ea93f, then this rebased supplement; reserve P10-SI-37 and P9-NF-64–66.",
+        "why": "Avoid colliding with P10-SI-32–35 and P10-SI-36 or the pending Ten changelog entries 10–12; preserve both maps. No custody/host sequencing exception belongs in this supplement.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec"
+      },
+      {
+        "what": "Name the physical stdout byte-loss boundary and add only M4-G6-N-S21; connect S9 strict UTF-8 parsing and S8 exact-byte custody, extend T2 and the existing P1 consequent pin chain, and retain the unchanged production-boot-provider compatibility witness.",
+        "why": "The host currently applies replacement UTF-8 decoding before the provider receives stdout; downstream capture cannot recover those original bytes. Source/terminal authentication remains its separately named hold.",
+        "ref": "astra-m4-nine-amendment-review-bc0b59c.md finding 1; scripts/production-boot-io.mjs:17–30; src/assembly/production-provider.ts:12–14,58"
+      },
+      {
+        "what": "Resolve the shared landed-test, registration and sequencing conflicts as one closed union of M3-S, M4-L, M4-G6-N and §11 exact maps; preserve pending changelog entries 10/11/12 below Nine entry 13.",
+        "why": "The three-singleton-only registration rule omitted the selection set; acceptance-only and acceptance-plus-launch lists omitted Nine; the test exceptions omitted M3-S/M4-L; and M3-first implementation ordering conflicted with independent M4 evidence. Retain original-context, generation-transition, inspection, strict-consumer and ordinary-local-durability-scope holds, all exact owner references and the approved M3-S → semantically rebased Eight → semantically rebased Nine document order. No new implementation unit or runtime dependency is authorized.",
+        "ref": "astra-m4-nine-amendment-review-bc0b59c.md finding 2; M3-S 1e7feb2 / PR 96 SI:779–781,841–846; Eight e5ea93f SI:802–810,870–877"
+      },
+      {
+        "what": "Replace the inherited dated M3-E grant paragraph with the current 3ded685bb0e4daa944cbe90e191d56d93ef54f70 baseline and historical-integrity constraints; remove obsolete performance/cache/test/fence/baseline-move and solely consequential repin authorizations.",
+        "why": "The M3-E supplement attributed to Astra’s 2026-09-20 adjudication was history in the body and reauthorized work already withheld by both pending designs. Preserve landed canonical-byte/identity behavior, complete-input Ten historical validation, fresh origin checks, all declarations/assertions and the historical-memo regression witness; any later baseline change needs a separately reviewed exact additive Five delta and named consequential grants.",
+        "ref": "astra-m4-nine-amendment-review-bc0b59c.md finding 3; astra-m3-perf-adjudication.md; M3-S 1e7feb2 SI:850–859; Eight e5ea93f SI:881–890"
+      }
+    ]
+  },
+  {
+    "revision": 12,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Fixed confined-launch owner/profile supplement from astra-m4-launch-owner-adjudication.md, all sections; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec. Round 2 applies only the four findings in astra-m4-launch-amendment-review-d0e4ace.md and prepares their required semantic merge with M3-S at 1e7feb22fe8791e209e17f8e4209ba260f37008d; document landing/rebase remains with the desk."
+    },
+    "changes": [
+      {
+        "what": "Specify the restricted launch executor, P10-SI-36, the unresolved ordinary-local-durability-scope gap, exact proposed source/helper/test/registration/pin grants, costs and named holds.",
+        "why": "The M4 owner adjudication requires exact grants and real owner/OS evidence while allowing independent custody, Nine-host and G6 work and retaining M3 and activation holds.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-launch-owner-adjudication.md §§2–4,6; uncommitted docs draft on design-m4-fixed-launch-operation"
+      },
+      {
+        "what": "Keep ordinary-local-durability-scope unresolved and retain the local-launch design/admission hold pending operator-approved purpose/Eight reconciliation.",
+        "why": "Finding 1: ordinary-operation wording does not erase the explicit provider/reply local-durable exclusions; the purpose and corresponding owner/policy checks require their own approved disposition.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 1"
+      },
+      {
+        "what": "Use P10-SI-36 for launch; semantically merge M3-S P10-SI-32–35, both registration/grant lists, its sole P10-SI-20 definition and all inspection, strict-consumer and historical/generation holds. Require M3-S document landing, then M4-L rebase and landing.",
+        "why": "Finding 2: predicate 32 and assembly history entries collide across the inspected designs; preserve M3-S entries 10/11 and assign this M4 entry 12 without turning M3-S performance closure into a prerequisite for independent M4 evidence.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 2; M3-S snapshot 1e7feb22fe8791e209e17f8e4209ba260f37008d"
+      },
+      {
+        "what": "Preserve the v1 observation operation identity using the closed internal legacyMessage: true marker, and require the genuine historical observation/claim/settlement positive and forged-intermediate refusal in T1.",
+        "why": "Finding 3: the operation field already stores the Six identity and cannot be overwritten by a legacy tag.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 3"
+      },
+      {
+        "what": "Bind exactly one authenticated mediated endpoint and finite method set in handlePolicyDigest; require extra-endpoint, expanded-method, substituted-handle and cross-incarnation refusals, including actual OS attempts.",
+        "why": "Finding 4: one successful mediated request does not enforce a singleton endpoint boundary.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 4"
+      }
+    ]
+  },
+  {
     "revision": 11,
     "date": "2026-09-21",
     "status": "draft",

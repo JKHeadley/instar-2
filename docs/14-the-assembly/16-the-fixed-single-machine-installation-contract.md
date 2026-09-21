@@ -57,8 +57,10 @@ operator principal, one reply-only audience, and the six named Eleven folds. It 
 execution machine, voter, bot, conversation, provider tuple, platform, or protected-mutation
 capability. A separately enrolled durability peer is permitted, and required whenever a selected
 operation demands replication; it is not a second execution voter. When only one machine is
-enrolled, the admitted installation carries no peer dependency and uses only the accepted closed
-local-durable operation set. Whenever a second machine is enrolled, the peer-backed arm uses
+enrolled, the admitted installation carries no peer dependency and uses the accepted closed
+local-durable P-08 set. The proposed ordinary bounded `native-confined-launch` remains under the
+unresolved `ordinary-local-durability-scope` governing-document gap in §2; Eight §4a's
+ordinary-operation rule and §12's evidence contract do not by themselves authorize local launch. Whenever a second machine is enrolled, the peer-backed arm uses
 `replicated(1)` by default. Positive neighbors are the exact admitted single-machine tuple and the
 same one-voter execution tuple with its real remote durability peer. A same-machine second process
 is not that peer. A broader execution tuple remains not admitted in this scope.
@@ -90,6 +92,21 @@ second process presented as a peer, or automatic fallback after peer loss refuse
 Positive neighbors are a profile operation with its complete local receipt in the single-machine
 arm and a replicated operation with its real peer receipt in the peer-backed arm. No arm or record
 is named `replicated(0)`.
+
+**Rule — ordinary local launch retains an unresolved governing-document gap.** Owner: the
+operator for reconciliation of the purpose and Eight for the owner contract; predicates:
+P10-SI-04/36. `ordinary-local-durability-scope` is UNRESOLVED. The purpose's local-durable
+closed-set clause (`docs/00-the-purpose.md:106–124`) and Eight §5's installed-shape rule limit
+local dispatch to the provider/reply set, while Eight §5's ordinary reversible/costly rule
+requires at least local durability. The ordinary four-test classification, finite expiry and
+full causal closure are necessary but do not reconcile those exclusions. This profile supplies
+no local-launch exemption; its design/admission hold remains until operator-approved owner-document
+clarification explicitly limits the provider/reply closed-set acceptance and membership check
+to irreversible effects and separately states the ordinary four-test/finite-bound/full-causal-closure
+rule. Keep the irreversible provider/reply set unchanged. Corresponding P-08 interpretations/checks
+that enforce the unqualified exclusion require a named grant before changing. This document grants
+neither those edits nor the reconciliation. Adding a peer, extending message purposes or treating
+the new local operation as already covered cannot close this gap.
 
 **Value — the accepted loss model in plain words.** Permanent loss of this one machine can
 destroy the authority, work, captures, observations, and accounting evidence needed to
@@ -466,6 +483,12 @@ keeps stored bodies and imported public ports distinct.
 
 ## 5. G5 and the two boot over-constraints
 
+Eight owns the registered fixed launch; Ten supplies its restricted executor, and Six supplies
+the actual operation reservation and one-use claim. Manual placement cannot activate that worker.
+P10-SI-36's ordinary loading-only profile does not remove P10-SI-11/12's bounded Seven supervisor
+from an automated critical installation/recovery pipeline. A standalone restricted-UID experiment
+can evidence an OS boundary only; neither it nor a fact append is admitted production launch.
+
 **Rule — manual preparation is configuration, not supervised execution.** Owner: the operator
 for manual administration and Ten for consuming its outputs. Predicate: P10-SI-11 classifies a
 step as manual preparation only when an operator-administered identity places or selects already
@@ -608,11 +631,13 @@ The output-use predicate is the conjunction below:
    decodes through Seven's current `Decision` decoder.
 3. Request, attempt, effect request, operation, consumed claim, input digest, provider, model,
    route, floor, evidence set, and response capture agree exactly.
-4. Nine's current assessment names that exact subject and supports response authenticity and
-   completeness. It does not claim final charge or old-executor quiescence unless its evidence
-   supports them.
+4. Nine's genuine current output-use VerificationAssessment v2 names the complete response
+   subject in Nine §5 and separately satisfies `response-authenticity` and
+   `response-completeness` through its public current consumer (P9-NF-64–66/P10-SI-37).
+   Occurrence never substitutes. Charge and old-executor quiescence retain their separate rows.
 5. Eight's settlement names the same request, operation, claim, digest, observations, outcome,
-   and Nine assessment.
+   and the exact same Nine assessment fact id/hash as condition 4, consuming its four settlement
+   rows. A second unrelated assessment, including a v1 occurrence pass, cannot satisfy this join.
 6. Six's accounting names the exact settlement id, settlement fact id/hash, operation, request,
    and digest. Its `retryEligible` is `0`.
 7. The provider route has an enforceable finite `maximumCharge`. The original Six reservation
@@ -664,6 +689,155 @@ same intended work. Positive neighbor: genuinely independent new user work with 
 semantic operation may be admitted within the unreserved remainder; a retry becomes eligible
 only after Eight proves non-occurrence, old-executor exclusion, and final charge through the
 existing fully settled path.
+
+### Nine's exact-response assessment and the first reply
+
+**Rule — P10-SI-37 composes the two response predicates without changing settlement.** Owner:
+Nine for the bar/derivation/current consumer; Seven for interpretation/acceptance; Eight for
+settlement; Six for accounting; Five for conditional use; Ten for capture and composition.
+P9-NF-64–66 are the owner checks. All ten P10-SI-17 conditions above remain conjunctive, with
+P10-SI-18/24. The implementation order is:
+
+1. Preserve the actual return and source/terminal captures; record Seven's response-observed fact
+   and Eight's response observation after the already admitted request/claim/executor observation.
+2. Seven's read-only `decodeCapturedProviderDecision` validates the real captured answer without
+   settlement or acceptance. Nine's `createProviderResponseAssessmentPort.assess` consumes that
+   genuine same-store owner decoder and those existing facts, records the
+   output-aware request and derives/records one v2 assessment with all six rows. Its immutable
+   subject is exactly Nine §5's subject, without any forward reference to settlement or acceptance.
+3. Eight consumes that same fact's four settlement rows and appends its settlement. Six applies
+   accounting to that exact settlement fact/hash without releasing unknown maximum exposure.
+4. Seven consumes Nine's same fact through `consumeProviderResponseAssessment`, redecodes the exact
+   captured Decision and records ProviderAnswerAcceptance only after all remaining joins pass.
+5. Five conditionally opens its one standard reply Run under the original predecessor, stop,
+   standing, fence and conversation obligation; Eight admits that reply's own operation.
+
+A pre-existing settlement based on an occurrence-only assessment is ineligible for this first
+G6 mode. This follows from condition 5 and the absence of a granted historical settlement-upgrade
+operation: it is a bounded eligibility limit, not a new prohibition on an owner's future linked
+reassessment. Keep its original accounting, exposure and observation path. Do not manufacture a
+replacement operation, rewrite settlement, release resources, or invoke the provider to obtain
+another response. The existing fully settled resolution remains available under its own rules.
+
+**Rule — one route has one explicit source and completion contract.** Owner: Ten/Seven at the
+return boundary, Nine at the bar. Check: P10-SI-37 with P9-NF-64/66 and Ten P10-NF-22/23/24.
+The selected route is the existing `createClaudeCodeProductionRoute` in
+`src/assembly/production-provider.ts:19`: provider `anthropic`, the one explicit model and route
+from the admitted installation, exact executable realpath/artifact digest, canonical working
+directory and pre-provisioned credential custodian. Those installed values must be real owner
+references; this document supplies no model name, endpoint, account, binary digest or credential.
+The supported response mode is a single bounded non-streaming CLI result envelope carrying one
+final reply Decision. Tools, additional turns, streaming assembly and alternate providers are
+outside this mode. The existing tools-empty/one-turn/no-hidden-retry arguments and Six/Eight
+admission remain mandatory; this assessment adds no command execution or process launch.
+
+The physical `productionProviderIO` boundary at `scripts/production-boot-io.mjs:23–29`
+collects stdout chunks, then currently applies `Buffer.concat(chunks).toString('utf8')`.
+That replacement decoding can collapse invalid bytes and a valid U+FFFD sequence into the same
+parseable JSON string. The landed `ProductionProviderIO` result at
+`src/assembly/production-provider.ts:12–14` carries only that string; its parser at :58 cannot
+recover the original bytes. S21 therefore preserves the bounded collected stdout bytes in the
+IO result before any replacement decoding. S9 consumes that byte field, validates UTF-8
+strictly before parsing, and preserves the exact raw bytes and their computed digest through
+S8's local capture/evidence path to Nine's assessment. A legacy text field may remain for existing
+settlement-only consumers, but cannot establish output-use provenance. Limited/error results
+retain their explicit disposition and cannot qualify as complete responses.
+
+The pinned capture parser requires exactly one complete stdout JSON frame and rejects
+malformed/extra frames, missing required result fields, invalid encoding, a limited execution,
+nonzero/null exit, error/cancellation/timeout, byte/token/turn limits and tool-call completion.
+It preserves the raw terminal frame before extraction. The existing extraction contract is
+`structured_output` serialized by the pinned parser when present, otherwise the string `result`;
+Nine must reproduce the exact chosen bytes and digest, and Seven must decode those bytes. The
+parser artifact/version fixes serialization, field precedence and bounds; mere JSON validity is
+not evidence of a successful final answer. The only accepted completion reason is the contract's
+explicit successful-final-reply outcome, supported by captured terminal evidence. Every unknown
+or unsupported reason refuses; the parser cannot infer that outcome from `type: result`,
+`is_error: false`, code zero, a session id or the `complete` state alone.
+
+The exact CLI build's provider endpoint/account authentication evidence and terminal-reason
+mapping are **unclosed evidence-contract inputs**. The existing route at :56–69 discards the raw
+terminal frame and has no recheckable successful-final-reply witness. Its IO at :9–14 exposes
+only code, limited and stdout. Consequently this route is output-use-ineligible until an approved
+AdapterEvidenceContract, pinned executable/parser and captured positive/refusing neighbors
+establish that mapping and source boundary. No vendor token spelling or independently verified
+provider signature is invented here. If this CLI build cannot supply the required evidence,
+HOLD provider-response-source-and-completion-evidence remains; this grant does not select a
+replacement provider. The gap is owned by Ten/Seven for supply and Nine for bar adequacy.
+
+The admitted custodian observes the return of its exact confined invocation. Its source Evidence
+must bind the actual authenticated provider endpoint/account, credential-reference binding
+without secret bytes, executable/parser artifact, model/route, request/attempt/operation and
+consumed claim. An IO-supplied label is insufficient: the approved evidence contract must state
+how the trusted executable's authenticated channel and invocation correlation establish those
+bindings and what the custodian actually observes. A CLI process may only expose indirect channel
+evidence; code zero and terminal JSON alone authenticate neither provider nor account. The
+operator-controlled executable/configuration/credential/channel boundary is a trust assumption;
+a compromised executable, administrator, credential or channel controller can fool it. Record
+those common failures in Nine's independence declaration. For unsigned content the ceiling is
+channel-attested observation, admitted only by Nine's approved observation-strength bar. Available
+provider signatures are verified for their covered fields without inflating unsigned fields.
+
+**Rule — evidence survives the real return boundary.** Owner: Seven for the optional
+`ProviderObservation.responseEvidence` envelope, Ten for its custody, One/Two for Evidence and
+capture. Check: P10-SI-37. Its closed bounded groups are:
+
+| Envelope group | Required content and preservation |
+|---|---|
+| Contract | Exact parser and AdapterEvidenceContract references/versions; one declared response mode; finite metadata/raw-terminal/capture bounds from the approved plan and Seven's admitted capture budget |
+| Authenticated source | Observer principal/controller and source Evidence references; endpoint/account and credential-reference binding; executable artifact and selected provider/model/route; exact call/request/attempt/operation/claim/submitted binding |
+| Terminal | Actual raw terminal frame and its hash at return, completion Evidence/source reference, reason under the pinned contract, byte/limit/error/termination observations and original comparable observed clock |
+| Answer transform | Raw-source capture/hash, approved extraction contract and resulting exact answer digest; no caller assertion of completion or digest replaces recomputation |
+
+The confined invocation at `src/assembly/provider-invocation.ts:103–136` copies only own data
+fields and bounds nested fields without executing getters or retaining mutable provider objects.
+It must include this optional envelope, preserve raw source/terminal bytes into registered local
+captures, and append their One Evidence through the existing admitted capture/fact context before
+publishing the canonical response capture. Source Evidence binds the already known call; it does
+not require the later response observation. The stored response envelope carries those source
+references and hashes, avoiding a self-hash or a causal cycle. Shared facts contain permitted
+metadata/references only. No raw network export or credential bytes enter these records.
+
+Reserve space for the original observation, the complete raw terminal frame and bounded envelope
+before dispatch. The existing `6 * maxOutputBytes + 8192` bound alone is not a budget for an extra
+copy of stdout plus evidence. The new total must be calculated with overflow checks from the
+already enforced output limit, selected CLI stdout limit and explicit finite envelope bounds,
+and fit Seven's admitted `maxCaptureBytes` and Six capacity. Missing capacity refuses the call;
+a later capture failure preserves uncertainty and never drops pinned history to make room. The
+numeric envelope caps and installed parser artifact remain required owner-approved contract
+inputs, not guessed defaults or unlimited metadata. Legacy observations omit the envelope; they
+retain historical decoding and their original settled path, but cannot meet the response bar.
+Seven/Two's local custody, access, redaction and unresolved-case pins remain unchanged.
+
+**Rule — the decisions have constitutional and owner bases.** Owner: Ten/Nine, check:
+P10-SI-37 and P9-NF-64–66. The following is the bounded decision inventory.
+
+| Decision | Basis or named gap |
+|---|---|
+| Separate authenticity/completeness from occurrence and semantic truth | Purpose's evidenced-completion constraints; Nine §1/§5 evidence ownership, Seven §3/§8 and the ten P10-SI-17 conditions |
+| Closed subject, captured bytes, current same-store consumer | Purpose's nothing-silently-lost rule; Nine §2/§3/§5, Seven §8 and Two's canonical identity/causal admission |
+| Version the existing three records, keep all four settlement rows | Nine's single type ownership and immutable version chains; Eight's unchanged settlement and Six's accounting ownership |
+| One acyclic assessment fact precedes settlement and acceptance | P10-SI-17 conditions 4–6 and Nine's predecessor rules; no available owner grant upgrades old settlements |
+| One installed route and finite reply-only envelope | §1's fixed profile and Seven's existing bounded provider route; exact CLI source/terminal semantics and cap values remain the named contract-input gap above |
+| Accept honest unsigned channel evidence only under an approved bar | Ten §5's model-provider row, Seven §8 and Nine §2's explicit strength/independence; no constitutional demand for a second provider or machine |
+| Preserve one machine and require real protected-content review | Purpose's single-machine rule and prohibition on self-administered safeguards; §2/P10-SI-03/04/05 and LIVE repository declarations |
+| Keep unavailable installation, billing and runtime proofs held | Purpose rules 2–4 and Nine §13's tier discipline; source shape or a document approval cannot supply those proofs |
+
+**Value — operator costs and limits.** The operator must provision and maintain the one trusted
+route's executable, credential/channel configuration and parser/evidence contract, arrange
+protected-source review, and supply real evidence before replies can use this mode. Capturing the
+raw result and source/terminal evidence uses more local disk and reserved capacity. Hashing,
+parsing and checking the same bytes at use takes CPU and adds latency; the implementation must
+report measured bounds, not promise a latency here. Missing, stale or ambiguous evidence can
+hold an otherwise readable answer. The original call's maximum possible cost stays reserved
+until its own settlement evidence closes, reducing money available for new work. Missing final
+billing does not become zero, and no free retry follows from a withheld answer.
+
+No extra model call is required merely to assess existing bytes. One machine remains supported
+under the existing local-durable policy and causal closure; no peer, extra voter or second billing
+service is added. Channel evidence can be fooled by a compromised trusted boundary and cannot
+prove hidden model identity or answer quality. Operators receive that limit, the evidence status,
+and the remaining holds rather than a universal authenticity or quality promise.
 
 ---
 
@@ -733,7 +907,9 @@ The additive M4 sources are also exact:
   and current evidence still pass P10-SI-13 and Nine's owner gates.
 
 No other new source file is granted. `src/assembly/production-installation.ts` stays version 1.
-Existing One, Two, Three, Four, Six, Nine, Eleven, and Twelve record bodies stay unchanged.
+Existing One, Two, Three, Four, Six, Eleven, and Twelve record bodies stay unchanged.
+Nine's only output-use body extension is the three explicitly versioned variants in Nine §5 and
+P10-SI-37's exact proposed map below; all Nine v1 bodies retain their meanings.
 Six’s additional CapacityReservation body and its separate proposed source/test grants are confined
 to §11 and Six §4a. A new file above implements only its named P10-SI predicates and adds no
 other record or policy language.
@@ -756,7 +932,7 @@ this section’s M3-S map and capacity helpers in §11. No other landed fixture 
 
 No landed test may be edited except the exact allowlist, digest, and declaration-baseline lines
 and the two fixture helpers named here, or a
-separately approved, individually named M3-S or §11 grant. Owner: Ten for the fixture migration; referenced records
+separately approved, individually named M3-S, M4-L, M4-G6-N or §11 grant. Owner: Ten for the fixture migration; referenced records
 retain their public owners. The fixture-preservation requirements of P10-SI-20 require
 tests/assembly/production-fixture.ts and
 tests/assembly/round8-extended-fixture.ts to construct the P10-SI-07 inputs through real owner
@@ -777,8 +953,20 @@ among `generated/capabilities.md`, `generated/conversion.json`, `generated/cover
 `generated/fact-schemas.json`, `generated/glossary.md`, `generated/register.json`,
 `generated/rules.md`, `generated/shape.json`, and `generated/source.json`. M3 introduces only the
 three singleton/signer/governance P10-SI-23 bindings plus the explicitly additional
-`assembly-InstallationSelectionSet` schema-1 binding under P10-SI-32/33. M4 introduces only the P10-SI-17
-`judgment-provider-ProviderAnswerAcceptance` binding. Hand-edited generated output refuses.
+`assembly-InstallationSelectionSet` schema-1 binding under P10-SI-32/33. M4 registration is limited to P10-SI-17
+`judgment-provider-ProviderAnswerAcceptance` v1 and the separately approved M4-L bindings:
+`effect-OperationDefinition` v2, `effect-EffectRequest` v2 and `effect-OperationObservation` v2
+with discriminator `native-confined-launch`, that exact operation feature, and the producer/decoder
+bindings in Eight §4a. `EffectValidation` and `EffectSettlement` remain v1 with the explicitly
+defined version-aware joins; outbound and provider interpretations remain unchanged. These are
+proposed M4-L registrations, not permission to implement before review and operator approval.
+P10-SI-37 extends that closed M4 list only with Nine's `verification-VerificationPlan`,
+`verification-VerificationRequest` and `verification-VerificationAssessment` schema 2 and their
+exact producer/decoder/feature/holder and fixture bindings. Preserve older versions, exact
+owner-reference entries and each map's separate approval and hold conditions. No additional
+family is implied; registration supplies no permission to implement before required review
+and operator approval.
+Hand-edited generated output refuses.
 
 Owner basis for this path grant: `src/assembly/production-application.ts:28-49` owns the admitted
 boot composition; `src/assembly/production-holds.ts:1-30` says its names confer no authority;
@@ -839,11 +1027,13 @@ The builder's reviewed fence and pin grant is also exact:
    exemption, obligation-row deletion, assertion change, or weaker main-versus-HEAD comparison is
    granted.
 6. P10-SI-35 permits the independently reviewed read-only inspection prerequisite to land before
-   strict Part B consumer migration. M4’s independent boundary/custody/host/answer-use units may
-   proceed while Part B remains held. Every landed unit has its own final reviewed source digests,
-   single inventory digest, checker/A2/P13 pins and committed-input register outputs. The next
-   unit rebases before changing shared sources or pins. No concurrent aggregate-inventory edits
-   and no carrying an earlier aggregate digest across changed inventory bytes are permitted.
+   strict Part B consumer migration. M3-S implementation/performance closure is not a prerequisite
+   for independent confined-boundary, custody, Nine-host or G6 evidence. Every landed unit has its
+   own final reviewed source digests, single inventory digest, checker/A2/P13 pins and committed-input
+   register outputs. Each implementation unit rebases before changing shared sources and recomputes
+   final pins serially. No concurrent aggregate-inventory edits and no carrying an earlier aggregate
+   digest across changed inventory bytes are permitted. M4 positive boot still requires the actual
+   opened-root inspection/selection/capacity product; independent evidence supplies no substitute.
 7. Re-pin any affected owner-reference manifest through the ordinary Three generator from the
    approved declaration inputs. Do not hand-edit generated authority or widen a source-hash
    exemption.
@@ -1055,6 +1245,236 @@ are explicitly unevidenced; no preference resolves them.
 
 ---
 
+### M4-L — fixed confined-launch implementation cut
+
+The document landing order is binding: land the independently approved M3-S document first,
+rebase this supplement onto that landed document, then land the corrected M4-L supplement.
+P10-SI-32–35 retain M3-S's atomic-set/admission/resolution/inspection meanings; launch is
+P10-SI-36. If an intervening approved document allocates that id, use the next unused id rather
+than overwrite a predicate. The shared contract retains both registration lists, all individually
+named M3-S/M4-L/§11 exceptions, the sole §8 P10-SI-20 definition, inspection prerequisites,
+original-bound strict-consumer gates, and the historical-context/generation-transition holds.
+
+**Rule — each proposed grant is separately reviewable.** Owner: Eight/Ten for their boundaries,
+Three for registration tooling, the desk for final pins and the operator for protected content.
+Predicates: P10-SI-19/20/36. These are proposed grants pending independent review convergence and
+operator approval; documentation approval closes only the design hold. No source implementation,
+protected-content approval, pin or runtime pass is created by this text. Source coordinates in
+this subsection are immutable base `9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec`. `:1 (new)` means
+an absent path whose proposed file starts at line 1, not an existing source location.
+
+| Grant | Exact source path and bounded delta | Protected-artifact disposition |
+|---|---|---|
+| M4-L-S1 | `src/effects/contracts.ts:7–51,112–137`: closed v2 process record and public execution/executor consumer types from Eight §4a; retain all v1 message types/purposes and provider interpretations. | LIVE `src/effects/**` |
+| M4-L-S2 | `src/effects/records.ts:18–47,89–182,204–217`: exact v2 shapes, registrations, producers, origin/historical decoders, canonical joins and version-aware validation/settlement references; preserve v1 meaning. | LIVE `src/effects/**` |
+| M4-L-S3 | `src/effects/doorway.ts:21–42,132–246,359–402`: genuine same-store launch constructor/check, bounded admission, durable one-use handoff, observation and restart reconstruction only. Message/live-input/provider behavior stays intact. | LIVE `src/effects/**` |
+| M4-L-S4 | `src/effects/index.ts:1–7`: public process types, constructor/check, producer and decoder exports from Eight §4a only. | LIVE `src/effects/**` |
+| M4-L-S5 | `src/effects/effect.declarations.json:1–6`: only `native-confined-launch` feature/operation, its explicit schema/producer/decoder bindings, bounds/metrics and P10-SI-36/inherited checks. Preserve both protection declarations. | LIVE `src/effects/**` |
+| M4-L-S6 | `src/assembly/harness.ts:7–39,83–97`: bind launch and original-launch observation to Eight's genuine consumer and durable identity; remove reliance on the launch map as authority. No delivery shortcut or new lifecycle method. | Declared `src/assembly/**` is DARK at this base, not LIVE |
+| M4-L-S7 | `src/assembly/production-native-context.ts:9–22,40–58`: bind current process identity/artifact and loading readback to the exact admitted launch; keep context delivery's separate consumed claim and payload checks. | Same DARK assembly pattern |
+| M4-L-S8 | `src/assembly/production-launch-boundary.ts:1 (new)`: the exact restricted OS executor, canonical profile/artifact/identity/handle checks, bounded expiry enforcement and original-process observation. No policy authoring, arbitrary executable, hidden kill/cleanup operation or new record. | Same DARK assembly pattern |
+| M4-L-S9 | `src/assembly/production-composition.ts:22–37,46–92`: only public-owner launch constructor/executor wiring on the same store; no positive boot/dependency selection or capacity bypass. | Same DARK assembly pattern |
+| M4-L-S10 | `src/assembly/index.ts:14–17,49`: only exports for the named launch boundary and its public types. | Same DARK assembly pattern |
+
+Eight's LIVE declaration is `src/effects/effect.declarations.json:2–3`; Ten's DARK declaration
+is `src/assembly/assembly.declarations.json:7–10`. A future unprotected runtime posture does
+not downgrade repository protection. Exact LIVE source content requires operator approval.
+No new effects source file is assumed. Six, Nine, held M3 files and the pending selection-set
+design remain read-only. The separate G6 `provider-path.ts` grant does not become a launch grant.
+
+| Grant | Exact helper/input dependency and bounded delta | Protected-artifact disposition |
+|---|---|---|
+| M4-L-H1 | `scripts/register-owner-references.mjs:9,13–46`: add exactly `part-eight` to the manifest list and its six process origin/historical decoder bindings named in Eight §4a; its fixture/probe lists are empty. Add `36` to Ten's fixture roster for the single P10-SI-36 registration. Decoder modules are `src/effects/index.ts`; decoder artifacts are `src/effects/records.ts`. Producers remain declaration bindings, not a new manifest field. No wildcard owner, path, decoder or fixture acceptance. | LIVE `scripts/*register*.mjs` |
+| M4-L-H2 | `register-source/owner-references/part-eight.json:1 (new)`: existing manifest shape, owner `part-eight`; exact six origin/historical decoder entries in Eight §4a, module/artifact pins for S4/S2, and empty fixture/probe/document lists. No duplicate P10-SI-36 id, probe claim or invented governed-document id. | LIVE `register-source/**` |
+| M4-L-H3 | `register-source/owner-references/part-ten.json:4`: additive P10-SI-36 fixture for `tests/assembly/fixed-installation-live.test.ts`, retaining every existing entry and refreshing only artifact pins whose approved bytes changed. | LIVE `register-source/**` |
+
+The registration gap is concrete: `scripts/register-owner-references.mjs:9,13–46,58–66,88–96`
+accepts only its enumerated owners/decoders and lacks Part Eight. H1–H3 close that exact gap
+without assuming a register can be synthesized. Toolchain protection is declared at
+`src/register/toolchain.declarations.json:119–126,135–142`. Both manifest contents and H1's
+exact script delta require operator approval. Existing `boundary.ts`, Two canonical/owned-body
+registration and historical decoding, Six authority/records, Ten contracts/records/history and
+Nine public assessment are consumed unchanged. Their public behavior, not copied validation,
+is the source of truth. If an additional helper/schema/fold dependency is needed, name its
+file:line and keep that dependent mode held; these rows do not authorize it.
+
+| Grant | Exact test or pin boundary |
+|---|---|
+| M4-L-T1 | `tests/effects/fixed-native-launch.test.ts:1 (new)`: new owner-contract tests for P10-SI-36, genuine schema/producer/origin/historical paths, same-store provenance, zero-OS refusal controls and restart/claim cuts. A genuine v1 observation with its claim and settlement must still historically decode and resolve the original Six operation after v2 registration; a forged stored legacy intermediate refuses. Registration-helper positive and refusal cases run here through the genuine helper; no landed register test edit. |
+| M4-L-T2 | `tests/assembly/fixed-installation-live.test.ts:1 (new at this base)`: launch-specific full-port integration and actual physical lifecycle/attack evidence for P10-SI-36 and its named neighbors only. Preserve the message-purpose decoder diagnostic when bringing in the independently prepared test (diagnostic coordinates are :8–26 in the confined-runtime worktree, not landed lines here). Exact temporary profile/worker proof artifacts may be constructed inside this test's bounded temporary directory and S8's granted boundary; no new helper file is granted. |
+| M4-L-T3 | `tests/operator/round15-regressions.test.ts:80,89`: V79 source allowlist only; the four S1–S4 paths are already present, retain them and add exactly `src/effects/effect.declarations.json`. Retain other approved entries, assertions and comparisons. No `src/effects/` prefix. |
+| M4-L-T4 | `tests/rungraph/production-grounding-scope.test.ts:5,9`: exact `liveInputGrant` addition of `src/effects/effect.declarations.json`; preserve S1–S4 and every other entry/comparison. Existing assembly prefix is no semantic grant beyond S6–S10. |
+| M4-L-P1 | `tests/assembly/production-grounding-inventory.json:5241`: after independent review add/update only changed S1–S10, H1–H3, T1–T4 artifact digests and applicable `reviewedSupportSources` entries. Preserve obligation rows, mappings and unrelated hashes; P10-SI-36's new evidence cannot replace a landed obligation. |
+| M4-L-P2 | `scripts/check-assembly-contracts.mjs:178`: only resulting `REVIEWED_GROUNDING_INVENTORY` digest of P1's reviewed final bytes; no checker logic change. |
+| M4-L-T5 | `tests/harness-adapters/a2-governance-and-additivity.test.ts:7,10–19`: A2's `grantedContent` inventory and scope-test final digests only for this base. If T2 has landed independently before this cut, its exact approved launch-only additions need its own desk-reviewed content entry; preserve its diagnostic and all unrelated assertions. No general test exemption. |
+| M4-L-P3 | `scripts/check-p13-contract-map.mjs:266`: only the enclosing digest of T5's final reviewed bytes. No architecture predicate change. |
+
+The two provider fixture/readers `tests/model-provider/fixture.ts:1` and
+`tests/model-provider/review/assertions.mjs:1` remain byte-identical. So do all other landed
+assertions and helpers except the individually specified lines above. No fixture-admitted
+provider route, owner label or recorded-bytes custodian proves live launch or confinement.
+A rebase discovering another enclosing pin, registration count, helper or assertion dependency
+reports that exact file:line for separate disposition; it never moves an arbitrary baseline.
+
+P10-SI-36 has one register fixture binding in H3, to T2; its evidence contract requires both T1
+and T2 to execute and report their separate tiers. No duplicate fixture id denotes two different
+artifacts. S5 and H1–H3 are the exact committed declaration/owner-reference inputs. The process decoder
+artifacts are S2/S4; T1/T2 are the exact inspection artifacts. After the desk commits approved
+inputs, Three's ordinary generator may change only deterministic outputs among
+`generated/capabilities.md`, `generated/conversion.json`, `generated/coverage.md`,
+`generated/fact-schemas.json`, `generated/glossary.md`, `generated/register.json`,
+`generated/rules.md`, `generated/shape.json`, `generated/source.json`. Call this output grant
+M4-L-G1; no handwritten register or new output is authorized. Final digests are outputs of
+independently reviewed final bytes, never placeholders this contract supplies. The desk records
+old/new pins and reviewed source commit, then lands serially with other units. This grant does
+not alter `register-source/owner-references.json`'s Part Five declaration baseline or strict
+Part B, nor any purpose, Seven, Six or Nine record contract.
+
+### M4-G6-N — exact-response implementation map
+
+**Rule — the output-assessment cut is exact and separately reviewable.** Owners: Nine/Seven/Ten
+for response evidence and consumption, Eight/Five for existing G6 consumers, Three for committed
+registration inputs, the desk for final pins and the operator for protected content. Checks:
+P10-SI-19/20/37 and P9-NF-64–66. Every row below is a **proposed grant**, pending independent
+design convergence and exact implementation/protected-content approval. This document grants
+no source write or live activation. No directory-wide grant or new source file is assumed.
+Coordinates are immutable base `9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec`; `:1 (new)` denotes an
+absent file, not landed lines. A rebase must resolve the named region against reviewed bytes.
+
+Document merge order: approved M3-S (`design-m3s-selection-set-and-inspection`, reviewed coordinate
+`1e7feb2`) first, then the approved Eight launch supplement (`design-m4-fixed-launch-operation`,
+reviewed coordinate `e5ea93f`) semantically rebased onto M3-S, then this supplement semantically
+rebased onto both. Reserve P10-SI-32–35 for
+M3-S, P10-SI-36 for launch, P10-SI-37 for this output-use composition, and P9-NF-64–66 for Nine.
+Retain both preceding maps and their owner meanings, registration inputs and held dependencies.
+M3-S's `historical-installation-admission-context` original-context reconstruction hold,
+`installation-generation-transition` hold, actual opened-root inspection requirements and
+strict-consumer/performance closure gates remain operative. Eight's unresolved
+`ordinary-local-durability-scope` launch design/admission hold also remains operative; supported
+single-machine response assessment cannot settle that launch gap. Nine assessment resolves none
+of these holds. This document order does not require completed M3-S implementation or
+performance closure for independent M4
+evidence and authorizes no new implementation unit.
+If another approved allocation intervenes, resolve it before merge; never reuse its number.
+This document order adds no runtime dependency between G6 and any separate preparation unit.
+Implementation units land serially after their
+own review/gate, rebase, and recomputation of final shared pins; no concurrent aggregate edits.
+
+| Grant | Exact source region and sole proposed delta | Protection at base |
+|---|---|---|
+| M4-G6-N-S1 | `src/verification/contracts.ts:7–46,120–160`: preserve v1 aliases/four-predicate vocabulary; add the closed response subject, two predicates, three v2 output variants, version union and public port/view types from Nine §5. | LIVE `src/verification/**` |
+| M4-G6-N-S2 | `src/verification/records.ts:18–38,82–119,195–211,225–302`: version-specific exact shapes/validators, schema 2 for exactly three families, origin/historical branches, lossless v1 decoding adapter, canonical identity/closure and version-aware spine append. No changed v1 meaning or historical promotion. | LIVE `src/verification/**` |
+| M4-G6-N-S3 | `src/verification/runtime.ts:64–125`: add `deriveProviderResponseAssessment` and its resolved evidence input; reuse the four settlement derivations without changed strength/freshness rules. No caller evaluator. | LIVE `src/verification/**` |
+| M4-G6-N-S4 | `src/verification/effect-consumption.ts:14–37,39–205`: add `createProviderResponseAssessmentPort`, `assess`, current synchronous response consumption and same-fact v2 settlement consumption; retain legacy input-key/history checks. | LIVE `src/verification/**` |
+| M4-G6-N-S5 | `src/verification/index.ts:1–15,31–34`: only the named new derivation, port/types and `decodeVerificationRecordAtOrigin` / `decodeHistoricalVerificationRecord` exports. | LIVE `src/verification/**` |
+| M4-G6-N-S6 | `src/verification/verification.declarations.json:1–12`: additive explicit schema-2 registrations for the three named families, producer/decoder and bounded feature/holder bindings for P9-NF-64–66. No `verification.core` activation, no claimed held edge from unexecuted evidence; retain all existing LIVE protection. | LIVE `src/verification/**` |
+| M4-G6-N-S7 | `src/judgment/contracts.ts:135–142`: optional bounded `responseEvidence` envelope and its legacy absence, using existing Evidence/capture contracts. | LIVE `src/judgment/**` |
+| M4-G6-N-S8 | `src/assembly/provider-invocation.ts:12–17,35–70,103–144`: finite evidence/capture reservation, descriptor-only copying, and local capture/admitted Evidence preserving S21/S9's exact raw stdout bytes and digest through the response subject to Nine; retain exact claim/request/answer binding at return. Keep actual claim consumption, byte/token bounds, custody and zero hidden retries. | DARK `src/assembly/**` |
+| M4-G6-N-S9 | `src/assembly/production-provider.ts:9–14,19–71`: selected CLI source/completion observation and pinned parser only; consume S21's bounded stdout byte field with strict UTF-8 validation before parsing and preserve its exact bytes/digest to S8. A retained legacy text field is settlement-only and cannot establish output-use provenance. No extra provider, process-launch capability, arbitrary executable or loosened admission. Unsupported source/terminal semantics stays held. | DARK `src/assembly/**` |
+| M4-G6-N-S10 | `src/assembly/production-provider-owners.ts:6–7,12–26,39–59`: construct the genuine same-store Nine response port, supply it to Seven/Eight and preserve the real legacy owner composition. | DARK `src/assembly/**` |
+| M4-G6-N-S11 | `src/judgment/provider-path.ts:37–50,55–74,75–172,248–281`: P10-SI-17 acceptance schema/producer/origin/historical decoder and current Nine consumer with exact Decision/settlement/accounting joins; extract `decodeCapturedProviderDecision` at :263–272 for pre-settlement read-only Nine consumption and reuse in both Seven paths. Preserve ProviderJudgmentResolution's `unresolved === 0`. | LIVE `src/judgment/**` |
+| M4-G6-N-S12 | `src/judgment/index.ts:1,7–8`: only acceptance producer, `decodeProviderAnswerAcceptanceAtOrigin`, `decodeHistoricalProviderAnswerAcceptance`, `decodeCapturedProviderDecision` and associated public types. | LIVE `src/judgment/**` |
+| M4-G6-N-S13 | `src/judgment/judgment.declarations.json:1–12`: only ProviderAnswerAcceptance binding, the `decodeCapturedProviderDecision` public decoder and the response-evidence consumer/producer references supporting its P10-SI-17/37 contract. Retain both LIVE protections. | LIVE `src/judgment/**` |
+| M4-G6-N-S14 | `src/effects/provider-path.ts:35–49,119–150,348–412`: same-assessment settlement and accepted-answer consumer under the existing P10-SI-17/18/24 separation. Keep fully settled path, all retry bars, unknown exposure and `chargeSettled: false` for unresolved use. | LIVE `src/effects/**` |
+| M4-G6-N-S15 | `src/effects/index.ts:4–5`: only the existing G6 grant's public accepted-answer settlement consumer export; no provider-api or process-record expansion. | LIVE `src/effects/**` |
+| M4-G6-N-S16 | `src/rungraph/types.ts:196`: P10-SI-24 public `openAcceptedProviderReply` contract only; no new Five body. | Outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` |
+| M4-G6-N-S17 | `src/rungraph/records.ts:87–115,223–242`: acceptance-backed standard Run opening and original conversation-obligation resolution only; retain all existing run decoder rules. | Outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` |
+| M4-G6-N-S18 | `src/rungraph/service.ts:14,144–179`: P10-SI-24 current conditional one-use reply opening/reconstruction only; preserve original pending provider step and exposure. | Outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` |
+| M4-G6-N-S19 | `src/rungraph/index.ts:1–7`: only the named reply-opening public exports/types. | Outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` |
+| M4-G6-N-S20 | `src/assembly/production-composition.ts:22–37,65–66,84–91`: wire the assessed acceptance to the separately admitted reply through public owners on the same store. No boot, dependency-selection, launch or capacity change. | DARK `src/assembly/**` |
+| M4-G6-N-S21 | `scripts/production-boot-io.mjs:17–30`: preserve the bounded collected stdout bytes through the `productionProviderIO` result before replacement decoding, carrying those bytes on success and preserving explicit limited/error disposition. Retain executable/args/cwd/env, timeout, maximum-byte enforcement, no shell and no retry. No launch capability or storage/Telegram/native-context IO change. | No declared protected-artifact pattern matches this host at the base; outside LIVE `src/verification/**`, `src/judgment/**`, `src/effects/**` and the DARK `src/assembly/**` pattern. |
+
+LIVE declarations are `src/verification/verification.declarations.json:7–10`,
+`src/judgment/judgment.declarations.json:3–5`, and `src/effects/effect.declarations.json:2–3`.
+The DARK assembly pattern is `src/assembly/assembly.declarations.json:7–10`. An allowed unprotected
+runtime-artifact posture does not remove LIVE repository protection. The final exact Nine,
+Seven and Eight content requires operator protected-content approval, separately from design
+approval and the exact source grant.
+
+**Rule — version consumers and helpers are inventoried before extension.** Check: P9-NF-65 and
+P10-SI-19/37. The generic runtime recorder at `src/verification/service.ts:11–35` delegates to
+record decoding/comparison/spine append; :39–69 uses plan arms and current posture, not response
+verdicts. `src/verification/storage.ts:9–27,34–89` folds unchanged family names and delegates
+identity; it requires no new merge class or projection edit. Both stay read-only. The v1 ports in
+`src/verification/reconciliation.ts:69–200` and recovery in `src/verification/traces.ts:16–44`
+keep v1 types, requests and settlement semantics. `src/verification/review.ts:90–116` consumes
+identity/source status; `src/verification/provider-settlement-support.ts:19` reads only the four
+named settlement predicates. These files stay read-only and are regression dependencies. The
+new contracts preserve legacy aliases while the generic record union admits v2. If compilation
+or actual durable reconstruction needs another helper change, name the exact region and refusing
+regression for separate review; these entries are not implied edit grants.
+
+The material helper exception is Seven's `observationCheck` and closed snapshot: merely adding
+an optional type field would cause `snapshotObservation` to classify new envelopes as malformed.
+Its exact proposed compatibility grant is H1, tested through the real return and legacy paths.
+
+| Grant | Exact helper/registration input and sole proposed delta | Protection at base |
+|---|---|---|
+| M4-G6-N-H1 | `src/judgment/model-adapter.ts:12–31,33–68`: validate/copy only the bounded optional envelope, retain descriptor/no-getter checks, compute its finite capture bound and preserve byte-identical legacy receipt encoding when absent. Never derive either Nine verdict here. | LIVE `src/judgment/**` |
+| M4-G6-N-H2 | `scripts/register-owner-references.mjs:9,13–46`: enumerate `part-nine` and `part-seven`; exactly Nine's `decodeVerificationRecord`, `decodeVerificationRecordAtOrigin`, `decodeHistoricalVerificationRecord` (module S5/artifact S2), Seven's two acceptance decoders plus `decodeCapturedProviderDecision` (module S12/artifact S11), P9-NF-64–66 fixtures at T1, and Ten's P10-SI-17/24/37 fixtures at T3/T4. Retain M3-S/Eight entries. No wildcard or new manifest field. | LIVE `scripts/*register*.mjs` |
+| M4-G6-N-H3 | `register-source/owner-references/part-nine.json:1 (new)`: existing manifest shape, owner `part-nine`, exactly H2's three decoder entries with S5/S2 hashes and three P9 fixture entries pointing to T1; probes/documents empty. Producers remain declaration bindings. | LIVE `register-source/**` |
+| M4-G6-N-H4 | `register-source/owner-references/part-seven.json:1 (new)`: existing shape, owner `part-seven`, exactly H2's two acceptance decoder entries and `decodeCapturedProviderDecision` with S12/S11 hashes; fixtures/probes/documents empty. | LIVE `register-source/**` |
+| M4-G6-N-H5 | `register-source/owner-references/part-ten.json:4`: single additive fixture binding each for P10-SI-17/24 to T3 and P10-SI-37 to T4, retaining every existing fixture/decoder and only refreshing changed approved artifacts. | LIVE `register-source/**` |
+| M4-G6-N-H6 | `scripts/check-verification-contracts.mjs:10–22`: extend exact disposition population from 63 to 66, with explicit partial/runtime-held reasons for 64–66 and actual executed-test requirements unchanged. Preserve :32–59 ownership checks and :67–68's prohibition on invented activation/held declarations. | Outside the named LIVE source patterns |
+
+H2 must enumerate exactly `tests/verification/provider-response-assessment.test.ts` for Nine,
+`tests/rungraph/provider-answer-reply.test.ts` and `tests/e2e/fixed-installation-reply.test.ts`
+for these Ten fixture ids. A fixture id has one registered artifact, not duplicate meanings.
+The manifest's decoder artifact hashes are hashes of the committed S2/S5/S11/S12 bytes under
+Three's canonical hashing, not hand-invented pins. H3/H4 are new manifests because the base
+loader only enumerates Four/Five/Ten. Toolchain LIVE protection is declared at
+`src/register/toolchain.declarations.json:119–126,135–142`; H2–H5 require its exact approval.
+No other manifest, Part Five declaration baseline or register-owner source is granted.
+
+| Grant | Exact test or pin region and sole proposed delta |
+|---|---|
+| M4-G6-N-T1 | `tests/verification/provider-response-assessment.test.ts:1 (new)`: real producer/registered version decoders/current-port tests for P9-NF-64–66, mixed v1/v2 source-only durable rebuild, duplicate/conflict closure and H2–H5 helper registration positives/refusals. No permissive fixture owner; caller-supplied Seven decoder substitutes refuse. |
+| M4-G6-N-T2 | `tests/assembly/provider-response-evidence.test.ts:1 (new)`: actual return-boundary descriptor copying/capture and selected CLI parser/evidence contract, cap arithmetic and legacy H1 compatibility. Exercise the real `productionProviderIO` boundary with valid non-ASCII bytes, invalid UTF-8 inside otherwise parseable JSON, split multibyte chunks, truncation/limits and extra frames; assert raw-byte/digest equality through capture to assessment and invalid-encoding refusal. Retain actual raw terminal bytes; no additional test file. |
+| M4-G6-N-T3 | `tests/rungraph/provider-answer-reply.test.ts:1 (new at base)`: preserve the v1 decoder/occurrence-without-answer diagnostic, add same-fact positive/negative G6 joins and Five's one-use/stop/predecessor cases. The diagnostic's :12–25 is in the adjudicated confined-runtime worktree, not landed base lines. |
+| M4-G6-N-T4 | `tests/e2e/fixed-installation-reply.test.ts:1 (new at base)`: real-owner composition, exact accounting/exposure and restart reconstruction for P10-SI-17/18/24/37; zero second model calls or reply operations. Test evidence never claims installed route admission. |
+| M4-G6-N-T5 | `tests/operator/round15-regressions.test.ts:80,89–99`: V79 exact allowlist additions S1–S7, S11–S15 and H1 only, retaining already allowed paths. No Nine/Seven/Eight directory prefix, changed comparison or weakened assertion. |
+| M4-G6-N-T6 | `tests/rungraph/production-grounding-scope.test.ts:9–17`: named `providerResponseAssessmentGrant` enumerates the same exact S1–S7/S11–S15/H1 paths; add only its membership test to the existing outside-path filter. Preserve main-versus-HEAD basis, existing grants and empty-outside assertion. |
+| M4-G6-N-T7 | `tests/verification/coverage.test.ts:10,15`: only the two exhaustive count assertions change 63 to 66 for H6. Retain all false-certification/ownership/declaration assertions; no baseline or status relaxation. |
+| M4-G6-N-P1 | `tests/assembly/production-grounding-inventory.json:5241`: after independent review add/re-pin only actually changed S1–S20/H1–H6/T1–T7 support entries as applicable, plus only S21's independently reviewed changed `scripts/production-boot-io.mjs` support digest through the existing P2/T8/P3 consequent pin chain. Preserve all obligation rows, their mappings, landed source assertions and unrelated hashes. |
+| M4-G6-N-P2 | `scripts/check-assembly-contracts.mjs:178`: only the resulting reviewed inventory digest; no dependency population or checker logic change. |
+| M4-G6-N-T8 | `tests/harness-adapters/a2-governance-and-additivity.test.ts:7,10–19`: only final reviewed P1 inventory, T6 scope-test and T7 coverage-test entries in `grantedContent`. If T1–T4 have landed before this unit, their exact additions require desk-reviewed entries here, retaining diagnostics. No prefix or assertion change. |
+| M4-G6-N-P3 | `scripts/check-p13-contract-map.mjs:266`: only the enclosing hash of final reviewed T8 bytes; preserve every architecture/additivity check. |
+
+The landed provider fixture/readers `tests/model-provider/fixture.ts:1` and
+`tests/model-provider/review/assertions.mjs:1` stay byte-identical and must pass, as must every
+existing settlement assertion. `tests/assembly/production-boot-provider.test.ts:1` also remains
+unchanged and must run as S21/S9's compatibility witness. T5/V79 and T6 inspect only `src` paths,
+so S21 requires no new entry in those source fences; no additional fence expansion is granted.
+No other landed helper/test change is implied. T7 is an exhaustive
+count extension, not a waived obligation. Additional declaration/registration/checker effects
+found on rebase need exact file:line review before changing them; an unrelated baseline never
+moves to make this unit pass. No fabricated reviewed hash belongs in a draft.
+
+M4-G6-N-G1 is the sole generated-output grant: after the desk commits approved S6/S13/H2–H5
+inputs and reviewed artifact pins, run Three's ordinary generator. Only deterministic changes
+among `generated/capabilities.md:1`, `generated/conversion.json:1`, `generated/coverage.md:1`,
+`generated/fact-schemas.json:1`, `generated/glossary.md:1`, `generated/register.json:1`,
+`generated/rules.md:1`, `generated/shape.json:1`, `generated/source.json:1` are permitted. No
+hand edits or new generated authority. The desk records each old/new manifest artifact hash,
+support-source digest, P1/P2 inventory digest, T8 content digest and P3 enclosing digest against
+the reviewed source commit. This draft supplies no final implementation pins.
+
+**Rule — implementation evidence closes the runtime obligation separately.** P10-SI-37 and
+P9-NF-64–66 require T1–T4 to exercise actual public ports and durable reconstruction. Required
+neighbors: occurrence without an answer; authentic partial/truncated/error response; complete
+unauthenticated response; wrong request/claim/provider/model/route/capture/digest/parser/terminal
+event; forged `complete`; missing/changed bytes; stale/incomparable/tainted/withdrawn evidence;
+duplicate/conflicting assessment; forged origin/historical intermediate; v1 settlement unchanged;
+both response rows satisfied with charge/quiescence insufficient and real maximum exposure held;
+stop/predecessor change; second consumption; restart finding the same assessment/acceptance/reply
+with zero second provider calls. Test getter/mutation attacks and terminal limit/tool/error
+neighbors at the real copying boundary. Re-run unchanged settlement and provider fixture/readers.
+Report unit, full-port integration, restart and installed live evidence as separate tiers.
+A mocked channel, canned fact or author test cannot close installed source-authentication proof.
+Design approval, a declaration patch and an occurrence pass close none of these runtime holds.
+
+---
+
 ## 8. Negative contracts and realistic positive neighbors
 
 **Rule — every changed gate is exercised on both sides.** Owner: the owner named in each row;
@@ -1077,6 +1497,10 @@ fixture-only registry, or direct helper call is insufficient.
 | Ten/Eleven, P10-SI-15/16 | Hard-coded peer in approved local mode, caller `missingBindings: []`, or stale root inspection | Exact operation dependencies derive at current vector and final admission rechecks them |
 | Seven/Five/Eight/Six, P10-SI-17/18 | Complete answer has no assessment, cap, retained exposure, exact accounting join, or no-repeat proof | Complete assessed answer is used once while unknown charge remains reserved; settled answer follows existing closure path |
 | Seven/Five/Eight/Six, P10-SI-24 | Changed predecessor or stop, second consumption, reply-run model call, or restart creates another reply operation | One acceptance opens one grounded reply run and one outbound operation while the original provider run and exposure remain pending |
+| Nine, P9-NF-64/P10-SI-37 with P10-SI-17 | Occurrence-only, unauthenticated complete, authentic incomplete, wrong subject/parser/terminal, or unavailable evidence | Same exact captured response passes both declared bars at its honest strength; no semantic-quality claim |
+| Nine/Two, P9-NF-65/P10-SI-37 | v1 promotion, forged origin/history, missing closure, unequal duplicate or silent fold winner | Real versioned producers/decoders preserve v1 settlement and reconstruct one v2 assessment without changing identity |
+| Nine/Seven/Eight/Six/Five, P9-NF-66/P10-SI-17/18/24/37 | Stale/withdrawn evidence, different assessment in settlement, released exposure, second consumption, stop/predecessor change or restart replay | Same fact supports both output rows and separate settlement rows, unknown charge/quiescence keeps exposure and retryEligible 0, one separately admitted reply survives restart |
+| Ten/Seven, P10-SI-37 | Copied complete flag, dropped terminal/source metadata, mutable/getter envelope, extra frame, limits/error/tool stop, unproved CLI source | Bounded actual return captures and approved parser reproduce one exact final Decision; absent legacy envelope remains settlement-only |
 
 ---
 
@@ -1098,6 +1522,7 @@ owner consumes only its own portion. The blank table is a review form, not an au
 | Maximum spend and unknown outcomes | Six reservation/accounting; Seven route; Eight settlement | `currencyAndWindow: ______`; `enforceableMaximumPerCall: ______`; `totalExposureCap: ______`; `observationCountTimeResourceBounds: ______`; `unknownExposureRetention: ______`; `noAutomaticRepeat: ______`; `newWorkRemainderRule: ______` |
 | Minimal voice | Eleven surface; Five minimal run; Six reserves | `permittedStatementsAndActs: ______`; `forbiddenOrdinaryClaims: ______`; `stopAndBoundedRepairGrant: ______`; `workerMemoryStorageQueueTransportEffectReserves: ______`; `dependencyOutageWording: ______` |
 | Measured envelope | Eleven admission; Ten replay/conformance; Seven route quality | `machineAndStorageClass: ______`; `coldWarmWorkloadMatrix: ______`; `historyCapacity: ______`; `startupAndResponseBounds: ______`; `margins: ______`; `modelPromptContextTuple: ______`; `qualityEvidenceAndLimits: ______` |
+| Fixed confined launch | Eight approved definition; Six finite allocation; Ten exact boundary; Nine evidence | `nativeArtifactAndExecutableDigests: ______`; `restrictedIdentityAndBoundaryDigest: ______`; `loadingObservationHandles: ______`; `finiteResourceAndExpiryLimits: ______`; `wholeTreeExpiryEvidence: ______`; `startupCostAndUnknownAllocationRetentionAccepted: ______`; `exactProtectedContentApproval: ______` |
 | Initial live use | Twelve Telegram scope; Eleven whole-slice verdict; Ten manifest | `throwawayBot: ______`; `demoGroupAndTopic: ______`; `replyOnlyAudience: ______`; `allowedOperations: ______`; `spendAndMessageLimit: ______`; `secondInboundRequired: ______`; `restartAndStopRequired: ______`; `broaderResidualCapabilitiesUnavailable: ______` |
 
 ---
@@ -1155,6 +1580,43 @@ bots, a universal billing oracle, and stronger human-delivery or read claims are
 this scope. The profile retains worker confinement, independent approval, secret custody, real
 Nine assessment, finite spend, no silent repetition, and the ordinary owner path from intake
 through reply.
+
+**Rule — each missing proof retains its named hold.** Owners are listed below; checks:
+P10-SI-22/37 and P9-NF-64–66. These are contract/desk dispositions, not additions to or
+replacements for the runtime hold roster. Report the twenty-four entries at
+`src/assembly/production-holds.ts:3–28` and `seven-bounded-install-supervisor` at
+`src/assembly/production-installation-report.ts:15–17` individually. Neither file is writable
+under this supplement. An empty missing list, a prepared handle or a declaration cannot stand
+in for an admitted dependency.
+
+| Named hold | Owner and exact closing evidence |
+|---|---|
+| HOLD M4-G6-N | Nine's approved bar, closed subject, versioned producer/registered decoders/current consumer; Ten/Seven's captured evidence and Seven/Eight/Six/Five's exact downstream joins. Requires the supplement's approval, separate exact protected-source approval, implementation and positive/negative/restart proof; occurrence, answer text or Grade is insufficient. |
+| HOLD provider-response-source-and-completion-evidence | Ten/Seven supply actual authenticated-source and successful terminal/capture evidence for the selected route, parser and artifact; Nine accepts its honest bar/strength. CLI JSON, code zero or a local signature cannot close it. Exact endpoint/account binding, terminal mapping, artifact and finite envelope caps remain required contract inputs. |
+| HOLD M4-L | Eight/Ten's separately governed confined-launch owner operation, exact implementation grant and actual confinement evidence; this output-use assessment supplies none. |
+| HOLD independent-challenge-verifier | Nine/Eleven: real independent operator administration, factor/trust/configuration and current live challenge evidence. The model-answer assessor cannot mint approval standing. |
+| HOLD independent-verification-clock | Nine/Eleven: installed comparable-clock source, independent administration/configuration and current probes. Copying a timestamp supplies no freshness. |
+| HOLD platform-delivery-witness | Ten/Eleven/Nine: actual exact-post observation at its claimed tier; the Telegram post observer is not the answer assessor. |
+| HOLD storage-custody-admission | Two/Ten: real installed custody admission; a prepared reference or isolated storage test is insufficient. |
+| HOLD resolved recovery custody | Two/Ten: the real resolved recovery-handle consumer and its admitted evidence. |
+| HOLD admitted-worker mediated read | Ten/Two: an actually admitted worker performs the mediated read under the current confinement/custody boundary. |
+| HOLD M3-S | Ten: its own approved atomic selection-set/inspection contract, exact grants, real original-bound owner inputs and consumer proof; response evidence supplies no selection authority. |
+| HOLD M3-I | Six/Ten/Eleven: the capacity contract and its complete accounting/consumer evidence under §11; no operation reservation masquerades as standing capacity. |
+| HOLD seven-bounded-install-supervisor | Seven/Ten: genuine bounded supervision for automated critical installation/history/recovery work. |
+| HOLD minimal-responder-budget-admission | Six/Five/Ten/Eleven: enforced finite independent capacity, governed minimal Run and limited-voice activation proof. |
+| HOLD activation-resource-reservation | Six/Ten: actual enforceable activation reservation and current owner joins. |
+| HOLD opened-root inspection | Ten: its real inspection product over the actual opened root at the current source vector. |
+| HOLD positive boot/dependency-selection join | Ten/Eleven: actual inspection and current applicable owner dependencies; no strict resolver or capacity proof is anticipated here. |
+| HOLD exact final charge | Eight/Six: authoritative final accounting of the original operation; this response mode may proceed only while maximum exposure remains held and all ten G6 conditions pass. |
+| HOLD old-executor quiescence | Eight/Nine/Six: actual exclusion of delayed original execution; a completed answer alone proves none. |
+| HOLD retries of uncertain work | Six/Eight: original non-occurrence, old-executor exclusion, final liability and fresh admission under their existing rules; retryEligible stays 0 while unresolved. |
+| HOLD M5 usable-live-agent proof | Ten/Eleven/Five and the live driver: actual admitted conversation, second turn, restart, stop and uncertainty evidence using real M3/M4 dependencies. |
+| HOLD broader capabilities | Their existing owners: protected mutation, universal billing, stronger delivery/read claims and wider deployment require their own contracts and evidence, outside this cut. |
+
+Semantic truth/quality keeps Seven/Nine's existing judgment/benchmark duties and is never claimed
+by a response-authenticity/completeness pass. None of the above holds is cleared by approving this
+design. Single-machine support remains P10-SI-03/04/05/29; independent administration does not
+itself require a second physical machine.
 
 ---
 
@@ -1424,3 +1886,116 @@ All other unclosed P10-SI-22 holds remain individually visible. Nine source,
 general multidomain scheduling, a general installer and additional deployment breadth are outside
 this cut. If activation requires changes to Five/Eight bodies or Nine interpretation, it needs a
 separate named owner predicate and exact source/test grant; the capacity record supplies none.
+
+---
+
+## 12. Fixed confined-launch admission
+
+**Rule — P10-SI-36 is the fixed confined-launch predicate.** Owner: Eight for the exact approved
+`native-confined-launch` definition, process v2 records, admission and no-repeat; Six for genuine
+reservation/claim; Ten for the restricted executor and exact binding; Nine for applicable evidence
+assessment. Eight §4a is the owner record/API contract; Ten §§3–4 is the physical boundary.
+The mode is one exact Native artifact on the named machine, under the operator-installed
+restricted identity, into `context-loading` through exactly one approved authenticated mediated
+endpoint with the exact finite loading/observation method set. Every granted handle resolves to
+that endpoint and current installation/run/incarnation; all other IPC/network/effect endpoints
+are denied and an additional endpoint is unsupported. There is no
+command text, arbitrary executable, new outbound-purpose literal, automatic restart/replacement,
+provider access or implicit readiness. The exact five-field control/costly/agent/none/bounded
+profile and all four constitutional tests are enforced at registration and actual use.
+
+P10-SI-36 refuses message/context/provider/fact-append substitution; copied owner labels;
+unapproved definition/version; changed executable, artifact, OS profile, environment, working
+scope or handles; wrong machine/installation/run/step/incarnation; missing, foreign-store or wrong
+Six reservation/claim; stale holder/fence/generation/clock/lifetime/stop/predecessor; missing causal
+closure or inadequate durability; second consumption, restart duplication and reused PID. Every
+pre-dispatch refusal has zero OS invocations. Unauthorized child/network/file access is tested
+inside the worker and must be denied by the installed boundary, not merely by a TypeScript API.
+
+The positive neighbor obtains a genuine current same-store Eight admission with one Six claim,
+creates one exact confined process and records one attributable launch observation. A fresh host
+reconstructs that same operation or retains its uncertainty without spawning again. Fault cuts
+include before/after request/specification, reservation, validation, claim, durable consumption,
+OS spawn, response and observation append; a lost acknowledgment is never a fresh launch identity.
+Expiry evidence covers the entire tree and outstanding dispatches despite host/worker failure.
+One authentic mediated loading/observation request succeeds while all applicable forbidden paths
+in Ten §3/§4 refuse. The singleton endpoint and exact finite method set are bound by
+`handlePolicyDigest` and exact handle comparison. The endpoint enforces the real owner's public
+request, including freshness and incarnation, not merely socket reachability. An extra endpoint,
+expanded method set, substituted handle and cross-incarnation handle must refuse, including
+actual OS attempts to reach another endpoint. One successful test alone does not prove the
+singleton boundary. Separate context-delivery/model/reply admissions remain required.
+
+P10-SI-04/08/13/14/15/18 and P8-NF-03–17/25–30 remain operative. P10-SI-18 forbids replacement
+while execution, resource accounting or quiescence is unknown without pretending this local
+worker is a billed model call. Local launch remains under the unresolved
+`ordinary-local-durability-scope` design/admission hold; ordinary classification and a complete
+local receipt do not override the governing closed-set exclusion. Unit/schema evidence, full-port integration, actual lifecycle/OS-boundary evidence and
+Nine's applicable assessment are four distinct reported tiers. A design check, mocked syscall,
+standalone sudo spawn or message-decoder refusal cannot close the live predicate.
+
+**Value — supported shape and operator costs.** The one-machine shape needs no second machine,
+service per owner, general sandbox framework, artifact-protection broker or exact-billing oracle
+merely to host this launch. Direct composition is allowed where capabilities permit it. The
+operator must install and maintain the restricted identity and exact boundary, set finite resource
+and lifetime limits, and approve the exact protected implementation and registration changes.
+The desk's restricted-identity experiment can use its existing non-interactive sudo; it needs no
+new privilege ruling. Its proof must fix absolute profile/worker paths, executable resolution,
+UID, hashes and actual results; placeholders are not evidence.
+
+Durable preparation and before-spawn claim writes add startup time and storage work. Boundary and
+restart tests plus independent review cost engineering and operator time. Loading-only ports
+limit what the worker can do; model calls and replies need separate admission. Finite expiry may
+end unfinished loading. An uncertain start can tie up its allocation and leave work waiting,
+possibly indefinitely, because automatically spawning another worker is forbidden. Losing the
+only machine can lose the evidence needed to reconstruct work; it promises neither failover nor
+a delivered outage notice. Broader cleanup/restart, arbitrary processes and unsupported platforms
+remain unavailable. These costs follow the existing scope, finite-resource, evidence and no-repeat
+rules; the desk presents their acceptance in plain words, not as a choice of competing owners.
+The ordinary launch requires explicit reconciliation of the purpose's local-durable closed-set clause with Eight's ordinary-operation rule; this document does not supply that authority.
+
+**Rule — evidence closes named holds independently.** P10-SI-22 keeps these dispositions visible:
+
+| Hold | Closure evidence and owner |
+|---|---|
+| `ordinary-local-durability-scope` | UNRESOLVED governing-document gap: operator-approved clarification of the purpose's local-durable closed-set clause and Eight's installed-shape rule, separately stating the ordinary four-test/finite-bound/full-causal-closure rule while preserving the irreversible provider/reply set. Any corresponding P-08 check change needs a named grant. Launch design/admission remains held; this document supplies no reconciliation. |
+| `M4-L — fixed confined-launch owner operation and exact grant` | Eight's approved definition/v2 admission/no-repeat implementation, Ten's real integrated restricted execution and expiry/attack/allowed-port evidence, applicable Nine assessment, desk-reviewed exact grants/pins and operator approval of protected content. Design closure also requires `ordinary-local-durability-scope` reconciliation; documentation alone supplies no implementation/admission evidence or authority-conferring runtime flag. |
+| `general-process-execution` | Separate Eight contracts/grants and actual evidence for arbitrary executables/shells, broader modes, cancellation/cleanup, automatic restart/replacement/retry. This breadth is deferred, not a prerequisite for this one operation. |
+| `M3-S — fixed-installation record granularity and strict-consumer performance` | Existing structural/performance owner evidence and full affected checks; no timeout increase or bypass supplied here. |
+| `M3-I — responder reservation representation and consumer completeness` | Six/Ten/Eleven and desk closure of §11's genuine capacity representation, strict complete consumers and independently reviewed pins. A launch operation reservation is not installation capacity. |
+| `seven-bounded-install-supervisor` | Seven's actual finite supervision of critical automated install/recovery, consumed by Ten. Manual placement/read-only inspection grants no activation. |
+| `minimal-responder-budget-admission` | §11's Six finite child allocation, Five governed minimal Run and Ten/Eleven measured dependency/limited-voice evidence. |
+| `activation-resource-reservation` | Actual current holder/incarnation/fence/generation/lifetime and shared allocation at launch/use, with restart/revocation proof. |
+| `opened-root inspection / positive dependency-selection and boot join` | Approved selection-set design, actual opened-root inspection product and current owner/capacity evidence; no empty missing-list, host label or fixture selection. |
+| `independent-challenge-verifier` | Nine's independently administered authentic exact-subject challenge, one-use/replay/restart/expiry refusal evidence. |
+| `independent-verification-clock` | Nine's authentic comparable subject clock and current finite freshness; rereading never refreshes evidence. |
+| `worker-isolation-evidence` | Ten's exact-mode forbidden-path and permitted authenticated-port evidence with full tree/handle bounds, applicable Nine assessment and honest residuals. |
+| `storage-custody-admission` | Real pre-provisioned custody, permitted bounded mediated read and scope/grant/unresolved-ref/worker-secret refusals. Host-side proof may proceed; admitted Native end-to-end use still needs launch. |
+| `activation-probe-evidence` | Nine's actual current exact-mode live probe through admitted launch/cleanup, not an empty probe list or host uptime. |
+| `adapter-conformance-evidence` | Ten's actual exact artifact/platform/mode conformance and lifecycle proof. |
+| `platform-delivery-witness` | Nine assessment of authentic Twelve exact-post acceptance evidence; neither human delivery/read nor model billing/quiescence follows. |
+| `protected runtime/dashboard mutation` and `artifact-protection broker` | Separate independent protection/approval design and proof; outside this admitted runtime scope. Repository LIVE protection remains operative. |
+| `exact-charge` and `old-executor-quiescence` | Decisive owner-accepted evidence; honest unknown accounting retains exposure and cannot permit replay. |
+| `multi-machine authority/failover`, `broader platforms/bots`, `human delivery/read claims` | Separate approved scope/contracts and real evidence; outside this fixed operation. |
+| `conversation-driver` and `M5 usable-live-agent proof` | Actual admitted bin entry, second inbound turn, restart, stop and uncertainty demonstration after real M3/M4 dependencies; no live bot/model use or usable-agent claim is supplied here. |
+
+Keep the complete landed production-hold roster read-only. At the source coordinate above,
+`src/assembly/production-holds.ts:3–29` supplies 24 names and
+`src/assembly/production-installation-report.ts:16–17` adds `seven-bounded-install-supervisor`
+for the 25-row P10-SI-22 report. Each keeps its individual owner/evidence disposition: none becomes
+admitted from this document. Single-machine `replication-peer` is nondependency metadata only
+under P10-SI-04/05; unavailable protection may be honestly unprotected only under P10-SI-14.
+Neither interpretation erases a hold name or grants a missing current dependency.
+
+Independent custody, Nine host and G6 preparation/evidence retain their existing exact grants;
+launch-specific holds do not stop them. Their fixture-admitted tests do not clear real clock,
+verifier, probe, isolation or reservation holds. Strict Part B and pending selection-set design
+stay held on their own evidence. Approved units land separately, serially repinned and rebased;
+no aggregate-pin race or positive boot substitution is allowed.
+
+Remaining concrete inputs are the operator-installed artifact/executable/profile/UID and scoped
+handles, measured finite limits and failure-surviving expiry proof, current genuine owner facts,
+applicable independent evidence and final reviewed content/digests. Their absence is an M4-L or
+named evidence hold, never permission to choose defaults. An additional owner consumer, schema,
+helper, cancellation effect, supervisor path or checker discovered during implementation must
+be reported by exact file:line before its dependent work exceeds §7's approved grant.
