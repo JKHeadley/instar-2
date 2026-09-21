@@ -34,3 +34,16 @@ export { decodeProductionInstallation, productionInstallationSchemas, registerPr
 export type { ProductionInstallation } from './production-installation.js';
 export { bootProductionApplication } from './production-application.js';
 export type { ProductionApplication, ProductionApplicationHost } from './production-application.js';
+
+export type { InstallationSelection, InstallationRole, InstallationRecordAdmission, InstallationRecordWriter, InstallationRecordGeneration } from './installation-selection.js';
+export { installationRoleOwners, installationSelectionSchemas, registerInstallationSelectionBody, recordInstallationSelection, decodeInstallationSelectionAtOrigin, decodeHistoricalInstallationSelection } from './installation-selection.js';
+export type { ProductionSignerReference, ProductionSignerAdmission } from './production-signer-reference.js';
+export { productionSignerReferenceSchemas, registerProductionSignerReferenceBody, recordProductionSignerReference, decodeProductionSignerReferenceAtOrigin, decodeHistoricalProductionSignerReference } from './production-signer-reference.js';
+export type { ProductionBootstrapPackage, VerifiedProductionBootstrap, InstallationImmutableIO } from './production-installation-loader.js';
+export { loadProductionBootstrap } from './production-installation-loader.js';
+export type { InstallationHold, InstallationHoldReport, InstallationHoldRow, InstallationHoldState, InstallationHoldVerdict, InstallationReportFact, InstallationReportFactsPort } from './production-installation-report.js';
+export { installationHoldOwners, installationReportHolds, installationSupervisorHold, reportInstallationHolds } from './production-installation-report.js';
+export type { InstallationReplayInput, InstallationReplayMode, InstallationReplayProfile, InstallationReplayReport, InstallationReplaySample, InstallationReplayWorkload } from './production-installation-replay.js';
+export { replayInstallationProjections } from './production-installation-replay.js';
+export type { InstallationImportPlan, InstallationImportStep } from './production-installation-import.js';
+export { importPreparedInstallationPackage, isIssuedInstallationImportPlan, planInstallationImport } from './production-installation-import.js';

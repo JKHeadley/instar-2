@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "owner": "part-ten",
+  "fixtures": [
+    {
+      "id": "P10-SI-06",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/assembly/fixed-installation-contract.test.ts",
+        "hash": "sha256:53c4ca31759cc797b738f36d8aacc5e5d76cdc7906a8be86fe78cd1120a932ae"
+      }
+    },
+    {
+      "id": "P10-SI-09",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/assembly/fixed-installation-bootstrap.test.ts",
+        "hash": "sha256:5840a7c050b3c31bf4740d9c6a2cb84da86a9c90c051658868924447c0b921f2"
+      }
+    }
+  ],
+  "probes": [],
+  "documents": [],
+  "decoders": [
+    {
+      "id": "decodeInstallationSelectionAtOrigin",
+      "module": {
+        "path": "src/assembly/index.ts",
+        "hash": "sha256:d9a7101157b840a97b9389775f2e451a99be64422cd5735f7c6189d48d2709ef"
+      },
+      "artifact": {
+        "path": "src/assembly/installation-selection.ts",
+        "hash": "sha256:b5effdec48c30b20fb9497e4b8a026c803ac06f22c6768c7bde5ff803ae548d7"
+      }
+    },
+    {
+      "id": "decodeHistoricalInstallationSelection",
+      "module": {
+        "path": "src/assembly/index.ts",
+        "hash": "sha256:d9a7101157b840a97b9389775f2e451a99be64422cd5735f7c6189d48d2709ef"
+      },
+      "artifact": {
+        "path": "src/assembly/installation-selection.ts",
+        "hash": "sha256:b5effdec48c30b20fb9497e4b8a026c803ac06f22c6768c7bde5ff803ae548d7"
+      }
+    },
+    {
+      "id": "decodeProductionSignerReferenceAtOrigin",
+      "module": {
+        "path": "src/assembly/index.ts",
+        "hash": "sha256:d9a7101157b840a97b9389775f2e451a99be64422cd5735f7c6189d48d2709ef"
+      },
+      "artifact": {
+        "path": "src/assembly/production-signer-reference.ts",
+        "hash": "sha256:e4c79109c2140566263d9c9428a5898aa9bedbf5da26f2e48e2917db1c8ce0f2"
+      }
+    },
+    {
+      "id": "decodeHistoricalProductionSignerReference",
+      "module": {
+        "path": "src/assembly/index.ts",
+        "hash": "sha256:d9a7101157b840a97b9389775f2e451a99be64422cd5735f7c6189d48d2709ef"
+      },
+      "artifact": {
+        "path": "src/assembly/production-signer-reference.ts",
+        "hash": "sha256:e4c79109c2140566263d9c9428a5898aa9bedbf5da26f2e48e2917db1c8ce0f2"
+      }
+    }
+  ]
+}

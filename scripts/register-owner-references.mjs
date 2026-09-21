@@ -6,16 +6,20 @@ import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
-export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five'].map(owner => `register-source/owner-references/${owner}.json`)];
+export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-ten'].map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
 const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
   .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/closure-records.ts' }]));
 const contracts = {
   'part-five': { decoders: { ...owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit',
-    'decodeSessionGrounding']), ...closureOwned },
-    fixture: id => id === 'P5-NF-54' || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION', probe: id => id === 'P5-NF-55',
+    'decodeSessionGrounding']), ...closureOwned,
+    ...Object.fromEntries(['decodeInstalledRunGovernanceReferenceAtOrigin', 'decodeHistoricalInstalledRunGovernanceReference']
+      .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/installed-governance.ts' }])) },
+    fixture: id => id === 'P5-NF-54' || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION'
+      || ['P10-SI-01', 'P10-SI-02', 'P10-SI-10', 'P10-SI-19', 'P10-SI-20', 'P10-SI-23'].includes(id), probe: id => id === 'P5-NF-55',
     test: (kind, path) => kind === 'fixture'
       ? path === 'tests/rungraph/governance.test.ts' || path === 'tests/rungraph/closure-registration-additivity.test.ts'
+        || path === 'tests/rungraph/installed-governance.test.ts'
       : path === 'tests/rungraph/scope.test.ts' },
   'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration']),
     'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
@@ -25,6 +29,19 @@ const contracts = {
     'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
     fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9])$/.test(id), probe: id => id === 'P4-NF-29',
     test: (_kind, path) => /^tests\/intake\/[a-z][a-z0-9-]*\.test\.ts$/.test(path) },
+  'part-ten': { decoders: {
+    ...Object.fromEntries(['decodeInstallationSelectionAtOrigin', 'decodeHistoricalInstallationSelection']
+      .map(id => [id, { module: 'src/assembly/index.ts', artifact: 'src/assembly/installation-selection.ts' }])),
+    ...Object.fromEntries(['decodeProductionSignerReferenceAtOrigin', 'decodeHistoricalProductionSignerReference']
+      .map(id => [id, { module: 'src/assembly/index.ts', artifact: 'src/assembly/production-signer-reference.ts' }])),
+  },
+    fixture: id => ['01', '02', '03', '04', '06', '07', '08', '09', '11', '12', '13', '14', '15', '16', '18', '19', '20', '21', '22', '23']
+      .some(number => id === `P10-SI-${number}`),
+    probe: () => false,
+    test: (kind, path) => kind === 'fixture' && [
+      'tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
+      'tests/assembly/fixed-installation-live.test.ts', 'tests/assembly/fixed-installation-custody.test.ts',
+    ].includes(path) },
 };
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))

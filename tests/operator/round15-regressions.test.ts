@@ -92,7 +92,7 @@ it('V79 the changed source paths stay inside the explicit Part Four, Part Ten an
   // GRANT U5-A: Six's two exact production run-admission paths.
   const runAdmissionGrant = ['src/transport/run-admission.ts', 'src/transport/index.ts'];
   // GRANT U5-E (2026-09-18): Part Two store projection reads (docs/06:55-58), exact file.
-  const storeProjectionGrant = ['src/facts/store.ts'];
+  const storeProjectionGrant = ['src/facts/store.ts', 'src/facts/historical.ts']; // GRANT M3-E: historical memo construction
   const outside = paths.filter(path => !liveInputGrant.includes(path) && !sealedIdentityGrant.includes(path)
     && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path) && !['src/intake/', 'src/assembly/', 'src/operator/', 'src/rungraph/'].some(prefix => path.startsWith(prefix)));
   expect(outside).toEqual([]);

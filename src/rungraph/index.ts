@@ -13,3 +13,6 @@ export { decodeExhaustionRecord, decodeUnreachableRunExit,
   closureRecordReferences } from './closure-records.js';
 export { exhaustionAdmission, unreachableExitAdmission } from './closure.js';
 export { createRunClosureGraph } from './closure-service.js';
+
+export type { InstalledRunGovernanceReference } from './installed-governance.js';
+export { installedRunGovernanceSchemas, registerInstalledRunGovernanceBody, recordInstalledRunGovernanceReference, decodeInstalledRunGovernanceReferenceAtOrigin, decodeHistoricalInstalledRunGovernanceReference, loadInstalledRunGovernance } from './installed-governance.js';

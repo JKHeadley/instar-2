@@ -529,7 +529,8 @@ Six’s additional CapacityReservation body and its separate proposed source/tes
 to §11 and Six §4a. A new file above implements only its named P10-SI predicates and adds no
 other record or policy language.
 
-The new test-file grant covers every predicate without authorizing edits to landed fixtures:
+The new test-file grant covers every predicate. The two landed production fixture helpers have
+the exact migration grant below; no other landed fixture edit is authorized.
 
 | Additive test path | P10-SI coverage granted |
 |---|---|
@@ -543,11 +544,21 @@ The new test-file grant covers every predicate without authorizing edits to land
 | `tests/rungraph/provider-answer-reply.test.ts` | 17, 18, 19, 20, 24 |
 | `tests/e2e/fixed-installation-reply.test.ts` | 01, 03, 04, 05, 10, 13, 14, 15, 16, 17, 18, 20, 21, 22, 24 |
 
-No landed test may be edited except the exact allowlist and digest lines below or a
-separately approved, individually named §11 grant.
-`tests/model-provider/fixture.ts` and `tests/model-provider/review/assertions.mjs` remain
-byte-identical and must pass while reading the changed provider path. No fixture may be rewritten
-to look like production evidence.
+No landed test may be edited except the exact allowlist, digest, and declaration-baseline lines
+and the two fixture helpers named here, or a
+separately approved, individually named §11 grant. Owner: Ten for the fixture migration; referenced records
+retain their public owners. Predicate: P10-SI-20 requires tests/assembly/production-fixture.ts and
+tests/assembly/round8-extended-fixture.ts to construct the P10-SI-07 inputs through real owner
+producers and registered decoders. Only their binding-evidence setup and required owner-context
+wiring may change. tests/assembly/production.test.ts and every assertion in it stay byte-identical.
+A caller's wrong route reference or incomplete binding remains wrong or incomplete; fixture setup
+must not repair it. Positive neighbor: genuine prerequisite facts reach the original callable,
+role, and honest-partial cuts. An old named-kind wrapper cannot satisfy an InstallationSelection
+row. This grants no compatibility bypass in production admission. The two helpers' exact reviewed
+hashes may change in the inventory and be added to A2's grantedContent; only their resulting
+inventory and enclosing checker pins may then move. tests/model-provider/fixture.ts and
+tests/model-provider/review/assertions.mjs remain byte-identical and must pass while reading the
+changed provider path. No fixture may be rewritten to look like production evidence.
 
 The declaration changes are source inputs, not generated authority. After each unit commits its
 declaration inputs, the ordinary Three generator may update only the deterministic changed files
@@ -624,6 +635,26 @@ The builder's reviewed fence and pin grant is also exact:
 7. Re-pin any affected owner-reference manifest through the ordinary Three generator from the
    approved declaration inputs. Do not hand-edit generated authority or widen a source-hash
    exemption.
+   The declaration baseline in tests/rungraph/closure-registration-additivity.test.ts may move only
+   from 6c25455 to the reviewed M3 additive declaration commit. Preserve all existing declaration
+   records and every test assertion; only the one commit literal changes. Add that test's exact
+   reviewed final hash to A2's grantedContent and regenerate its existing Part Five fixture artifact
+   hash in register-source/owner-references.json. Preserve the main-versus-HEAD comparison and
+   refresh only A2's resulting enclosing checker pin. A later baseline move requires independent
+   review of the exact additive declaration delta; an arbitrary new HEAD is not an approved pin.
+   M3-E supplement (Astra adjudication, 2026-09-20): the additional source grant is only
+   src/facts/historical.ts (private memo support, fingerprint construction/reuse and cache storage,
+   equivalent canonical bytes and both identity guards preserved; no new public export, no caller
+   mutation). Ten's installation-record validation caches in src/assembly/installation-selection.ts
+   and src/assembly/production-signer-reference.ts must key historical reuse on the complete consumed
+   validation inputs (origin and input bytes, relevant cone contents, context and admission data,
+   valid owner identities); origin-mode validation never obtains a verdict or admission basis from a
+   historical cache. The only new test path is tests/facts/historical-memo-context.test.ts; the two
+   source fences tests/operator/round15-regressions.test.ts and tests/rungraph/production-grounding-
+   scope.test.ts add exactly src/facts/historical.ts to storeProjectionGrant; the inventory digest for
+   src/facts/historical.ts and the changed Ten sources, the single inventory digest, A2's inventory
+   and scope-test entries and the enclosing P13 hash move once each. tests/assembly/production.test.ts
+   stays byte-identical, timeouts included.
 8. Preserve historical decoders, default replicated-mode positives, protected-scope positives,
    unprotected protected-mutation refusals, all current production provenance checks, and the
    byte-identical landed provider-path readers named above.
