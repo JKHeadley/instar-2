@@ -5252,12 +5252,12 @@
     "src/assembly/conditional-append.ts": "e4958af715c76a4f5adbe5e0265ee0ba5a9c7c92cd998058ee994bd064239ca2",
     "src/assembly/context-delivery.ts": "bbc05628b7b60adcb7b16e047c0e20c0ed30894f3bc65613b9da9e203bbcbe06",
     "src/assembly/contracts.ts": "1cfa0030662346d4a031c88e521f8438c83699ad32655ee222325bd7b2cc6feb",
-    "src/assembly/custody.ts": "354a63a173f584715df3bca952d32d2ba58ac4f8be1db36c5af00abc89616d42",
+    "src/assembly/custody.ts": "f9933ae70d2738b84c39ffcf339395c2f6f7689be5337564dd98fb0f5250c77f",
     "src/assembly/grounding-capability.ts": "1d26b5d45c8ecdeced295109f5373ec63fa6c60621ba7994e6e6aaba3b12db18",
     "src/assembly/growth.ts": "44dfad8e203734992a185b013ec8811362a6ff75438b70ee4fc312992cf77838",
     "src/assembly/harness.ts": "df847ca76995a193d086524ed8e3ff9c260e356b48e1971840f6672f37abd91e",
     "src/assembly/history.ts": "27be341923822c3e27cbf7395db8704d2a844e16e6382096e6941bca10b273e9",
-    "src/assembly/index.ts": "14f904b0e79247d58d3a0cbd19d6e422ec34b264b3cb4ea9c810ff92a25f830b",
+    "src/assembly/index.ts": "976711d47ebe9628cefe977686f93b39da5b75dd3b999aab1c733888ea25f17b",
     "src/assembly/package.ts": "446effba83b5e4ce7367e3f789c02b661057eaee942de8de2cd25f23f5ac7c11",
     "src/assembly/persistence.ts": "0099bd62f7eb959d64940ab9915bf5d00c2d763f4917a49b81c58a4c59fab476",
     "src/assembly/production.ts": "6f395a205ef4838e6955240ea25e429a0ee16132a20e9d72904c24ed6685d6fb",
@@ -5448,7 +5448,9 @@
     "src/assembly/production-installation-replay.ts": "335d17894f03f423c50fdf459c4a72239477d848513e133fd2c24091b929c402",
     "src/assembly/production-installation-import.ts": "6853d3d7dfd616cd3fa6642f9cc3a3f53cd8d890e20070f8d05fe6a8a437bfa7",
     "tests/assembly/fixed-installation-contract.test.ts": "7c3b4d700d50cefb047b81df9674666ae01e7f29b0748094cff7805dd926a16a",
-    "tests/assembly/fixed-installation-bootstrap.test.ts": "ea975d722bd78ad9c7e926bf4010ac44e4a14865948e4dcd4b3edec356c9248f"
+    "tests/assembly/fixed-installation-bootstrap.test.ts": "ea975d722bd78ad9c7e926bf4010ac44e4a14865948e4dcd4b3edec356c9248f",
+    "src/assembly/production-custody-wiring.ts": "69b7749652006687f97420385b6e7df663ba8c576519cdfcb340577cdf66be83",
+    "scripts/fixed-installation-verifier-clock-observer.mjs": "5c5b5f02548b61e66ac8ac3166e4929051d1b42ceecadaf34bcc9f7feae6a3c3"
   },
   "reviewedDependencyDigest": "6f76399cb703b701d1fd4dc134976a954920c60e53ac712413ed6e53f64ff662"
 }
