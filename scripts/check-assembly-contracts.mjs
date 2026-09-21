@@ -175,7 +175,7 @@ export function productionGroundingSourceDigest(root = realpathSync(fileURLToPat
     if (existsSync(resolve(root, path))) { hash.update(path); hash.update(readFileSync(resolve(root, path))); }
   return hash.digest('hex');
 }
-const REVIEWED_GROUNDING_INVENTORY = '520400c653490928a36b723299542ff1ead69d84a190abd441eddd541f02e3c5';
+const REVIEWED_GROUNDING_INVENTORY = '1aaa7fc4cb694221be95a669fff17c7ebd6cb07cf58ad601e037d204f01e34f7';
 export function checkProductionGroundingAssemblyEvidence(report) {
   const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
   if (!report.success || report.numFailedTests || report.numFailedTestSuites || !Number.isFinite(report.startTime))

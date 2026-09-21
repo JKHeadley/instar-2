@@ -5446,7 +5446,8 @@
     "src/rungraph/installed-governance.ts": "4022c9ee433954f81b128dbec0bca9baaf77cb8e96b99a7a05af9c0660449a8b",
     "src/assembly/production-installation-report.ts": "762c1bfe83ff43b77ce8c20ea96814e0f6f96e58b8a661050419c2904adf82a1",
     "src/assembly/production-installation-replay.ts": "2e910c9f63b5e3a47e1c1e17900d222423ad2ae890d1145a73fcd92c7176d04a",
-    "src/assembly/production-installation-import.ts": "ca5b2c9fd864d737f8e24c9004a5f96e2e6ed50e0d26f8331bc6c61772390c5b"
+    "src/assembly/production-installation-import.ts": "ca5b2c9fd864d737f8e24c9004a5f96e2e6ed50e0d26f8331bc6c61772390c5b",
+    "tests/assembly/fixed-installation-contract.test.ts": "841b6a464427bfd94a937cf6a6e3435f552f4acaebe0d09e9e651089486a7e21"
   },
   "reviewedDependencyDigest": "6f76399cb703b701d1fd4dc134976a954920c60e53ac712413ed6e53f64ff662"
 }
