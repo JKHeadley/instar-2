@@ -1,5 +1,52 @@
 [
   {
+    "revision": 6,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Round 2: the four exact corrections from astra-m4-launch-amendment-review-d0e4ace.md at reviewed head d0e4ace589c08d82afda597fbd02e6c93bf6a026; no purpose or implementation edit."
+    },
+    "changes": [
+      {
+        "what": "Keep ordinary-local-durability-scope unresolved and retain the local-launch design/admission hold pending operator-approved purpose/Eight reconciliation.",
+        "why": "Finding 1: ordinary-operation wording does not erase the explicit provider/reply local-durable exclusions; the purpose and corresponding owner/policy checks require their own approved disposition.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 1"
+      },
+      {
+        "what": "Renumber the launch predicate references to P10-SI-36.",
+        "why": "Finding 2: retain P10-SI-32–35 for the pending M3-S selection-set design.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 2"
+      },
+      {
+        "what": "Preserve every v1 observation field, including its Six operation identity, with the collision-free internal legacyMessage: true marker; accept the intermediate only from authenticated v1 history and restore exact public bytes and joins.",
+        "why": "Finding 3: the operation field already stores the Six identity and cannot be overwritten by a legacy tag.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 3"
+      },
+      {
+        "what": "Bind exactly one authenticated mediated endpoint and finite method set in handlePolicyDigest; require extra-endpoint, expanded-method, substituted-handle and cross-incarnation refusals, including actual OS attempts.",
+        "why": "Finding 4: one successful mediated request does not enforce a singleton endpoint boundary.",
+        "ref": "astra-m4-launch-amendment-review-d0e4ace.md, finding 4"
+      }
+    ]
+  },
+  {
+    "revision": 5,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Fixed confined-launch owner/profile supplement from astra-m4-launch-owner-adjudication.md, all sections; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec."
+    },
+    "changes": [
+      {
+        "what": "Specify the fixed native-confined-launch operation, ordinary bounded profile, v2 process records and genuine one-use owner consumer.",
+        "why": "The M4 owner adjudication requires a narrow process representation and durability contract; a message operation cannot authorize launch.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-launch-owner-adjudication.md §§2–4,6; uncommitted docs draft on design-m4-fixed-launch-operation"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-19",
     "status": "draft",
