@@ -87,7 +87,7 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
     finally { composition.close(); }
     const document = built.state.read();
     expect(document.turns[previewTurnId('9001', 100)].phase).toBe('api-accepted');
-    expect(document.turns[previewTurnId('9001', 101)]).toMatchObject({ phase: 'ignored-out-of-scope', disposition: 'admitted-unbound' });
+    expect(document.turns[previewTurnId('9001', 101)]).toMatchObject({ phase: 'held-or-refused', disposition: 'held' });
     expect(document.turns[previewTurnId('9001', 102)]).toMatchObject({ phase: 'api-accepted', contextReferences: expect.any(Array) });
     expect(document.turns[previewTurnId('9001', 102)].contextReferences).toHaveLength(2);
     expect(sends(telegram)).toHaveLength(2);
@@ -100,6 +100,7 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
       expect(proof.admissions.length).toBeGreaterThan(0);
       expect(proof.captureReferences.length).toBeGreaterThan(0);
       expect(proof.allowedIntakeIds).toHaveLength(id === 100 ? 1 : 2);
+      expect(proof.stockGroundingValidation).toBe('passed');
     }
     const reopened = setup(path, telegram).composition();
     try { expect(() => reopened.resume()).not.toThrow(); } finally { reopened.close(); }
@@ -207,7 +208,8 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
     const built = setup(path, telegram, {}, { configuration }); const composition = built.composition();
     try { composition.pollOnce(); composition.resume(); } finally { composition.close(); }
     expect(sends(telegram)).toHaveLength(1); expect(sends(telegram)[0].body).toMatchObject({ chat_id: '-1000000007001', message_thread_id: 42 });
-    expect(Object.values(built.state.read().turns).filter(turn => turn.phase === 'ignored-out-of-scope')).toHaveLength(3);
+    expect(Object.values(built.state.read().turns).filter(turn => turn.phase === 'held-or-refused')).toHaveLength(3);
+    expect(Object.values(built.state.read().turns).slice(1).every(turn => turn.disposition === 'held')).toBe(true);
 
     const wrongBotPath = root(); const wrongBotTelegram = recordedTelegram([], { botId: 9002 });
     expect(() => setup(wrongBotPath, wrongBotTelegram, {}, { configuration }).composition()).toThrow();
@@ -236,10 +238,30 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
     expect(Object.values(state.turns)[0].phase).toBe('intake-preserved');
   }, 60_000);
 
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) it(`the actual launcher services ${signal} after durable grounding and before a separate dispatch`, () => {
+    const stateRoot = root('preview-ground-signal-state-'), preloadRoot = root('preview-ground-signal-preload-');
+    const preload = join(preloadRoot, 'preload.mjs'), report = join(preloadRoot, 'report.json');
+    writeFileSync(preload, `import fs from 'node:fs';\nimport childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\nimport {writeFileSync,existsSync,readFileSync} from 'node:fs';\nconst calls=[];let polls=0,signalObserved=false;const stateRoot=${JSON.stringify(stateRoot)},report=${JSON.stringify(report)},signal=${JSON.stringify(signal)};\nprocess.on(signal,()=>{signalObserved=true;});\nchildProcess.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));calls.push(q.method);let result;if(q.method==='getMe')result={id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'};else if(q.method==='getUpdates'){polls++;result=polls===1?[{update_id:100,message:{message_id:1100,from:{id:7,is_bot:false,first_name:'synthetic'},chat:{id:7001,type:'private'},date:1700000000,text:'ground signal'}}]:[];}else result={message_id:8001,chat:{id:7001,type:'private'},text:q.body.text};return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result})})};};\nconst rename=fs.renameSync;let injected=false;fs.renameSync=(from,to)=>{const result=rename(from,to);if(!injected&&String(to).endsWith('/run-proof.json')){injected=true;process.kill(process.pid,signal);}return result;};syncBuiltinESMExports();process.on('exit',()=>{const state=JSON.parse(readFileSync(stateRoot+'/preview-state.json','utf8'));writeFileSync(report,JSON.stringify({calls,signalObserved,stop:existsSync(stateRoot+'/preview-stop.json'),phases:Object.values(state.turns).map(turn=>turn.phase)}));});\n`);
+    const expires = String(Date.now() + 60_000);
+    const result = spawnSync(process.execPath, ['--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/agent.mjs', 'run',
+      '--root', stateRoot, '--bot-id', '9001', '--bot-username', '@fixture_bot', '--operator-sender-id', '7',
+      '--chat-id', '7001', '--chat-kind', 'private', '--forum', 'false', '--message-thread-id', 'none',
+      '--expires-at', expires, '--max-cycles', '3', '--max-poll-seconds', '1', '--max-batch-items', '1',
+      '--max-context-turns', '2', '--max-context-bytes', '4096', '--max-pending-turns', '2', '--max-trial-turns', '4',
+      '--reply-limit', '2', '--reply-window-ms', '60000', '--error-limit', '2', '--backoff-ms', '1', '--max-backoff-ms', '2'],
+    { cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `--import=${preload}`,
+      INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '9001:synthetic_recorded_test_only_value',
+      INSTAR_SECRET_PREVIEW_STORAGE_KEY: '13'.repeat(32) }, encoding: 'utf8', timeout: 30_000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(report, 'utf8'))).toEqual({
+      calls: ['getMe', 'getUpdates'], signalObserved: true, stop: true, phases: ['grounded'],
+    });
+  }, 60_000);
+
   it('enumerates every simulated, dormant, safeguard-substitution, and real-effect ledger tier', () => {
     expect(PREVIEW_STAND_IN_LEDGER.map(row => row.name)).toEqual([
       'fixture-governance-and-register', 'fixture-signing-and-standing-grants',
-      'fixture-clock-and-verification-host', 'fixture-five-six-run-admission-capacity',
+      'fixture-clock-and-verification-host', 'preview-route-hold-gate', 'fixture-five-six-run-admission-capacity',
       'fixture-context-assembler', 'fixture-run-file-storage-and-capture-custody',
       'fixture-in-memory-authority-and-capture-indexes', 'fixture-five-grounding-consumption',
       'fixture-native-launch-and-process-descriptor', 'fixture-context-delivery-nine-evidence',
@@ -254,5 +276,6 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
       .toContain('finalCharge 0');
     expect(PREVIEW_STAND_IN_LEDGER.find(row => row.name === 'fixture-effect-peer-directory')?.liveEffect)
       .toContain('real Telegram send');
+    expect(PREVIEW_STAND_IN_LEDGER.every(row => /^M[345]/u.test(row.replacementUnit))).toBe(true);
   });
 });

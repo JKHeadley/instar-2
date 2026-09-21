@@ -14,6 +14,8 @@ import { createEffectDoorway, decodeOutboundMessage } from '../../src/effects/in
 import { createProductionTelegramCustodian } from '../../src/assembly/production-telegram.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { createRunGraph } from '../../src/rungraph/index.js';
+import { readRecordFact, validateGrounding } from '../../src/rungraph/graph.js';
+import { decodeSessionGrounding } from '../../src/rungraph/records.js';
 import { conversationFixture } from '../conversation/fixture.js';
 import { effectFixture } from '../effects/fixture.js';
 import { createProductionBootOwnerFixture } from '../assembly/production-boot-owner-fixture.js';
@@ -27,38 +29,40 @@ export const FIXED_LIMITED_RESPONSE = `${PREVIEW_LABEL}\nYour message was preser
 /** Every item is a test substitution or dormant fixture descriptor, never production evidence. */
 export const PREVIEW_STAND_IN_LEDGER = Object.freeze([
   Object.freeze({ name: 'fixture-governance-and-register', tier: 'simulated-authority',
-    claims: 'test declaration and conformance authority only', liveEffect: 'fixture signatures satisfy code checks, not operator authority' }),
+    claims: 'test declaration and conformance authority only', liveEffect: 'fixture signatures satisfy code checks, not operator authority', replacementUnit: 'M3 Part B / M3-S' }),
   Object.freeze({ name: 'fixture-signing-and-standing-grants', tier: 'simulated-authority',
-    claims: 'test identity, standing, and binding authority only', liveEffect: 'authorizes the fixture-composed send path only' }),
+    claims: 'test identity, standing, and binding authority only', liveEffect: 'authorizes the fixture-composed send path only', replacementUnit: 'M3 Part B / M3-S' }),
   Object.freeze({ name: 'fixture-clock-and-verification-host', tier: 'simulated-authority',
-    claims: 'recorded freshness and verification-host behavior only', liveEffect: 'none' }),
+    claims: 'recorded freshness and verification-host behavior only', liveEffect: 'none', replacementUnit: 'M4 host' }),
+  Object.freeze({ name: 'preview-route-hold-gate', tier: 'simulated-authority',
+    claims: 'test-side exact route allowlist converts nonmatching captured routes into Four holds', liveEffect: 'prevents excluded Telegram inputs from reaching reply eligibility', replacementUnit: 'M3 Part B / M3-S' }),
   Object.freeze({ name: 'fixture-five-six-run-admission-capacity', tier: 'simulated-internal-operation',
-    claims: 'fixture Five opening/grounding and fixture Six admission/capacity only', liveEffect: 'none' }),
+    claims: 'fixture Five opening/grounding and fixture Six admission/capacity only', liveEffect: 'none', replacementUnit: 'M3-I capacity' }),
   Object.freeze({ name: 'fixture-context-assembler', tier: 'simulated-internal-operation',
-    claims: 'bounded fixture context delivery only', liveEffect: 'none' }),
+    claims: 'bounded fixture context delivery only', liveEffect: 'none', replacementUnit: 'M4-L launch' }),
   Object.freeze({ name: 'fixture-run-file-storage-and-capture-custody', tier: 'simulated-custody',
-    claims: 'fsynced machine-local plaintext test files returning local-durable success only', liveEffect: 'none' }),
+    claims: 'fsynced machine-local plaintext test files returning local-durable success only', liveEffect: 'none', replacementUnit: 'M4 custody' }),
   Object.freeze({ name: 'fixture-in-memory-authority-and-capture-indexes', tier: 'simulated-custody',
-    claims: 'fixture working indexes and durability-return helpers only; required captures are copied to the run files', liveEffect: 'none' }),
+    claims: 'fixture working indexes and durability-return helpers only; required captures are copied to the run files', liveEffect: 'none', replacementUnit: 'M4 custody' }),
   Object.freeze({ name: 'fixture-five-grounding-consumption', tier: 'simulated-internal-operation',
-    claims: 'bounded test-owned context-consumption receipt only', liveEffect: 'none' }),
+    claims: 'bounded test-owned context-consumption receipt only', liveEffect: 'none', replacementUnit: 'M4-L launch' }),
   Object.freeze({ name: 'fixture-native-launch-and-process-descriptor', tier: 'dormant-descriptor',
-    claims: 'fixture launch and pid:42:start:1 descriptor are present but the Native delivery path is not invoked', liveEffect: 'none' }),
+    claims: 'fixture launch and pid:42:start:1 descriptor are present but the Native delivery path is not invoked', liveEffect: 'none', replacementUnit: 'M4-L launch' }),
   Object.freeze({ name: 'fixture-context-delivery-nine-evidence', tier: 'dormant-descriptor',
-    claims: 'happened, finalCharge 0, delayedExecutionExcluded true instrument exists but is not invoked', liveEffect: 'does not assess Telegram' }),
+    claims: 'happened, finalCharge 0, delayedExecutionExcluded true instrument exists but is not invoked', liveEffect: 'does not assess Telegram', replacementUnit: 'M4 G6, including Nine' }),
   Object.freeze({ name: 'fixture-independent-protection-posture', tier: 'dormant-descriptor',
-    claims: 'fixture protected posture descriptor only', liveEffect: 'none' }),
+    claims: 'fixture protected posture descriptor only', liveEffect: 'none', replacementUnit: 'M4 host / M5' }),
   Object.freeze({ name: 'fixture-model-and-persistence-descriptors', tier: 'dormant-descriptor',
-    claims: 'dormant fixture descriptors only; model exchange is never called', liveEffect: 'none' }),
+    claims: 'dormant fixture descriptors only; model exchange is never called', liveEffect: 'none', replacementUnit: 'M4 G6, including Nine / M4 custody' }),
   Object.freeze({ name: 'fixture-effect-peer-directory', tier: 'live-safeguard-substitution',
     claims: 'same-machine second directory satisfies replicated(1) mechanically, not real replication',
-    liveEffect: 'substitutes a safeguard on the real Telegram send' }),
+    liveEffect: 'substitutes a safeguard on the real Telegram send', replacementUnit: 'M5' }),
   Object.freeze({ name: 'fixture-five-source-result', tier: 'simulated-authority',
-    claims: 'fixed-response source marker only; not a model answer', liveEffect: 'feeds the fixed Telegram payload' }),
+    claims: 'fixed-response source marker only; not a model answer', liveEffect: 'feeds the fixed Telegram payload', replacementUnit: 'M4 G6, including Nine' }),
   Object.freeze({ name: 'fixture-reply-nine-assessor', tier: 'dormant-descriptor',
-    claims: 'fixture assessor exists but the reply doorway is installed with assessment null', liveEffect: 'does not assess Telegram' }),
+    claims: 'fixture assessor exists but the reply doorway is installed with assessment null', liveEffect: 'does not assess Telegram', replacementUnit: 'M4 G6, including Nine' }),
   Object.freeze({ name: 'real-telegram-effect', tier: 'real-external-effect',
-    claims: 'a validated Telegram Bot API acceptance only; not delivery or reading', liveEffect: 'real sendMessage' }),
+    claims: 'a validated Telegram Bot API acceptance only; not delivery or reading', liveEffect: 'real sendMessage', replacementUnit: 'M5' }),
 ]);
 
 export interface PreviewConfiguration {
@@ -164,13 +168,24 @@ function fixtureCaptureBytes(owner): Record<string, string> {
   return captures;
 }
 
+function validateSavedGrounding(owner, groundingId: string) {
+  const facts = value(owner.store.read());
+  const groundingFact = facts.find(row => row.id === groundingId && row.kind === 'session-grounding');
+  if (!groundingFact) throw new Error('preview: saved grounding fact missing');
+  const decodeContext = { ...owner.deps.context, facts: { ...owner.ctx, facts } };
+  const grounding = value(decodeSessionGrounding(readRecordFact(groundingFact), decodeContext));
+  const view = value(owner.graph.read(owner.id));
+  validateGrounding(grounding, view.run, view.head, view.pending, decodeContext);
+  return grounding;
+}
+
 function writeRunProof(directory: string, owner, grounded, contextReferences: readonly string[], allowedIntakeIds: readonly string[]) {
   const captures = fixtureCaptureBytes(owner);
   const files = openRunFiles(directory);
   for (const [reference, bytes] of Object.entries(captures)) if (!files.captures.preserve(reference, bytes)) throw new Error('preview run capture changed');
   const facts = value(owner.store.read());
   const proof = { version: 1, run: owner.id, opening: owner.opening.id, grounding: grounded.id,
-    contextReferences, allowedIntakeIds,
+    contextReferences, allowedIntakeIds, stockGroundingValidation: 'passed',
     register: owner.ctx.decode.register, schemas: owner.ctx.schemas, captureReferences: Object.keys(captures).sort(),
     admissions: [...owner.admissions], versions: owner.owners.host.current().versions,
     intakeOwners: owner.deps.context.intakeOwners,
@@ -195,21 +210,6 @@ function establishFiveAndSix(directory: string, context, facts, opening, allowed
     if (!admitted || typeof reference !== 'string') throw new Error('preview: bounded grounding capture absent');
     return [id, { reference, hash: admitted.body.rawHash, sequence: admitted.segment.position }];
   }));
-  const allowed = new Set(allowedIntakeIds); let boundedReads = false;
-  const groundingStore = { ...owner.store, read: () => {
-    const result = owner.store.read();
-    if (!boundedReads) return result;
-    const exact = value(result);
-    class BoundedGroundingFacts extends Array {
-      filter(callback, thisArg) {
-        return Array.prototype.filter.call(this, (row, index, rows) => {
-          if (row.kind === 'intake-admitted' && !allowed.has(row.id)) return false;
-          return callback.call(thisArg, row, index, rows);
-        });
-      }
-    }
-    return owner.success(BoundedGroundingFacts.from(exact));
-  } };
   const grounding = { owner: 'part-ten' as const, read: request => {
     const base = value(owner.deps.grounding.read(request));
     const messages = allowedIntakeIds.map(id => ({ fact: { owner: 'part-two', name: 'FactEnvelope', id },
@@ -217,26 +217,23 @@ function establishFiveAndSix(directory: string, context, facts, opening, allowed
       hash: admittedCapture.get(id).hash }));
     const consumption = owner.append('consumption', json({ worker: request.worker, harness: request.harness,
       hashes: JSON.stringify(messages.map(row => row.hash)),
-      classes: JSON.stringify(owner.deps.groundingPolicy.briefingClasses) })).fact;
+      classes: JSON.stringify(owner.deps.groundingPolicy.briefingClasses) }), [opening.id]).fact;
     return owner.success({ ...base,
       messages,
       intake: { owner: 'part-two', name: 'FactEnvelope', id: opening.id },
       lastInbound: { owner: 'part-two', name: 'FactEnvelope', id: allowedIntakeIds.at(-1) },
       consumption: { owner: 'part-two', name: 'FactEnvelope', id: consumption.id },
-      frontier: { 'machine-a': { epoch: 0, position: consumption.segment.position } } });
+      frontier: { [opening.machine]: { epoch: opening.segment.epoch, position: opening.segment.position } } });
   } };
-  const graph = value(createRunGraph({ ...owner.deps, store: groundingStore, grounding }));
+  const graph = value(createRunGraph({ ...owner.deps, store: owner.store, grounding }));
   value(graph.open(owner.run));
-  // Opening validates the exact Four admission. Grounding retains every causal
-  // envelope but removes stimulus standing from excluded intake in its read view.
-  boundedReads = true;
   value(graph.ground(owner.id, 'w', owner.harnessId, 'start', owner.lease));
-  boundedReads = false;
   const groundingFact = value(owner.store.read()).filter(row => row.kind === 'session-grounding').at(-1);
   const groundingRecord = groundingFact?.body?.record ?? groundingFact?.body;
   if (!groundingFact || JSON.stringify(groundingRecord.messages.map(row => row.fact.id)) !== JSON.stringify(allowedIntakeIds)) {
     throw new Error('preview: actual grounding context differs from bounded admitted context');
   }
+  validateSavedGrounding(owner, groundingFact.id);
   return writeRunProof(directory, owner, { id: groundingFact.id }, contextReferences, allowedIntakeIds);
 }
 
@@ -259,6 +256,7 @@ function recoverFiveAndSix(directory: string, context, facts, opening, expectedR
     || !after.some(row => row.id === proof.grounding && row.kind === 'session-grounding')) {
     throw new Error('preview: Five/Six reconstruction differs from durable proof');
   }
+  validateSavedGrounding(owner, proof.grounding);
   return proofPath;
 }
 
@@ -300,11 +298,20 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         arm: identityPlan.arms.find(arm => arm.required).id, generation: 'generation:fixture' }, io: telegramIO }));
     input.state.gate('admit');
     const admitted = value(admitTelegramAdapter(declaration, { ...fixture.admissionDependencies, api }));
+    const telegramIntakeAdapter = createTelegramIntakeAdapter(admitted, api);
+    const allowlistedIntakeAdapter = Object.freeze({ ...telegramIntakeAdapter,
+      authenticate(raw, capturedRoute, at) {
+        if (capturedRoute.channel !== route.channel || capturedRoute.sender !== route.sender
+          || capturedRoute.identityEpoch !== route.identityEpoch) {
+          throw new Error('preview: route is outside the configured trial allowlist');
+        }
+        return telegramIntakeAdapter.authenticate(raw, capturedRoute, at);
+      } });
     Object.assign(context, { ownedBodies: [value(intakeWorkRegistration(decodeContext, fixture.intake.deps.author.principal.id)),
       value(intakeStopRegistration(decodeContext, fixture.intake.deps.author.principal.id))] });
     const factContext = () => context;
     const intake = value(createIntakePort({ ...fixture.intake.deps, context: factContext,
-      governance: fixture.governed.governance, adapter: createTelegramIntakeAdapter(admitted, api), storage: storage.segment,
+      governance: fixture.governed.governance, adapter: allowlistedIntakeAdapter, storage: storage.segment,
       capture: { owner: 'part-ten', preserve: (bytes, _at) => {
         const parsed = JSON.parse(bytes), digest = hashBytes(bytes);
         const reference = `capture:telegram:update-${String(parsed.update_id)}:${digest.slice(7)}`;
@@ -471,9 +478,9 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       reconcileDurableIntake(false);
       const pending = input.state.pending().sort((left, right) => left.updateId - right.updateId)[0];
       if (!pending) return false;
-      let current = input.state.read().turns[pending.id];
-      if (current.phase === 'intake-preserved') { ground(current); current = input.state.read().turns[pending.id]; }
-      if (current.phase === 'grounded') { input.hooks?.beforeDispatch?.(current); dispatch(current); }
+      const current = input.state.read().turns[pending.id];
+      if (current.phase === 'intake-preserved') ground(current);
+      else if (current.phase === 'grounded') { input.hooks?.beforeDispatch?.(current); dispatch(current); }
       return true;
     };
     const resume = () => { while (resumeOne()) { /* recorded/tests convenience; launcher uses resumeOne with yields */ } };

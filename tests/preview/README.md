@@ -27,17 +27,17 @@ Replace the example expiry and placeholders with the desk-approved values. Priva
 
 ## Stops, bounds, and status
 
-Use the identical configuration with `status` or `stop` instead of `run`. Both are pull-only local operations; there is no server or dashboard. `stop` writes a separate monotonic latch. SIGINT and SIGTERM write the same latch, and the successful loop yields after physical boundaries so the latch is checked before later admission or dispatch.
+Use the identical configuration with `status` or `stop` instead of `run`. Both are pull-only local operations; there is no server or dashboard. `stop` writes a separate monotonic latch. SIGINT and SIGTERM write the same latch. Grounding and dispatch are separate launcher steps: after durable grounding the launcher yields to the event loop, then the dispatch gate checks the latch before any reply call.
 
-Cancellation cannot retract a call already entered. The physical bridge permits approximately 32 seconds for identity or send and `maxPollSeconds + 7` seconds for a poll, plus unbounded-by-transport local synchronous owner work. That is the true worst-case signal delay; an external process/credential stop remains necessary for a supervised trial.
+Cancellation cannot retract a call already entered. The physical bridge permits approximately 32 seconds for identity or send and `maxPollSeconds + 7` seconds for a poll. Local synchronous owner work has no transport-derived time bound. Those are the true shutdown bounds; an external process/credential stop remains necessary for a supervised trial.
 
-The durable limits are the finite expiry, total retained-turn bound, pending-work bound, maximum Telegram batch, context turn/byte bounds, breaker, and reply brake. Restart does not reset them. The reply brake is a conservative fixed window, not a strict rolling “six in every trailing minute” limiter. `max-cycles` is per process and is only an additional loop bound.
+The durable limits are the finite expiry, total retained-turn bound, pending-work bound, maximum Telegram batch, context turn/byte bounds, breaker, and reply brake. Restart does not reset them. With the documented invocation, context is capped at 8 admitted turns and the reply brake is a fixed window of 6, not a strict rolling “six in every trailing minute” limiter. `max-cycles` is a per-process cycle counter and is only an additional loop bound.
 
 ## Durability and restart tiers
 
 - The production storage under the root holds the main Telegram/Four facts and captures encrypted with `storage-key`, including the custodian cursor journal and issued update captures.
 - `preview-state.json` and `preview-stop.json` are plaintext machine-local control records. They retain trial identity, configuration digest, expiry, cursor seed, capacity/rate/error counters, intake disposition, context identity, run proof path, and reply phase.
-- `.preview-runs/*/facts.json`, `captures.json`, and `run-proof.json` are fsynced plaintext test-owned stores. They retain the actual Five opening/grounding facts, fixture Six admission witness set, exact bounded context identities, schemas/register metadata, and required captures. The driver reconstructs and byte/hash-checks this owner state before dispatch and on restart.
+- `.preview-runs/*/facts.json`, `captures.json`, and `run-proof.json` are fsynced plaintext test-owned stores. They retain the actual Five opening/grounding facts, fixture Six admission witness set, exact bounded context identities, schemas/register metadata, and required captures. The driver reconstructs and byte/hash-checks this owner state and runs the stock grounding decoder and unchanged Five coverage validator during recovery and again before dispatch.
 - `.preview-effects/*/origin/facts.json`, peer facts, and origin/peer captures are plaintext fixture stores. The “peer” is a second directory on the same machine, not an independent replica or shared-disk-loss protection.
 
 All of these tiers may contain message material or metadata. The isolated root must be protected and disposed of as trial data. None is portable production history.
@@ -48,28 +48,29 @@ A turn is reply-eligible only after its durable run records and captures reconst
 
 ## Context and audience
 
-Four preserves all recorded neighbours. Only an exact bot identity, operator sender, chat, and (for a forum) topic receives contextual standing or a reply. The run store retains excluded facts unchanged as evidence, while the test-owned grounding read projection removes excluded `intake-admitted` rows from the stimulus selection without rewriting their signed bytes. Context over either configured bound pauses the admitted turn; it does not silently discard older admitted context.
+Four preserves all recorded neighbours. A wrong verified bot identity refuses composition. A test-side exact-route gate causes wrong sender, chat, or forum topic inputs to remain Four-held; they receive no contextual standing or reply. Grounding uses normal arrays and the current admitted opening as its durable frontier, so later messages in the same batch are future history for that turn while earlier bound messages remain covered. The same saved grounding must pass Five's unchanged stock validation after establishment, during recovery, and before dispatch. Context over either configured bound pauses the admitted turn; it does not silently discard older admitted context.
 
 ## Complete stand-in ledger
 
-| Name | Tier and honest limit |
-|---|---|
-| `fixture-governance-and-register` | simulated authority; test declarations/conformance only |
-| `fixture-signing-and-standing-grants` | simulated authority; fixture signatures satisfy code checks, not operator authority |
-| `fixture-clock-and-verification-host` | simulated clock/verification host only |
-| `fixture-five-six-run-admission-capacity` | fixture Five opening/grounding and fixture Six admission/capacity only |
-| `fixture-context-assembler` | bounded test-owned grounding selection, not production context authority |
-| `fixture-run-file-storage-and-capture-custody` | fsynced plaintext local files returning test `local-durable` success |
-| `fixture-in-memory-authority-and-capture-indexes` | working fixture indexes/helpers; required captures are copied to the run files |
-| `fixture-five-grounding-consumption` | simulated internal context-consumption receipt |
-| `fixture-native-launch-and-process-descriptor` | dormant fixture launch/`pid:42:start:1` descriptor; Native delivery is not invoked |
-| `fixture-context-delivery-nine-evidence` | dormant `happened`, `finalCharge: 0`, `delayedExecutionExcluded: true` instrument; not invoked |
-| `fixture-independent-protection-posture` | dormant `independentProtection: protected` descriptor |
-| `fixture-model-and-persistence-descriptors` | dormant model/persistence descriptors; no model exchange is invoked |
-| `fixture-effect-peer-directory` | live safeguard substitution: same-machine directory mechanically satisfies `replicated(1)` for the real send, but is not replication |
-| `fixture-five-source-result` | fixed-response source marker, not a model answer |
-| `fixture-reply-nine-assessor` | present in the fixture but deliberately disconnected via `assessment: null` |
-| `real-telegram-effect` | actual Bot API `sendMessage`; exact API acceptance only |
+| Name | Tier and honest limit | Replacement unit |
+|---|---|---|
+| `fixture-governance-and-register` | simulated authority; test declarations/conformance only | M3 Part B / M3-S |
+| `fixture-signing-and-standing-grants` | simulated authority; fixture signatures satisfy code checks, not operator authority | M3 Part B / M3-S |
+| `fixture-clock-and-verification-host` | simulated clock/verification host only | M4 host |
+| `preview-route-hold-gate` | simulated authority; test-side exact allowlist turns nonmatching routes into Four holds | M3 Part B / M3-S |
+| `fixture-five-six-run-admission-capacity` | fixture Five opening/grounding and fixture Six admission/capacity only | M3-I capacity |
+| `fixture-context-assembler` | bounded test-owned grounding selection, not production context authority | M4-L launch |
+| `fixture-run-file-storage-and-capture-custody` | fsynced plaintext local files returning test `local-durable` success | M4 custody |
+| `fixture-in-memory-authority-and-capture-indexes` | working fixture indexes/helpers; required captures are copied to the run files | M4 custody |
+| `fixture-five-grounding-consumption` | simulated internal context-consumption receipt | M4-L launch |
+| `fixture-native-launch-and-process-descriptor` | dormant fixture launch/`pid:42:start:1` descriptor; Native delivery is not invoked | M4-L launch |
+| `fixture-context-delivery-nine-evidence` | dormant `happened`, `finalCharge: 0`, `delayedExecutionExcluded: true` instrument; not invoked | M4 G6, including Nine |
+| `fixture-independent-protection-posture` | dormant `independentProtection: protected` descriptor | M4 host / M5 |
+| `fixture-model-and-persistence-descriptors` | dormant model/persistence descriptors; no model exchange is invoked | M4 G6, including Nine / M4 custody |
+| `fixture-effect-peer-directory` | live safeguard substitution: same-machine directory mechanically satisfies `replicated(1)` for the real send, but is not replication | M5 |
+| `fixture-five-source-result` | fixed-response source marker, not a model answer | M4 G6, including Nine |
+| `fixture-reply-nine-assessor` | present in the fixture but deliberately disconnected via `assessment: null` | M4 G6, including Nine |
+| `real-telegram-effect` | actual Bot API `sendMessage`; exact API acceptance only | M5 |
 
 The actual live-effect authorization still comes from the separately recorded operator trial grant and any required waivers. This code and its PREVIEW label grant none.
 
