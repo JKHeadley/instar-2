@@ -48,6 +48,10 @@ All of these tiers may contain message material or metadata. The isolated root m
 
 The intake receipt uses the production custodian's issued public update-capture reference. After each captured batch, the preview durably records the owner-derived next offset; reopening supplies that offset as the admitted cursor baseline. Before every new poll, the driver reconciles all durable Four admissions, holds, stops, refusals, and unresolved receipts into semantic turn identities. A duplicate never creates a fresh admission or changes the original disposition.
 
+The fixture binding is authored for the configured Telegram sender principal, not the sender from a canned Telegram fixture. Its target grant expires with the durable trial; the outer state gate uses the launcher's wall clock and prevents work before creation or after expiry. The Four fixture authority and its signed fact lineage still use their fixture causal clock; they do not claim to be a production clock. A live-shaped private `/start` (including `bot_command` entities and ordinary Telegram `from` metadata) is authenticated by the real Telegram adapter and selects the configured-principal binding.
+
+An admission is immutable. A turn already stored as `admitted-unbound` remains `ignored-out-of-scope`, is never re-admitted under a later corrected binding, and receives no retroactive reply. Operators should retain that record as evidence and send a new turn only under an authorized corrected trial; they must not edit or replay the old turn as if it had been bound.
+
 A turn is reply-eligible only after its durable run records and captures reconstruct exactly. The irreversible boundary is preceded by `dispatch-outcome-unknown`; every ambiguous, rejected, or unrecorded response remains there forever, is never resent, and increments the error breaker. Only an Eight `response` observation whose retained Telegram bytes exactly validate `ok:true`, positive message ID, bound chat/topic, and fixed text becomes `api-accepted`. That label means Bot API acceptance only, never human delivery or reading. The reply doorway has `assessment: null`; fixture Nine does not certify Telegram.
 
 ## Context and audience
@@ -59,8 +63,8 @@ Four preserves all recorded neighbours. A wrong verified bot identity refuses co
 | Name | Tier and honest limit | Replacement unit |
 |---|---|---|
 | `fixture-governance-and-register` | simulated authority; test declarations/conformance only | M3 Part B / M3-S |
-| `fixture-signing-and-standing-grants` | simulated authority; fixture signatures satisfy code checks, not operator authority | M3 Part B / M3-S |
-| `fixture-clock-and-verification-host` | simulated clock/verification host only | M4 host |
+| `fixture-signing-and-standing-grants` | simulated authority; fixture signatures, configured-principal binding, and a target grant expiring with the trial satisfy code checks, not operator authority | M3 Part B / M3-S |
+| `fixture-clock-and-verification-host` | simulated causal clock/verification host only; the outer durable trial gates separately use wall time | M4 host |
 | `preview-route-hold-gate` | simulated authority; test-side exact allowlist turns nonmatching routes into Four holds | M3 Part B / M3-S |
 | `fixture-five-six-run-admission-capacity` | fixture Five opening/grounding and fixture Six admission/capacity only | M3-I capacity |
 | `fixture-context-assembler` | bounded test-owned grounding selection, not production context authority | M4-L launch |

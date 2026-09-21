@@ -3,12 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonical } from '../../src/index.js';
-import { createFactStore, hashBytes } from '../../src/facts/index.js';
+import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
 import { createIntakePort, intakeStopRegistration, intakeWorkRegistration } from '../../src/intake/index.js';
 import {
   admitTelegramAdapter, createTelegramIngress, createTelegramIntakeAdapter,
   createTelegramReplyOperationAdapter, installTelegramReplyOperation, renderTelegramHtml,
-  telegramConversation,
+  telegramConversation, telegramParserDeclarationId,
 } from '../../src/conversation/index.js';
 import { createEffectDoorway, decodeOutboundMessage } from '../../src/effects/index.js';
 import { createProductionTelegramCustodian } from '../../src/assembly/production-telegram.js';
@@ -19,7 +19,7 @@ import { decodeSessionGrounding } from '../../src/rungraph/records.js';
 import { conversationFixture } from '../conversation/fixture.js';
 import { effectFixture } from '../effects/fixture.js';
 import { createProductionBootOwnerFixture } from '../assembly/production-boot-owner-fixture.js';
-import { json, value } from '../facts/fixtures.js';
+import { json, privateKey, value } from '../facts/fixtures.js';
 import { durablePreviewWrite, previewTurnId } from './state.js';
 import type { PreviewIntakeDisposition, PreviewState, PreviewTurn } from './state.js';
 
@@ -31,9 +31,9 @@ export const PREVIEW_STAND_IN_LEDGER = Object.freeze([
   Object.freeze({ name: 'fixture-governance-and-register', tier: 'simulated-authority',
     claims: 'test declaration and conformance authority only', liveEffect: 'fixture signatures satisfy code checks, not operator authority', replacementUnit: 'M3 Part B / M3-S' }),
   Object.freeze({ name: 'fixture-signing-and-standing-grants', tier: 'simulated-authority',
-    claims: 'test identity, standing, and binding authority only', liveEffect: 'authorizes the fixture-composed send path only', replacementUnit: 'M3 Part B / M3-S' }),
+    claims: 'test identity, configured-principal binding, and target grant expiring with the trial only', liveEffect: 'authorizes the fixture-composed send path only', replacementUnit: 'M3 Part B / M3-S' }),
   Object.freeze({ name: 'fixture-clock-and-verification-host', tier: 'simulated-authority',
-    claims: 'recorded freshness and verification-host behavior only', liveEffect: 'none', replacementUnit: 'M4 host' }),
+    claims: 'fixture causal time and recorded verification-host behavior only; wall time belongs to the outer trial gate', liveEffect: 'none', replacementUnit: 'M4 host' }),
   Object.freeze({ name: 'preview-route-hold-gate', tier: 'simulated-authority',
     claims: 'test-side exact route allowlist converts nonmatching captured routes into Four holds', liveEffect: 'prevents excluded Telegram inputs from reaching reply eligibility', replacementUnit: 'M3 Part B / M3-S' }),
   Object.freeze({ name: 'fixture-five-six-run-admission-capacity', tier: 'simulated-internal-operation',
@@ -88,6 +88,7 @@ export interface PreviewCompositionInput {
   readonly storageIO: unknown;
   readonly telegramIO?: unknown;
   readonly telegramIOFactory?: (storage: unknown) => unknown;
+  readonly now?: () => number;
   readonly resolveSecret: (reference: Readonly<{ vault: string; name: string }>) => string;
   readonly hooks?: Readonly<{
     beforeIntakeIndex?: (candidate: Readonly<{ id: string; updateId: number }>) => void;
@@ -108,14 +109,65 @@ function expectedRoute(configuration: PreviewConfiguration) {
     identityEpoch: `telegram:v1:bot:${configuration.botId}:epoch:preview-stage-1`, eventId: null });
 }
 
-function seedSignedBinding(storage, fixture, route): void {
-  fixture.bind(route);
-  const existing = new Set(storage.segment.read().map(row => row.id));
-  for (const fact of fixture.intake.storage.read()) {
-    if (existing.has(fact.id)) continue;
-    const head = storage.segment.read().at(-1)?.contentHash ?? null;
-    value(storage.segment.append(value(canonical(fact)).bytes, head)); existing.add(fact.id);
+function seedSignedBinding(storage, fixture, route, trial): void {
+  // This is fixture authority: its signed fact lineage uses the fixture's causal
+  // clock. The preview state's real trial window remains the outer live gate.
+  const clock = fixture.intake.f.now;
+  const principal = fixture.intake.f.principal(route.sender, 'person');
+  const authorGrant = fixture.intake.f.grant({ id: 'telegram-binding-author-grant',
+    grantee: fixture.intake.f.alice, scope: fixture.intake.f.scope, issuedAt: clock });
+  const grant = fixture.intake.f.grant({ id: 'preview-telegram-binding-grant',
+    grantee: principal, scope: fixture.intake.f.scope, issuedAt: clock, expiresAt: trial.expiresAt });
+  fixture.intake.syncCaptures();
+  for (const [reference, bytes] of Object.entries(fixture.intake.f.captures)) {
+    if (!storage.captures.preserve(reference, bytes)) throw new Error('preview: fixture authority capture changed');
   }
+  const rootSchema = { ...fixture.intake.f.schema, kind: 'genesis-grant', fields: {
+    grant: { kind: 'constitutional' as const, type: 'StandingGrant' as const },
+  } };
+  const context = fixture.intake.context;
+  Object.assign(context, { schemas: [...context.schemas.filter(schema => schema.kind !== rootSchema.kind), rootSchema] });
+  const bindingCandidates = storage.segment.read().filter(fact => fact.kind === 'conversation-binding'
+    && fact.body?.adapter === telegramParserDeclarationId && fact.body?.channel === route.channel);
+  const superseded = new Set(bindingCandidates.map(fact => fact.body?.supersedes));
+  const bindingHeads = bindingCandidates.filter(fact => !superseded.has(fact.id));
+  if (bindingHeads.length > 1) throw new Error('preview: fixture binding authority has multiple heads');
+  const priorHead = bindingHeads[0] ?? null;
+  const grantFact = priorHead === null ? null : storage.segment.read().find(fact => fact.kind === 'genesis-grant'
+    && fact.body?.grant?.id === priorHead.body?.grantId);
+  const existingAuthor = storage.segment.read().find(fact => fact.kind === 'genesis-grant'
+    && fact.body?.grant?.id === authorGrant.id && fact.body?.grant?.grantee?.id === authorGrant.grantee.id);
+  if (priorHead?.body?.sender === route.sender && priorHead.body?.identityEpoch === route.identityEpoch
+    && priorHead.body?.principalId === principal.id && priorHead.body?.scope !== undefined
+    && grantFact?.body?.grant?.issuedAt?.value === clock.value
+    && grantFact.body?.grant?.expiresAt === trial.expiresAt && existingAuthor) {
+    Object.assign(context, { grants: [{ factId: existingAuthor.id, grant: authorGrant }, { factId: grantFact.id, grant }] });
+    return;
+  }
+
+  const grantContext = { ...context, decode: { ...context.decode, provenance: authorGrant.source } };
+  const root = existingAuthor ?? value(authorAndAppend({
+      kind: 'genesis-grant', schemaVersion: 1, machine: 'machine-a', principal: json(fixture.intake.f.alice),
+      provenance: json(authorGrant.source), at: json(clock), body: { grant: json(authorGrant) }, required: [],
+    }, grantContext, createFactStore(grantContext, storage.segment), privateKey)).fact;
+  Object.assign(context, { grants: [{ factId: root.id, grant: authorGrant }] });
+  const targetContext = { ...context, decode: { ...context.decode, provenance: grant.source } };
+  const existingTarget = storage.segment.read().find(fact => fact.kind === 'genesis-grant'
+    && fact.body?.grant?.id === grant.id && fact.body?.grant?.grantee?.id === principal.id
+    && fact.body?.grant?.expiresAt === trial.expiresAt);
+  const target = existingTarget ?? value(authorAndAppend({
+      kind: 'genesis-grant', schemaVersion: 1, machine: 'machine-a', principal: json(fixture.intake.f.alice),
+      provenance: json(grant.source), at: json(clock), body: { grant: json(grant) }, required: [root.id],
+    }, targetContext, createFactStore(targetContext, storage.segment), privateKey)).fact;
+  Object.assign(context, { grants: [{ factId: root.id, grant: authorGrant }, { factId: target.id, grant }] });
+  value(authorAndAppend({
+    kind: 'conversation-binding', schemaVersion: 1, machine: 'machine-a', principal: json(fixture.intake.f.alice),
+    provenance: json(fixture.intake.f.alice.provenance), at: json(clock), body: {
+      adapter: telegramParserDeclarationId, channel: route.channel, sender: route.sender,
+      identityEpoch: route.identityEpoch, principalId: principal.id, grantId: grant.id,
+      scope: json(fixture.intake.f.scope), supersedes: priorHead?.id ?? 'none',
+    }, required: [root.id, target.id],
+  }, context, createFactStore(context, storage.segment), privateKey));
 }
 
 function restoreFactCaptures(storage, fixture): void {
@@ -266,8 +318,10 @@ export function stage2GuardedProviderPath(): never {
 
 export function createPreviewComposition(input: PreviewCompositionInput) {
   const configuration = input.configuration;
-  input.state.gate('admit');
+  const stateDocument = input.state.gate('admit');
   const fixture = conversationFixture({ botId: configuration.botId, skipInitialAdmission: true });
+  const authorityInstant = input.now?.() ?? fixture.intake.f.now.value;
+  if (!Number.isSafeInteger(authorityInstant) || authorityInstant < 0) throw new Error('preview: invalid authority clock');
   const context = fixture.intake.context;
   const previewRegister = { ...context.decode.register, entries: [...new Set([...context.decode.register.entries, 'preview'])] };
   Object.assign(context, { decode: { ...context.decode, register: previewRegister } });
@@ -277,7 +331,10 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
     context: decodeContext, io: input.storageIO }));
   try {
     const route = expectedRoute(configuration);
-    seedSignedBinding(storage, fixture, route); restoreFactCaptures(storage, fixture);
+    restoreFactCaptures(storage, fixture);
+    seedSignedBinding(storage, fixture, route, stateDocument.trial);
+    fixture.intake.setTime(authorityInstant);
+    Object.assign(context, { genesis: { ...context.genesis, clock: fixture.intake.f.clock(authorityInstant) } });
     const declaration = Object.freeze({ ...fixture.declaration,
       bot: Object.freeze({ id: configuration.botId, username: configuration.botUsername, identityEpoch: 'preview-stage-1' }),
       token: telegramSecret, cursor: Object.freeze({ ...fixture.declaration.cursor,
@@ -321,7 +378,7 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       } },
       dedupGeneration: () => ({ reference: context.decode.register.generation,
         kinds: context.schemas.map(schema => schema.kind), lineages: { [fixture.intake.deps.author.machine]: {
-          head: storage.segment.read().at(-1)?.segment ?? null, observedAt: 100, closed: false } } }) }));
+          head: storage.segment.read().at(-1)?.segment ?? null, observedAt: authorityInstant, closed: false } } }) }));
     const facts = createFactStore(factContext(), storage.segment);
     const ingress = createTelegramIngress({ boundary: fixture.admissionDependencies.boundary,
       admitted, api, intake, facts, observer: fixture.intake.deps.author.principal.id });

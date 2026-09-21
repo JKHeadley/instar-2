@@ -17,6 +17,15 @@ function privateUpdate(updateId: number, sender: number, text: string, chat = 70
     from: { id: sender, is_bot: false, first_name: `sender-${sender}` },
     chat: { id: chat, type: 'private', first_name: 'preview' }, date: 1_700_000_000, text } };
 }
+function livePrivateStart(updateId: number, sender: number) {
+  return { update_id: updateId, message: { message_id: 5300 + updateId,
+    from: { id: sender, is_bot: false, first_name: 'Preview', last_name: 'Operator',
+      username: 'preview_operator', language_code: 'en', is_premium: true },
+    chat: { id: sender, type: 'private', first_name: 'Preview', last_name: 'Operator',
+      username: 'preview_operator' },
+    date: Math.floor(Date.now() / 1000), text: '/start',
+    entities: [{ offset: 0, length: 6, type: 'bot_command' }] } };
+}
 function topicUpdate(updateId: number, sender: number, text: string, chat = -1000000007001, topic = 42) {
   return { update_id: updateId, message: { message_id: updateId + 1000, message_thread_id: topic, is_topic_message: true,
     from: { id: sender, is_bot: false, first_name: `sender-${sender}` },
@@ -48,7 +57,9 @@ function recordedTelegram(updates: readonly object[], options: { mode?: 'positiv
 }
 
 function setup(path: string, transport, hooks = {}, overrides: any = {}) {
-  const expiresAt = 2_000_000_000_000;
+  const expiresAt = overrides.expiresAt ?? 2_000_000_000_000;
+  const stateNow = overrides.stateNow ?? (() => 1_800_000_000_000);
+  const authorityNow = overrides.authorityNow ?? (() => 100);
   const configuration = { root: path, machine: 'preview-test-machine', botId: '9001', botUsername: '@fixture_bot',
     operatorSenderId: '7', chatId: '7001', chatKind: 'private', forum: false, messageThreadId: null,
     maxPollSeconds: 1, maxBatchItems: 8, maxContextTurns: 8, maxContextBytes: 65_536,
@@ -58,9 +69,10 @@ function setup(path: string, transport, hooks = {}, overrides: any = {}) {
   const { totalErrorLimit, ...configurationLimits } = limits;
   const stateConfiguration = { ...configuration, expiresAt, ...configurationLimits };
   const state = openPreviewState({ root: path, configuration: stateConfiguration, expiresAt,
-    now: () => 1_800_000_000_000, ...limits, totalErrorLimit });
+    now: stateNow, ...limits, totalErrorLimit });
   const composition = (nextHooks = hooks) => createPreviewComposition({ configuration, state,
     storageKey: new Uint8Array(32).fill(19), storageIO: productionStorageIO, telegramIO: transport.io,
+    now: authorityNow,
     resolveSecret: reference => {
       if (reference.vault === 'preview' && reference.name === 'telegram-bot-token') return '9001:synthetic_recorded_test_only_value';
       throw new Error('recorded resolver refused');
@@ -98,6 +110,55 @@ function runRecordedLauncher(stateRoot: string, preloadSource: string,
 }
 
 describe('Stage 1 preview driver (recorded transport only)', () => {
+  it('binds a live-shaped private /start at wall time to the configured principal and replies once', () => {
+    const path = root(); const wallNow = Date.now(); const expiresAt = wallNow + 60_000;
+    const sender = 7812716706; const botId = 8820318295;
+    const telegram = recordedTelegram([livePrivateStart(746001, sender)], { botId });
+    const built = setup(path, telegram, {}, { expiresAt, stateNow: () => wallNow,
+      configuration: { botId: String(botId), operatorSenderId: String(sender),
+        chatId: String(sender), maxBatchItems: 1 } });
+    const composition = built.composition(); let facts: any[] = [];
+    try { composition.pollOnce(); composition.resume(); facts = composition.storage.segment.read(); }
+    finally { composition.close(); }
+    const turn = built.state.read().turns[previewTurnId(String(botId), 746001)];
+    expect(turn).toMatchObject({ disposition: 'admitted-bound', phase: 'api-accepted' });
+    expect(sends(telegram)).toHaveLength(1);
+    expect(sends(telegram)[0].body.text).toBe(FIXED_LIMITED_RESPONSE);
+    const binding = facts.find(fact => fact.kind === 'conversation-binding'
+      && fact.body.sender === `telegram:v1:user:${sender}`);
+    expect(binding.body).toMatchObject({ principalId: `telegram:v1:user:${sender}`,
+      channel: `telegram:v1:bot:${botId}:chat:${sender}:direct` });
+    const grant = facts.find(fact => fact.kind === 'genesis-grant'
+      && fact.body.grant.id === binding.body.grantId);
+    expect(grant.body.grant).toMatchObject({ grantee: { id: `telegram:v1:user:${sender}` },
+      issuedAt: { value: 100 }, expiresAt });
+  }, 60_000);
+
+  it('does not bind outside the trial window or retroactively re-admit a stored unbound turn', () => {
+    const path = root(); const wallNow = Date.now(); const expiresAt = wallNow + 30_000;
+    const sender = 7812716706; const botId = 8820318295;
+    const telegram = recordedTelegram([livePrivateStart(746010, sender)], { botId });
+    const common = { expiresAt, stateNow: () => wallNow,
+      configuration: { botId: String(botId), operatorSenderId: String(sender), chatId: String(sender), maxBatchItems: 1 } };
+    const outside = setup(path, telegram, {}, { ...common, authorityNow: () => expiresAt + 1 });
+    let composition = outside.composition();
+    try { composition.pollOnce(); composition.resume(); } finally { composition.close(); }
+    let document = outside.state.read();
+    expect(document.turns[previewTurnId(String(botId), 746010)]).toMatchObject({
+      disposition: 'admitted-unbound', phase: 'ignored-out-of-scope' });
+    expect(sends(telegram)).toHaveLength(0);
+
+    const reopened = setup(path, telegram, {}, { ...common, authorityNow: () => wallNow + 1 });
+    composition = reopened.composition();
+    try { composition.resume(); expect(sends(telegram)).toHaveLength(0); composition.pollOnce(); composition.resume(); }
+    finally { composition.close(); }
+    document = reopened.state.read();
+    expect(document.turns[previewTurnId(String(botId), 746010)]).toMatchObject({
+      disposition: 'admitted-unbound', phase: 'ignored-out-of-scope' });
+    expect(Object.keys(document.turns)).toEqual([previewTurnId(String(botId), 746010)]);
+    expect(sends(telegram)).toHaveLength(0);
+  }, 90_000);
+
   it('supports the narrow private-chat target, durable owner reconstruction, two turns, and an excluded outsider', () => {
     expect(process.env.INSTAR_TELEGRAM_LIVE_TEST).toBeUndefined();
     const path = root();
