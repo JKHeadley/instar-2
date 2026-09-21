@@ -1,67 +1,84 @@
 # Stage 1 Telegram preview agent
 
-This is a supervised developmental test driver. It is not the production entry, a production admission receipt, or evidence that the incomplete safeguards are real. It uses the real Telegram custodian, long-poll ingress, Four intake, Five run graph, Six admission calls, Eight effect doorway, and Telegram reply operation. It stops before any provider/model path and sends only this fixed model-independent response:
+This is a machine-local, supervised test driver, not the production entry or production-admission evidence. It uses the real production Telegram custodian and physical bridge, long-poll ingress, Four intake, Five run graph, fixture Six admission callbacks, and the real Eight Telegram reply operation. It stops before every provider/model path and can send only this model-independent text:
 
 > PREVIEW — experimental test agent; production safeguards incomplete. Your message was preserved and grounded for this supervised trial. No model was called.
 
-There is no provider route, provider credential, model call, tool call, or model spend in Stage 1. `stage2GuardedProviderPath` is the deliberately closed seam for the later G6 exact-response work.
+The prefix is present before HTML rendering, digesting, and Eight preparation. There is no provider SecretRef, route, model call, tool call, or model spend. `stage2GuardedProviderPath` is the closed Stage 2 seam.
 
-## Live trial invocation
+## Prerequisites and exact invocation
 
-The host secret resolver must expose exactly these references before launch; the values must not be placed in arguments or logs:
+A fresh checkout needs a matching `dist/` build first (`npm run build`); test fixtures imported by this driver resolve ignored build artifacts. Use a fresh absolute root on one machine, a preview-only bot, synthetic/non-sensitive messages, an already authorized trial, and these host-resolved SecretRefs:
 
-| SecretRef | Host binding | Required value |
+| SecretRef | Host binding | Value |
 |---|---|---|
-| `vault=preview, name=telegram-bot-token` | `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` | Telegram bot token |
+| `vault=preview, name=telegram-bot-token` | `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` | preview bot token |
 | `vault=preview, name=storage-key` | `INSTAR_SECRET_PREVIEW_STORAGE_KEY` | 32-byte lowercase hex or base64 key |
 
-No `anthropic-api-key` is read in Stage 1. The bot ID and username must match the token's live `getMe` identity. The sender, chat, and optional forum topic are one immutable allowlist. Use a fresh absolute root dedicated to this preview and synthetic/non-sensitive messages only.
+The values never belong in arguments or logs. The driver suppresses resolver/child diagnostics, but the bindings are still host-process environment custody, not independent secret isolation.
 
-From the repository root, the desk's one-line invocation is:
+The desk's exact one-line private-chat trial invocation is:
 
 ```sh
-node --loader ./scripts/slice-ts-loader.mjs tests/preview/agent.mjs run --root /ABSOLUTE/ISOLATED/PREVIEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME --operator-sender-id OPERATOR_TELEGRAM_USER_ID --chat-id ALLOWED_CHAT_ID --forum false --message-thread-id none --expires-at 2026-09-22T19:00:00Z --max-cycles 1000 --max-poll-seconds 5 --max-batch-items 8 --max-context-turns 8 --max-context-bytes 65536 --reply-limit 6 --reply-window-ms 60000 --error-limit 5 --backoff-ms 250 --max-backoff-ms 5000
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/agent.mjs run --root /ABSOLUTE/ISOLATED/PREVIEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME --operator-sender-id OPERATOR_TELEGRAM_USER_ID --chat-id OPERATOR_PRIVATE_CHAT_ID --chat-kind private --forum false --message-thread-id none --expires-at 2026-09-22T19:00:00Z --max-cycles 1000 --max-poll-seconds 5 --max-batch-items 8 --max-context-turns 8 --max-context-bytes 65536 --max-pending-turns 16 --max-trial-turns 128 --reply-limit 6 --reply-window-ms 60000 --error-limit 5 --backoff-ms 250 --max-backoff-ms 5000
 ```
 
-The expiry in that command is an example finite window and must be replaced with the desk-approved trial deadline. A run also ends after `--max-cycles`; it is not immortal. Polling is single-flight, errors use bounded exponential backoff, five consecutive errors latch the breaker, and replies are capped to six per minute by the durable outer ledger.
+Replace the example expiry and placeholders with the desk-approved values. Private chat is first-class and is the narrowest audience. For an authorized forum topic, use `--chat-kind group-topic --chat-id -100… --forum true --message-thread-id TOPIC_ID`. Only the bound operator can trigger a reply, but a group/topic reply is visible to everyone who can see that group/topic; sender binding does not make it private.
 
-Use the same arguments with `status` or `stop` in place of `run`. These are pull-only local operations; there is no status server or dashboard. `stop` writes a separate durable monotonic latch, while SIGINT and SIGTERM write the same latch. The driver checks it before composition/admission, polling, owner work admission, and dispatch. A long poll or an already-entered synchronous Telegram call can delay shutdown by its configured timeout; stop cannot retract a request already sent.
+## Stops, bounds, and status
 
-## Durable/restart behavior
+Use the identical configuration with `status` or `stop` instead of `run`. Both are pull-only local operations; there is no server or dashboard. `stop` writes a separate monotonic latch. SIGINT and SIGTERM write the same latch, and the successful loop yields after physical boundaries so the latch is checked before later admission or dispatch.
 
-`preview-state.json`, `preview-stop.json`, encrypted owner facts/captures, and the production root lease live under the isolated root. The trial ID, configuration digest, allowlist, expiry, rate bounds, turn identities, context references, and reply phases survive restart. A changed configuration is refused. A nonempty established root with a missing trial identity is refused rather than silently reinitialized.
+Cancellation cannot retract a call already entered. The physical bridge permits approximately 32 seconds for identity or send and `maxPollSeconds + 7` seconds for a poll, plus unbounded-by-transport local synchronous owner work. That is the true worst-case signal delay; an external process/credential stop remains necessary for a supervised trial.
 
-Each inbound Telegram update has one semantic turn identity. A cut after intake resumes owner grounding and reply preparation. Immediately before the irreversible reply call the state advances to `dispatch-outcome-unknown`; therefore a cut during or after dispatch is never treated as “not sent” and is never retried. A successful API response advances it to `sent`, which means only that the recorded provider response was observed—not that a human received or read it. Unknown outcomes remain unknown.
+The durable limits are the finite expiry, total retained-turn bound, pending-work bound, maximum Telegram batch, context turn/byte bounds, breaker, and reply brake. Restart does not reset them. The reply brake is a conservative fixed window, not a strict rolling “six in every trailing minute” limiter. `max-cycles` is per process and is only an additional loop bound.
 
-Out-of-scope updates still pass through the real custodian and Four preservation path, then remain `ignored-out-of-scope`; the preview never replies to them. Preceding allowlisted captures are indexed into a bounded context set before the real Five open/ground exercise. Hitting a context bound pauses the turn instead of deleting accepted history.
+## Durability and restart tiers
 
-## Stand-in ledger
+- The production storage under the root holds the main Telegram/Four facts and captures encrypted with `storage-key`, including the custodian cursor journal and issued update captures.
+- `preview-state.json` and `preview-stop.json` are plaintext machine-local control records. They retain trial identity, configuration digest, expiry, cursor seed, capacity/rate/error counters, intake disposition, context identity, run proof path, and reply phase.
+- `.preview-runs/*/facts.json`, `captures.json`, and `run-proof.json` are fsynced plaintext test-owned stores. They retain the actual Five opening/grounding facts, fixture Six admission witness set, exact bounded context identities, schemas/register metadata, and required captures. The driver reconstructs and byte/hash-checks this owner state before dispatch and on restart.
+- `.preview-effects/*/origin/facts.json`, peer facts, and origin/peer captures are plaintext fixture stores. The “peer” is a second directory on the same machine, not an independent replica or shared-disk-loss protection.
 
-These stand-ins describe only the recorded test world. They confer no live approval, custody, capacity, confinement, charge, quiescence, delivery, or production-admission claim.
+All of these tiers may contain message material or metadata. The isolated root must be protected and disposed of as trial data. None is portable production history.
 
-| Name | Honest claim | Replacement unit |
-|---|---|---|
-| `fixture-governance-and-register` | test declaration/conformance authority only | M3 Part B / M3-S |
-| `fixture-signing-and-standing-grants` | test identity and binding authority only | M3 Part B / M4 custody |
-| `fixture-clock-and-verification-host` | recorded freshness and assessment only | M4 host |
-| `fixture-five-six-run-admission` | recorded run opening, grounding, fence, and reservation only | M3-I capacity / M4 host |
-| `fixture-context-assembler` | bounded preview index, not Five production grounding evidence | M4-L launch |
-| `fixture-effect-peer-directory` | second local directory, not a surviving replica | M4-L launch |
-| `fixture-nine-effect-assessor` | recorded assessment, not independent live evidence | M4 G6 including Nine |
-| `fixture-five-source-result` | fixed-response source marker, not a model answer | M4 G6 including Nine |
+The intake receipt uses the production custodian's issued public update-capture reference. After each captured batch, the preview durably records the owner-derived next offset; reopening supplies that offset as the admitted cursor baseline. Before every new poll, the driver reconciles all durable Four admissions, holds, stops, refusals, and unresolved receipts into semantic turn identities. A duplicate never creates a fresh admission or changes the original disposition.
 
-The conservative preview state and rate ledger are outer brakes, not owner accounting or delivery records. The real Telegram effect is authorized only by the operator's separately approved live trial scope; this README grants no waiver or launch approval.
+A turn is reply-eligible only after its durable run records and captures reconstruct exactly. The irreversible boundary is preceded by `dispatch-outcome-unknown`; every ambiguous, rejected, or unrecorded response remains there forever, is never resent, and increments the error breaker. Only an Eight `response` observation whose retained Telegram bytes exactly validate `ok:true`, positive message ID, bound chat/topic, and fixed text becomes `api-accepted`. That label means Bot API acceptance only, never human delivery or reading. The reply doorway has `assessment: null`; fixture Nine does not certify Telegram.
 
-## Exit and graduation criteria
+## Context and audience
 
-Stage 1 exits when the focused recorded suite proves two meaningful turns, outsider preservation without reply, restart after intake, restart after dispatch without repetition, stop/expiry behavior, fixed labels on every outbound payload, and ledger completeness. A real transport trial is additional evidence only when the desk has approved the exact bot/audience/expiry/credential custody and any required live-effect exceptions.
+Four preserves all recorded neighbours. Only an exact bot identity, operator sender, chat, and (for a forum) topic receives contextual standing or a reply. The run store retains excluded facts unchanged as evidence, while the test-owned grounding read projection removes excluded `intake-admitted` rows from the stimulus selection without rewriting their signed bytes. Context over either configured bound pauses the admitted turn; it does not silently discard older admitted context.
 
-Graduation requires replacing each ledger entry with its named unit's genuine evidence, especially G6's exact response acceptance and separate reply run. Graduate into a fresh production installation/root; never import this fixture authority or test history. Do not remove the preview label based on this driver.
+## Complete stand-in ledger
 
-Focused recorded test (never sets `INSTAR_TELEGRAM_LIVE_TEST`):
+| Name | Tier and honest limit |
+|---|---|
+| `fixture-governance-and-register` | simulated authority; test declarations/conformance only |
+| `fixture-signing-and-standing-grants` | simulated authority; fixture signatures satisfy code checks, not operator authority |
+| `fixture-clock-and-verification-host` | simulated clock/verification host only |
+| `fixture-five-six-run-admission-capacity` | fixture Five opening/grounding and fixture Six admission/capacity only |
+| `fixture-context-assembler` | bounded test-owned grounding selection, not production context authority |
+| `fixture-run-file-storage-and-capture-custody` | fsynced plaintext local files returning test `local-durable` success |
+| `fixture-in-memory-authority-and-capture-indexes` | working fixture indexes/helpers; required captures are copied to the run files |
+| `fixture-five-grounding-consumption` | simulated internal context-consumption receipt |
+| `fixture-native-launch-and-process-descriptor` | dormant fixture launch/`pid:42:start:1` descriptor; Native delivery is not invoked |
+| `fixture-context-delivery-nine-evidence` | dormant `happened`, `finalCharge: 0`, `delayedExecutionExcluded: true` instrument; not invoked |
+| `fixture-independent-protection-posture` | dormant `independentProtection: protected` descriptor |
+| `fixture-model-and-persistence-descriptors` | dormant model/persistence descriptors; no model exchange is invoked |
+| `fixture-effect-peer-directory` | live safeguard substitution: same-machine directory mechanically satisfies `replicated(1)` for the real send, but is not replication |
+| `fixture-five-source-result` | fixed-response source marker, not a model answer |
+| `fixture-reply-nine-assessor` | present in the fixture but deliberately disconnected via `assessment: null` |
+| `real-telegram-effect` | actual Bot API `sendMessage`; exact API acceptance only |
+
+The actual live-effect authorization still comes from the separately recorded operator trial grant and any required waivers. This code and its PREVIEW label grant none.
+
+## Recorded verification
+
+The suite never sets `INSTAR_TELEGRAM_LIVE_TEST` and uses an offset-respecting recorded transport, including real launcher processes for SIGTERM and SIGINT:
 
 ```sh
 npx vitest run tests/preview/preview.test.ts --configLoader=runner
 ```
 
-`--configLoader=runner` avoids Vite attempting to write through this worktree's read-only `node_modules` symlink; it does not change test semantics.
+Graduation requires replacing every stand-in with its named hardening unit, especially G6 exact-response acceptance and the separate reply run, then starting from a fresh production root. Never import preview fixture authority or history into production.

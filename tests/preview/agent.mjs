@@ -39,14 +39,18 @@ function configuration(options) {
   const thread = options['message-thread-id'] === 'none' ? null
     : integer(options['message-thread-id'] ?? '0', 'message-thread-id');
   const forum = options.forum === 'true';
+  const chatKind = options['chat-kind'] ?? 'private';
+  if (!['private', 'group-topic'].includes(chatKind)) throw new Error('preview: invalid chat-kind');
   if (!forum && thread !== null) throw new Error('preview: non-forum target requires --message-thread-id none');
+  if (chatKind === 'private' && (forum || thread !== null)) throw new Error('preview: private target cannot name a forum topic');
+  if (chatKind === 'group-topic' && (!forum || thread === null)) throw new Error('preview: group-topic requires forum true and a topic id');
   return Object.freeze({
     root: resolve(required(options, 'root')),
     machine: options.machine ?? 'preview-local-machine',
     botId: required(options, 'bot-id'),
     botUsername: required(options, 'bot-username'),
     operatorSenderId: required(options, 'operator-sender-id'),
-    chatId: required(options, 'chat-id'),
+    chatId: required(options, 'chat-id'), chatKind,
     forum,
     messageThreadId: thread,
     maxPollSeconds: integer(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1),
@@ -61,10 +65,13 @@ function stateFor(config, options, create) {
   const stateConfiguration = { ...config, expiresAt,
     replyLimit: integer(options['reply-limit'] ?? '6', 'reply-limit', 1),
     replyWindowMs: integer(options['reply-window-ms'] ?? '60000', 'reply-window-ms', 1),
-    errorLimit: integer(options['error-limit'] ?? '5', 'error-limit', 1) };
+    errorLimit: integer(options['error-limit'] ?? '5', 'error-limit', 1),
+    maxPendingTurns: integer(options['max-pending-turns'] ?? '16', 'max-pending-turns', 1),
+    maxTrialTurns: integer(options['max-trial-turns'] ?? '128', 'max-trial-turns', 1) };
   return openPreviewState({ root: config.root, configuration: stateConfiguration, expiresAt,
     replyLimit: stateConfiguration.replyLimit, replyWindowMs: stateConfiguration.replyWindowMs,
-    errorLimit: stateConfiguration.errorLimit, create });
+    errorLimit: stateConfiguration.errorLimit, maxPendingTurns: stateConfiguration.maxPendingTurns,
+    maxTrialTurns: stateConfiguration.maxTrialTurns, create });
 }
 
 function resolveHostSecret(reference) {
@@ -97,6 +104,7 @@ function publicStatus(document) {
 }
 
 const delay = milliseconds => new Promise(resolveDelay => setTimeout(resolveDelay, milliseconds));
+const yieldBoundary = () => new Promise(resolveBoundary => setImmediate(resolveBoundary));
 
 async function main() {
   const { command, options } = argumentsOf(process.argv.slice(2));
@@ -126,13 +134,22 @@ async function main() {
     composition = createPreviewComposition({ configuration: config, state, storageKey: storageKey(),
       storageIO: productionStorageIO, resolveSecret: resolveHostSecret,
       telegramIOFactory: storage => createProductionTelegramIO(config.root, storage.captures) });
-    composition.resume();
+    // Successful physical bridges are synchronous. Yield after each such boundary so
+    // Node can service SIGINT/SIGTERM before any subsequent admission or dispatch.
+    await yieldBoundary();
     const maximumCycles = integer(options['max-cycles'] ?? '1000', 'max-cycles', 1);
     const baseBackoff = integer(options['backoff-ms'] ?? '250', 'backoff-ms', 1);
     const maximumBackoff = integer(options['max-backoff-ms'] ?? '5000', 'max-backoff-ms', 1);
     for (let cycle = 0; cycle < maximumCycles && !signalled; cycle += 1) {
       try {
+        while (!signalled) {
+          await yieldBoundary();
+          if (signalled || !composition.resumeOne()) break;
+          await yieldBoundary();
+        }
+        if (signalled) break;
         composition.pollOnce();
+        await yieldBoundary();
       } catch {
         const current = state.noteError();
         process.stderr.write('preview cycle failed; diagnostic details suppressed\n');
