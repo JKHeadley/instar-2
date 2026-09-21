@@ -4,6 +4,10 @@ _Generated from `12-the-effect-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-21 · draft — Fixed confined-launch owner/profile supplement from astra-m4-launch-owner-adjudication.md, all sections; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec.
+
+- **Specify the fixed native-confined-launch operation, ordinary bounded profile, v2 process records and genuine one-use owner consumer.** — The M4 owner adjudication requires a narrow process representation and durability contract; a message operation cannot authorize launch. _(/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-launch-owner-adjudication.md §§2–4,6; uncommitted docs draft on design-m4-fixed-launch-operation)_
+
 ## Revision 4 · 2026-09-19 · draft — operator amendment requiring a supported single-machine durability arm
 
 - **Consume the installation profile's accepted closed local-durable operation set without a peer dependency, while retaining replicated(1) whenever a second machine is enrolled or an operation demands replication.** — Eight must enforce both supported installation shapes without automatic fallback or a per-operation handwritten operator list. _(`1b5ac4c`)_

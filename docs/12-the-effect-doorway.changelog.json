@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Fixed confined-launch owner/profile supplement from astra-m4-launch-owner-adjudication.md, all sections; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec."
+    },
+    "changes": [
+      {
+        "what": "Specify the fixed native-confined-launch operation, ordinary bounded profile, v2 process records and genuine one-use owner consumer.",
+        "why": "The M4 owner adjudication requires a narrow process representation and durability contract; a message operation cannot authorize launch.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-launch-owner-adjudication.md §§2–4,6; uncommitted docs draft on design-m4-fixed-launch-operation"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-19",
     "status": "draft",

@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-09-21 · draft — Fixed confined-launch owner/profile supplement from astra-m4-launch-owner-adjudication.md, all sections; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec.
+
+- **Specify the restricted launch executor, P10-SI-32, ordinary single-machine durability, exact proposed source/helper/test/registration/pin grants, costs and named holds.** — The M4 owner adjudication requires exact grants and real owner/OS evidence while allowing independent custody, Nine-host and G6 work and retaining M3 and activation holds. _(/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-launch-owner-adjudication.md §§2–4,6; uncommitted docs draft on design-m4-fixed-launch-operation)_
+
 ## Revision 9 · 2026-09-20 · draft — operator review on PR #93; Astra adjudication #2 on M3: equivalent historical-memo construction in Part Two and complete Ten cache invalidation (astra-m3-perf-adjudication.md)
 
 - **Add the M3-E supplement to §7: src/facts/historical.ts may amortize its historical-body memo key with identical semantics; Ten's record validation caches must key on the complete consumed inputs and never serve the origin path; one new Part Two test path; two exact fence-line amendments; the resulting pin chain.** — Real composition showed a store with many owner-produced installation records re-encodes the register, schemas and keys on every historical read; correctness of the caches is required before performance closure. _(`4a3a0e6`)_

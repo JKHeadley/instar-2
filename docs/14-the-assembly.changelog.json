@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Fixed confined-launch owner/profile supplement from astra-m4-launch-owner-adjudication.md, all sections; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec."
+    },
+    "changes": [
+      {
+        "what": "Specify the restricted launch executor, P10-SI-32, ordinary single-machine durability, exact proposed source/helper/test/registration/pin grants, costs and named holds.",
+        "why": "The M4 owner adjudication requires exact grants and real owner/OS evidence while allowing independent custody, Nine-host and G6 work and retaining M3 and activation holds.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-launch-owner-adjudication.md §§2–4,6; uncommitted docs draft on design-m4-fixed-launch-operation"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-09-20",
     "status": "draft",

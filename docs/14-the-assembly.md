@@ -249,6 +249,40 @@ resource and port-handle references, minimal scrubbed environment, context/input
 requested consumption mode. No process id is a durable run id. The launcher binds process id
 to start identity and incarnation, so a reused process id never identifies the old worker.
 
+**Rule — the fixed launch executor is supplied to Eight.** **Check: P10-SI-32**, with
+P10-NF-10/17/18/19/40, consumes Eight §4a's `native-confined-launch` operation. Ten binds
+one operator-installed restricted OS identity, exact executable and Native artifact, boundary
+profile digest, scrubbed environment, disposable working scope, authenticated loading/observation
+handles and finite Six allocation. The executor has no shell/command selector, provider access,
+broad network, raw credentials, authoritative store mount or host-control handle. The public
+Eight constructor and same-store provenance guard are required; `NativeHarnessDriverPort.owner`
+and a successful process spawn are insufficient. Ten observes the physical result under its
+existing `HarnessLaunchSpec` and `HarnessObservation`; Eight owns its request and operation
+observation. The installation contract §12 specifies the predicate, evidence tiers and holds.
+
+The loading-only effect has finite local occupation and independently enforced expiry of the
+whole boundary, descendants and queued dispatch rights. The evidence identifies absolute paths,
+resolved executable, UID, profile/artifact hashes, limits and actual outcomes. It must show the
+expiry bound survives worker and executor failure. An implementation that needs an additional
+cancel/cleanup operation or supervision path names that contract and grant as missing; a kill
+callback is not an extension of the driver. Unsupported platforms/modes stay closed.
+
+Forbidden-path tests execute inside this exact worker. They attack credential, store, key and
+backup paths; host-control/debug/process-memory endpoints; environment and inherited descriptors;
+symlink/hardlink, raw device/snapshot, dynamic-import and child escapes; arbitrary sockets/provider
+calls; writable core artifacts; and forged/cross-incarnation handles. Alongside refusals, one
+permitted loading/observation request must succeed through a real authenticated mediated public
+owner port, rechecking installation, run, incarnation, methods, scope, allocation, generation,
+stop, fence and expiry. An echo socket proves connectivity only. This single positive is the
+minimum, not an exemption from applicable attack cases. Custody and Nine assessment still require
+their own current evidence; an unprotected artifact posture does not waive confinement.
+
+A manual restricted-identity experiment records physical-boundary evidence with its actual test
+status. It cannot close owner admission, production launch or the live probe. Nine canary launch
+and any cleanup still use Five/Six/Eight. Unit refusal tests, full-port composition, actual
+lifecycle/OS evidence and Nine's applicable assessment are reported separately. No live model or
+Telegram effect is implied by successful launch.
+
 **Rule — context delivery proves consumption at its actual boundary.**
 **Checks: P10-NF-10/11/13**, with P5-NF-44/45/46/47. Five owns history/clock coverage and
 SessionGrounding. Ten delivers those exact content classes to the actual worker; it records
