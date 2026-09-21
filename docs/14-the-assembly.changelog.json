@@ -1,5 +1,46 @@
 [
   {
+    "revision": 11,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Round 2 corrections to the aa499c1 draft from astra-m3s-amendment-review-aa499c1.md; six findings only."
+    },
+    "changes": [
+      {
+        "what": "Preserve singleton v1’s origin-approved AdmissionReservation meaning; require CapacityReservation only in the new set row validator and add N1’s old-singleton compatibility neighbor.",
+        "why": "Finding 1: changing the shared v1 interpretation would make previously admissible historical configuration unreadable; it remains insufficient for current set/capacity admission.",
+        "ref": "astra-m3s-amendment-review-aa499c1.md, finding 1; reviewed head aa499c1d8b369e1036c575d37a553f7abc33ba77"
+      },
+      {
+        "what": "Specify original per-envelope Part A admission inputs across restart and bounded selection in inspection/import/replay; hold populated-root migration under historical-installation-admission-context and require N1 mixed-history/reopen coverage.",
+        "why": "Finding 2: old singleton, signer and governance facts cannot be decoded with the newly approved set package or current bootstrap; public-port reconstruction remains an ungranted compatibility gap.",
+        "ref": "astra-m3s-amendment-review-aa499c1.md, finding 2; reviewed head aa499c1d8b369e1036c575d37a553f7abc33ba77"
+      },
+      {
+        "what": "Qualify later-generation replacement throughout the contract and name installation-generation-transition in costs and holds.",
+        "why": "Finding 3: generation approval is necessary, not sufficient; immutable ProductionInstallation v1 cannot be rebound in place, and identity/bootstrap/approval/work/capacity continuity has no specified and granted transition.",
+        "ref": "astra-m3s-amendment-review-aa499c1.md, finding 3; reviewed head aa499c1d8b369e1036c575d37a553f7abc33ba77"
+      },
+      {
+        "what": "Remove the conditional option to land the existing singleton strict design if Five’s guard alone suffices; retain independent correctness-fix and guard review/landing.",
+        "why": "Finding 4: the normative body requires the set. The earlier conditional option cannot select a different contract by timing. desk-m3s-overlay-with-guard-231s.log:4-10 reports 230.993 seconds for the control and 231.62 seconds overall; its diagnostic green label is not a pass at the original 180-second bound. Any future singleton-design disposition must be explicit before changing the contract.",
+        "ref": "astra-m3s-amendment-review-aa499c1.md, finding 4; reviewed head aa499c1d8b369e1036c575d37a553f7abc33ba77"
+      },
+      {
+        "what": "Make §8 the sole defining Predicate clause for P10-SI-20, encompassing both production-boundary neighbor coverage and §7 fixture-preservation requirements.",
+        "why": "Finding 5: the §7 clause is a reference, preserving every assertion and obligation without allocating a duplicate predicate.",
+        "ref": "astra-m3s-amendment-review-aa499c1.md, finding 5; reviewed head aa499c1d8b369e1036c575d37a553f7abc33ba77"
+      },
+      {
+        "what": "Retire proposed landed-test grants M3-S-T3 and M3-S-T4 without renumbering T5; retain only T2/T5 additions and update grant/pin/sequence references to the unchanged :24 witness.",
+        "why": "Finding 6: tests/rungraph/installed-governance.test.ts:24-34 already proves genuine active producer/loader success and historical decoding after the producer guard clears. The two proposed positives duplicate that coverage; no bound or coverage is waived.",
+        "ref": "astra-m3s-amendment-review-aa499c1.md, finding 6; reviewed head aa499c1d8b369e1036c575d37a553f7abc33ba77"
+      }
+    ]
+  },
+  {
     "revision": 10,
     "date": "2026-09-21",
     "status": "draft",
