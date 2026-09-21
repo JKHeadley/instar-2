@@ -4,6 +4,9 @@ import { hashBytes } from '../../src/facts/index.js';
 import { loadProductionBootstrap } from '../../src/assembly/production-installation-loader.js';
 import type { VerifiedProductionBootstrap } from '../../src/assembly/production-installation-loader.js';
 import { decodeHistoricalProductionSignerReference, recordProductionSignerReference, productionSignerReferenceSchemas, registerProductionSignerReferenceBody } from '../../src/assembly/production-signer-reference.js';
+import { planInstallationImport, importPreparedInstallationPackage } from '../../src/assembly/production-installation-import.js';
+import type { InstallationImportPlan } from '../../src/assembly/production-installation-import.js';
+import { recordInstallationSelection } from '../../src/assembly/installation-selection.js';
 import { fixedRecordFixture } from './fixed-installation-contract.test.js';
 import { factsFixture, json, refused, value } from '../facts/fixtures.js';
 
@@ -90,4 +93,95 @@ it('REVIEW T1: equal-content unissued bootstrap cannot reuse a warm signer', () 
   const cold = decodeHistoricalProductionSignerReference(f.records[0], context, { ...admission });
   refused(cold, 'independently verified');
   expect(warm.kind).toBe(cold.kind);
+});
+
+// M3 item 3: both import consumers, using the actual owner-approved package and history.
+describe('P10-SI-11/12 read-only import preflight and supervisor hold', () => {
+  const rehash = (record: Record<string, unknown>) => {
+    const { id: _id, ...fields } = record; return json({ ...fields, id: value(canonical(fields)).hash });
+  };
+  const setup = () => {
+    const f = fixedRecordFixture(({ generation, scopeId }) => ['source-only', 'second-profile'].map(instance => rehash({
+      type: 'InstallationSelection', schemaVersion: 1, installation: 'host', machine: 'machine-a', scope: scopeId,
+      role: 'minimal-plane-replay', instance, implementation: 'installation-replay', owner: 'part-ten', generation,
+      references: ['installation-replay', 'installation-replay-matrix'], validUntil: 'not-time-bound' })));
+    const bytes = JSON.stringify({ installation: 'host', machine: 'machine-a', genesisHash: f.f.context.genesis.hash,
+      generation: f.record.generation, trustRoots: [f.f.context.keys[0]!.publicKey], key: f.f.context.keys[0],
+      signer: { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'machine-signer' } });
+    const bootstrap = value(loadProductionBootstrap({ root: '/tmp/root', bootstrapLocator: '/tmp/operator/bootstrap',
+      expectedBootstrapDigest: hashBytes(bytes) }, { read: locator => f.f.f.success({ realPath: locator, bytes }) }, f.admission.boundary));
+    return { ...f, bootstrap };
+  };
+  const plan = (f: ReturnType<typeof setup> | ReturnType<typeof signerFixture>, records = f.records,
+    overrides: Record<string, unknown> = {}, suppliedBytes?: string) => {
+    const bytes = suppliedBytes ?? JSON.stringify({ installation: 'host', scope: f.admission.scopeId, generation: f.record.generation, records });
+    return planInstallationImport({ bootstrap: f.bootstrap, root: '/tmp/root', packageLocator: '/tmp/operator/package',
+      expectedPackageDigest: hashBytes(bytes), admission: f.admission, facts: { ...f.f.context, facts: f.f.facts() },
+      limits: { maxSteps: 8, maxBytes: 100000 }, recoveryOwner: 'operator', ...overrides },
+    { read: locator => f.f.f.success({ realPath: locator, bytes }) }, f.admission.boundary);
+  };
+  it('preflights append, mixed append/reuse and an equal rerun without changing history', () => {
+    const f = setup(); let before = value(canonical(f.f.frames)).bytes;
+    const first = value(plan(f));
+    expect(first.steps.map(step => step.action)).toEqual(['append', 'append']); expect(first.expectedWrites).toBe(2);
+    expect(first.steps.every(step => step.validation === 'held-owner-origin-validation')).toBe(true); expect(first.claim).toBe('held');
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+    value(recordInstallationSelection(f.records[0], f.writer)); before = value(canonical(f.f.frames)).bytes;
+    const mixed = value(plan(f)); expect(mixed.steps.map(step => step.action)).toEqual(['reuse', 'append']);
+    expect(mixed.steps.map(step => step.validation)).toEqual(['owner-history-validated', 'held-owner-origin-validation']);
+    expect(mixed.expectedWrites).toBe(1); expect(value(canonical(f.f.frames)).bytes).toBe(before);
+    value(recordInstallationSelection(f.records[1], f.writer)); before = value(canonical(f.f.frames)).bytes;
+    expect(value(plan(f)).expectedWrites).toBe(0); expect(value(plan(f)).steps.every(step => step.action === 'reuse')).toBe(true);
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
+  it('refuses unequal records under one immutable package key before any plan or write', () => {
+    const f = setup(), before = value(canonical(f.f.frames)).bytes;
+    const changed = rehash({ ...(f.records[0] as Record<string, unknown>), validUntil: value(canonical(f.f.f.now)).bytes });
+    refused(plan(f, [f.records[0]!, changed]), 'intra-package immutable key conflict');
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
+  it('refuses an immutable conflict against genuine owner history without writing', () => {
+    const f = setup(); value(recordInstallationSelection(f.records[0], f.writer));
+    const before = value(canonical(f.f.frames)).bytes;
+    const changed = rehash({ ...(f.records[0] as Record<string, unknown>), validUntil: value(canonical(f.f.f.now)).bytes });
+    refused(plan(f, [changed, f.records[1]!]), 'changed immutable input conflicts');
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
+  it.each(['missing-fields', 'wrong-owner', 'missing-implementation', 'missing-references', 'extra-field'])('refuses digest-valid malformed owner body: %s', cut => {
+    const f = setup(), before = value(canonical(f.f.frames)).bytes;
+    const record = { ...(f.records[0] as Record<string, unknown>) };
+    if (cut === 'missing-fields') for (const field of ['role', 'owner', 'instance', 'machine', 'implementation', 'references']) delete record[field];
+    if (cut === 'wrong-owner') record.owner = 'part-nine';
+    if (cut === 'missing-implementation') record.implementation = '';
+    if (cut === 'missing-references') record.references = [];
+    if (cut === 'extra-field') record.extra = true;
+    refused(plan(f, [rehash(record)])); expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
+  it('verifies reuse through the owner history boundary, rejecting a changed signature', () => {
+    const f = setup(), origin = value(recordInstallationSelection(f.records[0], f.writer)), before = value(canonical(f.f.frames)).bytes;
+    refused(plan(f, f.records, { facts: { ...f.f.context,
+      facts: f.f.facts().map(fact => fact.id === origin.id ? { ...fact, signature: '00' } : fact) } }));
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
+  it('checks digest before parse and rejects changed external pins and copied bootstrap identity', () => {
+    const f = setup(), before = value(canonical(f.f.frames)).bytes;
+    refused(plan(f, f.records, { expectedPackageDigest: hashBytes('approved') }, 'not JSON'), 'digest differs');
+    refused(plan(f, f.records, { bootstrap: { ...f.bootstrap } }), 'independently verified');
+    refused(plan(f, f.records, { facts: { ...f.f.context, facts: f.f.facts(), genesis: { ...f.f.context.genesis, hash: hashBytes('other') } } }));
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
+  it('reuses a genuine signer and refuses a changed bootstrap digest before plan issuance', () => {
+    const f = signerFixture(); value(recordProductionSignerReference(f.records[0], f.writer));
+    const before = value(canonical(f.f.frames)).bytes;
+    expect(value(plan(f)).steps[0]).toMatchObject({ action: 'reuse', validation: 'owner-history-validated' });
+    refused(plan(f, [rehash({ ...(f.records[0] as Record<string, unknown>), bootstrapDigest: hashBytes('changed pin') })]), 'bootstrap binding differs');
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
+  it('refuses issued plans by the named supervisor hold and copied plans by issuance, writing nothing', () => {
+    const f = setup(), issued = value(plan(f)), before = value(canonical(f.f.frames)).bytes;
+    refused(importPreparedInstallationPackage(issued, { owner: 'part-seven', current: true }, f.admission.boundary),
+      'NON-EXECUTABLE-UNTIL-seven-bounded-install-supervisor');
+    refused(importPreparedInstallationPackage({ ...issued } as InstallationImportPlan, null, f.admission.boundary), 'not issued');
+    expect(value(canonical(f.f.frames)).bytes).toBe(before);
+  });
 });

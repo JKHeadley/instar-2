@@ -275,97 +275,142 @@ itHere('REVIEW T1: changed ancestor signature with unchanged contentHash cannot 
   refused(cold);
   expect(warm.kind).toBe(cold.kind);
 });
-// P10-SI-22: the per-hold report. Rows come from the landed hold list plus Seven's supervisor hold;
-// prepared and admitted never merge, and selection metadata alone never reads admitted.
-describeHere('P10-SI-22 the twenty-five hold report', () => {
-  const facts = (rows: Record<string, { kind: string; owner: string; fixture?: boolean; current?: boolean }>) => ({ owner: 'part-ten' as const,
-    lookup: (reference: string) => rows[reference] ? { fixture: false, current: true, ...rows[reference]! } : null });
-  const base = (f: ReturnType<typeof fixedRecordFixture>) => ({ installation: 'host', scope: 'project-a', generation: f.record.generation, vector: 'vector:1' });
-  it('reports every landed hold plus the supervisor hold exactly once, all held without owner verdicts, and never live', () => {
-    const f = fixedRecordFixture();
-    const report = value(reportInstallationHolds({ ...base(f), verdicts: [], facts: facts({}) }, f.admission.boundary));
+// M3 items 5/6 consumer regressions; Part A assertions above remain unchanged.
+describeHere('P10-SI-22 owner-bound hold report', () => {
+  const setup = () => {
+    const f = fixedRecordFixture(), selection = value(recordInstallationSelection(f.record, f.writer));
+    const history = { ...f.f.context, facts: f.f.facts() };
+    const vector = Object.fromEntries([...new Set(history.facts.map(fact => fact.machine))].map(machine => {
+      const fact = history.facts.filter(fact => fact.machine === machine).at(-1)!;
+      return [machine, { epoch: fact.segment.epoch, position: fact.segment.position }];
+    }));
+    const input = { installation: 'host', scope: 'project-a', generation: f.record.generation, vector: digest(vector),
+      verdicts: [{ hold: 'source-only-replay-admission', owner: 'part-ten', subject: f.record.instance, prepared: selection.id }],
+      facts: { owner: 'part-ten' as const, history, admission: f.admission, lookup: (_reference: string) => null } };
+    return { f, selection, input };
+  };
+  it('reports the 24 landed holds plus Seven, all held without evidence, and never live', () => {
+    const { f, input } = setup();
+    const report = value(reportInstallationHolds({ ...input, verdicts: [] }, f.admission.boundary));
     expect(report.rows.map(row => row.hold)).toEqual([...productionMissingBindings, 'seven-bounded-install-supervisor']);
     expect(report.rows).toHaveLength(25); expect(new Set(report.rows.map(row => row.hold)).size).toBe(25);
     expect(report.counts).toEqual({ held: 25, prepared: 0, 'fixture-admitted': 0, admitted: 0 }); expect(report.live).toBe(false);
   });
-  it('keeps prepared and admitted apart: a real recorded selection prepares its hold but never admits it', () => {
-    const f = fixedRecordFixture(), selection = value(recordInstallationSelection(f.record, f.writer));
-    const rows = { [selection.id]: { kind: selection.kind, owner: 'part-ten' }, 'replay:evidence': { kind: 'assembly-GrowthObservation', owner: 'part-ten' },
-      'replay:fixture': { kind: 'assembly-GrowthObservation', owner: 'part-ten', fixture: true }, 'replay:stale': { kind: 'assembly-GrowthObservation', owner: 'part-ten', current: false } };
-    const verdict = (extra: object) => [{ hold: 'source-only-replay-admission', owner: 'part-ten', prepared: selection.id, ...extra }];
-    const row = (extra: object) => value(reportInstallationHolds({ ...base(f), verdicts: verdict(extra), facts: facts(rows) }, f.admission.boundary))
-      .rows.find(entry => entry.hold === 'source-only-replay-admission')!;
-    expect(row({})).toMatchObject({ state: 'prepared', prepared: selection.id, evidence: null });
-    expect(row({ evidence: 'replay:evidence' })).toMatchObject({ state: 'admitted', evidence: 'replay:evidence' });
-    expect(row({ evidence: 'replay:fixture' })).toMatchObject({ state: 'fixture-admitted' });
-    expect(row({ evidence: 'replay:stale' })).toMatchObject({ state: 'prepared', reason: 'owner evidence is stale' });
-    // Selection metadata alone, in either position, never reads admitted.
-    refused(reportInstallationHolds({ ...base(f), verdicts: verdict({ evidence: selection.id }), facts: facts(rows) }, f.admission.boundary), 'selection metadata');
+  it('prepares only a genuine owner-issued selection joined to its role, instance, scope, generation and vector', () => {
+    const { f, selection, input } = setup();
+    expect(value(reportInstallationHolds(input, f.admission.boundary)).rows.find(row => row.hold === 'source-only-replay-admission'))
+      .toMatchObject({ state: 'prepared', prepared: selection.id, evidence: null });
+    for (const change of [{ scope: 'foreign' }, { generation: 'foreign' }, { vector: 'foreign' },
+      { verdicts: [{ ...input.verdicts[0]!, subject: 'foreign' }] },
+      { verdicts: [{ ...input.verdicts[0]!, hold: 'worker-isolation-evidence' }] }])
+      refused(reportInstallationHolds({ ...input, ...change }, f.admission.boundary));
+    const facts = { ...input.facts, history: { ...input.facts.history,
+      facts: input.facts.history.facts.map(fact => fact.id === selection.id ? { ...fact, signature: '00' } : fact) } };
+    refused(reportInstallationHolds({ ...input, facts }, f.admission.boundary));
+  });
+  it.each([
+    ['different predicate from the same owner', 'independent-challenge-verifier', 'part-nine', { kind: 'verification-clock', owner: 'part-nine', current: true, fixture: false }],
+    ['copied current true', 'source-only-replay-admission', 'part-ten', { kind: 'assembly-GrowthObservation', owner: 'part-ten', current: true, fixture: false }],
+    ['fixture presented as installed', 'source-only-replay-admission', 'part-ten', { kind: 'assembly-GrowthObservation', owner: 'part-ten', current: true, fixture: false, provenance: 'fixture-admitted' }],
+    ['invented supervisor', 'seven-bounded-install-supervisor', 'part-seven', { kind: 'made-up', owner: 'part-seven', current: true, fixture: false }],
+    ['foreign scope and generation', 'source-only-replay-admission', 'part-ten', { kind: 'assembly-GrowthObservation', owner: 'part-ten', current: true, fixture: false, scope: 'foreign', generation: 'foreign' }],
+  ])('preserves held for %s without an owner predicate validator', (_name, hold, owner, summary) => {
+    const { f, input } = setup();
+    const report = value(reportInstallationHolds({ ...input, verdicts: [{ hold, owner, subject: 'unrelated', evidence: 'invented' }],
+      facts: { ...input.facts, lookup: () => summary } }, f.admission.boundary));
+    expect(report.rows.find(row => row.hold === hold)).toMatchObject({ state: 'held', reason: 'predicate-bound current owner evidence unavailable; admission held' });
+    expect(report.counts.admitted).toBe(0); expect(report.counts['fixture-admitted']).toBe(0);
+  });
+  it('keeps genuine preparation when arbitrary evidence is offered, including the selection itself', () => {
+    const { f, input, selection } = setup();
+    for (const evidence of ['fake-evidence', selection.id]) {
+      const report = value(reportInstallationHolds({ ...input, verdicts: [{ ...input.verdicts[0]!, evidence }] }, f.admission.boundary));
+      expect(report.rows.find(row => row.hold === 'source-only-replay-admission')!.state).toBe('prepared');
+    }
   });
   it.each([
     ['unknown hold', [{ hold: 'made-up-hold', owner: 'part-ten' }], 'unknown hold'],
     ['duplicate verdict', [{ hold: 'conversation-driver', owner: 'part-twelve' }, { hold: 'conversation-driver', owner: 'part-twelve' }], 'duplicate verdict'],
     ['wrong owner verdict', [{ hold: 'independent-verification-clock', owner: 'part-ten' }], 'wrong owner'],
-    ['evidence outside the opened root', [{ hold: 'run-governance-policy', owner: 'part-five', evidence: 'absent:fact' }], 'not in the opened root'],
-    ['another owner\'s evidence', [{ hold: 'independent-challenge-verifier', owner: 'part-nine', evidence: 'ten:fact' }], 'not issued by part-nine'],
-  ])('refuses %s', (_name, verdicts, detail) => {
-    const f = fixedRecordFixture();
-    refused(reportInstallationHolds({ ...base(f), verdicts, facts: facts({ 'ten:fact': { kind: 'assembly-GrowthObservation', owner: 'part-ten' } }) }, f.admission.boundary), detail);
-  });
-  it('refuses a caller that supplies no opened-root lookup', () => {
-    const f = fixedRecordFixture();
-    refused(reportInstallationHolds({ ...base(f), verdicts: [], facts: undefined as never }, f.admission.boundary), 'opened-root fact lookup');
+  ])('refuses %s', (_name, verdicts, message) => {
+    const { f, input } = setup(); refused(reportInstallationHolds({ ...input, verdicts }, f.admission.boundary), message);
   });
 });
 
-// Contract §5 / docs/15 §4: the source-only replay runner over the real opened history.
-describeHere('P10-SI-12/22 source-only replay of the six minimal-plane folds', () => {
+describeHere('P10-SI-12/22 complete source-only replay', () => {
   const setup = () => {
     const f = fixedRecordFixture(); value(recordInstallationSelection(f.record, f.writer));
-    const generation = f.f.deps.dedupGeneration(), facts = { ...f.f.context, facts: f.f.facts() };
+    const base = f.f.deps.dedupGeneration(), facts = { ...f.f.context, facts: f.f.facts() };
+    const generation = { ...base, lineages: { ...Object.fromEntries(facts.keys.map(key => [key.machine,
+      { head: null, observedAt: null, closed: true }])), ...base.lineages } };
     let tick = 0;
-    const input = { profile: { machine: 'machine-a', storageClass: 'fixture-memory' }, facts, generation,
+    const input = { profile: { machine: 'machine-a', storageClass: 'fixture-memory' }, facts, generation, source: f.admission.generation,
       definitions: minimalPlaneProjections(generation.kinds), matrix: ['cold', 'warm'] as ('cold' | 'warm')[], budget: 1_000_000,
-      clock: { owner: 'part-ten' as const, monotonic: () => (tick += 5) } };
+      memoryBudget: 1000, durationMargin: 10, memoryMargin: 20,
+      memory: { owner: 'part-ten' as const, peakBytes: () => 100 }, clock: { owner: 'part-ten' as const, monotonic: () => (tick += 5) } };
     return { f, input };
   };
-  it('replays every fold cold then warm over real history, byte-matches the checkpoint and claims a measured bound', () => {
-    const { f, input } = setup();
-    const report = value(replayInstallationProjections(input, f.admission.boundary));
-    expect(report.samples).toHaveLength(12); expect(report.failures).toBe(0);
+  it('measures all six folds over a complete vector including a legitimately empty lineage', () => {
+    const { f, input } = setup(), report = value(replayInstallationProjections(input, f.admission.boundary));
+    expect(report.samples).toHaveLength(12); expect(report.failures).toBe(0); expect(report.coverageFailures).toEqual([]);
     expect(new Set(report.samples.map(sample => sample.projection)).size).toBe(6);
     expect(Object.values(report.checkpointComparison).every(verdict => verdict === 'equal')).toBe(true);
     for (const id of Object.keys(report.checkpointComparison)) {
       const [cold, warm] = report.samples.filter(sample => sample.projection === id);
       expect(cold!.resultDigest).toBe(warm!.resultDigest); expect(cold!.vector).toBe(warm!.vector); expect(cold!.facts).toBe(input.facts.facts.length);
     }
-    expect(report.claim).toBe('measured'); expect(report.measuredBound).toEqual({ duration: 5, budget: 1_000_000 });
+    expect(input.generation.lineages['machine-b']!.head).toBeNull();
+    expect(report.claim).toBe('measured'); expect(report.measuredBound).toEqual({ duration: 65, peakMemory: 100,
+      durationMargin: 10, memoryMargin: 20, admissionDuration: 75, admissionMemory: 120, budget: 1_000_000, memoryBudget: 1000 });
+    expect(report.workloads).toHaveLength(2);
   });
-  it('keeps a failing fold in the report and withholds the claim instead of aborting or passing', () => {
+  it('refuses all-ignores replacements carrying the six authorized IDs', () => {
     const { f, input } = setup();
-    const definitions = input.definitions.map((definition, i) => i === 2 ? { ...definition, stalenessBound: -1 } : definition);
-    const report = value(replayInstallationProjections({ ...input, definitions }, f.admission.boundary));
-    expect(report.samples).toHaveLength(12); expect(report.failures).toBe(2);
-    expect(report.samples.filter(sample => sample.failure !== null).every(sample => sample.projection === definitions[2]!.id && sample.resultDigest === null)).toBe(true);
+    const definitions = input.definitions.map(definition => ({ ...definition, decisions: Object.fromEntries(input.generation.kinds.map(kind =>
+      [kind, { kind: 'ignores' as const, reason: 'skip all actual work' }])) }));
+    refused(replayInstallationProjections({ ...input, definitions }, f.admission.boundary), 'authorized minimal-plane');
+  });
+  it('records legitimate rebuild failures from a source lineage absent in the generation', () => {
+    const { f, input } = setup();
+    const report = value(replayInstallationProjections({ ...input, generation: { ...input.generation, lineages: {} } }, f.admission.boundary));
+    expect(report.samples).toHaveLength(12); expect(report.samples.every(sample => sample.failure !== null)).toBe(true);
+    expect(report.failures).toBeGreaterThanOrEqual(12); expect(report.claim).toBe('withheld'); expect(report.measuredBound).toBeNull();
+  });
+  it.each(['omitted-lineage', 'shortened-snapshot', 'shortened-declaration'])('withholds for %s coverage', cut => {
+    const { f, input } = setup(), head = input.generation.lineages['machine-a']!.head!;
+    const changed = cut === 'omitted-lineage' ? { generation: { ...input.generation, lineages: { ...input.generation.lineages,
+      'known-peer': { head: { epoch: 0, position: 3 }, observedAt: 0, closed: true } } } }
+      : cut === 'shortened-snapshot' ? { facts: { ...input.facts, facts: input.facts.facts.slice(0, -1) } }
+      : { generation: { ...input.generation, lineages: { ...input.generation.lineages, 'machine-a': {
+        ...input.generation.lineages['machine-a']!, head: { epoch: head.epoch, position: head.position - 1 } } } } };
+    const report = value(replayInstallationProjections({ ...input, ...changed }, f.admission.boundary));
+    expect(report.coverageFailures.length).toBeGreaterThan(0); expect(report.failures).toBeGreaterThan(0);
     expect(report.claim).toBe('withheld'); expect(report.measuredBound).toBeNull();
-    expect(report.checkpointComparison[definitions[2]!.id]).toBe('not-compared');
   });
-  it('withholds the claim when a measured sample exceeds the startup budget; the budget never populates the bound', () => {
+  it.each(['memory-absent', 'memory-invalid', 'margin-absent', 'duration-margin', 'memory-margin', 'whole-workload'])('withholds for %s', cut => {
     const { f, input } = setup();
-    const report = value(replayInstallationProjections({ ...input, budget: 1 }, f.admission.boundary));
+    const change = cut === 'memory-absent' ? { memory: undefined as never } : cut === 'memory-invalid' ? { memory: { ...input.memory, peakBytes: () => NaN } }
+      : cut === 'margin-absent' ? { durationMargin: undefined as never } : cut === 'duration-margin' ? { budget: 70 }
+      : cut === 'memory-margin' ? { memoryBudget: 110 } : { budget: 60, durationMargin: 0 };
+    const report = value(replayInstallationProjections({ ...input, ...change }, f.admission.boundary));
     expect(report.failures).toBe(0); expect(report.claim).toBe('withheld'); expect(report.measuredBound).toBeNull();
-    expect(report.withheldBecause.join(' ')).toContain('exceeded the startup budget');
+    expect(report.withheldBecause.length).toBeGreaterThan(0);
+  });
+  it('refuses a copied source register identity and a different generation', () => {
+    const { f, input } = setup();
+    refused(replayInstallationProjections({ ...input, source: { ...input.source, register: { ...input.source.register } as typeof input.source.register } }, f.admission.boundary));
+    refused(replayInstallationProjections({ ...input, generation: { ...input.generation,
+      reference: { ...input.generation.reference, id: 'foreign' } } }, f.admission.boundary), 'verified source');
   });
   it.each([
-    ['a matrix without a warm sample', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: ['cold', 'cold'] as ('cold' | 'warm')[] }), 'finite matrix'],
-    ['a matrix that starts warm', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: ['warm', 'cold'] as ('cold' | 'warm')[] }), 'finite matrix'],
-    ['an unbounded matrix', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: Array.from({ length: 9 }, (_, i) => i ? 'warm' : 'cold') as ('cold' | 'warm')[] }), 'finite matrix'],
-    ['a missing fold', (input: ReturnType<typeof setup>['input']) => ({ ...input, definitions: input.definitions.slice(1) }), 'six enumerated'],
-    ['a duplicated fold', (input: ReturnType<typeof setup>['input']) => ({ ...input, definitions: [...input.definitions.slice(1), input.definitions[1]!] }), 'six enumerated'],
-    ['a configured target instead of a clock', (input: ReturnType<typeof setup>['input']) => ({ ...input, clock: undefined as never }), 'monotonic clock'],
-    ['a non-finite budget', (input: ReturnType<typeof setup>['input']) => ({ ...input, budget: Number.POSITIVE_INFINITY }), 'startup budget'],
-  ])('refuses %s', (_name, change, detail) => {
-    const { f, input } = setup();
-    refused(replayInstallationProjections(change(input), f.admission.boundary), detail);
+    ['matrix without warm', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: ['cold', 'cold'] as ('cold' | 'warm')[] }), 'finite matrix'],
+    ['matrix starts warm', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: ['warm', 'cold'] as ('cold' | 'warm')[] }), 'finite matrix'],
+    ['unbounded matrix', (input: ReturnType<typeof setup>['input']) => ({ ...input, matrix: Array.from({ length: 9 }, () => 'cold' as const) }), 'finite matrix'],
+    ['missing fold', (input: ReturnType<typeof setup>['input']) => ({ ...input, definitions: input.definitions.slice(1) }), 'six enumerated'],
+    ['duplicate fold', (input: ReturnType<typeof setup>['input']) => ({ ...input, definitions: [...input.definitions.slice(1), input.definitions[1]!] }), 'six enumerated'],
+    ['absent clock', (input: ReturnType<typeof setup>['input']) => ({ ...input, clock: undefined as never }), 'monotonic clock'],
+    ['nonfinite budget', (input: ReturnType<typeof setup>['input']) => ({ ...input, budget: Infinity }), 'startup budget'],
+  ])('refuses %s', (_name, change, message) => {
+    const { f, input } = setup(); refused(replayInstallationProjections(change(input), f.admission.boundary), message);
   });
 });

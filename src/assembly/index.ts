@@ -43,7 +43,7 @@ export type { ProductionBootstrapPackage, VerifiedProductionBootstrap, Installat
 export { loadProductionBootstrap } from './production-installation-loader.js';
 export type { InstallationHold, InstallationHoldReport, InstallationHoldRow, InstallationHoldState, InstallationHoldVerdict, InstallationReportFact, InstallationReportFactsPort } from './production-installation-report.js';
 export { installationHoldOwners, installationReportHolds, installationSupervisorHold, reportInstallationHolds } from './production-installation-report.js';
-export type { InstallationReplayInput, InstallationReplayMode, InstallationReplayProfile, InstallationReplayReport, InstallationReplaySample } from './production-installation-replay.js';
+export type { InstallationReplayInput, InstallationReplayMode, InstallationReplayProfile, InstallationReplayReport, InstallationReplaySample, InstallationReplayWorkload } from './production-installation-replay.js';
 export { replayInstallationProjections } from './production-installation-replay.js';
 export type { InstallationImportPlan, InstallationImportStep } from './production-installation-import.js';
 export { importPreparedInstallationPackage, isIssuedInstallationImportPlan, planInstallationImport } from './production-installation-import.js';
