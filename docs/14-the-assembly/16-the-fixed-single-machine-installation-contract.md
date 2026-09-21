@@ -57,8 +57,10 @@ operator principal, one reply-only audience, and the six named Eleven folds. It 
 execution machine, voter, bot, conversation, provider tuple, platform, or protected-mutation
 capability. A separately enrolled durability peer is permitted, and required whenever a selected
 operation demands replication; it is not a second execution voter. When only one machine is
-enrolled, the admitted installation carries no peer dependency and uses only the accepted closed
-local-durable operation set. Whenever a second machine is enrolled, the peer-backed arm uses
+enrolled, the admitted installation carries no peer dependency and uses the accepted closed
+local-durable P-08 set. The proposed ordinary bounded `native-confined-launch` remains under the
+unresolved `ordinary-local-durability-scope` governing-document gap in §2; Eight §4a's
+ordinary-operation rule and §12's evidence contract do not by themselves authorize local launch. Whenever a second machine is enrolled, the peer-backed arm uses
 `replicated(1)` by default. Positive neighbors are the exact admitted single-machine tuple and the
 same one-voter execution tuple with its real remote durability peer. A same-machine second process
 is not that peer. A broader execution tuple remains not admitted in this scope.
@@ -90,6 +92,21 @@ second process presented as a peer, or automatic fallback after peer loss refuse
 Positive neighbors are a profile operation with its complete local receipt in the single-machine
 arm and a replicated operation with its real peer receipt in the peer-backed arm. No arm or record
 is named `replicated(0)`.
+
+**Rule — ordinary local launch retains an unresolved governing-document gap.** Owner: the
+operator for reconciliation of the purpose and Eight for the owner contract; predicates:
+P10-SI-04/36. `ordinary-local-durability-scope` is UNRESOLVED. The purpose's local-durable
+closed-set clause (`docs/00-the-purpose.md:106–124`) and Eight §5's installed-shape rule limit
+local dispatch to the provider/reply set, while Eight §5's ordinary reversible/costly rule
+requires at least local durability. The ordinary four-test classification, finite expiry and
+full causal closure are necessary but do not reconcile those exclusions. This profile supplies
+no local-launch exemption; its design/admission hold remains until operator-approved owner-document
+clarification explicitly limits the provider/reply closed-set acceptance and membership check
+to irreversible effects and separately states the ordinary four-test/finite-bound/full-causal-closure
+rule. Keep the irreversible provider/reply set unchanged. Corresponding P-08 interpretations/checks
+that enforce the unqualified exclusion require a named grant before changing. This document grants
+neither those edits nor the reconciliation. Adding a peer, extending message purposes or treating
+the new local operation as already covered cannot close this gap.
 
 **Value — the accepted loss model in plain words.** Permanent loss of this one machine can
 destroy the authority, work, captures, observations, and accounting evidence needed to
@@ -466,6 +483,12 @@ keeps stored bodies and imported public ports distinct.
 
 ## 5. G5 and the two boot over-constraints
 
+Eight owns the registered fixed launch; Ten supplies its restricted executor, and Six supplies
+the actual operation reservation and one-use claim. Manual placement cannot activate that worker.
+P10-SI-36's ordinary loading-only profile does not remove P10-SI-11/12's bounded Seven supervisor
+from an automated critical installation/recovery pipeline. A standalone restricted-UID experiment
+can evidence an OS boundary only; neither it nor a fact append is admitted production launch.
+
 **Rule — manual preparation is configuration, not supervised execution.** Owner: the operator
 for manual administration and Ten for consuming its outputs. Predicate: P10-SI-11 classifies a
 step as manual preparation only when an operator-administered identity places or selects already
@@ -756,7 +779,7 @@ this section’s M3-S map and capacity helpers in §11. No other landed fixture 
 
 No landed test may be edited except the exact allowlist, digest, and declaration-baseline lines
 and the two fixture helpers named here, or a
-separately approved, individually named M3-S or §11 grant. Owner: Ten for the fixture migration; referenced records
+separately approved, individually named M3-S, M4-L or §11 grant. Owner: Ten for the fixture migration; referenced records
 retain their public owners. The fixture-preservation requirements of P10-SI-20 require
 tests/assembly/production-fixture.ts and
 tests/assembly/round8-extended-fixture.ts to construct the P10-SI-07 inputs through real owner
@@ -777,8 +800,14 @@ among `generated/capabilities.md`, `generated/conversion.json`, `generated/cover
 `generated/fact-schemas.json`, `generated/glossary.md`, `generated/register.json`,
 `generated/rules.md`, `generated/shape.json`, and `generated/source.json`. M3 introduces only the
 three singleton/signer/governance P10-SI-23 bindings plus the explicitly additional
-`assembly-InstallationSelectionSet` schema-1 binding under P10-SI-32/33. M4 introduces only the P10-SI-17
-`judgment-provider-ProviderAnswerAcceptance` binding. Hand-edited generated output refuses.
+`assembly-InstallationSelectionSet` schema-1 binding under P10-SI-32/33. M4 registration is limited to P10-SI-17
+`judgment-provider-ProviderAnswerAcceptance` v1 and the separately approved M4-L bindings:
+`effect-OperationDefinition` v2, `effect-EffectRequest` v2 and `effect-OperationObservation` v2
+with discriminator `native-confined-launch`, that exact operation feature, and the producer/decoder
+bindings in Eight §4a. `EffectValidation` and `EffectSettlement` remain v1 with the explicitly
+defined version-aware joins; outbound and provider interpretations remain unchanged. These are
+proposed M4-L registrations, not permission to implement before review and operator approval.
+Hand-edited generated output refuses.
 
 Owner basis for this path grant: `src/assembly/production-application.ts:28-49` owns the admitted
 boot composition; `src/assembly/production-holds.ts:1-30` says its names confer no authority;
@@ -839,11 +868,13 @@ The builder's reviewed fence and pin grant is also exact:
    exemption, obligation-row deletion, assertion change, or weaker main-versus-HEAD comparison is
    granted.
 6. P10-SI-35 permits the independently reviewed read-only inspection prerequisite to land before
-   strict Part B consumer migration. M4’s independent boundary/custody/host/answer-use units may
-   proceed while Part B remains held. Every landed unit has its own final reviewed source digests,
-   single inventory digest, checker/A2/P13 pins and committed-input register outputs. The next
-   unit rebases before changing shared sources or pins. No concurrent aggregate-inventory edits
-   and no carrying an earlier aggregate digest across changed inventory bytes are permitted.
+   strict Part B consumer migration. M3-S implementation/performance closure is not a prerequisite
+   for independent confined-boundary, custody, Nine-host or G6 evidence. Every landed unit has its
+   own final reviewed source digests, single inventory digest, checker/A2/P13 pins and committed-input
+   register outputs. Each implementation unit rebases before changing shared sources and recomputes
+   final pins serially. No concurrent aggregate-inventory edits and no carrying an earlier aggregate
+   digest across changed inventory bytes are permitted. M4 positive boot still requires the actual
+   opened-root inspection/selection/capacity product; independent evidence supplies no substitute.
 7. Re-pin any affected owner-reference manifest through the ordinary Three generator from the
    approved declaration inputs. Do not hand-edit generated authority or widen a source-hash
    exemption.
@@ -1055,6 +1086,93 @@ are explicitly unevidenced; no preference resolves them.
 
 ---
 
+### M4-L — fixed confined-launch implementation cut
+
+The document landing order is binding: land the independently approved M3-S document first,
+rebase this supplement onto that landed document, then land the corrected M4-L supplement.
+P10-SI-32–35 retain M3-S's atomic-set/admission/resolution/inspection meanings; launch is
+P10-SI-36. If an intervening approved document allocates that id, use the next unused id rather
+than overwrite a predicate. The shared contract retains both registration lists, all individually
+named M3-S/M4-L/§11 exceptions, the sole §8 P10-SI-20 definition, inspection prerequisites,
+original-bound strict-consumer gates, and the historical-context/generation-transition holds.
+
+**Rule — each proposed grant is separately reviewable.** Owner: Eight/Ten for their boundaries,
+Three for registration tooling, the desk for final pins and the operator for protected content.
+Predicates: P10-SI-19/20/36. These are proposed grants pending independent review convergence and
+operator approval; documentation approval closes only the design hold. No source implementation,
+protected-content approval, pin or runtime pass is created by this text. Source coordinates in
+this subsection are immutable base `9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec`. `:1 (new)` means
+an absent path whose proposed file starts at line 1, not an existing source location.
+
+| Grant | Exact source path and bounded delta | Protected-artifact disposition |
+|---|---|---|
+| M4-L-S1 | `src/effects/contracts.ts:7–51,112–137`: closed v2 process record and public execution/executor consumer types from Eight §4a; retain all v1 message types/purposes and provider interpretations. | LIVE `src/effects/**` |
+| M4-L-S2 | `src/effects/records.ts:18–47,89–182,204–217`: exact v2 shapes, registrations, producers, origin/historical decoders, canonical joins and version-aware validation/settlement references; preserve v1 meaning. | LIVE `src/effects/**` |
+| M4-L-S3 | `src/effects/doorway.ts:21–42,132–246,359–402`: genuine same-store launch constructor/check, bounded admission, durable one-use handoff, observation and restart reconstruction only. Message/live-input/provider behavior stays intact. | LIVE `src/effects/**` |
+| M4-L-S4 | `src/effects/index.ts:1–7`: public process types, constructor/check, producer and decoder exports from Eight §4a only. | LIVE `src/effects/**` |
+| M4-L-S5 | `src/effects/effect.declarations.json:1–6`: only `native-confined-launch` feature/operation, its explicit schema/producer/decoder bindings, bounds/metrics and P10-SI-36/inherited checks. Preserve both protection declarations. | LIVE `src/effects/**` |
+| M4-L-S6 | `src/assembly/harness.ts:7–39,83–97`: bind launch and original-launch observation to Eight's genuine consumer and durable identity; remove reliance on the launch map as authority. No delivery shortcut or new lifecycle method. | Declared `src/assembly/**` is DARK at this base, not LIVE |
+| M4-L-S7 | `src/assembly/production-native-context.ts:9–22,40–58`: bind current process identity/artifact and loading readback to the exact admitted launch; keep context delivery's separate consumed claim and payload checks. | Same DARK assembly pattern |
+| M4-L-S8 | `src/assembly/production-launch-boundary.ts:1 (new)`: the exact restricted OS executor, canonical profile/artifact/identity/handle checks, bounded expiry enforcement and original-process observation. No policy authoring, arbitrary executable, hidden kill/cleanup operation or new record. | Same DARK assembly pattern |
+| M4-L-S9 | `src/assembly/production-composition.ts:22–37,46–92`: only public-owner launch constructor/executor wiring on the same store; no positive boot/dependency selection or capacity bypass. | Same DARK assembly pattern |
+| M4-L-S10 | `src/assembly/index.ts:14–17,49`: only exports for the named launch boundary and its public types. | Same DARK assembly pattern |
+
+Eight's LIVE declaration is `src/effects/effect.declarations.json:2–3`; Ten's DARK declaration
+is `src/assembly/assembly.declarations.json:7–10`. A future unprotected runtime posture does
+not downgrade repository protection. Exact LIVE source content requires operator approval.
+No new effects source file is assumed. Six, Nine, held M3 files and the pending selection-set
+design remain read-only. The separate G6 `provider-path.ts` grant does not become a launch grant.
+
+| Grant | Exact helper/input dependency and bounded delta | Protected-artifact disposition |
+|---|---|---|
+| M4-L-H1 | `scripts/register-owner-references.mjs:9,13–46`: add exactly `part-eight` to the manifest list and its six process origin/historical decoder bindings named in Eight §4a; its fixture/probe lists are empty. Add `36` to Ten's fixture roster for the single P10-SI-36 registration. Decoder modules are `src/effects/index.ts`; decoder artifacts are `src/effects/records.ts`. Producers remain declaration bindings, not a new manifest field. No wildcard owner, path, decoder or fixture acceptance. | LIVE `scripts/*register*.mjs` |
+| M4-L-H2 | `register-source/owner-references/part-eight.json:1 (new)`: existing manifest shape, owner `part-eight`; exact six origin/historical decoder entries in Eight §4a, module/artifact pins for S4/S2, and empty fixture/probe/document lists. No duplicate P10-SI-36 id, probe claim or invented governed-document id. | LIVE `register-source/**` |
+| M4-L-H3 | `register-source/owner-references/part-ten.json:4`: additive P10-SI-36 fixture for `tests/assembly/fixed-installation-live.test.ts`, retaining every existing entry and refreshing only artifact pins whose approved bytes changed. | LIVE `register-source/**` |
+
+The registration gap is concrete: `scripts/register-owner-references.mjs:9,13–46,58–66,88–96`
+accepts only its enumerated owners/decoders and lacks Part Eight. H1–H3 close that exact gap
+without assuming a register can be synthesized. Toolchain protection is declared at
+`src/register/toolchain.declarations.json:119–126,135–142`. Both manifest contents and H1's
+exact script delta require operator approval. Existing `boundary.ts`, Two canonical/owned-body
+registration and historical decoding, Six authority/records, Ten contracts/records/history and
+Nine public assessment are consumed unchanged. Their public behavior, not copied validation,
+is the source of truth. If an additional helper/schema/fold dependency is needed, name its
+file:line and keep that dependent mode held; these rows do not authorize it.
+
+| Grant | Exact test or pin boundary |
+|---|---|
+| M4-L-T1 | `tests/effects/fixed-native-launch.test.ts:1 (new)`: new owner-contract tests for P10-SI-36, genuine schema/producer/origin/historical paths, same-store provenance, zero-OS refusal controls and restart/claim cuts. A genuine v1 observation with its claim and settlement must still historically decode and resolve the original Six operation after v2 registration; a forged stored legacy intermediate refuses. Registration-helper positive and refusal cases run here through the genuine helper; no landed register test edit. |
+| M4-L-T2 | `tests/assembly/fixed-installation-live.test.ts:1 (new at this base)`: launch-specific full-port integration and actual physical lifecycle/attack evidence for P10-SI-36 and its named neighbors only. Preserve the message-purpose decoder diagnostic when bringing in the independently prepared test (diagnostic coordinates are :8–26 in the confined-runtime worktree, not landed lines here). Exact temporary profile/worker proof artifacts may be constructed inside this test's bounded temporary directory and S8's granted boundary; no new helper file is granted. |
+| M4-L-T3 | `tests/operator/round15-regressions.test.ts:80,89`: V79 source allowlist only; the four S1–S4 paths are already present, retain them and add exactly `src/effects/effect.declarations.json`. Retain other approved entries, assertions and comparisons. No `src/effects/` prefix. |
+| M4-L-T4 | `tests/rungraph/production-grounding-scope.test.ts:5,9`: exact `liveInputGrant` addition of `src/effects/effect.declarations.json`; preserve S1–S4 and every other entry/comparison. Existing assembly prefix is no semantic grant beyond S6–S10. |
+| M4-L-P1 | `tests/assembly/production-grounding-inventory.json:5241`: after independent review add/update only changed S1–S10, H1–H3, T1–T4 artifact digests and applicable `reviewedSupportSources` entries. Preserve obligation rows, mappings and unrelated hashes; P10-SI-36's new evidence cannot replace a landed obligation. |
+| M4-L-P2 | `scripts/check-assembly-contracts.mjs:178`: only resulting `REVIEWED_GROUNDING_INVENTORY` digest of P1's reviewed final bytes; no checker logic change. |
+| M4-L-T5 | `tests/harness-adapters/a2-governance-and-additivity.test.ts:7,10–19`: A2's `grantedContent` inventory and scope-test final digests only for this base. If T2 has landed independently before this cut, its exact approved launch-only additions need its own desk-reviewed content entry; preserve its diagnostic and all unrelated assertions. No general test exemption. |
+| M4-L-P3 | `scripts/check-p13-contract-map.mjs:266`: only the enclosing digest of T5's final reviewed bytes. No architecture predicate change. |
+
+The two provider fixture/readers `tests/model-provider/fixture.ts:1` and
+`tests/model-provider/review/assertions.mjs:1` remain byte-identical. So do all other landed
+assertions and helpers except the individually specified lines above. No fixture-admitted
+provider route, owner label or recorded-bytes custodian proves live launch or confinement.
+A rebase discovering another enclosing pin, registration count, helper or assertion dependency
+reports that exact file:line for separate disposition; it never moves an arbitrary baseline.
+
+P10-SI-36 has one register fixture binding in H3, to T2; its evidence contract requires both T1
+and T2 to execute and report their separate tiers. No duplicate fixture id denotes two different
+artifacts. S5 and H1–H3 are the exact committed declaration/owner-reference inputs. The process decoder
+artifacts are S2/S4; T1/T2 are the exact inspection artifacts. After the desk commits approved
+inputs, Three's ordinary generator may change only deterministic outputs among
+`generated/capabilities.md`, `generated/conversion.json`, `generated/coverage.md`,
+`generated/fact-schemas.json`, `generated/glossary.md`, `generated/register.json`,
+`generated/rules.md`, `generated/shape.json`, `generated/source.json`. Call this output grant
+M4-L-G1; no handwritten register or new output is authorized. Final digests are outputs of
+independently reviewed final bytes, never placeholders this contract supplies. The desk records
+old/new pins and reviewed source commit, then lands serially with other units. This grant does
+not alter `register-source/owner-references.json`'s Part Five declaration baseline or strict
+Part B, nor any purpose, Seven, Six or Nine record contract.
+
+---
+
 ## 8. Negative contracts and realistic positive neighbors
 
 **Rule — every changed gate is exercised on both sides.** Owner: the owner named in each row;
@@ -1098,6 +1216,7 @@ owner consumes only its own portion. The blank table is a review form, not an au
 | Maximum spend and unknown outcomes | Six reservation/accounting; Seven route; Eight settlement | `currencyAndWindow: ______`; `enforceableMaximumPerCall: ______`; `totalExposureCap: ______`; `observationCountTimeResourceBounds: ______`; `unknownExposureRetention: ______`; `noAutomaticRepeat: ______`; `newWorkRemainderRule: ______` |
 | Minimal voice | Eleven surface; Five minimal run; Six reserves | `permittedStatementsAndActs: ______`; `forbiddenOrdinaryClaims: ______`; `stopAndBoundedRepairGrant: ______`; `workerMemoryStorageQueueTransportEffectReserves: ______`; `dependencyOutageWording: ______` |
 | Measured envelope | Eleven admission; Ten replay/conformance; Seven route quality | `machineAndStorageClass: ______`; `coldWarmWorkloadMatrix: ______`; `historyCapacity: ______`; `startupAndResponseBounds: ______`; `margins: ______`; `modelPromptContextTuple: ______`; `qualityEvidenceAndLimits: ______` |
+| Fixed confined launch | Eight approved definition; Six finite allocation; Ten exact boundary; Nine evidence | `nativeArtifactAndExecutableDigests: ______`; `restrictedIdentityAndBoundaryDigest: ______`; `loadingObservationHandles: ______`; `finiteResourceAndExpiryLimits: ______`; `wholeTreeExpiryEvidence: ______`; `startupCostAndUnknownAllocationRetentionAccepted: ______`; `exactProtectedContentApproval: ______` |
 | Initial live use | Twelve Telegram scope; Eleven whole-slice verdict; Ten manifest | `throwawayBot: ______`; `demoGroupAndTopic: ______`; `replyOnlyAudience: ______`; `allowedOperations: ______`; `spendAndMessageLimit: ______`; `secondInboundRequired: ______`; `restartAndStopRequired: ______`; `broaderResidualCapabilitiesUnavailable: ______` |
 
 ---
@@ -1424,3 +1543,116 @@ All other unclosed P10-SI-22 holds remain individually visible. Nine source,
 general multidomain scheduling, a general installer and additional deployment breadth are outside
 this cut. If activation requires changes to Five/Eight bodies or Nine interpretation, it needs a
 separate named owner predicate and exact source/test grant; the capacity record supplies none.
+
+---
+
+## 12. Fixed confined-launch admission
+
+**Rule — P10-SI-36 is the fixed confined-launch predicate.** Owner: Eight for the exact approved
+`native-confined-launch` definition, process v2 records, admission and no-repeat; Six for genuine
+reservation/claim; Ten for the restricted executor and exact binding; Nine for applicable evidence
+assessment. Eight §4a is the owner record/API contract; Ten §§3–4 is the physical boundary.
+The mode is one exact Native artifact on the named machine, under the operator-installed
+restricted identity, into `context-loading` through exactly one approved authenticated mediated
+endpoint with the exact finite loading/observation method set. Every granted handle resolves to
+that endpoint and current installation/run/incarnation; all other IPC/network/effect endpoints
+are denied and an additional endpoint is unsupported. There is no
+command text, arbitrary executable, new outbound-purpose literal, automatic restart/replacement,
+provider access or implicit readiness. The exact five-field control/costly/agent/none/bounded
+profile and all four constitutional tests are enforced at registration and actual use.
+
+P10-SI-36 refuses message/context/provider/fact-append substitution; copied owner labels;
+unapproved definition/version; changed executable, artifact, OS profile, environment, working
+scope or handles; wrong machine/installation/run/step/incarnation; missing, foreign-store or wrong
+Six reservation/claim; stale holder/fence/generation/clock/lifetime/stop/predecessor; missing causal
+closure or inadequate durability; second consumption, restart duplication and reused PID. Every
+pre-dispatch refusal has zero OS invocations. Unauthorized child/network/file access is tested
+inside the worker and must be denied by the installed boundary, not merely by a TypeScript API.
+
+The positive neighbor obtains a genuine current same-store Eight admission with one Six claim,
+creates one exact confined process and records one attributable launch observation. A fresh host
+reconstructs that same operation or retains its uncertainty without spawning again. Fault cuts
+include before/after request/specification, reservation, validation, claim, durable consumption,
+OS spawn, response and observation append; a lost acknowledgment is never a fresh launch identity.
+Expiry evidence covers the entire tree and outstanding dispatches despite host/worker failure.
+One authentic mediated loading/observation request succeeds while all applicable forbidden paths
+in Ten §3/§4 refuse. The singleton endpoint and exact finite method set are bound by
+`handlePolicyDigest` and exact handle comparison. The endpoint enforces the real owner's public
+request, including freshness and incarnation, not merely socket reachability. An extra endpoint,
+expanded method set, substituted handle and cross-incarnation handle must refuse, including
+actual OS attempts to reach another endpoint. One successful test alone does not prove the
+singleton boundary. Separate context-delivery/model/reply admissions remain required.
+
+P10-SI-04/08/13/14/15/18 and P8-NF-03–17/25–30 remain operative. P10-SI-18 forbids replacement
+while execution, resource accounting or quiescence is unknown without pretending this local
+worker is a billed model call. Local launch remains under the unresolved
+`ordinary-local-durability-scope` design/admission hold; ordinary classification and a complete
+local receipt do not override the governing closed-set exclusion. Unit/schema evidence, full-port integration, actual lifecycle/OS-boundary evidence and
+Nine's applicable assessment are four distinct reported tiers. A design check, mocked syscall,
+standalone sudo spawn or message-decoder refusal cannot close the live predicate.
+
+**Value — supported shape and operator costs.** The one-machine shape needs no second machine,
+service per owner, general sandbox framework, artifact-protection broker or exact-billing oracle
+merely to host this launch. Direct composition is allowed where capabilities permit it. The
+operator must install and maintain the restricted identity and exact boundary, set finite resource
+and lifetime limits, and approve the exact protected implementation and registration changes.
+The desk's restricted-identity experiment can use its existing non-interactive sudo; it needs no
+new privilege ruling. Its proof must fix absolute profile/worker paths, executable resolution,
+UID, hashes and actual results; placeholders are not evidence.
+
+Durable preparation and before-spawn claim writes add startup time and storage work. Boundary and
+restart tests plus independent review cost engineering and operator time. Loading-only ports
+limit what the worker can do; model calls and replies need separate admission. Finite expiry may
+end unfinished loading. An uncertain start can tie up its allocation and leave work waiting,
+possibly indefinitely, because automatically spawning another worker is forbidden. Losing the
+only machine can lose the evidence needed to reconstruct work; it promises neither failover nor
+a delivered outage notice. Broader cleanup/restart, arbitrary processes and unsupported platforms
+remain unavailable. These costs follow the existing scope, finite-resource, evidence and no-repeat
+rules; the desk presents their acceptance in plain words, not as a choice of competing owners.
+The ordinary launch requires explicit reconciliation of the purpose's local-durable closed-set clause with Eight's ordinary-operation rule; this document does not supply that authority.
+
+**Rule — evidence closes named holds independently.** P10-SI-22 keeps these dispositions visible:
+
+| Hold | Closure evidence and owner |
+|---|---|
+| `ordinary-local-durability-scope` | UNRESOLVED governing-document gap: operator-approved clarification of the purpose's local-durable closed-set clause and Eight's installed-shape rule, separately stating the ordinary four-test/finite-bound/full-causal-closure rule while preserving the irreversible provider/reply set. Any corresponding P-08 check change needs a named grant. Launch design/admission remains held; this document supplies no reconciliation. |
+| `M4-L — fixed confined-launch owner operation and exact grant` | Eight's approved definition/v2 admission/no-repeat implementation, Ten's real integrated restricted execution and expiry/attack/allowed-port evidence, applicable Nine assessment, desk-reviewed exact grants/pins and operator approval of protected content. Design closure also requires `ordinary-local-durability-scope` reconciliation; documentation alone supplies no implementation/admission evidence or authority-conferring runtime flag. |
+| `general-process-execution` | Separate Eight contracts/grants and actual evidence for arbitrary executables/shells, broader modes, cancellation/cleanup, automatic restart/replacement/retry. This breadth is deferred, not a prerequisite for this one operation. |
+| `M3-S — fixed-installation record granularity and strict-consumer performance` | Existing structural/performance owner evidence and full affected checks; no timeout increase or bypass supplied here. |
+| `M3-I — responder reservation representation and consumer completeness` | Six/Ten/Eleven and desk closure of §11's genuine capacity representation, strict complete consumers and independently reviewed pins. A launch operation reservation is not installation capacity. |
+| `seven-bounded-install-supervisor` | Seven's actual finite supervision of critical automated install/recovery, consumed by Ten. Manual placement/read-only inspection grants no activation. |
+| `minimal-responder-budget-admission` | §11's Six finite child allocation, Five governed minimal Run and Ten/Eleven measured dependency/limited-voice evidence. |
+| `activation-resource-reservation` | Actual current holder/incarnation/fence/generation/lifetime and shared allocation at launch/use, with restart/revocation proof. |
+| `opened-root inspection / positive dependency-selection and boot join` | Approved selection-set design, actual opened-root inspection product and current owner/capacity evidence; no empty missing-list, host label or fixture selection. |
+| `independent-challenge-verifier` | Nine's independently administered authentic exact-subject challenge, one-use/replay/restart/expiry refusal evidence. |
+| `independent-verification-clock` | Nine's authentic comparable subject clock and current finite freshness; rereading never refreshes evidence. |
+| `worker-isolation-evidence` | Ten's exact-mode forbidden-path and permitted authenticated-port evidence with full tree/handle bounds, applicable Nine assessment and honest residuals. |
+| `storage-custody-admission` | Real pre-provisioned custody, permitted bounded mediated read and scope/grant/unresolved-ref/worker-secret refusals. Host-side proof may proceed; admitted Native end-to-end use still needs launch. |
+| `activation-probe-evidence` | Nine's actual current exact-mode live probe through admitted launch/cleanup, not an empty probe list or host uptime. |
+| `adapter-conformance-evidence` | Ten's actual exact artifact/platform/mode conformance and lifecycle proof. |
+| `platform-delivery-witness` | Nine assessment of authentic Twelve exact-post acceptance evidence; neither human delivery/read nor model billing/quiescence follows. |
+| `protected runtime/dashboard mutation` and `artifact-protection broker` | Separate independent protection/approval design and proof; outside this admitted runtime scope. Repository LIVE protection remains operative. |
+| `exact-charge` and `old-executor-quiescence` | Decisive owner-accepted evidence; honest unknown accounting retains exposure and cannot permit replay. |
+| `multi-machine authority/failover`, `broader platforms/bots`, `human delivery/read claims` | Separate approved scope/contracts and real evidence; outside this fixed operation. |
+| `conversation-driver` and `M5 usable-live-agent proof` | Actual admitted bin entry, second inbound turn, restart, stop and uncertainty demonstration after real M3/M4 dependencies; no live bot/model use or usable-agent claim is supplied here. |
+
+Keep the complete landed production-hold roster read-only. At the source coordinate above,
+`src/assembly/production-holds.ts:3–29` supplies 24 names and
+`src/assembly/production-installation-report.ts:16–17` adds `seven-bounded-install-supervisor`
+for the 25-row P10-SI-22 report. Each keeps its individual owner/evidence disposition: none becomes
+admitted from this document. Single-machine `replication-peer` is nondependency metadata only
+under P10-SI-04/05; unavailable protection may be honestly unprotected only under P10-SI-14.
+Neither interpretation erases a hold name or grants a missing current dependency.
+
+Independent custody, Nine host and G6 preparation/evidence retain their existing exact grants;
+launch-specific holds do not stop them. Their fixture-admitted tests do not clear real clock,
+verifier, probe, isolation or reservation holds. Strict Part B and pending selection-set design
+stay held on their own evidence. Approved units land separately, serially repinned and rebased;
+no aggregate-pin race or positive boot substitution is allowed.
+
+Remaining concrete inputs are the operator-installed artifact/executable/profile/UID and scoped
+handles, measured finite limits and failure-surviving expiry proof, current genuine owner facts,
+applicable independent evidence and final reviewed content/digests. Their absence is an M4-L or
+named evidence hold, never permission to choose defaults. An additional owner consumer, schema,
+helper, cancellation effect, supervisor path or checker discovered during implementation must
+be reported by exact file:line before its dependent work exceeds §7's approved grant.
