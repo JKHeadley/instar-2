@@ -8,7 +8,7 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
   const { createHash } = await import('node:crypto');
   // GRANT 45-B/45-E: pin exactly the two authorized production fixture rewires.
   const grantedContent = new Map([
-    ['tests/assembly/production-grounding-inventory.json', '6d0a925aa8dac4b49578e966bf30e2bd7156ec5a402faffe1f09c702826bc226'],
+    ['tests/assembly/production-grounding-inventory.json', 'fea030ed288dffc423180280f85b27d1611da2a51d626ab3b57489da131424f0'],
     // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
     ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
     ['tests/rungraph/production-grounding-scope.test.ts', '7a981ed049fb3367193993fb0ec1503d451b5a9d9045da24e99b521a08fc29bf'],

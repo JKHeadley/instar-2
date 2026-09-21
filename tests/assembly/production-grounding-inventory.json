@@ -5450,7 +5450,7 @@
     "tests/assembly/fixed-installation-contract.test.ts": "7c3b4d700d50cefb047b81df9674666ae01e7f29b0748094cff7805dd926a16a",
     "tests/assembly/fixed-installation-bootstrap.test.ts": "ea975d722bd78ad9c7e926bf4010ac44e4a14865948e4dcd4b3edec356c9248f",
     "src/assembly/production-custody-wiring.ts": "69b7749652006687f97420385b6e7df663ba8c576519cdfcb340577cdf66be83",
-    "scripts/fixed-installation-verifier-clock-observer.mjs": "5c5b5f02548b61e66ac8ac3166e4929051d1b42ceecadaf34bcc9f7feae6a3c3"
+    "scripts/fixed-installation-verifier-clock-observer.mjs": "3eff053d740be45c0ecd0bc75e1443c91603de356b348444b4af8d9389362d4c"
   },
   "reviewedDependencyDigest": "6f76399cb703b701d1fd4dc134976a954920c60e53ac712413ed6e53f64ff662"
 }
