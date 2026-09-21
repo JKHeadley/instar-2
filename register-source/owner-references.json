@@ -23,7 +23,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/rungraph/installed-governance.test.ts",
-        "hash": "sha256:80cd63868ebd4501959ccaf66dc7e0200225070db31c69678bac3da7223add0b"
+        "hash": "sha256:9e4640c4b6d761ec2714b5ae4588523b20a30e1789eb446a1268bb9c7df61636"
       }
     }
   ],
@@ -124,7 +124,7 @@
       },
       "artifact": {
         "path": "src/rungraph/installed-governance.ts",
-        "hash": "sha256:ea3140df9fba55a734b57f194cd4dc314d3239ba00b4e14acf80c70b409433dc"
+        "hash": "sha256:3a5215f326d1be6cd7dfda1ebc9e643f4e4de7d2d163b77b3a63aa01594b874e"
       }
     },
     {
@@ -135,7 +135,7 @@
       },
       "artifact": {
         "path": "src/rungraph/installed-governance.ts",
-        "hash": "sha256:ea3140df9fba55a734b57f194cd4dc314d3239ba00b4e14acf80c70b409433dc"
+        "hash": "sha256:3a5215f326d1be6cd7dfda1ebc9e643f4e4de7d2d163b77b3a63aa01594b874e"
       }
     }
   ],

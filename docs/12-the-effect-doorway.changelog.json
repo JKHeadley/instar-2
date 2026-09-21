@@ -1,5 +1,26 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, verified operator, 2026-09-21 ~09:30 PDT: \"again, the driving rule/standard should be: an instar agent with only one avaiblable machine should still be FULLY FUNCTIONAL\". Reaffirms the 2026-09-19 supported single-machine ruling. Draft for operator approval; actual HEAD/base 76b60b6984a4628e976fb5fdd83a5976390cc7d1; edits unstaged, desk owns commit."
+    },
+    "changes": [
+      {
+        "what": "Scope the installed-shape closed-set rule to irreversible effects and make the ordinary four-test, finite-enforced-bound and full-causal-record rule explicit.",
+        "why": "Eight must follow the purpose's fully functional single-machine Rule while preserving the provider/reply pair, exact membership check and irreversible safeguards.",
+        "ref": "Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1"
+      },
+      {
+        "what": "Record ordinary-local-durability-scope as resolved by the purpose Rules; retain M4-L and all implementation/evidence holds and the separate named-grant requirement for P-08 check changes.",
+        "why": "Constitutional resolution is neither worker admission nor implementation approval; approval starts nothing.",
+        "ref": "Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1"
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-09-21",
     "status": "draft",

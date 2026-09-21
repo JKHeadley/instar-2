@@ -1,5 +1,26 @@
 [
   {
+    "revision": 14,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, verified operator, 2026-09-21 ~09:30 PDT: \"again, the driving rule/standard should be: an instar agent with only one avaiblable machine should still be FULLY FUNCTIONAL\". Reaffirms the 2026-09-19 supported single-machine ruling. Draft for operator approval; actual HEAD/base 76b60b6984a4628e976fb5fdd83a5976390cc7d1; edits unstaged, desk owns commit."
+    },
+    "changes": [
+      {
+        "what": "Apply the purpose Rules to the fixed single-machine installation contract and record ordinary-local-durability-scope as resolved throughout its scope, G1, sequencing, launch evidence, costs and hold table.",
+        "why": "Ordinary reversible bounded work has its own local durability rule; the irreversible provider/reply pair and its exact membership check remain intact.",
+        "ref": "Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1"
+      },
+      {
+        "what": "Keep M4-L explicitly OPEN, retain every implementation/evidence hold and require separate named grants for corresponding P-08 check changes.",
+        "why": "Resolving the wording supplies no runtime evidence, protected-content approval, activation or peer prerequisite; approval starts nothing.",
+        "ref": "Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1"
+      }
+    ]
+  },
+  {
     "revision": 13,
     "date": "2026-09-21",
     "status": "draft",
