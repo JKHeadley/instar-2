@@ -1,15 +1,23 @@
 import { productionGraphMatches } from './grounding-capability.js';
 import { consumeResult } from '../index.js';
-import type { Result } from '../index.js';
+import type { FactEnvelopeReference, Json, Result } from '../index.js';
 import { requiredMinimalDependencies } from '../operator/index.js';
-import { isProductionGroundedRunGraph } from '../rungraph/index.js';
-import { boundary, ensure, freeze, take } from './boundary.js';
+import { decodeHistoricalInstalledRunGovernanceReference, isProductionGroundedRunGraph } from '../rungraph/index.js';
+import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { factReferenceAliases } from './records.js';
 import { currentAssemblyRows } from './history.js';
 import { createAssemblyRuntime } from './service.js';
-import type { FactSnapshot, FactStatus } from '../facts/index.js';
+import { causalStanding, decodeHistoricalBody, prepareSnapshot } from '../facts/index.js';
+import type { FactContext, FactEnvelope, FactSnapshot, FactStatus } from '../facts/index.js';
+import { decodeHistoricalInstallationSelection, installationRoleOwners } from './installation-selection.js';
+import type { InstallationRecordAdmission, InstallationRole } from './installation-selection.js';
+import { decodeHistoricalProductionSignerReference } from './production-signer-reference.js';
+import type { ProductionSignerAdmission } from './production-signer-reference.js';
+import { decodeProductionInstallation } from './production-installation.js';
+import { openedProductionInstallationReport } from './production-installation-report.js';
 import type { AssemblyComposition, AssemblyImplementationBinding, AssemblyManifest, AssemblyProductionBindingSet,
-  AssemblyLiveDependencyHandle, AssemblyProductionCoordinator, AssemblyResolvedProductionBinding, AssemblyRuntimePort } from './contracts.js';
+  AssemblyLiveDependencyHandle, AssemblyProductionCoordinator, AssemblyResolvedProductionBinding, AssemblyRuntimePort,
+  OpenedProductionInstallationInspection } from './contracts.js';
 
 interface NamedBinding {
   readonly name: string;
@@ -120,6 +128,286 @@ export function inspectProductionAssemblyBindings(composition: AssemblyCompositi
   return boundary('AssemblyProductionBindingInspection', { manifestId, scope }, composition.host.boundary, () => {
     const runtime = createAssemblyRuntime(composition);
     return resolveReferences(composition, runtime, manifestId, scope).references;
+  });
+}
+
+type SelectionExpectation = Readonly<{ role: InstallationRole; instance: string; owner: string }>;
+type OpenedProductionInstallationBindingVerdict = OpenedProductionInstallationInspection['bindings'][number];
+type OpenedProductionInstallationOwnerInput = NonNullable<OpenedProductionInstallationBindingVerdict['input']>;
+type OpenedProductionInstallationHistoricalInput =
+  | Readonly<{ kind: 'singleton-history'; fact: FactEnvelopeReference; admission: InstallationRecordAdmission }>
+  | Readonly<{ kind: 'signer-history'; fact: FactEnvelopeReference; admission: ProductionSignerAdmission }>
+  | Readonly<{ kind: 'governance-history'; fact: FactEnvelopeReference; admission: InstallationRecordAdmission }>;
+
+/** Inspection-only map from the landed manifest slots to the future closed set rows.
+ * It does not participate in strict resolution and cannot make a singleton executable. */
+function inspectionSelection(name: string, requiredKind: string): SelectionExpectation | null {
+  const fixed: Readonly<Record<string, Readonly<{ role: InstallationRole; instance: string }>>> = {
+    'operator-surface-registration': { role: 'operator-surface', instance: 'operator-surface-registration' },
+    'operator-challenge-verifier-binding': { role: 'challenge-verifier', instance: 'operator-challenge-verifier-binding' },
+    'intake-verified-act-binding': { role: 'verified-act-intake', instance: 'intake-verified-act-binding' },
+    'minimal-plane-replay-binding': { role: 'minimal-plane-replay', instance: 'minimal-plane-replay-binding' },
+    'minimal-responder-binding': { role: 'minimal-responder', instance: 'minimal-responder-binding' },
+    'platform-delivery-witness-binding': { role: 'delivery-witness', instance: 'platform-delivery-witness-binding' },
+    'fact-local-durable-segment': { role: 'fact-segment', instance: 'fact-local-durable-segment' },
+    'fact-replication-receipt': { role: 'fact-segment', instance: 'fact-replication-receipt' },
+    'clock-source': { role: 'verification-clock', instance: 'clock-source' },
+    'conversation-route': { role: 'conversation-route', instance: 'conversation-route' },
+    'delivery-evidence-service': { role: 'delivery-evidence-service', instance: 'delivery-evidence-service' },
+  };
+  let expected = fixed[requiredKind];
+  if (requiredKind === 'minimal-plane-projection-binding' && name.startsWith('projection-fold:'))
+    expected = { role: 'minimal-plane-fold', instance: name.slice('projection-fold:'.length) };
+  if (requiredKind === 'assembly-lifecycle-control-binding') expected = name === 'prerequisite-cut'
+    ? { role: 'prerequisite-cut', instance: 'prerequisite-cut' }
+    : name === 'prerequisite-recovery' ? { role: 'prerequisite-recovery', instance: 'prerequisite-recovery' } : undefined;
+  return expected ? { ...expected, owner: installationRoleOwners[expected.role] } : null;
+}
+
+const directInspectionKinds: Readonly<Record<string, Readonly<{ kind: string; owner: string }>>> = Object.freeze({
+  'register-generation-record': { kind: 'generation-record', owner: 'part-three' },
+  'identity-key-set': { kind: 'assembly-ProductionSignerReference', owner: 'part-two' },
+  'transport-Lease': { kind: 'transport-Lease', owner: 'part-six' },
+  'transport-FenceToken': { kind: 'transport-FenceToken', owner: 'part-six' },
+  'conversation-binding': { kind: 'conversation-binding', owner: 'part-four' },
+});
+
+function envelopeReference(fact: FactEnvelope): FactEnvelopeReference {
+  return freeze({ owner: 'part-two' as const, name: 'FactEnvelope' as const, id: fact.id });
+}
+
+function inspectionStatus(snapshot: FactSnapshot, reference: string): Readonly<{ status: FactStatus | null; reason: string | null }> {
+  const exact = snapshot.entries.filter(row => row.fact.id === reference);
+  if (exact.length > 1) return { status: null, reason: `ambiguous exact source reference: ${reference}` };
+  if (exact.length === 1) return { status: exact[0]!, reason: null };
+  const aliases = snapshot.entries.filter(row => factReferenceAliases(row.fact).includes(reference));
+  if (aliases.length > 1) return { status: null, reason: `ambiguous source-reference alias: ${reference}` };
+  return { status: aliases[0] ?? null, reason: null };
+}
+
+function causalInspection(snapshot: FactSnapshot, root: FactStatus): string | null {
+  const missing = new Set<string>(), unavailable = new Set<string>(), seen = new Set<string>();
+  const queue = [...root.fact.predecessors.required];
+  while (queue.length) {
+    const reference = queue.shift()!;
+    if (seen.has(reference)) continue;
+    seen.add(reference);
+    const found = inspectionStatus(snapshot, reference);
+    if (found.reason) { unavailable.add(`${reference} (${found.reason})`); continue; }
+    if (!found.status) { missing.add(reference); continue; }
+    if (found.status.taint.length || found.status.conflicts.length) unavailable.add(reference);
+    queue.push(...found.status.fact.predecessors.required);
+  }
+  if (missing.size) return `missing causal references: ${[...missing].sort().join(',')}`;
+  if (unavailable.size) return `unavailable causal references: ${[...unavailable].sort().join(',')}`;
+  return null;
+}
+
+function historicalInputFor(fact: FactEnvelope, facts: FactContext,
+  supplied: readonly OpenedProductionInstallationHistoricalInput[]): Result<OpenedProductionInstallationOwnerInput> {
+  const boundaryContext = { site: facts.site, preserved: facts.preserved, register: facts.decode.register };
+  return boundary('OpenedProductionHistoricalInput', { fact: fact.id, kind: fact.kind }, boundaryContext, () => {
+    const matches = supplied.filter(row => row.fact.id === fact.id);
+    ensure(matches.length === 1, 'historical-installation-admission-context');
+    const selected = matches[0]!;
+    ensure(selected.fact.owner === 'part-two' && selected.fact.name === 'FactEnvelope',
+      'historical-installation-admission-context: exact fact reference required');
+    const body = (fact.body as { record?: unknown }).record;
+    if (fact.kind === 'assembly-InstallationSelection') {
+      ensure(selected.kind === 'singleton-history', 'historical-installation-admission-context: selection context differs');
+      const selection = take(decodeHistoricalInstallationSelection(body,
+        { ...selected.admission.boundary, origin: fact, mode: 'historical', facts }, selected.admission));
+      return freeze({ kind: 'singleton-history' as const, fact, selection });
+    }
+    if (fact.kind === 'assembly-ProductionSignerReference') {
+      ensure(selected.kind === 'signer-history', 'historical-installation-admission-context: signer context differs');
+      const record = take(decodeHistoricalProductionSignerReference(body,
+        { ...selected.admission.boundary, origin: fact, mode: 'historical', facts }, selected.admission));
+      return freeze({ kind: 'direct-owner' as const, fact, record: record as unknown as Json });
+    }
+    ensure(fact.kind === 'rungraph-installed-governance-reference' && selected.kind === 'governance-history',
+      'historical-installation-admission-context: governance context differs');
+    const record = take(decodeHistoricalInstalledRunGovernanceReference(body,
+      { ...selected.admission.boundary, origin: fact, mode: 'historical', facts }, selected.admission));
+    return freeze({ kind: 'direct-owner' as const, fact, record: record as unknown as Json });
+  });
+}
+
+function historicalVerdicts(snapshot: FactSnapshot, facts: FactContext, installation: string,
+  supplied: readonly OpenedProductionInstallationHistoricalInput[]): Readonly<{
+    verdicts: readonly OpenedProductionInstallationBindingVerdict[];
+    inputs: ReadonlyMap<string, OpenedProductionInstallationOwnerInput>;
+  }> {
+  const kinds = new Set(['assembly-InstallationSelection', 'assembly-ProductionSignerReference',
+    'rungraph-installed-governance-reference']);
+  const inputs = new Map<string, OpenedProductionInstallationOwnerInput>();
+  const rows = snapshot.entries.filter(row => kinds.has(row.fact.kind)
+    && (row.fact.body as { record?: { installation?: string } }).record?.installation === installation);
+  const verdicts = rows.map((status): OpenedProductionInstallationBindingVerdict => {
+    const owner = status.fact.kind === 'rungraph-installed-governance-reference' ? 'part-five'
+      : status.fact.kind === 'assembly-ProductionSignerReference' ? 'part-two' : 'part-ten';
+    const source = { location: `opened-root:${status.fact.kind}:${status.fact.id}`, expectedKind: status.fact.kind,
+      expectedReference: status.fact.id, actualReference: envelopeReference(status.fact) };
+    const decoded = historicalInputFor(status.fact, facts, supplied);
+    return consumeResult<OpenedProductionInstallationOwnerInput, OpenedProductionInstallationBindingVerdict>(decoded, {
+      Success: input => { inputs.set(status.fact.id, input); return freeze({ name: `historical:${status.fact.kind}:${status.fact.id}`,
+        owner, state: 'resolved' as const, reason: null, source, input }); },
+      Refused: refusal => freeze({ name: `historical:${status.fact.kind}:${status.fact.id}`, owner,
+        state: 'unresolved' as const, reason: refusal.detail, source, input: null }),
+    });
+  });
+  return freeze({ verdicts, inputs });
+}
+
+function directOwnerInput(status: FactStatus, facts: FactContext): Result<OpenedProductionInstallationOwnerInput> {
+  const boundaryContext = { site: facts.site, preserved: facts.preserved, register: facts.decode.register };
+  return boundary('OpenedProductionDirectOwnerInput', { fact: status.fact.id, kind: status.fact.kind }, boundaryContext, () => {
+    const decoded = take(decodeHistoricalBody(status.fact, facts, causalStanding(status.fact, facts, false).decode));
+    const fields = decoded.fields as unknown as Readonly<Record<string, Json>>;
+    const record = Object.hasOwn(fields, 'record') ? fields.record! : fields as unknown as Json;
+    return freeze({ kind: 'direct-owner' as const, fact: status.fact, record });
+  });
+}
+
+/** P10-SI-16/P10-SI-35: inspect the actual opened root without using the strict
+ * resolver. Every slot is reported from one coherent vector; singleton history
+ * is diagnostic owner input only and never satisfies the required set. */
+export function inspectOpenedProductionInstallation(composition: AssemblyComposition, manifestId: string, scope: string,
+  historicalInputs: readonly OpenedProductionInstallationHistoricalInput[] = []): Result<OpenedProductionInstallationInspection> {
+  return boundary('OpenedProductionInstallationInspection', { manifestId, scope }, composition.host.boundary, () => {
+    const seenInputs = new Set<string>();
+    for (const input of historicalInputs) {
+      ensure(input.fact.owner === 'part-two' && input.fact.name === 'FactEnvelope' && input.fact.id.length > 0,
+        'inspection: malformed historical input reference');
+      ensure(!seenInputs.has(input.fact.id), `inspection: duplicate historical input context: ${input.fact.id}`);
+      seenInputs.add(input.fact.id);
+    }
+    const current = composition.host.current();
+    ensure(current.generation === current.facts.decode.register.generation.id,
+      'inspection: host and register generation differ');
+    const opened = take(composition.spine.store.read());
+    const facts: FactContext = { ...current.facts, facts: opened };
+    const snapshot = take(prepareSnapshot(opened, facts));
+    const inspectionContext = { ...composition.host.boundary, validateReferences: false, ownerFacts: facts };
+    const assembly = currentAssemblyRows(snapshot, inspectionContext);
+    const manifests = assembly.filter((row): row is typeof row & { record: AssemblyManifest } =>
+      row.record.type === 'AssemblyManifest' && row.record.id === manifestId && !row.taint.length && !row.conflicts.length);
+    ensure(manifests.length === 1, 'inspection: current signed manifest missing or ambiguous');
+    const manifest = manifests[0]!.record;
+    ensure(manifest.generation === current.generation, 'inspection: manifest generation differs from opened root');
+    const bindings = (manifest.productionBindings ?? []).filter(row => row.scope === scope);
+    ensure(bindings.length === 1, 'inspection: exact scope binding set required');
+    const binding = bindings[0]!;
+
+    const installations = snapshot.entries.filter(status => status.fact.kind === 'assembly-ProductionInstallation'
+      && (status.fact.body as { record?: { generation?: string; machineIdentity?: string } }).record?.generation === current.generation
+      && (status.fact.body as { record?: { generation?: string; machineIdentity?: string } }).record?.machineIdentity === composition.host.machine);
+    ensure(installations.length === 1 && !installations[0]!.taint.length && !installations[0]!.conflicts.length,
+      'inspection: exact opened-root installation missing, unavailable or ambiguous');
+    const installationStatus = installations[0]!;
+    const installation = take(decodeProductionInstallation(
+      (installationStatus.fact.body as { record?: unknown }).record,
+      { ...current.facts.decode, site: current.facts.site, preserved: current.facts.preserved }));
+    ensure(installation.generation === current.generation && installation.machineIdentity === composition.host.machine,
+      'inspection: installation generation or machine differs');
+
+    const history = historicalVerdicts(snapshot, facts, installation.id, historicalInputs);
+    const verdicts = namedBindings(binding).map(({ name, requiredKind, row }): OpenedProductionInstallationBindingVerdict => {
+      const found = inspectionStatus(snapshot, row.fact.reference);
+      const actual = found.status?.fact ?? null;
+      const source = { location: `manifest:${manifest.id}:scope:${scope}:binding:${name}`, expectedKind: requiredKind,
+        expectedReference: row.fact.reference, actualReference: actual ? envelopeReference(actual) : null };
+      const selection = inspectionSelection(name, requiredKind);
+      if (selection) {
+        let input = actual ? history.inputs.get(actual.id) ?? null : null;
+        let detail = found.reason ?? (actual ? '' : 'binding source bytes are absent');
+        if (actual?.kind === 'assembly-InstallationSelection' && input?.kind === 'singleton-history') {
+          const record = input.selection;
+          const exact = record.installation === installation.id && record.machine === composition.host.machine
+            && record.scope === scope && record.generation === current.generation && record.role === selection.role
+            && record.instance === selection.instance && record.owner === selection.owner
+            && (name.startsWith('dependency:') || record.implementation === row.implementation);
+          if (!exact) detail = 'singleton history differs from the exact installation/role/instance binding';
+          else detail = 'singleton history is diagnostic only; required installation selection set is unavailable';
+        } else if (actual?.kind === 'assembly-InstallationSelection' && !input) {
+          detail = 'historical-installation-admission-context; required installation selection set is unavailable';
+        } else if (actual) {
+          input = null;
+          detail = `required installation selection set is unavailable; actual kind is ${actual.kind}`;
+        } else detail = `${detail}; required installation selection set is unavailable`;
+        return freeze({ name, owner: selection.owner, state: 'unresolved' as const, reason: detail, source, input });
+      }
+      const expected = directInspectionKinds[requiredKind];
+      if (!expected) return freeze({ name, owner: 'part-ten', state: 'unresolved' as const,
+        reason: `inspection has no approved binding map for ${requiredKind}`, source, input: null });
+      if (found.reason || !found.status) return freeze({ name, owner: expected.owner, state: 'unresolved' as const,
+        reason: found.reason ?? 'binding source bytes are absent', source, input: null });
+      const status = found.status;
+      if (row.fact.expectedKind !== requiredKind || status.fact.kind !== expected.kind)
+        return freeze({ name, owner: expected.owner, state: 'unresolved' as const,
+          reason: `direct owner kind differs: ${status.fact.kind}:expected:${expected.kind}`, source, input: null });
+      if (status.taint.length || status.conflicts.length) return freeze({ name, owner: expected.owner,
+        state: 'unresolved' as const, reason: 'direct owner source is unavailable or conflicted', source, input: null });
+      const causal = causalInspection(snapshot, status);
+      if (causal) return freeze({ name, owner: expected.owner, state: 'unresolved' as const, reason: causal, source, input: null });
+      if (requiredKind === 'transport-FenceToken') return freeze({ name, owner: expected.owner,
+        state: 'unresolved' as const,
+        reason: 'Six current assignment-derived fence cannot be established from a standalone stored token', source, input: null });
+      const decoded = status.fact.kind === 'assembly-ProductionSignerReference'
+        ? boundary<OpenedProductionInstallationOwnerInput>('OpenedProductionSignerInput', status.fact.id, composition.host.boundary, () => {
+          const input = history.inputs.get(status.fact.id);
+          ensure(input?.kind === 'direct-owner', 'historical-installation-admission-context'); return input;
+        }) : directOwnerInput(status, facts);
+      return consumeResult<OpenedProductionInstallationOwnerInput, OpenedProductionInstallationBindingVerdict>(decoded, {
+        Success: input => freeze({ name, owner: expected.owner, state: 'resolved' as const, reason: null, source, input }),
+        Refused: refusal => freeze({ name, owner: expected.owner, state: 'unresolved' as const,
+          reason: refusal.detail, source, input: null }),
+      });
+    });
+
+    const protectionCandidates = [...history.inputs.values()].filter((input): input is Extract<OpenedProductionInstallationOwnerInput,
+      { kind: 'singleton-history' }> => input.kind === 'singleton-history' && input.selection.installation === installation.id
+        && input.selection.scope === scope && input.selection.generation === current.generation
+        && input.selection.machine === composition.host.machine && input.selection.role === 'scope-protection');
+    const rawProtection = snapshot.entries.filter(status => status.fact.kind === 'assembly-InstallationSelection'
+      && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.installation === installation.id
+      && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.scope === scope
+      && (status.fact.body as { record?: { installation?: string; scope?: string; role?: string } }).record?.role === 'scope-protection');
+    const protectionInput = protectionCandidates.length === 1 ? protectionCandidates[0]! : null;
+    const protectionActual = protectionInput?.fact ?? (rawProtection.length === 1 ? rawProtection[0]!.fact : null);
+    const protectionSource = { location: `installation:${installation.id}:scope:${scope}:role:scope-protection`,
+      expectedKind: 'assembly-InstallationSelectionSet', expectedReference: null,
+      actualReference: protectionActual ? envelopeReference(protectionActual) : null };
+    const protectionReason = protectionCandidates.length > 1 || rawProtection.length > 1
+      ? 'conflicting scope-protection history; required installation selection set is unavailable'
+      : protectionInput ? 'singleton history is diagnostic only; required installation selection set is unavailable'
+      : rawProtection.length ? 'historical-installation-admission-context; required installation selection set is unavailable'
+      : 'scope-protection source bytes are absent; required installation selection set is unavailable';
+    const protectionVerdict = freeze({ name: 'scope-protection', owner: 'part-ten', state: 'unresolved' as const,
+      reason: protectionReason, source: protectionSource, input: protectionInput });
+    const allBindings = freeze([...verdicts, protectionVerdict]);
+    const dependencyInputs = binding.dependencies.map(row => {
+      const verdict = allBindings.find(candidate => candidate.name === `dependency:${row.name}`);
+      return freeze({ name: row.name, input: verdict?.input ?? null });
+    });
+    const sourceVector: Record<string, { epoch: number; position: number }> = {};
+    for (const fact of opened) {
+      const prior = sourceVector[fact.machine], point = fact.segment;
+      if (!prior || point.epoch > prior.epoch || point.epoch === prior.epoch && point.position > prior.position)
+        sourceVector[fact.machine] = { epoch: point.epoch, position: point.position };
+    }
+    const sourceDigest = encoded(opened.map(fact => ({ id: fact.id, hash: fact.contentHash }))).hash;
+    const reread = take(composition.spine.store.read()), after = composition.host.current();
+    ensure(encoded(reread).bytes === encoded(opened).bytes && after.generation === current.generation
+      && after.facts.decode.register.generation.id === current.generation,
+    'inspection: opened root changed before coherent inspection completed');
+    return take(openedProductionInstallationReport({ type: 'OpenedProductionInstallationInspection', schemaVersion: 1,
+      owner: 'part-ten', installation: installation.id, scope, generation: current.generation, sourceVector, sourceDigest,
+      bindings: allBindings, history: history.verdicts,
+      unresolved: [...allBindings, ...history.verdicts].filter(row => row.state === 'unresolved'),
+      ownerInputs: { source: snapshot, manifest, binding, installation: { fact: installationStatus.fact, record: installation },
+        scopeProtection: protectionInput, dependencies: dependencyInputs, historical: [...history.inputs.values()] }, live: false },
+    composition.host.boundary));
   });
 }
 

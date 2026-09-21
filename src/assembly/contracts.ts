@@ -1,5 +1,5 @@
-import type { BoundaryContext, Clock, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
-import type { AppendReceipt, ConflictClass, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
+import type { BoundaryContext, Clock, FactEnvelopeReference, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
+import type { AppendReceipt, ConflictClass, FactContext, FactEnvelope, FactSnapshot, FactStorePort } from '../facts/index.js';
 import type { IntakePort } from '../intake/index.js';
 import type { JudgmentDoorway, ModelAdapterPort } from '../judgment/index.js';
 import type { MinimalDependency, IndependentSurfaceVerifierPort, OperatorSurfacePort, minimalPlaneProjectionIds } from '../operator/index.js';
@@ -370,6 +370,66 @@ export interface AssemblyResolvedProductionBinding {
   readonly fact: FactEnvelope;
   readonly completeness: 'complete' | 'partial';
   readonly missing: readonly string[];
+}
+
+/** A row is addressed through its real enclosing set fact. The address is not
+ * an appendable fact and never turns row bytes into a synthetic envelope. */
+export interface InstallationSelectionRowReference {
+  readonly type: 'InstallationSelectionRowReference';
+  readonly schemaVersion: 1;
+  readonly set: FactEnvelopeReference;
+  readonly rowDigest: string;
+  readonly role: import('./installation-selection.js').InstallationRole;
+  readonly instance: string;
+}
+
+type OpenedProductionInstallationOwnerInput =
+  | Readonly<{ kind: 'set-row'; fact: FactEnvelope; address: InstallationSelectionRowReference; row: Json }>
+  | Readonly<{ kind: 'singleton-history'; fact: FactEnvelope;
+    selection: import('./installation-selection.js').InstallationSelection }>
+  | Readonly<{ kind: 'direct-owner'; fact: FactEnvelope; record: Json }>;
+
+interface OpenedProductionInstallationBindingSource {
+  /** Stable manifest/roster location from which this binding was expected. */
+  readonly location: string;
+  readonly expectedKind: string;
+  readonly expectedReference: string | null;
+  /** The real opened-root envelope, or null when no bytes resolve the expected reference. */
+  readonly actualReference: FactEnvelopeReference | null;
+}
+
+interface OpenedProductionInstallationBindingVerdict {
+  readonly name: string;
+  readonly owner: string;
+  readonly state: 'resolved' | 'unresolved';
+  readonly reason: string | null;
+  readonly source: OpenedProductionInstallationBindingSource;
+  readonly input: OpenedProductionInstallationOwnerInput | null;
+}
+
+export interface OpenedProductionInstallationInspection {
+  readonly type: 'OpenedProductionInstallationInspection';
+  readonly schemaVersion: 1;
+  readonly owner: 'part-ten';
+  readonly installation: string;
+  readonly scope: string;
+  readonly generation: string;
+  readonly sourceVector: Readonly<Record<string, Readonly<{ epoch: number; position: number }>>>;
+  readonly sourceDigest: Hash;
+  readonly bindings: readonly OpenedProductionInstallationBindingVerdict[];
+  readonly history: readonly OpenedProductionInstallationBindingVerdict[];
+  readonly unresolved: readonly OpenedProductionInstallationBindingVerdict[];
+  readonly ownerInputs: Readonly<{
+    source: FactSnapshot;
+    manifest: AssemblyManifest;
+    binding: AssemblyProductionBindingSet;
+    installation: Readonly<{ fact: FactEnvelope; record: import('./production-installation.js').ProductionInstallation }>;
+    scopeProtection: OpenedProductionInstallationOwnerInput | null;
+    dependencies: readonly Readonly<{ name: MinimalDependency; input: OpenedProductionInstallationOwnerInput | null }>[];
+    historical: readonly OpenedProductionInstallationOwnerInput[];
+  }>;
+  /** Inspection is configuration evidence only and can never be an activation verdict. */
+  readonly live: false;
 }
 export interface AssemblyProductionCoordinator {
   readonly owner: 'part-ten';
