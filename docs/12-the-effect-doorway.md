@@ -239,14 +239,15 @@ cannot stand in for it.
 ## 4a. The fixed confined Native launch
 
 **Rule — one registered process operation has one supported mode.** Owner: Eight for admission,
-Six for reservation and claim, Ten for the restricted executor. **Checks: P10-SI-32 and
+Six for reservation and claim, Ten for the restricted executor. **Checks: P10-SI-36 and
 P8-NF-03–17/25–30** apply to feature/operation `native-confined-launch`, mode
 `context-loading`, for the fixed single-machine profile in Part Ten's installation contract.
 The operation starts one exact Native artifact under the operator-installed restricted identity
 and OS boundary. It supplies only loading and observation handles. It does not ground a run,
 consume a model context, call a provider, send a reply or declare the installation live.
 Those actions require their separate owner admissions. Single-machine deployment remains
-supported; an independently administered process on that machine is not a durability peer.
+supported, but local launch retains the unresolved `ordinary-local-durability-scope` design/admission
+hold below; an independently administered process on that machine is not a durability peer.
 
 This boundary follows the purpose's four consequential-effect tests, Eight §§2–3/5–6, and
 Ten §§3–4/12. Generic ownership of process effects supplies neither an approved definition nor
@@ -271,7 +272,8 @@ Seven-supervised finite stage even when this individual launch is ordinary; admi
 supervisor's own call does not require a second model to authorize it.
 
 **Rule — expiry is part of the admitted effect, not a hidden kill port.** Eight's ordinary
-reversible/costly rule requires at least local durability of the complete causal closure. The
+reversible/costly rule requires at least local durability of the complete causal closure, but
+the local-launch authority remains subject to `ordinary-local-durability-scope` below. The
 resource contract names finite wall lifetime, CPU time, memory, processes/descendants, open
 handles, input/output and scratch bytes, queue length and outstanding dispatches, plus observation
 count/time/bytes and maximum reserved exposure. Values come from the approved installation
@@ -288,12 +290,25 @@ needs its own registered Eight operation, resource/durability/claim contract and
 none is supplied by this launch. Such a mode stays under `general-process-execution` and M4-L.
 No new Seven supervision interface is granted.
 
-The local receipt covers pending work, approvals, definition and generation, immutable payload,
+`ordinary-local-durability-scope` is an UNRESOLVED governing-document gap. The purpose's
+local-durable closed-set clause (`docs/00-the-purpose.md:106–124`) and this part's §5 installed-shape
+rule exclude operations outside the provider/reply set, while §5's ordinary reversible/costly rule
+requires at least local durability. Neither ordinary classification nor bounded expiry erases the
+exclusions. Local-launch design/admission remains held until operator-approved owner-document
+clarification expressly limits the closed-set acceptance and membership check to irreversible
+effects and separately states the ordinary four-test/finite-bound/full-causal-closure rule.
+The irreversible provider/reply set stays unchanged. P-08 interpretation/check changes enforcing
+the unqualified exclusion need their own named grant; this supplement supplies none. This gap
+cannot be resolved by adding a peer, extending message purposes or treating launch as already covered.
+
+Subject to that reconciliation, the required local receipt covers pending work, approvals,
+definition and generation, immutable payload,
 Ten specification, resource and authority references, validation, verification obligation, Six
 reservation, claim and consumption before execution. Strengthen the demand if actual loss
 consequences require it. Permanent machine loss can destroy launch history and leave unfinished
 work unknown; it grants no replacement attempt. This bounded local occupation does not add a
-third irreversible operation to P-08's provider/reply set. If bounded expiry or exclusion of
+third irreversible operation to P-08's provider/reply set or establish local-dispatch authority
+while `ordinary-local-durability-scope` remains unresolved. If bounded expiry or exclusion of
 irreversible effects cannot be established, this mode is unsupported under this contract. An
 irreversible local launch requires separate operator approval of the purpose's local-loss rule,
 Eight §5, and Ten installation §§1/2/9 and their loss checks; it cannot be obtained by renaming
@@ -313,6 +328,11 @@ Missing bounds are an admission gap. References mean admitted owner references, 
 | `OperationObservation` / `effect-OperationObservation` / 2 | `type`, `schemaVersion`, `id`, `operation: native-confined-launch`, `operationIdentity`, `request`, `claim`, `consumption`, `digest`, `launchSpec`, `launchSpecDigest`, `machine`, `incarnation`, `stage` (`launched`, `uncertain`, `exit-observed`, `lookup`), `processIdentity`, `wake`, `capture` (`reference,hash`), `attestation: local-recorder`, `observer`, `observedAt`, `freshFor`, `predecessors`. `processIdentity` is a closed object with `state: unknown` alone, or `state: known` and exactly `machine,incarnation,startIdentity,pid,artifactDigest,boundaryDigest`; PID alone never identifies a process. Dispatch stages have no wake (empty reference); a lookup/exit observation names its existing bounded observation wake. The capture records actual local evidence, limitations and execution status; it is not Nine acceptance or a provider billing receipt. |
 | `EffectValidation` / `effect-EffectValidation` / 1 | Existing `type,schemaVersion,id,request,digest,phase,generation,definition,expires,authority` suffice: the request binds the exact payload/specification and `authority` names all compared owner facts. Its decoder must resolve the process variant and the complete current joins. No stored success becomes a capability. |
 | `EffectSettlement` / `effect-EffectSettlement` / 1 | Existing `type,schemaVersion,id,request,operation,claim,reservation,digest,acceptance,observations,outcome,finalCharge,delayedExecutionExcluded,retainedExposure,retryEligible` retain their meaning. The decoder may resolve v2 observations by `operationIdentity`; no message lookup is imposed on a process request. Only Eight's existing genuine settlement authority with applicable Nine assessment can issue it. Unsupported process assessment/accounting stays unresolved; this grant does not add a settle method or weaken that authority. |
+
+The worker has exactly one approved authenticated mediated endpoint, with the exact finite loading/observation method set; all other IPC/network/effect endpoints are denied. Every granted handle resolves to that same endpoint and current installation/run/incarnation; an additional endpoint is unsupported.
+The target's existing `handlePolicyDigest` binds that singleton endpoint and exact method set.
+The sorted `parameters.portHandles` list is compared exactly against that policy; multiple handle
+references cannot authorize multiple endpoints or an expanded method set.
 
 `OperationDefinition.id` identifies the one feature contract; `version` is its independently
 approved governed version. Request id is `request:` plus the canonical digest of the tagged tuple
@@ -346,14 +366,18 @@ The registration representation obeys Two's existing constraints: `src/facts/own
 selects exactly one registration by owner/name, and `src/decode/framework.ts:63–95` binds
 `type` to that name and requires a complete version/migration chain. Keep the existing owner/type
 names. For the three versioned bodies, register versions 1 and 2 with a v1-to-v2 migration that
-preserves the complete v1 fields in an internal `legacy-message` interpretation. Its closed
-normalized form is the original field set with `schemaVersion: 2` and
-`operation: legacy-message` added; no process parameters can be present. This form is decoder
+preserves the complete v1 fields in a closed internal legacy intermediate. Its exact field set
+is the original v1 field set with only `schemaVersion` temporarily incremented to `2` and the
+collision-free `legacyMessage: true` marker added; no process parameters can be present.
+A legacy observation keeps its original `operation` identity. Genuine stored process v2 retains
+`operation: native-confined-launch`. The intermediate is permitted only when the authenticated
+original envelope/body is v1. This form is decoder
 intermediate data only, never an admitted stored v2 message or a launch. The current decoder
 checks the original envelope's version and canonical body, restores the exact v1 public value
 for a v1 source, and accepts the table's process form only for a genuine v2 source. Thus v1
-canonical identity, digests, governed approvals and public message/provider readers remain
-unchanged. A caller-supplied v2 `legacy-message` body refuses. Historical decoding cannot infer
+canonical bytes, identity, digests, governed approvals, original claim/settlement joins and public
+message/provider readers are restored and validated unchanged. Any caller-supplied stored v2
+legacy intermediate, including one carrying `legacyMessage: true`, refuses. Historical decoding cannot infer
 launch permission through migration.
 
 Two's byte-policy shape may enumerate the bounded union of fields with variant-only fields
@@ -368,7 +392,7 @@ or alter old hashes.
 
 The declaration names the operation feature, these exact schema/producer/decoder bindings,
 metrics for admissions/refusals, OS invocations, expiry failures and unresolved launches, and
-P10-SI-32 with the inherited Eight checks. The Eight history consumer includes these records;
+P10-SI-36 with the inherited Eight checks. The Eight history consumer includes these records;
 message-only projections ignore the process variant explicitly and cannot create effects from it.
 Any whole-history fold must declare inclusion or explicit ignore with its reason; no opaque
 unknown-kind fallback is granted. Ten alone retains `HarnessLaunchSpec` and `HarnessObservation`.
