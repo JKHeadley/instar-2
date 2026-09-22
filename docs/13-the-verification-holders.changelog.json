@@ -1,5 +1,27 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 100,
+      "note": "Astra blocked-build adjudication (astra-g6-blocked-adjudication.md), section (b): correction of the approved PR 100 supplement, not a claim that PR 100 already specified owned-body-only versioning. Uncommitted documentation draft against c5e2b67d3df0cca7321aa806d0da2cb1d8910d97."
+    },
+    "changes": [
+      {
+        "what": "Give only VerificationPlan, VerificationRequest and VerificationAssessment owned-body schemaVersion 2 under unchanged FactEnvelope.schemaVersion 1 and the existing record-owned field schema.",
+        "why": "The family schema is unchanged, so one genuine owned-body registration accepts exact v1 and output-use v2 bodies without a FactContext migration; existing producers and signed v1 history remain intact.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-g6-blocked-adjudication.md section (b), Exact correction for the desk to record, item 1"
+      },
+      {
+        "what": "Require outer schema 1 and independent validation of the original body version; refuse decoder-local legacy-settlement wrappers as raw input in both origin and historical modes.",
+        "why": "Wire body schema 2 requires output-use; the lossless internal adapter must not bypass exact wire validation or promote legacy occurrence evidence.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-g6-blocked-adjudication.md section (b), Exact correction for the desk to record, item 1"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-21",
     "status": "draft",
