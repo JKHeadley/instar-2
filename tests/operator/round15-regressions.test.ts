@@ -93,8 +93,15 @@ it('V79 the changed source paths stay inside the explicit Part Four, Part Ten an
   const runAdmissionGrant = ['src/transport/run-admission.ts', 'src/transport/index.ts'];
   // GRANT U5-E (2026-09-18): Part Two store projection reads (docs/06:55-58), exact file.
   const storeProjectionGrant = ['src/facts/store.ts', 'src/facts/historical.ts']; // GRANT M3-E: historical memo construction
+  const providerResponseAssessmentGrant = [
+    'src/facts/owned.ts',
+    'src/verification/contracts.ts', 'src/verification/records.ts', 'src/verification/runtime.ts',
+    'src/verification/effect-consumption.ts', 'src/verification/index.ts', 'src/verification/verification.declarations.json',
+    'src/judgment/contracts.ts', 'src/judgment/model-adapter.ts', 'src/judgment/provider-path.ts', 'src/judgment/index.ts',
+    'src/judgment/judgment.declarations.json', 'src/effects/provider-path.ts', 'src/effects/index.ts'];
   const outside = paths.filter(path => !liveInputGrant.includes(path) && !sealedIdentityGrant.includes(path)
-    && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path) && !['src/intake/', 'src/assembly/', 'src/operator/', 'src/rungraph/'].some(prefix => path.startsWith(prefix)));
+    && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path) && !providerResponseAssessmentGrant.includes(path)
+    && !['src/intake/', 'src/assembly/', 'src/operator/', 'src/rungraph/'].some(prefix => path.startsWith(prefix)));
   expect(outside).toEqual([]);
   expect(readFileSync(join(root, 'src/index.ts'), 'utf8'))
     .toBe(execFileSync('git', ['show', `${base}:src/index.ts`], { cwd: root, encoding: 'utf8' }));

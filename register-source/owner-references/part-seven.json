@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "part-seven",
+  "fixtures": [],
+  "probes": [],
+  "documents": [],
+  "decoders": [
+    {
+      "id": "decodeProviderAnswerAcceptanceAtOrigin",
+      "module": {
+        "path": "src/judgment/index.ts",
+        "hash": "sha256:54959b0f64fcfbcaad313158751d75762ad0ba7d4ac0f45433f259b68dc76938"
+      },
+      "artifact": {
+        "path": "src/judgment/provider-path.ts",
+        "hash": "sha256:367c59d573df46c0999644ba57a60cfd6c17c928192802672bf939c322149756"
+      }
+    },
+    {
+      "id": "decodeHistoricalProviderAnswerAcceptance",
+      "module": {
+        "path": "src/judgment/index.ts",
+        "hash": "sha256:54959b0f64fcfbcaad313158751d75762ad0ba7d4ac0f45433f259b68dc76938"
+      },
+      "artifact": {
+        "path": "src/judgment/provider-path.ts",
+        "hash": "sha256:367c59d573df46c0999644ba57a60cfd6c17c928192802672bf939c322149756"
+      }
+    },
+    {
+      "id": "decodeCapturedProviderDecision",
+      "module": {
+        "path": "src/judgment/index.ts",
+        "hash": "sha256:54959b0f64fcfbcaad313158751d75762ad0ba7d4ac0f45433f259b68dc76938"
+      },
+      "artifact": {
+        "path": "src/judgment/provider-path.ts",
+        "hash": "sha256:367c59d573df46c0999644ba57a60cfd6c17c928192802672bf939c322149756"
+      }
+    }
+  ]
+}

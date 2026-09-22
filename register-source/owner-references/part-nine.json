@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "owner": "part-nine",
+  "fixtures": [
+    {
+      "id": "P9-NF-64",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/verification/provider-response-assessment.test.ts",
+        "hash": "sha256:e6780f1ff342e17c1510c9fa3cb169f680c8c77a9f20768efc112d7ea60097ea"
+      }
+    },
+    {
+      "id": "P9-NF-65",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/verification/provider-response-assessment.test.ts",
+        "hash": "sha256:e6780f1ff342e17c1510c9fa3cb169f680c8c77a9f20768efc112d7ea60097ea"
+      }
+    },
+    {
+      "id": "P9-NF-66",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/verification/provider-response-assessment.test.ts",
+        "hash": "sha256:e6780f1ff342e17c1510c9fa3cb169f680c8c77a9f20768efc112d7ea60097ea"
+      }
+    }
+  ],
+  "probes": [],
+  "documents": [],
+  "decoders": [
+    {
+      "id": "decodeVerificationRecord",
+      "module": {
+        "path": "src/verification/index.ts",
+        "hash": "sha256:20fede08894402d6f47246660ce3415d97d785b60637c5535bfbf1a3d80bce10"
+      },
+      "artifact": {
+        "path": "src/verification/records.ts",
+        "hash": "sha256:f7773c89758432065d2fc67a554e364cdecb2c1bcabc184e1bccef5b471f4ff5"
+      }
+    },
+    {
+      "id": "decodeVerificationRecordAtOrigin",
+      "module": {
+        "path": "src/verification/index.ts",
+        "hash": "sha256:20fede08894402d6f47246660ce3415d97d785b60637c5535bfbf1a3d80bce10"
+      },
+      "artifact": {
+        "path": "src/verification/records.ts",
+        "hash": "sha256:f7773c89758432065d2fc67a554e364cdecb2c1bcabc184e1bccef5b471f4ff5"
+      }
+    },
+    {
+      "id": "decodeHistoricalVerificationRecord",
+      "module": {
+        "path": "src/verification/index.ts",
+        "hash": "sha256:20fede08894402d6f47246660ce3415d97d785b60637c5535bfbf1a3d80bce10"
+      },
+      "artifact": {
+        "path": "src/verification/records.ts",
+        "hash": "sha256:f7773c89758432065d2fc67a554e364cdecb2c1bcabc184e1bccef5b471f4ff5"
+      }
+    }
+  ]
+}

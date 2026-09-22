@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 const seam = new Set([8, 11, 13, 26, 27, 29, 30, 32, 33, 34, 37, 38, 40, 44, 45, 46, 47, 58, 60, 62]);
 const protection = new Set([15, 16, 51, 52, 53, 54, 55, 56]);
-export const verificationDispositions = Array.from({ length: 63 }, (_, index) => {
+const existingVerificationDispositions = Array.from({ length: 63 }, (_, index) => {
   const n = index + 1;
   const reason = seam.has(n)
     ? 'Executable owner-side reference behavior is present, but a filed Part Five/Six/Seven seam or independently approved production activation remains unresolved.'
@@ -16,10 +16,15 @@ export const verificationDispositions = Array.from({ length: 63 }, (_, index) =>
       : 'Executable unit/full-port/lifecycle reference behavior is present; the draft contract forbids treating author tests as production certification.';
   return { id: `P9-NF-${String(n).padStart(2, '0')}`, status: 'partial', reason };
 });
+export const verificationDispositions = [...existingVerificationDispositions,
+  { id: 'P9-NF-64', status: 'partial', reason: 'Executable exact-response authenticity and completeness fixtures pass; installed source/completion evidence, protected landing, and production activation remain runtime-held.' },
+  { id: 'P9-NF-65', status: 'partial', reason: 'Executable owned-body version, origin, and reconstruction fixtures pass; complete historical semantic rederivation remains runtime-held under HOLD G6-NINE-HISTORICAL-REGISTER-BASIS when the original verified register basis is unavailable.' },
+  { id: 'P9-NF-66', status: 'partial', reason: 'Executable current-use, same-assessment, lifecycle, and restart fixtures pass. Partial G6 implementation/evidence; pending-exposure outbound reply remains held under M3-I/G6-T4-SIX; no installed-route or production-readiness claim. Reservation adverse-cut evidence, protected landing, and production activation remain runtime-held.' },
+];
 
 export function checkVerificationCoverage(report, dispositions = verificationDispositions) {
   if (!report.success) throw new Error('verification mapping requires a successful actual test run');
-  if (dispositions.length !== 63 || new Set(dispositions.map(row => row.id)).size !== 63) throw new Error('missing or duplicate P9 disposition');
+  if (dispositions.length !== 66 || new Set(dispositions.map(row => row.id)).size !== 66) throw new Error('missing or duplicate P9 disposition');
   return dispositions.map(row => {
     if (row.status !== 'partial' || !row.reason) throw new Error(`invented held or unexplained P9 disposition: ${row.id}`);
     const tests = report.testResults.flatMap(file => (file.assertionResults ?? []).filter(test =>

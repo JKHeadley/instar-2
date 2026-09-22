@@ -8,5 +8,47 @@
     "type": "Declaration", "schemaVersion": 1, "id": "verification.source", "kind": "protected artifacts", "status": "live",
     "requiredFacts": { "pattern": "src/verification/**", "why": "Verification decoders, evidence guards and protection broker checks must not be weakened by callers. Production isolation and draft dependency seams remain unproven.", "surface": "repository review approval" },
     "standards": [82], "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "verification-VerificationPlan",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "src/verification/records.ts",
+      "why": "part-nine FactEnvelope schema 1; owned-body schemas 1 and 2: createVerificationRuntime.record produces the exact v1 settlement body or v2 output-use body; decodeVerificationRecord, decodeVerificationRecordAtOrigin, and decodeHistoricalVerificationRecord preserve the signed version and refuse external migration wrappers. P9-NF-64, P9-NF-65, and P9-NF-66 are bounded build fixtures at tests/verification/provider-response-assessment.test.ts.",
+      "surface": "repository review approval"
+    },
+    "standards": [82],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "verification-VerificationRequest",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "src/verification/records.ts",
+      "why": "part-nine FactEnvelope schema 1; owned-body schemas 1 and 2: createProviderResponseAssessmentPort.assess produces the closed v2 output-use request through createVerificationRuntime.record while legacy producers retain v1; decodeVerificationRecord, decodeVerificationRecordAtOrigin, and decodeHistoricalVerificationRecord preserve exact identity and closure. P9-NF-64, P9-NF-65, and P9-NF-66 are bounded build fixtures at tests/verification/provider-response-assessment.test.ts.",
+      "surface": "repository review approval"
+    },
+    "standards": [82],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "verification-VerificationAssessment",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "src/verification/records.ts",
+      "why": "part-nine FactEnvelope schema 1; owned-body schemas 1 and 2: createProviderResponseAssessmentPort.assess derives and records the exact six-row v2 output-use assessment while legacy settlement retains the four-row v1 body; decodeVerificationRecord, decodeVerificationRecordAtOrigin, and decodeHistoricalVerificationRecord validate the original owner basis. When that original verified register basis is unavailable, historical replay preserves the signed assessment only as evidence-unavailable under HOLD G6-NINE-HISTORICAL-REGISTER-BASIS and supplies no current authority. P9-NF-64, P9-NF-65, and P9-NF-66 are bounded build fixtures at tests/verification/provider-response-assessment.test.ts.",
+      "surface": "repository review approval"
+    },
+    "standards": [82],
+    "holds": []
   }
 ]

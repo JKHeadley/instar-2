@@ -1,8 +1,14 @@
 import { expect, it } from 'vitest';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { decodeVerificationRecord, verificationIdentity } from '../../src/verification/index.js';
 import type { ProviderResponseSubject } from '../../src/verification/index.js';
 import { authorAndAppend } from '../../src/facts/index.js';
 import { factsFixture, json, privateKey, refused, value } from '../facts/fixtures.js';
+import { loadOwnerReferences } from '../../scripts/register-owner-references.mjs';
+import { hash as ownerHash } from '../register/fixtures.js';
 import { verificationInput } from './fixture.js';
 import { verificationRuntimeFixture } from './runtime-fixture.js';
 
@@ -104,4 +110,54 @@ it('P9-NF-65 stores legacy and output-use bodies under the unchanged outer famil
   const stored = value(f.store.read()).filter(fact => fact.kind === 'verification-VerificationPlan');
   expect(stored.map(fact => fact.schemaVersion)).toEqual([1, 1]);
   expect(stored.map(fact => (fact.body as unknown as { record: { schemaVersion: number } }).record.schemaVersion)).toEqual([1, 2]);
+});
+
+it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fixture/decoder pairs', () => {
+  const root = mkdtempSync(join(tmpdir(), 'g6-owner-references-'));
+  const manifests = ['register-source/owner-references/part-nine.json', 'register-source/owner-references/part-seven.json',
+    'register-source/owner-references/part-ten.json'];
+  const artifacts = ['src/verification/index.ts', 'src/verification/records.ts', 'src/judgment/index.ts',
+    'src/judgment/provider-path.ts', 'src/assembly/index.ts', 'src/assembly/installation-selection.ts',
+    'src/assembly/production-signer-reference.ts', 'tests/verification/provider-response-assessment.test.ts',
+    'tests/rungraph/provider-answer-reply.test.ts', 'tests/e2e/fixed-installation-reply.test.ts',
+    'tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts'];
+  try {
+    for (const path of [...manifests, ...artifacts]) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      copyFileSync(path, join(root, path));
+    }
+    const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture',
+      '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    git('init', '-q'); git('add', '.'); git('commit', '-qm', 'G6 owner references');
+    const commit = git('rev-parse', 'HEAD');
+    const files = git('ls-tree', '-r', '--name-only', commit).split('\n');
+    const originals = Object.fromEntries(manifests.map(path => [path, JSON.parse(readFileSync(join(root, path), 'utf8'))]));
+    const load = (changed: Record<string, unknown> = {}) => loadOwnerReferences(root, { commit, files,
+      sources: Object.fromEntries(manifests.map(path => [path, JSON.stringify(changed[path] ?? originals[path])])) });
+    const loaded = load();
+    expect(loaded.catalog.fixtures.map(row => row.id).sort()).toEqual([
+      'P10-SI-06', 'P10-SI-09', 'P10-SI-17', 'P10-SI-24', 'P10-SI-37', 'P9-NF-64', 'P9-NF-65', 'P9-NF-66']);
+    expect(loaded.decoders.map(row => row.id).sort()).toEqual([
+      'decodeCapturedProviderDecision', 'decodeHistoricalInstallationSelection', 'decodeHistoricalProductionSignerReference',
+      'decodeHistoricalProviderAnswerAcceptance', 'decodeHistoricalVerificationRecord', 'decodeInstallationSelectionAtOrigin',
+      'decodeProductionSignerReferenceAtOrigin', 'decodeProviderAnswerAcceptanceAtOrigin', 'decodeVerificationRecord',
+      'decodeVerificationRecordAtOrigin']);
+    expect(loaded.catalog.probes).toEqual([]);
+    expect(loaded.documents).toEqual([]);
+
+    const artifact = (path: string) => ({ path, hash: ownerHash(readFileSync(join(root, path), 'utf8')) });
+    const nineWrong = structuredClone(originals[manifests[0]!] as any);
+    nineWrong.fixtures[0].artifact = artifact('tests/rungraph/provider-answer-reply.test.ts');
+    expect(() => load({ [manifests[0]!]: nineWrong })).toThrow('wrong-owner inspection artifact');
+    const tenWrong37 = structuredClone(originals[manifests[2]!] as any);
+    tenWrong37.fixtures.find((row: { id: string }) => row.id === 'P10-SI-37').artifact = artifact('tests/rungraph/provider-answer-reply.test.ts');
+    expect(() => load({ [manifests[2]!]: tenWrong37 })).toThrow('wrong-owner inspection artifact');
+    const tenWrong24 = structuredClone(originals[manifests[2]!] as any);
+    tenWrong24.fixtures.find((row: { id: string }) => row.id === 'P10-SI-24').artifact = artifact('tests/e2e/fixed-installation-reply.test.ts');
+    expect(() => load({ [manifests[2]!]: tenWrong24 })).toThrow('wrong-owner inspection artifact');
+    const sevenFixture = structuredClone(originals[manifests[1]!] as any);
+    sevenFixture.fixtures.push({ id: 'P9-NF-64', stage: 'build',
+      artifact: artifact('tests/verification/provider-response-assessment.test.ts') });
+    expect(() => load({ [manifests[1]!]: sevenFixture })).toThrow('unknown owner fixture/probe');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
