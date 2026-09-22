@@ -15,6 +15,7 @@ it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner sou
   const storeProjectionGrant = ['src/facts/store.ts', 'src/facts/historical.ts']; // GRANT M3-E: historical memo construction
   // GRANT M4-G6-N-T6: Nine's exact-response assessment and Seven/Eight acceptance, exact files.
   const providerResponseAssessmentGrant = [
+    'src/facts/owned.ts',
     'src/verification/contracts.ts', 'src/verification/records.ts', 'src/verification/runtime.ts',
     'src/verification/effect-consumption.ts', 'src/verification/index.ts', 'src/verification/verification.declarations.json',
     'src/judgment/contracts.ts', 'src/judgment/model-adapter.ts', 'src/judgment/provider-path.ts', 'src/judgment/index.ts',

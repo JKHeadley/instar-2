@@ -424,15 +424,22 @@ function establishResponseAssessment(record: ProviderResponseVerificationAssessm
   const responseFact = cone.get(record.subject.seven.response.id);
   const responseRecord = responseFact?.body as unknown as { record?: { receipt?: { reference?: string; hash?: string } } };
   const receipt = responseRecord.record?.receipt;
-  const receiptCapture = receipt?.reference ? context.facts.captures[receipt.reference] : undefined;
-  const submittedCapture = context.facts.captures[record.subject.submitted.capture.reference];
-  const answerCapture = context.facts.captures[record.subject.response.capture.reference];
-  const terminalCapture = context.facts.captures[record.subject.terminal.capture.reference];
-  const allAvailable = receiptCapture?.status === 'available' && receiptCapture.bytes !== null
-    && submittedCapture?.status === 'available' && submittedCapture.bytes !== null
-    && answerCapture?.status === 'available' && answerCapture.bytes !== null
-    && terminalCapture?.status === 'available' && terminalCapture.bytes !== null
-    && evidence.every(item => context.facts.captures[item.capture.reference]?.status === 'available');
+  ensure(receipt && typeof receipt.reference === 'string' && typeof receipt.hash === 'string',
+    'output assessment receipt capture metadata absent');
+  const receiptReference = { reference: receipt.reference, hash: receipt.hash };
+  const captureAvailable = (capture: { reference: string; hash: string }): boolean => {
+    const stored = context.facts.captures[capture.reference];
+    ensure(stored && stored.hash === capture.hash, 'output assessment capture metadata differs');
+    if (stored.status !== 'available') return false;
+    ensure(stored.bytes !== null && hashBytes(stored.bytes) === capture.hash, 'output assessment capture bytes differ');
+    return true;
+  };
+  const receiptCapture = context.facts.captures[receiptReference.reference]!;
+  const submittedCapture = context.facts.captures[record.subject.submitted.capture.reference]!;
+  const answerCapture = context.facts.captures[record.subject.response.capture.reference]!;
+  const terminalCapture = context.facts.captures[record.subject.terminal.capture.reference]!;
+  const allAvailable = [receiptReference, record.subject.submitted.capture, record.subject.response.capture,
+    record.subject.terminal.capture, ...evidence.map(item => item.capture)].every(captureAvailable);
   const sources = [requestFact, ...record.predecessors.filter(id => id !== requestFact.id && id !== record.supersedes)
     .map(id => cone.get(id)).filter((fact): fact is FactEnvelope => !!fact)];
   const frontier: Record<string, { epoch: number; position: number; fact: string }> = {};
@@ -445,20 +452,33 @@ function establishResponseAssessment(record: ProviderResponseVerificationAssessm
   ensure(encoded(record.knownLineages).bytes === encoded(lineages).bytes, 'output assessment lineage pin differs');
   ensure(record.vectorDigest === encoded({ folded: context.facts.folded, frontier }).hash,
     historical ? 'historical output assessment vector pin differs' : 'output assessment vector pin differs');
-  if (!allAvailable) {
-    ensure(historical, 'current output assessment basis unavailable');
-    const { id: _id, ...identity } = record;
-    ensure(record.id === `assessment:${encoded(identity).hash}`, 'historical output assessment identity differs');
-    return;
-  }
   ensure(record.captureStatuses.length === evidence.length && record.captureStatuses.every(status =>
     status.status === 'available' && evidence.some(item => item.capture.reference === status.reference)),
   'output assessment capture-status basis differs');
+  const requestOwner = cone.get(record.subject.seven.request.id);
+  const requestBody = (requestOwner?.body as unknown as { record?: Readonly<Record<string, unknown>> }).record;
+  const originalGeneration = requestBody?.generation;
+  ensure(typeof originalGeneration === 'string' && originalGeneration === request.sourceGeneration
+    && originalGeneration === plan.subject.generation, 'output assessment original register generation differs');
+  const canonicalHistoricalIdentity = (): void => {
+    const { id: _id, ...identity } = record;
+    ensure(record.id === `assessment:${encoded(identity).hash}`, 'historical output assessment identity differs');
+  };
+  if (context.facts.decode.register.generation.id !== originalGeneration) {
+    ensure(historical, 'current output assessment original register basis unavailable');
+    ensure(context.markEvidenceUnavailable, 'historical output assessment taint sink unavailable');
+    canonicalHistoricalIdentity();
+    context.markEvidenceUnavailable();
+    return;
+  }
+  if (!allAvailable) {
+    ensure(historical, 'current output assessment basis unavailable');
+    canonicalHistoricalIdentity();
+    return;
+  }
   let responseEvidence: Json = null;
   try { responseEvidence = (JSON.parse(receiptCapture.bytes!) as { responseEvidence?: Json }).responseEvidence ?? null; }
   catch { /* malformed receipts produce an insufficient response derivation */ }
-  const requestOwner = cone.get(record.subject.seven.request.id);
-  const requestBody = (requestOwner?.body as unknown as { record?: Readonly<Record<string, unknown>> }).record;
   let captured: Decision | null = null;
   const admitted = responseEvidence !== null && typeof responseEvidence === 'object' && !Array.isArray(responseEvidence)
     && (responseEvidence as Readonly<Record<string, Json>>).eligibility === 'admitted';

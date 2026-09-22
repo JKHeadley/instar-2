@@ -5,12 +5,13 @@ import { registerProviderResponseEvidenceBounds } from '../../src/assembly/provi
 import { createProviderEffectDoorway } from '../../src/effects/index.js';
 import { createProviderResponseAssessmentPort, decodeHistoricalVerificationRecord } from '../../src/verification/index.js';
 import { decodeHistoricalProviderAnswerAcceptance } from '../../src/judgment/index.js';
-import type { Hash } from '../../src/index.js';
+import type { Hash, Json } from '../../src/index.js';
 import { createRunGraph, runIdFor } from '../../src/rungraph/index.js';
 import { providerFixture, enc, refused, value } from '../model-provider/fixture.js';
 import type { ProviderResponseSubject } from '../../src/verification/index.js';
 import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from '../../src/assembly/provider-invocation.js';
 import { causalStanding, decodeHistoricalBody, hashBytes } from '../../src/facts/index.js';
+import { decodeOwnedBody } from '../../src/facts/owned.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
@@ -238,6 +239,31 @@ it.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)
     expect(historical.taint).toContain('evidence-unavailable');
     if (captureOwner.id === fact.id) expect(historical.fields.record).toEqual(record);
   });
+
+it('preserves signed Nine assessment as unavailable history after original register retirement; current consumption refuses', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
+  const assessment: any = value(s.api.assessResponse(s.observed.operation));
+  const fact = s.f.all().find((candidate: FactEnvelope) => candidate.id === assessment.id)!;
+  const record = raw(fact);
+  const originalFacts = { ...s.f.context, facts: s.f.all() };
+  const original = decodeOwnedBody('part-nine', 'VerificationAssessment', record as unknown as Json, fact, 'historical', originalFacts);
+  expect(original.value).toEqual(record);
+  expect(original.taint).not.toContain('evidence-unavailable');
+
+  const laterFacts = { ...originalFacts, decode: { ...originalFacts.decode,
+    register: { ...originalFacts.decode.register,
+      generation: { ...originalFacts.decode.register.generation, id: 'later-generation' },
+      entries: originalFacts.decode.register.entries.filter((entry: string) => entry !== 'judgment') } } };
+  refused(decodeHistoricalVerificationRecord('VerificationAssessment', record, { ...s.f.host.boundary,
+    register: laterFacts.decode.register, origin: fact, mode: 'historical', facts: laterFacts }, s.f.vh), 'taint sink');
+  const historical = decodeOwnedBody('part-nine', 'VerificationAssessment', record as unknown as Json, fact, 'historical', laterFacts);
+  expect(historical.value).toEqual(record);
+  expect((historical.value as unknown as { id: string }).id).toBe(record.id);
+  expect(historical.taint).toContain('evidence-unavailable');
+
+  s.f.generation('later-generation');
+  refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
+});
 
 it('P10-SI-37 keeps a v1 occurrence assessment diagnostic-only when no answer evidence exists', async () => {
   const f = providerFixture({ route: { invoke: async (_bytes, bounds) => ({ state: 'complete',

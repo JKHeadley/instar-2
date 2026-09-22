@@ -14,6 +14,7 @@ export type OwnedShape = Readonly<
 >;
 export interface OwnedBodyContext extends FactBoundary {
   readonly origin: FactEnvelope; readonly mode: 'origin' | 'historical'; readonly facts: FactContext;
+  readonly markEvidenceUnavailable?: () => void;
 }
 class RegistrationIdentity { private readonly product!: void }
 export interface OwnedBodyRegistration extends RegistrationIdentity { readonly owner: string; readonly name: string }
@@ -28,6 +29,10 @@ export function registerOwnedBody<T>(definition: DecoderDefinition<T, OwnedBodyC
     const registration = { owner: decoder.owner, name: decoder.name } as unknown as OwnedBodyRegistration;
     registrations.set(registration, (value, origin, mode, facts) => {
       const taint = new Set<AuthorityTaint>();
+      const markEvidenceUnavailable = (): void => {
+        requireFact(mode === 'historical', 'owned evidence-unavailable taint is historical-only');
+        taint.add('evidence-unavailable');
+      };
       const check = (v: Json, s: OwnedShape): void => {
         if (s.kind === 'text') { integer(s.maxLength, 'text bound', 1); requireFact(typeof v === 'string' && v.length <= s.maxLength, 'owned text exceeds declared bound'); }
         else if (s.kind === 'integer') requireFact(typeof v === 'number' && Number.isSafeInteger(v), 'owned integer required');
@@ -44,7 +49,7 @@ export function registerOwnedBody<T>(definition: DecoderDefinition<T, OwnedBodyC
         } else requireFact(false, 'unknown owned field policy');
       };
       check(value, shape);
-      const decoded = take(decoder.decode(value, { ...contextBoundary(facts), origin, mode, facts }));
+      const decoded = take(decoder.decode(value, { ...contextBoundary(facts), origin, mode, facts, markEvidenceUnavailable }));
       const result: Json = JSON.parse(encoding(decoded).bytes); check(result, shape);
       return { value: result, taint: [...taint] };
     });
