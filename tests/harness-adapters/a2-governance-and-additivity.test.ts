@@ -13,7 +13,7 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
     ['tests/assembly/production-grounding-inventory.json', '8c69dd5d22a8f5f18193ffcae39121bf8ed2a338fce012fa048f011bfb081e69'],
     // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
     ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
-    ['tests/rungraph/production-grounding-scope.test.ts', '7a981ed049fb3367193993fb0ec1503d451b5a9d9045da24e99b521a08fc29bf'],
+    ['tests/rungraph/production-grounding-scope.test.ts', 'a1e24551cd7d574387de08ad643da105090e2e3eed5f2a7f154970d89d10c8d6'],
     ['tests/assembly/round10-regressions.test.ts', '74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605'],
     ['tests/assembly/round12-regressions.test.ts', '6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9'],
     // Settlement seam baseline: exact helper bytes for landed Eight 189b346.

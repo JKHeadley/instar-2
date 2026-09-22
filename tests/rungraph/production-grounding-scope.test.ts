@@ -13,7 +13,14 @@ it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner sou
   const runAdmissionGrant = ['src/transport/run-admission.ts', 'src/transport/index.ts'];
   // GRANT U5-E (2026-09-18): Part Two store projection reads (docs/06:55-58), exact file.
   const storeProjectionGrant = ['src/facts/store.ts', 'src/facts/historical.ts']; // GRANT M3-E: historical memo construction
+  // GRANT M4-G6-N-T6: Nine's exact-response assessment and Seven/Eight acceptance, exact files.
+  const providerResponseAssessmentGrant = [
+    'src/verification/contracts.ts', 'src/verification/records.ts', 'src/verification/runtime.ts',
+    'src/verification/effect-consumption.ts', 'src/verification/index.ts', 'src/verification/verification.declarations.json',
+    'src/judgment/contracts.ts', 'src/judgment/model-adapter.ts', 'src/judgment/provider-path.ts', 'src/judgment/index.ts',
+    'src/judgment/judgment.declarations.json', 'src/effects/provider-path.ts', 'src/effects/index.ts'];
   expect(paths.filter(path => !liveInputGrant.includes(path) && !productionBootGrant.includes(path)
-    && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path) && !['src/assembly/', 'src/rungraph/'].some(prefix => path.startsWith(prefix))))
+    && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path)
+    && !providerResponseAssessmentGrant.includes(path) && !['src/assembly/', 'src/rungraph/'].some(prefix => path.startsWith(prefix))))
     .toEqual([]);
 });
