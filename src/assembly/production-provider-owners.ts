@@ -3,7 +3,8 @@ import { createProviderJudgmentPort, createJudgmentDoorway, createJudgmentSpine,
 import type { ProviderJudgmentDependencies, ProviderObservation, ModelAdapterPort, JudgmentDoorway } from '../judgment/index.js';
 import { createProviderEffectDoorway } from '../effects/index.js';
 import type { ProviderEffectDependencies } from '../effects/index.js';
-import { createEffectSettlementAssessmentPort, createVerificationRuntime, createVerificationSpine } from '../verification/index.js';
+import { createEffectSettlementAssessmentPort, createProviderResponseAssessmentPort,
+  createVerificationRuntime, createVerificationSpine } from '../verification/index.js';
 import type { VerificationHost } from '../verification/index.js';
 import { createConfinedProviderInvocation } from './provider-invocation.js';
 import type { ConfinedProviderRoute } from './provider-invocation.js';
@@ -22,6 +23,7 @@ export interface ProductionProviderOwners {
   readonly seven: ReturnType<typeof createProviderJudgmentPort>;
   readonly eight: ReturnType<typeof createProviderEffectDoorway>;
   readonly nine: ReturnType<typeof createVerificationRuntime>;
+  readonly responseAssessment: ReturnType<typeof createProviderResponseAssessmentPort>;
   readonly model: ModelAdapterPort;
   readonly legacyJudgment: JudgmentDoorway;
 }
@@ -39,24 +41,31 @@ export function createProductionProviderOwners(input: ProductionProviderOwnersIn
     const seven = createProviderJudgmentPort(p);
     const nine = createVerificationRuntime(input.verification,
       createVerificationSpine(input.verification, { context: p.context, privateKey: p.privateKey }, p.store));
+    const settlementAssessment = createEffectSettlementAssessmentPort(input.verification, nine, p.store);
+    const responseAssessment = createProviderResponseAssessmentPort(input.verification, nine, p.store, seven);
     const invocation = take(createConfinedProviderInvocation(input.route, p.authority,
-      p.host.transport, p.captures, p.boundary, p.store));
+      p.host.transport, p.captures, p.boundary, p.store, { context: p.context, privateKey: p.privateKey }));
     const eight = createProviderEffectDoorway({ ...e, context: p.context, store: p.store,
       privateKey: p.privateKey, transport: p.authority, judgment: seven, invocation,
-      assessment: createEffectSettlementAssessmentPort(input.verification, nine, p.store) });
+      assessment: settlementAssessment, responseAssessment });
     // Preserve the original public production roster with the real legacy Seven
     // factory, alongside the separately typed provider-call owner path. Neither
     // port is a no-op facade or a renamed provider record.
     const model = take(createModelAdapter(p.host.description, { automaticRetries: 0,
       execute: async send => { await send(); } }, async (bytes, operation) =>
-      await input.route.invoke(bytes, { operation, deadline: p.host.transport.monotonic() + p.timeout,
-        automaticRetries: 0, maxTokens: p.maxTokens,
-        maxOutputBytes: p.host.description.maxOutputBytes, maxCharge: p.host.description.maxCharge,
-        timeout: p.timeout }) as ProviderObservation, p.authority, p.host.transport, p.boundary));
+      {
+        const observed = await input.route.invoke(bytes, { operation, deadline: p.host.transport.monotonic() + p.timeout,
+          automaticRetries: 0, maxTokens: p.maxTokens,
+          maxOutputBytes: p.host.description.maxOutputBytes, maxCharge: p.host.description.maxCharge,
+          timeout: p.timeout });
+        return { state: observed.state, bytes: observed.bytes, providerOperation: observed.providerOperation,
+          usage: observed.usage, retryBlocked: observed.retryBlocked,
+          ...(observed.limitation ? { limitation: observed.limitation } : {}) } as ProviderObservation;
+      }, p.authority, p.host.transport, p.boundary));
     const legacyJudgment = createJudgmentDoorway({ host: p.host, authority: p.authority,
       spine: createJudgmentSpine(p.host, { context: p.context, privateKey: p.privateKey }, p.store),
       captures: p.captures, model, boundary: p.boundary });
-    const result = Object.freeze({ seven, eight, nine, model, legacyJudgment });
+    const result = Object.freeze({ seven, eight, nine, responseAssessment, model, legacyJudgment });
     issued.add(result); return result;
   });
 }

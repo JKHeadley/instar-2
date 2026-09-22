@@ -1,9 +1,10 @@
-import { consumeResult } from '../index.js';
-import type { BoundaryContext, Result } from '../index.js';
-import { hashBytes } from '../facts/index.js';
-import type { FactStorePort } from '../facts/index.js';
+import { createHash } from 'node:crypto';
+import { consumeResult, decode, readEvidence } from '../index.js';
+import type { BoundaryContext, Evidence, Json, Result } from '../index.js';
+import { authorAndAppend, hashBytes } from '../facts/index.js';
+import type { FactContext, FactStorePort } from '../facts/index.js';
 import type { DispatchClaim, FenceToken, TransportAuthority, TransportHost } from '../transport/index.js';
-import type { Capture, JudgmentCapturePort, ProviderObservation } from '../judgment/index.js';
+import type { Capture, JudgmentCapturePort, ProviderObservation, ProviderResponseEvidence } from '../judgment/index.js';
 type ProviderCallPayload = import('../effects/provider-api.js').ProviderCallPayload;
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 
@@ -14,12 +15,34 @@ export interface ConfinedProviderRoute {
   readonly automaticRetries: 0; readonly environment: 'local-test' | 'production';
   readonly custodyProof?: ProviderCustodyProof;
   invoke(bytes: string, bounds: Readonly<{ operation: string; deadline: number; timeout: number;
-    maxOutputBytes: number; maxTokens: number; maxCharge: number; automaticRetries: 0 }>): Promise<ProviderObservation>;
+    maxOutputBytes: number; maxTokens: number; maxCharge: number; automaticRetries: 0 }>): Promise<ProviderRouteObservation>;
+}
+export interface ProviderResponseEvidenceDraft {
+  readonly eligibility: ProviderResponseEvidence['eligibility']; readonly contract: ProviderResponseEvidence['contract'];
+  readonly basis: Readonly<{ sourceEvidence: readonly string[]; terminalEvidence: string;
+    terminalReasonField: string; successfulFinalReplyReasons: readonly string[] }>;
+  readonly source: Omit<ProviderResponseEvidence['source'], 'observerPrincipal' | 'request' | 'attempt' | 'operation' | 'claim'>;
+  readonly terminal: Omit<ProviderResponseEvidence['terminal'], 'raw' | 'observedAt'> & Readonly<{ rawBase64: string; rawDigest: string }>;
+  readonly answer: Omit<ProviderResponseEvidence['answer'], 'source'>;
+}
+export interface ProviderRouteObservation extends Omit<ProviderObservation, 'responseEvidence'> {
+  readonly responseEvidenceDraft?: ProviderResponseEvidenceDraft;
 }
 declare const providerCustodyBrand: unique symbol;
 /** The brand alone is not authority: admission checks exact object registration. */
 export type ProviderCustodyProof = Readonly<{ [providerCustodyBrand]: true }>;
 const productionCustody = new WeakMap<ConfinedProviderRoute, ProviderCustodyProof>();
+const responseEvidenceBounds = new WeakMap<ConfinedProviderRoute, ProviderResponseEvidence['contract']>();
+
+/** Owner-internal route registration. It is deliberately not re-exported from
+ * the assembly barrel: only the route factory can attach approved finite caps. */
+export function registerProviderResponseEvidenceBounds(route: ConfinedProviderRoute,
+  contract: ProviderResponseEvidence['contract']): void {
+  ensure(Object.isFrozen(route) && !responseEvidenceBounds.has(route), 'immutable response evidence route required');
+  for (const value of [contract.maxMetadataBytes, contract.maxRawTerminalBytes, contract.maxCaptureBytes])
+    ensure(Number.isSafeInteger(value) && value > 0, 'finite positive response evidence bound required');
+  responseEvidenceBounds.set(route, freeze(contract));
+}
 
 /** GRANT U4-A: owner-internal registration; never export through assembly/index. */
 export function registerProductionProviderCustody(route: ConfinedProviderRoute): void {
@@ -34,7 +57,8 @@ export interface ProviderInvocationPort {
     accepted: () => Result<string>): Promise<Result<Capture>>;
 }
 export function createConfinedProviderInvocation(route: ConfinedProviderRoute, authority: TransportAuthority,
-  host: TransportHost, captures: JudgmentCapturePort, c: BoundaryContext, store: FactStorePort): Result<ProviderInvocationPort> {
+  host: TransportHost, captures: JudgmentCapturePort, c: BoundaryContext, store: FactStorePort,
+  author?: Readonly<{ context: FactContext; privateKey: string }>): Result<ProviderInvocationPort> {
   return boundary('ConfinedProviderConstruction', null, c, () => {
     ensure(route.environment === 'local-test' || (route.environment === 'production'
       && route.custodyProof !== undefined && productionCustody.get(route) === route.custodyProof),
@@ -57,7 +81,34 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
         ensure(wire.provider === payload.provider && wire.model === payload.model && wire.route === payload.route
           && encoded(wire.settings).hash === payload.settingsDigest && encoded(wire.outputSchema).hash === payload.outputSchemaDigest,
           'submitted model/settings/schema changed');
-        const capacity = take(captures.reserve(6 * payload.maxOutputBytes + 8192));
+        const evidenceContract = responseEvidenceBounds.get(route);
+        const checkedAdd = (...values: readonly number[]) => {
+          let total = 0;
+          for (const value of values) { ensure(Number.isSafeInteger(value) && value >= 0
+            && Number.isSafeInteger(total + value), 'response evidence capacity overflow'); total += value; }
+          return total;
+        };
+        const checkedMultiply = (left: number, right: number) => {
+          const product = left * right;
+          ensure(Number.isSafeInteger(product) && product >= 0, 'response evidence capacity overflow'); return product;
+        };
+        const legacyReceiptBytes = checkedAdd(checkedMultiply(6, payload.maxOutputBytes), 8192);
+        let capacities: Readonly<{ receipt: import('../judgment/index.js').CaptureCapacity;
+          raw?: import('../judgment/index.js').CaptureCapacity; answer?: import('../judgment/index.js').CaptureCapacity;
+          sourceClaim?: import('../judgment/index.js').CaptureCapacity; terminalClaim?: import('../judgment/index.js').CaptureCapacity }>;
+        if (evidenceContract) {
+          const rawBase64Bytes = checkedMultiply(Math.ceil(evidenceContract.maxRawTerminalBytes / 3), 4);
+          const receiptBytes = checkedAdd(legacyReceiptBytes, rawBase64Bytes,
+            checkedMultiply(2, evidenceContract.maxMetadataBytes));
+          const total = checkedAdd(receiptBytes, rawBase64Bytes, payload.maxOutputBytes,
+            checkedMultiply(2, evidenceContract.maxMetadataBytes));
+          ensure(total <= evidenceContract.maxCaptureBytes && total <= payload.maxCaptureBytes,
+            'response evidence exceeds admitted aggregate capture budget');
+          capacities = { receipt: take(captures.reserve(receiptBytes)), raw: take(captures.reserve(rawBase64Bytes)),
+            answer: take(captures.reserve(payload.maxOutputBytes)),
+            sourceClaim: take(captures.reserve(evidenceContract.maxMetadataBytes)),
+            terminalClaim: take(captures.reserve(evidenceContract.maxMetadataBytes)) };
+        } else capacities = { receipt: take(captures.reserve(legacyReceiptBytes)) };
         const consumed = take(authority.consume(claim, fence));
         ensure(consumed.request === payload.effectRequest && consumed.run === payload.run
           && consumed.semanticMessage === payload.semanticMessage && consumed.charge === payload.maxCharge, 'consumed claim binding differs');
@@ -92,7 +143,7 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
         ensure(take(captures.read(payload.submitted)) === bytes && hashBytes(bytes) === payload.submitted.hash
           && encoded(bytes).hash === claim.digest, 'submitted bytes changed immediately before call');
         ensure(!host.current().stopped && host.monotonic() < payload.deadline, 'provider stopped before call');
-        return { bytes, capacity };
+        return { bytes, capacities, evidenceContract, claimId: claimFact.fact.id };
       });
       return consumeResult(admission, { Refused: r => Promise.resolve(r), Success: async admitted => {
         let observation: ProviderObservation;
@@ -106,13 +157,18 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
           ensure(usage !== null && typeof usage === 'object', 'provider usage missing');
           // Copy data fields only: provider getters and unrelated metadata never
           // execute or enter the receipt's bounded canonical encoding.
-          const limitation = own(returned, 'limitation');
+          const limitation = own(returned, 'limitation'), draft = own(returned, 'responseEvidenceDraft');
+          const safeDraft = draft && typeof draft === 'object' && admitted.evidenceContract
+            ? snapshotEvidenceDraft(draft, payload.maxOutputBytes, admitted.evidenceContract) : undefined;
           observation = { state: own(returned, 'state'), bytes: own(returned, 'bytes'), providerOperation: own(returned, 'providerOperation'),
             usage: { inputTokens: own(usage, 'inputTokens'), outputTokens: own(usage, 'outputTokens'), charge: own(usage, 'charge'), source: own(usage, 'source') },
-            retryBlocked: own(returned, 'retryBlocked'), ...(limitation && typeof limitation === 'object' ? { limitation: { kind: own(limitation, 'kind'), observedBytesAtLeast: own(limitation, 'observedBytesAtLeast') } } : {}) } as ProviderObservation;
+            retryBlocked: own(returned, 'retryBlocked'), ...(limitation && typeof limitation === 'object' ? { limitation: { kind: own(limitation, 'kind'), observedBytesAtLeast: own(limitation, 'observedBytesAtLeast') } } : {}),
+            ...(safeDraft ? { responseEvidence: materializeEvidence(safeDraft,
+              payload, claim, admitted.claimId, own(returned, 'bytes'), admitted.capacities) } : {}) } as ProviderObservation;
         } catch {
           observation = { state: 'uncertain', bytes: null, providerOperation: null,
-            usage: { inputTokens: null, outputTokens: null, charge: null, source: 'provider timeout or transport failure; liability unresolved' }, retryBlocked: false,
+            usage: { inputTokens: null, outputTokens: null, charge: null,
+              source: 'provider timeout or transport failure; liability unresolved' }, retryBlocked: false,
             limitation: { kind: 'transport-threw', observedBytesAtLeast: null } };
         }
         return checked('CaptureProviderReturn', () => {
@@ -133,9 +189,176 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
             ensure(n === null || Number.isSafeInteger(n) && n >= 0, 'invalid provider usage');
           ensure(observation.usage.outputTokens === null || observation.usage.outputTokens <= payload.maxTokens, 'provider token bound exceeded; uncertainty retained');
           ensure(observation.usage.charge === null || observation.usage.charge <= payload.maxCharge, 'provider charge bound exceeded; uncertainty retained');
-          return take(captures.putReserved(admitted.capacity, encoded(freeze(observation)).bytes));
+          if (observation.responseEvidence) {
+            const evidence = observation.responseEvidence;
+            ensure(evidence.source.request === payload.request.id && evidence.source.attempt === payload.attempt
+              && evidence.source.operation === claim.operation && evidence.source.claim === admitted.claimId
+              && evidence.source.submittedDigest === payload.submittedDigest && evidence.source.provider === payload.provider
+              && evidence.source.model === payload.model && evidence.source.route === payload.route,
+            'response evidence call binding differs');
+            ensure(take(captures.read(evidence.answer.source)) === observation.bytes
+              && hashBytes(observation.bytes!) === evidence.answer.answerDigest, 'response answer capture changed');
+            if (evidence.eligibility === 'admitted') {
+              ensure(evidence.terminal.reason === 'successful-final-reply' && !evidence.terminal.limited && !evidence.terminal.errored
+                && !evidence.terminal.cancelled && !evidence.terminal.timedOut && !evidence.terminal.truncated && !evidence.terminal.toolCall,
+              'response completion contract not satisfied');
+              const snapshot = take(store.readForProjection());
+              const ids = [...evidence.source.evidence, evidence.terminal.evidence];
+              ensure(ids.every(id => snapshot.entries.some(entry => !entry.taint.length && !entry.conflicts.length
+                && (entry.fact.body as unknown as { evidence?: { id?: string } }).evidence?.id === id)),
+              'response Evidence fact absent, tainted, or conflicted');
+            }
+          }
+          return take(captures.putReserved(admitted.capacities.receipt, encoded(freeze(observation)).bytes));
         });
       } });
     } } satisfies ProviderInvocationPort);
   });
+
+  function materializeEvidence(draft: ProviderResponseEvidenceDraft, payload: ProviderCallPayload,
+    claim: DispatchClaim, claimId: string, answer: unknown,
+    capacities: Readonly<{ raw?: import('../judgment/index.js').CaptureCapacity;
+      answer?: import('../judgment/index.js').CaptureCapacity; sourceClaim?: import('../judgment/index.js').CaptureCapacity;
+      terminalClaim?: import('../judgment/index.js').CaptureCapacity }>): ProviderResponseEvidence {
+    ensure(capacities.raw && capacities.answer && capacities.sourceClaim && capacities.terminalClaim,
+      'response evidence capacity was not admitted before dispatch');
+    ensure(typeof answer === 'string' && draft.answer.answerDigest === hashBytes(answer), 'response evidence answer digest differs');
+    const raw = Buffer.from(draft.terminal.rawBase64, 'base64');
+    ensure(raw.toString('base64') === draft.terminal.rawBase64
+      && `sha256:${createHash('sha256').update(raw).digest('hex')}` === draft.terminal.rawDigest, 'raw terminal bytes or digest differ');
+    const rawCapture = take(captures.putReserved(capacities.raw, Buffer.from(raw).toString('base64')));
+    const answerCapture = take(captures.putReserved(capacities.answer, answer));
+    const source = { ...draft.source, observerPrincipal: host.principal.id, request: payload.request.id,
+      attempt: payload.attempt, operation: claim.operation, claim: claimId };
+    const terminal = { reason: draft.terminal.reason, providerReason: draft.terminal.providerReason,
+        rawDigest: draft.terminal.rawDigest,
+        limited: draft.terminal.limited, errored: draft.terminal.errored, cancelled: draft.terminal.cancelled,
+        timedOut: draft.terminal.timedOut, truncated: draft.terminal.truncated, toolCall: draft.terminal.toolCall,
+        observedAt: host.current().clock.value, raw: rawCapture };
+    const answerView = { ...draft.answer, source: answerCapture };
+    if (draft.eligibility !== 'admitted' || !author) return freeze({ eligibility: 'held', contract: draft.contract,
+      source: { ...source, evidence: draft.basis.sourceEvidence },
+      terminal: { ...terminal, evidence: draft.basis.terminalEvidence }, answer: answerView });
+
+    const snapshot = take(store.readForProjection());
+    const authorityEvidence = (id: string, predicate: string, expected: Json) => {
+      const row = snapshot.entries.find(entry => !entry.taint.length && !entry.conflicts.length
+        && (entry.fact.body as unknown as { evidence?: Evidence }).evidence?.id === id);
+      ensure(row, 'approved response evidence-contract fact absent, tainted, or conflicted');
+      const evidence = (row.fact.body as unknown as { evidence: Evidence }).evidence;
+      const read = take(readEvidence(evidence, host.current().clock, c.preserved));
+      ensure(read.subject === draft.contract.evidenceContractReference && read.predicate === predicate
+        && encoded(read.value).bytes === encoded(expected).bytes, 'response evidence-contract authority differs');
+      const captured = author.context.captures[evidence.capture.reference];
+      ensure(captured?.status === 'available' && captured.bytes !== null && captured.hash === evidence.capture.hash
+        && hashBytes(captured.bytes) === evidence.capture.hash, 'response evidence-contract authority capture unavailable');
+      return row.fact.id;
+    };
+    const sourceBasis = { version: draft.contract.evidenceContractVersion,
+      parserReference: draft.contract.parserReference, parserVersion: draft.contract.parserVersion,
+      endpoint: source.endpoint, account: source.account, credentialReference: source.credentialReference,
+      controller: source.controller, executableArtifact: source.executableArtifact,
+      provider: source.provider, model: source.model, route: source.route };
+    const terminalBasis = { version: draft.contract.evidenceContractVersion,
+      parserReference: draft.contract.parserReference, parserVersion: draft.contract.parserVersion,
+      terminalReasonField: draft.basis.terminalReasonField,
+      successfulFinalReplyReasons: draft.basis.successfulFinalReplyReasons };
+    const sourceAuthority = draft.basis.sourceEvidence.map(id => authorityEvidence(id, 'provider-response-source-contract', sourceBasis));
+    const terminalAuthority = authorityEvidence(draft.basis.terminalEvidence, 'provider-response-terminal-contract', terminalBasis);
+    const authValue = { evidenceContractReference: draft.contract.evidenceContractReference,
+      evidenceContractVersion: draft.contract.evidenceContractVersion,
+      parserReference: draft.contract.parserReference, parserVersion: draft.contract.parserVersion,
+      endpoint: source.endpoint, account: source.account, credentialReference: source.credentialReference,
+      controller: source.controller, executableArtifact: source.executableArtifact,
+      provider: source.provider, model: source.model, route: source.route, call: source.call,
+      request: source.request, attempt: source.attempt, operation: source.operation, claim: source.claim,
+      submittedDigest: source.submittedDigest, rawDigest: terminal.rawDigest, answerDigest: answerView.answerDigest };
+    const completionValue = { evidenceContractReference: draft.contract.evidenceContractReference,
+      evidenceContractVersion: draft.contract.evidenceContractVersion,
+      parserReference: draft.contract.parserReference, parserVersion: draft.contract.parserVersion,
+      terminalCapture: rawCapture, rawDigest: terminal.rawDigest, reason: terminal.reason,
+      providerReason: terminal.providerReason, limited: terminal.limited, errored: terminal.errored,
+      cancelled: terminal.cancelled, timedOut: terminal.timedOut, truncated: terminal.truncated,
+      toolCall: terminal.toolCall, answerCapture, answerDigest: answerView.answerDigest,
+      extractionContract: answerView.extractionContract };
+    const appendEvidence = (predicate: 'response-authenticity' | 'response-completeness', value: Json,
+      capacity: import('../judgment/index.js').CaptureCapacity, required: readonly string[]) => {
+      const claimCapture = take(captures.putReserved(capacity, encoded(value).bytes));
+      const identity = encoded({ subject: claim.operation, predicate, value }).hash;
+      const evidence = take(decode('Evidence', { type: 'Evidence', schemaVersion: 1,
+        id: `provider-response-evidence:${identity}`, claim: { subject: claim.operation, predicate, value },
+        source: host.principal, observedAt: host.current().clock, freshFor: payload.timeout,
+        capture: claimCapture, strength: draft.source.strength }, host.current().decode));
+      const prior = snapshot.entries.find(entry => (entry.fact.body as unknown as { evidence?: Evidence }).evidence?.id === evidence.id);
+      if (prior) { ensure(encoded((prior.fact.body as unknown as { evidence: Evidence }).evidence).bytes === encoded(evidence).bytes,
+        'response Evidence immutable collision'); return { evidence, fact: prior.fact.id }; }
+      const body = JSON.parse(encoded({ evidence }).bytes) as Json;
+      const fact = take(authorAndAppend({ kind: 'evidence-record', schemaVersion: 1, machine: host.machine,
+        principal: JSON.parse(encoded(host.principal).bytes) as Json,
+        provenance: JSON.parse(encoded(host.principal.provenance).bytes) as Json,
+        at: JSON.parse(encoded(host.current().clock).bytes) as Json, body,
+        required: [...new Set([payload.request.id, claimId, ...required])].sort() },
+      author.context, store, author.privateKey)).fact;
+      return { evidence, fact: fact.id };
+    };
+    const actualSource = appendEvidence('response-authenticity', authValue as Json, capacities.sourceClaim, sourceAuthority);
+    const actualTerminal = appendEvidence('response-completeness', completionValue as unknown as Json,
+      capacities.terminalClaim, [terminalAuthority]);
+    return freeze({ eligibility: 'admitted', contract: draft.contract,
+      source: { ...source, evidence: [actualSource.evidence.id] },
+      terminal: { ...terminal, evidence: actualTerminal.evidence.id }, answer: answerView });
+  }
+
+  function snapshotEvidenceDraft(value: object, maxOutputBytes: number,
+    registered: ProviderResponseEvidence['contract']): ProviderResponseEvidenceDraft {
+    let nodes = 0;
+    const clone = (input: unknown, depth: number): unknown => {
+      ensure(depth <= 8 && ++nodes <= 512, 'response evidence draft exceeds structural bound');
+      if (input === null || typeof input === 'number' || typeof input === 'boolean') return input;
+      if (typeof input === 'string') {
+        ensure(input.length <= 12 * maxOutputBytes + 65536, 'response evidence draft text exceeds bound');
+        return input;
+      }
+      ensure(input && typeof input === 'object', 'response evidence draft value refused');
+      if (Array.isArray(input)) {
+        const lengthDescriptor = Object.getOwnPropertyDescriptor(input, 'length');
+        ensure(lengthDescriptor && 'value' in lengthDescriptor && Number.isSafeInteger(lengthDescriptor.value)
+          && lengthDescriptor.value >= 0 && lengthDescriptor.value <= 64, 'response evidence draft array exceeds bound');
+        const allowed = new Set(['length', ...Array.from({ length: lengthDescriptor.value }, (_, index) => String(index))]);
+        ensure(Reflect.ownKeys(input).every(key => typeof key === 'string' && allowed.has(key)),
+          'response evidence draft array fields differ');
+        return Array.from({ length: lengthDescriptor.value }, (_, index) => {
+          const descriptor = Object.getOwnPropertyDescriptor(input, String(index));
+          ensure(descriptor && 'value' in descriptor, 'response evidence draft array accessor refused');
+          return clone(descriptor.value, depth + 1);
+        });
+      }
+      ensure([Object.prototype, null].includes(Object.getPrototypeOf(input)), 'response evidence draft prototype refused');
+      const output: Record<string, unknown> = {};
+      for (const key of Reflect.ownKeys(input)) {
+        ensure(typeof key === 'string', 'response evidence draft symbol refused');
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        ensure(descriptor && 'value' in descriptor, 'response evidence draft accessor refused');
+        output[key] = clone(descriptor.value, depth + 1);
+      }
+      return output;
+    };
+    const draft = clone(value, 0) as unknown as ProviderResponseEvidenceDraft;
+    const keys = (input: object, expected: readonly string[]) => ensure(Reflect.ownKeys(input).sort().join(',') === [...expected].sort().join(','),
+      'response evidence draft fields differ');
+    keys(draft, ['eligibility', 'contract', 'basis', 'source', 'terminal', 'answer']);
+    keys(draft.contract, ['parserReference', 'parserVersion', 'evidenceContractReference', 'evidenceContractVersion',
+      'mode', 'maxMetadataBytes', 'maxRawTerminalBytes', 'maxCaptureBytes']);
+    keys(draft.basis, ['sourceEvidence', 'terminalEvidence', 'terminalReasonField', 'successfulFinalReplyReasons']);
+    keys(draft.source, ['controller', 'evidence', 'endpoint', 'account', 'credentialReference', 'executableArtifact',
+      'provider', 'model', 'route', 'call', 'submittedDigest', 'strength']);
+    keys(draft.terminal, ['rawBase64', 'rawDigest', 'evidence', 'reason', 'providerReason', 'limited', 'errored', 'cancelled',
+      'timedOut', 'truncated', 'toolCall']);
+    keys(draft.answer, ['extractionContract', 'answerDigest']);
+    ensure(encoded(draft.contract).bytes === encoded(registered).bytes
+      && draft.contract.maxRawTerminalBytes >= 0 && draft.contract.maxMetadataBytes > 0
+      && draft.terminal.rawBase64.length <= Math.ceil(draft.contract.maxRawTerminalBytes / 3) * 4,
+    'response evidence draft capture bound differs');
+    return draft;
+  }
 }
