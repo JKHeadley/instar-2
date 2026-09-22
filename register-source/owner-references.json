@@ -43,62 +43,62 @@
       "id": "decodeRun",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
+        "hash": "sha256:3c1c24142075c8a364e4051ce006897fc6a4bd09e1cec073bb600c54d578e44f"
       }
     },
     {
       "id": "decodeRunStep",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
+        "hash": "sha256:3c1c24142075c8a364e4051ce006897fc6a4bd09e1cec073bb600c54d578e44f"
       }
     },
     {
       "id": "decodeRunTransition",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
+        "hash": "sha256:3c1c24142075c8a364e4051ce006897fc6a4bd09e1cec073bb600c54d578e44f"
       }
     },
     {
       "id": "decodeRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
+        "hash": "sha256:3c1c24142075c8a364e4051ce006897fc6a4bd09e1cec073bb600c54d578e44f"
       }
     },
     {
       "id": "decodeSessionGrounding",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
-        "hash": "sha256:fd177735e2f6795fc816c7b02cbbd8cb9cf2e185534269c10530afbfcf328326"
+        "hash": "sha256:3c1c24142075c8a364e4051ce006897fc6a4bd09e1cec073bb600c54d578e44f"
       }
     },
     {
       "id": "decodeExhaustionRecord",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",
@@ -109,7 +109,7 @@
       "id": "decodeUnreachableRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",
@@ -120,7 +120,7 @@
       "id": "decodeInstalledRunGovernanceReferenceAtOrigin",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/installed-governance.ts",
@@ -131,7 +131,7 @@
       "id": "decodeHistoricalInstalledRunGovernanceReference",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:4965dd277419d416cd385f3dfa0c8fd6fcb95b644feadca0d147b52d9c069ca3"
+        "hash": "sha256:fbcf498f089ad0a82e4ba26c1c4ca385f743b0579f883159962a7b29a1cca7ff"
       },
       "artifact": {
         "path": "src/rungraph/installed-governance.ts",
