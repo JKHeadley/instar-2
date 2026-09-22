@@ -1,5 +1,26 @@
 [
   {
+    "revision": 15,
+    "date": "2026-09-21",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Astra blocked-build adjudication (astra-g6-blocked-adjudication.md, section (b)) correcting the M4 G6 supplement approved in PR 100: only Nine's owned bodies gain version 2; FactEnvelope.schemaVersion stays 1."
+    },
+    "changes": [
+      {
+        "what": "Record owned-body versioning under unchanged outer schema 1 as an agent-owned engineering default in the decision inventory.",
+        "why": "Preserve signed history and current evidence checks without selecting deployment policy or amending the constitution; measure reconstruction and consumption/restart with P9-NF-65, P9-NF-66 and P10-SI-37.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-g6-blocked-adjudication.md section (b), Exact correction for the desk to record, item 2"
+      },
+      {
+        "what": "Make S2 body-version-aware, give S6 explicit owned-body v1/v2 producer/decoder bindings retaining outer v1 families, and specify T1 mixed-body source-only rebuild under outer schema 1; align the closed registration list with those bindings.",
+        "why": "The corrected map must not require nonexistent outer v2 families, new register fields or extra migration/fixture work. T4 restart remains intact; S6 and registration/pin/generated consequences remain desk-only, with no expanded source or test grant.",
+        "ref": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-g6-blocked-adjudication.md section (b), Exact correction for the desk to record, items 2–3; design-g6-body-version-DONE.md draft exact build-grant addendum"
+      }
+    ]
+  },
+  {
     "revision": 14,
     "date": "2026-09-21",
     "status": "draft",
