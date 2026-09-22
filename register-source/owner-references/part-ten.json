@@ -23,7 +23,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/rungraph/provider-answer-reply.test.ts",
-        "hash": "sha256:09ca75a9372a07d8d481d342d6db23bbf012fff8069e5ee6b4133c345ba41059"
+        "hash": "sha256:b4c1c044839cdfe955108ead545c1d4a7e57ec5d0baf4ad22793dbd6bdb9ef6b"
       }
     },
     {
@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/rungraph/provider-answer-reply.test.ts",
-        "hash": "sha256:09ca75a9372a07d8d481d342d6db23bbf012fff8069e5ee6b4133c345ba41059"
+        "hash": "sha256:b4c1c044839cdfe955108ead545c1d4a7e57ec5d0baf4ad22793dbd6bdb9ef6b"
       }
     },
     {
