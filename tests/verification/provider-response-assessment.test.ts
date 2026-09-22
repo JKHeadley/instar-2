@@ -73,17 +73,17 @@ it('P9-NF-64 P9-NF-66 keeps six assessment rows distinct and refuses copied or i
 });
 
 it('P9-NF-65 refuses external migration wrappers and preserves the exact closed v1 body', () => {
-  const context = factsFixture().c, legacy = verificationInput('VerificationRequest');
-  expect(value(decodeVerificationRecord('VerificationRequest', legacy, context))).toEqual(legacy);
-  refused(decodeVerificationRecord('VerificationRequest', { ...legacy, extra: 'not-v1' }, context), 'undeclared field');
-  refused(decodeVerificationRecord('VerificationRequest', { type: 'VerificationRequest', schemaVersion: 2,
-    purpose: 'legacy-settlement', legacy }, context), 'external legacy migration wrapper refused');
-
-  const f = verificationRuntimeFixture();
-  refused(authorAndAppend({ kind: 'verification-VerificationRequest', schemaVersion: 1, machine: f.host.machine,
-    principal: json(f.host.principal), provenance: json(f.host.principal.provenance), at: json(f.host.current().clock),
-    body: json({ record: { type: 'VerificationRequest', schemaVersion: 2, purpose: 'legacy-settlement', legacy } }),
-    required: [] }, f.context, f.store, privateKey));
+  const context = factsFixture().c, f = verificationRuntimeFixture();
+  for (const name of ['VerificationPlan', 'VerificationRequest', 'VerificationAssessment'] as const) {
+    const legacy = verificationInput(name);
+    expect(value(decodeVerificationRecord(name, legacy, context))).toEqual(legacy);
+    refused(decodeVerificationRecord(name, { ...legacy, extra: 'not-v1' }, context), 'undeclared field');
+    const wrapper = { type: name, schemaVersion: 2, purpose: 'legacy-settlement', legacy, extra: 'not-owned-migration' };
+    refused(decodeVerificationRecord(name, wrapper, context), 'external legacy migration wrapper refused');
+    refused(authorAndAppend({ kind: `verification-${name}`, schemaVersion: 1, machine: f.host.machine,
+      principal: json(f.host.principal), provenance: json(f.host.principal.provenance), at: json(f.host.current().clock),
+      body: json({ record: wrapper }), required: [] }, f.context, f.store, privateKey));
+  }
 });
 
 it('P9-NF-65 stores legacy and output-use bodies under the unchanged outer family schema', () => {

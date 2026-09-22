@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { decode, readEvidence } from '../index.js';
+import { consumeResult, decode, readEvidence } from '../index.js';
 import type { BoundaryContext, Decision, OwnedReference, Result, RunReference } from '../index.js';
 import { authorAndAppend, causalCone, hashBytes, registerOwnedBody } from '../facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedBodyContext, OwnedShape } from '../facts/index.js';
@@ -10,7 +10,7 @@ import { consumeProviderReceipt } from '../effects/provider-api.js';
 import type { ProviderReceipt } from '../effects/provider-api.js';
 import type { EffectSettlement } from '../effects/index.js';
 import type { CapturedProviderDecision, ProviderResponseAssessmentPort, ProviderResponseSubject } from '../verification/index.js';
-import { isGenuineProviderResponseAssessmentPort, registerProviderDecisionReadPort } from '../verification/effect-consumption.js';
+import { isGenuineProviderResponseAssessmentPort } from '../verification/effect-consumption.js';
 import type { Capture, JudgmentCapturePort, JudgmentHost, ProviderObservation, RecordedAnswer } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { observationCheck } from './model-adapter.js';
@@ -70,9 +70,17 @@ export interface ProviderJudgmentDependencies {
   readonly outputSchema: Readonly<Record<string, import('../index.js').Json>>;
   readonly maxTokens: number; readonly maxCaptureBytes: number; readonly timeout: number; readonly disclosure: string;
 }
+const genuineDecisionReaders = new WeakMap<object, FactStorePort>();
 export function decodeCapturedProviderDecision(port: Pick<ProviderJudgmentPort, 'decodeCapturedProviderDecision'>,
-  subject: ProviderResponseSubject): Result<CapturedProviderDecision> {
-  return port.decodeCapturedProviderDecision(subject);
+  subject: ProviderResponseSubject, store: FactStorePort, context: BoundaryContext): Result<CapturedProviderDecision>;
+export function decodeCapturedProviderDecision(port: Pick<ProviderJudgmentPort, 'decodeCapturedProviderDecision'>,
+  subject: undefined, store: FactStorePort, context: BoundaryContext): Result<true>;
+export function decodeCapturedProviderDecision(port: Pick<ProviderJudgmentPort, 'decodeCapturedProviderDecision'>,
+  subject: ProviderResponseSubject | undefined, store: FactStorePort, context: BoundaryContext): Result<CapturedProviderDecision | true> {
+  return boundary('DecodeCapturedProviderDecisionPort', subject ?? null, context, () => {
+    ensure(genuineDecisionReaders.get(port) === store, 'genuine same-store Seven decision reader required');
+    return subject === undefined ? true : take(port.decodeCapturedProviderDecision(subject));
+  });
 }
 export function recordProviderAnswerAcceptance(port: Pick<ProviderJudgmentPort, 'recordProviderAnswerAcceptance'>,
   input: ProviderAnswerAcceptanceInput, assessment: ProviderResponseAssessmentPort,
@@ -100,6 +108,27 @@ const shapes: Readonly<Record<string, OwnedShape>> = {
 };
 const raw = (f: FactEnvelope) => (f.body as unknown as { record: Record<string, unknown> }).record;
 const active = new WeakMap<object, string>();
+function validateSignedDecisionBasis(input: unknown, q: ProviderJudgmentRequest): Decision {
+  const decision = input as Decision;
+  ensure(decision && decision.type === 'Decision' && decision.schemaVersion === 1
+    && typeof decision.id === 'string' && decision.id.length > 0 && decision.floor
+    && decision.floor.allowed?.type === 'ActionFloor' && decision.floor.allowed.schemaVersion === 1
+    && Array.isArray(decision.floor.allowed.actions) && typeof decision.floor.allowed.default === 'string'
+    && typeof decision.floor.chosen === 'string' && decision.floor.allowed.actions.includes(decision.floor.chosen),
+  'provider answer acceptance Decision shape differs');
+  ensure('judgment' in decision.by && decision.by.judgment === q.point
+    && decision.by.route === q.route && decision.by.model === q.model
+    && encoded(decision.floor.allowed).hash === q.floorDigest,
+  'provider answer acceptance Decision differs');
+  ensure(Array.isArray(decision.conclusion?.evidence) && Array.isArray(decision.reason?.evidence)
+    && [...decision.conclusion.evidence, ...decision.reason.evidence]
+      .every(id => typeof id === 'string' && q.evidence.includes(id)),
+  'provider answer acceptance Decision invented evidence');
+  const standsOn = [...new Set([...decision.conclusion.evidence, ...decision.reason.evidence])].sort();
+  ensure(decision.standsOn === undefined || encoded(decision.standsOn).bytes === encoded(standsOn).bytes,
+    'provider answer acceptance Decision standsOn differs');
+  return { ...decision, standsOn } as unknown as Decision;
+}
 function decodeProviderAnswerAcceptance(input: unknown, context: OwnedBodyContext,
   host: JudgmentHost, historical: boolean): ProviderAnswerAcceptance {
   const value = input as ProviderAnswerAcceptance;
@@ -164,12 +193,13 @@ function decodeProviderAnswerAcceptance(input: unknown, context: OwnedBodyContex
   if (!historical || capture?.status === 'available') {
     ensure(capture?.status === 'available' && capture.bytes !== null && capture.hash === value.capture.hash
       && hashBytes(capture.bytes) === value.answerDigest, 'provider answer acceptance captured Decision unavailable');
-    const decision = take(decode('Decision', JSON.parse(capture.bytes), context.facts.decode));
-    ensure(decision.floor && encoded(decision.floor.allowed).hash === q.floorDigest && 'judgment' in decision.by
-      && decision.by.judgment === q.point && decision.by.route === q.route && decision.by.model === q.model,
-    'provider answer acceptance Decision differs');
-    ensure([...decision.conclusion.evidence, ...decision.reason.evidence].every(id => q.evidence.includes(id)),
-      'provider answer acceptance Decision invented evidence');
+    const parsed = JSON.parse(capture.bytes);
+    const signed = (context.origin.body as unknown as { decision?: unknown }).decision;
+    const decision = validateSignedDecisionBasis(parsed, q);
+    ensure(signed && encoded(signed).bytes === encoded(decision).bytes,
+      'provider answer acceptance signed Decision pin differs');
+    if (!historical) ensure(encoded(take(decode('Decision', parsed, context.facts.decode))).bytes === encoded(decision).bytes,
+      'provider answer acceptance current Decision authority differs');
   }
   ensure(value.generation === q.generation && (historical || value.generation === host.transport.current().generation.id)
     && Number.isSafeInteger(value.acceptedAt) && value.acceptedAt >= 0,
@@ -400,6 +430,23 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
     'captured response terminal is not an admitted final reply');
     ensure(evidence.contract.parserReference === 'claude-code-json-result'
       && evidence.contract.parserVersion === '1', 'captured response parser is unsupported');
+    const completionRow = snapshot.entries.find(entry => !entry.taint.length && !entry.conflicts.length
+      && (entry.fact.body as unknown as { evidence?: import('../index.js').Evidence }).evidence?.id === evidence.terminal.evidence);
+    const terminalAuthorityRow = completionRow?.fact.predecessors.required.map(id => snapshot.entries.find(entry => entry.fact.id === id))
+      .find(entry => {
+        if (!entry || entry.taint.length || entry.conflicts.length) return false;
+        const authority = (entry.fact.body as unknown as { evidence?: import('../index.js').Evidence }).evidence;
+        return !!authority && consumeResult(readEvidence(authority, p.host.transport.current().clock, p.boundary.preserved),
+          { Success: claim => claim.predicate === 'provider-response-terminal-contract', Refused: () => false });
+      });
+    const terminalAuthority = (terminalAuthorityRow?.fact.body as unknown as { evidence?: import('../index.js').Evidence }).evidence;
+    const terminalClaim = terminalAuthority ? take(readEvidence(terminalAuthority,
+      p.host.transport.current().clock, p.boundary.preserved)) : undefined;
+    const mapping = terminalClaim?.value as unknown as { terminalReasonField?: unknown; successfulFinalReplyReasons?: unknown } | undefined;
+    ensure(terminalClaim?.subject === evidence.contract.evidenceContractReference
+      && typeof mapping?.terminalReasonField === 'string' && Array.isArray(mapping.successfulFinalReplyReasons)
+      && mapping.successfulFinalReplyReasons.every(reason => typeof reason === 'string'),
+    'captured response terminal mapping unavailable');
     let extracted: string;
     try {
       const rawBase64 = take(p.captures.read(evidence.terminal.raw));
@@ -410,8 +457,14 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
       const terminalText = new TextDecoder('utf-8', { fatal: true }).decode(terminalBytes);
       const frame = JSON.parse(terminalText) as Record<string, unknown>;
       const transformed = frame.structured_output === undefined ? frame.result : JSON.stringify(frame.structured_output);
+      const actualReason = frame[mapping.terminalReasonField];
+      const reasonClass = typeof actualReason === 'string' ? actualReason.toLowerCase() : '';
       ensure(frame.type === 'result' && frame.is_error === false && typeof transformed === 'string'
-        && frame.stop_reason === evidence.terminal.providerReason, 'captured terminal transform is not a final reply');
+        && typeof actualReason === 'string' && mapping.successfulFinalReplyReasons.includes(actualReason)
+        && actualReason === evidence.terminal.providerReason
+        && !reasonClass.includes('tool') && !reasonClass.includes('function') && !reasonClass.includes('cancel')
+        && !reasonClass.includes('timeout') && !reasonClass.includes('length') && !reasonClass.includes('limit')
+        && !reasonClass.includes('truncat'), 'captured terminal transform is not a final reply');
       extracted = transformed;
     } catch (error) { ensure(false, `captured terminal transform refused: ${String(error)}`); throw error; }
     ensure(extracted === answerBytes && hashBytes(extracted) === evidence.answer.answerDigest,
@@ -587,5 +640,6 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
       }));
     }),
   } satisfies ProviderJudgmentPort);
-  return registerProviderDecisionReadPort(port, p.store);
+  genuineDecisionReaders.set(port, p.store);
+  return port;
 }

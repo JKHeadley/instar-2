@@ -29,7 +29,14 @@ export function createProductionJudgmentCaptures(input: Readonly<{
         const row = JSON.parse(bytes) as { id: string; maxBytes: number };
         ensure(row.id === String(count) && Number.isSafeInteger(row.maxBytes) && row.maxBytes >= 0,
           'provider-captures: corrupt capacity journal');
-        used += row.maxBytes; count++;
+        const binding = custody.read(`production-provider-capacity-binding:${row.id}`);
+        const released = custody.read(`production-provider-capacity-release:${row.id}`);
+        if (released !== null) {
+          const marker = JSON.parse(released) as { id?: unknown; maxBytes?: unknown };
+          ensure(marker.id === row.id && marker.maxBytes === row.maxBytes && binding === null,
+            'provider-captures: corrupt or bound capacity release');
+        } else used += row.maxBytes;
+        count++;
         ensure(Number.isSafeInteger(used) && used <= capacity, 'provider-captures: capacity exceeded');
       }
       return { count, used };
@@ -59,14 +66,28 @@ export function createProductionJudgmentCaptures(input: Readonly<{
       const slot = issued.get(token);
       ensure(slot && typeof bytes === 'string' && Buffer.byteLength(bytes) <= slot.maxBytes,
         'provider-captures: unissued or exceeded reservation');
+      ensure(custody.read(`production-provider-capacity-release:${slot.id}`) === null,
+        'provider-captures: released reservation cannot be written');
       const capture = captureFor(bytes);
       // Bind before writing bytes. A cut can strand reserved space, never release
       // it or permit this reservation to fund a different provider response.
       preserve(`production-provider-capacity-binding:${slot.id}`, encoded(capture).bytes);
       preserve(capture.reference, bytes); read(capture); return capture;
     };
+    const releaseReserved = (token: CaptureCapacity): void => {
+      const slot = issued.get(token);
+      ensure(slot, 'provider-captures: unissued reservation cannot be released');
+      const markerReference = `production-provider-capacity-release:${slot.id}`;
+      const expected = encoded(slot).bytes, prior = custody.read(markerReference);
+      if (prior !== null) { ensure(prior === expected, 'provider-captures: capacity release changed'); return; }
+      ensure(custody.read(`production-provider-capacity-binding:${slot.id}`) === null,
+        'provider-captures: bound reservation cannot be released');
+      preserve(markerReference, expected);
+    };
     return Object.freeze({ owner: 'part-ten' as const,
       reserve: (maxBytes: number) => boundary('ProductionCaptureReserve', null, context, () => reserve(maxBytes)),
+      releaseReserved: (token: CaptureCapacity) => boundary('ProductionCaptureRelease', null, context,
+        () => releaseReserved(token)),
       putReserved: (token: CaptureCapacity, bytes: string) => boundary('ProductionCaptureReservedWrite', null, context,
         () => putReserved(token, bytes)),
       put: (bytes: string, maxBytes: number) => boundary('ProductionCaptureWrite', null, context, () => {

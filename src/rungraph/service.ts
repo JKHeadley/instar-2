@@ -127,8 +127,22 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
           const obligationRecord = obligation ? object(object(obligation.fact.body).record) : undefined;
           need(obligation && !obligation.taint.length && !obligation.conflicts.length
             && obligation.fact.kind === 'transport-LoopRecord' && obligationRecord?.run === gate.input.originalRun
-            && obligationRecord.state !== 'stopped',
+            && typeof obligationRecord.episode === 'string' && obligationRecord.episode.length > 0,
           'accepted reply conversation obligation differs, stopped, or is unavailable');
+          const episodeRows = snapshot.entries.filter(entry => {
+            if (entry.fact.kind !== 'transport-LoopRecord') return false;
+            const candidate = object(object(entry.fact.body).record);
+            return candidate?.run === gate.input.originalRun && candidate.episode === obligationRecord.episode;
+          });
+          need(episodeRows.length > 0 && episodeRows.every(entry => !entry.taint.length && !entry.conflicts.length),
+            'accepted reply current conversation obligation is unavailable or conflicted');
+          const latestTick = Math.max(...episodeRows.map(entry => Number(object(object(entry.fact.body).record)?.tick)));
+          need(Number.isSafeInteger(latestTick), 'accepted reply current conversation obligation tick differs');
+          const latestRows = episodeRows.filter(entry => Number(object(object(entry.fact.body).record)?.tick) === latestTick);
+          const latestRecords = latestRows.map(entry => object(object(entry.fact.body).record));
+          need(latestRows.length === 1 && latestRecords[0]
+            && !['stopped', 'closed'].includes(String(latestRecords[0].state)),
+          'accepted reply current conversation obligation is stopped, closed, or conflicted');
           need(same(gate.input.standing, original.run.owner.fact),
             'accepted reply standing differs from original accountable owner');
           const transport = take(d.store.read()).filter(fact => fact.kind.startsWith('transport-'));

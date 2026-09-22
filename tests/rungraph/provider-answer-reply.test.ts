@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { createConfinedProviderInvocation } from '../../src/assembly/index.js';
 import { registerProviderResponseEvidenceBounds } from '../../src/assembly/provider-invocation.js';
 import { createProviderEffectDoorway } from '../../src/effects/index.js';
-import { createProviderResponseAssessmentPort } from '../../src/verification/index.js';
+import { createProviderResponseAssessmentPort, decodeHistoricalVerificationRecord } from '../../src/verification/index.js';
+import { decodeHistoricalProviderAnswerAcceptance } from '../../src/judgment/index.js';
 import type { Hash } from '../../src/index.js';
 import { createRunGraph, runIdFor } from '../../src/rungraph/index.js';
 import { providerFixture, enc, refused, value } from '../model-provider/fixture.js';
@@ -18,11 +19,14 @@ const raw = (fact: FactEnvelope) => (fact.body as unknown as { record: Record<st
 const reference = (fact: FactEnvelope) => ({ owner: 'part-two' as const, name: 'FactEnvelope' as const,
   id: fact.id, kind: fact.kind, schemaVersion: fact.schemaVersion, contentHash: fact.contentHash });
 
-export async function runProviderAnswerReplyScenario(malformedDecision = false): Promise<any> {
-  let answer = '', sourceEvidence = '', terminalEvidence = '';
+export async function runProviderAnswerReplyScenario(malformedDecision = false, hook: Readonly<{
+  beforeAssessment?: boolean; beforeOpen?: boolean; unknown?: boolean; noStop?: boolean; terminalReason?: string;
+}> = {}): Promise<any> {
+  let answer = '', sourceEvidence = '', terminalEvidence = '', modelCalls = 0;
   const f = providerFixture({ route: { invoke: async (bytes, bounds) => {
+    modelCalls++;
     const frame = JSON.stringify({ type: 'result', is_error: false, result: answer, session_id: 'call:one',
-      stop_reason: 'end_turn', usage: { input_tokens: 2, output_tokens: 3 }, total_cost_usd: 0.000003 });
+      stop_reason: hook.terminalReason ?? 'end_turn', usage: { input_tokens: 2, output_tokens: 3 }, total_cost_usd: 0.000003 });
     const rawBytes = Buffer.from(frame);
     const draft: ProviderResponseEvidenceDraft = {
       eligibility: 'admitted', contract: { parserReference: 'claude-code-json-result', parserVersion: '1',
@@ -68,7 +72,7 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false):
   const { prepared, request } = f.prepare();
   const observed = value(await api.dispatch(request, f.fence));
 
-  for (const predicate of ['operation-occurred', 'charge-settled', 'old-executor-quiescent'])
+  for (const predicate of (hook.unknown ? ['operation-occurred'] : ['operation-occurred', 'charge-settled', 'old-executor-quiescent']))
     f.evidence(observed.operation, request.digest, predicate, predicate === 'charge-settled' ? 3 : undefined);
   const facts = f.all();
   const requestFact = facts.find(fact => fact.id === request.payload.request.id)!;
@@ -117,7 +121,7 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false):
       scope: f.scope.kind === 'organization' ? 'project-a' : f.scope.members[0]!, generation: f.th.current().generation.id },
     bar: { ...legacy.bar, version: request.verificationBar,
       predicates: ['occurrence', 'non-occurrence', 'quiescence', 'charge', 'response-authenticity', 'response-completeness'],
-      sources: ['probe'], minimumStrength: 'proof', subjectDigest: enc(subject).hash, captureRequired: true },
+      sources: ['probe'], minimumStrength: 'proof', subjectDigest: enc(subject).hash, captureRequired: true, freshness: 50 },
     responseContract: { parserReference: 'claude-code-json-result', parserVersion: '1',
       evidenceContractReference: 'response-contract', evidenceContractVersion: '1', mode: 'single-final-reply' },
     responseRequirements: [
@@ -125,6 +129,8 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false):
       { predicate: 'response-completeness', sources: [f.th.principal.id], minimumStrength: 'observation', requiredContract: 'response-contract' },
     ] }));
 
+  if (hook.beforeAssessment) return { f, api, responseAssessment, subject, observed, request, providerObservation,
+    modelCalls: () => modelCalls };
   const assessment = value(api.assessResponse(observed.operation));
   expect(value(api.assessResponse(observed.operation))).toEqual(assessment);
   const settlement = value(api.settle(observed.operation, assessment));
@@ -145,7 +151,7 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false):
     settlement: reference(settlementFact), accounting: reference(accountingFact) }, responseAssessment, f.fence));
   const accepted = value(api.consumeAcceptedProviderAnswer(acceptance, view => view));
   expect(accepted.answer).toBe(answer);
-  expect(accepted.chargeSettled).toBe(true);
+  expect(accepted.chargeSettled).toBe(!hook.unknown);
   expect(accepted.required).toContain(assessment.id);
 
   const replyGraph = value(createRunGraph({ ...f.deps, acceptedAnswer: api }));
@@ -162,17 +168,20 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false):
     'cause, predecessor, or conversation obligation differs');
   refused(replyGraph.openAcceptedProviderReply({ ...replyInput,
     fence: { ...f.fence, epoch: f.fence.epoch + 1 } }), 'lease-derived fence or ownership differs');
+  if (hook.beforeOpen) return { f, api, responseAssessment, subject, assessment, settlement, accounting,
+    acceptance, accepted, replyGraph, replyInput, reply, modelCalls: () => modelCalls };
   const opened = value(replyGraph.openAcceptedProviderReply(replyInput));
   expect(opened.run.id).toBe(reply.id);
-  const modelCalls = f.calls();
-  f.stop();
+  const callsBeforeReplay = modelCalls;
+  if (!hook.noStop) f.stop();
   expect(value(replyGraph.openAcceptedProviderReply(replyInput)).run.id).toBe(reply.id);
-  expect(f.calls()).toBe(modelCalls);
+  expect(modelCalls).toBe(callsBeforeReplay);
 
   const copied = { owner: 'part-seven' as const, decodeCapturedProviderDecision: f.seven.decodeCapturedProviderDecision };
   expect(() => createProviderResponseAssessmentPort(f.vh, f.runtime, f.store, copied)).toThrow(/genuine same-store/);
   expect(prepared.value.id).toBe(q.id);
-  return { f, api, responseAssessment, assessment, settlement, accounting, acceptance, accepted, replyGraph, replyInput, reply };
+  return { f, api, responseAssessment, subject, assessment, settlement, accounting, acceptance, accepted,
+    replyGraph, replyInput, reply, modelCalls: () => modelCalls };
 }
 
 it('P10-SI-17 P10-SI-37 uses one output assessment for independent settlement and exact answer acceptance', async () => {
@@ -181,4 +190,106 @@ it('P10-SI-17 P10-SI-37 uses one output assessment for independent settlement an
 
 it('P10-SI-37 keeps the four settlement rows usable when the captured answer cannot decode as a Decision', async () => {
   await runProviderAnswerReplyScenario(true);
+});
+
+it('P10-SI-37 keeps a v1 occurrence assessment diagnostic-only when no answer evidence exists', async () => {
+  const f = providerFixture({ route: { invoke: async (_bytes, bounds) => ({ state: 'complete',
+    bytes: 'legacy occurrence without authenticated answer evidence', providerOperation: bounds.operation,
+    usage: { inputTokens: 1, outputTokens: 1, charge: null, source: 'legacy local return' }, retryBlocked: false }) } });
+  const { request } = f.prepare();
+  const observed = value(await f.api.dispatch(request, f.fence));
+  f.evidence(observed.operation, request.digest, 'operation-occurred');
+  const assessment = value(f.api.assess(observed.operation));
+  const record = raw(f.all().find((fact: FactEnvelope) => fact.id === assessment.id)!);
+  expect(record.schemaVersion).toBe(1);
+  expect((record.predicates as unknown as { predicate: string }[]).map(row => row.predicate))
+    .toEqual(['occurrence', 'non-occurrence', 'quiescence', 'charge']);
+  expect(value(f.api.settle(observed.operation, assessment)).outcome.kind).toBe('happened');
+  refused(f.api.assessResponse(observed.operation), 'response assessment absent');
+});
+
+it('P10-SI-17 P10-SI-37 retains unresolved exposure independently of a satisfied exact answer', async () => {
+  const { accounting, settlement } = await runProviderAnswerReplyScenario(false, { unknown: true, beforeOpen: true });
+  expect(accounting.unresolved).not.toBe(0);
+  expect(accounting.exposure).toBe(20);
+  expect(settlement.retainedExposure).toBe(20);
+});
+
+it('P10-SI-37 reuses a still-current assessment after the clock advances and refuses withdrawn captures', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
+  const assessment = value(s.api.assessResponse(s.observed.operation));
+  s.f.time(101);
+  expect(value(s.api.assessResponse(s.observed.operation))).toEqual(assessment);
+  const capture = s.subject.response.capture;
+  const saved = s.f.metadata[capture.reference];
+  s.f.metadata[capture.reference] = { ...saved, status: 'missing', bytes: null };
+  refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
+});
+
+it('P9-NF-65 P9-NF-66 refuses forged origin derivations and identity conflicts, then records one linked supersession', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
+  const first: any = value(s.api.assessResponse(s.observed.operation));
+  const firstFact = s.f.all().find((fact: FactEnvelope) => fact.id === first.id)!;
+  const original = raw(firstFact);
+  const changedRows = (original.predicates as unknown as Record<string, unknown>[]).map(row =>
+    row.predicate === 'response-completeness' ? { ...row, verdict: 'contradicted', reason: 'invented' } : row);
+  refused(s.f.runtime.record('VerificationAssessment', { ...original, predicates: changedRows }));
+  refused(s.f.runtime.record('VerificationAssessment', { ...original, id: 'forged-output-assessment',
+    vectorDigest: enc('invented-vector').hash, predicates: changedRows }), 'vector pin');
+  s.f.time(151);
+  s.f.evidence(s.subject.six.operation, s.subject.submitted.operationDigest, 'operation-occurred', undefined,
+    { id: 'proof:operation-occurred:refresh' });
+  const second: any = value(s.api.assessResponse(s.observed.operation));
+  expect(second.id).not.toBe(first.id);
+  expect(raw(s.f.all().find((fact: FactEnvelope) => fact.id === second.id)!).supersedes).toBe(first.id);
+});
+
+it('P9-NF-65 refuses a forged historical assessment against the original signed basis', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
+  const assessment: any = value(s.api.assessResponse(s.observed.operation));
+  const fact = s.f.all().find((candidate: FactEnvelope) => candidate.id === assessment.id)!;
+  const original = raw(fact);
+  const forged = { ...original, id: 'historical-forged-assessment', vectorDigest: enc('historical-forged-vector').hash,
+    predicates: (original.predicates as unknown as Record<string, unknown>[]).map(row =>
+      row.predicate === 'response-completeness' ? { ...row, verdict: 'contradicted', reason: 'invented history' } : row) };
+  refused(decodeHistoricalVerificationRecord('VerificationAssessment', forged, { ...s.f.host.boundary,
+    origin: fact, mode: 'historical', facts: { ...s.f.context, facts: s.f.all() } }, s.f.vh), 'signed origin');
+});
+
+it('P10-SI-37 blocks a first reply after the genuine conversation obligation stops', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeOpen: true });
+  s.f.time(102);
+  value(s.f.six.recover('reply-recovery-one', s.f.fence, s.settlement.operation,
+    { owner: 'part-eight', observe: () => s.f.result(() => ({ owner: 'part-eight', name: 'OperationObservation', id: 'reply-observation' })) }));
+  s.f.time(104);
+  value(s.f.six.recover('reply-recovery-two', s.f.fence, s.settlement.operation,
+    { owner: 'part-eight', observe: () => { throw new Error('terminal loop must not observe'); } }));
+  expect((value(s.f.six.inspect()) as any[]).filter((row: any) => row.record.type === 'LoopRecord').at(-1)!.record.state).toBe('stopped');
+  refused(s.replyGraph.openAcceptedProviderReply(s.replyInput), 'stopped');
+});
+
+it('P10-SI-37 refuses a second model request from the accepted-answer reply Run', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { noStop: true });
+  refused(s.f.seven.prepare({ ...s.f.question,
+    run: { owner: 'part-five', name: 'Run', id: s.reply.id } }, s.f.fence), 'cannot request another model');
+  expect(s.modelCalls()).toBe(1);
+});
+
+it('P9-NF-66 derives insufficiency from raw tool_use despite caller success labels', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true, terminalReason: 'tool_use' });
+  const assessment: any = value(s.api.assessResponse(s.observed.operation));
+  const record = raw(s.f.all().find((fact: FactEnvelope) => fact.id === assessment.id)!);
+  expect((record.predicates as any[]).filter(row => String(row.predicate).startsWith('response-'))
+    .map(row => row.verdict)).toEqual(['insufficient', 'insufficient']);
+  refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
+});
+
+it('P10-SI-37 reconstructs acceptance with its original signed Decision authority', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeOpen: true });
+  const fact = s.f.all().find((candidate: FactEnvelope) => candidate.id === s.acceptance.id)!;
+  const facts = { ...s.f.context, facts: s.f.all(), decode: { ...s.f.context.decode,
+    register: { ...s.f.context.decode.register, generation: { ...s.f.context.decode.register.generation,
+      id: 'later-generation' }, entries: s.f.context.decode.register.entries.filter((entry: string) => entry !== 'judgment') } } };
+  expect(value(decodeHistoricalProviderAnswerAcceptance(raw(fact), { ...s.f.host.boundary,
+    origin: fact, mode: 'historical', facts }, s.f.jh)).id).toBe(raw(fact).id);
 });

@@ -168,6 +168,26 @@ export function deriveProviderResponseAssessment(input: ProviderResponseAssessme
     } catch { ensure(false, 'terminal capture bytes malformed'); throw new Error('unreachable'); }
     ensure(`sha256:${createHash('sha256').update(raw).digest('hex')}` === request.subject.terminal.rawDigest,
       'raw terminal digest differs');
+    const completionFact = facts.facts.find(fact =>
+      (fact.body as unknown as { evidence?: Evidence }).evidence?.id === request.subject.terminal.evidence);
+    const completionEvidence = completionFact
+      ? (completionFact.body as unknown as { evidence?: Evidence }).evidence : undefined;
+    const claimFor = (evidence: Evidence | undefined) => evidence ? consumeResult(readEvidence(evidence, now, context.preserved),
+      { Success: claim => claim, Refused: () => undefined }) : undefined;
+    const terminalAuthority = claimFor(completionEvidence)?.predicate === 'provider-response-terminal-contract' ? completionFact
+      : completionFact?.predecessors.required.map(id => facts.facts.find(fact => fact.id === id))
+        .find(fact => fact && claimFor((fact.body as unknown as { evidence?: Evidence }).evidence)?.predicate === 'provider-response-terminal-contract');
+    const terminalAuthorityEvidence = terminalAuthority
+      ? (terminalAuthority.body as unknown as { evidence?: Evidence }).evidence : undefined;
+    const terminalAuthorityClaim = terminalAuthorityEvidence
+      ? take(readEvidence(terminalAuthorityEvidence, now, context.preserved)) : undefined;
+    const terminalMapping = object(terminalAuthorityClaim?.value ?? null);
+    const reasonField = terminalMapping?.terminalReasonField;
+    const allowedReasons = terminalMapping?.successfulFinalReplyReasons;
+    const mappingValid = terminalAuthorityClaim?.subject === request.subject.response.evidenceContractReference
+      && terminalAuthorityClaim.predicate === 'provider-response-terminal-contract'
+      && typeof reasonField === 'string' && Array.isArray(allowedReasons)
+      && allowedReasons.every(reason => typeof reason === 'string');
     const settlementEvidence = acceptedEvidence(plan, input.evidence, now, input.decode, input.captureStatuses, context);
     const commonRequest = request as unknown as VerificationRequest;
     const settlementRows: VerificationVerdictRow[] = settlementPredicates.map(predicate => {
@@ -252,8 +272,15 @@ export function deriveProviderResponseAssessment(input: ProviderResponseAssessme
           const text = new TextDecoder('utf-8', { fatal: true }).decode(raw);
           const frame = JSON.parse(text) as Record<string, unknown>;
           const extracted = frame.structured_output === undefined ? frame.result : JSON.stringify(frame.structured_output);
+          const actualReason = mappingValid ? frame[reasonField] : undefined;
+          const reasonClass = typeof actualReason === 'string' ? actualReason.toLowerCase() : '';
           transform = frame.type === 'result' && frame.is_error === false && typeof extracted === 'string'
-            && frame.stop_reason === terminal?.providerReason && extracted === decision.answerBytes
+            && mappingValid && typeof actualReason === 'string' && allowedReasons.includes(actualReason)
+            && actualReason === terminal?.providerReason
+            && !reasonClass.includes('tool') && !reasonClass.includes('function')
+            && !reasonClass.includes('cancel') && !reasonClass.includes('timeout')
+            && !reasonClass.includes('length') && !reasonClass.includes('limit') && !reasonClass.includes('truncat')
+            && extracted === decision.answerBytes
             && extracted === facts.captures[request.subject.response.capture.reference]?.bytes
             && hashBytes(extracted) === request.subject.response.answerDigest;
         } catch { transform = false; }

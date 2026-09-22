@@ -65,16 +65,23 @@ export function createJudgmentCaptures(directory, metadata, result, capacity = 1
     decodeCaptures[cap.reference] = bytes;
     return bytes;
   };
-  const reservations = () => readdirSync(slots).filter(n => n.endsWith('.json') && n !== 'policy.json').map(n => {
+  const reservations = () => readdirSync(slots).filter(n => n.endsWith('.json') && n !== 'policy.json' && !n.endsWith('.release.json')).map(n => {
     const r = JSON.parse(readFileSync(join(slots, n), 'utf8'));
     if (n !== `${r.id}.json` || !Number.isSafeInteger(r.maxBytes) || r.maxBytes < 0 || (r.hash !== null && !/^sha256:[a-f0-9]{64}$/.test(r.hash)))
       throw new Error('invalid capture capacity commitment');
     return r;
   });
   const used = () => {
-    const held = reservations(), covered = new Set(held.map(r => r.hash?.slice(7)));
+    const held = reservations(), charged = held.filter(r => {
+      const releaseFile = join(slots, `${r.id}.release.json`);
+      if (!existsSync(releaseFile)) return true;
+      const marker = JSON.parse(readFileSync(releaseFile, 'utf8'));
+      if (marker.id !== r.id || marker.maxBytes !== r.maxBytes || r.hash !== null)
+        throw new Error('invalid or bound capture capacity release');
+      return false;
+    }), covered = new Set(held.map(r => r.hash?.slice(7)));
     const files = readdirSync(root).filter(n => /^[a-f0-9]{64}$/.test(n) && !covered.has(n));
-    return held.reduce((n, r) => n + r.maxBytes, 0) + files.reduce((n, f) => n + statSync(join(root, f)).size, 0);
+    return charged.reduce((n, r) => n + r.maxBytes, 0) + files.reduce((n, f) => n + statSync(join(root, f)).size, 0);
   };
   const checkBytes = (bytes, maxBytes) => {
     if (typeof bytes !== 'string' || !Number.isSafeInteger(maxBytes) || maxBytes < 0 || Buffer.byteLength(bytes) > maxBytes) throw new Error('capture byte bound');
@@ -108,6 +115,7 @@ export function createJudgmentCaptures(directory, metadata, result, capacity = 1
       if (!issued.has(token)) throw new Error('unissued receipt capacity commitment');
       checkBytes(bytes, token.maxBytes);
       const file = join(slots, `${token.id}.json`), slot = JSON.parse(readFileSync(file, 'utf8')), cap = capture(bytes);
+      if (existsSync(join(slots, `${token.id}.release.json`))) throw new Error('released receipt capacity commitment');
       if (slot.id !== token.id || slot.maxBytes !== token.maxBytes || (slot.hash !== null && slot.hash !== cap.hash)) throw new Error('receipt capacity already bound to different bytes');
       // Bind the content before writing it. The FULL reserved budget stays held
       // even after receipt capture (no release API). General writers exclude
@@ -115,6 +123,19 @@ export function createJudgmentCaptures(directory, metadata, result, capacity = 1
       // for it. Crashes can strand capacity, never make it appear free again.
       if (slot.hash === null) writeRecord(file, { ...slot, hash: cap.hash });
       return writeCapture(bytes, cap);
+    })),
+    releaseReserved: token => result(() => locked(() => {
+      if (!issued.has(token)) throw new Error('unissued receipt capacity commitment');
+      const file = join(slots, `${token.id}.json`), slot = JSON.parse(readFileSync(file, 'utf8'));
+      if (slot.id !== token.id || slot.maxBytes !== token.maxBytes) throw new Error('receipt capacity commitment changed');
+      const releaseFile = join(slots, `${token.id}.release.json`);
+      if (existsSync(releaseFile)) {
+        const marker = JSON.parse(readFileSync(releaseFile, 'utf8'));
+        if (marker.id !== token.id || marker.maxBytes !== token.maxBytes) throw new Error('capture capacity release changed');
+        return;
+      }
+      if (slot.hash !== null) throw new Error('bound receipt capacity cannot be released');
+      writeRecord(releaseFile, { id: token.id, maxBytes: token.maxBytes });
     })),
     put: (bytes, maxBytes) => result(() => {
       checkBytes(bytes, maxBytes); const cap = capture(bytes), file = path(cap);

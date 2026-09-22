@@ -1,10 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { consumeResult, defineDecoder } from '../index.js';
-import type { Json, Result } from '../index.js';
+import type { Clock, Decision, Evidence, Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, hashBytes, registerOwnedBody } from '../facts/index.js';
 import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import type { ProviderResponseSubject, VerificationAuthor, VerificationComparison, VerificationDecodeContext, VerificationHost, VerificationIdentity, VerificationRecord, VerificationRecordName, VerificationSpine } from './contracts.js';
+import type { ProviderResponseSubject, ProviderResponseVerificationAssessment, ProviderResponseVerificationPlan,
+  ProviderResponseVerificationRequest, VerificationAuthor, VerificationComparison, VerificationDecodeContext,
+  VerificationHost, VerificationIdentity, VerificationRecord, VerificationRecordName, VerificationSpine } from './contracts.js';
+import { deriveProviderResponseAssessment } from './runtime.js';
 
 const text = { kind: 'text', maxLength: 2048 } as const;
 const integer = { kind: 'integer' } as const;
@@ -392,6 +395,85 @@ function responseReferences(subject: ProviderResponseSubject): readonly Response
     subject.eight.executorObservation, subject.eight.responseObservation, subject.six.consumedReservation, subject.six.dispatchClaim];
 }
 type ResponseFactReference = ProviderResponseSubject['seven']['request'];
+function responseDecisionBasis(input: unknown, request: Readonly<Record<string, unknown>>): Decision | null {
+  try {
+    const decision = input as Decision;
+    ensure(decision?.type === 'Decision' && decision.schemaVersion === 1 && typeof decision.id === 'string'
+      && decision.id.length > 0 && decision.floor && Array.isArray(decision.floor.allowed?.actions)
+      && decision.floor.allowed.actions.includes(decision.floor.chosen) && 'judgment' in decision.by
+      && decision.by.judgment === request.point && decision.by.route === request.route && decision.by.model === request.model
+      && encoded(decision.floor.allowed).hash === request.floorDigest
+      && Array.isArray(decision.conclusion?.evidence) && Array.isArray(decision.reason?.evidence)
+      , 'captured response Decision basis differs');
+    const allowed = Array.isArray(request.evidence) ? request.evidence : [];
+    ensure([...decision.conclusion.evidence, ...decision.reason.evidence]
+      .every(id => typeof id === 'string' && allowed.includes(id)), 'captured response Decision invented evidence');
+    const standsOn = [...new Set([...decision.conclusion.evidence, ...decision.reason.evidence])].sort();
+    ensure(decision.standsOn === undefined || encoded(decision.standsOn).bytes === encoded(standsOn).bytes,
+      'captured response Decision standsOn differs');
+    return { ...decision, standsOn } as unknown as Decision;
+  } catch { return null; }
+}
+function establishResponseAssessment(record: ProviderResponseVerificationAssessment,
+  request: ProviderResponseVerificationRequest, plan: ProviderResponseVerificationPlan, requestFact: FactEnvelope,
+  cone: ReadonlyMap<string, FactEnvelope>, context: OwnedBodyContext, historical: boolean, host: VerificationHost): void {
+  const evidenceFacts = [...cone.values()].filter(fact => {
+    const evidence = (fact.body as unknown as { evidence?: Evidence }).evidence;
+    return evidence && record.predecessors.includes(fact.id);
+  });
+  const evidence = evidenceFacts.map(fact => (fact.body as unknown as { evidence: Evidence }).evidence);
+  ensure(record.evidence.every(id => evidence.some(item => item.id === id)), 'output assessment Evidence basis incomplete');
+  const responseFact = cone.get(record.subject.seven.response.id);
+  const responseRecord = responseFact?.body as unknown as { record?: { receipt?: { reference?: string; hash?: string } } };
+  const receipt = responseRecord.record?.receipt;
+  const receiptCapture = receipt?.reference ? context.facts.captures[receipt.reference] : undefined;
+  const answerCapture = context.facts.captures[record.subject.response.capture.reference];
+  const allAvailable = receiptCapture?.status === 'available' && receiptCapture.bytes !== null
+    && answerCapture?.status === 'available' && answerCapture.bytes !== null
+    && evidence.every(item => context.facts.captures[item.capture.reference]?.status === 'available');
+  const sources = [requestFact, ...record.predecessors.filter(id => id !== requestFact.id && id !== record.supersedes)
+    .map(id => cone.get(id)).filter((fact): fact is FactEnvelope => !!fact)];
+  const frontier: Record<string, { epoch: number; position: number; fact: string }> = {};
+  for (const fact of sources.flatMap(source => [...causalCone(source, context.facts.facts), source])) {
+    const prior = frontier[fact.machine];
+    if (!prior || fact.segment.epoch > prior.epoch || fact.segment.epoch === prior.epoch && fact.segment.position > prior.position)
+      frontier[fact.machine] = { epoch: fact.segment.epoch, position: fact.segment.position, fact: fact.id };
+  }
+  const lineages = Object.keys(frontier).sort();
+  ensure(encoded(record.knownLineages).bytes === encoded(lineages).bytes, 'output assessment lineage pin differs');
+  ensure(record.vectorDigest === encoded({ folded: context.facts.folded, frontier }).hash,
+    historical ? 'historical output assessment vector pin differs' : 'output assessment vector pin differs');
+  if (!allAvailable) {
+    ensure(historical, 'current output assessment basis unavailable');
+    const { id: _id, ...identity } = record;
+    ensure(record.id === `assessment:${encoded(identity).hash}`, 'historical output assessment identity differs');
+    return;
+  }
+  ensure(record.captureStatuses.length === evidence.length && record.captureStatuses.every(status =>
+    status.status === 'available' && evidence.some(item => item.capture.reference === status.reference)),
+  'output assessment capture-status basis differs');
+  let responseEvidence: Json = null;
+  try { responseEvidence = (JSON.parse(receiptCapture.bytes!) as { responseEvidence?: Json }).responseEvidence ?? null; }
+  catch { /* malformed receipts produce an insufficient response derivation */ }
+  const requestOwner = cone.get(record.subject.seven.request.id);
+  const requestBody = (requestOwner?.body as unknown as { record?: Readonly<Record<string, unknown>> }).record;
+  let captured: Decision | null = null;
+  const admitted = responseEvidence !== null && typeof responseEvidence === 'object' && !Array.isArray(responseEvidence)
+    && (responseEvidence as Readonly<Record<string, Json>>).eligibility === 'admitted';
+  try { captured = admitted && requestBody ? responseDecisionBasis(JSON.parse(answerCapture.bytes!), requestBody) : null; } catch { captured = null; }
+  const decision = captured ? { owner: 'part-seven' as const, decision: json(captured), answerBytes: answerCapture.bytes!,
+    answerDigest: record.subject.response.answerDigest, response: record.subject.seven.response, responseEvidence,
+    required: responseReferences(record.subject).map(reference => reference.id) } : null;
+  const now = context.origin.at as unknown as Clock;
+  const derived = take(deriveProviderResponseAssessment({ request, plan, evidence, decision, responseEvidence,
+    observer: record.observer, vectorDigest: record.vectorDigest, knownLineages: record.knownLineages,
+    captureStatuses: record.captureStatuses,
+    taints: [], now, decode: context.facts.decode, facts: context.facts, predecessors: record.predecessors,
+    ...(record.supersedes ? { supersedes: record.supersedes } : {}) }, host.boundary));
+  const differences = Object.keys(record).filter(key => encoded((record as unknown as Record<string, unknown>)[key]).bytes
+    !== encoded((derived as unknown as Record<string, unknown>)[key]).bytes);
+  ensure(differences.length === 0, `output assessment differs from owner derivation: ${differences.join(',')}`);
+}
 function decodeOwnedVerification(name: VerificationRecordName, input: unknown, context: OwnedBodyContext,
   host: VerificationHost, historical: boolean): VerificationRecord {
   ensure(context.origin.machine === host.machine && context.origin.principal.id === host.principal.id
@@ -399,6 +481,9 @@ function decodeOwnedVerification(name: VerificationRecordName, input: unknown, c
   const record = take(decodeVerificationRecord(name, input, context));
   ensure(context.origin.kind === verificationKindFor(name) && context.origin.schemaVersion === 1,
     'verification fact kind or envelope schema mismatch');
+  const signed = (context.origin.body as unknown as { record?: unknown }).record;
+  ensure(signed !== undefined && encoded(record).bytes === encoded(signed).bytes,
+    'verification record differs from its signed origin');
   const cone = new Map(causalCone(context.origin, context.facts.facts).map(fact => [fact.id, fact]));
   ensure(record.predecessors.every(id => cone.has(id)), 'verification predecessor outside causal cone');
   if ((record.type === 'VerificationAssessment' || record.type === 'Grade') && record.supersedes)
@@ -442,6 +527,11 @@ function decodeOwnedVerification(name: VerificationRecordName, input: unknown, c
       const fact = [...cone.values()].find(candidate => (candidate.body as unknown as { evidence?: { id?: string } }).evidence?.id === id);
       ensure(fact && record.predecessors.includes(fact.id), 'output Evidence absent from causal closure');
     }
+    if (record.type === 'VerificationAssessment') establishResponseAssessment(record as ProviderResponseVerificationAssessment,
+      boundRequest as ProviderResponseVerificationRequest, plan as ProviderResponseVerificationPlan,
+      [...cone.values()].find(fact => fact.kind === verificationKindFor('VerificationRequest')
+        && (fact.body as unknown as { record?: { id?: string } }).record?.id === record.request)!,
+      cone, context, historical, host);
     if (!historical) ensure(sourceGeneration === host.current().generation,
       'output request or assessment generation is not current');
   }

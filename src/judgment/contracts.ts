@@ -121,6 +121,9 @@ export interface JudgmentFact { readonly fact: FactEnvelope; readonly record: Ju
 export interface JudgmentCapturePort {
   readonly owner: 'part-ten';
   reserve(maxBytes: number): Result<CaptureCapacity>;
+  /** Append-only bookkeeping close for this port instance's exact, still-unbound
+   * token. It never deletes capture bytes or releases a content pin. */
+  releaseReserved(capacity: CaptureCapacity): Result<void>;
   putReserved(capacity: CaptureCapacity, bytes: string): Result<Capture>;
   put(bytes: string, maxBytes: number): Result<Capture>;
   read(capture: Capture): Result<string>;

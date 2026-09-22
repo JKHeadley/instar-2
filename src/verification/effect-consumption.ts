@@ -12,6 +12,7 @@ import type { CapturedProviderDecision, ProviderDecisionReadPort, ProviderRespon
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { mergeVerificationRecords, verificationIdentityClosure } from './storage.js';
 import { deriveProviderResponseAssessment, deriveVerificationAssessment, verificationEvidenceFreshness } from './runtime.js';
+import { decodeCapturedProviderDecision } from '../judgment/provider-path.js';
 
 /** Both the legacy reply and versioned provider request use this owner boundary. */
 export interface EffectSettlementAssessmentInput {
@@ -40,14 +41,8 @@ export interface EffectSettlementAssessmentPort {
     input: EffectSettlementAssessmentInput, consumer: (view: ConsumedEffectAssessment) => T): Result<T>;
 }
 const record = (f: FactEnvelope) => (f.body as unknown as { record?: Record<string, unknown> }).record;
-const genuineDecisionReaders = new WeakMap<object, FactStorePort>();
 const genuineResponsePorts = new WeakMap<object, FactStorePort>();
 
-/** Owner-internal construction links. They are intentionally absent from the
- * public verification barrel: structural lookalikes never acquire authority. */
-export function registerProviderDecisionReadPort<T extends ProviderDecisionReadPort>(port: T, store: FactStorePort): T {
-  genuineDecisionReaders.set(port, store); return port;
-}
 export function isGenuineProviderResponseAssessmentPort(port: ProviderResponseAssessmentPort, store: FactStorePort): boolean {
   return genuineResponsePorts.get(port) === store;
 }
@@ -232,7 +227,7 @@ const responseFactReferences = (subject: ProviderResponseSubject) => [subject.se
  * evaluator or bearer token. */
 export function createProviderResponseAssessmentPort(host: VerificationHost, runtime: VerificationRuntimePort,
   store: FactStorePort, seven: ProviderDecisionReadPort): ProviderResponseAssessmentPort {
-  ensure(genuineDecisionReaders.get(seven) === store, 'genuine same-store Seven decision reader required');
+  take(decodeCapturedProviderDecision(seven, undefined, store, host.boundary));
   let consuming = false;
   const checked = <T>(name: string, input: unknown, fn: () => T) => boundary(name, input, host.boundary, fn);
   const validate = (ids: readonly string[], entries = take(store.readForProjection()).entries) => {
@@ -342,7 +337,7 @@ export function createProviderResponseAssessmentPort(host: VerificationHost, run
       && plan.responseContract.evidenceContractReference === subject.response.evidenceContractReference
       && plan.responseContract.evidenceContractVersion === subject.response.evidenceContractVersion,
     'response assessment plan, bar, subject, or response contract differs');
-    const decision = consumeResult(seven.decodeCapturedProviderDecision(subject), {
+    const decision = consumeResult(decodeCapturedProviderDecision(seven, subject, store, host.boundary), {
       Success: value => value, Refused: () => null,
     });
     const receipt = response.receipt as Readonly<{ reference?: unknown; hash?: unknown }> | undefined;

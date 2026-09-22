@@ -16,7 +16,7 @@ export interface ProductionProviderIO {
     Promise<Readonly<{ code: number | null; limited: boolean; stdout: string; stdoutBytes: Uint8Array }>>;
 }
 
-export interface AdapterEvidenceContract {
+export interface ProviderAdapterEvidenceContract {
   readonly reference: string; readonly version: string; readonly parserReference: string; readonly parserVersion: string;
   readonly endpoint: string; readonly account: string; readonly credentialReference: string; readonly controller: string;
   readonly sourceEvidence: readonly string[]; readonly terminalEvidence: string; readonly terminalReasonField: string;
@@ -28,7 +28,7 @@ export interface AdapterEvidenceContract {
  * the admitted route; credentials are resolved once inside the custodian. */
 export function createClaudeCodeProductionRoute(input: Omit<ProviderCredentialCustodianInput, 'submit'> & Readonly<{
   executable: string; artifact: string; workingDirectory: string; io: ProductionProviderIO;
-  adapterEvidenceContract?: AdapterEvidenceContract;
+  adapterEvidenceContract?: ProviderAdapterEvidenceContract;
 }>): Result<ConfinedProviderRoute> {
   input = Object.freeze({ ...input });
   return boundary('ProductionClaudeCodeRoute', null, input.context, () => {
