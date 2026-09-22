@@ -10,13 +10,16 @@ export {
 } from './records.js';
 export { currentAssemblyRows, resolveAssemblyHistory } from './history.js';
 export { createAssemblyRuntime } from './service.js';
-export { bootProductionAssembly, inspectProductionAssemblyBindings, consumeProductionAssembly } from './production.js';
+export { bootProductionAssembly, inspectProductionAssemblyBindings, inspectOpenedProductionInstallation,
+  consumeProductionAssembly } from './production.js';
 export { createNativeHarnessAdapter } from './harness.js';
 export type { NativeHarnessDriverPort } from './harness.js';
 export { contextDeliveryIdFor, createConfinedContextDeliveryDriver, createProductionGroundingReader } from './context-delivery.js';
 export type { ConfinedContextDeliveryDriverPort, ContextDeliveryExecutionPort, ProductionGroundingReaderInput } from './context-delivery.js';
 export { createCustodiedPersistenceAdapter } from './persistence.js';
 export { createMediatedStoreReader } from './custody.js';
+export { openProductionCustody, createProductionCustodyReader } from './production-custody-wiring.js';
+export type { ProductionCustodyInput, ProductionCustodyReadInput } from './production-custody-wiring.js';
 export { assemblyProjectionDefinitions } from './storage.js';
 export { stageLocalCapability, resolveActivePackage } from './package.js';
 export { deriveGrowthEpisodes, closeGrowthEpisode } from './growth.js';

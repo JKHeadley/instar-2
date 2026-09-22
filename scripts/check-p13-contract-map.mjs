@@ -263,7 +263,7 @@ export function checkP13Architecture() {
   // arm has nothing to judge; the structural checks below still run unconditionally.
   // Only the exact reviewed additivity amendments are outside this part's slice.
   const grantedAdditivityHashes = new Map([
-    ['tests/harness-adapters/a2-governance-and-additivity.test.ts', '25e3d5df647b934fafb261b5778d4974a06570e9b5f99ed32ea874a1ae7c60bd'],
+    ['tests/harness-adapters/a2-governance-and-additivity.test.ts', '8fc5db90a5af5ef1d5839ad018488adb3749e662e60949f844f4d5d788973d2e'],
     ['tests/harness-adapters/a2-round6-regression.test.ts', 'cf563858558e979b3f9019fdbbd821583d16429848b991a6586efa8221f886c5'],
     ['tests/integration/harness-adapters-round7-regression.test.ts', 'c35559278c2f5a2a396de6d815834fc3f4e6542b8d54eefa63222a2c43ea2b02'],
   ]);
