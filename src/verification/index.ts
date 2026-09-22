@@ -6,11 +6,13 @@ export {
   decodeBenchmarkEvaluation, verificationLogicalKey, verificationIdentity, compareVerificationRecords,
   wireVerificationRecord,
   verificationKindFor, verificationRecordFrom, verificationRows, verificationSchemas,
-  registerVerificationBodies, createVerificationSpine,
+  registerVerificationBodies, createVerificationSpine, decodeVerificationRecordAtOrigin,
+  decodeHistoricalVerificationRecord,
 } from './records.js';
-export { verificationEvidenceFreshness, deriveVerificationAssessment, deriveVerificationDue, deriveGuardPosture,
+export { verificationEvidenceFreshness, deriveVerificationAssessment, deriveProviderResponseAssessment,
+  deriveVerificationDue, deriveGuardPosture,
   probeBoundToCurrentEvidence } from './runtime.js';
-export type { AssessmentDerivationInput, ProbePostureResolution } from './runtime.js';
+export type { AssessmentDerivationInput, ProviderResponseAssessmentDerivationInput, ProbePostureResolution } from './runtime.js';
 export { createVerificationRuntime } from './service.js';
 export { createEffectAssessmentPort } from './reconciliation.js';
 export {
@@ -28,7 +30,7 @@ export type { VerificationPlanFact } from './traces.js';
 export { adapterStimulusClasses, supervisionCoverage, reviewDisclosureAllowed, reportContradictsActual,
   outcomeWindowStatus, convergenceEligible, activationGaps } from './policy.js';
 export type { SupervisionObservation, SupervisionCoverageRow, ReportClaim } from './policy.js';
-export { createEffectSettlementAssessmentPort } from './effect-consumption.js';
+export { createEffectSettlementAssessmentPort, createProviderResponseAssessmentPort } from './effect-consumption.js';
 export type { EffectSettlementAssessmentInput, ConsumedEffectAssessment, EffectSettlementAssessmentPort } from './effect-consumption.js';
 export { providerSettlementSupported } from './provider-settlement-support.js';
 export type { ProviderSettlementSupportInput } from './provider-settlement-support.js';
