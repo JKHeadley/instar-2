@@ -1,3 +1,4 @@
+import { acceptedReplyOpening, bindAcceptedReplyGraph } from './accepted-reply.js';
 import type { FactEnvelopeReference, Result } from '../index.js';
 import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
@@ -299,6 +300,18 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
         return read(t.run);
       })),
     } satisfies RunGraphPort);
+    bindAcceptedReplyGraph(graph, d.store, id => {
+      const view = read(id);
+      need(view.conflicts.length === 0 && !['halted', 'completed', 'cancelled', 'unreachable'].includes(view.state),
+        'accepted reply Run is stopped or conflicted');
+      const facts = take(d.store.read());
+      const opening = acceptedReplyOpening(facts, id);
+      const parent = read(opening.provider);
+      need(parent.head === opening.predecessor && parent.conflicts.length === 0
+        && !['halted', 'completed', 'cancelled', 'unreachable'].includes(parent.state),
+        'accepted reply original predecessor changed or stopped');
+      return opening;
+    });
     return d.grounding.production ? bindProductionGroundedGraph(graph, d.grounding, d.store, d.assemblyHistory, d.generation().reference.id) : graph;
   });
 }

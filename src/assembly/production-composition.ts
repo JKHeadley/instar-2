@@ -1,3 +1,5 @@
+import { admitAcceptedProviderReply } from '../transport/index.js';
+import type { FenceToken, LoopPolicy } from '../transport/index.js';
 import type { Result } from '../index.js';
 import { createIntakePort } from '../intake/index.js';
 import type { IntakeDependencies } from '../intake/index.js';
@@ -96,7 +98,10 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
         assessment: createEffectAssessmentPort(input.provider.verification, provider.nine) });
       return Object.freeze({ adapter, doorway });
     };
-    return Object.freeze({ composition, intake, run, provider, responder, reply, telegram: input.telegram });
+    const admitReply = (command: string, fence: FenceToken, replyRun: string, policy: LoopPolicy) =>
+      admitAcceptedProviderReply(input.provider.judgment.authority, run, command, fence,
+        { owner: 'part-five', name: 'Run', id: replyRun }, policy, input.assembly.host.boundary);
+    return Object.freeze({ composition, intake, run, provider, responder, reply, admitReply, telegram: input.telegram });
   });
 }
 

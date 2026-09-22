@@ -1,7 +1,9 @@
+import { consumeAcceptedReplyOpening } from '../rungraph/accepted-reply.js';
+import { bindRunPairIssuer, withRunPairAdmission } from './run-pair.js';
 import type { BoundaryContext, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
-import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, ScanCursor,
+import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, RunPairAdmission, ScanCursor,
   SettlementAccountingInput, SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
@@ -135,9 +137,15 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
   const meta = (all: readonly TransportFact[], command: string) => ({ schemaVersion: 1 as const, domain: host.domain,
     command, predecessor: all.at(-1)?.fact.id ?? '', authority: host.authorityIncarnation, tick: tick() });
   const write = <T extends TransportRecord>(all: readonly TransportFact[], r: T): { record: T; all: readonly TransportFact[] } => {
-    validateTransition(r, all, host, true);
+    validateTransition(r, all, host, true, take(spine.store.read()));
     const required = r.predecessor ? [r.predecessor] : [];
     if (r.type === 'SettlementApplication') required.push(r.settlementFact);
+    if (r.type === 'RunPairAdmission') required.push(r.opening, r.acceptance, r.obligation);
+    if (r.type === 'AdmissionReservation' && all.some(p => p.record.type === 'RunPairAdmission')) {
+      const request = take(spine.store.read()).find(f => f.kind === 'effect-EffectRequest'
+        && (f.body as { record: { id: string } }).record.id === r.request);
+      if (request) required.push(request.id);
+    }
     const receipt = take(spine.append(r, [...new Set(required)]));
     ensure(!receipt.taint.length, 'append was provisional or contested');
     ensure(receipt.fact.kind === kindFor(r.type) && encoded(receipt.fact.body).bytes === encoded({ record: r }).bytes, 'append returned different record');
@@ -192,7 +200,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     ensure(row && encoded(row.record).bytes === encoded(record).bytes, 'prepared accounting changed');
     return { row, all: current, record, input: encoded(s).bytes, revision: accountingRevision(host) };
   };
-  return Object.freeze({
+  const authority: TransportAuthority<S> = Object.freeze({
     inspect: () => boundary('TransportInspect', null, c, read),
     settle: (token, settlement) => checked('SettlementApply', { token }, () => {
       ensure(settlementConsumer, 'eight settlement consumer is not installed');
@@ -327,4 +335,26 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       return result;
     }),
   } satisfies TransportAuthority<S>);
+  bindRunPairIssuer(authority, (graph, command, token, reply, policy) => checked('RunPairAdmission', { command, token, reply, policy }, () => {
+    ensure(reply.owner === 'part-five' && reply.name === 'Run', 'reply Run reference required');
+    policyCheck(policy);
+    let all = read(); fence(all, token);
+    const prior = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+    if (prior) {
+      ensure(prior.reply === reply.id, 'fixed pair already has its one reply');
+      ensure(encoded(prior.replyPolicy).bytes === encoded(policy).bytes, 'reply bounds cannot reset');
+      const loop = latestLoop(all, reply.id);
+      if (loop) { ensure(encoded(loop.policy).bytes === encoded(policy).bytes, 'reply bounds cannot reset'); return loop; }
+    } else {
+      consumeAcceptedReplyOpening(graph, spine.store, reply.id, joined => {
+        all = read(); fence(all, token);
+        const record = { ...meta(all, command), type: 'RunPairAdmission', profile: 'provider-reply-v1',
+          ...joined, predecessor: all.at(-1)?.fact.id ?? '', originalPredecessor: joined.predecessor,
+          budget: host.budget, replyPolicy: policy } as RunPairAdmission;
+        withRunPairAdmission(host, record, () => write(all, record));
+      });
+    }
+    return take(authority.schedule(`${command}:reply-loop`, token, reply, policy));
+  }));
+  return authority;
 }

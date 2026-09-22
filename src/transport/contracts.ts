@@ -43,6 +43,14 @@ export interface LoopRecord extends Row, Owned {
   readonly nextWake: number; readonly state: 'scheduled' | 'running' | 'restoring' | 'waiting' | 'stopped';
   readonly pending: string;
 }
+/** Additive v1 fixed profile; historical singleton records keep their meaning. */
+export interface RunPairAdmission extends Row, Owned {
+  readonly type: 'RunPairAdmission'; readonly profile: 'provider-reply-v1';
+  readonly provider: string; readonly reply: string; readonly opening: string;
+  readonly acceptance: string; readonly originalPredecessor: string; readonly obligation: string;
+  readonly operation: string; readonly answerDigest: string; readonly conversation: string;
+  readonly budget: number; readonly replyPolicy: LoopPolicy;
+}
 export interface RecoveryRecord extends Row, Owned {
   readonly type: 'RecoveryRecord'; readonly operation: string; readonly episode: string;
   readonly observation: string; readonly disposition: 'waiting' | 'stopped-at-bound';
@@ -77,7 +85,7 @@ export interface SettlementAccountingInput {
 }
 export type SettlementConsumer<S> = <T>(value: S, boundary: BoundaryContext,
   consumer: (value: SettlementAccountingInput) => T) => Result<T>;
-export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication;
+export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication | RunPairAdmission;
 export interface TransportFact { readonly fact: FactEnvelope; readonly record: TransportRecord }
 
 // Trusted host seams. P10 supplies the monotonic clock and fresh process identity.
