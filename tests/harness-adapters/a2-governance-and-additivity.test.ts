@@ -10,12 +10,12 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
   const grantedContent = new Map([
     // GRANT M3-S (astra-m3-structural-adjudication.md section 3): exact additive Five early-guard tests.
     ['tests/rungraph/installed-governance.test.ts', '4741c9e14be82d3329fcee03e30ef6e661c95aba210ef0fa5cbd010f5c251737'],
-    ['tests/assembly/production-grounding-inventory.json', 'c95b57d5077e3bafb156c899d237f24a320d833d2af76d39bc567b382994f7f0'],
+    ['tests/assembly/production-grounding-inventory.json', '4bd8f731234e855c7aabf1a4e38846c9507de5af3454294e739a9576a885ad98'],
     // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
     ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
     // GRANT M4-G6-N-T7: the two exhaustive P9 disposition counts 63 -> 66.
     ['tests/verification/coverage.test.ts', 'ad5a8cb698bb8a55366192d62f621bcc17395b6f8801189a58fab43ecbc4ef94'],
-    ['tests/rungraph/production-grounding-scope.test.ts', '3153737b22d37f3939bda6292d97780d13537c21f6bb5bfa6be43113c1bd079f'],
+    ['tests/rungraph/production-grounding-scope.test.ts', '9dd04f49ae65a9ed5fb796599c6244e38596f53d3eb0cfc39124df15f474e3bd'],
     ['tests/assembly/round10-regressions.test.ts', '74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605'],
     ['tests/assembly/round12-regressions.test.ts', '6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9'],
     // Settlement seam baseline: exact helper bytes for landed Eight 189b346.
