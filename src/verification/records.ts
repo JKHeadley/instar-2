@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import { consumeResult, defineDecoder } from '../index.js';
-import type { Clock, Decision, Evidence, Json, Result } from '../index.js';
-import { authorAndAppend, causalCone, hashBytes, registerOwnedBody } from '../facts/index.js';
+import { consumeResult, decode, defineDecoder } from '../index.js';
+import type { Clock, Decision, DecodeContext, Evidence, Json, Result } from '../index.js';
+import { authorAndAppend, causalCone, causalStanding, hashBytes, registerOwnedBody } from '../facts/index.js';
 import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import type { ProviderResponseSubject, ProviderResponseVerificationAssessment, ProviderResponseVerificationPlan,
@@ -395,15 +395,13 @@ function responseReferences(subject: ProviderResponseSubject): readonly Response
     subject.eight.executorObservation, subject.eight.responseObservation, subject.six.consumedReservation, subject.six.dispatchClaim];
 }
 type ResponseFactReference = ProviderResponseSubject['seven']['request'];
-function responseDecisionBasis(input: unknown, request: Readonly<Record<string, unknown>>): Decision | null {
+function responseDecisionBasis(input: unknown, request: Readonly<Record<string, unknown>>,
+  original: DecodeContext): Decision | null {
   try {
-    const decision = input as Decision;
-    ensure(decision?.type === 'Decision' && decision.schemaVersion === 1 && typeof decision.id === 'string'
-      && decision.id.length > 0 && decision.floor && Array.isArray(decision.floor.allowed?.actions)
-      && decision.floor.allowed.actions.includes(decision.floor.chosen) && 'judgment' in decision.by
+    const decision = take(decode('Decision', input, original));
+    ensure(decision.floor && 'judgment' in decision.by
       && decision.by.judgment === request.point && decision.by.route === request.route && decision.by.model === request.model
       && encoded(decision.floor.allowed).hash === request.floorDigest
-      && Array.isArray(decision.conclusion?.evidence) && Array.isArray(decision.reason?.evidence)
       , 'captured response Decision basis differs');
     const allowed = Array.isArray(request.evidence) ? request.evidence : [];
     ensure([...decision.conclusion.evidence, ...decision.reason.evidence]
@@ -427,9 +425,13 @@ function establishResponseAssessment(record: ProviderResponseVerificationAssessm
   const responseRecord = responseFact?.body as unknown as { record?: { receipt?: { reference?: string; hash?: string } } };
   const receipt = responseRecord.record?.receipt;
   const receiptCapture = receipt?.reference ? context.facts.captures[receipt.reference] : undefined;
+  const submittedCapture = context.facts.captures[record.subject.submitted.capture.reference];
   const answerCapture = context.facts.captures[record.subject.response.capture.reference];
+  const terminalCapture = context.facts.captures[record.subject.terminal.capture.reference];
   const allAvailable = receiptCapture?.status === 'available' && receiptCapture.bytes !== null
+    && submittedCapture?.status === 'available' && submittedCapture.bytes !== null
     && answerCapture?.status === 'available' && answerCapture.bytes !== null
+    && terminalCapture?.status === 'available' && terminalCapture.bytes !== null
     && evidence.every(item => context.facts.captures[item.capture.reference]?.status === 'available');
   const sources = [requestFact, ...record.predecessors.filter(id => id !== requestFact.id && id !== record.supersedes)
     .map(id => cone.get(id)).filter((fact): fact is FactEnvelope => !!fact)];
@@ -460,7 +462,12 @@ function establishResponseAssessment(record: ProviderResponseVerificationAssessm
   let captured: Decision | null = null;
   const admitted = responseEvidence !== null && typeof responseEvidence === 'object' && !Array.isArray(responseEvidence)
     && (responseEvidence as Readonly<Record<string, Json>>).eligibility === 'admitted';
-  try { captured = admitted && requestBody ? responseDecisionBasis(JSON.parse(answerCapture.bytes!), requestBody) : null; } catch { captured = null; }
+  try {
+    captured = admitted && requestBody && requestOwner
+      ? responseDecisionBasis(JSON.parse(answerCapture.bytes!), requestBody,
+        causalStanding(requestOwner, context.facts, false).decode)
+      : null;
+  } catch { captured = null; }
   const decision = captured ? { owner: 'part-seven' as const, decision: json(captured), answerBytes: answerCapture.bytes!,
     answerDigest: record.subject.response.answerDigest, response: record.subject.seven.response, responseEvidence,
     required: responseReferences(record.subject).map(reference => reference.id) } : null;

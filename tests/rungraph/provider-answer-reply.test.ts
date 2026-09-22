@@ -10,7 +10,7 @@ import { createRunGraph, runIdFor } from '../../src/rungraph/index.js';
 import { providerFixture, enc, refused, value } from '../model-provider/fixture.js';
 import type { ProviderResponseSubject } from '../../src/verification/index.js';
 import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from '../../src/assembly/provider-invocation.js';
-import { hashBytes } from '../../src/facts/index.js';
+import { causalStanding, decodeHistoricalBody, hashBytes } from '../../src/facts/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
@@ -21,6 +21,7 @@ const reference = (fact: FactEnvelope) => ({ owner: 'part-two' as const, name: '
 
 export async function runProviderAnswerReplyScenario(malformedDecision = false, hook: Readonly<{
   beforeAssessment?: boolean; beforeOpen?: boolean; unknown?: boolean; noStop?: boolean; terminalReason?: string;
+  nearMalformedDecision?: boolean;
 }> = {}): Promise<any> {
   let answer = '', sourceEvidence = '', terminalEvidence = '', modelCalls = 0;
   const f = providerFixture({ route: { invoke: async (bytes, bounds) => {
@@ -59,7 +60,9 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
     { claim: { subject: 'response-contract', predicate: 'provider-response-source-contract', value: sourceBasis } }).id;
   terminalEvidence = f.evidence('response-contract', enc(terminalBasis).hash, 'provider-response-terminal-contract', undefined,
     { claim: { subject: 'response-contract', predicate: 'provider-response-terminal-contract', value: terminalBasis } }).id;
-  answer = malformedDecision ? JSON.stringify({ not: 'a Decision' }) : JSON.stringify(f.decisionInput());
+  answer = hook.nearMalformedDecision
+    ? JSON.stringify({ ...f.decisionInput(), unexpected: 'must refuse Decision decode' })
+    : malformedDecision ? JSON.stringify({ not: 'a Decision' }) : JSON.stringify(f.decisionInput());
 
   const route = Object.freeze({ ...f.route, invoke: (f.route as ConfinedProviderRoute).invoke }) as ConfinedProviderRoute;
   registerProviderResponseEvidenceBounds(route, { parserReference: 'claude-code-json-result', parserVersion: '1',
@@ -191,6 +194,50 @@ it('P10-SI-17 P10-SI-37 uses one output assessment for independent settlement an
 it('P10-SI-37 keeps the four settlement rows usable when the captured answer cannot decode as a Decision', async () => {
   await runProviderAnswerReplyScenario(true);
 });
+
+it('P10-SI-37 records near-valid malformed Decision insufficiency and settles from the same v2 fact', async () => {
+  const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true, nearMalformedDecision: true });
+  const assessment: any = value(s.api.assessResponse(s.observed.operation));
+  const fact = s.f.all().find((candidate: FactEnvelope) => candidate.id === assessment.id)!;
+  const record = raw(fact);
+  expect(record.schemaVersion).toBe(2);
+  expect((record.predicates as unknown as { predicate: string; verdict: string }[])
+    .find(row => row.predicate === 'response-completeness')?.verdict).toBe('insufficient');
+  const settlement: any = value(s.api.settle(s.observed.operation, assessment));
+  expect(settlement.acceptance).toBe(assessment.id);
+  expect(settlement.outcome.kind).toBe('happened');
+});
+
+it.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)(
+  'P9-NF-66 reads historical assessment with %s capture loss while current use refuses', async kind => {
+    const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
+    const assessment: any = value(s.api.assessResponse(s.observed.operation));
+    const fact = s.f.all().find((candidate: FactEnvelope) => candidate.id === assessment.id)!;
+    const record = raw(fact);
+    const responseFact = s.f.all().find((candidate: FactEnvelope) => candidate.id === s.subject.seven.response.id)!;
+    const evidenceId = (record.evidence as unknown as string[])[0]!;
+    const evidenceFact = s.f.all().find((candidate: FactEnvelope) =>
+      (candidate.body as unknown as { evidence?: { id?: string } }).evidence?.id === evidenceId)!;
+    const captures = {
+      submitted: s.subject.submitted.capture,
+      'raw-terminal': s.subject.terminal.capture,
+      answer: s.subject.response.capture,
+      receipt: raw(responseFact).receipt as { reference: string; hash: string },
+      Evidence: (evidenceFact.body as unknown as { evidence: { capture: { reference: string; hash: string } } }).evidence.capture,
+    };
+    const capture = captures[kind], saved = s.f.metadata[capture.reference];
+    s.f.metadata[capture.reference] = { ...saved, status: 'missing', bytes: null };
+    refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
+    const facts = { ...s.f.context, facts: s.f.all(), captures: { ...s.f.context.captures,
+      [capture.reference]: s.f.metadata[capture.reference]! } };
+    expect(value(decodeHistoricalVerificationRecord('VerificationAssessment', record, { ...s.f.host.boundary,
+      origin: fact, mode: 'historical', facts }, s.f.vh))).toEqual(record);
+    const captureOwner = kind === 'receipt' ? responseFact : kind === 'Evidence' ? evidenceFact : fact;
+    const historical = value(decodeHistoricalBody(captureOwner, facts,
+      causalStanding(captureOwner, facts, false).decode));
+    expect(historical.taint).toContain('evidence-unavailable');
+    if (captureOwner.id === fact.id) expect(historical.fields.record).toEqual(record);
+  });
 
 it('P10-SI-37 keeps a v1 occurrence assessment diagnostic-only when no answer evidence exists', async () => {
   const f = providerFixture({ route: { invoke: async (_bytes, bounds) => ({ state: 'complete',

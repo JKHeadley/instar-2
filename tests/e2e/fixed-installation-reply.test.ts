@@ -8,7 +8,8 @@ import { privateKey } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
 import { runProviderAnswerReplyScenario } from '../rungraph/provider-answer-reply.test.js';
 
-it('P10-SI-17 P10-SI-18 P10-SI-24 P10-SI-37 recovers one real outbound operation after original accounting closes', async () => {
+it('P10-SI-17 P10-SI-18 P10-SI-24 P10-SI-37 recovers one outbound operation on the original Run after original accounting closes; separate reply-Run outbound admission remains held', async () => {
+  // HOLD M3-I/G6-T4-SIX: Partial G6 implementation/evidence; pending-exposure outbound reply remains held under M3-I/G6-T4-SIX; no installed-route or production-readiness claim.
   const first = await runProviderAnswerReplyScenario(false, { unknown: true, noStop: true });
   expect(first.accounting.unresolved).not.toBe(0);
   expect(first.accounting.exposure).toBe(first.settlement.retainedExposure);
