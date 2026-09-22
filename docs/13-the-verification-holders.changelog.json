@@ -4,9 +4,8 @@
     "date": "2026-09-21",
     "status": "draft",
     "cause": {
-      "kind": "review",
-      "pr": 100,
-      "note": "Astra blocked-build adjudication (astra-g6-blocked-adjudication.md), section (b): correction of the approved PR 100 supplement, not a claim that PR 100 already specified owned-body-only versioning. Uncommitted documentation draft against c5e2b67d3df0cca7321aa806d0da2cb1d8910d97."
+      "kind": "draft",
+      "note": "Astra blocked-build adjudication (astra-g6-blocked-adjudication.md, section (b)) correcting the M4 G6 supplement approved in PR 100: only Nine's owned bodies gain version 2; FactEnvelope.schemaVersion stays 1."
     },
     "changes": [
       {
