@@ -7,14 +7,340 @@
   "inheritedDeferrals": [],
   "forwardContracts": {
     "five-exclusive-admission": "partial: one-voter fence; five owns run transitions",
-    "five-loop-and-resources": "partial: one durable episode, finite budget, and generic durable bounded due-selection cursor; no nested allocation or production fleet scheduler",
+    "five-loop-and-resources": "partial: historical singleton has one Run and durable episode; the fixed provider-reply-v1 profile admits one provider Run and its one Five-opened accepted-answer reply Run with their own bounded loops, serialized recovery and one shared finite budget/exposure; generic durable bounded due-selection cursor; no nested allocation, general multi-Run scheduling or production fleet scheduler",
     "five-delivery-result-cancellation": "partial: semantic identity carriage; no peer receipt/result collection protocol",
-    "eight-ownership-idempotency": "partial: durable reservation and one-use claim; production eight consumes the port",
+    "eight-ownership-idempotency": "partial: durable reservation and one-use claim; Eight completes post-consume durability/effect preparation, then invokes through the existing Six owner invokeConsumedDispatch check; a final refusal retains consumed exposure and permits observation only",
     "eight-crash-uncertainty": "partial: original maximum exposure retained; actual eight settlement consumer conditionally applies accounting once; eight owns Outcome and nine production assessment remains pending",
     "eight-verification-before-retry": "partial: read-only wake; no new attempt enabled; evidence adequacy eight/nine",
     "eight-durability-authority": "partial: local proof never substitutes for replicated demand; no replica adapter",
     "five-seven-eight-chargeable-judgment": "partial: operation/spend seam; model invocation and answer acceptance not owned here",
     "four-ten-threadline-identity": "out-of-scope: full Threadline adapter excluded by slice brief",
     "eleven-degraded-serving-repair": "out-of-scope: independent minimal repair plane and quorum excluded"
+  },
+  "fixedPairContract": {
+    "inventoryOnly": true,
+    "profile": "provider-reply-v1",
+    "activation": "inherits the unchanged dark slice status; no live delivery or runtime activation claim",
+    "historicalSingleton": "one Run; existing shapes, exported shape map and signed history retain their meaning",
+    "roles": [
+      "one provider Run",
+      "its one dependent accepted-answer reply Run"
+    ],
+    "admission": "Only Five openAcceptedProviderReply on the same signed store with exact acceptance, provider Run/predecessor and conversation obligation; no caller role, arbitrary second Run, other domain/authority or third Run.",
+    "bounds": "One shared finite budget retains original pending work and maximum unresolved exposure. Reply has its own Six reservation and Eight operation, sends the accepted answer once, and cannot call the model. Restart restores bounds, policy and one-use identities.",
+    "modules": [
+      {
+        "owner": "part-five",
+        "path": "src/rungraph/accepted-reply.ts",
+        "exports": [
+          "AcceptedReplyOpening",
+          "acceptedReplyOpening",
+          "consumeAcceptedReplyOpening"
+        ],
+        "registration": "createRunGraph in src/rungraph/service.ts binds genuine graph/store provenance",
+        "declaration": "src/rungraph/accepted-reply.declarations.json#rungraph-accepted-reply"
+      },
+      {
+        "owner": "part-six",
+        "path": "src/transport/run-pair.ts",
+        "exports": [
+          "admitAcceptedProviderReply"
+        ],
+        "registration": "createTransportAuthority in src/transport/authority.ts binds the existing issuer",
+        "declaration": "src/transport/transport.declarations.json#transport-authority-source"
+      },
+      {
+        "owner": "part-six",
+        "path": "src/transport/dispatch-invocation.ts",
+        "exports": [
+          "invokeConsumedDispatch"
+        ],
+        "registration": "createTransportAuthority binds the same live issuer and acknowledged consumed claim; no new signed schema",
+        "declaration": "src/transport/transport.declarations.json#transport-authority-source"
+      }
+    ],
+    "record": {
+      "owner": "part-six",
+      "name": "RunPairAdmission",
+      "bodyVersion": 1,
+      "definition": "src/transport/contracts.ts",
+      "shape": {
+        "module": "src/transport/records.ts",
+        "export": "runPairAdmissionShape",
+        "closed": true,
+        "fields": [
+          "type",
+          "schemaVersion",
+          "domain",
+          "command",
+          "predecessor",
+          "authority",
+          "tick",
+          "profile",
+          "provider",
+          "reply",
+          "opening",
+          "acceptance",
+          "originalPredecessor",
+          "obligation",
+          "operation",
+          "answerDigest",
+          "conversation",
+          "budget",
+          "replyPolicy"
+        ],
+        "profileValue": "provider-reply-v1",
+        "replyPolicy": "existing closed LoopPolicy v1 shape; no new policy version"
+      },
+      "registration": "registerTransportBodies",
+      "factSchema": {
+        "kind": "transport-RunPairAdmission",
+        "version": 1,
+        "fields": {
+          "record": "owned part-six RunPairAdmission"
+        },
+        "registration": "transportSchemas"
+      }
+    },
+    "composition": {
+      "owner": "part-ten",
+      "module": "src/assembly/production-composition.ts",
+      "factory": "composeProductionOwners",
+      "member": "admitReply(command, fence, replyRunId, policy)",
+      "binding": "Existing composed Six authority and genuine Five graph; the reply Run loop fact is its Eight obligation",
+      "declaration": "src/assembly/assembly.declarations.json#assembly.source"
+    },
+    "finalInvocationEdge": {
+      "consumer": "src/effects/doorway.ts:EffectDoorway.handoff",
+      "ownerConsumer": "src/transport/dispatch-invocation.ts:invokeConsumedDispatch",
+      "ownerImplementation": "src/transport/authority.ts:createTransportAuthority",
+      "target": "part-ten adapter.invoke",
+      "sequence": [
+        "consume the one-use Six claim",
+        "complete Eight callback-capable durability/effect preparation and adapter input lookup",
+        "burn the invocation attempt and read the fresh checked Six projection",
+        "match the exact acknowledged consumed row/claim and check parent inhibition, current Six fence, standing and stop",
+        "direct physical invocation without intervening storage/durability/description/message lookup"
+      ],
+      "refusal": "Consumed exposure remains; observation only. No new claim, release or resend after refusal, restart, restored standing or lost consumption acknowledgment.",
+      "declaration": "src/effects/effect.declarations.json#effect-doorway-source"
+    },
+    "evidenceScope": "Signed owner integration and offline simulated physical model/send routes. No installed-route, live-channel, billing/quiescence or production-readiness proof; no held rule edges or runtime check records are minted by this inventory.",
+    "remainingScope": "Full M3-I, general scheduling, run-independent responder capacity, preview integration and route/installation holds remain outside this unit. Subordinate G6-T4-SIX closure requires passing gates and authorized landing after implementation review YES."
+  },
+  "fixedPairEvidence": {
+    "stage": "build",
+    "disposition": "partial against existing design obligations; descriptive fixture catalog, not a generated CheckRun or live proof",
+    "fixtures": {
+      "pair-positive": {
+        "file": "tests/transport/run-pair.test.ts",
+        "test": "SIX-PAIR admits the reply-owned outbound operation with original pending work and maximum exposure retained"
+      },
+      "pair-refusals": {
+        "file": "tests/transport/run-pair.test.ts",
+        "test": "SIX-PAIR refuses unrelated and third Runs, copied issuers, other stores, model work and changed answers"
+      },
+      "serialized-recovery": {
+        "file": "tests/transport/run-pair.test.ts",
+        "test": "SIX-PAIR shares one finite budget across two issuer objects and serializes reentrant recovery"
+      },
+      "shared-budget": {
+        "file": "tests/transport/run-pair-refusals.test.ts",
+        "test": "SIX-PAIR retains original exposure and refuses insufficient combined budget, including a new issuer with a larger host limit"
+      },
+      "pre-consume-stop-fence": {
+        "file": "tests/transport/run-pair-refusals.test.ts",
+        "test": "SIX-PAIR rechecks stop and stale fence at dispatch and never consumes a reply claim"
+      },
+      "parent-cap": {
+        "file": "tests/transport/run-pair-refusals.test.ts",
+        "test": "SIX-PAIR parent cap violation inhibits a prepared reply at dispatch"
+      },
+      "parent-recovery-stop": {
+        "file": "tests/transport/run-pair-refusals.test.ts",
+        "test": "SIX-PAIR a stopped parent recovery episode inhibits the reply without releasing pending credit"
+      },
+      "pair-append-reopen": {
+        "file": "tests/transport/run-pair-recovery.test.ts",
+        "test": "SIX-PAIR reopens after lost pair-append acknowledgment without refilling its budget or changing the committed reply policy"
+      },
+      "lost-claim-reopen": {
+        "file": "tests/transport/run-pair-recovery.test.ts",
+        "test": "SIX-PAIR a lost dispatch claim cannot be reminted by another issuer or after store reopen"
+      },
+      "production-admission": {
+        "file": "tests/transport/run-pair-admission.test.ts",
+        "test": "SIX-PAIR production admission commits and reconstructs the exact acceptance-backed opening on its original-Run witness"
+      },
+      "raw-pair-refusal": {
+        "file": "tests/transport/run-pair-admission.test.ts",
+        "test": "SIX-PAIR refuses a raw signed profile append without live Five consumption, then admits the genuine neighbor"
+      },
+      "late-cap": {
+        "file": "tests/transport/astra-sixpair-review.test.ts",
+        "test": "review: a parent cap breach during post-consume durability inhibits the physical reply"
+      },
+      "late-claim-copy-retry": {
+        "file": "tests/transport/astra-sixpair-review.test.ts",
+        "test": "Six burns a refused final invocation and rejects copied authority/claim even when standing returns"
+      },
+      "lost-consume-ack": {
+        "file": "tests/transport/astra-sixpair-review.test.ts",
+        "test": "Six cannot invoke a consumed row whose append acknowledgment was lost"
+      },
+      "t4-reopen": {
+        "file": "tests/e2e/fixed-installation-reply-pair.test.ts",
+        "test": "P10-SI-17 P10-SI-18 P10-SI-24 P10-SI-37 SIX-PAIR T4 reconstructs the reply-owned outbound operation while provider work and exposure stay pending"
+      },
+      "late-parent-recovery": {
+        "file": "tests/transport/astra-sixpair-review.test.ts",
+        "test": "SIX-PAIR parent recovery stop during post-consume durability inhibits physical invocation and retains consumed exposure"
+      },
+      "late-parent-run": {
+        "file": "tests/transport/astra-sixpair-review.test.ts",
+        "test": "SIX-PAIR parent Run stop during post-consume durability inhibits physical invocation and retains consumed exposure"
+      },
+      "late-fence": {
+        "file": "tests/transport/astra-sixpair-review.test.ts",
+        "test": "SIX-PAIR fence release during post-consume durability inhibits physical invocation and retains consumed exposure"
+      },
+      "late-standing": {
+        "file": "tests/transport/astra-sixpair-review.test.ts",
+        "test": "SIX-PAIR Six standing during post-consume durability inhibits physical invocation and retains consumed exposure"
+      }
+    },
+    "obligations": [
+      {
+        "id": "P6-NF-02",
+        "evidence": [
+          "raw-pair-refusal",
+          "pair-refusals",
+          "late-claim-copy-retry"
+        ]
+      },
+      {
+        "id": "P6-NF-05",
+        "evidence": [
+          "pre-consume-stop-fence",
+          "late-fence",
+          "late-standing",
+          "late-parent-run"
+        ]
+      },
+      {
+        "id": "P6-NF-09",
+        "evidence": [
+          "pair-positive",
+          "production-admission",
+          "late-cap",
+          "late-parent-recovery",
+          "late-parent-run",
+          "late-fence",
+          "late-standing"
+        ]
+      },
+      {
+        "id": "P6-NF-11",
+        "evidence": [
+          "pair-append-reopen",
+          "lost-claim-reopen",
+          "lost-consume-ack",
+          "t4-reopen"
+        ]
+      },
+      {
+        "id": "P6-NF-13",
+        "evidence": [
+          "pair-refusals",
+          "lost-claim-reopen",
+          "late-claim-copy-retry",
+          "t4-reopen"
+        ]
+      },
+      {
+        "id": "P6-NF-18",
+        "evidence": [
+          "serialized-recovery",
+          "parent-recovery-stop",
+          "late-parent-recovery"
+        ]
+      },
+      {
+        "id": "P6-NF-19",
+        "evidence": [
+          "shared-budget",
+          "pair-positive",
+          "parent-cap",
+          "late-cap",
+          "t4-reopen"
+        ]
+      },
+      {
+        "id": "P6-NF-35",
+        "evidence": [
+          "production-admission",
+          "pair-positive",
+          "t4-reopen"
+        ]
+      },
+      {
+        "id": "P6-NF-39",
+        "evidence": [
+          "pair-positive",
+          "raw-pair-refusal",
+          "lost-claim-reopen",
+          "late-claim-copy-retry",
+          "lost-consume-ack",
+          "t4-reopen"
+        ]
+      },
+      {
+        "id": "P10-SI-17",
+        "evidence": [
+          "t4-reopen",
+          "pair-positive"
+        ],
+        "scope": "subordinate G6-T4-SIX separate reply-Run operation with provider work/exposure pending and no repeat; offline simulated physical routes"
+      },
+      {
+        "id": "P10-SI-18",
+        "evidence": [
+          "t4-reopen",
+          "late-cap",
+          "late-parent-recovery",
+          "late-parent-run",
+          "late-fence",
+          "late-standing"
+        ],
+        "scope": "subordinate G6-T4-SIX separate reply-Run operation with provider work/exposure pending and no repeat; offline simulated physical routes"
+      },
+      {
+        "id": "P10-SI-24",
+        "evidence": [
+          "t4-reopen",
+          "production-admission"
+        ],
+        "scope": "subordinate G6-T4-SIX separate reply-Run operation with provider work/exposure pending and no repeat; offline simulated physical routes"
+      },
+      {
+        "id": "P10-SI-37",
+        "evidence": [
+          "t4-reopen",
+          "late-cap",
+          "late-parent-recovery",
+          "late-parent-run",
+          "late-fence",
+          "late-standing",
+          "late-claim-copy-retry",
+          "lost-consume-ack"
+        ],
+        "scope": "subordinate G6-T4-SIX separate reply-Run operation with provider work/exposure pending and no repeat; offline simulated physical routes"
+      }
+    ],
+    "preservedG6Partial": {
+      "file": "tests/e2e/fixed-installation-reply.test.ts",
+      "test": "P10-SI-17 P10-SI-18 P10-SI-24 P10-SI-37 recovers one outbound operation on the original Run after original accounting closes; separate reply-Run outbound admission remains held",
+      "scope": "Original-Run outbound after original accounting closes only. Its unchanged historical title is the limit of that test, not a new Six implementation blocker after reviewed pair closure."
+    }
   }
 }

@@ -1,5 +1,32 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-22",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 106,
+      "note": "Astra landing review astra-sixpair-review-4d9a7bd.md (CONVERGED — YES) of the SIX-PAIR unit: Six admits one accepted-answer reply Run beside its provider Run, and owns the final dispatch invocation."
+    },
+    "changes": [
+      {
+        "what": "Add the fixed provider/reply pair as a bounded exception to singleton admission: Six owns admission, shared accounting and recovery; Five owns the accepted-answer reply opening; Eight owns the outbound operation. The existing singleton profile and its historical records keep their meaning.",
+        "why": "The reply must own its own Run and Eight operation while the provider call's charge and quiescence remain unknown, which is the live-model case; the previous one-run rule refused it.",
+        "ref": "git-history: src/transport/run-pair.ts, src/transport/records.ts §fixed pair admission; commits b0bcdea, e2c11c3"
+      },
+      {
+        "what": "Record the repaired final-invocation sequence: consume the one-use claim, complete Eight's callback-capable durability and effect preparation, then invoke through Six's invokeConsumedDispatch, which rechecks the exact consumed reservation, live claim, current fence and parent inhibition before the adapter runs; a refusal there leaves consumed exposure and permits observation only.",
+        "why": "A provider cap violation that became durable inside that callback could otherwise still be followed by a physical send.",
+        "ref": "git-history: src/transport/dispatch-invocation.ts, src/effects/doorway.ts final invocation handoff; commit b0bcdea"
+      },
+      {
+        "what": "Replace §4a's blanket one-loop-per-domain statement: standing capacity implies no change to singleton loop admission, and the separately versioned provider/reply profile admits only its exact dependent reply Run, creating no additional ordinary or minimal-responder slot.",
+        "why": "The prior wording read as forbidding the reviewed pair; it must bound the exception without widening capacity.",
+        "ref": "git-history: docs/10-the-transport-and-leases.md §4a singleton-capacity replacement; commit e2c11c3"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-20",
     "status": "draft",
@@ -27,7 +54,9 @@
       {
         "what": "Specify direct consumption of Six's assignment-derived fence and exact AdmissionReservation instead of standalone or fixture-shaped installation facts.",
         "why": "The production resolver expected a stored FenceToken name and an unspecified resource reservation even though Six already owns both authority relationships.",
-        "commits": ["1b960e7"]
+        "commits": [
+          "1b960e7"
+        ]
       }
     ]
   },

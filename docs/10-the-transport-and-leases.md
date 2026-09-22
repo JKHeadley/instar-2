@@ -303,6 +303,23 @@ recorded as a cap violation, never hidden by releasing a different reservation.
 8. A later business effect gets its own operation identity, authorization checks and admission.
    Having paid for a judgment grants no permission to perform what it proposed.
 
+**Rule — the fixed provider/reply pair is a bounded exception to singleton admission.** Owner: Six for admission, shared accounting and recovery; Five for the accepted-answer reply opening; Eight for the outbound operation. **Checks: P6-NF-02/05/09/11/13/18/19/35/39.** The existing singleton profile and its historical records retain their meaning. A separately versioned fixed profile permits exactly one provider Run and its one dependent accepted-answer reply Run in the same signed store and execution domain. Six admits the reply only by consuming Five's genuine opening bound to the exact original acceptance, provider Run and conversation obligation. Caller-supplied roles, arbitrary Runs, a different domain or authority object, and a third Run cannot allocate another slot.
+
+The profile and exact admission are durably committed and owner-decoded before use. Reconstruction retains the original finite budget, counters, pending work, reservation exposure and one-use identities; restart does not replenish them. The reply receives its own Six reservation and Eight outbound operation. It may send only the accepted answer once and cannot invoke a model. The original pending step and maximum unresolved exposure remain until the existing settlement contract proves otherwise. Both reservations fit the same finite budget. A parent cap violation or stop inhibits the dependent reply; current fence and standing are checked at admission and dispatch. Recovery is bounded and serialized across the pair, including competing issuer objects and reentrant calls, with no increase in effective executor concurrency.
+
+Reply admission does not settle the provider operation, establish its final charge or quiescence, release unknown exposure, or enable another model turn. One completed answer is the limit of this profile. It does not implement general multi-Run scheduling or run-independent responder capacity, and it does not close full M3-I.
+
+For this fixed pair, Eight consumes the one-use claim and completes its callback-capable
+durability and effect preparation before entering Six's `invokeConsumedDispatch`. The existing
+Six owner requires the exact successfully acknowledged consumed operation and original live
+claim, burns the invocation attempt before its fresh checked projection read, and rechecks the
+pair's parent inhibition, current Six fence, standing and stop immediately before physical
+invocation. The message and adapter input are prepared before this final join; no storage read,
+durability callback, adapter description or message lookup intervenes between Six's final live
+checks and Eight's direct adapter call. A final refusal leaves the consumed operation and
+conservative exposure in place and permits observation only. Neither restored standing, a new
+issuer, restart nor a lost consumption acknowledgment remints a claim or enables another send.
+
 **Rule — the transition order is durable and cannot be skipped.** **Checks: P6-NF-09/11/12/13**:
 
 1. The run/effect owner fixes operation identity and digest and persists pending work.
@@ -450,8 +467,7 @@ A crash before acknowledgment leaves the committed debit in place and a retry re
 isolation and accounting, Five for a minimal Run, Eight for effects. **Checks: P6-NF-43/44**.
 Creating, inspecting, rebinding or releasing capacity creates no `LoopRecord` and occupies none
 of the ordinary conversation's one loop slot. An ordinary run can schedule while capacity is
-held; a second ordinary loop is still refused. No change to the existing one-loop-per-domain
-rule is implied. The minimal domain cannot issue the disputed conversation's lease.
+held; a second ordinary loop is still refused. Standing capacity implies no change to singleton loop admission. The separately versioned provider/reply profile in §4 admits only its exact dependent reply Run; it creates no additional ordinary or minimal-responder slot. The minimal domain cannot issue the disputed conversation's lease.
 
 Actual minimal work requires Five's governed admission, current system-principal grant,
 actual-start grounding and its own bounded recovery episode. Six admits its resource use against

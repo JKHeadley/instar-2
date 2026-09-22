@@ -18,9 +18,17 @@ Composition order:
    For generic due selection, construct `createBoundedDueScanPort(host, spine,
    boundary)`: it admits only its own `ScanCursor` progress and never schedules
    or mutates a due holder.
-4. Eight gets a one-use claim and calls `consume(claim, fence)` immediately before
-   its executor. Only Success permits that invocation. The handle is never a JSON
-   token, and is burned before its durable consumption acknowledgement.
+   For the fixed accepted-answer pair, first use Five's `openAcceptedProviderReply` on the same signed store. Call `admitAcceptedProviderReply(authority, graph, command, fence, replyRun, policy, boundary)` using the existing Six authority and that genuine Five graph; the production composition binds these as `owners.admitReply(command, fence, replyRunId, policy)`. Six commits `RunPairAdmission` v1 and the reply's own bounded loop. Pass that reply Run and its loop fact to Eight's outbound preparation. The new reservation can send only the exact accepted answer, once; it cannot invoke a model or release the provider's unresolved credit. Recovery reuses the committed budget, policy, admission and operation identities.
+
+4. Eight consumes the one-use claim with `consume(claim, fence)`, completes its
+   callback-capable durability and effect preparation, then invokes through
+   `invokeConsumedDispatch(authority, claim, fence, boundary, invoke)`. Six requires
+   the exact acknowledged consumed operation and original live claim, burns the
+   invocation attempt, and rechecks pair parent inhibition, current fence, standing
+   and stop immediately before Eight's direct adapter call. No storage, durability,
+   adapter-description or message-lookup callback intervenes after these checks.
+   A final refusal leaves consumed exposure and permits observation only. The handle
+   is never a JSON token; lost consumption acknowledgment cannot enable invocation.
 5. Recovery locates the same unresolved reservation and invokes ONLY eight's
    read-only `ObservationPort`, returning eight's `OperationObservation` reference.
    An observation reference is not a settlement or
@@ -93,8 +101,9 @@ the remaining budget only after the original is fully reconciled.
 
 The exact P1 imports are in `contracts.ts` and `records.ts`; P2 owns envelope,
 schema registration, signature verification, status snapshots and durable receipts.
-Five's Run is consumed via its P1-owned reference placeholder until the run package
-lands. The generic Telegram adapter carries five's original envelope unchanged;
+Ordinary Run references retain their P1-owned reference shape. Fixed-pair admission
+consumes Five's genuine same-store accepted-reply opening through
+`consumeAcceptedReplyOpening`; a structural Run reference cannot allocate the reply slot. The generic Telegram adapter carries five's original envelope unchanged;
 eight's effect doorway owns the actual send and must consume the claim. There is
 no Telegram client, token, target URL, provider retry or effect classification here.
 
@@ -107,7 +116,7 @@ receipt then refuses dispatch, preserving the uncertain reservation.
 
 Bounds and honesty:
 
-- One voter, one domain, one worker, one run. A lease has no availability through
+- One voter, one domain and one effective executor at a time. The historical singleton profile admits one Run. The separately versioned `provider-reply-v1` profile admits that provider Run and exactly its one Five-opened accepted-answer reply Run, sharing the original finite budget and retained exposure. A lease has no availability through
   voter loss. No quorum, membership changes, independent repair domain, fairness
   across domains, or full Threadline adapter. Breaker is an explicit closed stub.
 - Rebuild is bounded to 4096 domain records; P2 verifies the signed prefix. This
