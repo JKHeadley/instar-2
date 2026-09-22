@@ -5450,7 +5450,17 @@
     "tests/assembly/fixed-installation-contract.test.ts": "7c3b4d700d50cefb047b81df9674666ae01e7f29b0748094cff7805dd926a16a",
     "tests/assembly/fixed-installation-bootstrap.test.ts": "ea975d722bd78ad9c7e926bf4010ac44e4a14865948e4dcd4b3edec356c9248f",
     "src/assembly/production-custody-wiring.ts": "69b7749652006687f97420385b6e7df663ba8c576519cdfcb340577cdf66be83",
-    "scripts/fixed-installation-verifier-clock-observer.mjs": "3eff053d740be45c0ecd0bc75e1443c91603de356b348444b4af8d9389362d4c"
+    "scripts/fixed-installation-verifier-clock-observer.mjs": "3eff053d740be45c0ecd0bc75e1443c91603de356b348444b4af8d9389362d4c",
+    "src/assembly/assembly.declarations.json": "d346ab241aa6a1a52cde980dfc019e62a275409bfe25a8a4233df7c19f881adc",
+    "src/assembly/production-composition.ts": "0418df95f766a15d21e9784368667657337d182519e25f40565f2dc19a80d4dc",
+    "src/effects/effect.declarations.json": "f13e504d9e76d0a586b69ee22e7c448e1fa09a817f56b80081e426d72db4a3ae",
+    "src/rungraph/accepted-reply.declarations.json": "6b3d1fc3970bff4e6b4174e9f726a45cddbe4b91dbb3b18df12f26c727bbba8c",
+    "src/rungraph/accepted-reply.ts": "e7bba50306d0f4b7aa6569586858d79dc6d6b560af382791f10bccbcd34a189e",
+    "src/transport/dispatch-invocation.ts": "ce046e35d128c8e654f1a193f6224ba1a96faffb3ca40b0eac314b38b46fc08b",
+    "src/transport/run-admission.ts": "7f1c02e3f733e43fbaae847a761a789a409f2066fdb900192c8782cd44d69249",
+    "src/transport/run-pair.ts": "a84ccae9c9ffadd44b033fed06f41afb13c7a7c7b37a42df0ac34189045b8390",
+    "src/transport/slice-manifest.json": "9f9cec82fbed8262af0c8665069b6af62d089dce5baf27482cbf5d555b1f81a9",
+    "src/transport/transport.declarations.json": "ac98aa05cad50d147656ce0049dd830231c3f3775c0701ea6151be1632273485"
   },
   "reviewedDependencyDigest": "6f76399cb703b701d1fd4dc134976a954920c60e53ac712413ed6e53f64ff662"
 }
