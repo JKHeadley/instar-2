@@ -2,11 +2,11 @@ import type { FactEnvelopeReference, Result } from '../index.js';
 import type { AppendReceipt, FactEnvelope } from '../facts/index.js';
 import { boundary, encoded, freeze, json, need, object, same, take } from './boundary.js';
 import { factRef, foldRun, readRecordFact, validateGrounding, validateTransition, outcomeAt, clockDifference } from './graph.js';
-import { decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordReferences, recordWire, runKinds } from './records.js';
+import { decodeRun, decodeRunTransition, decodeSessionGrounding, factReference, recordReferences, recordWire, runIdFor, runKinds } from './records.js';
 import { checkIdentities, identityIndex } from './identity.js';
 import { consumeProductionGroundingRead, productionGroundingReaderScope, bindProductionGroundedGraph, isDeclaredFactoryReader } from '../assembly/grounding-capability.js';
 import { isProductionGroundingReader, issueProductionGroundedGraph } from './types.js';
-import type { RunDecodeContext, RunGraphDependencies, RunGraphPort, RunRecord, RunView } from './types.js';
+import type { AcceptedProviderAnswerView, AcceptedProviderReplyInput, RunDecodeContext, RunGraphDependencies, RunGraphPort, RunRecord, RunView } from './types.js';
 import { runGraphConstruct, preserveRunInput, runAdmission, stepAdmission, transitionAdmission, stopAdmission, exitAdmission, groundingAdmission } from './rungraph.js';
 
 /** No effect executor lives here. Six/eight consume a DURABLY admitted step;
@@ -70,10 +70,14 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       const fact = take(d.store.read()).find(f => (f.kind === runKinds.Run || f.kind === runKinds.RunTransition)
         && object(readRecordFact(f)).id === view.head); need(fact, 'durable transition predecessor missing'); return fact;
     };
+    const replyRequirements = new Map<string, readonly string[]>();
+    let replyOpening: Readonly<{ input: AcceptedProviderReplyInput; accepted: AcceptedProviderAnswerView;
+      opening: FactEnvelope; original: RunView }> | undefined;
     const append = (record: RunRecord, extra: readonly string[] = []): AppendReceipt => {
       checkIdentities(json(record), identityIndex(take(d.store.read())));
       const run = record.type === 'Run' ? record.id : record.run;
-      const required = [...new Set([...recordReferences(json(record)), ...extra])].sort();
+      const replyRequired = record.type === 'Run' ? replyRequirements.get(record.id) : undefined;
+      const required = [...new Set([...recordReferences(json(record)), ...extra, ...(replyRequired ?? [])])].sort();
       const receipt = take(d.writer.append(runKinds[record.type], run, record, required));
       need(receipt.fact.kind === runKinds[record.type] && receipt.fact.schemaVersion === 1 && object(receipt.fact.body).run === run
         && same(object(receipt.fact.body).record, recordWire(record)) && receipt.taint.length === 0, 'writer returned a different or tainted record');
@@ -88,7 +92,7 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       })));
       need(calls === 1 && written && same(written, receipt), 'admission did not commit the exact callback record'); return receipt;
     };
-    const graph = freeze({
+    const graph: RunGraphPort = freeze({
       owner: 'part-five',
       read: (run: string) => boundary('ReadRun', run, d.context, () => read(run)),
       readExit: run => boundary('ReadRunExit', run, d.context, safe => {
@@ -106,14 +110,128 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
       }),
       open: (input: unknown) => preserveRunInput(input, d.context, d.governance, captured => boundary('OpenRun', input, captured, safe => {
         const run = take(runAdmission(safe, { ...context(), preserved: captured.preserved }, d.governance));
+        const openingFact = take(d.store.read()).find(fact => fact.id === run.opening.id);
+        const acceptedReply = openingFact?.kind === 'judgment-provider-ProviderAnswerAcceptance';
+        let replyCommit: Readonly<{ input: AcceptedProviderReplyInput; accepted: AcceptedProviderAnswerView;
+          original: RunView }> | undefined;
+        if (acceptedReply) {
+          const gate = replyOpening;
+          need(gate && gate.opening.id === run.opening.id && gate.accepted.acceptance.id === gate.input.acceptance.id,
+            'acceptance-backed Run requires the conditional accepted-reply boundary');
+          const original = read(gate.input.originalRun);
+          need(original.head === gate.input.expected && original.conflicts.length === 0
+            && !['completed', 'cancelled', 'unreachable'].includes(original.state),
+          'accepted reply original run predecessor is no longer current');
+          const snapshot = take(d.store.readForProjection());
+          const obligation = snapshot.entries.find(entry => entry.fact.id === gate.input.obligation.id);
+          const obligationRecord = obligation ? object(object(obligation.fact.body).record) : undefined;
+          need(obligation && !obligation.taint.length && !obligation.conflicts.length
+            && obligation.fact.kind === 'transport-LoopRecord' && obligationRecord?.run === gate.input.originalRun
+            && typeof obligationRecord.episode === 'string' && obligationRecord.episode.length > 0,
+          'accepted reply conversation obligation differs, stopped, or is unavailable');
+          const episodeRows = snapshot.entries.filter(entry => {
+            if (entry.fact.kind !== 'transport-LoopRecord') return false;
+            const candidate = object(object(entry.fact.body).record);
+            return candidate?.run === gate.input.originalRun && candidate.episode === obligationRecord.episode;
+          });
+          need(episodeRows.length > 0 && episodeRows.every(entry => !entry.taint.length && !entry.conflicts.length),
+            'accepted reply current conversation obligation is unavailable or conflicted');
+          const latestTick = Math.max(...episodeRows.map(entry => Number(object(object(entry.fact.body).record)?.tick)));
+          need(Number.isSafeInteger(latestTick), 'accepted reply current conversation obligation tick differs');
+          const latestRows = episodeRows.filter(entry => Number(object(object(entry.fact.body).record)?.tick) === latestTick);
+          const latestRecords = latestRows.map(entry => object(object(entry.fact.body).record));
+          need(latestRows.length === 1 && latestRecords[0]
+            && !['stopped', 'closed'].includes(String(latestRecords[0].state)),
+          'accepted reply current conversation obligation is stopped, closed, or conflicted');
+          need(same(gate.input.standing, original.run.owner.fact),
+            'accepted reply standing differs from original accountable owner');
+          const transport = take(d.store.read()).filter(fact => fact.kind.startsWith('transport-'));
+          const leases = transport.filter(fact => fact.kind === 'transport-Lease');
+          const leaseFact = leases.at(-1), lease = leaseFact ? object(object(leaseFact.body).record) : undefined;
+          need(leaseFact && lease?.type === 'Lease' && lease.state === 'held' && Number(lease.expires) > d.clock().value,
+            'accepted reply has no live current lease');
+          const assignment = leases.find(fact => {
+            const candidate = object(object(fact.body).record);
+            return candidate.type === 'Lease' && candidate.operation === 'acquire' && candidate.epoch === lease.epoch;
+          });
+          need(assignment, 'accepted reply current lease assignment absent');
+          const expectedFence = { type: 'FenceToken', schemaVersion: 1, domain: lease.domain, epoch: lease.epoch,
+            assignment: assignment.id, holder: lease.holder, machine: lease.machine, incarnation: lease.incarnation,
+            authority: lease.authority, generation: lease.generation };
+          need(same(gate.input.fence, expectedFence) && gate.input.ownership.owner === 'part-six'
+            && gate.input.ownership.name === 'Lease' && gate.input.ownership.id.length > 0
+            && gate.input.fence.holder === original.run.owner.id
+            && gate.input.fence.generation === original.run.generation.id,
+          'accepted reply lease-derived fence or ownership differs');
+          const execution = take(d.admission.execution(gate.input.originalRun, gate.input.ownership));
+          need(same(execution.ownership, gate.input.ownership), 'accepted reply current ownership differs');
+          need(gate.accepted.originalRun === gate.input.originalRun && gate.accepted.predecessor === gate.input.expected
+            && gate.accepted.obligation === gate.input.obligation.id,
+          'accepted reply durable cause differs');
+          replyCommit = { input: gate.input, accepted: gate.accepted, original };
+        }
         const existing = take(d.store.read()).find(f => f.kind === runKinds.Run && object(f.body).run === run.id);
         if (existing) { need(same(readRecordFact(existing), run), 'immutable run opening changed'); return read(run.id); }
-        once(write => d.admission.create(run.opening, run.id, write), () => {
+        const admit = (write: () => Result<AppendReceipt>) => replyCommit
+          ? d.admission.commit({ run: replyCommit.input.originalRun, expected: replyCommit.input.expected,
+            ownership: replyCommit.input.ownership, generation: replyCommit.original.run.generation,
+            operation: `accepted-provider-reply:${replyCommit.accepted.acceptance.id}`, digest: encoded(run).hash,
+            durability: { kind: 'local-durable' } }, write)
+          : d.admission.create(run.opening, run.id, write);
+        once(admit, () => {
           need(!take(d.store.read()).some(f => f.kind === runKinds.Run && object(f.body).run === run.id), 'root already committed');
           return append(take(decodeRun(safe, context())));
         });
         return read(run.id);
       })),
+      openAcceptedProviderReply: (input: AcceptedProviderReplyInput) => boundary('OpenAcceptedProviderReply', input, d.context, () => {
+        need(d.acceptedAnswer?.owner === 'part-eight', 'accepted-answer consumer is not installed');
+        const acceptanceFact = take(d.store.read()).find(fact => fact.id === input.acceptance.id
+          && fact.kind === 'judgment-provider-ProviderAnswerAcceptance');
+        need(acceptanceFact, 'accepted reply opening fact absent');
+        const opening = factRef(acceptanceFact), replyId = runIdFor(opening);
+        const prior = take(d.store.read()).find(fact => fact.kind === runKinds.Run && object(fact.body).run === replyId);
+        if (prior) {
+          const stored = readRecordFact(prior), candidate = object(JSON.parse(encoded(input.reply).bytes));
+          need(same(stored, candidate), 'accepted answer was already consumed by another reply run');
+          const acceptance = object(object(acceptanceFact.body).record);
+          const request = take(d.store.read()).find(fact => fact.kind === 'judgment-provider-ProviderJudgmentRequest'
+            && object(object(fact.body).record).id === acceptance.request);
+          const requestRecord = request ? object(object(request.body).record) : undefined;
+          const effect = requestRecord ? take(d.store.read()).find(fact => fact.kind === 'effect-provider-ProviderEffectRequest'
+            && object(object(fact.body).record).id === requestRecord.effectRequest) : undefined;
+          const effectRecord = effect ? object(object(effect.body).record) : undefined;
+          const storedRun = object(stored), storedOwner = object(storedRun.owner);
+          need(requestRecord?.run === input.originalRun && requestRecord.predecessor === input.expected
+            && effectRecord?.obligation === input.obligation.id && same(input.standing, storedOwner.fact),
+          'historical accepted reply cause differs');
+          return read(replyId);
+        }
+        return take(d.acceptedAnswer.consumeAcceptedProviderAnswer(input.acceptance, accepted => {
+          need(accepted.acceptance.id === input.acceptance.id && accepted.originalRun === input.originalRun
+            && accepted.predecessor === input.expected && accepted.obligation === input.obligation.id,
+          'accepted reply cause, predecessor, or conversation obligation differs');
+          const original = read(input.originalRun);
+          need(accepted.acceptanceFact.id === acceptanceFact.id,
+            'accepted reply consumer returned another opening fact');
+          const candidate = object(JSON.parse(encoded(input.reply).bytes));
+          need(candidate.type === 'Run' && candidate.schemaVersion === 1 && candidate.id === replyId
+            && same(candidate.opening, opening) && same(candidate.intent, original.run.intent)
+            && same(candidate.directives, original.run.directives) && same(candidate.owner, original.run.owner)
+            && same(candidate.scope, original.run.scope) && same(candidate.resultDestination, original.run.resultDestination)
+            && same(candidate.generation, original.run.generation) && candidate.depth === 1,
+          'accepted reply must be one standard Run bound to the original conversation');
+          replyRequirements.set(replyId, [...new Set([...accepted.required, input.obligation.id])].sort());
+          replyOpening = { input, accepted, opening: acceptanceFact, original };
+          try {
+            const opened: RunView = take(graph.open(json(input.reply)));
+            const fact = take(d.store.read()).find(item => item.kind === runKinds.Run && object(item.body).run === replyId);
+            need(fact && replyRequirements.get(replyId)!.every(id => fact.predecessors.required.includes(id)),
+              'reply opening omitted accepted answer causal closure');
+            return opened;
+          } finally { replyOpening = undefined; replyRequirements.delete(replyId); }
+        }));
+      }),
       ground: (run, worker, harness, reason, ownership) => boundary('GroundRun', null, d.context, () => {
         const view = read(run); need(!view.conflicts.length && !['completed', 'cancelled', 'unreachable'].includes(view.state), 'terminal/conflicted run cannot start a worker');
         const execution = take(d.admission.execution(run, ownership));
@@ -183,4 +301,9 @@ export function createRunGraph(d: RunGraphDependencies): Result<RunGraphPort> {
     } satisfies RunGraphPort);
     return d.grounding.production ? bindProductionGroundedGraph(graph, d.grounding, d.store, d.assemblyHistory, d.generation().reference.id) : graph;
   });
+}
+
+export function openAcceptedProviderReply(graph: Pick<RunGraphPort, 'openAcceptedProviderReply'>,
+  input: AcceptedProviderReplyInput): Result<RunView> {
+  return graph.openAcceptedProviderReply(input);
 }

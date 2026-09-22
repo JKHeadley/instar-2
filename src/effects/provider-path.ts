@@ -1,12 +1,13 @@
 import { consumeOutcome, consumeResult, decode } from '../index.js';
-import type { OwnedReference, Result, FactEnvelopeReference } from '../index.js';
+import type { OwnedReference, Result, FactEnvelopeReference, Hash } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedShape } from '../facts/index.js';
 import type { AdmissionReservation, DispatchClaim, FenceToken, TransportAuthority } from '../transport/index.js';
-import type { Capture, PreparedProviderJudgment, ProviderJudgmentPort } from '../judgment/index.js';
+import type { Capture, PreparedProviderJudgment, ProviderAnswerAcceptance, ProviderJudgmentPort } from '../judgment/index.js';
 import type { RunStep, RunGraphDependencies } from '../rungraph/index.js';
 import type { ProviderInvocationPort } from '../assembly/index.js';
-import type { EffectSettlementAssessmentInput, EffectSettlementAssessmentPort } from '../verification/index.js';
+import type { EffectSettlementAssessmentInput, EffectSettlementAssessmentPort,
+  ProviderResponseAssessmentPort, ProviderResponseSubject } from '../verification/index.js';
 import { providerSettlementSupported } from '../verification/index.js';
 import type { EffectDurabilityPort, EffectCustodyPort, EffectHost, EffectRequest, EffectSettlement, OperationDefinition, OperationObservation } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
@@ -36,7 +37,8 @@ export interface ProviderEffectDependencies {
   readonly host: EffectHost; readonly context: FactContext; readonly store: FactStorePort; readonly privateKey: string;
   readonly transport: TransportAuthority; readonly judgment: ProviderJudgmentPort; readonly invocation: ProviderInvocationPort;
   readonly durability: EffectDurabilityPort; readonly custody: EffectCustodyPort;
-  readonly assessment: EffectSettlementAssessmentPort | null; readonly plan: string;
+  readonly assessment: EffectSettlementAssessmentPort | null; readonly responseAssessment?: ProviderResponseAssessmentPort;
+  readonly plan: string;
 }
 export interface ProviderEffectDoorway {
   readonly owner: 'part-eight';
@@ -46,9 +48,25 @@ export interface ProviderEffectDoorway {
   dispatch(request: ProviderEffectRequest, fence: FenceToken): Promise<Result<ProviderOperationObservation>>;
   handoff(request: ProviderEffectRequest, claim: DispatchClaim, fence: FenceToken): Promise<Result<ProviderOperationObservation>>;
   assess(operation: string): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
+  assessResponse(operation: string): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
   settle(operation: string, assessment: OwnedReference<'part-nine', 'VerificationAssessment'>): Result<EffectSettlement>;
+  consumeAcceptedProviderAnswer<T>(reference: OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>,
+    consumer: (view: AcceptedProviderAnswer) => T): Result<T>;
   readRunSettlement(reference: FactEnvelopeReference, step: RunStep): ReturnType<RunGraphDependencies['settlement']['read']>;
   inspect(): Result<readonly FactEnvelope[]>;
+}
+export interface AcceptedProviderAnswer {
+  readonly acceptance: OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>;
+  readonly acceptanceFact: ProviderResponseSubject['seven']['response'];
+  readonly answer: string; readonly answerDigest: Hash; readonly originalRun: string;
+  readonly predecessor: string; readonly obligation: string; readonly settlement: ProviderResponseSubject['seven']['response'];
+  readonly accounting: ProviderResponseSubject['seven']['response']; readonly chargeSettled: boolean;
+  readonly retainedExposure: number; readonly maximumCharge: number; readonly required: readonly string[];
+}
+export function consumeAcceptedProviderAnswer<T>(port: Pick<ProviderEffectDoorway, 'consumeAcceptedProviderAnswer'>,
+  reference: OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>,
+  consumer: (view: AcceptedProviderAnswer) => T): Result<T> {
+  return port.consumeAcceptedProviderAnswer(reference, consumer);
 }
 const txt = { kind: 'text', maxLength: 512 } as const, int = { kind: 'integer' } as const;
 const ref = { kind: 'object', fields: { owner: txt, name: txt, id: txt } } as const;
@@ -236,6 +254,8 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
     const claim = records.find(f => f.record.type === 'AdmissionReservation' && f.record.state === 'dispatch-claimed');
     return { reservation: last.record, fact: last.fact, claim: claim?.fact };
   };
+  const factReference = (fact: FactEnvelope): ProviderResponseSubject['seven']['request'] => ({ owner: 'part-two', name: 'FactEnvelope',
+    id: fact.id, kind: fact.kind, schemaVersion: fact.schemaVersion, contentHash: fact.contentHash });
   const inputFor = (id: string) => {
     const op = operation(id); ensure(op.claim && op.reservation.state === 'consumed', 'missing consumed claim');
     const provider = facts().some(f => f.kind === 'effect-provider-ProviderEffectRequest' && raw(f)?.id === op.reservation.request);
@@ -260,7 +280,47 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
     const input: EffectSettlementAssessmentInput = { request: { id: q.id, digest: q.digest, attempt: q.attempt, verificationBar: q.verificationBar },
       reservation: op.reservation, claim: op.claim.id, observations, plan: p.plan, bar: q.verificationBar,
       generation: p.host.current().decode.register.generation.id };
-    return { op, q, d, input };
+    const executor = selected.find(entry => raw(entry.fact)?.stage === 'executor-accepted');
+    const returned = selected.find(entry => raw(entry.fact)?.stage === 'response');
+    let subject: ProviderResponseSubject | undefined;
+    if (provider && q.type === 'ProviderEffectRequest' && executor && returned) {
+      const responseObservation = raw(returned.fact)!;
+      const responseFact = facts().find(f => f.id === responseObservation.judgmentReceipt
+        && f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord');
+      const requestFact = facts().find(f => f.id === q.payload.request.id
+        && f.kind === 'judgment-provider-ProviderJudgmentRequest');
+      const preparedFact = facts().find(f => f.id === q.payload.prepared.id
+        && f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord');
+      if (responseFact && requestFact && preparedFact) {
+        const receipt = raw(responseFact)?.receipt as Capture | undefined;
+        const captured = receipt ? p.context.captures[receipt.reference] : undefined;
+        const providerObservation = captured?.status === 'available' && captured.bytes !== null
+          ? JSON.parse(captured.bytes) as import('../judgment/index.js').ProviderObservation : undefined;
+        const responseEvidence = providerObservation?.responseEvidence;
+        if (responseEvidence) subject = freeze({
+          seven: { request: factReference(requestFact), prepared: factReference(preparedFact), attempt: q.attempt,
+            response: factReference(responseFact) },
+          eight: { request: factReference(find('effect-provider-ProviderEffectRequest', q.id)),
+            executorObservation: factReference(executor.fact), responseObservation: factReference(returned.fact) },
+          six: { operation: id, consumedReservation: factReference(op.fact), dispatchClaim: factReference(op.claim!) },
+          submitted: { capture: q.payload.submitted, operationDigest: q.digest },
+          route: { provider: q.payload.provider, model: q.payload.model, route: q.payload.route,
+            routeBasis: String(raw(requestFact)?.routeBasis), floorDigest: String(raw(requestFact)?.floorDigest),
+            evidence: raw(requestFact)?.evidence as unknown as readonly string[],
+            evidenceDigest: encoded(raw(requestFact)?.evidence).hash, settingsDigest: q.payload.settingsDigest,
+            outputSchemaDigest: q.payload.outputSchemaDigest },
+          response: { capture: responseEvidence.answer.source,
+            answerDigest: responseEvidence.answer.answerDigest, parserReference: responseEvidence.contract.parserReference,
+            parserVersion: responseEvidence.contract.parserVersion,
+            evidenceContractReference: responseEvidence.contract.evidenceContractReference,
+            evidenceContractVersion: responseEvidence.contract.evidenceContractVersion },
+          terminal: { evidence: responseEvidence.terminal.evidence, capture: responseEvidence.terminal.raw,
+            rawDigest: responseEvidence.terminal.rawDigest,
+            sourceEvidence: responseEvidence.source.evidence },
+        } as ProviderResponseSubject);
+      }
+    }
+    return { op, q, d, input, subject };
   };
   const observation = (q: ProviderEffectRequest, stage: 'executor-accepted' | 'response' | 'unknown', capture: Capture, judgmentReceipt = '') => {
     const op = operationForRequest(q); ensure(op.claim, 'claim absent');
@@ -346,6 +406,79 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
       } });
     },
     assess: id => checked('AssessProviderEffect', id, () => { ensure(p.assessment?.owner === 'part-nine', 'Nine assessment absent'); return take(p.assessment.assess(inputFor(id).input)); }),
+    assessResponse: id => checked('AssessProviderResponse', id, () => {
+      ensure(p.responseAssessment?.owner === 'part-nine', 'Nine response assessment absent');
+      const current = inputFor(id); ensure(current.subject, 'bounded provider response evidence absent');
+      return take(p.responseAssessment.assess({ plan: p.plan, bar: current.q.verificationBar,
+        generation: p.host.current().decode.register.generation.id, subject: current.subject }));
+    }),
+    consumeAcceptedProviderAnswer: (reference, consumer) => checked('ConsumeAcceptedProviderAnswer', reference, () => {
+      ensure(reference.owner === 'part-seven' && reference.name === 'ProviderAnswerAcceptance',
+        'accepted answer owner differs');
+      ensure(!p.host.current().stopped && p.responseAssessment?.owner === 'part-nine',
+        'accepted answer stopped or Nine response assessment absent');
+      const snapshot = take(p.store.readForProjection());
+      const acceptanceRow = snapshot.entries.find(entry => entry.fact.id === reference.id
+        && entry.fact.kind === 'judgment-provider-ProviderAnswerAcceptance');
+      ensure(acceptanceRow && !acceptanceRow.taint.length && !acceptanceRow.conflicts.length,
+        'accepted answer fact absent, tainted, or conflicted');
+      const acceptance = raw(acceptanceRow.fact) as unknown as ProviderAnswerAcceptance;
+      const assessmentRow = snapshot.entries.find(entry => entry.fact.id === acceptance.assessment.id
+        && entry.fact.kind === 'verification-VerificationAssessment');
+      ensure(assessmentRow && !assessmentRow.taint.length && !assessmentRow.conflicts.length
+        && assessmentRow.fact.contentHash === acceptance.assessment.contentHash,
+      'accepted answer assessment absent, changed, or tainted');
+      const assessmentRecord = raw(assessmentRow.fact) as unknown as { purpose?: string; subject?: ProviderResponseSubject };
+      ensure(assessmentRecord.purpose === 'output-use' && assessmentRecord.subject,
+        'accepted answer requires output-use assessment');
+      const subject = assessmentRecord.subject;
+      const settlementRow = snapshot.entries.find(entry => entry.fact.id === acceptance.settlement.id
+        && entry.fact.kind === 'effect-provider-ProviderEffectSettlement');
+      const accountingRow = snapshot.entries.find(entry => entry.fact.id === acceptance.accounting.id
+        && entry.fact.kind === 'transport-SettlementApplication');
+      ensure(settlementRow && accountingRow && !settlementRow.taint.length && !settlementRow.conflicts.length
+        && !accountingRow.taint.length && !accountingRow.conflicts.length
+        && settlementRow.fact.contentHash === acceptance.settlement.contentHash
+        && accountingRow.fact.contentHash === acceptance.accounting.contentHash,
+      'accepted answer settlement or accounting absent, changed, or tainted');
+      const settlement = raw(settlementRow.fact)!, accounting = raw(accountingRow.fact)!;
+      ensure(settlement.acceptance === acceptance.assessment.id && settlement.operation === acceptance.operation
+        && settlement.claim === acceptance.claim && settlement.digest === acceptance.digest
+        && settlement.retainedExposure === acceptance.retainedExposure && settlement.retryEligible === false,
+      'accepted answer settlement binding differs');
+      ensure(accounting.settlement === settlement.id && accounting.settlementFact === settlementRow.fact.id
+        && accounting.settlementHash === settlementRow.fact.contentHash && accounting.operation === acceptance.operation
+        && accounting.claim === acceptance.claim && accounting.digest === acceptance.digest
+        && accounting.exposure === acceptance.retainedExposure && accounting.retryEligible === 0,
+      'accepted answer accounting binding differs');
+      ensure(Number.isSafeInteger(acceptance.maximumCharge) && acceptance.maximumCharge >= 0
+        && (accounting.unresolved === 0 || acceptance.retainedExposure === acceptance.maximumCharge),
+      'accepted answer maximum exposure was released');
+      const qFact = facts().find(fact => fact.kind === 'judgment-provider-ProviderJudgmentRequest'
+        && raw(fact)?.id === acceptance.request);
+      ensure(qFact, 'accepted answer request absent');
+      const q = raw(qFact) as unknown as import('../judgment/index.js').ProviderJudgmentRequest;
+      const effectRequest = raw(find('effect-provider-ProviderEffectRequest', q.effectRequest)) as unknown as ProviderEffectRequest;
+      const decoded = take(p.judgment.decodeCapturedProviderDecision(subject));
+      return take(p.responseAssessment.consumeProviderResponseAssessment({ owner: 'part-nine', name: 'VerificationAssessment',
+        id: acceptance.assessment.id }, subject, response => {
+        ensure(response.answerDigest === acceptance.answerDigest && decoded.answerDigest === acceptance.answerDigest
+          && decoded.answerBytes === take((p.judgment.decodeCapturedProviderDecision(subject))).answerBytes,
+        'accepted answer bytes changed at use');
+        const required = [...new Set([...response.required, acceptanceRow.fact.id, settlementRow.fact.id,
+          accountingRow.fact.id, qFact.id, effectRequest.obligation])].sort();
+        validate(required, snapshot.entries);
+        const view: AcceptedProviderAnswer = freeze({ acceptance: reference,
+          acceptanceFact: factReference(acceptanceRow.fact), answer: decoded.answerBytes,
+          answerDigest: decoded.answerDigest, originalRun: q.run, predecessor: q.predecessor,
+          obligation: effectRequest.obligation, settlement: acceptance.settlement, accounting: acceptance.accounting,
+          chargeSettled: accounting.unresolved === 0, retainedExposure: acceptance.retainedExposure,
+          maximumCharge: acceptance.maximumCharge, required });
+        const result = consumer(view);
+        ensure(!(result && typeof result === 'object' && 'then' in result), 'accepted answer consumer must not wait');
+        return result;
+      }));
+    }),
     settle: (id, reference) => settle(id, reference, value => value),
     readRunSettlement: (reference, step) => checked('ProviderSettlementRunConsumer', reference, () => {
       const f = facts().find(f => f.id === reference.id && f.kind === 'effect-provider-ProviderEffectSettlement'); ensure(f, 'run settlement missing'); validate([f.id]);
@@ -378,8 +511,13 @@ export function createProviderEffectDoorway(p: ProviderEffectDependencies): Prov
   };
   function settle<T>(id: string, reference: OwnedReference<'part-nine', 'VerificationAssessment'>, use: (value: EffectSettlement) => T): Result<T> {
     return checked('SettleProviderEffect', { id, reference }, () => {
-      ensure(p.assessment?.owner === 'part-nine', 'Nine assessment absent');
-      const { q, d, op, input } = inputFor(id), assessor = p.assessment;
+      const currentInput = inputFor(id);
+      const responseFact = take(p.store.readForProjection()).entries.find(entry => entry.fact.id === reference.id);
+      const outputUse = responseFact?.fact.kind === 'verification-VerificationAssessment'
+        && raw(responseFact.fact)?.purpose === 'output-use';
+      const assessor = outputUse ? p.responseAssessment : p.assessment;
+      ensure(assessor?.owner === 'part-nine', outputUse ? 'Nine response assessment absent' : 'Nine assessment absent');
+      const { q, d, op, input } = currentInput;
       const proof = take(assessor.consumeEffectSettlementAssessment(reference, input, v => v));
       demand(d, [...q.closure, op.fact.id, ...proof.required]);
       take(p.custody.verify(input.observations.map(o => o.capture), d));

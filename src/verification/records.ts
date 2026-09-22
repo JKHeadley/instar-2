@@ -1,9 +1,13 @@
-import { consumeResult, defineDecoder } from '../index.js';
-import type { Json, Result } from '../index.js';
-import { authorAndAppend, causalCone, registerOwnedBody } from '../facts/index.js';
-import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
+import { randomBytes } from 'node:crypto';
+import { consumeResult, decode, defineDecoder } from '../index.js';
+import type { Clock, Decision, DecodeContext, Evidence, Json, Result } from '../index.js';
+import { authorAndAppend, causalCone, causalStanding, hashBytes, registerOwnedBody } from '../facts/index.js';
+import type { ConflictClass, FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import type { VerificationAuthor, VerificationComparison, VerificationDecodeContext, VerificationHost, VerificationIdentity, VerificationRecord, VerificationRecordName, VerificationSpine } from './contracts.js';
+import type { ProviderResponseSubject, ProviderResponseVerificationAssessment, ProviderResponseVerificationPlan,
+  ProviderResponseVerificationRequest, VerificationAuthor, VerificationComparison, VerificationDecodeContext,
+  VerificationHost, VerificationIdentity, VerificationRecord, VerificationRecordName, VerificationSpine } from './contracts.js';
+import { deriveProviderResponseAssessment } from './runtime.js';
 
 const text = { kind: 'text', maxLength: 2048 } as const;
 const integer = { kind: 'integer' } as const;
@@ -15,7 +19,7 @@ const list = (items: OwnedShape, maxLength = 512): OwnedShape => ({ kind: 'array
 const status = pair({ reference: text, status: text });
 const dimension = pair({ assessment: text, reason: text, evidence: texts });
 
-export const verificationShapes: Readonly<Record<VerificationRecordName, OwnedShape>> = freeze({
+const verificationV1Shapes: Readonly<Record<VerificationRecordName, OwnedShape>> = freeze({
   VerificationPlan: pair({ ...common,
     subject: pair({ rules: list(integer, 128), holder: text, governed: text, scope: text, generation: text }),
     arms: list(pair({ id: text, kind: text, executable: text, fixture: text, outputContract: text, canFail: text, required: bool }), 32),
@@ -65,6 +69,56 @@ export const verificationShapes: Readonly<Record<VerificationRecordName, OwnedSh
     costs: list(pair({ resource: text, amount: integer })), routeDecision: text, selection: text, complete: bool }),
 });
 
+const factReference = pair({ owner: text, name: text, id: text, kind: text, schemaVersion: integer, contentHash: text });
+const capture = { kind: 'capture' } as const;
+const responseSubject = pair({
+  seven: pair({ request: factReference, prepared: factReference, attempt: text, response: factReference }),
+  eight: pair({ request: factReference, executorObservation: factReference, responseObservation: factReference }),
+  six: pair({ operation: text, consumedReservation: factReference, dispatchClaim: factReference }),
+  submitted: pair({ capture, operationDigest: text }),
+  route: pair({ provider: text, model: text, route: text, routeBasis: text, floorDigest: text,
+    evidence: texts, evidenceDigest: text, settingsDigest: text, outputSchemaDigest: text }),
+  response: pair({ capture, answerDigest: text, parserReference: text,
+    parserVersion: text, evidenceContractReference: text, evidenceContractVersion: text }),
+  terminal: pair({ evidence: text, capture, rawDigest: text, sourceEvidence: texts }),
+});
+const responseRequirement = pair({ predicate: text, sources: texts, minimumStrength: text, requiredContract: text });
+const verificationV2Shapes: Readonly<Partial<Record<VerificationRecordName, OwnedShape>>> = freeze({
+  VerificationPlan: pair({ ...common, purpose: text,
+    subject: pair({ rules: list(integer, 128), holder: text, governed: text, scope: text, generation: text }),
+    arms: list(pair({ id: text, kind: text, executable: text, fixture: text, outputContract: text, canFail: text, required: bool }), 32),
+    bar: pair({ version: text, predicates: texts, sources: texts, minimumStrength: text, subjectDigest: text, captureRequired: bool, freshness: integer, complete: bool }),
+    independence: pair({ testedPrincipal: text, observerPrincipal: text, witnessController: text, commonFailures: texts }),
+    scheduling: pair({ owner: text, run: text, loopPolicy: text, cadence: integer, freshnessWindow: integer, dueAction: text, recoveryBudget: text }),
+    bounds: list(pair({ resource: text, limit: integer }), 64), consumers: list(pair({ id: text, direction: text, enforcedRecord: text, decoder: text, preserved: text }), 64),
+    privacy: pair({ readers: texts, providers: texts, captureClass: text, secretCustody: text, destinations: texts }),
+    activation: pair({ unit: texts, integration: texts, lifecycle: texts, semantic: texts, limits: texts, evidence: texts }),
+    responseContract: pair({ parserReference: text, parserVersion: text, evidenceContractReference: text, evidenceContractVersion: text, mode: text }),
+    responseRequirements: list(responseRequirement, 2),
+  }),
+  VerificationRequest: pair({ ...common, purpose: text, logicalKey: text, operation: text, attempt: text, reservation: text,
+    operationDigest: text, scope: text, predicates: texts, subject: responseSubject, plan: text, barVersion: text,
+    initialEvidence: texts, missingEvidence: texts, owner: text, loop: text, createdAt: integer, sourceGeneration: text }),
+  VerificationAssessment: pair({ ...common, purpose: text, request: text, operation: text, attempt: text, operationDigest: text,
+    subject: responseSubject, barVersion: text, observer: text, evidence: texts, missingEvidence: texts, vectorDigest: text,
+    knownLineages: texts, captureStatuses: list(status), taints: texts,
+    predicates: list(pair({ predicate: text, verdict: text, reason: text, evidence: texts, decision: text }), 16),
+    validFrom: integer, validUntil: integer, supersedes: text }),
+});
+
+// The owner boundary accepts either original v1 bytes or the exact output-use v2
+// bytes. Version-specific closed validation below still rejects mixed variants.
+export const verificationShapes: Readonly<Record<VerificationRecordName, OwnedShape>> = freeze(Object.fromEntries(
+  (Object.keys(verificationV1Shapes) as VerificationRecordName[]).map(name => {
+    const v1 = verificationV1Shapes[name] as Extract<OwnedShape, { kind: 'object' }>;
+    const v2 = verificationV2Shapes[name] as Extract<OwnedShape, { kind: 'object' }> | undefined;
+    if (!v2) return [name, v1];
+    const fields = { ...v1.fields, ...v2.fields };
+    const optional = Object.keys(fields).filter(key => !Object.hasOwn(v1.fields, key) || !Object.hasOwn(v2.fields, key));
+    return [name, pair(fields, optional)];
+  }),
+) as Record<VerificationRecordName, OwnedShape>);
+
 function shapeCheck(value: unknown, shape: OwnedShape): void {
   if (shape.kind === 'text') { ensure(typeof value === 'string' && value.length <= shape.maxLength, 'bounded text required'); return; }
   if (shape.kind === 'integer') { ensure(Number.isSafeInteger(value), 'safe integer required'); return; }
@@ -79,17 +133,57 @@ function shapeCheck(value: unknown, shape: OwnedShape): void {
   for (const [key, field] of Object.entries(shape.fields)) if (record[key] !== undefined) shapeCheck(record[key], field);
 }
 
-const predicates = ['occurrence', 'non-occurrence', 'quiescence', 'charge'] as const;
+const settlementPredicates = ['occurrence', 'non-occurrence', 'quiescence', 'charge'] as const;
+const responsePredicates = ['response-authenticity', 'response-completeness'] as const;
+const predicates = [...settlementPredicates, ...responsePredicates] as const;
+const legacyMigrationProof = randomBytes(32).toString('hex');
 const captureStatuses = ['available', 'tombstoned', 'expired', 'missing'] as const;
 const closureAssessments = ['conclusion', 'reason', 'outcome', 'process'] as const;
 function one(value: string, choices: readonly string[], field: string): void { ensure(choices.includes(value), `${field} outside closed set`); }
 function nonnegative(value: number, field: string): void { ensure(Number.isSafeInteger(value) && value >= 0, `${field} must be a nonnegative integer`); }
 function unique(values: readonly string[], field: string): void { ensure(new Set(values).size === values.length, `${field} contains duplicates`); }
+function hash(value: string, field: string): void { ensure(/^sha256:[a-f0-9]{64}$/.test(value), `${field} malformed`); }
+function validateResponseSubject(subject: ProviderResponseSubject): void {
+  const references = [subject.seven.request, subject.seven.prepared, subject.seven.response, subject.eight.request,
+    subject.eight.executorObservation, subject.eight.responseObservation, subject.six.consumedReservation, subject.six.dispatchClaim];
+  for (const reference of references) {
+    ensure(reference.owner === 'part-two' && reference.name === 'FactEnvelope' && reference.id && reference.kind
+      && Number.isSafeInteger(reference.schemaVersion) && reference.schemaVersion > 0, 'response fact reference incomplete');
+    hash(reference.contentHash, 'response fact content hash');
+  }
+  ensure(subject.seven.attempt && subject.six.operation && subject.route.provider && subject.route.model && subject.route.route
+    && subject.route.routeBasis && subject.response.parserReference && subject.response.parserVersion
+    && subject.response.evidenceContractReference && subject.response.evidenceContractVersion && subject.terminal.evidence,
+  'response subject incomplete');
+  for (const [field, value] of Object.entries({ submittedCapture: subject.submitted.capture.hash,
+    operationDigest: subject.submitted.operationDigest, floorDigest: subject.route.floorDigest,
+    evidenceDigest: subject.route.evidenceDigest, settingsDigest: subject.route.settingsDigest,
+    outputSchemaDigest: subject.route.outputSchemaDigest, responseCapture: subject.response.capture.hash,
+    answerDigest: subject.response.answerDigest, terminalCapture: subject.terminal.capture.hash,
+    terminalRawDigest: subject.terminal.rawDigest })) hash(value, field);
+  unique(subject.route.evidence, 'response route evidence'); unique(subject.terminal.sourceEvidence, 'response source evidence');
+}
 function validate(record: VerificationRecord): void {
-  ensure(record.schemaVersion === 1 && record.id.length > 0, 'verification identity/version');
+  ensure((record.schemaVersion === 1 || record.schemaVersion === 2) && record.id.length > 0, 'verification identity/version');
+  ensure(('purpose' in record) === (record.schemaVersion === 2), 'verification purpose/version mismatch');
   unique(record.predecessors, 'predecessors');
   switch (record.type) {
     case 'VerificationPlan':
+      if ('purpose' in record) {
+        ensure(record.purpose === 'output-use' && record.responseContract.mode === 'single-final-reply', 'output plan purpose or mode');
+        ensure(record.responseContract.parserReference && record.responseContract.parserVersion
+          && record.responseContract.evidenceContractReference && record.responseContract.evidenceContractVersion, 'output response contract incomplete');
+        ensure(record.responseRequirements.length === 2, 'output response requirements incomplete');
+        unique(record.responseRequirements.map(row => row.predicate), 'response requirements');
+        ensure(responsePredicates.every(predicate => record.responseRequirements.some(row => row.predicate === predicate)), 'both response requirements required');
+        record.responseRequirements.forEach(row => {
+          one(row.predicate, responsePredicates, 'response requirement predicate');
+          one(row.minimumStrength, ['proof', 'observation', 'attestation', 'inference'], 'response minimum strength');
+          ensure(row.sources.length > 0 && row.requiredContract.length > 0, 'response requirement incomplete');
+        });
+        ensure(record.bar.captureRequired && record.bar.predicates.length === 6
+          && predicates.every(predicate => record.bar.predicates.includes(predicate)), 'output plan must retain all six predicates');
+      } else ensure(record.bar.predicates.every(predicate => settlementPredicates.includes(predicate as typeof settlementPredicates[number])), 'v1 plan cannot name output predicates');
       ensure(record.subject.rules.length > 0 && record.subject.holder.length > 0 && record.subject.governed.length > 0 && record.subject.generation.length > 0, 'plan subject incomplete');
       ensure(record.arms.length > 0 && record.arms.every(arm => arm.id && arm.executable && arm.fixture && arm.outputContract && arm.canFail), 'plan arm incomplete');
       record.arms.forEach(arm => one(arm.kind, ['build', 'runtime', 'probe', 'sentinel', 'retrospective'], 'arm kind'));
@@ -102,7 +196,11 @@ function validate(record: VerificationRecord): void {
       ensure(record.activation.unit.length > 0 && record.activation.integration.length > 0 && record.activation.lifecycle.length > 0 && record.activation.semantic.length > 0, 'three tiers and semantic activation required');
       break;
     case 'VerificationRequest':
-      one(record.predicate, predicates, 'request predicate');
+      if ('purpose' in record) {
+        ensure(record.purpose === 'output-use' && record.predicates.length === 2
+          && responsePredicates.every(predicate => record.predicates.includes(predicate)), 'output request must ask both response predicates');
+        unique(record.predicates, 'request predicates'); validateResponseSubject(record.subject);
+      } else one(record.predicate!, settlementPredicates, 'request predicate');
       ensure(record.logicalKey && record.operation && record.attempt && record.operationDigest && record.plan && record.barVersion && record.owner && record.loop && record.sourceGeneration, 'request binding incomplete');
       nonnegative(record.createdAt, 'request clock'); break;
     case 'VerificationAssessment': {
@@ -117,6 +215,11 @@ function validate(record: VerificationRecord): void {
         if (item.verdict === 'satisfied') ensure(item.evidence.length > 0, 'satisfied predicate needs evidence');
       }
       ensure(seen.has('occurrence') && seen.has('non-occurrence') && seen.has('quiescence') && seen.has('charge'), 'assessment must keep four settlement predicates separate');
+      if ('purpose' in record) {
+        ensure(record.purpose === 'output-use' && seen.size === 6
+          && responsePredicates.every(predicate => seen.has(predicate)), 'output assessment must keep both response predicates separate');
+        validateResponseSubject(record.subject);
+      } else ensure(seen.size === 4, 'v1 assessment cannot promote output predicates');
       break;
     }
     case 'ProbeRecord':
@@ -194,13 +297,33 @@ function validate(record: VerificationRecord): void {
 }
 
 function decoderFor<N extends VerificationRecordName>(name: N, context: VerificationDecodeContext) {
+  const versioned = name === 'VerificationPlan' || name === 'VerificationRequest' || name === 'VerificationAssessment';
   return defineDecoder<Extract<VerificationRecord, { type: N }>, VerificationDecodeContext>({
-    name, owner: 'part-nine', currentVersion: 1,
-    versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
+    name, owner: 'part-nine', currentVersion: versioned ? 2 : 1,
+    versions: versioned ? {
+      1: { validate: value => { try { shapeCheck(value, verificationV1Shapes[name]); return { ok: true as const, value }; }
+        catch (error) { return { ok: false as const, detail: error instanceof Error ? error.message : 'legacy verification record refused' }; } } },
+      2: { validate: value => {
+        try {
+          const raw = value as unknown as Record<string, unknown>;
+          if (raw.purpose === 'legacy-settlement') {
+            ensure(Object.keys(raw).sort().join(',') === 'legacy,migrationProof,purpose,schemaVersion,type'
+              && raw.migrationProof === legacyMigrationProof, 'external legacy migration wrapper refused');
+            return { ok: true as const, value };
+          }
+          ensure(raw.purpose === 'output-use', 'type or schema version unknown');
+          shapeCheck(value, verificationV2Shapes[name]!); return { ok: true as const, value };
+        } catch (error) { return { ok: false as const, detail: error instanceof Error ? error.message : 'output verification record refused' }; }
+      } },
+    } : { 1: { validate: value => ({ ok: true as const, value }) } },
+    migrations: versioned ? { 1: value => json({ type: name, schemaVersion: 2, purpose: 'legacy-settlement',
+      migrationProof: legacyMigrationProof, legacy: value }) } : {},
     decodeCurrent: value => {
       try {
-        shapeCheck(value, verificationShapes[name]);
-        const record = value as unknown as Extract<VerificationRecord, { type: N }>;
+        const raw = value as unknown as Record<string, unknown>;
+        const candidate = raw.purpose === 'legacy-settlement' ? raw.legacy : value;
+        const record = candidate as unknown as Extract<VerificationRecord, { type: N }>;
+        shapeCheck(candidate, 'purpose' in record ? verificationV2Shapes[name]! : verificationV1Shapes[name]);
         ensure(record.type === name, 'owned verification type mismatch'); validate(record);
         return { ok: true, value: freeze(record) };
       } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'verification record refused' }; }
@@ -209,6 +332,9 @@ function decoderFor<N extends VerificationRecordName>(name: N, context: Verifica
 }
 
 export function decodeVerificationRecord<N extends VerificationRecordName>(name: N, input: unknown, context: VerificationDecodeContext): Result<Extract<VerificationRecord, { type: N }>> {
+  if (input && typeof input === 'object' && !Array.isArray(input)
+    && (input as { purpose?: unknown }).purpose === 'legacy-settlement')
+    return boundary('DecodeVerificationRecord', input, context, () => { throw new Error('external legacy migration wrapper refused'); });
   return consumeResult(decoderFor(name, context), { Success: decoder => decoder.decode(input, context), Refused: refusal => refusal });
 }
 export const decodeVerificationPlan = (input: unknown, context: VerificationDecodeContext) => decodeVerificationRecord('VerificationPlan', input, context);
@@ -225,7 +351,9 @@ export const decodeBenchmarkEvaluation = (input: unknown, context: VerificationD
 export function verificationLogicalKey(record: VerificationRecord): string {
   switch (record.type) {
     case 'VerificationPlan': return `plan:${record.id}`;
-    case 'VerificationRequest': return `request:${record.logicalKey}:${record.predicate}`;
+    case 'VerificationRequest': return 'purpose' in record
+      ? `request:${record.logicalKey}:${encoded(record.subject).hash}:${record.plan}:${record.barVersion}:${record.sourceGeneration}`
+      : `request:${record.logicalKey}:${record.predicate}`;
     case 'VerificationAssessment': return `assessment:${record.request}:${record.barVersion}:${record.vectorDigest}`;
     case 'ProbeRecord': return `probe:${record.plan}:${record.arm}:${record.slot}:${record.attempt}`;
     case 'RetrospectiveReviewRecord': return `review:${record.plan}:${record.populationQuery}:${record.vectorDigest}`;
@@ -261,6 +389,193 @@ export function verificationRecordFrom(fact: FactEnvelope, context: Verification
   ensure(typeof name === 'string' && Object.hasOwn(verificationShapes, name), 'unknown verification record type');
   return take(decodeVerificationRecord(name as VerificationRecordName, body.record, context));
 }
+
+function responseReferences(subject: ProviderResponseSubject): readonly ResponseFactReference[] {
+  return [subject.seven.request, subject.seven.prepared, subject.seven.response, subject.eight.request,
+    subject.eight.executorObservation, subject.eight.responseObservation, subject.six.consumedReservation, subject.six.dispatchClaim];
+}
+type ResponseFactReference = ProviderResponseSubject['seven']['request'];
+function responseDecisionBasis(input: unknown, request: Readonly<Record<string, unknown>>,
+  original: DecodeContext): Decision | null {
+  try {
+    const decision = take(decode('Decision', input, original));
+    ensure(decision.floor && 'judgment' in decision.by
+      && decision.by.judgment === request.point && decision.by.route === request.route && decision.by.model === request.model
+      && encoded(decision.floor.allowed).hash === request.floorDigest
+      , 'captured response Decision basis differs');
+    const allowed = Array.isArray(request.evidence) ? request.evidence : [];
+    ensure([...decision.conclusion.evidence, ...decision.reason.evidence]
+      .every(id => typeof id === 'string' && allowed.includes(id)), 'captured response Decision invented evidence');
+    const standsOn = [...new Set([...decision.conclusion.evidence, ...decision.reason.evidence])].sort();
+    ensure(decision.standsOn === undefined || encoded(decision.standsOn).bytes === encoded(standsOn).bytes,
+      'captured response Decision standsOn differs');
+    return { ...decision, standsOn } as unknown as Decision;
+  } catch { return null; }
+}
+function establishResponseAssessment(record: ProviderResponseVerificationAssessment,
+  request: ProviderResponseVerificationRequest, plan: ProviderResponseVerificationPlan, requestFact: FactEnvelope,
+  cone: ReadonlyMap<string, FactEnvelope>, context: OwnedBodyContext, historical: boolean, host: VerificationHost): void {
+  const evidenceFacts = [...cone.values()].filter(fact => {
+    const evidence = (fact.body as unknown as { evidence?: Evidence }).evidence;
+    return evidence && record.predecessors.includes(fact.id);
+  });
+  const evidence = evidenceFacts.map(fact => (fact.body as unknown as { evidence: Evidence }).evidence);
+  ensure(record.evidence.every(id => evidence.some(item => item.id === id)), 'output assessment Evidence basis incomplete');
+  const responseFact = cone.get(record.subject.seven.response.id);
+  const responseRecord = responseFact?.body as unknown as { record?: { receipt?: { reference?: string; hash?: string } } };
+  const receipt = responseRecord.record?.receipt;
+  ensure(receipt && typeof receipt.reference === 'string' && typeof receipt.hash === 'string',
+    'output assessment receipt capture metadata absent');
+  const receiptReference = { reference: receipt.reference, hash: receipt.hash };
+  const captureAvailable = (capture: { reference: string; hash: string }): boolean => {
+    const stored = context.facts.captures[capture.reference];
+    ensure(stored && stored.hash === capture.hash, 'output assessment capture metadata differs');
+    if (stored.status !== 'available') return false;
+    ensure(stored.bytes !== null && hashBytes(stored.bytes) === capture.hash, 'output assessment capture bytes differ');
+    return true;
+  };
+  const receiptCapture = context.facts.captures[receiptReference.reference]!;
+  const submittedCapture = context.facts.captures[record.subject.submitted.capture.reference]!;
+  const answerCapture = context.facts.captures[record.subject.response.capture.reference]!;
+  const terminalCapture = context.facts.captures[record.subject.terminal.capture.reference]!;
+  const allAvailable = [receiptReference, record.subject.submitted.capture, record.subject.response.capture,
+    record.subject.terminal.capture, ...evidence.map(item => item.capture)].every(captureAvailable);
+  const sources = [requestFact, ...record.predecessors.filter(id => id !== requestFact.id && id !== record.supersedes)
+    .map(id => cone.get(id)).filter((fact): fact is FactEnvelope => !!fact)];
+  const frontier: Record<string, { epoch: number; position: number; fact: string }> = {};
+  for (const fact of sources.flatMap(source => [...causalCone(source, context.facts.facts), source])) {
+    const prior = frontier[fact.machine];
+    if (!prior || fact.segment.epoch > prior.epoch || fact.segment.epoch === prior.epoch && fact.segment.position > prior.position)
+      frontier[fact.machine] = { epoch: fact.segment.epoch, position: fact.segment.position, fact: fact.id };
+  }
+  const lineages = Object.keys(frontier).sort();
+  ensure(encoded(record.knownLineages).bytes === encoded(lineages).bytes, 'output assessment lineage pin differs');
+  ensure(record.vectorDigest === encoded({ folded: context.facts.folded, frontier }).hash,
+    historical ? 'historical output assessment vector pin differs' : 'output assessment vector pin differs');
+  ensure(record.captureStatuses.length === evidence.length && record.captureStatuses.every(status =>
+    status.status === 'available' && evidence.some(item => item.capture.reference === status.reference)),
+  'output assessment capture-status basis differs');
+  const requestOwner = cone.get(record.subject.seven.request.id);
+  const requestBody = (requestOwner?.body as unknown as { record?: Readonly<Record<string, unknown>> }).record;
+  const originalGeneration = requestBody?.generation;
+  ensure(typeof originalGeneration === 'string' && originalGeneration === request.sourceGeneration
+    && originalGeneration === plan.subject.generation, 'output assessment original register generation differs');
+  const canonicalHistoricalIdentity = (): void => {
+    const { id: _id, ...identity } = record;
+    ensure(record.id === `assessment:${encoded(identity).hash}`, 'historical output assessment identity differs');
+  };
+  if (context.facts.decode.register.generation.id !== originalGeneration) {
+    ensure(historical, 'current output assessment original register basis unavailable');
+    ensure(context.markEvidenceUnavailable, 'historical output assessment taint sink unavailable');
+    canonicalHistoricalIdentity();
+    context.markEvidenceUnavailable();
+    return;
+  }
+  if (!allAvailable) {
+    ensure(historical, 'current output assessment basis unavailable');
+    canonicalHistoricalIdentity();
+    return;
+  }
+  let responseEvidence: Json = null;
+  try { responseEvidence = (JSON.parse(receiptCapture.bytes!) as { responseEvidence?: Json }).responseEvidence ?? null; }
+  catch { /* malformed receipts produce an insufficient response derivation */ }
+  let captured: Decision | null = null;
+  const admitted = responseEvidence !== null && typeof responseEvidence === 'object' && !Array.isArray(responseEvidence)
+    && (responseEvidence as Readonly<Record<string, Json>>).eligibility === 'admitted';
+  try {
+    captured = admitted && requestBody && requestOwner
+      ? responseDecisionBasis(JSON.parse(answerCapture.bytes!), requestBody,
+        causalStanding(requestOwner, context.facts, false).decode)
+      : null;
+  } catch { captured = null; }
+  const decision = captured ? { owner: 'part-seven' as const, decision: json(captured), answerBytes: answerCapture.bytes!,
+    answerDigest: record.subject.response.answerDigest, response: record.subject.seven.response, responseEvidence,
+    required: responseReferences(record.subject).map(reference => reference.id) } : null;
+  const now = context.origin.at as unknown as Clock;
+  const derived = take(deriveProviderResponseAssessment({ request, plan, evidence, decision, responseEvidence,
+    observer: record.observer, vectorDigest: record.vectorDigest, knownLineages: record.knownLineages,
+    captureStatuses: record.captureStatuses,
+    taints: [], now, decode: context.facts.decode, facts: context.facts, predecessors: record.predecessors,
+    ...(record.supersedes ? { supersedes: record.supersedes } : {}) }, host.boundary));
+  const differences = Object.keys(record).filter(key => encoded((record as unknown as Record<string, unknown>)[key]).bytes
+    !== encoded((derived as unknown as Record<string, unknown>)[key]).bytes);
+  ensure(differences.length === 0, `output assessment differs from owner derivation: ${differences.join(',')}`);
+}
+function decodeOwnedVerification(name: VerificationRecordName, input: unknown, context: OwnedBodyContext,
+  host: VerificationHost, historical: boolean): VerificationRecord {
+  ensure(context.origin.machine === host.machine && context.origin.principal.id === host.principal.id
+    && context.origin.principal.kind === host.principal.kind, 'foreign verification recorder');
+  const record = take(decodeVerificationRecord(name, input, context));
+  ensure(context.origin.kind === verificationKindFor(name) && context.origin.schemaVersion === 1,
+    'verification fact kind or envelope schema mismatch');
+  const signed = (context.origin.body as unknown as { record?: unknown }).record;
+  ensure(signed !== undefined && encoded(record).bytes === encoded(signed).bytes,
+    'verification record differs from its signed origin');
+  const cone = new Map(causalCone(context.origin, context.facts.facts).map(fact => [fact.id, fact]));
+  ensure(record.predecessors.every(id => cone.has(id)), 'verification predecessor outside causal cone');
+  if ((record.type === 'VerificationAssessment' || record.type === 'Grade') && record.supersedes)
+    ensure(record.predecessors.includes(record.supersedes), 'changed assessment must causally link predecessor');
+  if ((record.type === 'VerificationRequest' || record.type === 'VerificationAssessment') && 'purpose' in record) {
+    for (const reference of responseReferences(record.subject)) {
+      const fact = cone.get(reference.id);
+      ensure(fact && fact.kind === reference.kind && fact.schemaVersion === reference.schemaVersion
+        && fact.contentHash === reference.contentHash && record.predecessors.includes(reference.id), 'response subject fact differs or lacks closure');
+    }
+    for (const capture of [record.subject.submitted.capture, record.subject.response.capture, record.subject.terminal.capture]) {
+      const stored = context.facts.captures[capture.reference];
+      ensure(stored && stored.hash === capture.hash, 'response subject capture metadata absent');
+      ensure(historical || stored.status === 'available' && stored.bytes !== null && hashBytes(stored.bytes) === capture.hash,
+        'current response subject capture unavailable');
+    }
+    let boundRequest: Extract<VerificationRecord, { type: 'VerificationRequest' }> | undefined;
+    const planId = record.type === 'VerificationRequest' ? record.plan : (() => {
+      const requestFact = [...cone.values()].find(fact => fact.kind === verificationKindFor('VerificationRequest')
+        && (fact.body as unknown as { record?: { id?: string } }).record?.id === record.request);
+      ensure(requestFact && record.predecessors.includes(requestFact.id), 'output assessment request is absent from causal closure');
+      const request = take(decodeVerificationRequest((requestFact.body as unknown as { record: Json }).record, context));
+      ensure('purpose' in request && encoded(request.subject).bytes === encoded(record.subject).bytes
+        && request.operation === record.operation && request.attempt === record.attempt
+        && request.operationDigest === record.operationDigest && request.barVersion === record.barVersion,
+      'output assessment differs from its request');
+      boundRequest = request;
+      return request.plan;
+    })();
+    const planFact = [...cone.values()].find(fact => fact.kind === verificationKindFor('VerificationPlan')
+      && (fact.body as unknown as { record?: { id?: string } }).record?.id === planId);
+    ensure(planFact && record.predecessors.includes(planFact.id), 'output verification plan absent from causal closure');
+    const plan = take(decodeVerificationPlan((planFact.body as unknown as { record: Json }).record, context));
+    const sourceGeneration = record.type === 'VerificationRequest' ? record.sourceGeneration : boundRequest!.sourceGeneration;
+    const scope = record.type === 'VerificationRequest' ? record.scope : boundRequest!.scope;
+    ensure('purpose' in plan && plan.bar.subjectDigest === encoded(record.subject).hash
+      && plan.bar.version === record.barVersion && plan.subject.generation === sourceGeneration
+      && plan.subject.scope === scope, 'output plan, bar, generation, scope, or subject differs');
+    const evidence = record.type === 'VerificationRequest' ? record.initialEvidence : record.evidence;
+    for (const id of evidence) {
+      const fact = [...cone.values()].find(candidate => (candidate.body as unknown as { evidence?: { id?: string } }).evidence?.id === id);
+      ensure(fact && record.predecessors.includes(fact.id), 'output Evidence absent from causal closure');
+    }
+    if (record.type === 'VerificationAssessment') establishResponseAssessment(record as ProviderResponseVerificationAssessment,
+      boundRequest as ProviderResponseVerificationRequest, plan as ProviderResponseVerificationPlan,
+      [...cone.values()].find(fact => fact.kind === verificationKindFor('VerificationRequest')
+        && (fact.body as unknown as { record?: { id?: string } }).record?.id === record.request)!,
+      cone, context, historical, host);
+    if (!historical) ensure(sourceGeneration === host.current().generation,
+      'output request or assessment generation is not current');
+  }
+  if (!historical && record.type === 'VerificationPlan' && 'purpose' in record) {
+    const scope = host.scope.kind === 'organization' || host.scope.members.includes(record.subject.scope);
+    ensure(record.subject.generation === host.current().generation && scope, 'output plan generation or scope is not current');
+  }
+  return record;
+}
+export function decodeVerificationRecordAtOrigin(name: VerificationRecordName, input: unknown,
+  context: OwnedBodyContext, host: VerificationHost): Result<VerificationRecord> {
+  return boundary('DecodeVerificationRecordAtOrigin', { name, input }, context, () => decodeOwnedVerification(name, input, context, host, false));
+}
+export function decodeHistoricalVerificationRecord(name: VerificationRecordName, input: unknown,
+  context: OwnedBodyContext, host: VerificationHost): Result<VerificationRecord> {
+  return boundary('DecodeHistoricalVerificationRecord', { name, input }, context, () => decodeOwnedVerification(name, input, context, host, true));
+}
 export function verificationRows(facts: readonly FactEnvelope[], context: VerificationDecodeContext): readonly { fact: FactEnvelope; record: VerificationRecord }[] {
   const kinds = new Set(Object.keys(verificationShapes).map(name => verificationKindFor(name as VerificationRecordName)));
   return facts.filter(fact => kinds.has(fact.kind)).map(fact => ({ fact, record: verificationRecordFrom(fact, context) }));
@@ -275,23 +590,30 @@ export function verificationSchemas(host: VerificationHost): readonly FactSchema
 }
 export function registerVerificationBodies(host: VerificationHost): Result<readonly OwnedBodyRegistration[]> {
   return boundary('VerificationRegistrations', null, host.boundary, () =>
-    (Object.keys(verificationShapes) as VerificationRecordName[]).map(name => take(registerOwnedBody({
-      name, owner: 'part-nine', currentVersion: 1,
-      versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
+    (Object.keys(verificationShapes) as VerificationRecordName[]).map(name => {
+      const versioned = name === 'VerificationPlan' || name === 'VerificationRequest' || name === 'VerificationAssessment';
+      return take(registerOwnedBody({
+      name, owner: 'part-nine', currentVersion: versioned ? 2 : 1,
+      versions: versioned ? { 1: { validate: value => { try { shapeCheck(value, verificationV1Shapes[name]); return { ok: true as const, value }; }
+        catch (error) { return { ok: false as const, detail: error instanceof Error ? error.message : 'legacy verification record refused' }; } } },
+        2: { validate: value => { try { const raw = value as unknown as Record<string, unknown>;
+          if (raw.purpose === 'legacy-settlement') ensure(Object.keys(raw).sort().join(',') === 'legacy,migrationProof,purpose,schemaVersion,type'
+            && raw.migrationProof === legacyMigrationProof, 'external legacy migration wrapper refused');
+          else { ensure(raw.purpose === 'output-use', 'wire body schema 2 requires output-use'); shapeCheck(value, verificationV2Shapes[name]!); }
+          return { ok: true as const, value }; } catch (error) { return { ok: false as const,
+            detail: error instanceof Error ? error.message : 'output verification record refused' }; } } } }
+        : { 1: { validate: value => ({ ok: true as const, value }) } },
+      migrations: versioned ? { 1: value => json({ type: name, schemaVersion: 2, purpose: 'legacy-settlement',
+        migrationProof: legacyMigrationProof, legacy: value }) } : {},
       decodeCurrent: (value, context) => {
         try {
-          ensure(context.origin.machine === host.machine && context.origin.principal.id === host.principal.id
-            && context.origin.principal.kind === host.principal.kind, 'foreign verification recorder');
-          const record = take(decodeVerificationRecord(name, value, context));
-          ensure(context.origin.kind === verificationKindFor(name), 'verification fact kind mismatch');
-          const cone = new Set(causalCone(context.origin, context.facts.facts).map(fact => fact.id));
-          ensure(record.predecessors.every(id => cone.has(id)), 'verification predecessor outside causal cone');
-          if (record.type === 'VerificationAssessment' && record.supersedes) ensure(record.predecessors.includes(record.supersedes), 'changed assessment must causally link predecessor');
-          if (record.type === 'Grade' && record.supersedes) ensure(record.predecessors.includes(record.supersedes), 'changed grade must causally link predecessor');
+          const raw = value as unknown as Record<string, unknown>;
+          const original = raw.purpose === 'legacy-settlement' ? raw.legacy : value;
+          const record = take((context.mode === 'origin' ? decodeVerificationRecordAtOrigin : decodeHistoricalVerificationRecord)(name, original, context, host));
           return { ok: true, value: wireVerificationRecord(record) };
         } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'verification body refused' }; }
       },
-    }, verificationShapes[name], host.boundary))),
+    }, verificationShapes[name], host.boundary)); }),
   );
 }
 export function createVerificationSpine(host: VerificationHost, author: VerificationAuthor, store: VerificationSpine['store']): VerificationSpine {

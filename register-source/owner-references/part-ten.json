@@ -17,6 +17,30 @@
         "path": "tests/assembly/fixed-installation-bootstrap.test.ts",
         "hash": "sha256:5840a7c050b3c31bf4740d9c6a2cb84da86a9c90c051658868924447c0b921f2"
       }
+    },
+    {
+      "id": "P10-SI-17",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/rungraph/provider-answer-reply.test.ts",
+        "hash": "sha256:b4c1c044839cdfe955108ead545c1d4a7e57ec5d0baf4ad22793dbd6bdb9ef6b"
+      }
+    },
+    {
+      "id": "P10-SI-24",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/rungraph/provider-answer-reply.test.ts",
+        "hash": "sha256:b4c1c044839cdfe955108ead545c1d4a7e57ec5d0baf4ad22793dbd6bdb9ef6b"
+      }
+    },
+    {
+      "id": "P10-SI-37",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/e2e/fixed-installation-reply.test.ts",
+        "hash": "sha256:5765acacbe9588d6fb6847ae98b17e56a2d0a34e5fca55dd8684f9ebf28d4448"
+      }
     }
   ],
   "probes": [],

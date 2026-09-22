@@ -6,10 +6,42 @@ import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
-export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-ten'].map(owner => `register-source/owner-references/${owner}.json`)];
+export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-seven', 'part-nine', 'part-ten']
+  .map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
 const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
   .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/closure-records.ts' }]));
+const partTenFixturePaths = {
+  'P10-SI-01': ['tests/assembly/fixed-installation-contract.test.ts'],
+  'P10-SI-02': ['tests/assembly/fixed-installation-contract.test.ts'],
+  'P10-SI-03': ['tests/assembly/fixed-installation-contract.test.ts'],
+  'P10-SI-04': ['tests/assembly/fixed-installation-live.test.ts'],
+  'P10-SI-06': ['tests/assembly/fixed-installation-contract.test.ts'],
+  'P10-SI-07': ['tests/assembly/fixed-installation-contract.test.ts'],
+  'P10-SI-08': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
+    'tests/assembly/fixed-installation-live.test.ts', 'tests/assembly/fixed-installation-custody.test.ts'],
+  'P10-SI-09': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
+    'tests/assembly/fixed-installation-custody.test.ts'],
+  'P10-SI-11': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
+    'tests/assembly/fixed-installation-custody.test.ts'],
+  'P10-SI-12': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts'],
+  'P10-SI-13': ['tests/assembly/fixed-installation-live.test.ts'],
+  'P10-SI-14': ['tests/assembly/fixed-installation-live.test.ts', 'tests/assembly/fixed-installation-custody.test.ts'],
+  'P10-SI-15': ['tests/assembly/fixed-installation-live.test.ts'],
+  'P10-SI-16': ['tests/assembly/fixed-installation-bootstrap.test.ts', 'tests/assembly/fixed-installation-live.test.ts'],
+  'P10-SI-17': ['tests/rungraph/provider-answer-reply.test.ts'],
+  'P10-SI-18': ['tests/assembly/fixed-installation-live.test.ts'],
+  'P10-SI-19': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-live.test.ts',
+    'tests/assembly/fixed-installation-custody.test.ts'],
+  'P10-SI-20': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-live.test.ts',
+    'tests/assembly/fixed-installation-custody.test.ts'],
+  'P10-SI-21': ['tests/assembly/fixed-installation-contract.test.ts'],
+  'P10-SI-22': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
+    'tests/assembly/fixed-installation-live.test.ts', 'tests/assembly/fixed-installation-custody.test.ts'],
+  'P10-SI-23': ['tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts'],
+  'P10-SI-24': ['tests/rungraph/provider-answer-reply.test.ts'],
+  'P10-SI-37': ['tests/e2e/fixed-installation-reply.test.ts'],
+};
 const contracts = {
   'part-five': { decoders: { ...owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit',
     'decodeSessionGrounding']), ...closureOwned,
@@ -17,10 +49,11 @@ const contracts = {
       .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/installed-governance.ts' }])) },
     fixture: id => id === 'P5-NF-54' || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION'
       || ['P10-SI-01', 'P10-SI-02', 'P10-SI-10', 'P10-SI-19', 'P10-SI-20', 'P10-SI-23'].includes(id), probe: id => id === 'P5-NF-55',
-    test: (kind, path) => kind === 'fixture'
-      ? path === 'tests/rungraph/governance.test.ts' || path === 'tests/rungraph/closure-registration-additivity.test.ts'
-        || path === 'tests/rungraph/installed-governance.test.ts'
-      : path === 'tests/rungraph/scope.test.ts' },
+    test: (id, kind, path) => kind === 'fixture'
+      ? id === 'P5-NF-54' && path === 'tests/rungraph/governance.test.ts'
+        || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION' && path === 'tests/rungraph/closure-registration-additivity.test.ts'
+        || id.startsWith('P10-SI-') && path === 'tests/rungraph/installed-governance.test.ts'
+      : id === 'P5-NF-55' && path === 'tests/rungraph/scope.test.ts' },
   'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration']),
     'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     'decode:VerifiedPrincipal': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
@@ -28,20 +61,27 @@ const contracts = {
     authorAndAppend: { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', requires: 'intakeWorkRegistration' },
     'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
     fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9])$/.test(id), probe: id => id === 'P4-NF-29',
-    test: (_kind, path) => /^tests\/intake\/[a-z][a-z0-9-]*\.test\.ts$/.test(path) },
+    test: (_id, _kind, path) => /^tests\/intake\/[a-z][a-z0-9-]*\.test\.ts$/.test(path) },
+  'part-seven': { decoders: {
+    ...Object.fromEntries(['decodeProviderAnswerAcceptanceAtOrigin', 'decodeHistoricalProviderAnswerAcceptance',
+      'decodeCapturedProviderDecision'].map(id => [id, { module: 'src/judgment/index.ts', artifact: 'src/judgment/provider-path.ts' }])),
+  }, fixture: () => false, probe: () => false, test: () => false },
+  'part-nine': { decoders: {
+    ...Object.fromEntries(['decodeVerificationRecord', 'decodeVerificationRecordAtOrigin', 'decodeHistoricalVerificationRecord']
+      .map(id => [id, { module: 'src/verification/index.ts', artifact: 'src/verification/records.ts' }])),
+  },
+    fixture: id => ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id), probe: () => false,
+    test: (id, kind, path) => kind === 'fixture' && ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id)
+      && path === 'tests/verification/provider-response-assessment.test.ts' },
   'part-ten': { decoders: {
     ...Object.fromEntries(['decodeInstallationSelectionAtOrigin', 'decodeHistoricalInstallationSelection']
       .map(id => [id, { module: 'src/assembly/index.ts', artifact: 'src/assembly/installation-selection.ts' }])),
     ...Object.fromEntries(['decodeProductionSignerReferenceAtOrigin', 'decodeHistoricalProductionSignerReference']
       .map(id => [id, { module: 'src/assembly/index.ts', artifact: 'src/assembly/production-signer-reference.ts' }])),
   },
-    fixture: id => ['01', '02', '03', '04', '06', '07', '08', '09', '11', '12', '13', '14', '15', '16', '18', '19', '20', '21', '22', '23']
-      .some(number => id === `P10-SI-${number}`),
+    fixture: id => Object.hasOwn(partTenFixturePaths, id),
     probe: () => false,
-    test: (kind, path) => kind === 'fixture' && [
-      'tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
-      'tests/assembly/fixed-installation-live.test.ts', 'tests/assembly/fixed-installation-custody.test.ts',
-    ].includes(path) },
+    test: (id, kind, path) => kind === 'fixture' && (partTenFixturePaths[id] ?? []).includes(path) },
 };
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))
@@ -79,7 +119,7 @@ export function loadOwnerReferences(root, input) {
       exact(row, kind === 'fixture' ? ['id', 'stage', 'artifact'] : ['id', 'cadence', 'execution', 'artifact']);
       if (!contract[kind](row.id) || (kind === 'fixture' ? row.stage !== 'build' : row.execution !== 'ci' || !Number.isFinite(row.cadence) || row.cadence <= 0))
         throw new Error('unknown owner fixture/probe or invalid CI cadence');
-      if (!contract.test(kind, row.artifact?.path)) throw new Error('wrong-owner inspection artifact');
+      if (!contract.test(row.id, kind, row.artifact?.path)) throw new Error('wrong-owner inspection artifact');
       artifact(row.artifact, row.artifact.path);
       result.catalog[kind + 's'].push(row); result.references.push({ provider: kind, id: row.id });
     }

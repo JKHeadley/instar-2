@@ -10,14 +10,16 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
   const grantedContent = new Map([
     // GRANT M3-S (astra-m3-structural-adjudication.md section 3): exact additive Five early-guard tests.
     ['tests/rungraph/installed-governance.test.ts', '4741c9e14be82d3329fcee03e30ef6e661c95aba210ef0fa5cbd010f5c251737'],
-    ['tests/assembly/production-grounding-inventory.json', 'e0368d180bb2fed0926ddcb6ce6bbe5a0661ac7c7dbf256d345c1f85efcda316'],
+    ['tests/assembly/production-grounding-inventory.json', 'c95b57d5077e3bafb156c899d237f24a320d833d2af76d39bc567b382994f7f0'],
     // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
     ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
-    ['tests/rungraph/production-grounding-scope.test.ts', '7a981ed049fb3367193993fb0ec1503d451b5a9d9045da24e99b521a08fc29bf'],
+    // GRANT M4-G6-N-T7: the two exhaustive P9 disposition counts 63 -> 66.
+    ['tests/verification/coverage.test.ts', 'ad5a8cb698bb8a55366192d62f621bcc17395b6f8801189a58fab43ecbc4ef94'],
+    ['tests/rungraph/production-grounding-scope.test.ts', '3153737b22d37f3939bda6292d97780d13537c21f6bb5bfa6be43113c1bd079f'],
     ['tests/assembly/round10-regressions.test.ts', '74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605'],
     ['tests/assembly/round12-regressions.test.ts', '6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9'],
     // Settlement seam baseline: exact helper bytes for landed Eight 189b346.
-    ['tests/transport/effect-pin.mjs', '3f5f25267cec55cd96b6f7bd2e27c6ef3720aacbde9ee5a181d946f28ab95edb'],
+    ['tests/transport/effect-pin.mjs', '19d668f4779b2057377de7daa64da59af7685277f59762f9f20ffae4d0081302'],
   ]);
   const prefixes = ['tests/rungraph/', 'tests/transport/', 'tests/effects/', 'tests/verification/', 'tests/assembly/'];
   const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })

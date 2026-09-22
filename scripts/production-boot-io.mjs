@@ -20,13 +20,17 @@ export const productionProviderIO = Object.freeze({
     let chunks = [], size = 0, limited = false;
     const fail = () => { limited = true; chunks = []; child.kill('SIGKILL'); };
     const timer = setTimeout(fail, input.timeout);
-    child.on('error', () => { clearTimeout(timer); resolve({ code: null, limited: true, stdout: '' }); });
+    child.on('error', () => { clearTimeout(timer); resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); });
     child.stdin.on('error', fail);
     child.stdout.on('data', chunk => {
       size += chunk.length;
       if (size > input.maxBytes) fail(); else if (!limited) chunks.push(chunk);
     });
-    child.on('close', code => { clearTimeout(timer); resolve({ code, limited, stdout: Buffer.concat(chunks).toString('utf8') }); });
+    child.on('close', code => {
+      clearTimeout(timer);
+      const stdoutBytes = Buffer.concat(chunks);
+      resolve({ code, limited, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes) });
+    });
     child.stdin.end(input.stdin, 'utf8');
   }),
 });

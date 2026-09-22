@@ -2,7 +2,7 @@ import type { Result } from '../index.js';
 import { createIntakePort } from '../intake/index.js';
 import type { IntakeDependencies } from '../intake/index.js';
 import { createRunGraph } from '../rungraph/index.js';
-import type { RunGraphDependencies } from '../rungraph/index.js';
+import type { AcceptedProviderAnswerReadPort, AcceptedProviderAnswerView, RunGraphDependencies } from '../rungraph/index.js';
 import { createOperatorSurface } from '../operator/index.js';
 import type { OperatorSurfaceComposition, MinimalDependency } from '../operator/index.js';
 import { createEffectDoorway } from '../effects/index.js';
@@ -60,10 +60,18 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
       && input.effect.spine.store === store, 'production owners: shared signed store required');
     ensure(input.assembly.harnesses.includes(input.grounding.harness), 'harness: actual grounding adapter required');
     const intake = take(createIntakePort(input.intake));
-    const run = take(createRunGraph({ ...input.run, assemblyHistory: input.grounding.runtime.history!,
-      grounding: createProductionGroundingReader(input.grounding) }));
+    let acceptedTarget: AcceptedProviderAnswerReadPort | undefined;
+    const acceptedAnswer: AcceptedProviderAnswerReadPort = Object.freeze({ owner: 'part-eight' as const,
+      consumeAcceptedProviderAnswer<T>(reference: import('../index.js').OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>,
+        consumer: (view: AcceptedProviderAnswerView) => T): Result<T> {
+        ensure(acceptedTarget, 'accepted-answer owners are not yet composed');
+        return acceptedTarget.consumeAcceptedProviderAnswer(reference, consumer);
+      } });
+    const run = take(createRunGraph({ ...input.run, acceptedAnswer,
+      assemblyHistory: input.grounding.runtime.history!, grounding: createProductionGroundingReader(input.grounding) }));
     const provider = take(createProductionProviderOwners({ ...input.provider,
       judgment: { ...input.provider.judgment, runs: run } }));
+    acceptedTarget = provider.eight;
     const effect = createEffectDoorway(input.effect);
     const surface = take(createOperatorSurface({ ...input.operator,
       intake: { owner: 'part-four', operation: 'admitVerifiedAct', port: intake } }));

@@ -1,13 +1,16 @@
-import { decode, readEvidence } from '../index.js';
+import { createHash } from 'node:crypto';
+import { consumeResult, decode, readEvidence } from '../index.js';
 import type { BoundaryContext, Decision, OwnedReference, Result, RunReference } from '../index.js';
 import { authorAndAppend, causalCone, hashBytes, registerOwnedBody } from '../facts/index.js';
-import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedShape } from '../facts/index.js';
-import type { FenceToken, TransportAuthority } from '../transport/index.js';
+import type { FactContext, FactEnvelope, FactSchema, FactStorePort, OwnedBodyContext, OwnedShape } from '../facts/index.js';
+import type { FenceToken, SettlementApplication, TransportAuthority } from '../transport/index.js';
 import type { RunGraphPort } from '../rungraph/index.js';
 import { consumeEffectSettlement } from '../effects/index.js';
 import { consumeProviderReceipt } from '../effects/provider-api.js';
 import type { ProviderReceipt } from '../effects/provider-api.js';
 import type { EffectSettlement } from '../effects/index.js';
+import type { CapturedProviderDecision, ProviderResponseAssessmentPort, ProviderResponseSubject } from '../verification/index.js';
+import { isGenuineProviderResponseAssessmentPort } from '../verification/effect-consumption.js';
 import type { Capture, JudgmentCapturePort, JudgmentHost, ProviderObservation, RecordedAnswer } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { observationCheck } from './model-adapter.js';
@@ -34,11 +37,29 @@ export interface ProviderQuestionInput {
   readonly semanticMessage: string; readonly question: string; readonly context: string;
   readonly evidence: readonly string[]; readonly deadline: number;
 }
+export interface ProviderAnswerAcceptance {
+  readonly type: 'ProviderAnswerAcceptance'; readonly schemaVersion: 1; readonly id: string;
+  readonly request: string; readonly attempt: string; readonly response: ProviderResponseSubject['seven']['response'];
+  readonly operation: string; readonly claim: string; readonly digest: string; readonly capture: Capture;
+  readonly answerDigest: string; readonly assessment: ProviderResponseSubject['seven']['response'];
+  readonly settlement: ProviderResponseSubject['seven']['response']; readonly accounting: ProviderResponseSubject['seven']['response'];
+  readonly maximumCharge: number; readonly retainedExposure: number;
+  readonly generation: string; readonly acceptedAt: number;
+}
+export interface ProviderAnswerAcceptanceInput {
+  readonly subject: ProviderResponseSubject;
+  readonly assessment: OwnedReference<'part-nine', 'VerificationAssessment'>;
+  readonly settlement: ProviderResponseSubject['seven']['response'];
+  readonly accounting: ProviderResponseSubject['seven']['response'];
+}
 export interface ProviderJudgmentPort {
   readonly owner: 'part-seven';
   prepare(input: ProviderQuestionInput, fence: FenceToken): Result<PreparedProviderJudgment>;
   readPrepared(reference: OwnedReference<'part-seven', 'JudgmentRequest'>, fence?: FenceToken): Result<PreparedProviderJudgment>;
   recordReceipt(receipt: ProviderReceipt): Result<OwnedReference<'part-seven', 'JudgmentAttemptRecord'>>;
+  decodeCapturedProviderDecision(subject: ProviderResponseSubject): Result<CapturedProviderDecision>;
+  recordProviderAnswerAcceptance(input: ProviderAnswerAcceptanceInput,
+    assessment: ProviderResponseAssessmentPort, fence: FenceToken): Result<OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>>;
   resolve(reference: OwnedReference<'part-seven', 'JudgmentRequest'>, settlement: EffectSettlement, fence: FenceToken): Result<RecordedAnswer>;
 }
 export interface ProviderJudgmentDependencies {
@@ -49,9 +70,27 @@ export interface ProviderJudgmentDependencies {
   readonly outputSchema: Readonly<Record<string, import('../index.js').Json>>;
   readonly maxTokens: number; readonly maxCaptureBytes: number; readonly timeout: number; readonly disclosure: string;
 }
+const genuineDecisionReaders = new WeakMap<object, FactStorePort>();
+export function decodeCapturedProviderDecision(port: Pick<ProviderJudgmentPort, 'decodeCapturedProviderDecision'>,
+  subject: ProviderResponseSubject, store: FactStorePort, context: BoundaryContext): Result<CapturedProviderDecision>;
+export function decodeCapturedProviderDecision(port: Pick<ProviderJudgmentPort, 'decodeCapturedProviderDecision'>,
+  subject: undefined, store: FactStorePort, context: BoundaryContext): Result<true>;
+export function decodeCapturedProviderDecision(port: Pick<ProviderJudgmentPort, 'decodeCapturedProviderDecision'>,
+  subject: ProviderResponseSubject | undefined, store: FactStorePort, context: BoundaryContext): Result<CapturedProviderDecision | true> {
+  return boundary('DecodeCapturedProviderDecisionPort', subject ?? null, context, () => {
+    ensure(genuineDecisionReaders.get(port) === store, 'genuine same-store Seven decision reader required');
+    return subject === undefined ? true : take(port.decodeCapturedProviderDecision(subject));
+  });
+}
+export function recordProviderAnswerAcceptance(port: Pick<ProviderJudgmentPort, 'recordProviderAnswerAcceptance'>,
+  input: ProviderAnswerAcceptanceInput, assessment: ProviderResponseAssessmentPort,
+  fence: FenceToken): Result<OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>> {
+  return port.recordProviderAnswerAcceptance(input, assessment, fence);
+}
 const txt = { kind: 'text', maxLength: 512 } as const, int = { kind: 'integer' } as const;
 const refs = { kind: 'array', maxLength: 64, items: txt } as const, cap = { kind: 'capture' } as const;
 const common = { type: txt, schemaVersion: int, id: txt };
+const factRef = { kind: 'object', fields: { owner: txt, name: txt, id: txt, kind: txt, schemaVersion: int, contentHash: txt } } as const;
 const shapes: Readonly<Record<string, OwnedShape>> = {
   ProviderJudgmentRequest: { kind: 'object', fields: { ...common, run: txt, step: txt, predecessor: txt, pending: txt,
     ordinal: int, semanticMessage: txt, point: txt, consumer: txt, generation: txt, incarnation: txt, deadline: int,
@@ -62,9 +101,121 @@ const shapes: Readonly<Record<string, OwnedShape>> = {
     submittedDigest: txt, operation: txt, reservation: txt, claim: txt, observation: txt, receipt: cap },
     optional: ['receipt'] },
   ProviderJudgmentResolution: { kind: 'object', fields: { ...common, request: txt, attempt: txt, response: txt, settlement: txt, accounting: txt } },
+  ProviderAnswerAcceptance: { kind: 'object', fields: { ...common, request: txt, attempt: txt, response: factRef,
+    operation: txt, claim: txt, digest: txt, capture: cap, answerDigest: txt, assessment: factRef,
+    settlement: factRef, accounting: factRef, maximumCharge: int, retainedExposure: int,
+    generation: txt, acceptedAt: int } },
 };
 const raw = (f: FactEnvelope) => (f.body as unknown as { record: Record<string, unknown> }).record;
 const active = new WeakMap<object, string>();
+function validateSignedDecisionBasis(input: unknown, q: ProviderJudgmentRequest): Decision {
+  const decision = input as Decision;
+  ensure(decision && decision.type === 'Decision' && decision.schemaVersion === 1
+    && typeof decision.id === 'string' && decision.id.length > 0 && decision.floor
+    && decision.floor.allowed?.type === 'ActionFloor' && decision.floor.allowed.schemaVersion === 1
+    && Array.isArray(decision.floor.allowed.actions) && typeof decision.floor.allowed.default === 'string'
+    && typeof decision.floor.chosen === 'string' && decision.floor.allowed.actions.includes(decision.floor.chosen),
+  'provider answer acceptance Decision shape differs');
+  ensure('judgment' in decision.by && decision.by.judgment === q.point
+    && decision.by.route === q.route && decision.by.model === q.model
+    && encoded(decision.floor.allowed).hash === q.floorDigest,
+  'provider answer acceptance Decision differs');
+  ensure(Array.isArray(decision.conclusion?.evidence) && Array.isArray(decision.reason?.evidence)
+    && [...decision.conclusion.evidence, ...decision.reason.evidence]
+      .every(id => typeof id === 'string' && q.evidence.includes(id)),
+  'provider answer acceptance Decision invented evidence');
+  const standsOn = [...new Set([...decision.conclusion.evidence, ...decision.reason.evidence])].sort();
+  ensure(decision.standsOn === undefined || encoded(decision.standsOn).bytes === encoded(standsOn).bytes,
+    'provider answer acceptance Decision standsOn differs');
+  return { ...decision, standsOn } as unknown as Decision;
+}
+function decodeProviderAnswerAcceptance(input: unknown, context: OwnedBodyContext,
+  host: JudgmentHost, historical: boolean): ProviderAnswerAcceptance {
+  const value = input as ProviderAnswerAcceptance;
+  ensure(value && value.type === 'ProviderAnswerAcceptance' && value.schemaVersion === 1 && value.id.length > 0,
+    'provider answer acceptance identity');
+  ensure(context.origin.kind === 'judgment-provider-ProviderAnswerAcceptance' && context.origin.schemaVersion === 1
+    && context.origin.machine === host.transport.machine && context.origin.principal.id === host.transport.principal.id,
+  'provider answer acceptance origin differs');
+  if (!historical) ensure(active.get(host) === encoded(value).hash, 'provider answer acceptance requires owner operation');
+  const cone = causalCone(context.origin, context.facts.facts);
+  const exact = (reference: ProviderResponseSubject['seven']['response'], kind: string) => {
+    const fact = cone.find(candidate => candidate.id === reference.id);
+    ensure(reference.owner === 'part-two' && reference.name === 'FactEnvelope' && fact?.kind === kind
+      && fact.schemaVersion === reference.schemaVersion && fact.contentHash === reference.contentHash,
+    'provider answer acceptance reference differs');
+    return fact;
+  };
+  const request = cone.find(fact => fact.kind === 'judgment-provider-ProviderJudgmentRequest'
+    && raw(fact)?.id === value.request);
+  const response = exact(value.response, 'judgment-provider-ProviderJudgmentAttemptRecord');
+  const assessment = exact(value.assessment, 'verification-VerificationAssessment');
+  const settlement = exact(value.settlement, 'effect-provider-ProviderEffectSettlement');
+  const accounting = exact(value.accounting, 'transport-SettlementApplication');
+  ensure(request, 'provider answer acceptance request absent');
+  const q = raw(request) as unknown as ProviderJudgmentRequest;
+  const rr = raw(response)!, assessed = raw(assessment)!, sr = raw(settlement)!, ar = raw(accounting)!;
+  ensure(q.attempt === value.attempt && rr.phase === 'response-observed' && rr.request === q.id
+    && rr.attempt === q.attempt && rr.operation === value.operation && rr.claim === value.claim
+    && rr.submittedDigest === value.digest, 'provider answer acceptance response differs');
+  ensure(sr.acceptance === value.assessment.id && sr.request === q.effectRequest && sr.operation === value.operation
+    && sr.claim === value.claim && sr.digest === value.digest && sr.retainedExposure === value.retainedExposure
+    && sr.retryEligible === false, 'provider answer acceptance settlement differs');
+  ensure(ar.settlement === sr.id && ar.settlementFact === settlement.id && ar.settlementHash === settlement.contentHash
+    && ar.operation === value.operation && ar.request === q.effectRequest && ar.claim === value.claim
+    && ar.digest === value.digest && ar.exposure === value.retainedExposure && ar.retryEligible === 0,
+  'provider answer acceptance accounting differs');
+  const assessedSubject = assessed.subject as unknown as ProviderResponseSubject | undefined;
+  const assessmentRequest = cone.find(fact => fact.kind === 'verification-VerificationRequest'
+    && raw(fact)?.id === assessed.request);
+  const assessmentRequestRecord = assessmentRequest ? raw(assessmentRequest) : undefined;
+  ensure(assessed.schemaVersion === 2 && assessed.purpose === 'output-use' && assessedSubject
+    && assessmentRequestRecord?.schemaVersion === 2 && assessmentRequestRecord.purpose === 'output-use'
+    && encoded(assessmentRequestRecord.subject).bytes === encoded(assessedSubject).bytes
+    && assessedSubject.seven.request.id === request.id && assessedSubject.seven.response.id === response.id
+    && assessedSubject.seven.attempt === value.attempt && assessedSubject.six.operation === value.operation
+    && assessedSubject.six.dispatchClaim.id === value.claim
+    && assessedSubject.submitted.operationDigest === value.digest
+    && encoded(assessedSubject.response.capture).bytes === encoded(value.capture).bytes
+    && assessedSubject.response.answerDigest === value.answerDigest,
+  'provider answer acceptance assessment subject differs');
+  const assessedRows = assessed.predicates as unknown as readonly Readonly<{ predicate: string; verdict: string }>[];
+  ensure(Array.isArray(assessedRows) && ['response-authenticity', 'response-completeness'].every(predicate =>
+    assessedRows.some(row => row.predicate === predicate && row.verdict === 'satisfied')),
+  'provider answer acceptance assessment did not pass both response rows');
+  ensure(Number.isSafeInteger(value.maximumCharge) && value.maximumCharge >= 0 && q.maxCharge === value.maximumCharge
+    && Number.isSafeInteger(value.retainedExposure) && value.retainedExposure >= 0
+    && (ar.unresolved === 0 || value.retainedExposure === value.maximumCharge),
+  'provider answer acceptance maximum exposure differs');
+  ensure(value.capture.reference.length > 0 && value.capture.hash === value.answerDigest,
+    'provider answer acceptance capture or digest differs');
+  const capture = context.facts.captures[value.capture.reference];
+  if (!historical || capture?.status === 'available') {
+    ensure(capture?.status === 'available' && capture.bytes !== null && capture.hash === value.capture.hash
+      && hashBytes(capture.bytes) === value.answerDigest, 'provider answer acceptance captured Decision unavailable');
+    const parsed = JSON.parse(capture.bytes);
+    const signed = (context.origin.body as unknown as { decision?: unknown }).decision;
+    const decision = validateSignedDecisionBasis(parsed, q);
+    ensure(signed && encoded(signed).bytes === encoded(decision).bytes,
+      'provider answer acceptance signed Decision pin differs');
+    if (!historical) ensure(encoded(take(decode('Decision', parsed, context.facts.decode))).bytes === encoded(decision).bytes,
+      'provider answer acceptance current Decision authority differs');
+  }
+  ensure(value.generation === q.generation && (historical || value.generation === host.transport.current().generation.id)
+    && Number.isSafeInteger(value.acceptedAt) && value.acceptedAt >= 0,
+    'provider answer acceptance generation or clock invalid');
+  return freeze(value);
+}
+export function decodeProviderAnswerAcceptanceAtOrigin(input: unknown, context: OwnedBodyContext,
+  host: JudgmentHost): Result<ProviderAnswerAcceptance> {
+  return boundary('DecodeProviderAnswerAcceptanceAtOrigin', input, context,
+    () => decodeProviderAnswerAcceptance(input, context, host, false));
+}
+export function decodeHistoricalProviderAnswerAcceptance(input: unknown, context: OwnedBodyContext,
+  host: JudgmentHost): Result<ProviderAnswerAcceptance> {
+  return boundary('DecodeHistoricalProviderAnswerAcceptance', input, context,
+    () => decodeProviderAnswerAcceptance(input, context, host, true));
+}
 export function providerJudgmentSchemas(host: JudgmentHost): readonly FactSchema[] {
   return Object.keys(shapes).map(name => ({ kind: `judgment-provider-${name}`, version: 1,
     fields: { record: { kind: 'owned', owner: 'part-seven', name }, decision: { kind: 'constitutional', type: 'Decision' } },
@@ -72,10 +223,20 @@ export function providerJudgmentSchemas(host: JudgmentHost): readonly FactSchema
     causallyBound: false, requiredReferences: [], authority: 'none' }));
 }
 export function registerProviderJudgmentBodies(host: JudgmentHost, c: BoundaryContext) {
-  return boundary('ProviderJudgmentRegistrations', null, c, () => Object.entries(shapes).map(([name, shape]) => take(registerOwnedBody({
-    name, owner: 'part-seven', currentVersion: 2, versions: { 1: { validate: v => ({ ok: true, value: v }) }, 2: { validate: v => ({ ok: true, value: v }) } }, migrations: { 1: () => { throw new Error('legacy judgment uses the unchanged version-one decoder'); } },
+  return boundary('ProviderJudgmentRegistrations', null, c, () => Object.entries(shapes).map(([name, shape]) => {
+    const acceptance = name === 'ProviderAnswerAcceptance';
+    return take(registerOwnedBody({
+    name, owner: 'part-seven', currentVersion: acceptance ? 1 : 2,
+    versions: acceptance ? { 1: { validate: v => ({ ok: true as const, value: v }) } }
+      : { 1: { validate: v => ({ ok: true as const, value: v }) }, 2: { validate: v => ({ ok: true as const, value: v }) } },
+    migrations: acceptance ? {} : { 1: () => { throw new Error('legacy judgment uses the unchanged version-one decoder'); } },
     decodeCurrent: (v, ctx) => {
       try {
+        if (acceptance) {
+          const decoded = take((ctx.mode === 'origin' ? decodeProviderAnswerAcceptanceAtOrigin
+            : decodeHistoricalProviderAnswerAcceptance)(v, ctx, host));
+          return { ok: true, value: json(decoded) };
+        }
         const r = v as Record<string, import('../index.js').Json>, past = causalCone(ctx.origin, ctx.facts.facts);
         ensure(r.type === name && r.schemaVersion === 2 && typeof r.id === 'string' && r.id.length > 0, 'provider judgment identity');
         ensure(ctx.origin.machine === host.transport.machine && ctx.origin.principal.id === host.transport.principal.id, 'provider judgment recorder');
@@ -149,7 +310,7 @@ export function registerProviderJudgmentBodies(host: JudgmentHost, c: BoundaryCo
         return { ok: true, value: v };
       } catch (e) { return { ok: false, detail: String(e) }; }
     },
-  }, shape, c))));
+  }, shape, c)); }));
 }
 export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): ProviderJudgmentPort {
   const checked = <T>(n: string, i: unknown, fn: () => T) => boundary(n, i, p.boundary, fn);
@@ -195,11 +356,209 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
     if (fence) current(q, fence);
     return freeze({ request: ref, prepared: { owner: 'part-seven', name: 'JudgmentAttemptRecord', id: prepared.id }, value: q });
   });
-  return Object.freeze({ owner: 'part-seven', readPrepared,
+  const decodeCapturedProviderDecision: ProviderJudgmentPort['decodeCapturedProviderDecision'] = subject => checked('DecodeCapturedProviderDecision', subject, () => {
+    const snapshot = take(p.store.readForProjection());
+    const exact = (reference: ProviderResponseSubject['seven']['request'], kind: string) => {
+      const row = snapshot.entries.find(entry => entry.fact.id === reference.id);
+      ensure(row && !row.taint.length && !row.conflicts.length && row.fact.kind === kind
+        && row.fact.schemaVersion === reference.schemaVersion && row.fact.contentHash === reference.contentHash,
+      'captured response owner fact differs or is unavailable');
+      return row.fact;
+    };
+    const requestFact = exact(subject.seven.request, 'judgment-provider-ProviderJudgmentRequest');
+    const preparedFact = exact(subject.seven.prepared, 'judgment-provider-ProviderJudgmentAttemptRecord');
+    const responseFact = exact(subject.seven.response, 'judgment-provider-ProviderJudgmentAttemptRecord');
+    const effectRequestFact = exact(subject.eight.request, 'effect-provider-ProviderEffectRequest');
+    const executorFact = exact(subject.eight.executorObservation, 'effect-provider-ProviderOperationObservation');
+    const responseObservationFact = exact(subject.eight.responseObservation, 'effect-provider-ProviderOperationObservation');
+    const consumedFact = exact(subject.six.consumedReservation, 'transport-AdmissionReservation');
+    const claimFact = exact(subject.six.dispatchClaim, 'transport-AdmissionReservation');
+    const q = raw(requestFact) as unknown as ProviderJudgmentRequest;
+    const prepared = raw(preparedFact)!, response = raw(responseFact)!, effectRequest = raw(effectRequestFact)!;
+    const executor = raw(executorFact)!, responseObservation = raw(responseObservationFact)!;
+    const consumed = raw(consumedFact)!, claim = raw(claimFact)!;
+    ensure(prepared.phase === 'prepared' && prepared.request === q.id && response.phase === 'response-observed'
+      && response.request === q.id && response.attempt === q.attempt && q.attempt === subject.seven.attempt,
+    'captured response request or attempt differs');
+    ensure(effectRequest.id === q.effectRequest && effectRequest.digest === q.inputDigest
+      && executor.stage === 'executor-accepted' && responseObservation.stage === 'response'
+      && executor.operation === subject.six.operation && responseObservation.operation === subject.six.operation
+      && responseObservation.judgmentReceipt === responseFact.id
+      && encoded(responseObservation.capture).bytes === encoded(response.receipt).bytes,
+    'captured response effect observation differs');
+    ensure(consumed.state === 'consumed' && claim.state === 'dispatch-claimed'
+      && consumed.operation === subject.six.operation && claim.operation === subject.six.operation
+      && consumed.request === effectRequest.id && claim.request === effectRequest.id
+      && consumed.digest === q.inputDigest && claim.digest === q.inputDigest,
+    'captured response claim or reservation differs');
+    ensure(q.inputDigest === subject.submitted.operationDigest && q.submitted.reference === subject.submitted.capture.reference
+      && q.submitted.hash === subject.submitted.capture.hash && q.provider === subject.route.provider
+      && q.model === subject.route.model && q.route === subject.route.route && q.routeBasis === subject.route.routeBasis
+      && q.floorDigest === subject.route.floorDigest && q.settingsDigest === subject.route.settingsDigest
+      && q.outputSchemaDigest === subject.route.outputSchemaDigest && encoded(q.evidence).bytes === encoded(subject.route.evidence).bytes
+      && encoded(q.evidence).hash === subject.route.evidenceDigest, 'captured response route or submitted identity differs');
+    const receipt = response.receipt as Capture;
+    const observation = JSON.parse(take(p.captures.read(receipt))) as ProviderObservation;
+    observationCheck(observation, p.host.description);
+    ensure(observation.state === 'complete' && observation.bytes !== null && observation.responseEvidence,
+      'captured response is not a complete evidenced answer');
+    const evidence = observation.responseEvidence;
+    ensure(evidence.source.request === requestFact.id && evidence.source.attempt === q.attempt
+      && evidence.source.operation === subject.six.operation && evidence.source.claim === claimFact.id
+      && evidence.source.submittedDigest === q.inputDigest && evidence.source.provider === q.provider
+      && evidence.source.model === q.model && evidence.source.route === q.route,
+    'captured response evidence call binding differs');
+    ensure(evidence.answer.source.reference === subject.response.capture.reference
+      && evidence.answer.source.hash === subject.response.capture.hash
+      && evidence.answer.answerDigest === subject.response.answerDigest
+      && evidence.terminal.raw.reference === subject.terminal.capture.reference
+      && evidence.terminal.raw.hash === subject.terminal.capture.hash
+      && evidence.terminal.rawDigest === subject.terminal.rawDigest
+      && evidence.terminal.evidence === subject.terminal.evidence
+      && encoded(evidence.source.evidence).bytes === encoded(subject.terminal.sourceEvidence).bytes
+      && evidence.contract.parserReference === subject.response.parserReference
+      && evidence.contract.parserVersion === subject.response.parserVersion
+      && evidence.contract.evidenceContractReference === subject.response.evidenceContractReference
+      && evidence.contract.evidenceContractVersion === subject.response.evidenceContractVersion,
+    'captured response evidence contract or capture differs');
+    const answerBytes = take(p.captures.read(evidence.answer.source));
+    ensure(answerBytes === observation.bytes && hashBytes(answerBytes) === subject.response.answerDigest,
+      'captured answer bytes or digest changed');
+    ensure(evidence.eligibility === 'admitted' && evidence.terminal.reason === 'successful-final-reply'
+      && !evidence.terminal.limited && !evidence.terminal.errored && !evidence.terminal.cancelled
+      && !evidence.terminal.timedOut && !evidence.terminal.truncated && !evidence.terminal.toolCall,
+    'captured response terminal is not an admitted final reply');
+    ensure(evidence.contract.parserReference === 'claude-code-json-result'
+      && evidence.contract.parserVersion === '1', 'captured response parser is unsupported');
+    const completionRow = snapshot.entries.find(entry => !entry.taint.length && !entry.conflicts.length
+      && (entry.fact.body as unknown as { evidence?: import('../index.js').Evidence }).evidence?.id === evidence.terminal.evidence);
+    const terminalAuthorityRow = completionRow?.fact.predecessors.required.map(id => snapshot.entries.find(entry => entry.fact.id === id))
+      .find(entry => {
+        if (!entry || entry.taint.length || entry.conflicts.length) return false;
+        const authority = (entry.fact.body as unknown as { evidence?: import('../index.js').Evidence }).evidence;
+        return !!authority && consumeResult(readEvidence(authority, p.host.transport.current().clock, p.boundary.preserved),
+          { Success: claim => claim.predicate === 'provider-response-terminal-contract', Refused: () => false });
+      });
+    const terminalAuthority = (terminalAuthorityRow?.fact.body as unknown as { evidence?: import('../index.js').Evidence }).evidence;
+    const terminalClaim = terminalAuthority ? take(readEvidence(terminalAuthority,
+      p.host.transport.current().clock, p.boundary.preserved)) : undefined;
+    const mapping = terminalClaim?.value as unknown as { terminalReasonField?: unknown; successfulFinalReplyReasons?: unknown } | undefined;
+    ensure(terminalClaim?.subject === evidence.contract.evidenceContractReference
+      && typeof mapping?.terminalReasonField === 'string' && Array.isArray(mapping.successfulFinalReplyReasons)
+      && mapping.successfulFinalReplyReasons.every(reason => typeof reason === 'string'),
+    'captured response terminal mapping unavailable');
+    let extracted: string;
+    try {
+      const rawBase64 = take(p.captures.read(evidence.terminal.raw));
+      const terminalBytes = Buffer.from(rawBase64, 'base64');
+      ensure(Buffer.from(terminalBytes).toString('base64') === rawBase64
+        && `sha256:${createHash('sha256').update(terminalBytes).digest('hex')}` === evidence.terminal.rawDigest,
+      'captured raw terminal bytes or digest changed');
+      const terminalText = new TextDecoder('utf-8', { fatal: true }).decode(terminalBytes);
+      const frame = JSON.parse(terminalText) as Record<string, unknown>;
+      const transformed = frame.structured_output === undefined ? frame.result : JSON.stringify(frame.structured_output);
+      const actualReason = frame[mapping.terminalReasonField];
+      const reasonClass = typeof actualReason === 'string' ? actualReason.toLowerCase() : '';
+      ensure(frame.type === 'result' && frame.is_error === false && typeof transformed === 'string'
+        && typeof actualReason === 'string' && mapping.successfulFinalReplyReasons.includes(actualReason)
+        && actualReason === evidence.terminal.providerReason
+        && !reasonClass.includes('tool') && !reasonClass.includes('function') && !reasonClass.includes('cancel')
+        && !reasonClass.includes('timeout') && !reasonClass.includes('length') && !reasonClass.includes('limit')
+        && !reasonClass.includes('truncat'), 'captured terminal transform is not a final reply');
+      extracted = transformed;
+    } catch (error) { ensure(false, `captured terminal transform refused: ${String(error)}`); throw error; }
+    ensure(extracted === answerBytes && hashBytes(extracted) === evidence.answer.answerDigest,
+      'captured terminal transform differs from answer capture');
+    const decision = take(decode('Decision', JSON.parse(answerBytes), p.host.transport.current().decode));
+    ensure(decision.floor && encoded(decision.floor.allowed).hash === q.floorDigest && 'judgment' in decision.by
+      && decision.by.judgment === q.point && decision.by.route === q.route && decision.by.model === q.model,
+    'answer floor, point, route, or model differs');
+    ensure([...decision.conclusion.evidence, ...decision.reason.evidence].every(id => q.evidence.includes(id)),
+      'answer invented evidence');
+    const required = [requestFact.id, preparedFact.id, responseFact.id, effectRequestFact.id, executorFact.id,
+      responseObservationFact.id, consumedFact.id, claimFact.id];
+    validate(required);
+    return freeze({ owner: 'part-seven' as const, decision: json(decision), answerBytes,
+      answerDigest: subject.response.answerDigest, response: subject.seven.response,
+      responseEvidence: json(evidence), required });
+  });
+  const recordProviderAnswerAcceptance: ProviderJudgmentPort['recordProviderAnswerAcceptance'] = (input, assessment, fence) =>
+    checked('RecordProviderAnswerAcceptance', input, () => {
+      ensure(assessment.owner === 'part-nine' && isGenuineProviderResponseAssessmentPort(assessment, p.store),
+        'genuine same-store Nine response assessment required');
+      const prepared = take(readPrepared({ owner: 'part-seven', name: 'JudgmentRequest', id: input.subject.seven.request.id }, fence));
+      const q = prepared.value;
+      current(q, fence);
+      const decoded = take(decodeCapturedProviderDecision(input.subject));
+      const snapshot = take(p.store.readForProjection());
+      const exact = (reference: ProviderResponseSubject['seven']['response'], kind: string) => {
+        const row = snapshot.entries.find(entry => entry.fact.id === reference.id);
+        ensure(row && !row.taint.length && !row.conflicts.length && row.fact.kind === kind
+          && row.fact.schemaVersion === reference.schemaVersion && row.fact.contentHash === reference.contentHash,
+        'answer acceptance owner fact differs or is unavailable');
+        return row.fact;
+      };
+      const settlementFact = exact(input.settlement, 'effect-provider-ProviderEffectSettlement');
+      const accountingFact = exact(input.accounting, 'transport-SettlementApplication');
+      const settlement = raw(settlementFact)!, accounting = raw(accountingFact) as unknown as SettlementApplication;
+      ensure(settlement.acceptance === input.assessment.id && settlement.request === q.effectRequest
+        && settlement.operation === input.subject.six.operation && settlement.claim === input.subject.six.dispatchClaim.id
+        && settlement.digest === q.inputDigest && settlement.retryEligible === false,
+      'answer acceptance settlement differs from response subject');
+      ensure(accounting.type === 'SettlementApplication' && accounting.settlement === settlement.id
+        && accounting.settlementFact === settlementFact.id && accounting.settlementHash === settlementFact.contentHash
+        && accounting.operation === settlement.operation && accounting.request === settlement.request
+        && accounting.claim === settlement.claim && accounting.digest === settlement.digest && accounting.retryEligible === 0,
+      'answer acceptance accounting differs from settlement');
+      ensure(Number.isSafeInteger(q.maxCharge) && q.maxCharge >= 0 && accounting.exposure === settlement.retainedExposure
+        && (accounting.unresolved === 0 || settlement.retainedExposure === q.maxCharge),
+      'answer acceptance did not retain enforced maximum exposure');
+      const transport = take(p.authority.inspect());
+      const reservations = transport.filter(row => row.record.type === 'AdmissionReservation');
+      const exposure = new Map<string, number>();
+      for (const row of reservations) if (row.record.type === 'AdmissionReservation' && row.record.state !== 'prepared'
+        && row.record.state !== 'closed') exposure.set(row.record.operation, row.record.charge);
+      for (const row of transport) if (row.record.type === 'SettlementApplication')
+        exposure.set(row.record.operation, row.record.exposure);
+      ensure([...exposure.values()].reduce((sum, amount) => sum + amount, 0) <= p.host.transport.budget,
+        'retained provider exposure exceeds current spend capacity');
+      return take(assessment.consumeProviderResponseAssessment(input.assessment, input.subject, view => {
+        ensure(view.answerDigest === decoded.answerDigest && view.assessment.id === input.assessment.id,
+          'Nine response assessment differs from captured Decision');
+        ensure(view.assessmentFact.id === input.assessment.id
+          && view.assessmentFact.kind === 'verification-VerificationAssessment'
+          && view.assessmentFact.schemaVersion === 1
+          && view.assessmentFact.contentHash === snapshot.entries.find(entry => entry.fact.id === input.assessment.id)?.fact.contentHash,
+        'Nine assessment fact identity differs');
+        const prior = facts().find(fact => fact.kind === 'judgment-provider-ProviderAnswerAcceptance'
+          && raw(fact)?.request === q.id && raw(fact)?.attempt === q.attempt);
+        if (prior) {
+          const value = raw(prior) as unknown as ProviderAnswerAcceptance;
+          ensure(value.assessment.id === input.assessment.id && value.settlement.id === settlementFact.id
+            && value.accounting.id === accountingFact.id && value.answerDigest === decoded.answerDigest,
+          'provider answer already accepted with different joins');
+          return freeze({ owner: 'part-seven' as const, name: 'ProviderAnswerAcceptance' as const, id: prior.id });
+        }
+        const fields = { request: q.id, attempt: q.attempt, response: input.subject.seven.response,
+          operation: input.subject.six.operation, claim: input.subject.six.dispatchClaim.id, digest: q.inputDigest,
+          capture: input.subject.response.capture,
+          answerDigest: decoded.answerDigest, assessment: view.assessmentFact,
+          settlement: input.settlement, accounting: input.accounting, maximumCharge: q.maxCharge,
+          retainedExposure: accounting.exposure, generation: p.host.transport.current().generation.id,
+          acceptedAt: p.host.transport.current().clock.value };
+        const candidate: ProviderAnswerAcceptance = freeze({ type: 'ProviderAnswerAcceptance', schemaVersion: 1,
+          id: `provider-answer-acceptance:${encoded(fields).hash}`, ...fields });
+        const fact = append(candidate, [...view.required, settlementFact.id, accountingFact.id], decoded.decision as unknown as Decision);
+        return freeze({ owner: 'part-seven' as const, name: 'ProviderAnswerAcceptance' as const, id: fact.id });
+      }));
+    });
+  const port = Object.freeze({ owner: 'part-seven', readPrepared, decodeCapturedProviderDecision, recordProviderAnswerAcceptance,
     prepare: (input, fence) => checked('PrepareProviderJudgment', input, () => {
       ensure(Object.keys(input).sort().join(',') === 'context,deadline,evidence,id,ordinal,question,run,semanticMessage,step', 'closed provider question');
       ensure(input.run.owner === 'part-five' && input.run.name === 'Run', 'Five run required');
       const view = take(p.runs.read(input.run.id)), pending = facts().find(f => f.kind === 'run-transition' && raw(f)?.id === view.head);
+      ensure(facts().find(fact => fact.id === view.run.opening.id)?.kind !== 'judgment-provider-ProviderAnswerAcceptance',
+        'accepted provider reply Run cannot request another model operation');
       ensure(pending && view.pending.some(s => s.id === input.step), 'real Five pending step required');
       ensure(Number.isSafeInteger(input.ordinal) && input.ordinal >= 0 && input.id.length > 0 && input.semanticMessage.length > 0, 'bounded question identity');
       const d = p.host.description;
@@ -281,4 +640,6 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
       }));
     }),
   } satisfies ProviderJudgmentPort);
+  genuineDecisionReaders.set(port, p.store);
+  return port;
 }

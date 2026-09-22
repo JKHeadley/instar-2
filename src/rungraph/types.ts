@@ -5,6 +5,7 @@ import type { AppendReceipt, CausalFrontier, ConflictClass, DurabilityState, Fac
 import type { ProjectionGeneration, ProjectedView } from '../projections/index.js';
 import type { RegisterContext, VerifiedRegister } from '../register/index.js';
 import type { AssemblyHistoryReadPort } from '../assembly/contracts.js';
+import type { FenceToken } from '../transport/index.js';
 
 declare class RunBrand<N extends string> { private readonly runValue: N; private constructor(); }
 type RecordValue<N extends string, V extends number = 1> = RunBrand<N> & Readonly<{ type: N; schemaVersion: V; id: string }>;
@@ -185,6 +186,25 @@ export interface RunGraphDependencies {
   readonly exitCheck: Readonly<{ owner: 'part-nine'; verify(exit: CompletedRunExit, run: Run, now: Clock): Result<FactEnvelopeReference> }>;
   readonly groundingPolicy: Readonly<{ entry: string; threshold: number; maxAge: number; briefingClasses: readonly string[] }>;
   readonly generation: () => ProjectionGeneration; readonly clock: () => Clock;
+  readonly acceptedAnswer?: AcceptedProviderAnswerReadPort;
+}
+export interface AcceptedProviderAnswerView {
+  readonly acceptance: OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>;
+  readonly acceptanceFact: FactEnvelopeReference; readonly answer: string; readonly answerDigest: Hash;
+  readonly originalRun: string; readonly predecessor: string; readonly obligation: string;
+  readonly chargeSettled: boolean; readonly retainedExposure: number; readonly maximumCharge: number;
+  readonly required: readonly string[];
+}
+export interface AcceptedProviderAnswerReadPort {
+  readonly owner: 'part-eight';
+  consumeAcceptedProviderAnswer<T>(reference: OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>,
+    consumer: (view: AcceptedProviderAnswerView) => T): Result<T>;
+}
+export interface AcceptedProviderReplyInput {
+  readonly acceptance: OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>;
+  readonly originalRun: string; readonly expected: string; readonly obligation: FactEnvelopeReference;
+  readonly standing: FactEnvelopeReference; readonly ownership: LeaseReference; readonly fence: FenceToken;
+  readonly reply: unknown;
 }
 export interface RunExitReadPort<E extends RunExit = RunExit> {
   readonly owner: 'part-five';
@@ -195,6 +215,7 @@ export interface RunExitReadPort<E extends RunExit = RunExit> {
 }
 export interface RunGraphPort extends RunExitReadPort<CompletedRunExit> {
   open(input: unknown): Result<RunView>;
+  openAcceptedProviderReply(input: AcceptedProviderReplyInput): Result<RunView>;
   read(run: string): Result<RunView>;
   ground(run: string, worker: string, harness: string, reason: SessionGrounding['reason'], ownership: LeaseReference): Result<FactEnvelope>;
   transition(input: unknown): Result<RunView>;

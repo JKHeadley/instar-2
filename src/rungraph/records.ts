@@ -103,14 +103,28 @@ function decodeRecord(name: string, input: Json, c: RunDecodeContext): Json {
     v.resources = resources.map(r => { const kind = String(object(object(r).subject).kind); const m = take(decodeMeasurement(kind, r, c.types));
       need(kind !== 'clock' && m.subject.instance === v.id && m.value >= 0, 'budget measurement subject mismatch'); return json(m); });
   } else if (name === 'Run') {
-    const opening = factReference(v.opening!, c); need(c.stimulusKinds.includes(opening.kind), 'opening must be an admitted stimulus');
+    const opening = factReference(v.opening!, c);
+    const acceptedReply = opening.kind === 'judgment-provider-ProviderAnswerAcceptance';
+    need(c.stimulusKinds.includes(opening.kind) || acceptedReply, 'opening must be an admitted stimulus or accepted provider answer');
     need(v.id === runIdFor(v.opening), 'root identity must be derived from opening cause');
     const intent = constitutional(v.intent as unknown as ConstitutionalReference<'Intent'>, 'Intent', c);
-    need(object(object(v.intent).fact).id === opening.id, 'intent must come from opening admission');
+    if (acceptedReply) {
+      const acceptance = object(object(opening.body).record);
+      const request = c.facts.facts.find(fact => fact.kind === 'judgment-provider-ProviderJudgmentRequest'
+        && object(object(fact.body).record).id === acceptance.request);
+      need(request, 'accepted reply original provider request absent');
+      const originalRun = c.facts.facts.find(fact => fact.kind === runKinds.Run
+        && object(fact.body).run === object(object(request.body).record).run);
+      need(originalRun, 'accepted reply original run absent');
+      const original = object(decodeRecord('Run', json(object(originalRun.body).record), c));
+      need(same(v.intent, original.intent) && same(v.directives, original.directives) && same(v.owner, original.owner)
+        && same(v.scope, original.scope) && same(v.resultDestination, original.resultDestination)
+        && same(v.generation, original.generation), 'accepted reply changed original conversation or accountability');
+    } else need(object(object(v.intent).fact).id === opening.id, 'intent must come from opening admission');
     if (opening.kind === 'intake-admitted') {
       const resolved = take(resolveIntakeOwner(opening, c));
       need(same(v.owner, resolved.owner) && same(v.intent, resolved.intent), 'run changed resolved intake accountability');
-    } else need(object(object(v.owner).fact).id === opening.id, 'owner must come from opening admission');
+    } else if (!acceptedReply) need(object(object(v.owner).fact).id === opening.id, 'owner must come from opening admission');
     principal(v.owner!, c); v.scope = json(take(decode('Scope', v.scope, c.types)));
     const declared = c.facts.schemas.find(s => s.kind === opening.kind && s.version === opening.schemaVersion); need(declared && scopeIncludes(declared.scope, take(decode('Scope', v.scope, c.types))), 'run scope exceeds admitted stimulus scope');
     const directives = v.directives as unknown as ConstitutionalReference<'Directive'>[];
@@ -230,6 +244,27 @@ export function runFactSchemas(context: RunDecodeContext): Result<{ schemas: rea
         const record = decodeRecord(name, value, local);
         const cone = new Set(causalCone(c.origin, c.facts.facts).map(f => f.id));
         need(recordReferences(record).every(id => cone.has(id)), 'run record reference is outside signed causal cone');
+        if (name === 'Run') {
+          const run = object(record), opening = object(run.opening);
+          if (opening.kind === 'judgment-provider-ProviderAnswerAcceptance') {
+            const acceptance = c.facts.facts.find(fact => fact.id === opening.id
+              && fact.kind === 'judgment-provider-ProviderAnswerAcceptance');
+            const acceptanceRecord = acceptance ? object(object(acceptance.body).record) : undefined;
+            const request = acceptanceRecord ? c.facts.facts.find(fact => fact.kind === 'judgment-provider-ProviderJudgmentRequest'
+              && object(object(fact.body).record).id === acceptanceRecord.request) : undefined;
+            const requestRecord = request ? object(object(request.body).record) : undefined;
+            const effect = requestRecord ? c.facts.facts.find(fact => fact.kind === 'effect-provider-ProviderEffectRequest'
+              && object(object(fact.body).record).id === requestRecord.effectRequest) : undefined;
+            const effectRecord = effect ? object(object(effect.body).record) : undefined;
+            const obligation = effectRecord ? c.facts.facts.find(fact => fact.id === effectRecord.obligation
+              && fact.kind === 'transport-LoopRecord') : undefined;
+            const obligationRecord = obligation ? object(object(obligation.body).record) : undefined;
+            need(acceptance && request && effect && obligation && obligationRecord
+              && obligationRecord.run === requestRecord?.run && obligationRecord.state !== 'stopped'
+              && c.origin.predecessors.required.includes(obligation.id),
+            'accepted reply conversation obligation closure differs');
+          }
+        }
         return { ok: true, value: record };
       } }, runShapes[name]!, context)));
     const first = context.facts.schemas.find(s => context.stimulusKinds.includes(s.kind)); need(first, 'stimulus schema required for run installation');

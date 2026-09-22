@@ -8,5 +8,19 @@
     "type": "Declaration", "schemaVersion": 1, "id": "judgment-reference-host", "kind": "protected artifacts", "status": "live",
     "requiredFacts": { "pattern": "scripts/judgment-*.mjs", "why": "Reference host supplies durable local captured bytes and verified evidence folds; it is not candidate policy or production activation.", "surface": "repository review approval" },
     "standards": [82], "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "judgment-provider-ProviderAnswerAcceptance",
+    "kind": "protected artifacts",
+    "status": "live",
+    "requiredFacts": {
+      "pattern": "src/judgment/provider-path.ts",
+      "why": "part-seven FactEnvelope and owned-body schema 1: recordProviderAnswerAcceptance produces one exact response-evidence/Nine-assessment/settlement/accounting join; decodeProviderAnswerAcceptanceAtOrigin and decodeHistoricalProviderAnswerAcceptance validate its original basis; decodeCapturedProviderDecision is the genuine same-store read-only response-evidence consumer used by P10-SI-17 and P10-SI-37.",
+      "surface": "repository review approval"
+    },
+    "standards": [82],
+    "holds": []
   }
 ]

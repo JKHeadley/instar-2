@@ -1,22 +1,24 @@
-import type { Authorization, BoundaryContext, Clock, DecodeContext, Evidence, Hash, Json, Result, Scope, VerifiedPrincipal } from '../index.js';
+import type { Authorization, BoundaryContext, Clock, DecodeContext, Evidence, Hash, Json, OwnedReference, Result, Scope, VerifiedPrincipal } from '../index.js';
 import type { AppendReceipt, ConflictClass, FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 
 declare class VerificationBrand<N extends string> {
   private readonly verificationValue: N;
   private constructor();
 }
-type VerificationValue<N extends string> = VerificationBrand<N> & Readonly<{
-  type: N; schemaVersion: 1; id: string; predecessors: readonly string[];
+type VerificationValue<N extends string, V extends 1 | 2 = 1> = VerificationBrand<N> & Readonly<{
+  type: N; schemaVersion: V extends 2 ? 2 : 1 | 2; id: string; predecessors: readonly string[];
 }>;
 
 export type HolderArmKind = 'build' | 'runtime' | 'probe' | 'sentinel' | 'retrospective';
 export type EvidenceStrength = 'proof' | 'observation' | 'attestation' | 'inference';
-export type VerificationPredicate = 'occurrence' | 'non-occurrence' | 'quiescence' | 'charge';
+export type SettlementVerificationPredicate = 'occurrence' | 'non-occurrence' | 'quiescence' | 'charge';
+export type ProviderResponsePredicate = 'response-authenticity' | 'response-completeness';
+export type VerificationPredicate = SettlementVerificationPredicate | ProviderResponsePredicate;
 export type VerificationVerdict = 'satisfied' | 'contradicted' | 'insufficient';
 export type ProbeDisposition = 'passed' | 'failed' | 'inconclusive' | 'not-run' | 'cancelled';
 export type GuardPosture = 'healthy' | 'failed' | 'stale' | 'unknown' | 'inactive';
 
-export interface VerificationPlan extends VerificationValue<'VerificationPlan'> {
+export interface VerificationPlanV1 extends VerificationValue<'VerificationPlan'> {
   readonly subject: Readonly<{ rules: readonly number[]; holder: string; governed: string; scope: string; generation: string }>;
   readonly arms: readonly Readonly<{ id: string; kind: HolderArmKind; executable: string; fixture: string; outputContract: string; canFail: string; required: boolean }>[];
   readonly bar: Readonly<{ version: string; predicates: readonly VerificationPredicate[]; sources: readonly string[]; minimumStrength: EvidenceStrength; subjectDigest: string; captureRequired: boolean; freshness: number; complete: boolean }>;
@@ -28,23 +30,87 @@ export interface VerificationPlan extends VerificationValue<'VerificationPlan'> 
   readonly activation: Readonly<{ unit: readonly string[]; integration: readonly string[]; lifecycle: readonly string[]; semantic: readonly string[]; limits: readonly string[]; evidence: readonly string[] }>;
 }
 
-export interface VerificationRequest extends VerificationValue<'VerificationRequest'> {
+export interface VerificationRequestV1 extends VerificationValue<'VerificationRequest'> {
   readonly logicalKey: string; readonly operation: string; readonly attempt: string; readonly reservation: string;
-  readonly operationDigest: string; readonly scope: string; readonly predicate: VerificationPredicate;
+  readonly operationDigest: string; readonly scope: string; readonly predicate?: SettlementVerificationPredicate;
   readonly plan: string; readonly barVersion: string; readonly initialEvidence: readonly string[];
   readonly missingEvidence: readonly string[]; readonly owner: string; readonly loop: string;
   readonly createdAt: number; readonly sourceGeneration: string;
 }
 
-export interface VerificationAssessment extends VerificationValue<'VerificationAssessment'> {
+export interface VerificationAssessmentV1 extends VerificationValue<'VerificationAssessment'> {
   readonly request: string; readonly operation: string; readonly attempt: string; readonly operationDigest: string;
   readonly barVersion: string; readonly observer: string; readonly evidence: readonly string[];
   readonly missingEvidence: readonly string[]; readonly vectorDigest: string; readonly knownLineages: readonly string[];
   readonly captureStatuses: readonly Readonly<{ reference: string; status: 'available' | 'tombstoned' | 'expired' | 'missing' }>[];
   readonly taints: readonly string[];
-  readonly predicates: readonly Readonly<{ predicate: VerificationPredicate; verdict: VerificationVerdict; reason: string; evidence: readonly string[]; decision: string }>[];
+  readonly predicates: readonly VerificationVerdictRow[];
   readonly validFrom: number; readonly validUntil: number; readonly supersedes: string;
 }
+
+export interface ResponseFactReference {
+  readonly owner: 'part-two'; readonly name: 'FactEnvelope'; readonly id: string;
+  readonly kind: string; readonly schemaVersion: number; readonly contentHash: Hash;
+}
+export interface ProviderResponseSubject {
+  readonly seven: Readonly<{ request: ResponseFactReference; prepared: ResponseFactReference; attempt: string; response: ResponseFactReference }>;
+  readonly eight: Readonly<{ request: ResponseFactReference; executorObservation: ResponseFactReference; responseObservation: ResponseFactReference }>;
+  readonly six: Readonly<{ operation: string; consumedReservation: ResponseFactReference; dispatchClaim: ResponseFactReference }>;
+  readonly submitted: Readonly<{ capture: Readonly<{ reference: string; hash: Hash }>; operationDigest: Hash }>;
+  readonly route: Readonly<{ provider: string; model: string; route: string; routeBasis: string; floorDigest: Hash;
+    evidence: readonly string[]; evidenceDigest: Hash; settingsDigest: Hash; outputSchemaDigest: Hash }>;
+  readonly response: Readonly<{ capture: Readonly<{ reference: string; hash: Hash }>; answerDigest: Hash;
+    parserReference: string; parserVersion: string; evidenceContractReference: string; evidenceContractVersion: string }>;
+  readonly terminal: Readonly<{ evidence: string; capture: Readonly<{ reference: string; hash: Hash }>;
+    rawDigest: Hash; sourceEvidence: readonly string[] }>;
+}
+export interface ProviderResponseRequirement {
+  readonly predicate: ProviderResponsePredicate; readonly sources: readonly string[];
+  readonly minimumStrength: EvidenceStrength; readonly requiredContract: string;
+}
+export interface VerificationVerdictRow<P extends VerificationPredicate = VerificationPredicate> {
+  readonly predicate: P; readonly verdict: VerificationVerdict; readonly reason: string;
+  readonly evidence: readonly string[]; readonly decision: string;
+}
+export interface ProviderResponseVerificationPlan extends VerificationValue<'VerificationPlan', 2> {
+  readonly purpose: 'output-use';
+  readonly subject: VerificationPlanV1['subject']; readonly arms: VerificationPlanV1['arms'];
+  readonly bar: Readonly<{ version: string; predicates: readonly VerificationPredicate[]; sources: readonly string[];
+    minimumStrength: EvidenceStrength; subjectDigest: string; captureRequired: true; freshness: number; complete: boolean }>;
+  readonly independence: VerificationPlanV1['independence']; readonly scheduling: VerificationPlanV1['scheduling'];
+  readonly bounds: VerificationPlanV1['bounds']; readonly consumers: VerificationPlanV1['consumers'];
+  readonly privacy: VerificationPlanV1['privacy']; readonly activation: VerificationPlanV1['activation'];
+  readonly responseContract: Readonly<{ parserReference: string; parserVersion: string;
+    evidenceContractReference: string; evidenceContractVersion: string; mode: 'single-final-reply' }>;
+  readonly responseRequirements: readonly ProviderResponseRequirement[];
+}
+export interface ProviderResponseVerificationRequest extends VerificationValue<'VerificationRequest', 2> {
+  readonly purpose: 'output-use'; readonly logicalKey: string; readonly operation: string; readonly attempt: string;
+  readonly reservation: string; readonly operationDigest: string; readonly scope: string;
+  readonly predicate?: SettlementVerificationPredicate;
+  readonly predicates: readonly ProviderResponsePredicate[]; readonly subject: ProviderResponseSubject;
+  readonly plan: string; readonly barVersion: string; readonly initialEvidence: readonly string[];
+  readonly missingEvidence: readonly string[]; readonly owner: string; readonly loop: string;
+  readonly createdAt: number; readonly sourceGeneration: string;
+}
+export interface ProviderResponseVerificationAssessment extends VerificationValue<'VerificationAssessment', 2> {
+  readonly purpose: 'output-use'; readonly request: string; readonly operation: string; readonly attempt: string;
+  readonly operationDigest: string; readonly subject: ProviderResponseSubject; readonly barVersion: string;
+  readonly observer: string; readonly evidence: readonly string[]; readonly missingEvidence: readonly string[];
+  readonly vectorDigest: string; readonly knownLineages: readonly string[];
+  readonly captureStatuses: VerificationAssessmentV1['captureStatuses']; readonly taints: readonly string[];
+  readonly predicates: readonly VerificationVerdictRow[]; readonly validFrom: number; readonly validUntil: number;
+  readonly supersedes: string;
+}
+// The original public names remain the v1 settlement contracts. Generic record
+// paths use the explicit version union below; legacy callers are not silently
+// widened into output-use issuance.
+export type VerificationPlan = VerificationPlanV1;
+export type VerificationRequest = VerificationRequestV1;
+export type VerificationAssessment = VerificationAssessmentV1;
+export type VersionedVerificationPlan = VerificationPlan | ProviderResponseVerificationPlan;
+export type VersionedVerificationRequest = VerificationRequest | ProviderResponseVerificationRequest;
+export type VersionedVerificationAssessment = VerificationAssessment | ProviderResponseVerificationAssessment;
 
 export interface ProbeRecord extends VerificationValue<'ProbeRecord'> {
   readonly plan: string; readonly planVersion: string; readonly arm: string; readonly slot: string; readonly attempt: string;
@@ -117,7 +183,7 @@ export interface BenchmarkEvaluation extends VerificationValue<'BenchmarkEvaluat
   readonly routeDecision: string; readonly selection: string; readonly complete: boolean;
 }
 
-export type VerificationRecord = VerificationPlan | VerificationRequest | VerificationAssessment | ProbeRecord |
+export type VerificationRecord = VersionedVerificationPlan | VersionedVerificationRequest | VersionedVerificationAssessment | ProbeRecord |
   RetrospectiveReviewRecord | SemanticReviewRecord | Grade | AssessmentClosure | FeedbackDisposition | BenchmarkEvaluation;
 export type VerificationRecordName = VerificationRecord['type'];
 export interface VerificationDecodeContext extends BoundaryContext {}
@@ -158,6 +224,33 @@ export interface VerificationRuntimePort {
   inspectCurrent(): Result<readonly CurrentVerificationFact[]>;
   due(now: Clock): Result<readonly VerificationDueItem[]>;
   posture(plan: string, now: Clock): Result<GuardPostureView>;
+}
+export interface ConsumedProviderResponseAssessment {
+  readonly assessment: OwnedReference<'part-nine', 'VerificationAssessment'>;
+  readonly assessmentFact: ResponseFactReference;
+  readonly subject: ProviderResponseSubject; readonly answerDigest: Hash;
+  readonly evidence: readonly string[]; readonly validUntil: number; readonly required: readonly string[];
+}
+export interface ProviderResponseAssessmentInput {
+  readonly plan: string; readonly bar: string; readonly generation: string; readonly subject: ProviderResponseSubject;
+}
+export interface CapturedProviderDecision {
+  readonly owner: 'part-seven'; readonly decision: Json; readonly answerBytes: string;
+  readonly answerDigest: Hash; readonly response: ResponseFactReference; readonly responseEvidence: Json;
+  readonly required: readonly string[];
+}
+export interface ProviderDecisionReadPort {
+  readonly owner: 'part-seven';
+  decodeCapturedProviderDecision(subject: ProviderResponseSubject): Result<CapturedProviderDecision>;
+}
+export interface ProviderResponseAssessmentPort {
+  readonly owner: 'part-nine';
+  assess(input: ProviderResponseAssessmentInput): Result<OwnedReference<'part-nine', 'VerificationAssessment'>>;
+  consumeProviderResponseAssessment<T>(reference: OwnedReference<'part-nine', 'VerificationAssessment'>,
+    subject: ProviderResponseSubject, consumer: (view: ConsumedProviderResponseAssessment) => T): Result<T>;
+  consumeEffectSettlementAssessment<T>(reference: OwnedReference<'part-nine', 'VerificationAssessment'>,
+    input: import('./effect-consumption.js').EffectSettlementAssessmentInput,
+    consumer: (view: import('./effect-consumption.js').ConsumedEffectAssessment) => T): Result<T>;
 }
 export interface CaptureAdmissionState {
   readonly capacity: number; readonly retained: number; readonly reserved: number;

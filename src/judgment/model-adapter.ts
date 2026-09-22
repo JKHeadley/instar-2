@@ -17,6 +17,39 @@ export function observationCheck(v: ProviderObservation, d: ModelDescription): v
   for (const n of [v.usage.inputTokens, v.usage.outputTokens, v.usage.charge]) ensure(n === null || Number.isSafeInteger(n) && n >= 0, 'invalid observed usage');
   ensure(typeof v.usage.source === 'string' && v.usage.source.length > 0 && v.usage.source.length <= 256, 'usage source or explicit exception required');
   ensure(typeof v.retryBlocked === 'boolean', 'retry observation required');
+  if (v.responseEvidence) {
+    const e = v.responseEvidence, bounded = (value: string, field: string) => ensure(typeof value === 'string' && value.length > 0 && value.length <= 2048, `${field} bound`);
+    ensure(e.eligibility === 'admitted' || e.eligibility === 'held', 'response evidence eligibility invalid');
+    ensure(e.contract.mode === 'single-final-reply', 'unsupported response evidence mode');
+    for (const value of [e.contract.maxMetadataBytes, e.contract.maxRawTerminalBytes, e.contract.maxCaptureBytes, e.terminal.observedAt])
+      ensure(Number.isSafeInteger(value) && value >= 0, 'response evidence bound or clock invalid');
+    ensure(e.contract.maxMetadataBytes > 0 && e.contract.maxRawTerminalBytes > 0
+      && e.contract.maxCaptureBytes >= e.contract.maxMetadataBytes
+      && new TextEncoder().encode(encoded(e).bytes).length <= e.contract.maxMetadataBytes,
+    'response evidence exceeds declared finite metadata bound');
+    for (const [field, value] of Object.entries({ parserReference: e.contract.parserReference, parserVersion: e.contract.parserVersion,
+      evidenceContractReference: e.contract.evidenceContractReference, evidenceContractVersion: e.contract.evidenceContractVersion,
+      observerPrincipal: e.source.observerPrincipal, executableArtifact: e.source.executableArtifact,
+      provider: e.source.provider, model: e.source.model, route: e.source.route, call: e.source.call, request: e.source.request,
+      attempt: e.source.attempt, operation: e.source.operation, claim: e.source.claim,
+      reason: e.terminal.reason, providerReason: e.terminal.providerReason,
+      extractionContract: e.answer.extractionContract })) bounded(value, field);
+    if (e.eligibility === 'admitted') for (const [field, value] of Object.entries({ controller: e.source.controller,
+      endpoint: e.source.endpoint, account: e.source.account, credentialReference: e.source.credentialReference,
+      terminalEvidence: e.terminal.evidence })) bounded(value, field);
+    ensure(e.source.provider === d.provider && e.source.model === d.model && e.source.route === d.route,
+      'response evidence route differs');
+    ensure((e.eligibility === 'held' || e.source.evidence.length > 0) && e.source.evidence.length <= 64
+      && e.source.evidence.every(id => typeof id === 'string' && id.length > 0 && id.length <= 2048), 'response source Evidence references invalid');
+    ensure(['proof', 'observation', 'attestation', 'inference'].includes(e.source.strength), 'response source strength invalid');
+    for (const capture of [e.terminal.raw, e.answer.source]) {
+      bounded(capture.reference, 'response capture reference');
+      ensure(/^sha256:[a-f0-9]{64}$/.test(capture.hash), 'response capture hash malformed');
+    }
+    for (const digest of [e.source.submittedDigest, e.terminal.rawDigest, e.answer.answerDigest]) ensure(/^sha256:[a-f0-9]{64}$/.test(digest), 'response digest malformed');
+    for (const flag of [e.terminal.limited, e.terminal.errored, e.terminal.cancelled, e.terminal.timedOut, e.terminal.truncated, e.terminal.toolCall])
+      ensure(typeof flag === 'boolean', 'response terminal flag invalid');
+  }
   if (v.limitation) {
     ensure(v.state === 'uncertain' && ['transport-threw', 'invalid-provider-observation', 'response-byte-limit'].includes(v.limitation.kind), 'limited observation cannot authorize answer');
     ensure(v.limitation.observedBytesAtLeast === null || Number.isSafeInteger(v.limitation.observedBytesAtLeast) && v.limitation.observedBytesAtLeast >= 0, 'invalid observed byte lower bound');
@@ -41,6 +74,7 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
       && Reflect.ownKeys(v).length === fields.length && fields.every(k => Object.getOwnPropertyDescriptor(v, k)?.value !== undefined); } catch { return false; }
   };
   const state = data(raw, 'state'), bytes = data(raw, 'bytes'), operation = data(raw, 'providerOperation'), usage = data(raw, 'usage');
+  const responseEvidence = data(raw, 'responseEvidence');
   const count = (v: unknown): number | null => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null;
   const input = data(usage, 'inputTokens'), output = data(usage, 'outputTokens'), charge = data(usage, 'charge'), source = data(usage, 'source');
   const validCount = (v: unknown) => v === null || count(v) !== null;
@@ -48,12 +82,62 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
   // Avoid allocating a second unbounded byte array for oversized raw strings.
   const observedBytesAtLeast = typeof bytes !== 'string' ? null : bytes.length > d.maxOutputBytes ? bytes.length : new TextEncoder().encode(bytes).length;
   const oversized = observedBytesAtLeast !== null && observedBytesAtLeast > d.maxOutputBytes;
-  const valid = plain(raw, ['state', 'bytes', 'providerOperation', 'usage', 'retryBlocked'])
+  const baseFields = ['state', 'bytes', 'providerOperation', 'usage', 'retryBlocked'];
+  const valid = (plain(raw, baseFields) || plain(raw, [...baseFields, 'responseEvidence']))
     && plain(usage, ['inputTokens', 'outputTokens', 'charge', 'source'])
     && typeof state === 'string' && ['complete', 'rejected', 'uncertain'].includes(state)
     && (bytes === null || typeof bytes === 'string') && (state !== 'complete' || typeof bytes === 'string')
     && (operation === null || typeof operation === 'string' && operation.length <= 256)
     && [input, output, charge].every(validCount) && validText(source) && typeof data(raw, 'retryBlocked') === 'boolean';
+  const copyEvidence = (): ProviderObservation['responseEvidence'] => {
+    if (!responseEvidence || typeof responseEvidence !== 'object') return undefined;
+    // Canonical snapshot rejects accessors and divorces every nested field from
+    // the provider-owned object before the receipt is admitted.
+    let nodes = 0;
+    const clone = (value: unknown, depth: number): unknown => {
+      ensure(depth <= 8 && ++nodes <= 512, 'response evidence structure exceeds bound');
+      if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+      ensure(value && typeof value === 'object', 'response evidence contains unsupported value');
+      if (Array.isArray(value)) {
+        const length = Object.getOwnPropertyDescriptor(value, 'length');
+        ensure(length && 'value' in length && Number.isSafeInteger(length.value) && length.value >= 0
+          && length.value <= 64, 'response evidence array exceeds bound');
+        const allowed = new Set(['length', ...Array.from({ length: length.value }, (_, index) => String(index))]);
+        ensure(Reflect.ownKeys(value).every(key => typeof key === 'string' && allowed.has(key)),
+          'response evidence array fields differ');
+        return Array.from({ length: length.value }, (_, index) => {
+          const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+          ensure(descriptor && 'value' in descriptor, 'response evidence array accessor refused');
+          return clone(descriptor.value, depth + 1);
+        });
+      }
+      ensure([Object.prototype, null].includes(Object.getPrototypeOf(value)), 'response evidence prototype refused');
+      const output: Record<string, unknown> = {};
+      for (const key of Reflect.ownKeys(value)) {
+        ensure(typeof key === 'string', 'response evidence symbol refused');
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        ensure(descriptor && 'value' in descriptor, 'response evidence accessor refused');
+        output[key] = clone(descriptor.value, depth + 1);
+      }
+      return output;
+    };
+    const copied = clone(responseEvidence, 0) as NonNullable<ProviderObservation['responseEvidence']>;
+    const keys = (value: object, expected: readonly string[]) => ensure(Reflect.ownKeys(value).sort().join(',') === [...expected].sort().join(','),
+      'response evidence fields differ');
+    keys(copied, ['eligibility', 'contract', 'source', 'terminal', 'answer']);
+    keys(copied.contract, ['parserReference', 'parserVersion', 'evidenceContractReference', 'evidenceContractVersion',
+      'mode', 'maxMetadataBytes', 'maxRawTerminalBytes', 'maxCaptureBytes']);
+    keys(copied.source, ['observerPrincipal', 'controller', 'evidence', 'endpoint', 'account', 'credentialReference',
+      'executableArtifact', 'provider', 'model', 'route', 'call', 'request', 'attempt', 'operation', 'claim',
+      'submittedDigest', 'strength']);
+    keys(copied.terminal, ['raw', 'rawDigest', 'evidence', 'reason', 'providerReason', 'observedAt', 'limited', 'errored',
+      'cancelled', 'timedOut', 'truncated', 'toolCall']);
+    keys(copied.terminal.raw, ['reference', 'hash']);
+    keys(copied.answer, ['source', 'extractionContract', 'answerDigest']);
+    keys(copied.answer.source, ['reference', 'hash']);
+    return copied;
+  };
+  const evidence = copyEvidence();
   const observation: ProviderObservation = {
     state: valid && !oversized ? state as ProviderObservation['state'] : 'uncertain',
     bytes: typeof bytes === 'string' && !oversized ? bytes : null,
@@ -61,6 +145,7 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
     usage: { inputTokens: count(input), outputTokens: count(output), charge: count(charge),
       source: validText(source) ? source as string : 'invalid usage source; independently valid numeric fields retained' },
     retryBlocked: false,
+    ...(evidence ? { responseEvidence: evidence } : {}),
     ...(!valid || oversized ? { limitation: { kind: oversized ? 'response-byte-limit' as const : 'invalid-provider-observation' as const, observedBytesAtLeast } } : {}),
   };
   observationCheck(observation, d);
