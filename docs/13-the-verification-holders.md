@@ -328,10 +328,12 @@ Assessment of bytes already in custody makes no provider call, billing query or 
 
 **Rule — versions preserve history without promoting occurrence.** Owner: Nine, using Two's
 registered owned-body and historical machinery. **Check: P9-NF-65**. Only VerificationPlan,
-VerificationRequest and VerificationAssessment have an output-use schema version 2. Their fact
-families stay `verification-VerificationPlan`, `verification-VerificationRequest` and
-`verification-VerificationAssessment`; register envelope schema 2 explicitly for each, retaining
-schema 1. The other seven Nine records remain version 1. The closed v2 wire variant is marked
+VerificationRequest and VerificationAssessment add owned-body schemaVersion 2 with purpose: output-use.
+Their existing fact families retain FactEnvelope.schemaVersion 1 and their existing record-owned
+field schema. Each family's single genuine Nine owned-body registration accepts exact body v1
+and exact output-use body v2. Existing producers retain body v1. No FactContext migration is
+required because the family schema has not changed. The other seven Nine records remain version 1.
+The closed v2 wire variant is marked
 `purpose: output-use`; unknown fields, purposes or versions refuse.
 
 - The v2 plan keeps all existing plan groups and adds the pinned response contract/parser and
@@ -352,7 +354,8 @@ schema 1. The other seven Nine records remain version 1. The closed v2 wire vari
 `decodeVerificationRecord` dispatches the exact wire version. The public owner branches
 `decodeVerificationRecordAtOrigin` and `decodeHistoricalVerificationRecord`, registered by
 `registerVerificationBodies`, cover all three names. Origin decoding verifies the authorized
-recorder/machine, family/envelope/body version, generation/scope, source facts and actual captures,
+recorder/machine, the family's outer FactEnvelope.schemaVersion 1 and the independently validated
+original body version, generation/scope, source facts and actual captures,
 full required predecessor closure and the derivation. A generic typed object, copied digest,
 structural decoder or `runtime.record` call is not issuance of an accepted assessment. The
 output port rederives and resolves the genuine owner fact before use.
@@ -361,7 +364,8 @@ Two's single registration per owner/name (`src/facts/owned.ts:23–59`) and One'
 decoder versions (`src/decode/framework.ts:63–89`) still apply.
 For the registered v2 decoder, the v1 migration validates the original closed v1 body, carries
 it through a decoder-local `legacy-settlement` arm and returns its unchanged v1 owner value.
-That arm is never a newly issuable wire record: origin schema 2 requires `output-use`. It has
+That arm is never acceptable as raw wire input in either origin or historical mode:
+wire body schema 2 requires `output-use`. It has
 no response subject or response verdict, and never enters the output consumer. This is a
 lossless decoding adapter, not a stored upgrade. Both pre- and post-decode owned-shape checks
 must accept the original v1 shape and exact v2 output shape; optional union fields in that bound
