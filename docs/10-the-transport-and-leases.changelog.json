@@ -22,7 +22,7 @@
       {
         "what": "Replace §4a's blanket one-loop-per-domain statement: standing capacity implies no change to singleton loop admission, and the separately versioned provider/reply profile admits only its exact dependent reply Run, creating no additional ordinary or minimal-responder slot.",
         "why": "The prior wording read as forbidding the reviewed pair; it must bound the exception without widening capacity.",
-        "ref": "git-history: docs/10-the-transport-and-leases.md §4a singleton-capacity replacement; commit 56b47c1"
+        "ref": "git-history: docs/10-the-transport-and-leases.md §4a singleton-capacity replacement; commit e2c11c3"
       }
     ]
   },
