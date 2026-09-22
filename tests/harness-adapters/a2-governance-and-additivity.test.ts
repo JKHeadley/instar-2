@@ -19,7 +19,7 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
     ['tests/assembly/round10-regressions.test.ts', '74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605'],
     ['tests/assembly/round12-regressions.test.ts', '6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9'],
     // Settlement seam baseline: exact helper bytes for landed Eight 189b346.
-    ['tests/transport/effect-pin.mjs', '3f5f25267cec55cd96b6f7bd2e27c6ef3720aacbde9ee5a181d946f28ab95edb'],
+    ['tests/transport/effect-pin.mjs', '19d668f4779b2057377de7daa64da59af7685277f59762f9f20ffae4d0081302'],
   ]);
   const prefixes = ['tests/rungraph/', 'tests/transport/', 'tests/effects/', 'tests/verification/', 'tests/assembly/'];
   const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })

@@ -1,10 +1,10 @@
-// Actual merged eight producer from local dist; real fixture sources pinned to
-// its main squash. No copied implementation or mutable sibling working files.
+// Actual reviewed G6 eight producer (503642b, Astra ruling astra-g6-settlement-types-ruling.md) from local dist;
+// real fixture sources pinned to that commit. No copied implementation or mutable sibling working files.
 import { execFileSync } from 'node:child_process';
 import { resolve, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
-export const effectCommit = '189b34693078cbd9a578181af202b680ed3eae39';
+export const effectCommit = '503642b2d5bd04bd2a0b6e7a0d0fa859399237f4';
 const source = path => execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 const data = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
 const local = path => pathToFileURL(resolve(path)).href;
