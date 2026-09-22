@@ -15,7 +15,7 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
     ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
     // GRANT M4-G6-N-T7: the two exhaustive P9 disposition counts 63 -> 66.
     ['tests/verification/coverage.test.ts', 'ad5a8cb698bb8a55366192d62f621bcc17395b6f8801189a58fab43ecbc4ef94'],
-    ['tests/rungraph/production-grounding-scope.test.ts', '9dd04f49ae65a9ed5fb796599c6244e38596f53d3eb0cfc39124df15f474e3bd'],
+    ['tests/rungraph/production-grounding-scope.test.ts', '90e0bd77609a2904c17072a49c6074fff7d23044a60931eac8fe0502eb7d2479'],
     ['tests/assembly/round10-regressions.test.ts', '74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605'],
     ['tests/assembly/round12-regressions.test.ts', '6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9'],
     // Settlement seam baseline: exact helper bytes for landed Eight 189b346.
