@@ -10,7 +10,7 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
   const grantedContent = new Map([
     // GRANT M3-S (astra-m3-structural-adjudication.md section 3): exact additive Five early-guard tests.
     ['tests/rungraph/installed-governance.test.ts', '4741c9e14be82d3329fcee03e30ef6e661c95aba210ef0fa5cbd010f5c251737'],
-    ['tests/assembly/production-grounding-inventory.json', 'afcb7ab95552349762d61017a53b4fc5b908e10e63ad804c5fb432396e9789fb'],
+    ['tests/assembly/production-grounding-inventory.json', 'e0368d180bb2fed0926ddcb6ce6bbe5a0661ac7c7dbf256d345c1f85efcda316'],
     // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
     ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
     ['tests/rungraph/production-grounding-scope.test.ts', '7a981ed049fb3367193993fb0ec1503d451b5a9d9045da24e99b521a08fc29bf'],

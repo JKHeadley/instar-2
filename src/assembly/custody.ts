@@ -9,12 +9,21 @@ export function createMediatedStoreReader(input: Readonly<{ persistence: Persist
   const port: MediatedStoreReadPort = { owner: 'part-ten' as const, read(request) {
     return boundary('MediatedStoreRead', request, input.context, () => {
       ensure(request.policy === input.policy.id && input.policy.disclosureScopes.includes(request.scope), 'read outside custody policy scope');
+      ensure(input.policy.grants.includes(request.grant), 'read grant outside custody policy');
+      ensure(request.operation.length > 0 && request.positions.length > 0
+        && request.positions.length <= input.policy.auditBound
+        && new Set(request.positions).size === request.positions.length
+        && Number.isSafeInteger(request.maxBytes) && request.maxBytes >= 0
+        && request.maxBytes <= input.policy.resourceBound, 'bounded custody read required');
       let remaining = request.maxBytes; const bytes: string[] = [], observations: StorageAccessObservation[] = [];
       for (const position of request.positions) {
         const generation = input.generation();
         take(input.authority.verify({ requester: request.requester, operation: request.operation, scope: request.scope,
           grant: request.grant, policy: request.policy, generation }));
         const chunk = take(input.persistence.readExact({ store: input.policy.store, positions: [position], maxBytes: remaining, access: request.operation }))[0]!;
+        ensure(input.generation() === generation, 'custody generation changed during read');
+        take(input.authority.verify({ requester: request.requester, operation: request.operation, scope: request.scope,
+          grant: request.grant, policy: request.policy, generation }));
         remaining -= new TextEncoder().encode(chunk).length; ensure(remaining >= 0, 'bounded disclosure exceeded'); bytes.push(chunk);
         observations.push(take(decodeStorageAccessObservation({ type: 'StorageAccessObservation', schemaVersion: 1,
           id: `storage-access:${request.operation}:${++ordinal}`, predecessors: [], dependencyFacts: [], store: input.policy.store,

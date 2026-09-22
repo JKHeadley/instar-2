@@ -18,6 +18,8 @@ export { contextDeliveryIdFor, createConfinedContextDeliveryDriver, createProduc
 export type { ConfinedContextDeliveryDriverPort, ContextDeliveryExecutionPort, ProductionGroundingReaderInput } from './context-delivery.js';
 export { createCustodiedPersistenceAdapter } from './persistence.js';
 export { createMediatedStoreReader } from './custody.js';
+export { openProductionCustody, createProductionCustodyReader } from './production-custody-wiring.js';
+export type { ProductionCustodyInput, ProductionCustodyReadInput } from './production-custody-wiring.js';
 export { assemblyProjectionDefinitions } from './storage.js';
 export { stageLocalCapability, resolveActivePackage } from './package.js';
 export { deriveGrowthEpisodes, closeGrowthEpisode } from './growth.js';
