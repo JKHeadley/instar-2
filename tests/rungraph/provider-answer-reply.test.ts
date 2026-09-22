@@ -1,4 +1,8 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
+// Yield between heavy fixtures so the runner's task-update IPC can flush (landed pattern,
+// tests/e2e/slice.test.ts): these scenarios are synchronous owner work for the whole file,
+// which otherwise starves the fork worker's channel past its fixed 60s RPC deadline.
+afterEach(async () => { await new Promise<void>(done => setImmediate(done)); });
 import { createHash } from 'node:crypto';
 import { createConfinedProviderInvocation } from '../../src/assembly/index.js';
 import { registerProviderResponseEvidenceBounds } from '../../src/assembly/provider-invocation.js';
