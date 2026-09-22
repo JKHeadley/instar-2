@@ -1,3 +1,4 @@
+import { bindDispatchInvocation } from './dispatch-invocation.js';
 import { consumeAcceptedReplyOpening } from '../rungraph/accepted-reply.js';
 import { bindRunPairIssuer, withRunPairAdmission } from './run-pair.js';
 import type { BoundaryContext, Result } from '../index.js';
@@ -6,7 +7,7 @@ import type { FactStorePort } from '../facts/index.js';
 import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, RunPairAdmission, ScanCursor,
   SettlementAccountingInput, SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
+import { checkFence, checkPairParent, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
   validateScanGeneration, validateTransition } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
@@ -120,16 +121,17 @@ export function createBoundedDueScanPort(host: TransportHost, spine: TransportSp
 
 export function createTransportAuthority<S = never>(host: TransportHost, spine: TransportSpine, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): TransportAuthority<S> {
   // A capability is minted only by this live issuer. JSON/restart never recreates it.
-  const claims = new WeakMap<object, { operation: string; used: boolean }>();
+  const claims = new WeakMap<object, { operation: string; used: boolean; invoked: boolean; consumed?: AdmissionReservation }>();
   let lastTick = -1;
   const tick = () => { const t = host.monotonic(); ensure(Number.isSafeInteger(t) && t >= lastTick && t >= 0, 'monotonic clock regressed'); lastTick = t; return t; };
-  const read = (): readonly TransportFact[] => {
+  const snapshot = () => {
     const snapshot = take(spine.store.readForProjection());
     ensure(snapshot.entries.every(e => !e.taint.length && !e.conflicts.length), 'tainted or conflicted fact prefix');
     const all = rows(snapshot.entries.map(e => e.fact), host.domain);
     ensure(all.length <= 4096, 'single-conversation replay bound exhausted');
-    return all;
+    return { all, facts: snapshot.entries.map(e => e.fact) };
   };
+  const read = (): readonly TransportFact[] => snapshot().all;
   const checked = <T>(name: string, input: unknown, run: () => T): Result<T> => boundary(name, input, c, () => {
     ensure(Number.isSafeInteger(host.budget) && host.budget >= 0 && Number.isSafeInteger(host.maxLeaseTerm) && host.maxLeaseTerm > 0, 'invalid host bounds');
     live(host); return run();
@@ -291,7 +293,7 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(old?.state === 'prepared', 'claim already issued or reservation absent');
       const saved = write(all, { ...old, ...meta(all, command), state: 'dispatch-claimed', executor: host.incarnation });
       const capability = Object.freeze({ operation, attempt: old.attempt, digest: old.digest, executor: host.incarnation }) as DispatchClaim;
-      claims.set(capability, { operation: saved.record.operation, used: false }); return capability;
+      claims.set(capability, { operation: saved.record.operation, used: false, invoked: false }); return capability;
     }),
     consume: (capability, token) => checked('DispatchConsume', { operation: capability?.operation, token }, () => {
       const claim = claims.get(capability); ensure(claim && !claim.used, 'dispatch claim absent or already consumed');
@@ -300,7 +302,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       ensure(old?.state === 'dispatch-claimed' && old.executor === host.incarnation, 'claim no longer callable');
       // Burn before durable append. Failed acknowledgement is uncertainty, never a reusable handle.
       claim.used = true;
-      return write(all, { ...old, ...meta(all, `consume:${old.operation}`), state: 'consumed' }).record;
+      claim.consumed = write(all, { ...old, ...meta(all, `consume:${old.operation}`), state: 'consumed' }).record;
+      return claim.consumed;
     }),
     recover: (command, token, operation, observer) => checked('RecoveryObserve', { command, token, operation }, () => {
       let all = read(); fence(all, token); ensure(observer.owner === 'part-eight', 'observation owner');
@@ -335,6 +338,25 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       return result;
     }),
   } satisfies TransportAuthority<S>);
+  bindDispatchInvocation(authority, (capability, token, invoke) => boundary('DispatchInvocation',
+    { operation: capability?.operation, token }, c, () => {
+      const claim = claims.get(capability);
+      ensure(claim?.consumed && !claim.invoked, 'consumed dispatch claim absent or invocation already attempted');
+      // Burn BEFORE reads/checks: a late refusal is observation-only, never a retry.
+      claim.invoked = true;
+      const { all, facts } = snapshot();
+      const op = reservations(all).find(p => p.operation === claim.operation);
+      ensure(op?.state === 'consumed' && encoded(op).bytes === encoded(claim.consumed).bytes
+        && op.operation === capability.operation
+        && op.attempt === capability.attempt && op.digest === capability.digest
+        && op.executor === capability.executor && op.executor === host.incarnation
+        && encoded(op.fence).bytes === encoded(token).bytes, 'exact consumed operation required');
+      checkPairParent(all, facts);
+      // Storage/callback-capable work is complete. These host accessors are local,
+      // non-waiting, and cannot reenter; invoke immediately after the live checks.
+      live(host); fence(all, token);
+      return invoke();
+    }));
   bindRunPairIssuer(authority, (graph, command, token, reply, policy) => checked('RunPairAdmission', { command, token, reply, policy }, () => {
     ensure(reply.owner === 'part-five' && reply.name === 'Run', 'reply Run reference required');
     policyCheck(policy);

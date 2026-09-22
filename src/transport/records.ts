@@ -156,6 +156,24 @@ export function live(host: TransportHost): void {
     && scopeIncludes(g.scope, scope) && (g.standing === 'operator' || g.actions.includes('work'))), 'current standing does not cover transport admission');
 }
 
+export function checkPairParent(all: readonly TransportFact[], facts: readonly FactEnvelope[]): void {
+  const pair = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+  if (!pair) return;
+  ensure(latestLoop(all, pair.provider)?.state !== 'stopped', 'parent stop inhibits dependent reply');
+  ensure(!reservations(all).some(p => p.run === pair.provider && all.some(v => v.record.type === 'SettlementApplication'
+    && v.record.operation === p.operation && v.record.capViolation === 1)), 'parent cap violation inhibits dependent reply');
+  const head = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
+    && (f.body as { run?: string }).run === pair.provider).at(-1);
+  const wire = head && (head.body as { record: { id: string; to?: string } }).record;
+  const replyHead = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
+    && (f.body as { run?: string }).run === pair.reply).at(-1);
+  const replyWire = replyHead && (replyHead.body as { record: { to?: string } }).record;
+  ensure(replyWire && !['halted', 'cancelled', 'completed', 'unreachable'].includes(replyWire.to ?? ''),
+    'reply Run stopped or terminal');
+  ensure(wire?.id === pair.originalPredecessor && !['halted', 'cancelled', 'completed', 'unreachable'].includes(wire.to ?? ''),
+    'parent predecessor changed or stopped');
+}
+
 // The owner validator runs INSIDE P2's append boundary, after signed-chain checks and
 // before its compare-head durable append. A caller bypassing the authority API cannot
 // rebase a stale transition on a newer envelope head.
@@ -203,22 +221,6 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
   } else {
     const lease = active();
     const pair = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
-    const parentAvailable = () => {
-      if (!pair) return;
-      ensure(latestLoop(all, pair.provider)?.state !== 'stopped', 'parent stop inhibits dependent reply');
-      ensure(!reservations(all).some(p => p.run === pair.provider && all.some(v => v.record.type === 'SettlementApplication'
-        && v.record.operation === p.operation && v.record.capViolation === 1)), 'parent cap violation inhibits dependent reply');
-      const head = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
-        && (f.body as { run?: string }).run === pair.provider).at(-1);
-      const wire = head && (head.body as { record: { id: string; to?: string } }).record;
-      const replyHead = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
-        && (f.body as { run?: string }).run === pair.reply).at(-1);
-      const replyWire = replyHead && (replyHead.body as { record: { to?: string } }).record;
-      ensure(replyWire && !['halted', 'cancelled', 'completed', 'unreachable'].includes(replyWire.to ?? ''),
-        'reply Run stopped or terminal');
-      ensure(wire?.id === pair.originalPredecessor && !['halted', 'cancelled', 'completed', 'unreachable'].includes(wire.to ?? ''),
-        'parent predecessor changed or stopped');
-    };
     if (r.type === 'RunPairAdmission') {
       ensure(!pair && r.profile === 'provider-reply-v1' && r.provider !== r.reply
         && r.budget >= 0 && (!origin || r.budget === host.budget), 'fixed pair profile already admitted or bounds differ');
@@ -250,7 +252,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(!facts.some(f => f.id === cause && f.kind === 'judgment-provider-ProviderAnswerAcceptance') || pair?.reply === r.run,
         'accepted reply requires same-domain pair admission');
       if (pair && r.state !== 'closed') {
-        parentAvailable();
+        checkPairParent(all, facts);
         ensure(![pair.provider, pair.reply].some(run => { const loop = latestLoop(all, run);
           return loop && loopActive(all, loop); }), 'pair recovery observation already active');
         ensure(r.run === pair.provider || r.run === pair.reply, 'fixed pair permits no other Run');
@@ -322,13 +324,13 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
         const cause = opening && (opening.body as { record: { opening: { id: string } } }).record.opening.id;
         ensure(!facts.some(f => f.id === cause && f.kind === 'judgment-provider-ProviderAnswerAcceptance') || pair?.reply === r.run,
           'accepted reply requires same-domain pair admission');
-        if (pair) { parentAvailable(); ensure(r.run === pair.reply, 'fixed pair permits no third Run');
+        if (pair) { checkPairParent(all, facts); ensure(r.run === pair.reply, 'fixed pair permits no third Run');
           ensure(encoded(r.policy).bytes === encoded(pair.replyPolicy).bytes, 'reply policy differs from durable pair admission'); }
         ensure(r.attempts === 0 && r.started === r.tick && r.pending === '' && r.state === 'scheduled', 'initial loop');
       }
       else {
         if (pair) {
-          if (r.run === pair.reply) parentAvailable();
+          if (r.run === pair.reply) checkPairParent(all, facts);
           ensure(![pair.provider, pair.reply].some(run => { const loop = latestLoop(all, run);
             return loop && loopActive(all, loop); }), 'pair recovery observation already active');
         }

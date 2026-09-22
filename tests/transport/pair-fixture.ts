@@ -224,4 +224,3 @@ export function outbound(s: Awaited<ReturnType<typeof pair>>, mutate: Record<str
     closure: [s.acceptance.id, s.assessment.id], fence: s.f.fence });
   return { api, prepare, calls: () => calls };
 }
-
