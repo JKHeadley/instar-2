@@ -132,11 +132,26 @@ export interface ModelDescription {
   readonly automaticRetries: 0; readonly maxInputBytes: number; readonly maxOutputBytes: number;
   readonly maxCharge: number; readonly measured: false; readonly basis: string;
 }
+export interface ProviderResponseEvidence {
+  readonly eligibility: 'admitted' | 'held';
+  readonly contract: Readonly<{ parserReference: string; parserVersion: string; evidenceContractReference: string;
+    evidenceContractVersion: string; mode: 'single-final-reply'; maxMetadataBytes: number;
+    maxRawTerminalBytes: number; maxCaptureBytes: number }>;
+  readonly source: Readonly<{ observerPrincipal: string; controller: string; evidence: readonly string[];
+    endpoint: string; account: string; credentialReference: string; executableArtifact: string;
+    provider: string; model: string; route: string; call: string; request: string; attempt: string;
+    operation: string; claim: string; submittedDigest: Hash; strength: 'proof' | 'observation' | 'attestation' | 'inference' }>;
+  readonly terminal: Readonly<{ raw: Capture; rawDigest: Hash; evidence: string; reason: string; providerReason: string; observedAt: number;
+    limited: boolean; errored: boolean; cancelled: boolean; timedOut: boolean; truncated: boolean; toolCall: boolean }>;
+  readonly answer: Readonly<{ source: Capture; extractionContract: string; answerDigest: Hash }>;
+}
 export interface ProviderObservation {
   readonly state: 'complete' | 'rejected' | 'uncertain'; readonly bytes: string | null;
   readonly providerOperation: string | null;
   readonly usage: { readonly inputTokens: number | null; readonly outputTokens: number | null; readonly charge: number | null; readonly source: string };
   readonly retryBlocked: boolean;
+  /** Absent observations retain their legacy settlement meaning but cannot be used as answers. */
+  readonly responseEvidence?: ProviderResponseEvidence;
   // Adapter-owned evidence of received-but-unusable output. This never grants
   // answer eligibility; independently valid usage survives capture limitations.
   readonly limitation?: { readonly kind: 'transport-threw' | 'invalid-provider-observation' | 'response-byte-limit'; readonly observedBytesAtLeast: number | null };
