@@ -8,6 +8,7 @@ import type { BoundaryContext, Result } from '../index.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext } from '../facts/index.js';
+import type { OpenedProductionInstallationInspection } from './contracts.js';
 import { decodeHistoricalInstallationSelection } from './installation-selection.js';
 import type { InstallationRecordAdmission, InstallationRole } from './installation-selection.js';
 import { productionMissingBindings } from './production-holds.js';
@@ -125,5 +126,56 @@ export function reportInstallationHolds(input: Readonly<{ installation: string; 
     for (const row of rows) counts[row.state]++;
     return freeze({ type: 'InstallationHoldReport' as const, schemaVersion: 1 as const, installation: input.installation, scope: input.scope,
       generation: input.generation, vector: input.vector, rows, counts, live: false as const });
+  });
+}
+
+/** P10-SI-16/35 report closure. This validates that the diagnostic is derived
+ * from the same opened snapshot and that its unresolved list is exhaustive;
+ * it does not upgrade any row into admission or live readiness. */
+export function openedProductionInstallationReport(input: OpenedProductionInstallationInspection,
+  context: BoundaryContext): Result<OpenedProductionInstallationInspection> {
+  return boundary('OpenedProductionInstallationReport', null, context, () => {
+    ensure(input.type === 'OpenedProductionInstallationInspection' && input.schemaVersion === 1
+      && input.owner === 'part-ten' && input.live === false, 'inspection report: closed read-only result required');
+    for (const field of ['installation', 'scope', 'generation', 'sourceDigest'] as const)
+      ensure(typeof input[field] === 'string' && input[field].length > 0, `inspection report: ${field} required`);
+    ensure(input.bindings.length > 0, 'inspection report: empty binding result forbidden');
+    const all = [...input.bindings, ...input.history], names = new Set<string>();
+    for (const row of all) {
+      ensure(!names.has(row.name), `inspection report: duplicate binding verdict ${row.name}`); names.add(row.name);
+      ensure(row.owner.length > 0 && row.source.location.length > 0 && row.source.expectedKind.length > 0,
+        `inspection report: incomplete owner/source verdict ${row.name}`);
+      ensure(row.state === 'resolved' ? row.reason === null && row.input !== null : typeof row.reason === 'string'
+        && row.reason.length > 0, `inspection report: state/reason differs ${row.name}`);
+      if (row.source.actualReference) {
+        ensure(row.source.actualReference.owner === 'part-two' && row.source.actualReference.name === 'FactEnvelope',
+          `inspection report: non-envelope source ${row.name}`);
+        const matches = input.ownerInputs.source.entries.filter(status => status.fact.id === row.source.actualReference!.id);
+        ensure(matches.length === 1, `inspection report: source is outside opened root ${row.name}`);
+      }
+      if (row.input) {
+        const matches = input.ownerInputs.source.entries.filter(status => status.fact.id === row.input!.fact.id);
+        ensure(matches.length === 1 && encoded(matches[0]!.fact).bytes === encoded(row.input.fact).bytes,
+          `inspection report: owner input differs from opened root ${row.name}`);
+      }
+    }
+    const unresolved = all.filter(row => row.state === 'unresolved');
+    ensure(encoded(input.unresolved.map(row => row.name)).bytes === encoded(unresolved.map(row => row.name)).bytes,
+      'inspection report: unresolved binding list is incomplete or caller supplied');
+    const vector: Record<string, { epoch: number; position: number }> = {};
+    for (const { fact } of input.ownerInputs.source.entries) {
+      const prior = vector[fact.machine], point = fact.segment;
+      if (!prior || point.epoch > prior.epoch || point.epoch === prior.epoch && point.position > prior.position)
+        vector[fact.machine] = { epoch: point.epoch, position: point.position };
+    }
+    ensure(encoded(vector).bytes === encoded(input.sourceVector).bytes,
+      'inspection report: source vector differs from opened root');
+    ensure(input.sourceDigest === encoded(input.ownerInputs.source.entries
+      .map(({ fact }) => ({ id: fact.id, hash: fact.contentHash }))).hash,
+    'inspection report: source digest differs from opened root');
+    ensure(input.ownerInputs.installation.record.id === input.installation
+      && input.ownerInputs.manifest.productionBindings?.some(row => row === input.ownerInputs.binding && row.scope === input.scope),
+    'inspection report: installation or scope owner input differs');
+    return freeze(input);
   });
 }
