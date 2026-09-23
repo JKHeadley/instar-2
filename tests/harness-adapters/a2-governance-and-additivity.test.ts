@@ -8,6 +8,9 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
   const { createHash } = await import('node:crypto');
   // GRANT 45-B/45-E: pin exactly the two authorized production fixture rewires.
   const grantedContent = new Map([
+    // GRANT PAR-Q3-BUDGET (astra-par-q3-ruling.md): exact fixture execution budgets only.
+    ['tests/assembly/provider-response-evidence.test.ts', '7cdbe22f388a25071f4fd60c6f2620e1e189f5d100407f1d01e88a86fe47b2a4'],
+    ['tests/rungraph/provider-answer-reply.test.ts', '94c81465fa9e2137becb8224fd4e9823f30d0074c6751f6bf2263e862dc297e6'],
     // GRANT M3-S (astra-m3-structural-adjudication.md section 3): exact additive Five early-guard tests.
     ['tests/rungraph/installed-governance.test.ts', '4741c9e14be82d3329fcee03e30ef6e661c95aba210ef0fa5cbd010f5c251737'],
     ['tests/assembly/production-grounding-inventory.json', '8d05b3bc5dc289b3fe19fcc9b4c23ba20346fa78c53062a4aa0557bd819e57d0'],

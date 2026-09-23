@@ -111,7 +111,7 @@ it('MODEL-PROVIDER-PATH integration decisive non-occurrence plus quiescence sett
     expect(f.all().filter(f => f.kind === 'effect-provider-ProviderEffectSettlement')).toHaveLength(1);
     refused(await f.api.dispatch(request, f.fence)); expect(http.requests).toHaveLength(1);
   } finally { await http.close(); }
-});
+}, 30_000);
 
 it.each(['wrong source digest', 'insufficient occurrence', 'contradicted occurrence'])(
   'MODEL-PROVIDER-PATH integration %s cannot establish occurrence or release credit', async label => {

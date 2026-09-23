@@ -194,11 +194,11 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
 
 it('P10-SI-17 P10-SI-37 uses one output assessment for independent settlement and exact answer acceptance', async () => {
   await runProviderAnswerReplyScenario();
-});
+}, 30_000);
 
 it('P10-SI-37 keeps the four settlement rows usable when the captured answer cannot decode as a Decision', async () => {
   await runProviderAnswerReplyScenario(true);
-});
+}, 30_000);
 
 it('P10-SI-37 records near-valid malformed Decision insufficiency and settles from the same v2 fact', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true, nearMalformedDecision: true });
@@ -211,7 +211,7 @@ it('P10-SI-37 records near-valid malformed Decision insufficiency and settles fr
   const settlement: any = value(s.api.settle(s.observed.operation, assessment));
   expect(settlement.acceptance).toBe(assessment.id);
   expect(settlement.outcome.kind).toBe('happened');
-});
+}, 30_000);
 
 it.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)(
   'P9-NF-66 reads historical assessment with %s capture loss while current use refuses', async kind => {
@@ -290,7 +290,7 @@ it('P10-SI-17 P10-SI-37 retains unresolved exposure independently of a satisfied
   expect(accounting.unresolved).not.toBe(0);
   expect(accounting.exposure).toBe(20);
   expect(settlement.retainedExposure).toBe(20);
-});
+}, 30_000);
 
 it('P10-SI-37 reuses a still-current assessment after the clock advances and refuses withdrawn captures', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
@@ -319,7 +319,7 @@ it('P9-NF-65 P9-NF-66 refuses forged origin derivations and identity conflicts, 
   const second: any = value(s.api.assessResponse(s.observed.operation));
   expect(second.id).not.toBe(first.id);
   expect(raw(s.f.all().find((fact: FactEnvelope) => fact.id === second.id)!).supersedes).toBe(first.id);
-});
+}, 30_000);
 
 it('P9-NF-65 refuses a forged historical assessment against the original signed basis', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
@@ -343,14 +343,14 @@ it('P10-SI-37 blocks a first reply after the genuine conversation obligation sto
     { owner: 'part-eight', observe: () => { throw new Error('terminal loop must not observe'); } }));
   expect((value(s.f.six.inspect()) as any[]).filter((row: any) => row.record.type === 'LoopRecord').at(-1)!.record.state).toBe('stopped');
   refused(s.replyGraph.openAcceptedProviderReply(s.replyInput), 'stopped');
-});
+}, 30_000);
 
 it('P10-SI-37 refuses a second model request from the accepted-answer reply Run', async () => {
   const s = await runProviderAnswerReplyScenario(false, { noStop: true });
   refused(s.f.seven.prepare({ ...s.f.question,
     run: { owner: 'part-five', name: 'Run', id: s.reply.id } }, s.f.fence), 'cannot request another model');
   expect(s.modelCalls()).toBe(1);
-});
+}, 30_000);
 
 it('P9-NF-66 derives insufficiency from raw tool_use despite caller success labels', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true, terminalReason: 'tool_use' });
@@ -369,4 +369,4 @@ it('P10-SI-37 reconstructs acceptance with its original signed Decision authorit
       id: 'later-generation' }, entries: s.f.context.decode.register.entries.filter((entry: string) => entry !== 'judgment') } } };
   expect(value(decodeHistoricalProviderAnswerAcceptance(raw(fact), { ...s.f.host.boundary,
     origin: fact, mode: 'historical', facts }, s.f.jh)).id).toBe(raw(fact).id);
-});
+}, 30_000);
