@@ -1,4 +1,5 @@
 import { productionBindingHolds } from '../dist/assembly/production-holds.js';
+import { bootRecoveryEvidenceFiles, checkBootRecoveryCoverage } from './check-boot-conversation-evidence.mjs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, realpathSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -37,9 +38,9 @@ export const productionBootPrerequisiteContract = Object.freeze({
 export const productionBootLifecycleContract = Object.freeze({
   executable: Object.freeze(['bootProductionApplication and bin/instar-production.mjs compose the real owner constructors',
     'recorded Telegram through Four/Five/Seven/Eight/Six/Nine/Five and one minimal reply',
-    'real SIGKILL and public restart at restored adjacent durable prefixes of that one trace']),
+    'real SIGKILL and public restart at all 29 named durable prefixes, each restored from its own shard trace']),
   evidence: Object.freeze(['tests/assembly/production-boot-public-entry.test.ts',
-    'tests/assembly/production-boot-composition-refusals.test.ts', 'tests/assembly/production-boot-conversation.test.ts']),
+    'tests/assembly/production-boot-composition-refusals.test.ts', ...bootRecoveryEvidenceFiles]),
   fixtureAdmitted: productionBindingHolds,
   held: productionBootPrerequisiteContract.held,
 });
@@ -327,6 +328,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const rows = checkAssemblyCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   for (const row of rows) console.log(`${row.id}: ${row.status}; ${row.tests.length} executed fixtures; ${row.reason}`);
   const grounding = checkProductionGroundingAssemblyEvidence(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  checkBootRecoveryCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')), productionGroundingSourceDigest());
   const mutations = exerciseProductionGroundingEvidence(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log(`production grounding F9: ${mutations.length} counterfeit evidence mutations refused`);
   console.log(`production grounding executable: ${grounding.executable.join(', ')}; held: ${grounding.held}; compatibility: ${grounding.compatibilityOnly}`);

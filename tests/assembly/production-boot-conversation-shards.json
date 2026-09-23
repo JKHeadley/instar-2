@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "shards": [
+    {
+      "id": 0,
+      "file": "tests/assembly/production-boot-conversation-shard-0.test.ts",
+      "titleTemplate": "bin + public boot: Telegram → Four → Five → Seven/Eight/Six → Nine → Five → reply; restored adjacent durable prefixes SIGKILL/recovery; shard 0/4; fixture-admitted: ${fixtureAdmissionNames}"
+    },
+    {
+      "id": 1,
+      "file": "tests/assembly/production-boot-conversation-shard-1.test.ts",
+      "titleTemplate": "bin + public boot: Telegram → Four → Five → Seven/Eight/Six → Nine → Five → reply; restored adjacent durable prefixes SIGKILL/recovery; shard 1/4; fixture-admitted: ${fixtureAdmissionNames}"
+    },
+    {
+      "id": 2,
+      "file": "tests/assembly/production-boot-conversation-shard-2.test.ts",
+      "titleTemplate": "bin + public boot: Telegram → Four → Five → Seven/Eight/Six → Nine → Five → reply; restored adjacent durable prefixes SIGKILL/recovery; shard 2/4; fixture-admitted: ${fixtureAdmissionNames}"
+    },
+    {
+      "id": 3,
+      "file": "tests/assembly/production-boot-conversation-shard-3.test.ts",
+      "titleTemplate": "bin + public boot: Telegram → Four → Five → Seven/Eight/Six → Nine → Five → reply; restored adjacent durable prefixes SIGKILL/recovery; shard 3/4; fixture-admitted: ${fixtureAdmissionNames}"
+    }
+  ],
+  "prefixes": [
+    {
+      "ordinal": 0,
+      "prefix": "00-intake",
+      "stage": "intake",
+      "shard": 0
+    },
+    {
+      "ordinal": 1,
+      "prefix": "01-run-opened",
+      "stage": "run-opened",
+      "shard": 1
+    },
+    {
+      "ordinal": 2,
+      "prefix": "02-native-before-consume-1",
+      "stage": "native-before-consume-1",
+      "shard": 2
+    },
+    {
+      "ordinal": 3,
+      "prefix": "03-native-after-consume-1",
+      "stage": "native-after-consume-1",
+      "shard": 3
+    },
+    {
+      "ordinal": 4,
+      "prefix": "04-provider-grounded",
+      "stage": "provider-grounded",
+      "shard": 0
+    },
+    {
+      "ordinal": 5,
+      "prefix": "05-provider-pending",
+      "stage": "provider-pending",
+      "shard": 1
+    },
+    {
+      "ordinal": 6,
+      "prefix": "06-provider-prepared",
+      "stage": "provider-prepared",
+      "shard": 2
+    },
+    {
+      "ordinal": 7,
+      "prefix": "07-context-settled",
+      "stage": "context-settled",
+      "shard": 3
+    },
+    {
+      "ordinal": 8,
+      "prefix": "08-provider-requested",
+      "stage": "provider-requested",
+      "shard": 0
+    },
+    {
+      "ordinal": 9,
+      "prefix": "09-provider-before-response",
+      "stage": "provider-before-response",
+      "shard": 1
+    },
+    {
+      "ordinal": 10,
+      "prefix": "10-provider-after-response",
+      "stage": "provider-after-response",
+      "shard": 2
+    },
+    {
+      "ordinal": 11,
+      "prefix": "11-provider-observed",
+      "stage": "provider-observed",
+      "shard": 3
+    },
+    {
+      "ordinal": 12,
+      "prefix": "12-provider-assessed",
+      "stage": "provider-assessed",
+      "shard": 0
+    },
+    {
+      "ordinal": 13,
+      "prefix": "13-provider-settled",
+      "stage": "provider-settled",
+      "shard": 1
+    },
+    {
+      "ordinal": 14,
+      "prefix": "14-provider-accounted",
+      "stage": "provider-accounted",
+      "shard": 2
+    },
+    {
+      "ordinal": 15,
+      "prefix": "15-answer-recorded",
+      "stage": "answer-recorded",
+      "shard": 3
+    },
+    {
+      "ordinal": 16,
+      "prefix": "16-answer-accepted",
+      "stage": "answer-accepted",
+      "shard": 0
+    },
+    {
+      "ordinal": 17,
+      "prefix": "17-native-before-consume-2",
+      "stage": "native-before-consume-2",
+      "shard": 1
+    },
+    {
+      "ordinal": 18,
+      "prefix": "18-native-after-consume-2",
+      "stage": "native-after-consume-2",
+      "shard": 2
+    },
+    {
+      "ordinal": 19,
+      "prefix": "19-reply-grounded",
+      "stage": "reply-grounded",
+      "shard": 3
+    },
+    {
+      "ordinal": 20,
+      "prefix": "20-reply-pending",
+      "stage": "reply-pending",
+      "shard": 0
+    },
+    {
+      "ordinal": 21,
+      "prefix": "21-reply-context-settled",
+      "stage": "reply-context-settled",
+      "shard": 1
+    },
+    {
+      "ordinal": 22,
+      "prefix": "22-reply-requested",
+      "stage": "reply-requested",
+      "shard": 2
+    },
+    {
+      "ordinal": 23,
+      "prefix": "23-reply-before-response",
+      "stage": "reply-before-response",
+      "shard": 3
+    },
+    {
+      "ordinal": 24,
+      "prefix": "24-reply-after-response",
+      "stage": "reply-after-response",
+      "shard": 0
+    },
+    {
+      "ordinal": 25,
+      "prefix": "25-reply-observed",
+      "stage": "reply-observed",
+      "shard": 1
+    },
+    {
+      "ordinal": 26,
+      "prefix": "26-reply-assessed",
+      "stage": "reply-assessed",
+      "shard": 2
+    },
+    {
+      "ordinal": 27,
+      "prefix": "27-reply-settled",
+      "stage": "reply-settled",
+      "shard": 3
+    },
+    {
+      "ordinal": 28,
+      "prefix": "28-reply-accounted",
+      "stage": "reply-accounted",
+      "shard": 0
+    }
+  ]
+}

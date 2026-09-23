@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 // @ts-expect-error the executable repository checker is intentionally plain ESM
 import { checkP13A2Architecture, checkP13DependencyCitations, p13A2Dispositions, p13A2PathAllowed } from '../../scripts/check-p13-contract-map.mjs';
@@ -24,11 +24,24 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
     // Settlement seam baseline: exact helper bytes for landed Eight 189b346.
     ['tests/transport/effect-pin.mjs', '19d668f4779b2057377de7daa64da59af7685277f59762f9f20ffae4d0081302'],
   ]);
+  // GRANT BOOT-SPLIT (astra-boot-split-fence-ruling.md): retire only this exact path.
+  // Keep these checks after landing; the exception below applies only while main lists it.
+  const retiredBootTest = 'tests/assembly/production-boot-conversation.test.ts';
+  const replacementBootTests = [
+    'tests/assembly/production-boot-conversation-shard-0.test.ts',
+    'tests/assembly/production-boot-conversation-shard-1.test.ts',
+    'tests/assembly/production-boot-conversation-shard-2.test.ts',
+    'tests/assembly/production-boot-conversation-shard-3.test.ts',
+  ];
+  expect(lstatSync(retiredBootTest, { throwIfNoEntry: false }), retiredBootTest).toBeUndefined();
+  for (const path of replacementBootTests)
+    expect(lstatSync(path, { throwIfNoEntry: false })?.isFile(), path).toBe(true);
   const prefixes = ['tests/rungraph/', 'tests/transport/', 'tests/effects/', 'tests/verification/', 'tests/assembly/'];
   const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })
     .trim().split('\n').filter(path => prefixes.some(prefix => path.startsWith(prefix)));
   expect(paths.length).toBeGreaterThan(50);
   for (const path of paths) {
+    if (path === retiredBootTest) continue; // Its absence was asserted above.
     const main = execFileSync('git', ['show', `main:${path}`]);
     if (grantedContent.has(path)) {
       expect(createHash('sha256').update(readFileSync(path)).digest('hex'), path).toBe(grantedContent.get(path));
