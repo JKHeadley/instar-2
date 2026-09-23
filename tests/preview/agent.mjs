@@ -1,0 +1,239 @@
+#!/usr/bin/env node
+import { resolve } from 'node:path';
+import { createProductionTelegramIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { createPreviewComposition } from './composition.js';
+import { MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
+
+const MAX_PREVIEW_BACKOFF_MS = 300_000;
+const DIAGNOSTIC_REASON_CODES = Object.freeze([
+  'TRANSPORT', 'TIMEOUT', 'REFUSED', 'STOPPED', 'EXPIRED', 'BOUND', 'UNKNOWN',
+]);
+const DIAGNOSTIC_PHASES = Object.freeze(['DRAIN', 'POLL']);
+
+function argumentsOf(values) {
+  const command = values[0] ?? 'run';
+  const options = {};
+  for (let index = 1; index < values.length; index += 2) {
+    const name = values[index];
+    const value = values[index + 1];
+    if (!name?.startsWith('--') || value === undefined) throw new Error('preview: malformed arguments');
+    options[name.slice(2)] = value;
+  }
+  return { command, options };
+}
+
+function integer(value, name, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new Error(`preview: invalid ${name}`);
+  return parsed;
+}
+
+function required(options, name) {
+  const value = options[name];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`preview: missing --${name}`);
+  return value;
+}
+
+function expiry(value) {
+  const numeric = Number(value);
+  const parsed = Number.isSafeInteger(numeric) && numeric > 0 ? numeric : Date.parse(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error('preview: invalid expiry');
+  return parsed;
+}
+
+function configuration(options) {
+  const thread = options['message-thread-id'] === 'none' ? null
+    : integer(options['message-thread-id'] ?? '0', 'message-thread-id');
+  const forum = options.forum === 'true';
+  const chatKind = options['chat-kind'] ?? 'private';
+  if (!['private', 'group-topic'].includes(chatKind)) throw new Error('preview: invalid chat-kind');
+  if (!forum && thread !== null) throw new Error('preview: non-forum target requires --message-thread-id none');
+  if (chatKind === 'private' && (forum || thread !== null)) throw new Error('preview: private target cannot name a forum topic');
+  if (chatKind === 'group-topic' && (!forum || thread === null)) throw new Error('preview: group-topic requires forum true and a topic id');
+  return Object.freeze({
+    root: resolve(required(options, 'root')),
+    machine: options.machine ?? 'preview-local-machine',
+    botId: required(options, 'bot-id'),
+    botUsername: required(options, 'bot-username'),
+    operatorSenderId: required(options, 'operator-sender-id'),
+    chatId: required(options, 'chat-id'), chatKind,
+    forum,
+    messageThreadId: thread,
+    maxPollSeconds: integer(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1),
+    maxBatchItems: integer(options['max-batch-items'] ?? '8', 'max-batch-items', 1),
+    maxContextTurns: integer(options['max-context-turns'] ?? '8', 'max-context-turns', 1),
+    maxContextBytes: integer(options['max-context-bytes'] ?? '65536', 'max-context-bytes', 1),
+  });
+}
+
+function stateFor(config, options, create) {
+  const expiresAt = expiry(required(options, 'expires-at'));
+  const totalErrorLimit = integer(options['total-error-limit'] ?? '1000', 'total-error-limit', 1,
+    MAX_PREVIEW_TOTAL_ERROR_LIMIT);
+  const stateConfiguration = { ...config, expiresAt,
+    replyLimit: integer(options['reply-limit'] ?? '6', 'reply-limit', 1),
+    replyWindowMs: integer(options['reply-window-ms'] ?? '60000', 'reply-window-ms', 1),
+    errorLimit: integer(options['error-limit'] ?? '5', 'error-limit', 1, MAX_PREVIEW_ERROR_LIMIT),
+    maxPendingTurns: integer(options['max-pending-turns'] ?? '16', 'max-pending-turns', 1),
+    maxTrialTurns: integer(options['max-trial-turns'] ?? '128', 'max-trial-turns', 1) };
+  return openPreviewState({ root: config.root, configuration: stateConfiguration, expiresAt,
+    replyLimit: stateConfiguration.replyLimit, replyWindowMs: stateConfiguration.replyWindowMs,
+    errorLimit: stateConfiguration.errorLimit, totalErrorLimit, maxPendingTurns: stateConfiguration.maxPendingTurns,
+    maxTrialTurns: stateConfiguration.maxTrialTurns, create });
+}
+
+function resolveHostSecret(reference) {
+  if (reference.vault !== 'preview') throw new Error('preview secret reference refused');
+  if (reference.name === 'telegram-bot-token') {
+    const value = process.env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN;
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  if (reference.name === 'storage-key') {
+    const value = process.env.INSTAR_SECRET_PREVIEW_STORAGE_KEY;
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  throw new Error('preview secret reference unavailable');
+}
+
+function storageKey() {
+  const encoded = resolveHostSecret({ vault: 'preview', name: 'storage-key' });
+  if (/^[a-f0-9]{64}$/iu.test(encoded)) return new Uint8Array(Buffer.from(encoded, 'hex'));
+  const bytes = Buffer.from(encoded, 'base64');
+  if (bytes.byteLength !== 32) throw new Error('preview storage key unavailable');
+  return new Uint8Array(bytes);
+}
+
+function publicStatus(document) {
+  const counts = {};
+  for (const turn of Object.values(document.turns)) counts[turn.phase] = (counts[turn.phase] ?? 0) + 1;
+  return { trial: document.trial.id, createdAt: document.trial.createdAt,
+    expiresAt: document.trial.expiresAt, stop: document.stop, consecutiveErrors: document.consecutiveErrors,
+    totalErrors: document.totalErrors, errorLimit: document.trial.errorLimit,
+    totalErrorLimit: document.trial.totalErrorLimit,
+    turns: counts, configuration: document.trial.configurationDigest };
+}
+
+const delay = milliseconds => new Promise(resolveDelay => setTimeout(resolveDelay, milliseconds));
+const yieldBoundary = () => new Promise(resolveBoundary => setImmediate(resolveBoundary));
+
+function diagnosticReason(document, observed = 'UNKNOWN') {
+  if (document.stop?.reason === 'expiry') return 'EXPIRED';
+  if (document.stop?.reason === 'capacity') return 'BOUND';
+  if (document.stop?.reason === 'operator' || document.stop?.reason === 'signal') return 'STOPPED';
+  return DIAGNOSTIC_REASON_CODES.includes(observed) ? observed : 'UNKNOWN';
+}
+
+function emitCycleDiagnostic(reason, phase, document, backoffMs) {
+  const safeReason = DIAGNOSTIC_REASON_CODES.includes(reason) ? reason : 'UNKNOWN';
+  const safePhase = DIAGNOSTIC_PHASES.includes(phase) ? phase : 'DRAIN';
+  const record = { type: 'PREVIEW_CYCLE_DIAGNOSTIC', schemaVersion: 1,
+    reason: safeReason, phase: safePhase,
+    consecutiveErrors: document.consecutiveErrors, totalErrors: document.totalErrors, backoffMs };
+  try { process.stderr.write(`${JSON.stringify(record)}\n`); } catch { /* accounting is already durable */ }
+}
+
+async function interruptibleBackoff(milliseconds, state, stopped) {
+  const deadline = Date.now() + milliseconds;
+  while (!stopped()) {
+    try { state.gate('poll'); } catch { return; }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return;
+    await delay(Math.min(remaining, 100));
+  }
+}
+
+async function main() {
+  const { command, options } = argumentsOf(process.argv.slice(2));
+  const config = configuration(options);
+  const state = stateFor(config, options, command === 'run');
+  if (command === 'status') {
+    process.stdout.write(`${JSON.stringify(publicStatus(state.read()))}\n`);
+    return 0;
+  }
+  if (command === 'stop') {
+    process.stdout.write(`${JSON.stringify(publicStatus(state.latchStop('operator')))}\n`);
+    return 0;
+  }
+  if (command !== 'run') throw new Error('preview: command must be run, status, or stop');
+
+  // A stopped/expired trial never resolves a credential and never admits a transport.
+  state.gate('poll');
+  let signalled = false;
+  const signal = () => {
+    signalled = true;
+    try { state.latchStop('signal'); } catch { /* diagnostics are deliberately suppressed */ }
+  };
+  process.once('SIGINT', signal);
+  process.once('SIGTERM', signal);
+  let observedPollReason = 'UNKNOWN';
+  const observedTelegramIO = storage => {
+    const physical = createProductionTelegramIO(config.root, storage.captures);
+    return Object.freeze({ invoke(request, credential) {
+      if (request.method === 'getUpdates') observedPollReason = 'UNKNOWN';
+      let outcome;
+      try { outcome = physical.invoke(request, credential); }
+      catch {
+        // An untyped exception is deliberately replaced, never inspected.
+        if (request.method === 'getUpdates') observedPollReason = 'UNKNOWN';
+        throw new Error('preview: Telegram invocation failed');
+      }
+      if (request.method === 'getUpdates') {
+        if (outcome?.kind === 'uncertain' && outcome.limitation === 'timeout') observedPollReason = 'TIMEOUT';
+        else if (outcome?.kind === 'uncertain' && outcome.limitation === 'transport') observedPollReason = 'TRANSPORT';
+        else if (outcome?.kind === 'response' && Number.isSafeInteger(outcome.status)
+          && (outcome.status < 200 || outcome.status >= 300)) observedPollReason = 'REFUSED';
+      }
+      return outcome;
+    } });
+  };
+  let composition;
+  try {
+    composition = createPreviewComposition({ configuration: config, state, storageKey: storageKey(),
+      storageIO: productionStorageIO, resolveSecret: resolveHostSecret,
+      telegramIOFactory: observedTelegramIO });
+    // Successful physical bridges are synchronous. Yield after each such boundary so
+    // Node can service SIGINT/SIGTERM before any subsequent admission or dispatch.
+    await yieldBoundary();
+    const maximumCycles = integer(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
+    const baseBackoff = integer(options['backoff-ms'] ?? '250', 'backoff-ms', 1, MAX_PREVIEW_BACKOFF_MS);
+    const maximumBackoff = integer(options['max-backoff-ms'] ?? '5000', 'max-backoff-ms', 1, MAX_PREVIEW_BACKOFF_MS);
+    if (baseBackoff > maximumBackoff) throw new Error('preview: base backoff exceeds maximum');
+    for (let cycle = 0; cycle < maximumCycles && !signalled; cycle += 1) {
+      let phase = 'DRAIN';
+      try {
+        while (!signalled) {
+          await yieldBoundary();
+          if (signalled || !composition.resumeOne()) break;
+          await yieldBoundary();
+          if (state.read().stop !== null) break;
+        }
+        if (signalled || state.read().stop !== null) break;
+        phase = 'POLL';
+        composition.pollOnce();
+        await yieldBoundary();
+      } catch {
+        // Persist both breaker counters before constructing or emitting diagnostics.
+        const current = state.noteError();
+        const wait = current.stop === null
+          ? Math.min(maximumBackoff, baseBackoff * (2 ** Math.min(current.consecutiveErrors - 1, 8))) : 0;
+        emitCycleDiagnostic(diagnosticReason(current, phase === 'POLL' ? observedPollReason : 'UNKNOWN'), phase, current, wait);
+        if (current.stop !== null) break;
+        await interruptibleBackoff(wait, state, () => signalled);
+        if (signalled || state.read().stop !== null) break;
+      }
+    }
+    return 0;
+  } finally {
+    composition?.close();
+    process.removeListener('SIGINT', signal);
+    process.removeListener('SIGTERM', signal);
+  }
+}
+
+try {
+  process.exitCode = await main();
+} catch {
+  // No resolver/provider/child diagnostic is ever reflected to the terminal.
+  process.stderr.write('preview refused to start or continue; details suppressed\n');
+  process.exitCode = 1;
+}
