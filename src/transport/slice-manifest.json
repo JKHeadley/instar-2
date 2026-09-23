@@ -9,7 +9,7 @@
     "five-exclusive-admission": "partial: one-voter fence; five owns run transitions",
     "five-loop-and-resources": "partial: historical singleton has one Run and durable episode; the fixed provider-reply-v1 profile admits one provider Run and its one Five-opened accepted-answer reply Run with their own bounded loops, serialized recovery and one shared finite budget/exposure; generic durable bounded due-selection cursor; no nested allocation, general multi-Run scheduling or production fleet scheduler",
     "five-delivery-result-cancellation": "partial: semantic identity carriage; no peer receipt/result collection protocol",
-    "eight-ownership-idempotency": "partial: durable reservation and one-use claim; Eight completes post-consume durability/effect preparation, then invokes through the existing Six owner invokeConsumedDispatch check; a final refusal retains consumed exposure and permits observation only",
+    "eight-ownership-idempotency": "partial: durable reservation and one-use claim; Eight completes post-consume durability/effect preparation, then, for an admitted fixed pair only (selected from the signed store), invokes through the existing Six owner invokeConsumedDispatch check whose final refusal retains consumed exposure and permits observation only; ordinary dispatch keeps its transport-port contract",
     "eight-crash-uncertainty": "partial: original maximum exposure retained; actual eight settlement consumer conditionally applies accounting once; eight owns Outcome and nine production assessment remains pending",
     "eight-verification-before-retry": "partial: read-only wake; no new attempt enabled; evidence adequacy eight/nine",
     "eight-durability-authority": "partial: local proof never substitutes for replicated demand; no replica adapter",
@@ -112,6 +112,12 @@
     },
     "finalInvocationEdge": {
       "consumer": "src/effects/doorway.ts:EffectDoorway.handoff",
+      "appliesTo": "an admitted fixed pair only; ordinary dispatch keeps its existing transport-port contract and invokes the adapter directly",
+      "pairSelection": {
+        "source": "signed store snapshot at invocation, never a caller role or transport-wrapper inspection",
+        "rule": "the operation is paired when a transport-RunPairAdmission fact shares the domain of the operation's own transport-AdmissionReservation",
+        "implementation": "src/effects/doorway.ts:EffectDoorway.handoff (operationDomains / paired)"
+      },
       "ownerConsumer": "src/transport/dispatch-invocation.ts:invokeConsumedDispatch",
       "ownerImplementation": "src/transport/authority.ts:createTransportAuthority",
       "target": "part-ten adapter.invoke",
