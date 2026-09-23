@@ -123,7 +123,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) it(`handles ${signal} while
 }, 120000);
 
 import { renameSync } from 'node:fs';
-import { cutoverPreviewRoot, openPreviewState } from './state.js';
+import { cutoverPreviewRoot, openPreviewState, openStage2State } from './state.js';
 import { createPreviewComposition } from './composition.js';
 it('holds ambiguous burned slot forever and refuses missing/corrupt sidecar or changed configuration', async () => {
   const s = stage2CompositionFixture(); let c = await s.create();
@@ -204,16 +204,20 @@ import { encoded, subscriptionInvocationPolicy } from './stage2-provider.js';
 // @ts-expect-error Physical host; inspection only, no installed CLI is executed.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 
+const launcherClockSource = (epoch: number) => `const epoch=${epoch}, elapsedStart=performance.now();Date.now=()=>epoch+Math.floor(performance.now()-elapsedStart);`;
+
 for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) it(`actual async launcher ${signal ?? 'accepts one answer'} with a spawned synthetic CLI`, () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-launch-evidence-'))), root = join(directory, 'root');
   const home = join(directory, 'home'), configDirectory = join(directory, 'config'), workingDirectory = join(directory, 'work');
   for (const path of [root, home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
-  const now = Date.now(), cutoff = now - 1000, expiresAt = 1790628000000;
+  const elapsedStart = performance.now(), epoch = 1790000000000;
+  const clock = () => epoch + Math.floor(performance.now() - elapsedStart);
+  const now = clock(), cutoff = now - 1000, expiresAt = 1790628000000;
   const configuration = { root, machine: 'preview-local-machine', botId: '8820318295', botUsername: '@echo_mmtest_seam_b27x_bot',
     operatorSenderId: '7812716706', chatId: '7812716706', chatKind: 'private', forum: false, messageThreadId: null,
     maxPollSeconds: 1, maxBatchItems: 1, maxContextTurns: 8, maxContextBytes: 65536 };
   const limits = { expiresAt, replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, maxPendingTurns: 16, maxTrialTurns: 128 };
-  const state = openPreviewState({ root, configuration: { ...configuration, ...limits }, ...limits, totalErrorLimit: 1000 });
+  const state = openPreviewState({ root, configuration: { ...configuration, ...limits }, ...limits, totalErrorLimit: 1000, now: clock });
   const executable = join(directory, 'synthetic-cli.mjs'), log = join(directory, 'models.jsonl');
   const auth = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
     projectsDirectory: configDirectory + '/projects', configDirectory, email: 'offline@example.invalid', orgId: 'offline-org',
@@ -228,7 +232,7 @@ else {appendFileSync(${JSON.stringify(log)},'model'+String.fromCharCode(10));
  if(signal){process.kill(process.ppid,signal);setInterval(()=>{},1000);}
  else {const binding=JSON.parse(JSON.parse(stdin).messages[1].content).bindings;
  const decision={type:'Decision',schemaVersion:1,id:'spawned-answer',at:binding.at,by:binding.by,
- conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value:'A spawned answer 世界',evidence:binding.evidence},
+ conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value:'A spawned answer 世界 <>& &lt;',evidence:binding.evidence},
  reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},floor:{allowed:binding.floor,chosen:binding.floor.default}};
  process.stdout.write(JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify(decision),
  session_id:'offline-call',usage:{input_tokens:1,output_tokens:20},total_cost_usd:1.25}));}}
@@ -250,23 +254,24 @@ else {appendFileSync(${JSON.stringify(log)},'model'+String.fromCharCode(10));
   writeFileSync(activationPath, JSON.stringify(activation)); writeFileSync(profilePath, JSON.stringify(profile));
   const preload = join(directory, 'telegram-preload.mjs'), report = join(directory, 'telegram.json');
   writeFileSync(preload, `import cp from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';import {writeFileSync} from 'node:fs';
+${launcherClockSource(epoch)}
 const calls=[];let polled=false;
 cp.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));calls.push(q);let result;
 if(q.method==='getMe')result={id:8820318295,is_bot:true,username:'echo_mmtest_seam_b27x_bot',first_name:'Offline'};
 else if(q.method==='getUpdates'){result=polled?[]:[{update_id:1,message:{message_id:1001,from:{id:7812716706,is_bot:false,first_name:'Offline'},chat:{id:7812716706,type:'private'},date:Math.floor(Date.now()/1000),text:'Give a brief answer.'}}];polled=true;}
-else result={message_id:2001,chat:{id:7812716706,type:'private'},text:q.body.text};
+else result={message_id:2001,chat:{id:7812716706,type:'private'},text:q.body.text.replace(/&lt;/gu,'<').replace(/&gt;/gu,'>').replace(/&amp;/gu,'&')};
 return{status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result})})};};syncBuiltinESMExports();
 process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(calls)));
 `);
   const env: NodeJS.ProcessEnv = { ...process.env, NODE_OPTIONS: `--import=${preload}`,
     INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '8820318295:synthetic_recorded_test_only_value', INSTAR_SECRET_PREVIEW_STORAGE_KEY: '13'.repeat(32) };
   delete env.INSTAR_TELEGRAM_LIVE_TEST;
-  const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/agent.mjs', 'run',
+  const args = ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/agent.mjs', 'run',
     '--stage', '2', '--root', root, '--bot-id', configuration.botId, '--bot-username', configuration.botUsername,
     '--operator-sender-id', configuration.operatorSenderId, '--chat-id', configuration.chatId, '--chat-kind', 'private', '--forum', 'false',
     '--message-thread-id', 'none', '--expires-at', String(expiresAt), '--max-cycles', '3', '--max-poll-seconds', '1', '--max-batch-items', '1',
-    '--activation-record', activationPath, '--login-profile', profilePath, '--model', model, '--activation-cutoff', String(cutoff), '--arm', 'true'],
-  { cwd: process.cwd(), env, encoding: 'utf8', timeout: 90000 });
+    '--activation-record', activationPath, '--login-profile', profilePath, '--model', model, '--activation-cutoff', String(cutoff), '--arm', 'true'];
+  const result = spawnSync(process.execPath, args, { cwd: process.cwd(), env, encoding: 'utf8', timeout: 90000 });
   expect(result.status, result.stderr + ` retained ${directory}`).toBe(0);
   expect(requireExists(log), result.stderr).toBe(true);
   expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
@@ -275,7 +280,25 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
   const calls = JSON.parse(readFileSync(report, 'utf8'));
   expect(calls.filter((row: any) => row.method === 'sendMessage')).toHaveLength(signal ? 0 : 1);
   if (signal) expect(state.read().stop?.reason).toBe('signal');
-  else expect(calls.find((row: any) => row.method === 'sendMessage').body.text).toContain('A spawned answer 世界');
+  else {
+    expect(calls.find((row: any) => row.method === 'sendMessage').body.text).toContain('A spawned answer 世界 &lt;&gt;&amp; &amp;lt;');
+    state.latchStop('operator');
+    const before = retainedFiles(root);
+    const statusEnv = { ...env }; delete statusEnv.NODE_OPTIONS;
+    const statusArgs = [...args]; statusArgs[statusArgs.indexOf('run')] = 'status';
+    const status = () => spawnSync(process.execPath, statusArgs, { cwd: process.cwd(), env: statusEnv, encoding: 'utf8', timeout: 30000 });
+    const recorded = status();
+    expect(recorded.status, recorded.stderr).toBe(0);
+    expect(JSON.parse(recorded.stdout).stage2.phase).toBe('api-accepted');
+    const restarted = spawnSync(process.execPath, args, { cwd: process.cwd(), env: statusEnv, encoding: 'utf8', timeout: 30000 });
+    expect(restarted.status, restarted.stderr).toBe(0);
+    expect(retainedFiles(root)).toEqual(before);
+    const path = join(root, 'preview-stage2-state.json'), original = readFileSync(path, 'utf8');
+    writeFileSync(path, JSON.stringify({ ...sidecar, references: {} }));
+    expect(status().status).not.toBe(0); writeFileSync(path, original);
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+    expect(JSON.parse(readFileSync(report, 'utf8')).filter((row: any) => row.method === 'sendMessage')).toHaveLength(1);
+  }
 }, 120000);
 
 it('holds a sidecar that names an absent signed owner fact before model launch', async () => {
@@ -288,3 +311,106 @@ it('holds a sidecar that names an absent signed owner fact before model launch',
     expect(s.models).toHaveLength(0); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
   } finally { c.close(); }
 }, 60000);
+
+import { stage2HistoricalStatus } from './stage2-owners.js';
+import { readdirSync, statSync } from 'node:fs';
+const retainedFiles = (root: string): unknown => Object.fromEntries(readdirSync(root).sort().map(name => {
+  const path = join(root, name), stat = statSync(path);
+  return [name, stat.isDirectory() ? retainedFiles(path) : [stat.mtimeMs, createHash('sha256').update(readFileSync(path)).digest('hex')]];
+}));
+
+it('refuses an unsupported terminal success without owner facts', async () => {
+  const s = stage2CompositionFixture(), c = await s.create(); c.close();
+  const path = join(s.root, 'preview-stage2-state.json'), d = JSON.parse(readFileSync(path, 'utf8'));
+  writeFileSync(path, JSON.stringify({ ...d, phase: 'api-accepted', terminalLatch: true }));
+  expect(() => openStage2State({ root: s.root, state: s.state, activationDigest: d.activationDigest,
+    policyDigest: d.policyDigest, cutoff: d.cutoff, ownerFactsExist: () => false })).toThrow('corrupt stage2');
+  await expect(s.create()).rejects.toThrow('corrupt stage2');
+  expect(() => stage2HistoricalStatus(s.root, s.state.read(), s.configuration)).toThrow('corrupt stage2');
+  expect(s.models).toHaveLength(0); expect(s.calls).toHaveLength(1); // initial getMe only
+});
+
+it('historically validates terminal Unicode HTML and literal entities after expiry with zero effects and refuses corrupt owner joins/captures', async () => {
+  const s = stage2CompositionFixture({ answer: '世界 <>& &lt; �' }); let c = await s.create();
+  c.pollOnce(); await c.resume();
+  expect(c.sidecar.read().phase).toBe('api-accepted'); c.close();
+  const path = join(s.root, 'preview-stage2-state.json'), original = readFileSync(path, 'utf8'), d = JSON.parse(original);
+  const factsPath = join(s.root, '.preview-stage2/facts.json'), factsBytes = readFileSync(factsPath, 'utf8'), facts = JSON.parse(factsBytes);
+  s.state.latchStop('operator'); s.time(4102444800000); s.revoke();
+  const before = retainedFiles(s.root), calls = s.calls.length;
+  c = await s.create(); await c.resume(); await c.resumeOne(); expect(c.pollOnce()).toBeNull();
+  expect(c.sidecar.read().phase).toBe('api-accepted'); c.close();
+  expect(stage2HistoricalStatus(s.root, s.state.read(), s.configuration).phase).toBe('api-accepted');
+  expect(retainedFiles(s.root)).toEqual(before); expect(s.calls).toHaveLength(calls); expect(s.models).toHaveLength(1);
+  const refuses = async () => {
+    expect(() => stage2HistoricalStatus(s.root, s.state.read(), s.configuration)).toThrow();
+    await expect(s.create()).rejects.toThrow();
+    expect(s.calls).toHaveLength(calls); expect(s.models).toHaveLength(1);
+  };
+  for (const change of [{ selectedTurn: null }, { modelAttemptUsed: 0 }, { ownerStart: d.ownerStart + 1 },
+    { ownerStart: d.ownerStart + 1, absoluteStart: d.ownerStart + 1, ownerDeadline: d.ownerDeadline + 1 }, { references: {} }]) {
+    writeFileSync(path, JSON.stringify({ ...d, ...change })); await refuses(); writeFileSync(path, original);
+  }
+  for (const role of Object.keys(d.references)) {
+    // An existing, correctly signed fact of the wrong role must not pass existence-only checking.
+    writeFileSync(path, JSON.stringify({ ...d, references: { ...d.references, [role]: facts[0].id } }));
+    await refuses(); writeFileSync(path, original);
+  }
+  const response = facts.find((f: any) => f.id === d.references.replyObservationFact);
+  const responseCapture = join(s.root, '.preview-stage2/captures', response.body.record.capture.hash.slice(7));
+  const responseBytes = readFileSync(responseCapture, 'utf8');
+  expect(JSON.parse(responseBytes).result.text).toContain('世界 <>& &lt;');
+  renameSync(responseCapture, responseCapture + '.retained'); await refuses(); renameSync(responseCapture + '.retained', responseCapture);
+  const altered = JSON.parse(responseBytes); altered.result.text += '!';
+  writeFileSync(responseCapture, JSON.stringify(altered)); await refuses(); writeFileSync(responseCapture, responseBytes);
+  // Replacement decoding must not hide changed raw bytes when display text
+  // legitimately contains U+FFFD: invalid FF would otherwise decode identically.
+  const raw = Buffer.from(responseBytes), replacement = raw.indexOf(Buffer.from('�'));
+  expect(replacement).toBeGreaterThanOrEqual(0);
+  writeFileSync(responseCapture, Buffer.concat([raw.subarray(0, replacement), Buffer.from([255]), raw.subarray(replacement + 3)]));
+  await refuses(); writeFileSync(responseCapture, responseBytes);
+  writeFileSync(factsPath, JSON.stringify(facts.filter((f: any) => f.id !== response.id))); await refuses(); writeFileSync(factsPath, factsBytes);
+  const acceptance = facts.find((f: any) => f.id === d.references.acceptanceFact);
+  const answerCapture = join(s.root, '.preview-stage2/captures', acceptance.body.record.capture.hash.slice(7));
+  renameSync(answerCapture, answerCapture + '.retained'); await refuses(); renameSync(answerCapture + '.retained', answerCapture);
+  expect(stage2HistoricalStatus(s.root, s.state.read(), s.configuration).phase).toBe('api-accepted');
+  // A crash after the retained response can reconcile bookkeeping even after
+  // expiry/stop, without constructing active owners or changing their journal.
+  const { replyObservationFact: _observation, ...references } = d.references;
+  writeFileSync(path, JSON.stringify({ ...d, phase: 'reply-dispatch-unknown', terminalLatch: false, references }));
+  s.state.advance(d.selectedTurn, 'api-accepted', 'dispatch-outcome-unknown', { replyObservation: '' });
+  const ownerFiles = retainedFiles(join(s.root, '.preview-stage2'));
+  c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('api-accepted'); c.close();
+  expect(retainedFiles(join(s.root, '.preview-stage2'))).toEqual(ownerFiles);
+  expect(s.calls).toHaveLength(calls); expect(s.models).toHaveLength(1);
+}, 120000);
+
+it('holds genuinely changed Telegram display text and never sends again on recovery', async () => {
+  const s = stage2CompositionFixture({ answer: '世界 <>& &lt;', displayText: 'changed display text' }); let c = await s.create();
+  c.pollOnce(); await c.resume(); expect(c.sidecar.read().phase).toBe('held'); c.close();
+  c = await s.create(); await c.resume(); c.close();
+  expect(s.models).toHaveLength(1); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(1);
+}, 60000);
+
+it('refuses an existing signed fact in the wrong nonterminal sidecar role before launching', async () => {
+  const s = stage2CompositionFixture(); let c = await s.create(); c.pollOnce(); await c.resumeOne(); c.close();
+  const path = join(s.root, 'preview-stage2-state.json'), d = JSON.parse(readFileSync(path, 'utf8'));
+  d.references.preparedFact = d.references.requestFact; writeFileSync(path, JSON.stringify(d));
+  c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('held'); c.close();
+  expect(s.models).toHaveLength(0); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
+});
+
+
+it('replays the synthetic launcher preload clock independently of the runner calendar with real elapsed timers', () => {
+  for (const calendar of [0, 4102444800000]) {
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `Date.now=()=>${calendar};${launcherClockSource(1790000000000)}
+       const start=Date.now();await new Promise(resolve=>setTimeout(resolve,25));
+       process.stdout.write(JSON.stringify({start,end:Date.now()}));`], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    const reading = JSON.parse(result.stdout);
+    expect(reading.start).toBeGreaterThanOrEqual(1790000000000);
+    expect(reading.end).toBeGreaterThan(reading.start);
+    expect(reading.end + 300000).toBeLessThan(1790628000000);
+  }
+});

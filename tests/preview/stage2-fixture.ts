@@ -321,7 +321,7 @@ export function stage2CompositionFixture(options: any = {}) {
     if (request.method === 'getMe') return response({ id: 8820318295, is_bot: true, username: 'echo_mmtest_seam_b27x_bot', first_name: 'Offline', ...options.bot });
     if (request.method === 'getUpdates') return response(updates.filter((row: any) => row.update_id >= Number(body.offset)).slice(0, Number(body.limit)));
     options.onSend?.();
-    return response({ message_id: 2001, chat: { id: Number(body.chat_id), type: 'private' }, text: body.text });
+    return response({ message_id: 2001, chat: { id: Number(body.chat_id), type: 'private' }, text: options.displayText ?? body.text.replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&') });
   } };
   const io = { realpath: (p: string) => p, executableBytes: () => artifactBytes,
     inspectSubscriptionProfile: () => ({ loginProfileIdentity: profile.loginProfileIdentity, managedConfigurationDigest: profile.managedConfigurationDigest }),
@@ -335,7 +335,7 @@ export function stage2CompositionFixture(options: any = {}) {
         models.push(command); await options.onModel?.();
         const binding = JSON.parse(JSON.parse(command.stdin).messages[1].content).bindings;
         const decision = { type: 'Decision', schemaVersion: 1, id: 'offline-answer', at: binding.at, by: binding.by,
-          conclusion: { subject: 'preview-stage2-answer', predicate: 'answer-text', value: options.answer ?? 'Four. café <世界> & ready', evidence: binding.evidence },
+          conclusion: { subject: 'preview-stage2-answer', predicate: 'answer-text', value: options.answer ?? 'Four. café <世界> & ready &lt;', evidence: binding.evidence },
           reason: { subject: 'question', predicate: 'answered', value: options.reason ?? true, evidence: binding.evidence },
           floor: { allowed: binding.floor, chosen: binding.floor.default } };
         text = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(decision),

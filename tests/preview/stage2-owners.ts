@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonical, consumeResult, decode, readEvidence } from '../../src/index.js';
 import type { Result, Json } from '../../src/index.js';
-import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
+import { authorAndAppend, createFactStore, hashBytes, extendsChain } from '../../src/facts/index.js';
 import type { FactContext, CapturedContent, GovernedVersion, FactEnvelope } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, registerTransportBodies, transportSchemas, decodeLoopPolicy } from '../../src/transport/index.js';
 import type { TransportHost, FenceToken } from '../../src/transport/index.js';
-import { createProviderJudgmentPort, providerJudgmentSchemas, registerProviderJudgmentBodies } from '../../src/judgment/index.js';
+import { createProviderJudgmentPort, decodeHistoricalProviderAnswerAcceptance, providerJudgmentSchemas, registerProviderJudgmentBodies } from '../../src/judgment/index.js';
 import type { JudgmentHost, JudgmentCapturePort, ProviderObservation } from '../../src/judgment/index.js';
 import { createProviderEffectDoorway, providerEffectSchemas, providerEffectMigrations, registerProviderEffectBodies, effectSchemas, registerEffectBodies,
   createEffectSpine, installOperationDefinition, consumeEffectSettlement, createEffectDoorway, decodeOutboundMessage } from '../../src/effects/index.js';
@@ -20,7 +20,9 @@ import { STAGE2_SETTINGS, STAGE2_OUTPUT_SCHEMA, STAGE2_DISCLOSURE, OWNER_WINDOW_
 import { createTelegramReplyOperationAdapter, installTelegramReplyOperation, telegramConversation, renderTelegramHtml } from '../../src/conversation/index.js';
 import { readRecordFact, validateGrounding } from '../../src/rungraph/graph.js';
 import { decodeSessionGrounding } from '../../src/rungraph/records.js';
-import { durablePreviewWrite } from './state.js';
+import { decodeFrame } from '../../src/facts/envelope.js';
+import { factsFixture } from '../facts/fixtures.js';
+import { validateStage2State, durablePreviewWrite } from './state.js';
 import type { ConfinedProviderRoute } from '../../src/assembly/index.js';
 import { createEffectSettlementAssessmentPort, createVerificationRuntime, createVerificationSpine, verificationSchemas, registerVerificationBodies } from '../../src/verification/index.js';
 import type { VerificationHost } from '../../src/verification/index.js';
@@ -408,7 +410,11 @@ export function prepareStage2Reply(f, accepted, reply, config) {
  * owner records decide whether a crash can advance or must remain UNKNOWN. */
 export function stage2Lifecycle(input) {
   const { sidecar, state, now, configuration } = input;
-  const terminal = () => sidecar.read().terminalLatch;
+  const terminal = () => {
+    const d = sidecar.read();
+    if (d.phase === 'api-accepted') reconcileStage2History(input.directory, d, state.read(), configuration);
+    return d.terminalLatch;
+  };
   const gate = () => {
     state.gate('dispatch');
     if (!input.activationActive()) throw Error('preview: activation revoked');
@@ -446,10 +452,6 @@ export function stage2Lifecycle(input) {
   };
   const reconcile = () => {
     const d = sidecar.read(), owner = owners(), facts = owner.all();
-    // References are fact IDs except explicitly named Run/operation identities.
-    for (const [name, id] of Object.entries(d.references)) {
-      if (name.endsWith('Fact') && !facts.some(row => row.id === id)) throw Error('preview: sidecar owner disagreement');
-    }
     const response = facts.find(row => row.kind === 'judgment-provider-ProviderJudgmentAttemptRecord' && record(row).phase === 'response-observed');
     const claimed = facts.some(row => row.kind === 'transport-AdmissionReservation'
       && ['dispatch-claimed', 'consumed'].includes(record(row).state) && record(row).run === owner.id);
@@ -458,19 +460,21 @@ export function stage2Lifecycle(input) {
       if (!response) { hold('UNKNOWN'); return false; }
       save('response-preserved', { responseFact: response.id, receipt: record(response).receipt.reference });
     }
-    if (d.phase === 'reply-dispatch-unknown') {
-      const observations = facts.filter(row => row.kind === 'effect-OperationObservation' && record(row).stage === 'response');
-      const message = facts.find(row => row.kind === 'effect-OutboundMessage');
-      if (!message || observations.length !== 1 || !acceptedTelegram(owner, record(observations[0]), record(message), input.telegram.target))
-        hold('UNKNOWN');
-      else { finishOuter(record(observations[0]));
-        save('api-accepted', { replyObservationFact: observations[0].id }, { terminalLatch: true }); }
-      return false;
-    }
     return true;
   };
   const resumeOne = async () => {
-    if (terminal()) return false;
+    if (terminal()) {
+      if (sidecar.read().phase === 'api-accepted') reconcileStage2History(input.directory, sidecar.read(), state.read(), configuration);
+      return false;
+    }
+    if (sidecar.read().phase === 'reply-dispatch-unknown') {
+      try {
+        const historical = reconcileStage2History(input.directory, sidecar.read(), state.read(), configuration, true);
+        finishOuter(historical.observation);
+        save('api-accepted', { replyObservationFact: historical.observationFact }, { terminalLatch: true });
+      } catch { hold('UNKNOWN'); }
+      return false;
+    }
     gate(); input.reconcileIntake();
     let d = sidecar.read();
     if (d.selectedTurn === null) {
@@ -485,6 +489,7 @@ export function stage2Lifecycle(input) {
         ownerStart: instant, ownerDeadline: instant + OWNER_WINDOW_MS, absoluteStart: instant });
       d = sidecar.read();
     }
+    if (Object.keys(d.references).length) reconcileStage2History(input.directory, d, state.read(), configuration);
     const owner = owners();
     if (!reconcile() || terminal()) return false;
     d = sidecar.read();
@@ -554,13 +559,157 @@ export function stage2Lifecycle(input) {
   return { resumeOne, terminal, owners };
 }
 
+/** Historical inspection has no writer, route, authority or live-clock dependency.
+ * The preview's disclosed fixed signing key remains its trust anchor. */
+export function reconcileStage2History(directory, d, outer, configuration, requireResponse = d.phase === 'api-accepted') {
+  validateStage2State(d, outer, configuration.root);
+  const base = factsFixture(), facts = [];
+  for (const raw of JSON.parse(readFileSync(join(directory, 'facts.json'), 'utf8'))) {
+    const fact = value(decodeFrame(raw, base.ctx)).frame;
+    extendsChain(fact, { ...base.ctx, facts }); facts.push(fact);
+  }
+  const fail = () => { throw Error('preview: sidecar owner disagreement'); };
+  const check = condition => { if (!condition) fail(); };
+  const one = (kind, predicate = () => true) => {
+    const found = facts.filter(f => f.kind === kind && predicate(record(f), f));
+    check(found.length === 1); return found[0];
+  };
+  const readCapture = cap => {
+    check(/^sha256:[a-f0-9]{64}$/u.test(cap?.hash) && cap.reference === `judgment-capture:${cap.hash}`);
+    const bytes = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+      .decode(readFileSync(join(directory, 'captures', cap.hash.slice(7))));
+    check(hashBytes(bytes) === cap.hash); return bytes;
+  };
+  const expected = {};
+  const remember = (role, fact) => { expected[role] = fact.id; return record(fact); };
+  if (d.references.requestFact) {
+    const q = remember('requestFact', one('judgment-provider-ProviderJudgmentRequest'));
+    const run = one('run-opening', r => r.id === q.run), r = record(run);
+    const intake = one('intake-admitted', (_r, f) => f.id === r.opening.id);
+    const turn = outer.turns[d.selectedTurn];
+    check(intake.body.eventId === String(turn.updateId) && intake.body.receipt === turn.receipt);
+    check(d.selectedTurn === `telegram:${configuration.botId}:update:${intake.body.eventId}`);
+    check(r.createdAt.value === d.ownerStart && r.budget.safetyCeiling.value === d.ownerDeadline && q.deadline === d.ownerDeadline);
+    const grounding = record(one('session-grounding', r => r.run === q.run));
+    check(enc(grounding.messages.map(m => m.capture)).bytes === enc(d.contextReferences).bytes);
+    check(hashBytes(JSON.stringify(grounding.messages.map(m => ({ reference: m.capture, hash: m.hash })))) === d.contextDigest);
+    expected.providerRun = q.run; expected.providerRequest = q.effectRequest; expected.submittedCapture = q.submitted.reference;
+    const submitted = readCapture(q.submitted);
+    check(enc(submitted).hash === q.inputDigest);
+    const envelope = JSON.parse(submitted);
+    check(envelope.messages[0].content === readCapture(q.question) && envelope.messages[1].content === readCapture(q.context));
+    const prepared = remember('preparedFact', one('judgment-provider-ProviderJudgmentAttemptRecord', r => r.request === q.id && r.phase === 'prepared'));
+    check(prepared.attempt === q.attempt && prepared.submittedDigest === q.inputDigest);
+    const effect = record(one('effect-provider-ProviderEffectRequest', r => r.id === q.effectRequest));
+    check(effect.run === q.run && effect.digest === q.inputDigest && effect.attempt === q.attempt);
+    if (d.references.responseFact) {
+      const responseFact = one('judgment-provider-ProviderJudgmentAttemptRecord', r => r.request === q.id && r.phase === 'response-observed');
+      const response = remember('responseFact', responseFact); expected.receipt = response.receipt.reference;
+      check(response.attempt === q.attempt && response.submittedDigest === q.inputDigest);
+      const receipt = JSON.parse(readCapture(response.receipt));
+      check(receipt.state === 'complete' && receipt.usage.charge === null);
+      const providerClaim = one('transport-AdmissionReservation', r => r.operation === response.operation && r.state === 'dispatch-claimed');
+      const providerConsumed = one('transport-AdmissionReservation', r => r.operation === response.operation && r.state === 'consumed');
+      check(response.claim === providerClaim.id && response.reservation === providerConsumed.id);
+      for (const f of [providerClaim, providerConsumed]) {
+        const r = record(f); check(r.run === q.run && r.request === effect.id && r.digest === q.inputDigest);
+      }
+      if (d.references.acceptanceFact) {
+        const acceptanceFact = one('judgment-provider-ProviderAnswerAcceptance', r => r.request === q.id);
+        const acceptance = remember('acceptanceFact', acceptanceFact);
+        const referenced = (role, reference, kind) => {
+          const fact = one(kind, (_r, f) => f.id === reference.id);
+          check(enc(ownerReference(fact)).bytes === enc(reference).bytes); remember(role, fact); return record(fact);
+        };
+        check(enc(acceptance.response).bytes === enc(ownerReference(responseFact)).bytes);
+        check(acceptance.operation === response.operation && acceptance.claim === response.claim && acceptance.digest === q.inputDigest);
+        const assessment = referenced('assessmentFact', acceptance.assessment, 'verification-VerificationAssessment');
+        const settlement = referenced('settlementFact', acceptance.settlement, 'effect-provider-ProviderEffectSettlement');
+        const accounting = referenced('accountingFact', acceptance.accounting, 'transport-SettlementApplication');
+        check(assessment.operation === response.operation && assessment.operationDigest === q.inputDigest);
+        check(enc(assessment.subject).bytes === enc(stage2ResponseSubject({ all: () => facts,
+          captures: { read: cap => base.success(readCapture(cap)) } })).bytes);
+        for (const predicate of ['response-authenticity', 'response-completeness'])
+          check(assessment.predicates.some(p => p.predicate === predicate && p.verdict === 'satisfied'));
+        check(settlement.operation === response.operation && settlement.finalCharge === 'unknown' && settlement.delayedExecutionExcluded === false);
+        check(accounting.operation === response.operation && accounting.settlement === settlement.id && accounting.actualCharge === -1
+          && accounting.unresolved === 1 && accounting.released === 0 && accounting.retryEligible === 0);
+        // Every signed response-subject reference and capture must still exist unchanged.
+        const inspect = v => {
+          if (!v || typeof v !== 'object') return;
+          if (v.name === 'FactEnvelope' && v.contentHash) {
+            const fact = facts.find(f => f.id === v.id); check(fact && enc(ownerReference(fact)).bytes === enc(v).bytes);
+          }
+          if (v.reference?.startsWith('judgment-capture:') && v.hash) readCapture(v);
+          Object.values(v).forEach(inspect);
+        };
+        inspect(assessment.subject); inspect(receipt);
+        const answer = readCapture(acceptance.capture);
+        // Seven's historical decoder revalidates its signed Decision and causal
+        // acceptance/accounting basis without evaluating current authority.
+        value(decodeHistoricalProviderAnswerAcceptance(acceptance, { ...base.c, origin: acceptanceFact, mode: 'historical',
+          facts: { ...base.ctx, facts, captures: { [acceptance.capture.reference]: {
+            bytes: answer, hash: acceptance.capture.hash, status: 'available', byteLength: Buffer.byteLength(answer) } } } },
+          { transport: { machine: 'machine-a', principal: base.bob } }));
+        check(hashBytes(answer) === acceptance.answerDigest && receipt.responseEvidence.answer.answerDigest === acceptance.answerDigest);
+        const decision = JSON.parse(answer), signed = acceptanceFact.body.decision;
+        check(enc(decision.standsOn === undefined ? { ...decision, standsOn: signed.standsOn } : decision).bytes === enc(signed).bytes);
+        if (d.references.replyRun) {
+          const reply = one('run-opening', r => r.opening.id === acceptanceFact.id);
+          remember('replyOpeningFact', reply); expected.replyRun = record(reply).id;
+          if (d.references.pairFact) {
+            const pair = remember('pairFact', one('transport-RunPairAdmission', r => r.reply === expected.replyRun));
+            check(pair.provider === q.run && pair.acceptance === acceptanceFact.id && pair.opening === reply.id
+              && pair.operation === response.operation && pair.answerDigest === acceptance.answerDigest);
+            remember('replyGroundingFact', one('session-grounding', r => r.run === expected.replyRun));
+          }
+          if (d.references.replyMessageFact) {
+            const message = remember('replyMessageFact', one('effect-OutboundMessage', r => r.run === expected.replyRun));
+            const request = remember('replyRequestFact', one('effect-EffectRequest', r => r.run === expected.replyRun));
+            check(request.message === message.id && request.digest === enc(message).hash && request.semanticMessage === message.semanticMessage
+              && request.pending === acceptanceFact.id && message.sourceResult === acceptanceFact.id);
+            check(message.text === acceptedReplyPreviewText(facts, expected.replyRun));
+            check(message.account === `telegram:v1:bot:${configuration.botId}`
+              && message.conversation === telegramConversation(configuration.botId, { chatId: configuration.chatId, forum: configuration.forum, messageThreadId: configuration.messageThreadId }));
+            if (requireResponse) {
+              const observationFact = one('effect-OperationObservation', r => r.request === request.id && r.stage === 'response');
+              const observation = remember('replyObservationFact', observationFact);
+              const claim = one('transport-AdmissionReservation', r => r.operation === observation.operation && r.state === 'dispatch-claimed');
+              const consumed = one('transport-AdmissionReservation', r => r.operation === observation.operation && r.state === 'consumed');
+              check(observation.claim === claim.id && observation.digest === request.digest
+                && observation.account === message.account && observation.conversation === message.conversation);
+              for (const fact of [claim, consumed]) { const r = record(fact);
+                check(r.request === request.id && r.run === message.run && r.digest === request.digest && r.semanticMessage === message.semanticMessage); }
+              check(acceptedTelegram({ captures: { read: cap => base.success(readCapture(cap)) } }, observation, message,
+                { chatId: configuration.chatId, messageThreadId: configuration.messageThreadId }));
+              if (d.phase === 'api-accepted') check(turn.phase === 'api-accepted'
+                && turn.replyOperation === observation.operation && turn.replyObservation === observation.id);
+            }
+          }
+        }
+      }
+    }
+  }
+  for (const [role, id] of Object.entries(d.references)) check(expected[role] === id);
+  if (requireResponse) check(expected.replyObservationFact);
+  return { facts, observation: expected.replyObservationFact && record(facts.find(f => f.id === expected.replyObservationFact)),
+    observationFact: expected.replyObservationFact };
+}
+
+export function stage2HistoricalStatus(root, outer, configuration) {
+  const d = validateStage2State(JSON.parse(readFileSync(join(root, 'preview-stage2-state.json'), 'utf8')), outer, root);
+  if (d.phase === 'api-accepted') reconcileStage2History(join(root, '.preview-stage2'), d, outer, configuration);
+  return d;
+}
+
 function acceptedTelegram(f, observation, message, target) {
   if (observation.stage !== 'response') return false;
   try {
     const bytes = value(f.captures.read(observation.capture));
     const response = JSON.parse(bytes), result = response.result;
     return response.ok === true && Number.isSafeInteger(result?.message_id) && result.message_id > 0
-      && String(result.chat?.id) === target.chatId && result.text === message.text
+      && String(result.chat?.id) === target.chatId && typeof result.text === 'string'
+      && result.text.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;') === message.text
       && (target.messageThreadId === null || result.message_thread_id === target.messageThreadId);
   } catch { return false; }
 }

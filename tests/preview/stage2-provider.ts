@@ -17,7 +17,7 @@ export function encoded(value: unknown) {
 
 /** The bindings are instructions, not a fabricated answer or a repair template. */
 export function decisionContext(bindings: unknown, selectedContext: readonly unknown[]): string {
-  return encoded({ instruction: 'Return one complete Decision JSON and no other text. Give a brief answer in conclusion.value (string); conclusion.subject="preview-stage2-answer"; conclusion.predicate="answer-text". Use the supplied exact owner bindings, allowed floor, evidence roster and clock. reason is your Decision reason. No tools.',
+  return encoded({ instruction: 'Return only one complete JSON object, no Markdown fences or extra top-level fields. Shape: {type:"Decision",schemaVersion:1,id:<nonempty string>,at:bindings.at,by:bindings.by,conclusion:{subject:"preview-stage2-answer",predicate:"answer-text",value:<brief answer string>,evidence:bindings.evidence},reason:{subject:<nonempty string>,predicate:<nonempty string>,value:<your reason as JSON>,evidence:bindings.evidence},floor:{allowed:bindings.floor,chosen:<action in bindings.floor.actions>}}. Copy at/by/floor.allowed and both evidence ID arrays exactly. Author the answer and reason. standsOn may be omitted; it is derived. No tools.',
     bindings, conversation: selectedContext }).bytes;
 }
 export function submittedEnvelope(input: { provider: string; model: string; route: string; question: string;

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createProductionTelegramIO, productionStorageIO, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { createPreviewComposition, stage2GuardedProviderPath } from './composition.js';
+import { stage2HistoricalStatus } from './stage2-owners.js';
 import { MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
 
 const MAX_PREVIEW_BACKOFF_MS = 300_000;
@@ -104,14 +105,14 @@ function storageKey() {
   return new Uint8Array(bytes);
 }
 
-function publicStatus(document, root) {
+function publicStatus(document, config) {
+  const root = config.root;
   const counts = {};
   for (const turn of Object.values(document.turns)) counts[turn.phase] = (counts[turn.phase] ?? 0) + 1;
   let stage2;
   const sidecarPath = resolve(root, 'preview-stage2-state.json');
   if (existsSync(sidecarPath)) {
-    const d = JSON.parse(readFileSync(sidecarPath, 'utf8'));
-    if (d.version !== 1 || d.root !== root || d.trial !== document.trial.id) throw Error('preview: status sidecar differs');
+    const d = stage2HistoricalStatus(root, document, config);
     stage2 = { phase: d.phase, modelAttemptUsed: d.modelAttemptUsed, terminalLatch: d.terminalLatch,
       ownerStart: d.ownerStart, ownerDeadline: d.ownerDeadline, hold: d.hold,
       selectedTurn: d.selectedTurn, references: d.references };
@@ -158,14 +159,26 @@ async function main() {
   const stage = integer(options.stage ?? '1', 'stage', 1, 2);
   const state = stateFor(config, options, command === 'run');
   if (command === 'status') {
-    process.stdout.write(`${JSON.stringify(publicStatus(state.read(), config.root))}\n`);
+    process.stdout.write(`${JSON.stringify(publicStatus(state.read(), config))}\n`);
     return 0;
   }
   if (command === 'stop') {
-    process.stdout.write(`${JSON.stringify(publicStatus(state.latchStop('operator'), config.root))}\n`);
+    process.stdout.write(`${JSON.stringify(publicStatus(state.latchStop('operator'), config))}\n`);
     return 0;
   }
   if (command !== 'run') throw new Error('preview: command must be run, status, or stop');
+
+  // Historical terminal inspection/reconciliation needs no live activation,
+  // credential, poller or authority. Corrupt success throws before reporting.
+  if (stage === 2 && existsSync(resolve(config.root, 'preview-stage2-state.json'))) {
+    const historical = stage2HistoricalStatus(config.root, state.read(), config);
+    if (historical.terminalLatch) return 0;
+    if (historical.phase === 'reply-dispatch-unknown') {
+      const recorded = await stage2GuardedProviderPath({ configuration: config, state });
+      try { await recorded.resume(); } finally { recorded.close(); }
+      return 0;
+    }
+  }
 
   // A stopped/expired trial never resolves a credential and never admits a transport.
   state.gate('poll');

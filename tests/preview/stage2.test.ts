@@ -33,6 +33,15 @@ it('composes exact Four input to one signed accepted answer in the bound private
     c.pollOnce(); await c.resume();
     expect(c.sidecar.read()).toMatchObject({ phase: 'api-accepted', terminalLatch: true, modelAttemptUsed: 1 });
     expect(s.models).toHaveLength(1);
+    const dispatched = JSON.parse(s.models[0].stdin);
+    const context = JSON.parse(dispatched.messages[1].content);
+    expect(Buffer.byteLength(s.models[0].stdin)).toBeLessThanOrEqual(4096);
+    expect(context.conversation[0].message.text).toBe('What is two plus two?');
+    for (const field of ['type:"Decision"', 'schemaVersion:1', 'id:<nonempty string>', 'at:bindings.at', 'by:bindings.by',
+      'conclusion:{subject:"preview-stage2-answer",predicate:"answer-text",value:<brief answer string>,evidence:bindings.evidence}',
+      'reason:{subject:<nonempty string>,predicate:<nonempty string>,value:<your reason as JSON>,evidence:bindings.evidence}',
+      'floor:{allowed:bindings.floor,chosen:<action in bindings.floor.actions>}', 'standsOn may be omitted; it is derived',
+      'no Markdown fences or extra top-level fields']) expect(context.instruction).toContain(field);
     expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(1);
     expect(s.calls.find(row => row.method === 'sendMessage').body.text).toContain('Four. café &lt;世界&gt; &amp; ready');
     expect(c.pollOnce()).toBeNull(); await c.resume(); expect(s.models).toHaveLength(1);

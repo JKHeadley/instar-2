@@ -22,7 +22,7 @@ import { createProductionBootOwnerFixture } from '../assembly/production-boot-ow
 import { json, privateKey, value } from '../facts/fixtures.js';
 import { durablePreviewWrite, previewTurnId, stage2SidecarExists, openStage2State } from './state.js';
 import { stage2Activation, stage2RouteFactory, encoded, subscriptionInvocationPolicy, OWNER_WINDOW_MS } from './stage2-provider.js';
-import { stage2Lifecycle } from './stage2-owners.js';
+import { stage2Lifecycle, stage2HistoricalStatus } from './stage2-owners.js';
 import type { PreviewIntakeDisposition, PreviewState, PreviewTurn } from './state.js';
 
 export const PREVIEW_LABEL = 'PREVIEW — experimental test agent; production safeguards incomplete.';
@@ -323,6 +323,30 @@ export async function stage2GuardedProviderPath(input: PreviewCompositionInput) 
 export function createPreviewComposition(input: PreviewCompositionInput) {
   const configuration = input.configuration;
   if (input.stage !== 2 && stage2SidecarExists(configuration.root)) throw Error('preview: stage2 sidecar excludes stage1');
+  if (input.stage === 2 && stage2SidecarExists(configuration.root)) {
+    const historical = stage2HistoricalStatus(configuration.root, input.state.read(), configuration);
+    // Optional supplied deployment bindings must still name this history. This
+    // is an immutable-byte comparison, not current activation or lease admission.
+    if (input.stage2 && (encoded(input.stage2.activation).hash !== historical.activationDigest
+      || encoded(subscriptionInvocationPolicy(input.stage2.model)).hash !== historical.policyDigest
+      || encoded(input.stage2.profile).hash !== input.stage2.activation.profileDigest
+      || input.stage2.cutoff !== historical.cutoff)) throw Error('preview: historical stage2 binding differs');
+    if (historical.phase === 'reply-dispatch-unknown') {
+      const sidecar = openStage2State({ root: configuration.root, state: input.state,
+        activationDigest: historical.activationDigest, policyDigest: historical.policyDigest, cutoff: historical.cutoff,
+        ownerFactsExist: () => true });
+      const lifecycle = stage2Lifecycle({ sidecar, state: input.state, configuration,
+        directory: join(configuration.root, '.preview-stage2'), now: input.stage2?.now ?? Date.now });
+      return Object.freeze({ sidecar, terminal: lifecycle.terminal, resumeOne: lifecycle.resumeOne,
+        resume: async () => { await lifecycle.resumeOne(); }, pollOnce: () => null, close: () => {} });
+    }
+    if (historical.terminalLatch) {
+      const read = () => stage2HistoricalStatus(configuration.root, input.state.read(), configuration);
+      return Object.freeze({ sidecar: Object.freeze({ read }), terminal: () => read().terminalLatch,
+        resumeOne: async () => { read(); return false; }, resume: async () => { read(); },
+        pollOnce: () => null, close: () => {} });
+    }
+  }
   const stateDocument = input.state.gate('admit');
   const stage2Now = input.stage2?.now ?? Date.now;
   const stage2Directory = join(configuration.root, '.preview-stage2');
@@ -616,7 +640,8 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         checkpoint: input.stage2.checkpoint });
       const advance = async () => {
         try { return await lifecycle.resumeOne(); }
-        catch (error) { const stop = input.state.read().stop;
+        catch (error) { if (sidecar.read().phase === 'api-accepted') throw error;
+          const stop = input.state.read().stop;
           sidecar.hold(stop?.reason === 'expiry' || stage2Now() >= stateDocument.trial.expiresAt ? 'EXPIRED'
             : stop ? 'STOPPED' : error?.previewBound ? 'BOUND' : 'REFUSED',
             error?.previewBound ?? {}, sidecar.read().contextReferences); return false; }

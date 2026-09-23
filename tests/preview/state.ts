@@ -278,34 +278,57 @@ export interface Stage2StateDocument {
     lengths: Readonly<Record<string, number>>; references: readonly string[] }>;
 }
 export function stage2SidecarExists(root: string): boolean { return existsSync(join(root, 'preview-stage2-state.json')); }
+export function validateStage2State(d: Stage2StateDocument, outer: PreviewStateDocument, root: string) {
+  if (d.version !== 1 || d.root !== root || d.trial !== outer.trial.id
+    || d.baseConfigurationDigest !== outer.trial.configurationDigest
+    || !/^sha256:[a-f0-9]{64}$/u.test(d.activationDigest) || !/^sha256:[a-f0-9]{64}$/u.test(d.policyDigest)
+    || !STAGE2_PHASES.includes(d.phase)
+    || ![0, 1].includes(d.modelAttemptUsed) || typeof d.terminalLatch !== 'boolean'
+    || !Array.isArray(d.excludedTurns) || !Array.isArray(d.contextReferences)
+    || typeof d.references !== 'object' || d.references === null
+    || !Object.values(d.references).every(v => typeof v === 'string' && v.length > 0)
+    || d.terminalLatch !== ['held', 'api-accepted'].includes(d.phase)) throw new Error('preview: corrupt stage2 sidecar');
+  if (!d.excludedTurns.every(v => typeof v === 'string') || !d.contextReferences.every(v => typeof v === 'string')
+    || typeof d.contextDigest !== 'string' || ((d.phase === 'held') !== (d.hold !== null)))
+    throw new Error('preview: corrupt stage2 hold');
+  if (d.hold && (!['BOUND', 'UNKNOWN', 'STOPPED', 'EXPIRED', 'REFUSED'].includes(d.hold.code)
+    || !d.hold.lengths || !Object.values(d.hold.lengths).every(v => Number.isSafeInteger(v) && v >= 0)
+    || !Array.isArray(d.hold.references) || !d.hold.references.every(v => typeof v === 'string')))
+    throw new Error('preview: corrupt stage2 hold');
+  assertInteger(d.cutoff, 'stage2 cutoff');
+  if (d.selectedTurn !== null) {
+    if (typeof d.selectedTurn !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(d.contextDigest) || !d.contextReferences.length)
+      throw new Error('preview: corrupt stage2 selection');
+    if (!outer.turns[d.selectedTurn] || d.excludedTurns.includes(d.selectedTurn)) throw new Error('preview: stage2 turn differs');
+    assertInteger(d.ownerStart!, 'owner start'); assertInteger(d.absoluteStart!, 'absolute start');
+    if (d.absoluteStart !== d.ownerStart || d.ownerDeadline !== d.ownerStart! + 300000
+      || d.absoluteStart! + 300000 > outer.trial.expiresAt) throw new Error('preview: stage2 window differs');
+  } else if (d.modelAttemptUsed !== 0 || d.ownerStart !== null || d.ownerDeadline !== null || d.absoluteStart !== null)
+    throw new Error('preview: stage2 attempt without turn');
+  const phase = STAGE2_PHASES.indexOf(d.phase);
+  if (d.phase !== 'held') {
+    if (phase > 0 && (d.selectedTurn === null || !d.contextDigest || !d.contextReferences.length))
+      throw new Error('preview: corrupt stage2 selection');
+    if (phase < 2 && d.modelAttemptUsed !== 0) throw new Error('preview: corrupt stage2 attempt');
+    if (phase >= 2 && d.modelAttemptUsed !== 1) throw new Error('preview: corrupt stage2 attempt');
+    const roles = [[], ['requestFact', 'preparedFact', 'providerRequest', 'submittedCapture', 'providerRun'], [],
+      ['responseFact', 'receipt'], ['assessmentFact', 'acceptanceFact', 'settlementFact', 'accountingFact'],
+      ['replyRun', 'replyOpeningFact'], ['pairFact', 'replyGroundingFact'], ['replyRequestFact', 'replyMessageFact'], [],
+      ['replyObservationFact']];
+    for (const name of roles.slice(0, phase + 1).flat()) if (!d.references[name])
+      throw new Error('preview: corrupt stage2 reference role');
+  }
+  return d;
+}
+
 export function openStage2State(options: { root: string; state: PreviewState; activationDigest: string;
   policyDigest: string; cutoff: number; create?: boolean; ownerFactsExist: () => boolean }) {
   const root = resolve(options.root), path = join(root, 'preview-stage2-state.json');
   const outer = options.state.read();
   const check = (d: Stage2StateDocument) => {
-    if (d.version !== 1 || d.root !== root || d.trial !== outer.trial.id
-      || d.baseConfigurationDigest !== outer.trial.configurationDigest || d.activationDigest !== options.activationDigest
-      || d.policyDigest !== options.policyDigest || d.cutoff !== options.cutoff || !STAGE2_PHASES.includes(d.phase)
-      || ![0, 1].includes(d.modelAttemptUsed) || typeof d.terminalLatch !== 'boolean'
-      || !Array.isArray(d.excludedTurns) || !Array.isArray(d.contextReferences)
-      || typeof d.references !== 'object' || d.references === null
-      || !Object.values(d.references).every(v => typeof v === 'string' && v.length > 0)
-      || d.terminalLatch !== ['held', 'api-accepted'].includes(d.phase)) throw new Error('preview: corrupt stage2 sidecar');
-    if (!d.excludedTurns.every(v => typeof v === 'string') || !d.contextReferences.every(v => typeof v === 'string')
-      || typeof d.contextDigest !== 'string' || ((d.phase === 'held') !== (d.hold !== null)))
-      throw new Error('preview: corrupt stage2 hold');
-    if (d.hold && (!['BOUND', 'UNKNOWN', 'STOPPED', 'EXPIRED', 'REFUSED'].includes(d.hold.code)
-      || !d.hold.lengths || !Object.values(d.hold.lengths).every(v => Number.isSafeInteger(v) && v >= 0)
-      || !Array.isArray(d.hold.references) || !d.hold.references.every(v => typeof v === 'string')))
-      throw new Error('preview: corrupt stage2 hold');
-    assertInteger(d.cutoff, 'stage2 cutoff');
-    if (d.selectedTurn !== null) {
-      if (!options.state.read().turns[d.selectedTurn] || d.excludedTurns.includes(d.selectedTurn)) throw new Error('preview: stage2 turn differs');
-      assertInteger(d.ownerStart!, 'owner start'); assertInteger(d.absoluteStart!, 'absolute start');
-      if (d.absoluteStart !== d.ownerStart || d.ownerDeadline !== d.ownerStart! + 300000
-        || d.absoluteStart! + 300000 > outer.trial.expiresAt) throw new Error('preview: stage2 window differs');
-    } else if (d.modelAttemptUsed !== 0 || d.ownerStart !== null || d.ownerDeadline !== null || d.absoluteStart !== null)
-      throw new Error('preview: stage2 attempt without turn');
+    validateStage2State(d, options.state.read(), root);
+    if (d.activationDigest !== options.activationDigest || d.policyDigest !== options.policyDigest || d.cutoff !== options.cutoff)
+      throw new Error('preview: corrupt stage2 binding');
     return d;
   };
   if (!existsSync(path)) {
