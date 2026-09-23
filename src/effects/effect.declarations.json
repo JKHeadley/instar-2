@@ -1,6 +1,6 @@
 [
   { "type": "Declaration", "schemaVersion": 1, "id": "effect-doorway-source", "kind": "protected artifacts", "status": "live",
-    "requiredFacts": { "pattern": "src/effects/**", "why": "Effect claim consumption, authority checks and settlement cannot be weakened by callers. Runtime activation and independent enforcement remain unproven.", "surface": "repository review approval" }, "standards": [82], "holds": [] },
+    "requiredFacts": { "pattern": "src/effects/**", "why": "Effect claim consumption, authority checks and settlement cannot be weakened by callers. Runtime activation and independent enforcement remain unproven. The final call edge in src/effects/doorway.ts consumes the one-use claim, completes Eight durability/effect preparation, and calls the adapter through Six invokeConsumedDispatch. A final refusal retains consumed exposure and permits observation only; the inventory is in src/transport/slice-manifest.json.", "surface": "repository review approval" }, "standards": [82], "holds": [] },
   { "type": "Declaration", "schemaVersion": 1, "id": "effect-reference-host", "kind": "protected artifacts", "status": "live",
     "requiredFacts": { "pattern": "scripts/effect-*.mjs", "why": "Fixture custody and replica adapters must not silently claim independent peer durability or real Telegram evidence.", "surface": "repository review approval" }, "standards": [82], "holds": [] }
 ]

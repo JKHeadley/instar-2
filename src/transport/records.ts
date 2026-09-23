@@ -1,8 +1,11 @@
+import { acceptedReplyOpening } from '../rungraph/accepted-reply.js';
+import { hashBytes } from '../facts/index.js';
+import { requireRunPairAdmission } from './run-pair.js';
 import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
 import type { BoundaryContext, Json, Result } from '../index.js';
 import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, ScanCursor, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
+import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, RunPairAdmission, ScanCursor, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
@@ -24,7 +27,9 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   SettlementApplication: { kind: 'object', fields: { ...row, operation: txt, request: txt, reservation: txt, claim: txt, digest: txt,
     settlement: txt, settlementFact: txt, settlementHash: txt, actualCharge: int, exposure: int, released: int, unresolved: int, capViolation: int, retryEligible: int } },
 });
-const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication'];
+export const runPairAdmissionShape: OwnedShape = freeze({ kind: 'object', fields: { ...row, profile: txt, provider: txt, reply: txt, opening: txt,
+  acceptance: txt, originalPredecessor: txt, obligation: txt, operation: txt, answerDigest: txt, conversation: txt, budget: int, replyPolicy: policy } });
+const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication', 'RunPairAdmission'];
 export const kindFor = (name: string) => `transport-${name}`;
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
   return recordNames.map(name => ({ kind: kindFor(name), version: 1,
@@ -151,10 +156,28 @@ export function live(host: TransportHost): void {
     && scopeIncludes(g.scope, scope) && (g.standing === 'operator' || g.actions.includes('work'))), 'current standing does not cover transport admission');
 }
 
+export function checkPairParent(all: readonly TransportFact[], facts: readonly FactEnvelope[]): void {
+  const pair = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+  if (!pair) return;
+  ensure(latestLoop(all, pair.provider)?.state !== 'stopped', 'parent stop inhibits dependent reply');
+  ensure(!reservations(all).some(p => p.run === pair.provider && all.some(v => v.record.type === 'SettlementApplication'
+    && v.record.operation === p.operation && v.record.capViolation === 1)), 'parent cap violation inhibits dependent reply');
+  const head = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
+    && (f.body as { run?: string }).run === pair.provider).at(-1);
+  const wire = head && (head.body as { record: { id: string; to?: string } }).record;
+  const replyHead = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
+    && (f.body as { run?: string }).run === pair.reply).at(-1);
+  const replyWire = replyHead && (replyHead.body as { record: { to?: string } }).record;
+  ensure(replyWire && !['halted', 'cancelled', 'completed', 'unreachable'].includes(replyWire.to ?? ''),
+    'reply Run stopped or terminal');
+  ensure(wire?.id === pair.originalPredecessor && !['halted', 'cancelled', 'completed', 'unreachable'].includes(wire.to ?? ''),
+    'parent predecessor changed or stopped');
+}
+
 // The owner validator runs INSIDE P2's append boundary, after signed-chain checks and
 // before its compare-head durable append. A caller bypassing the authority API cannot
 // rebase a stale transition on a newer envelope head.
-export function validateTransition(r: TransportRecord, all: readonly TransportFact[], host: TransportHost, origin = false): void {
+export function validateTransition(r: TransportRecord, all: readonly TransportFact[], host: TransportHost, origin = false, facts: readonly FactEnvelope[] = []): void {
   ensure(r.domain === host.domain && r.schemaVersion === 1 && r.command.length > 0 && r.tick >= 0, 'record domain or identity');
   ensure(r.predecessor === (all.at(-1)?.fact.id ?? ''), 'conditional predecessor changed');
   ensure(!all.some(v => v.record.command === r.command), 'command already committed');
@@ -197,7 +220,61 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
     validateScanGeneration(all, r.scan, r.generation, r.orderedKeysDigest, r.keyCount);
   } else {
     const lease = active();
-    if (r.type === 'AdmissionReservation') {
+    const pair = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+    if (r.type === 'RunPairAdmission') {
+      ensure(!pair && r.profile === 'provider-reply-v1' && r.provider !== r.reply
+        && r.budget >= 0 && (!origin || r.budget === host.budget), 'fixed pair profile already admitted or bounds differ');
+      policyCheck(r.replyPolicy);
+      const joined = acceptedReplyOpening(facts, r.reply);
+      const parentHead = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
+        && (f.body as { run?: string }).run === r.provider).at(-1);
+      ensure(parentHead && (parentHead.body as { record: { id: string } }).record.id === r.originalPredecessor,
+        'pair original predecessor changed');
+      ensure(encoded(joined).bytes === encoded({ opening: r.opening, acceptance: r.acceptance, provider: r.provider,
+        reply: r.reply, predecessor: r.originalPredecessor, obligation: r.obligation, operation: r.operation,
+        answerDigest: r.answerDigest, conversation: r.conversation }).bytes, 'pair differs from Five accepted opening');
+      const obligation = all.find(p => p.fact.id === r.obligation);
+      const parent = latestLoop(all, r.provider);
+      ensure(obligation?.record.type === 'LoopRecord' && obligation.record.run === r.provider
+        && parent && parent.state !== 'stopped', 'pair requires original same-domain live obligation');
+      ensure(all.filter(p => p.record.type === 'LoopRecord').every(p => (p.record as LoopRecord).run === r.provider),
+        'pair requires singleton provider history');
+      const operation = reservations(all).find(p => p.operation === r.operation);
+      ensure(operation?.run === r.provider && operation.state === 'consumed', 'pair provider operation not consumed');
+      ensure(!reservations(all).some(op => op.run === r.provider && all.some(p => p.record.type === 'SettlementApplication'
+        && p.record.operation === op.operation && p.record.capViolation === 1)), 'parent cap violation inhibits dependent reply');
+      ensure(!facts.some(f => f.kind === 'transport-RunPairAdmission'
+        && (f.body as unknown as { record: RunPairAdmission }).record.reply === r.reply), 'reply already admitted in another domain');
+      if (origin) requireRunPairAdmission(host, r);
+    } else if (r.type === 'AdmissionReservation') {
+      const opening = facts.find(f => f.kind === 'run-opening' && (f.body as { run?: string }).run === r.run);
+      const cause = opening && (opening.body as { record: { opening: { id: string } } }).record.opening.id;
+      ensure(!facts.some(f => f.id === cause && f.kind === 'judgment-provider-ProviderAnswerAcceptance') || pair?.reply === r.run,
+        'accepted reply requires same-domain pair admission');
+      if (pair && r.state !== 'closed') {
+        checkPairParent(all, facts);
+        ensure(![pair.provider, pair.reply].some(run => { const loop = latestLoop(all, run);
+          return loop && loopActive(all, loop); }), 'pair recovery observation already active');
+        ensure(r.run === pair.provider || r.run === pair.reply, 'fixed pair permits no other Run');
+        if (r.run === pair.provider) ensure(reservations(all).some(p => p.operation === r.operation),
+          'fixed pair permits no further provider operation');
+        if (r.run === pair.reply) {
+          ensure(!reservations(all).some(p => p.run === pair.reply && p.operation !== r.operation),
+            'accepted reply permits one outbound operation only');
+          const requestFact = facts.find(f => f.kind === 'effect-EffectRequest'
+            && (f.body as { record: { id: string } }).record.id === r.request);
+          const request = requestFact && (requestFact.body as { record: Record<string, unknown> }).record;
+          const messageFact = facts.find(f => f.kind === 'effect-OutboundMessage'
+            && (f.body as { record: { id: string } }).record.id === request?.message);
+          const message = messageFact && (messageFact.body as { record: Record<string, unknown> }).record;
+          ensure(request && message && request.run === r.run && request.digest === r.digest && request.attempt === r.attempt
+            && message.run === r.run && message.purpose === 'ordinary-reply' && message.sourceResult === pair.acceptance
+            && typeof message.text === 'string' && hashBytes(message.text) === pair.answerDigest
+            && encoded(message).hash === r.digest && message.semanticMessage === r.semanticMessage,
+          'reply reservation requires exact accepted-answer outbound request; no model operation');
+        }
+      }
+
       // A conditional close exists BECAUSE the reserving fence is gone; it keeps
       // the immutable original fence and is still written under the live lease.
       ensure(r.state === 'closed' || encoded(r.fence).bytes === encoded(fenceFor(all, lease)).bytes, 'stale fence at durable boundary');
@@ -219,7 +296,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           : latestApplication(all, p.operation) ?? { exposure: p.charge, unresolved: 1 }]));
         ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
           || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution or charge prohibits a new attempt; unproven accounting durability is unresolved');
-        ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= host.budget, 'spend bound exhausted');
+        ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= Math.min(host.budget, pair?.budget ?? host.budget), 'spend bound exhausted');
         const loop = latestLoop(all, r.run); ensure(loop && loop.state !== 'stopped', 'durable recovery wake required before reservation');
       } else {
         const immutable = (v: AdmissionReservation) => ({ ...v, command: '', predecessor: '', tick: 0, authority: '', state: '', executor: '' });
@@ -241,10 +318,22 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
       const prior = latestLoop(all, r.run);
       if (!prior) {
-        ensure(!all.some(p => p.record.type === 'LoopRecord'), 'slice supports one run only');
+        ensure(!all.some(p => p.record.type === 'LoopRecord') || pair?.reply === r.run,
+          'slice supports one run only');
+        const opening = facts.find(f => f.kind === 'run-opening' && (f.body as { run?: string }).run === r.run);
+        const cause = opening && (opening.body as { record: { opening: { id: string } } }).record.opening.id;
+        ensure(!facts.some(f => f.id === cause && f.kind === 'judgment-provider-ProviderAnswerAcceptance') || pair?.reply === r.run,
+          'accepted reply requires same-domain pair admission');
+        if (pair) { checkPairParent(all, facts); ensure(r.run === pair.reply, 'fixed pair permits no third Run');
+          ensure(encoded(r.policy).bytes === encoded(pair.replyPolicy).bytes, 'reply policy differs from durable pair admission'); }
         ensure(r.attempts === 0 && r.started === r.tick && r.pending === '' && r.state === 'scheduled', 'initial loop');
       }
       else {
+        if (pair) {
+          if (r.run === pair.reply) checkPairParent(all, facts);
+          ensure(![pair.provider, pair.reply].some(run => { const loop = latestLoop(all, run);
+            return loop && loopActive(all, loop); }), 'pair recovery observation already active');
+        }
         ensure(prior.state !== 'stopped', 'stopped is terminal, not closed or restartable');
         ensure(!loopActive(all, prior), 'observation already active; durable completion required');
         ensure(encoded(r.policy).bytes === encoded(prior.policy).bytes && r.started === prior.started && r.episode === prior.episode, 'loop bounds cannot reset');
@@ -278,7 +367,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
 }
 export function registerTransportBodies<S = never>(host: TransportHost, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): Result<readonly OwnedBodyRegistration[]> {
   return boundary('TransportRegistrations', null, c, () => {
-    const registrations = Object.entries(transportShapes).map(([name, shape]) => take(registerOwnedBody({
+    const registrations = Object.entries({ ...transportShapes, RunPairAdmission: runPairAdmissionShape }).map(([name, shape]) => take(registerOwnedBody({
     name, owner: 'part-six', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, ctx) => {
       try {
@@ -310,7 +399,7 @@ export function registerTransportBodies<S = never>(host: TransportHost, c: Bound
           // Even a subsequently refused candidate conservatively invalidates it.
           if (candidate) noteAccountingCandidate(host);
           const admitting = ctx.mode === 'origin' && candidate;
-          validateTransition(v, past, host, admitting);
+          validateTransition(v, past, host, admitting, causalCone(ctx.origin, ctx.facts.facts));
           if (v.type === 'SettlementApplication') {
             checkApplicationEvidence(v, causalCone(ctx.origin, ctx.facts.facts), past, ctx.facts);
             if (ctx.mode === 'origin') requireApplication(host, v, settlementConsumer);

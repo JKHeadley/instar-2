@@ -1,11 +1,11 @@
 import type { BoundaryContext, FactEnvelopeReference, Json, LeaseReference, OwnedReference, Result } from '../index.js';
 import { canonical } from '../index.js';
 import type { AppendReceipt, DurabilityState, FactEnvelope, FactStorePort } from '../facts/index.js';
-import { recordFromWire } from '../rungraph/index.js';
+import { acceptedReplyOpening, recordFromWire } from '../rungraph/index.js';
 import type { RunAdmissionPort, RunStep } from '../rungraph/index.js';
 import type { AdmissionReservation, FenceToken, Lease, TransportAuthority, TransportFact, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { shapeCheck, transportShapes } from './records.js';
+import { runPairAdmissionShape, shapeCheck, transportShapes } from './records.js';
 
 export interface ProductionRunAdmissionInput {
   readonly authority: TransportAuthority<unknown>;
@@ -27,7 +27,7 @@ type CleanPrefix = Readonly<{
 const productionAdmissions = new WeakSet<object>();
 const runKinds = new Set(['run-opening', 'run-transition', 'session-grounding']);
 const transportFactNames = new Set(['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord',
-  'ScanCursor', 'SettlementApplication']);
+  'ScanCursor', 'SettlementApplication', 'RunPairAdmission']);
 
 const reference = (fact: FactEnvelope): FactEnvelopeReference => freeze({
   owner: 'part-two' as const, name: 'FactEnvelope' as const, id: fact.id,
@@ -71,7 +71,7 @@ function transportFrom(facts: readonly FactEnvelope[]): readonly TransportFact[]
     if (!transportFactNames.has(name)) return [];
     const record = object(fact.body, 'transport fact body required').record;
     ensure(record !== undefined, 'transport record body required');
-    shapeCheck(record, transportShapes[name]!);
+    shapeCheck(record, name === 'RunPairAdmission' ? runPairAdmissionShape : transportShapes[name]!);
     ensure(object(record, 'transport record required').type === name, 'transport fact kind differs from record');
     return [freeze({ fact, record: record as unknown as TransportRecord })];
   });
@@ -197,7 +197,14 @@ export function createProductionRunAdmission(
     const wire = runWire(fact)!;
     let expected: string;
     if (fact.kind === 'run-opening') {
-      expected = command('create', { opening: wire.opening, run: runOf(fact), assignment: assignment.fact.id });
+      const opening = object(wire.opening, 'Run opening reference required');
+      if (facts.some(f => f.id === opening.id && f.kind === 'judgment-provider-ProviderAnswerAcceptance')) {
+        const joined = acceptedReplyOpening(facts, runOf(fact)!);
+        expected = command('commit', { run: joined.provider, expected: joined.predecessor,
+          ownership: { owner: 'part-six', name: 'Lease', id: assignment.fact.id }, generation: wire.generation,
+          operation: `accepted-provider-reply:${joined.acceptance}`, digest: encoded(recordFromWire(wire as Json)).hash,
+          durability: { kind: 'local-durable' }, assignment: assignment.fact.id });
+      } else expected = command('create', { opening: wire.opening, run: runOf(fact), assignment: assignment.fact.id });
     } else {
       const step = fact.kind !== 'run-transition' || wire.step === undefined
         ? undefined : object(wire.step, 'run step body required');
@@ -221,6 +228,8 @@ export function createProductionRunAdmission(
         'closed run creation request required');
       const before = clean();
       ensure(before.facts.some(fact => fact.id === opening.id), 'run opening cause absent');
+      ensure(!before.facts.some(fact => fact.id === opening.id && fact.kind === 'judgment-provider-ProviderAnswerAcceptance'),
+        'accepted reply requires conditional original-Run commit');
       ensure(!head(before.facts, run), 'run already exists');
       const live = current(undefined, before);
       const writeCommand = command('create', { opening, run, assignment: live.fence.assignment });
@@ -248,6 +257,15 @@ export function createProductionRunAdmission(
       const write = take(input.authority.admitWrite(writeCommand, live.fence));
       return appendOnce(before.facts, writeCommand, write, append, receipt => {
         const wire = runWire(receipt.fact);
+        if (receipt.fact.kind === 'run-opening') {
+          ensure(wire?.type === 'Run' && typeof wire.id === 'string', 'accepted reply Run required');
+          const joined = acceptedReplyOpening(clean().facts, wire.id);
+          ensure(joined.provider === request.run && joined.predecessor === request.expected
+            && request.operation === `accepted-provider-reply:${joined.acceptance}`
+            && request.digest === encoded(recordFromWire(wire as Json)).hash
+            && same(wire.generation, request.generation), 'accepted reply commit differs from exact original cause');
+          return;
+        }
         ensure(runOf(receipt.fact) === request.run && wire?.run === request.run
           && wire.expected === request.expected && same(wire.ownership, request.ownership)
           && same(wire.generation, request.generation) && receipt.durability.kind === request.durability.kind,

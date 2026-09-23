@@ -6,7 +6,7 @@
   },
   {
     "type": "Declaration", "schemaVersion": 1, "id": "assembly.source", "kind": "protected artifacts", "status": "dark",
-    "requiredFacts": { "pattern": "src/assembly/**", "why": "Assembly, custody, package and growth consumers must resolve signed history and cannot be weakened by configured status fields.", "surface": "repository review approval" },
+    "requiredFacts": { "pattern": "src/assembly/**", "why": "Assembly, custody, package and growth consumers must resolve signed history and cannot be weakened by configured status fields. src/assembly/production-composition.ts composeProductionOwners binds admitReply to the existing Six authority and genuine same-store Five graph for the fixed accepted-answer pair; src/transport/slice-manifest.json records the seam and subordinate P10-SI-17/18/24/37 offline evidence. This does not activate preview wiring or establish live delivery.", "surface": "repository review approval" },
     "standards": [82], "holds": []
   },
   {
