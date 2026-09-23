@@ -99,8 +99,13 @@ it('V79 the changed source paths stay inside the explicit Part Four, Part Ten an
     'src/verification/effect-consumption.ts', 'src/verification/index.ts', 'src/verification/verification.declarations.json',
     'src/judgment/contracts.ts', 'src/judgment/model-adapter.ts', 'src/judgment/provider-path.ts', 'src/judgment/index.ts',
     'src/judgment/judgment.declarations.json', 'src/effects/provider-path.ts', 'src/effects/index.ts'];
+  // GRANT SIX-PAIR (seam-six-reply-pair-grant.md): Six's fixed provider/reply Run pair, exact files.
+  const runPairGrant = ['src/transport/contracts.ts', 'src/transport/records.ts', 'src/transport/authority.ts',
+    'src/transport/run-pair.ts', 'src/transport/dispatch-invocation.ts', 'src/transport/README.md',
+    'src/transport/slice-manifest.json', 'src/transport/transport.declarations.json',
+    'src/effects/doorway.ts', 'src/effects/effect.declarations.json'];
   const outside = paths.filter(path => !liveInputGrant.includes(path) && !sealedIdentityGrant.includes(path)
-    && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path) && !providerResponseAssessmentGrant.includes(path)
+    && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path) && !providerResponseAssessmentGrant.includes(path) && !runPairGrant.includes(path)
     && !['src/intake/', 'src/assembly/', 'src/operator/', 'src/rungraph/'].some(prefix => path.startsWith(prefix)));
   expect(outside).toEqual([]);
   expect(readFileSync(join(root, 'src/index.ts'), 'utf8'))
