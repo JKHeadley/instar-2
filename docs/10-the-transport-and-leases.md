@@ -307,6 +307,17 @@ recorded as a cap violation, never hidden by releasing a different reservation.
 
 The profile and exact admission are durably committed and owner-decoded before use. Reconstruction retains the original finite budget, counters, pending work, reservation exposure and one-use identities; restart does not replenish them. The reply receives its own Six reservation and Eight outbound operation. It may send only the accepted answer once and cannot invoke a model. The original pending step and maximum unresolved exposure remain until the existing settlement contract proves otherwise. Both reservations fit the same finite budget. A parent cap violation or stop inhibits the dependent reply; current fence and standing are checked at admission and dispatch. Recovery is bounded and serialized across the pair, including competing issuer objects and reentrant calls, with no increase in effective executor concurrency.
 
+For PREVIEW-S2, the reply message text must equal either the unchanged raw accepted-answer bytes
+under their digest or Five's exact signed-Decision PREVIEW projection. Prefix, value, acceptance,
+conversation and current authority checks remain owner checks at reservation and dispatch; the
+adapter cannot rewrite prepared text. The complete canonical OutboundMessage, including all
+identities, sourceResult and JSON escaping, must fit the existing OperationDefinition maximum
+of 4096 bytes. Text fitting by itself is insufficient; overflow is held without truncation or send.
+Declared subscription monetary demand is zero, not evidence of zero actual cost: original Eight
+finalCharge stays null and delayedExecutionExcluded false; Six actualCharge is -1, unresolved 1,
+released 0, retryEligible 0 and monetary exposure 0. Pending work remains pending.
+
+
 Reply admission does not settle the provider operation, establish its final charge or quiescence, release unknown exposure, or enable another model turn. One completed answer is the limit of this profile. It does not implement general multi-Run scheduling or run-independent responder capacity, and it does not close full M3-I.
 
 For this fixed pair, Eight consumes the one-use claim and completes its callback-capable

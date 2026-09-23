@@ -3,7 +3,11 @@
   "status": "dark",
   "activation": "not registered as a live or gated runtime feature",
   "reason": "Reference composition only. Production P3 gate/catalog, current authority feed, five/eight composition, channel proof and supervisor must precede runtime activation.",
-  "metricsToWire": ["transport.lease-epoch", "transport.unresolved-operations", "transport.observation-attempts"],
+  "metricsToWire": [
+    "transport.lease-epoch",
+    "transport.unresolved-operations",
+    "transport.observation-attempts"
+  ],
   "inheritedDeferrals": [],
   "forwardContracts": {
     "five-exclusive-admission": "partial: one-voter fence; five owns run transitions",
@@ -35,7 +39,8 @@
         "exports": [
           "AcceptedReplyOpening",
           "acceptedReplyOpening",
-          "consumeAcceptedReplyOpening"
+          "consumeAcceptedReplyOpening",
+          "acceptedReplyPreviewText"
         ],
         "registration": "createRunGraph in src/rungraph/service.ts binds genuine graph/store provenance",
         "declaration": "src/rungraph/accepted-reply.declarations.json#rungraph-accepted-reply"
@@ -132,7 +137,7 @@
       "declaration": "src/effects/effect.declarations.json#effect-doorway-source"
     },
     "evidenceScope": "Signed owner integration and offline simulated physical model/send routes. No installed-route, live-channel, billing/quiescence or production-readiness proof; no held rule edges or runtime check records are minted by this inventory.",
-    "remainingScope": "Full M3-I, general scheduling, run-independent responder capacity, preview integration and route/installation holds remain outside this unit. Subordinate G6-T4-SIX closure requires passing gates and authorized landing after implementation review YES."
+    "remainingScope": "Full M3-I, general scheduling, run-independent responder capacity, production preview activation and route/installation holds remain outside this unit. Subordinate G6-T4-SIX closure requires passing gates and authorized landing after implementation review YES."
   },
   "fixedPairEvidence": {
     "stage": "build",
@@ -348,5 +353,37 @@
       "test": "P10-SI-17 P10-SI-18 P10-SI-24 P10-SI-37 recovers one outbound operation on the original Run after original accounting closes; separate reply-Run outbound admission remains held",
       "scope": "Original-Run outbound after original accounting closes only. Its unchanged historical title is the limit of that test, not a new Six implementation blocker after reviewed pair closure."
     }
+  },
+  "previewStage2": {
+    "inventoryOnly": true,
+    "activation": "Explicit supervised waiver only; dark slice and all source protections unchanged; no live evidence or rule closure.",
+    "rendering": "Unchanged raw-answer digest OR exact Five signed-Decision PREVIEW projection. Complete canonical OutboundMessage <= existing 4096 definition; no adapter rewrite or truncation.",
+    "providerBounds": {
+      "completeInputBytes": 4096,
+      "decisionBytes": 16384,
+      "rawTerminalBytes": 65536,
+      "metadataBytesEach": 8192,
+      "captureCapacityBytes": 1048576,
+      "responseReservationBytes": 330416,
+      "tokens": 2048,
+      "modelTimeoutMs": 120000,
+      "ownerWindowMs": 300000
+    },
+    "accounting": "Additional monetary demand 0; observed charge null; Eight finalCharge null, delayedExecutionExcluded false; Six actualCharge -1, unresolved 1, released 0, retryEligible 0, exposure 0.",
+    "fixtures": [
+      "tests/assembly/production-provider-subscription.test.ts",
+      "tests/rungraph/accepted-reply-preview.test.ts",
+      "tests/transport/run-pair-preview-rendering.test.ts",
+      "tests/preview/stage2.test.ts",
+      "tests/preview/stage2-recovery.test.ts"
+    ],
+    "previewModules": [
+      "tests/preview/stage2-provider.ts",
+      "tests/preview/stage2-owners.ts",
+      "tests/preview/composition.ts",
+      "tests/preview/state.ts",
+      "tests/preview/agent.mjs"
+    ],
+    "scope": "Offline synthetic CLI and simulated Telegram with actual public owner chain. Same-machine peer, fixture governance/signing/placement/capacity and local observation strength remain waived. No production gate/installation/admission claim."
   }
 }

@@ -2,8 +2,9 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
-  readFileSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+  readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join, resolve, relative, isAbsolute } from 'node:path';
+import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
@@ -15,19 +16,21 @@ export const productionProviderIO = Object.freeze({
   realpath: realpathSync,
   executableBytes: path => { if (!lstatSync(path).isFile()) throw Error('provider executable missing'); return readFileSync(path); },
   execute: input => new Promise(resolve => {
-    const child = spawn(input.executable, input.args, { cwd: input.cwd, env: input.env,
+    if (input.stopped?.()) { resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); return; }
+    const child = spawn(input.executable, input.args, { cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
       shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
     let chunks = [], size = 0, limited = false;
     const fail = () => { limited = true; chunks = []; child.kill('SIGKILL'); };
     const timer = setTimeout(fail, input.timeout);
-    child.on('error', () => { clearTimeout(timer); resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); });
+    const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(); }, 25) : undefined;
+    child.on('error', () => { clearTimeout(timer); clearInterval(stopTimer); resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); });
     child.stdin.on('error', fail);
     child.stdout.on('data', chunk => {
       size += chunk.length;
       if (size > input.maxBytes) fail(); else if (!limited) chunks.push(chunk);
     });
     child.on('close', code => {
-      clearTimeout(timer);
+      clearTimeout(timer); clearInterval(stopTimer);
       const stdoutBytes = Buffer.concat(chunks);
       resolve({ code, limited, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes) });
     });
@@ -88,4 +91,64 @@ export function createProductionNativeContextIO(captures) {
     for (const row of delivered.contents) JSON.parse(row.bytes);
     return { identity, digest: `sha256:${createHash('sha256').update(actual).digest('hex')}` };
   } });
+}
+
+
+/** Preview-only provider host. No secret file or Keychain contents are read here. */
+export function createSubscriptionProviderIO({ repository, stopped }) {
+  const outside = (path, root) => { const suffix = relative(root, path);
+    return suffix.startsWith('../') || suffix === '..' || isAbsolute(suffix); };
+  const digest = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
+  const inspectSubscriptionProfile = profile => {
+    if (!['darwin', 'linux'].includes(process.platform)) throw Error('subscription platform unsupported');
+    const bindings = [];
+    for (const path of [profile.home, profile.configDirectory, profile.workingDirectory]) {
+      const info = lstatSync(path);
+      if (realpathSync(path) !== path || !info.isDirectory() || (info.mode & 0o777) !== 0o700
+        || info.uid !== process.getuid() || !outside(path, repository) || !outside(path, homedir()))
+        throw Error('subscription profile path refused');
+      bindings.push({ path, dev: info.dev, ino: info.ino });
+    }
+    if (new Set(bindings.map(row => row.path)).size !== 3 || readdirSync(profile.workingDirectory).length)
+      throw Error('subscription working directory is not isolated and empty');
+    const managedRoot = process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode' : '/etc/claude-code';
+    const paths = [join(managedRoot, 'managed-settings.json'), join(profile.configDirectory, 'managed-settings.json')];
+    const dropins = join(managedRoot, 'managed-settings.d');
+    if (existsSync(dropins)) {
+      if (realpathSync(dropins) !== dropins || !lstatSync(dropins).isDirectory()) throw Error('subscription policy path refused');
+      const names = readdirSync(dropins).filter(name => !name.startsWith('.') && name.endsWith('.json')).sort();
+      if (names.length > 32) throw Error('subscription policy count bound');
+      paths.push(...names.map(name => join(dropins, name)));
+    }
+    // The pinned CLI also consults device and per-user MDM policy. This narrow
+    // preview refuses those sources rather than interpreting plist helpers.
+    if (process.platform === 'darwin') {
+      for (const base of ['/Library/Managed Preferences', `/Library/Managed Preferences/${userInfo().username}`]) {
+        if (existsSync(join(base, 'com.anthropic.claudecode.plist'))) throw Error('subscription MDM policy unsupported');
+      }
+    }
+    const policy = [];
+    for (const path of paths) {
+      if (!existsSync(path)) { policy.push({ path, settings: null }); continue; }
+      const info = lstatSync(path);
+      if (!info.isFile() || info.size > 65536 || realpathSync(path) !== path) throw Error('subscription policy path refused');
+      const settings = JSON.parse(readFileSync(path, 'utf8'));
+      if (!settings || typeof settings !== 'object' || Array.isArray(settings)
+        || Object.keys(settings).some(key => !['forceLoginMethod', 'forceLoginOrgUUID', 'disableAllHooks'].includes(key))
+        || (settings.forceLoginMethod !== undefined && settings.forceLoginMethod !== 'claudeai')
+        || (settings.forceLoginOrgUUID !== undefined && settings.forceLoginOrgUUID !== profile.organization)
+        || (settings.disableAllHooks !== undefined && settings.disableAllHooks !== true))
+        throw Error('subscription managed configuration unsupported');
+      policy.push({ path, settings });
+    }
+    // Unknown server policy formats are an activation hold, never ignored.
+    // 2.1.280 also reads remote-settings plus signed/cache companions. Never
+    // adopt an opaque cached server policy (including an orphan companion).
+    if (readdirSync(profile.configDirectory).some(name =>
+      name.startsWith('policy-limits.json') || name.startsWith('remote-settings')))
+      throw Error('subscription server policy requires reviewed effective configuration');
+    return Object.freeze({ loginProfileIdentity: digest(bindings), managedConfigurationDigest: digest(policy) });
+  };
+  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile,
+    execute: input => productionProviderIO.execute({ ...input, stopped }) });
 }

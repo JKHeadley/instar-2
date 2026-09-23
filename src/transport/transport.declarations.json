@@ -1,7 +1,7 @@
 [
   {
     "type": "Declaration", "schemaVersion": 1, "id": "transport-authority-source", "kind": "protected artifacts", "status": "live",
-    "requiredFacts": { "pattern": "src/transport/**", "why": "Fence, claim and observation authority must not be relaxed by its caller; external enforcement remains parts nine/eleven. Fixed-pair inventory: src/transport/slice-manifest.json records RunPairAdmission body v1 / transport-RunPairAdmission schema 1, src/transport/run-pair.ts admitAcceptedProviderReply and src/transport/dispatch-invocation.ts invokeConsumedDispatch. The existing Six authority owns shared exposure and the final consumed-operation/fence/standing/parent-inhibition check; this source protection does not activate the dark slice.", "surface": "repository review approval" },
+    "requiredFacts": { "pattern": "src/transport/**", "why": "Fence, claim and observation authority must not be relaxed by its caller; external enforcement remains parts nine/eleven. Fixed-pair inventory: src/transport/slice-manifest.json records RunPairAdmission body v1 / transport-RunPairAdmission schema 1, src/transport/run-pair.ts admitAcceptedProviderReply and src/transport/dispatch-invocation.ts invokeConsumedDispatch. The existing Six authority owns shared exposure and the final consumed-operation/fence/standing/parent-inhibition check; this source protection does not activate the dark slice. PREVIEW-S2 permits only the existing raw-answer digest equality or exact Five acceptedReplyPreviewText equality at the current pair boundary; full outbound <=4096 and all claim/fence/standing/parent checks remain unchanged.", "surface": "repository review approval" },
     "standards": [82], "holds": []
   },
   {

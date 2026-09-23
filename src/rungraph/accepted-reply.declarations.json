@@ -7,7 +7,7 @@
     "status": "dark",
     "requiredFacts": {
       "pattern": "src/rungraph/accepted-reply.ts",
-      "why": "Five owns AcceptedReplyOpening, acceptedReplyOpening and consumeAcceptedReplyOpening, registered by createRunGraph in src/rungraph/service.ts. The consumer authenticates the genuine same-store graph and exact accepted-answer opening, original acceptance, provider Run/predecessor and conversation obligation for Six admitAcceptedProviderReply. Module/seam inventory and offline evidence are in src/transport/slice-manifest.json; no new answer producer, live feature or delivery proof.",
+      "why": "Five owns AcceptedReplyOpening, acceptedReplyOpening and consumeAcceptedReplyOpening, registered by createRunGraph in src/rungraph/service.ts. The consumer authenticates the genuine same-store graph and exact accepted-answer opening, original acceptance, provider Run/predecessor and conversation obligation for Six admitAcceptedProviderReply. Module/seam inventory and offline evidence are in src/transport/slice-manifest.json; no new answer producer, live feature or delivery proof. PREVIEW-S2 also exports acceptedReplyPreviewText: pure deterministic labelled/escaped projection of the signed decoded Decision, only over owner-validated facts. It adds no authority, answer producer, schema or decoder registration.",
       "surface": "repository review approval"
     },
     "standards": [

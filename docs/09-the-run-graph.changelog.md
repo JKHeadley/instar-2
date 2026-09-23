@@ -4,6 +4,10 @@ _Generated from `09-the-run-graph.changelog.json` by `scripts/render-changelog.m
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
+
+- **Document the exact signed-Decision PREVIEW projection and unchanged raw-answer alternative.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_
+
 ## Revision 3 · 2026-09-19 · draft — M2 independent design review 1 repair R3
 
 - **Define Five's one-use acceptance-backed reply-run opening while the original provider run and accounting obligation remain pending.** — A usable answer needs an executable conversation path without falsely making the unresolved provider step ready or releasing liability. _(`f106575`)_

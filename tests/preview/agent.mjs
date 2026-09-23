@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createProductionTelegramIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
-import { createPreviewComposition } from './composition.js';
+import { createProductionTelegramIO, productionStorageIO, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
+import { createPreviewComposition, stage2GuardedProviderPath } from './composition.js';
+import { stage2HistoricalStatus } from './stage2-owners.js';
 import { MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
 
 const MAX_PREVIEW_BACKOFF_MS = 300_000;
@@ -103,10 +105,19 @@ function storageKey() {
   return new Uint8Array(bytes);
 }
 
-function publicStatus(document) {
+function publicStatus(document, config) {
+  const root = config.root;
   const counts = {};
   for (const turn of Object.values(document.turns)) counts[turn.phase] = (counts[turn.phase] ?? 0) + 1;
-  return { trial: document.trial.id, createdAt: document.trial.createdAt,
+  let stage2;
+  const sidecarPath = resolve(root, 'preview-stage2-state.json');
+  if (existsSync(sidecarPath)) {
+    const d = stage2HistoricalStatus(root, document, config);
+    stage2 = { phase: d.phase, modelAttemptUsed: d.modelAttemptUsed, terminalLatch: d.terminalLatch,
+      ownerStart: d.ownerStart, ownerDeadline: d.ownerDeadline, hold: d.hold,
+      selectedTurn: d.selectedTurn, references: d.references };
+  }
+  return { stage2, trial: document.trial.id, createdAt: document.trial.createdAt,
     expiresAt: document.trial.expiresAt, stop: document.stop, consecutiveErrors: document.consecutiveErrors,
     totalErrors: document.totalErrors, errorLimit: document.trial.errorLimit,
     totalErrorLimit: document.trial.totalErrorLimit,
@@ -145,16 +156,29 @@ async function interruptibleBackoff(milliseconds, state, stopped) {
 async function main() {
   const { command, options } = argumentsOf(process.argv.slice(2));
   const config = configuration(options);
+  const stage = integer(options.stage ?? '1', 'stage', 1, 2);
   const state = stateFor(config, options, command === 'run');
   if (command === 'status') {
-    process.stdout.write(`${JSON.stringify(publicStatus(state.read()))}\n`);
+    process.stdout.write(`${JSON.stringify(publicStatus(state.read(), config))}\n`);
     return 0;
   }
   if (command === 'stop') {
-    process.stdout.write(`${JSON.stringify(publicStatus(state.latchStop('operator')))}\n`);
+    process.stdout.write(`${JSON.stringify(publicStatus(state.latchStop('operator'), config))}\n`);
     return 0;
   }
   if (command !== 'run') throw new Error('preview: command must be run, status, or stop');
+
+  // Historical terminal inspection/reconciliation needs no live activation,
+  // credential, poller or authority. Corrupt success throws before reporting.
+  if (stage === 2 && existsSync(resolve(config.root, 'preview-stage2-state.json'))) {
+    const historical = stage2HistoricalStatus(config.root, state.read(), config);
+    if (historical.terminalLatch) return 0;
+    if (historical.phase === 'reply-dispatch-unknown') {
+      const recorded = await stage2GuardedProviderPath({ configuration: config, state });
+      try { await recorded.resume(); } finally { recorded.close(); }
+      return 0;
+    }
+  }
 
   // A stopped/expired trial never resolves a credential and never admits a transport.
   state.gate('poll');
@@ -188,9 +212,26 @@ async function main() {
   };
   let composition;
   try {
-    composition = createPreviewComposition({ configuration: config, state, storageKey: storageKey(),
-      storageIO: productionStorageIO, resolveSecret: resolveHostSecret,
-      telegramIOFactory: observedTelegramIO });
+    let stage2;
+    if (stage === 2) {
+      const activationPath = required(options, 'activation-record');
+      const activationBytes = readFileSync(activationPath, 'utf8');
+      const activation = JSON.parse(activationBytes);
+      const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+      stage2 = { activation, profile, model: required(options, 'model'),
+        cutoff: integer(required(options, 'activation-cutoff'), 'activation-cutoff', 1), arm: options.arm === 'true',
+        now: Date.now, active: () => { try { return !signalled && readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } },
+        io: createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => {
+          try { const deadline = composition?.sidecar?.read().ownerDeadline;
+            return signalled || state.read().stop !== null || Date.now() >= state.read().trial.expiresAt
+              || (typeof deadline === 'number' && deadline <= Date.now())
+              || readFileSync(activationPath, 'utf8') !== activationBytes;
+          } catch { return true; }
+        } }) };
+    }
+    const input = { configuration: config, state, storageKey: storageKey(), storageIO: productionStorageIO,
+      resolveSecret: resolveHostSecret, telegramIOFactory: observedTelegramIO, stage2 };
+    composition = stage === 2 ? await stage2GuardedProviderPath(input) : createPreviewComposition(input);
     // Successful physical bridges are synchronous. Yield after each such boundary so
     // Node can service SIGINT/SIGTERM before any subsequent admission or dispatch.
     await yieldBoundary();
@@ -203,11 +244,11 @@ async function main() {
       try {
         while (!signalled) {
           await yieldBoundary();
-          if (signalled || !composition.resumeOne()) break;
+          if (signalled || !(await composition.resumeOne())) break;
           await yieldBoundary();
           if (state.read().stop !== null) break;
         }
-        if (signalled || state.read().stop !== null) break;
+        if (signalled || state.read().stop !== null || composition.terminal?.()) break;
         phase = 'POLL';
         composition.pollOnce();
         await yieldBoundary();
@@ -224,6 +265,8 @@ async function main() {
     }
     return 0;
   } finally {
+    if (stage === 2 && composition?.sidecar && state.read().stop)
+      composition.sidecar.hold(state.read().stop.reason === 'expiry' ? 'EXPIRED' : 'STOPPED');
     composition?.close();
     process.removeListener('SIGINT', signal);
     process.removeListener('SIGTERM', signal);

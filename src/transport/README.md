@@ -194,3 +194,14 @@ claim and consumption with a bounded custody call count, in-process and in a fre
 replacement process, so projection reconstruction cannot recurse through custody.
 Three real SIGKILL cuts cover held, replicated release, and local-only accounting before ACK.
 This seam does not activate production effects or establish nine's bar.
+
+## PREVIEW-S2 signed answer projection
+
+The supervised preview uses the existing fixed pair and genuine Six reservation/claim/dispatch.
+At its reply boundary the unchanged raw-answer digest arm remains, alongside exact equality with
+Five's `acceptedReplyPreviewText` over verified same-store facts. Full canonical OutboundMessage
+bytes, including metadata and escaping, must fit the unchanged <=4096 definition. No truncation
+or post-preparation rewrite is allowed. Zero declared subscription demand retains UNKNOWN
+actual charge/quiescence and one unresolved original obligation. The 300000-ms original owner
+window never renews the trial or a burned attempt. `slice-manifest.json.previewStage2` inventories
+the additive offline evidence and waived preview modules; this does not activate the dark slice.

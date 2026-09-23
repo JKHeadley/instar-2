@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-23",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned"
+    },
+    "changes": [
+      {
+        "what": "Document the exact signed-Decision PREVIEW projection and unchanged raw-answer alternative.",
+        "why": "Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions.",
+        "ref": "PREVIEW-S2 / ROUND 2"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-19",
     "status": "draft",
@@ -11,7 +27,9 @@
       {
         "what": "Define Five's one-use acceptance-backed reply-run opening while the original provider run and accounting obligation remain pending.",
         "why": "A usable answer needs an executable conversation path without falsely making the unresolved provider step ready or releasing liability.",
-        "commits": ["f106575"]
+        "commits": [
+          "f106575"
+        ]
       }
     ]
   },
@@ -27,7 +45,9 @@
       {
         "what": "Define a reference-only installed RunGovernance mapping and permit one exact accepted provider answer to feed a reply while its accounting obligation remains pending.",
         "why": "Production needs a serializable policy mapping without callbacks, and a usable bounded answer must not be discarded solely because final charge or quiescence remains unknown.",
-        "commits": ["1b960e7"]
+        "commits": [
+          "1b960e7"
+        ]
       }
     ]
   },
@@ -43,7 +63,9 @@
       {
         "what": "Initial Part Five design.",
         "why": "Define durable work independently of a worker process.",
-        "commits": ["a30c8bfd2589e439227462d20c8aff99389def79"]
+        "commits": [
+          "a30c8bfd2589e439227462d20c8aff99389def79"
+        ]
       }
     ]
   }
