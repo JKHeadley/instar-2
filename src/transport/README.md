@@ -20,9 +20,13 @@ Composition order:
    or mutates a due holder.
    For the fixed accepted-answer pair, first use Five's `openAcceptedProviderReply` on the same signed store. Call `admitAcceptedProviderReply(authority, graph, command, fence, replyRun, policy, boundary)` using the existing Six authority and that genuine Five graph; the production composition binds these as `owners.admitReply(command, fence, replyRunId, policy)`. Six commits `RunPairAdmission` v1 and the reply's own bounded loop. Pass that reply Run and its loop fact to Eight's outbound preparation. The new reservation can send only the exact accepted answer, once; it cannot invoke a model or release the provider's unresolved credit. Recovery reuses the committed budget, policy, admission and operation identities.
 
-4. Eight consumes the one-use claim with `consume(claim, fence)`, completes its
-   callback-capable durability and effect preparation, then invokes through
-   `invokeConsumedDispatch(authority, claim, fence, boundary, invoke)`. Six requires
+4. Eight consumes the one-use claim with `consume(claim, fence)` and completes its
+   callback-capable durability and effect preparation. For an ADMITTED FIXED PAIR only,
+   it then invokes through `invokeConsumedDispatch(authority, claim, fence, boundary, invoke)`;
+   the doorway decides that from the signed store, not from any caller: the operation is
+   paired when a `transport-RunPairAdmission` fact shares the domain of the operation's
+   own `transport-AdmissionReservation`. Ordinary dispatch keeps its existing transport-port
+   contract and calls the adapter directly. For the pair, Six requires
    the exact acknowledged consumed operation and original live claim, burns the
    invocation attempt, and rechecks pair parent inhibition, current fence, standing
    and stop immediately before Eight's direct adapter call. No storage, durability,
