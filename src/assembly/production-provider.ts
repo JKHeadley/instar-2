@@ -161,7 +161,7 @@ export function subscriptionInvocationPolicy(model: string) {
     '--setting-sources', '', '--settings', '{"disableAllHooks":true}', '--disable-slash-commands',
     '--no-session-persistence', '--max-turns', '1', '--permission-mode', 'dontAsk']),
   path: '/usr/bin:/bin', retries: 0, maxTokens: 2048, timeout: 120000,
-  maxInputBytes: 131072, maxOutputBytes: 16384, maxRawTerminalBytes: 65536,
+  maxInputBytes: 4096, maxOutputBytes: 16384, maxRawTerminalBytes: 65536,
   maxMetadataBytes: 8192, maxCaptureBytes: 1048576 });
 }
 
@@ -251,6 +251,8 @@ export function createClaudeCodeSubscriptionRoute(input:
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number) => {
           await new Promise<void>(resolve => setImmediate(resolve));
           check();
+          ensure(Number.isSafeInteger(bounds.deadline) && config.now() + timeout <= bounds.deadline,
+            'subscription owner deadline has insufficient command time');
           const result = await config.io.execute({ executable: profile.executable, args, cwd: profile.workingDirectory,
             env, stdin, timeout, maxBytes });
           ensure(!result.limited && result.code === 0 && result.stdoutBytes.byteLength <= maxBytes,

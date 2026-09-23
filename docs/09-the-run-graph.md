@@ -258,6 +258,15 @@ receipt, late answer and charge evidence remain preserved. Missing charge eviden
 erase a recorded answer or release capacity: eight's settlement remains independently pending,
 and any dependent work must satisfy the run's pending obligations and its own admission.
 
+
+PREVIEW-S2 adds the fixed `acceptedReplyPreviewText` projection over owner-validated same-store
+facts. It reads the signed acceptance's decoded Decision, requires conclusion subject
+`preview-stage2-answer`, predicate `answer-text` and a nonempty string value, and prefixes
+`PREVIEW — experimental test agent; production safeguards incomplete.` plus one newline.
+It escapes `&`, `<`, `>` in that order, rejects unsupported controls and rendered UTF-8 overflow,
+and neither repairs nor truncates a Decision. The helper grants no authority; current accepted
+answer consumption and grounding remain mandatory. The original raw-answer path remains valid.
+
 **Rule — restart observes pending work; it does not repeat unknown effects.** **Check:** P5-NF-11/12.
 Part six must enumerate every nonterminal run with a missing worker, preserve its pending
 operation identity across machine changes, establish new ownership, and query the authoritative

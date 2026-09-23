@@ -15,7 +15,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
   (canonical(value) as { kind: 'Success'; value: { hash: string } }).value.hash : '';
-function fixture(options: { status?: object; terminal?: string; pending?: boolean } = {}) {
+function fixture(options: { status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-offline-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   for (const path of [home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -25,14 +25,17 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     projectsDirectory: `${configDirectory}/projects`, configDirectory, email: 'synthetic@example.invalid',
     orgId: 'synthetic-organization', orgName: 'synthetic', subscriptionType: 'max', ...options.status };
   const answer = JSON.stringify({ ...f.decisionInput(), conclusion: { ...f.decisionInput().conclusion, subject: 'preview-stage2-answer', predicate: 'answer-text', value: 'café <世界> &' } });
-  const frame = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: answer,
-    session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 20 }, total_cost_usd: 1.25 });
+  const result = options.resultBytes ? answer + ' '.repeat(options.resultBytes - Buffer.byteLength(answer)) : answer;
+  const terminal = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result,
+    session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: options.tokens ?? 20 }, total_cost_usd: 1.25 });
+  const frame = options.rawBytes ? terminal + ' '.repeat(options.rawBytes - Buffer.byteLength(terminal)) : terminal;
+  const raw = options.invalidUtf8 ? Buffer.from([0xff, 0xfe]) : Buffer.from(frame);
   const source = `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';
     let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd(),stdin})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
-    else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(JSON.stringify(status))});
-    else ${options.pending ? 'setInterval(()=>{},1000)' : `process.stdout.write(Buffer.from(${JSON.stringify(Buffer.from(frame).toString('base64'))},'base64'))`};\n`;
+    else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(status))});
+    else ${options.pending ? 'setInterval(()=>{},1000)' : `process.stdout.write(Buffer.from(${JSON.stringify(raw.toString('base64'))},'base64'))`};\n`;
   writeFileSync(executable, source); chmodSync(executable, 0o700);
   let active = true;
   const physical = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => !active });
@@ -128,3 +131,75 @@ it('bounds a pending physical child and never retries', async () => {
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', { ...f.bounds, timeout: 100 })).state).toBe('uncertain');
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
 });
+
+for (const size of [16384, 16385]) it(`checks extracted Decision ${size} at the byte boundary independently of schema`, async () => {
+  const f = fixture({ resultBytes: size });
+  const observation = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
+  expect(observation.state).toBe(size === 16384 ? 'complete' : 'uncertain');
+  if (size === 16384) { expect(Buffer.byteLength(observation.bytes!)).toBe(size); expect(JSON.parse(observation.bytes!).type).toBe('Decision'); }
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});
+for (const size of [65536, 65537]) it(`checks complete raw terminal ${size} without accepting a clipped prefix`, async () => {
+  const f = fixture({ rawBytes: size });
+  const observation = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
+  expect(observation.state).toBe(size === 65536 ? 'complete' : 'uncertain');
+  if (size === 65536) expect(Buffer.from(observation.responseEvidenceDraft!.terminal.rawBase64, 'base64').length).toBe(size);
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});
+for (const tokens of [2048, 2049]) it(`enforces ${tokens} observed output tokens`, async () => {
+  const f = fixture({ tokens });
+  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe(tokens === 2048 ? 'complete' : 'uncertain');
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});
+it('refuses invalid UTF-8 and malformed auth JSON with bounded uncertain outcomes', async () => {
+  for (const options of [{ invalidUtf8: true }, { malformedAuth: true }]) {
+    const f = fixture(options);
+    expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('uncertain');
+    expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(options.invalidUtf8 ? 1 : 0);
+  }
+});
+it('admits 4096 physical stdin bytes unchanged and refuses 4097 before even a probe', async () => {
+  for (const size of [4096, 4097]) {
+    const f = fixture(), bytes = '世界"\n' + 'x'.repeat(size - Buffer.byteLength('世界"\n'));
+    const observation = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke(bytes, f.bounds);
+    expect(observation.state).toBe(size === 4096 ? 'complete' : 'uncertain');
+    if (size === 4096) expect(f.commands()[2].stdin).toBe(bytes); else expect(f.commands()).toHaveLength(0);
+  }
+});
+it('refuses a changed auth account, parent-environment injection, or insufficient owner time without fallback', async () => {
+  const f = fixture();
+  const previous = process.env.ANTHROPIC_API_KEY;
+  try {
+    process.env.ANTHROPIC_API_KEY = 'synthetic-parent-contamination';
+    const route = value(createClaudeCodeSubscriptionRoute(f.input));
+    expect((await route.invoke('request', { ...f.bounds, deadline: 1001 })).state).toBe('uncertain');
+    expect(f.commands()).toHaveLength(0);
+    expect((await route.invoke('request', f.bounds)).state).toBe('complete');
+    expect(f.commands()[2].env.ANTHROPIC_API_KEY).toBeUndefined();
+    const changed = { ...f.input, io: { ...f.input.io, execute: async (command: any) => {
+      const result = await f.input.io.execute(command);
+      if (command.args[0] !== 'auth') return result;
+      const text = JSON.stringify({ ...JSON.parse(result.stdout), email: 'different@example.invalid' });
+      return { ...result, stdout: text, stdoutBytes: new Uint8Array(Buffer.from(text)) };
+    } } };
+    expect((await value(createClaudeCodeSubscriptionRoute(changed)).invoke('request', f.bounds)).state).toBe('uncertain');
+    expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  } finally { if (previous === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = previous; }
+});
+
+it('refuses cached remote/server policy and orphan signature files before any child', async () => {
+  for (const name of ['remote-settings.json', 'remote-settings.json.signature.json', 'policy-limits.json.signature-iat.json']) {
+    const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
+    writeFileSync(join(f.input.profile.configDirectory, name), '{}');
+    expect((await route.invoke('request', f.bounds)).state).toBe('uncertain');
+    expect(f.commands()).toHaveLength(0);
+  }
+});
+it('stops a pending synthetic physical child and returns UNKNOWN without fallback', async () => {
+  const f = fixture({ pending: true });
+  const result = value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', { ...f.bounds, timeout: 5000 });
+  const timer = setInterval(() => { if (f.commands().some(row => row.args.includes('--print'))) f.stop(); }, 10);
+  try { expect((await result).state).toBe('uncertain'); }
+  finally { clearInterval(timer); }
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+}, 10000);

@@ -4,7 +4,7 @@ This is a machine-local, supervised test driver, not the production entry or pro
 
 > PREVIEW — experimental test agent; production safeguards incomplete. Your message was preserved and grounded for this supervised trial. No model was called.
 
-The prefix is present before HTML rendering, digesting, and Eight preparation. There is no provider SecretRef, route, model call, tool call, or model spend. `stage2GuardedProviderPath` is the closed Stage 2 seam.
+The prefix is present before HTML rendering, digesting, and Eight preparation. There is no provider SecretRef, route, model call, tool call, or model spend. `stage2GuardedProviderPath` is selected only by explicit Stage 2 activation; the Stage 1 path remains closed to model work.
 
 ## Prerequisites and exact invocation
 
@@ -91,3 +91,166 @@ npx vitest run tests/preview/preview.test.ts --configLoader=runner
 ```
 
 Graduation requires replacing every stand-in with its named hardening unit, especially G6 exact-response acceptance and the separate reply run, then starting from a fresh production root. Never import preview fixture authority or history into production.
+
+## Stage 2: one supervised subscription answer
+
+`run --stage 2` explicitly selects the implemented provider path. Stage 1 remains the default and
+refuses a root with a Stage 2 sidecar. Stage 2 accepts only bot `8820318295` /
+`@echo_mmtest_seam_b27x_bot`, private chat and sender `7812716706`, with no topic. Its fixed expiry
+is `2026-09-28T20:40:00Z` (`1790628000000`). Existing trial limits, cursor and counters carry forward.
+This is the recorded supervised, unconfined preview waiver, not production admission or a
+replacement for M3/M4/M5. No code default supplies the model, login profile or activation record.
+
+Use the existing Stage 1 command/configuration, its unchanged limits and SecretRef environment,
+with the fixed audience/expiry above and these additional arguments:
+
+```sh
+--stage 2 --activation-record /ABSOLUTE/activation.json --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID --activation-cutoff DESK_EPOCH_MILLISECONDS --arm true
+```
+
+`--arm true` permits first creation of the sidecar, not resetting it. Restarts may omit it.
+Missing sidecar with owner facts refuses, as do changed activation/profile/model/policy/cutoff or
+configuration. Deleting or altering the activation file closes the active route. There is no
+separate model smoke call. The desk provisions subscription login and supplies an exact reviewed
+model ID; no API key, `--max-budget-usd`, paid fallback, automatic retry or dollar allowance exists.
+All CLI tests spawn a synthetic executable; no test launches the installed CLI, authenticates,
+or contacts a model or Telegram. Keep `INSTAR_TELEGRAM_LIVE_TEST` unset.
+
+The desk supplies this non-secret `ProviderSubscriptionProfile` JSON, which the launcher freezes:
+
+```text
+type: "ProviderSubscriptionProfile", schemaVersion: 1
+reference, home, configDirectory, workingDirectory
+expectedAccount, organization, plan (pro|max|team|enterprise)
+loginProfileIdentity, executable, artifact, version: "2.1.280"
+activationReference, managedConfigurationDigest
+```
+
+All three directories must be canonical, private mode 0700, owned by the host user, distinct and
+outside the repository and ordinary home; workingDirectory is empty. `executable` is its canonical
+regular-file path and `artifact` is its SHA-256. The physical host's `inspectSubscriptionProfile`
+computes the directory-identity and supported managed-configuration digests. It reads no token or
+Keychain bytes. Managed helpers/unknown settings, MDM policy and cached remote/server policy
+(including orphan signature companions) are holds. The pinned 2.1.280 auth parser requires exact
+account/organization/plan/profile and claude.ai first-party auth; unexpected status shapes refuse.
+Safe mode and fixed tool/MCP/hook/session/retry options apply to the model command, under a
+six-variable environment allowlist. This is bounded host inspection, not independent confinement.
+
+The matching `SubscriptionActivationRecord` JSON has all these fields:
+
+```text
+type: "SubscriptionActivationRecord", schemaVersion: 1
+reference, waiver, p11, reviewedHead, trial, baseConfigurationDigest, profileDigest
+executable, artifact, version, model, invocationPolicyDigest
+expectedAccount, observedAccount, authSource: "claude.ai"
+operatorAssertion, assertedAt, observer, observedAt, method, safeCaptureReference
+extraUsage: "observed-disabled" | "operator-asserted/unobservable" | "contradicted"
+extraUsageReason
+subscriptionLimit: "available" | "unobservable" | "exhausted"
+subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1790628000000
+```
+
+Digests are canonical SHA-256: profileDigest over the frozen descriptor, invocationPolicyDigest
+over `subscriptionInvocationPolicy(model)`, baseConfigurationDigest from the inherited trial.
+`reference` equals profile.activationReference. The desk supplies the reviewed head, waiver/P-11
+references, exact observed/asserted account evidence, timestamps and safe capture reference.
+Contradicted extra usage or known exhaustion refuses. Unobservable extra usage is expressly the
+operator's assertion, never relabelled measurement. Estimated cost in a CLI return is not a bill.
+
+The entire canonical Seven request is limited to 4096 UTF-8 bytes: exact input, every selected
+context record, Decision instructions/bindings, settings, schema, punctuation and escaping.
+Subscription policy, description, Seven payload and approved provider definition all use 4096.
+Input overflow preserves the turn/context and lengths and holds before model launch. No trimming,
+summarization, context dropping or second call is permitted. Independent bounds are Decision
+16384, raw terminal 65536, source/terminal metadata 8192 each, backing capture capacity 1048576,
+output tokens 2048 and model timeout 120000 ms. Seven reserves 330416 response bytes before
+physical invocation: receipt210264 + rawbase6487384 + answer16384 + 2×metadata8192. Existing
+retained input and other captures also consume backing capacity.
+
+Selection persists an epoch-millisecond start and deadline exactly 300000 ms apart. Six's original
+lease and loop use that same clock domain as Eight current and Seven deadline. At least five
+minutes must remain in the inherited trial; restart, owner reconstruction or a late return cannot
+reset the deadline or extend expiry. Five projection watermarks use the same sampled clock as
+their read, and preview grounding maxAge is bounded by that 300000-ms window. Nine and Eight sample one
+clock per synchronous assessment or effect transaction; subsequent owner use and all physical gates
+read current time again. The async launcher yields and awaits every phase; signal,
+stop, revocation, expiry and owner deadline gates suppress subsequent effects. The physical child
+is polled for stop every 25 ms and killed on stop/timeout, without claiming remote quiescence.
+
+Stage 2 connects actual Four input, a pending Five provider Run, genuine Six authority, Seven
+request/receipt, Eight dispatch/settlement, Nine output assessment and Seven acceptance in one
+signed owner store. Five opens and grounds the one dependent reply Run; Six admits its fixed pair
+and genuine reservation/claim/dispatch; Eight prepares the exact Telegram message. The text comes
+from the signed accepted Decision, with the fixed PREVIEW label and deterministic HTML escaping.
+The complete canonical OutboundMessage must fit the existing <=4096 definition, including metadata
+and escaping. Overflow holds even when the visible text itself fits. No adapter rewrites it.
+
+Declared provider monetary demand is 0; observed charge and finalCharge remain null,
+delayedExecutionExcluded false. Original Six actualCharge is -1, unresolved 1, released 0,
+retryEligible 0, exposure 0. The provider Run's pending step and original conversation obligation
+remain. The reply cannot invoke the model. A terminal held or API-accepted outcome ends model
+work and poll-driven replies; even a second new turn cannot consume another slot.
+
+Stage 2 adds these disclosed substitutions to the ledger above (Stage 1's inactive model and
+fixed source-result rows apply only to Stage 1):
+
+| Substitution | Stage 2 implementation and limit |
+|---|---|
+| Governance, register, signing, grants and original placement/capacity | Preview fixture authority remains waived; actual Five admission writes and actual Six dispatch replace Stage 1 dispatch callbacks. |
+| Context consumption | Full retained selected context and stock grounding validation; internal consumption witness remains a local preview attestation. |
+| Evidence strength | Real Nine owner assesses local recorded source/terminal contracts and observed occurrence. No independent provider authenticity, settled charge or quiescence proof. |
+| Custody | `.preview-stage2/facts.json` and content-addressed captures are fsynced plaintext. A real replica-storage adapter and copied/readback captures use a second same-machine directory; shared-disk loss is not covered. |
+| Model | The explicit pinned subscription route is available only for desk activation; offline fixtures supply synthetic CLI/Decision responses. |
+| Telegram assessment | Genuine custodian/Eight response capture, exact API acceptance validation; no human-delivery claim and no Nine Telegram assessor. |
+
+`preview-stage2-state.json` retains version/trial/root/config/activation/policy/cutoff, exclusions,
+selected turn and exact context references/digest, original start/deadline, consumed model slot,
+phase, fact/operation references and terminal latch. Holds retain closed reason codes, safe byte
+lengths and references. `status` exposes these local controls; child exceptions/output are suppressed.
+Unknown provider launch or send remains held across restart. A complete preserved response may
+finish only its original owner chain while authority is current. Durable API acceptance repairs
+outer status without a second send. Corrupt/missing state and owner/sidecar disagreement refuse.
+
+## Desk cutover and retained evidence
+
+The desk alone runs source review, commits, pins, register regeneration, final gate and live cutover.
+Quiesce the old bot poller and record its final cursor and unresolved turns; never run two pollers.
+An unstopped root can continue with a new sidecar that excludes every existing turn. If stop is
+latched, retain that source unchanged and invoke `cutoverPreviewRoot` from `state.ts` through the
+existing TypeScript loader, using a reviewed non-secret JSON input object:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs --input-type=module -e 'import {readFileSync} from "node:fs"; import {cutoverPreviewRoot} from "./tests/preview/state.ts"; cutoverPreviewRoot(JSON.parse(readFileSync(process.argv[1], "utf8")));' /ABSOLUTE/cutover-input.json
+```
+
+That input contains canonical `predecessorRoot`, fresh empty `root`, exact
+`predecessorConfiguration` and `configuration` (only root differs), recorded
+`quiescenceReference` and epoch-ms `cutoff`. Configuration is the complete object hashed by
+`agent.mjs stateFor`: transport/context settings plus expiry, replyLimit, replyWindowMs,
+errorLimit, maxPendingTurns and maxTrialTurns. totalErrorLimit is stored separately in the
+inherited trial and must remain unchanged. No `now` override belongs in desk JSON.
+The handoff hashes/fsyncs the source archive, retains the predecessor snapshot/stop/cursor and all
+turn exclusions, and inherits trial identity, expiry, counters and cursor. It never deletes the
+source latch or refills a budget. Update the activation's base configuration digest for the
+inherited target root. Arm before inviting one short new synthetic question; queued messages
+at/before cutoff are retained but ineligible.
+
+Retain activation/evidence labels, selected update/context, raw requests/responses and hashes,
+Seven receipt/acceptance, Nine assessment, original Eight/Six UNKNOWN join, both Five Runs and
+groundings, pair/loops/reservations/claims, exact prepared labelled payload, Telegram response and
+message ID, stop/latch/counters and reviewed build/gate receipts. Report a real response/API-accepted
+answer only after observing it; keep human receipt separate. Failed crash roots remain in the
+system temp directory for inspection; recovery tests do not delete them.
+
+Focused evidence lives in `stage2.test.ts`, `stage2-recovery.test.ts`,
+`tests/assembly/production-provider-subscription.test.ts`, `tests/rungraph/accepted-reply-preview.test.ts`
+and `tests/transport/run-pair-preview-rendering.test.ts`. Compatibility includes the unchanged 27
+Stage 1 cases, provider boot/raw evidence, T3, both T4 files and landed pair suites. The desk's final
+six-worker gate, after reviewed commits/pins/regeneration and a matching build, is:
+
+```sh
+/Users/dabombstudio/.instar/agents/echo/.instar/lanes/desk-par-gate.sh /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-preview-s2 preview-s2-final parallel
+```
+
+Register-wiring's known source-pin dependency for `src/rungraph/index.ts` is desk-owned; the
+builder does not alter that checker, owner manifests, pins, generated artifacts or full-gate setup.

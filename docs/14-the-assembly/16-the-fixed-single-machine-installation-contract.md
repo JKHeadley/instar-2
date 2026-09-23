@@ -663,6 +663,54 @@ claim. It cannot invoke the model again or mark the original run complete. Resta
 acceptance-use binding, reply run, and outbound operation. Unknown reply delivery follows the
 original operation's observation path.
 
+PREVIEW-S2 is a separately supervised, unconfined preview grant under the recorded waiver and
+P-11 assertion. It is not production installation/admission or M3/M4/M5 closure. Its separate
+subscription-login route requires a frozen host-owned profile, pinned executable/version, exact
+account and a desk activation record. The API-key route is unchanged; there is no key fallback,
+dollar allowance, paid overage permission or automatic retry. Unsupported managed policy,
+contradicted extra usage, known subscription exhaustion, missing bindings or changed profile
+refuse before model launch. Unobservable extra usage remains explicitly operator-attested.
+
+The amended complete Seven request limit is 4096 UTF-8 bytes, including exact selected input,
+complete bounded context, Decision bindings, settings, schema and JSON escaping. Description,
+Seven maxInputBytes and the approved Eight definition all use 4096; neither Eight owner is
+changed. Extracted Decision 16384, raw terminal 65536, metadata 8192 per envelope, backing capture
+capacity 1048576, max output tokens 2048 and model timeout 120000 ms remain independent bounds.
+Response reservations total 330416 bytes (210264 receipt + 87384 raw base64 + 16384 answer +
+2 × 8192 metadata), apart from already retained input/facts. Capacity is reserved before launch.
+The original Six lease and loop window is 300000 ms in the same clock domain as Eight current
+and Seven deadline; the persisted start/deadline are never restarted. Selection requires five
+minutes before the unchanged trial expiry 2026-09-28T20:40:00Z.
+
+
+PREVIEW-S2 adds the fixed `acceptedReplyPreviewText` projection over owner-validated same-store
+facts. It reads the signed acceptance's decoded Decision, requires conclusion subject
+`preview-stage2-answer`, predicate `answer-text` and a nonempty string value, and prefixes
+`PREVIEW — experimental test agent; production safeguards incomplete.` plus one newline.
+It escapes `&`, `<`, `>` in that order, rejects unsupported controls and rendered UTF-8 overflow,
+and neither repairs nor truncates a Decision. The helper grants no authority; current accepted
+answer consumption and grounding remain mandatory. The original raw-answer path remains valid.
+
+For PREVIEW-S2, the reply message text must equal either the unchanged raw accepted-answer bytes
+under their digest or Five's exact signed-Decision PREVIEW projection. Prefix, value, acceptance,
+conversation and current authority checks remain owner checks at reservation and dispatch; the
+adapter cannot rewrite prepared text. The complete canonical OutboundMessage, including all
+identities, sourceResult and JSON escaping, must fit the existing OperationDefinition maximum
+of 4096 bytes. Text fitting by itself is insufficient; overflow is held without truncation or send.
+Declared subscription monetary demand is zero, not evidence of zero actual cost: original Eight
+finalCharge stays null and delayedExecutionExcluded false; Six actualCharge is -1, unresolved 1,
+released 0, retryEligible 0 and monetary exposure 0. Pending work remains pending.
+
+The preview sidecar persists one selected post-cutoff turn, exact context references/digest,
+activation/policy bindings, one burned model slot and a terminal latch. Real Four/Five/Six/Seven/
+Eight/Nine constructors share signed owner history; preview governance, local signing, original
+placement/capacity and local evidence strength remain explicit waivers. A local observed return
+supports occurrence only, never proof of billing settlement or quiescence. Unknown launch or
+send after a crash is held without replay. A preserved response may complete only the same owner
+chain within current authority and original deadline. A stopped predecessor is retained intact;
+desk cutover archives it and inherits expiry, counters, cursor and every prior turn exclusion.
+The exact inputs, invocation and offline evidence inventory are in tests/preview/README.md.
+
 Historical decoding uses the origin-pinned schema, generation, causal predecessors, and captured
 `Decision` bytes. Current authority, freshness, stop, fence, conversation binding, and retained
 exposure are rechecked before a new use, not used to erase an earlier accepted use. Later accounting

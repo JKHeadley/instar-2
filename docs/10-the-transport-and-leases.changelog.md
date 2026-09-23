@@ -4,6 +4,10 @@ _Generated from `10-the-transport-and-leases.changelog.json` by `scripts/render-
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
+
+- **Document exact preview text equality, complete outbound byte bounds and unresolved zero-exposure accounting.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_
+
 ## Revision 5 · 2026-09-22 · draft — operator review on PR #106; Astra landing review astra-sixpair-review-4d9a7bd.md (CONVERGED — YES) of the SIX-PAIR unit: Six admits one accepted-answer reply Run beside its provider Run, and owns the final dispatch invocation.
 
 - **Add the fixed provider/reply pair as a bounded exception to singleton admission: Six owns admission, shared accounting and recovery; Five owns the accepted-answer reply opening; Eight owns the outbound operation. The existing singleton profile and its historical records keep their meaning.** — The reply must own its own Run and Eight operation while the provider call's charge and quiescence remain unknown, which is the live-model case; the previous one-run rule refused it. _(git-history: src/transport/run-pair.ts, src/transport/records.ts §fixed pair admission; commits b0bcdea, e2c11c3)_

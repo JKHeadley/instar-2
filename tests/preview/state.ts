@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync,
+  closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync,
   realpathSync, renameSync, writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -262,3 +262,136 @@ export function openPreviewState(options: PreviewStateOptions) {
 }
 
 export type PreviewState = ReturnType<typeof openPreviewState>;
+
+export const STAGE2_PHASES = ['armed', 'provider-prepared', 'provider-dispatch-unknown', 'response-preserved',
+  'answer-accepted', 'reply-opened', 'reply-admitted', 'reply-prepared', 'reply-dispatch-unknown', 'api-accepted', 'held'] as const;
+export type Stage2Phase = typeof STAGE2_PHASES[number];
+export interface Stage2StateDocument {
+  readonly version: 1; readonly root: string; readonly trial: string; readonly baseConfigurationDigest: string;
+  readonly activationDigest: string; readonly policyDigest: string; readonly cutoff: number;
+  readonly excludedTurns: readonly string[]; readonly selectedTurn: string | null;
+  readonly contextReferences: readonly string[]; readonly contextDigest: string;
+  readonly ownerStart: number | null; readonly ownerDeadline: number | null; readonly absoluteStart: number | null;
+  readonly modelAttemptUsed: 0 | 1; readonly phase: Stage2Phase; readonly terminalLatch: boolean;
+  readonly references: Readonly<Record<string, string>>;
+  readonly hold: null | Readonly<{ code: 'BOUND' | 'UNKNOWN' | 'STOPPED' | 'EXPIRED' | 'REFUSED';
+    lengths: Readonly<Record<string, number>>; references: readonly string[] }>;
+}
+export function stage2SidecarExists(root: string): boolean { return existsSync(join(root, 'preview-stage2-state.json')); }
+export function openStage2State(options: { root: string; state: PreviewState; activationDigest: string;
+  policyDigest: string; cutoff: number; create?: boolean; ownerFactsExist: () => boolean }) {
+  const root = resolve(options.root), path = join(root, 'preview-stage2-state.json');
+  const outer = options.state.read();
+  const check = (d: Stage2StateDocument) => {
+    if (d.version !== 1 || d.root !== root || d.trial !== outer.trial.id
+      || d.baseConfigurationDigest !== outer.trial.configurationDigest || d.activationDigest !== options.activationDigest
+      || d.policyDigest !== options.policyDigest || d.cutoff !== options.cutoff || !STAGE2_PHASES.includes(d.phase)
+      || ![0, 1].includes(d.modelAttemptUsed) || typeof d.terminalLatch !== 'boolean'
+      || !Array.isArray(d.excludedTurns) || !Array.isArray(d.contextReferences)
+      || typeof d.references !== 'object' || d.references === null
+      || !Object.values(d.references).every(v => typeof v === 'string' && v.length > 0)
+      || d.terminalLatch !== ['held', 'api-accepted'].includes(d.phase)) throw new Error('preview: corrupt stage2 sidecar');
+    if (!d.excludedTurns.every(v => typeof v === 'string') || !d.contextReferences.every(v => typeof v === 'string')
+      || typeof d.contextDigest !== 'string' || ((d.phase === 'held') !== (d.hold !== null)))
+      throw new Error('preview: corrupt stage2 hold');
+    if (d.hold && (!['BOUND', 'UNKNOWN', 'STOPPED', 'EXPIRED', 'REFUSED'].includes(d.hold.code)
+      || !d.hold.lengths || !Object.values(d.hold.lengths).every(v => Number.isSafeInteger(v) && v >= 0)
+      || !Array.isArray(d.hold.references) || !d.hold.references.every(v => typeof v === 'string')))
+      throw new Error('preview: corrupt stage2 hold');
+    assertInteger(d.cutoff, 'stage2 cutoff');
+    if (d.selectedTurn !== null) {
+      if (!options.state.read().turns[d.selectedTurn] || d.excludedTurns.includes(d.selectedTurn)) throw new Error('preview: stage2 turn differs');
+      assertInteger(d.ownerStart!, 'owner start'); assertInteger(d.absoluteStart!, 'absolute start');
+      if (d.absoluteStart !== d.ownerStart || d.ownerDeadline !== d.ownerStart! + 300000
+        || d.absoluteStart! + 300000 > outer.trial.expiresAt) throw new Error('preview: stage2 window differs');
+    } else if (d.modelAttemptUsed !== 0 || d.ownerStart !== null || d.ownerDeadline !== null || d.absoluteStart !== null)
+      throw new Error('preview: stage2 attempt without turn');
+    return d;
+  };
+  if (!existsSync(path)) {
+    if (options.create !== true || options.ownerFactsExist()) throw new Error('preview: stage2 sidecar missing');
+    options.state.gate('admit'); assertInteger(options.cutoff, 'stage2 cutoff');
+    durablePreviewWrite(path, { version: 1, root, trial: outer.trial.id,
+      baseConfigurationDigest: outer.trial.configurationDigest, activationDigest: options.activationDigest,
+      policyDigest: options.policyDigest, cutoff: options.cutoff, excludedTurns: Object.keys(outer.turns).sort(),
+      selectedTurn: null, contextReferences: [], contextDigest: '', ownerStart: null, ownerDeadline: null,
+      absoluteStart: null, modelAttemptUsed: 0, phase: 'armed', terminalLatch: false, references: {}, hold: null });
+  }
+  const read = () => check(JSON.parse(readFileSync(path, 'utf8')));
+  read();
+  const update = (fields: Partial<Stage2StateDocument>) => {
+    const previous = read(), next = check({ ...previous, ...fields });
+    for (const field of ['version', 'root', 'trial', 'baseConfigurationDigest', 'activationDigest', 'policyDigest', 'cutoff', 'excludedTurns'] as const)
+      if (JSON.stringify(previous[field]) !== JSON.stringify(next[field])) throw new Error('preview: immutable stage2 binding');
+    if (previous.selectedTurn !== null) for (const field of ['selectedTurn', 'contextReferences', 'contextDigest', 'ownerStart', 'ownerDeadline', 'absoluteStart'] as const)
+      if (JSON.stringify(previous[field]) !== JSON.stringify(next[field])) throw new Error('preview: immutable stage2 selection');
+    if (next.modelAttemptUsed < previous.modelAttemptUsed || (previous.terminalLatch && JSON.stringify(next) !== JSON.stringify(previous))
+      || STAGE2_PHASES.indexOf(next.phase) < STAGE2_PHASES.indexOf(previous.phase)) throw new Error('preview: stage2 regression');
+    for (const [name, reference] of Object.entries(previous.references))
+      if (next.references[name] !== reference) throw new Error('preview: stage2 reference changed');
+    durablePreviewWrite(path, next); return read();
+  };
+  const hold = (code: NonNullable<Stage2StateDocument['hold']>['code'], lengths: Record<string, number> = {}, references: readonly string[] = []) => {
+    if (read().terminalLatch) return read();
+    return update({ phase: 'held', terminalLatch: true, hold: { code, lengths, references } });
+  };
+  return Object.freeze({ path, read, update, hold });
+}
+export type Stage2State = ReturnType<typeof openStage2State>;
+
+/** Desk-supervised stopped-root handoff. No source latch is removed, no trial
+ * budget is reset, and every prior turn remains excluded when S2 arms. */
+export function cutoverPreviewRoot(options: { predecessorRoot: string; root: string;
+  predecessorConfiguration: Record<string, unknown>; configuration: Record<string, unknown>;
+  quiescenceReference: string; cutoff: number; now?: () => number }) {
+  const source = resolve(options.predecessorRoot), target = resolve(options.root), now = options.now?.() ?? Date.now();
+  if (source !== options.predecessorRoot || target !== options.root || source === target
+    || target.startsWith(source + '/') || source.startsWith(target + '/') || realpathSync(source) !== source
+    || !options.quiescenceReference || existsSync(join(source, '.boot-lease')) || existsSync(join(source, '.boot-lease-guard'))
+    || stage2SidecarExists(source) || existsSync(join(source, '.preview-stage2'))) throw new Error('preview: predecessor cutover refused');
+  const old = validate(JSON.parse(readFileSync(join(source, 'preview-state.json'), 'utf8')));
+  const stopPath = join(source, 'preview-stop.json');
+  const stop = existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : old.stop;
+  if (!stop || !['operator', 'signal'].includes(stop.reason) || now + 300000 > old.trial.expiresAt
+    || old.trial.configurationDigest !== digest(options.predecessorConfiguration)
+    || options.predecessorConfiguration.root !== source || options.configuration.root !== target
+    || JSON.stringify({ ...options.predecessorConfiguration, root: target }) !== JSON.stringify(options.configuration)
+    || options.cutoff > now || options.cutoff < old.trial.createdAt) throw new Error('preview: cutover must inherit trial bounds');
+  mkdirSync(target, { mode: 0o700, recursive: true });
+  if (realpathSync(target) !== target || readdirSync(target).length !== 0) throw new Error('preview: fresh empty cutover root required');
+  const inventory: Record<string, string> = {};
+  const visit = (directory: string, relative = '') => {
+    for (const name of readdirSync(directory).sort()) {
+      const path = join(directory, name), key = relative ? `${relative}/${name}` : name, info = lstatSync(path);
+      if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile()) || name.endsWith('.lock'))
+        throw new Error('preview: ambiguous predecessor custody');
+      if (info.isDirectory()) visit(path, key);
+      else inventory[key] = `sha256:${createHash('sha256').update(readFileSync(path)).digest('hex')}`;
+    }
+  };
+  visit(source);
+  const archive = join(target, '.preview-predecessor');
+  cpSync(source, archive, { recursive: true, errorOnExist: true, force: false });
+  for (const name of ['facts.encrypted', 'captures.encrypted', 'exact.encrypted', '.preview-runs', '.preview-effects']) {
+    if (existsSync(join(source, name))) cpSync(join(source, name), join(target, name), { recursive: true, errorOnExist: true, force: false });
+  }
+  const syncTree = (path: string) => {
+    if (lstatSync(path).isDirectory()) for (const name of readdirSync(path)) syncTree(join(path, name));
+    const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
+  };
+  syncTree(target);
+  // Detect accidental concurrent source change rather than blessing its mixed snapshot.
+  const before = JSON.stringify(inventory); for (const key of Object.keys(inventory)) delete inventory[key]; visit(source);
+  if (before !== JSON.stringify(inventory)) throw new Error('preview: predecessor changed during cutover');
+  for (const [relative, expected] of Object.entries(inventory)) {
+    if (`sha256:${createHash('sha256').update(readFileSync(join(archive, relative))).digest('hex')}` !== expected)
+      throw new Error('preview: predecessor archive differs');
+  }
+  durablePreviewWrite(join(target, 'preview-predecessor.json'), { version: 1, root: source,
+    trial: old.trial.id, configurationDigest: old.trial.configurationDigest, snapshot: inventory,
+    stateDigest: digest(old), stop, cursor: old.cursor, excludedTurns: Object.keys(old.turns).sort(),
+    quiescenceReference: options.quiescenceReference, cutoff: options.cutoff, recordedAt: now });
+  const inherited = { ...old, trial: { ...old.trial, configurationDigest: digest(options.configuration) }, stop: null };
+  durablePreviewWrite(join(target, 'preview-state.json'), inherited);
+  return inherited;
+}

@@ -226,3 +226,127 @@ export function outbound(s: Awaited<ReturnType<typeof pair>>, mutate: Record<str
     closure: [s.acceptance.id, s.assessment.id], fence: s.f.fence });
   return { api, prepare, calls: () => calls };
 }
+
+// Revised live settings, with the same genuine owners used by the stage-2 shell.
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createStage2Owners } from './stage2-owners.js';
+import { STAGE2_DISCLOSURE } from './stage2-provider.js';
+export function offlineStage2(options: any = {}) {
+  const directory = options.directory ?? mkdtempSync(join(tmpdir(), 'preview-s2-owners-'));
+  let calls = 0, time = options.start ?? 100, active = true;
+  const model = 'claude-offline-exact-1';
+  const routeFactory = ({ evidence, description }: any) => {
+    const sourceBasis = { version: '1', parserReference: 'claude-code-json-result', parserVersion: '1',
+      endpoint: 'offline-profile', account: 'offline-account', credentialReference: 'offline-login',
+      controller: 'local-recorder', executableArtifact: `sha256:${'1'.repeat(64)}`,
+      provider: description.provider, model, route: description.route };
+    const terminalBasis = { version: '1', parserReference: 'claude-code-json-result', parserVersion: '1',
+      terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] };
+    const source = evidence('offline-contract', enc(sourceBasis).hash, 'provider-response-source-contract', undefined,
+      { strength: 'attestation', claim: { subject: 'offline-contract', predicate: 'provider-response-source-contract', value: sourceBasis } }).id;
+    const terminal = evidence('offline-contract', enc(terminalBasis).hash, 'provider-response-terminal-contract', undefined,
+      { strength: 'attestation', claim: { subject: 'offline-contract', predicate: 'provider-response-terminal-contract', value: terminalBasis } }).id;
+    const contract = { parserReference: 'claude-code-json-result', parserVersion: '1',
+      evidenceContractReference: 'offline-contract', evidenceContractVersion: '1', mode: 'single-final-reply' as const,
+      maxMetadataBytes: 8192, maxRawTerminalBytes: 65536, maxCaptureBytes: 1048576 };
+    const route = Object.freeze({ provider: description.provider, model, route: description.route,
+      disclosure: STAGE2_DISCLOSURE, automaticRetries: 0 as const, environment: 'local-test' as const,
+      invoke: async (bytes: string, bounds: any): Promise<any> => {
+        calls++; options.onInvoke?.(bytes, bounds);
+        const request = JSON.parse(bytes), binding = JSON.parse(request.messages[1].content).bindings;
+        const answer = JSON.stringify({ type: 'Decision', schemaVersion: 1, id: 'offline-answer', at: binding.at,
+          by: binding.by, conclusion: { subject: 'preview-stage2-answer', predicate: 'answer-text',
+            value: options.answer ?? 'café <世界> & ready', evidence: binding.evidence },
+          reason: { subject: 'question', predicate: 'answered', value: options.reason ?? true, evidence: binding.evidence },
+          floor: { allowed: binding.floor, chosen: binding.floor.default } });
+        const rawBytes = Buffer.from(JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+          result: answer, session_id: 'offline-call', usage: { input_tokens: 1, output_tokens: 2048 }, total_cost_usd: 4.5 }));
+        return { state: 'complete', bytes: answer, providerOperation: 'offline-call',
+          usage: { inputTokens: 1, outputTokens: 2048, charge: null, source: 'Offline subscription; unknown charge' }, retryBlocked: false,
+          responseEvidenceDraft: { eligibility: 'admitted', contract,
+            basis: { sourceEvidence: [source], terminalEvidence: terminal, terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] },
+            source: { controller: sourceBasis.controller, endpoint: sourceBasis.endpoint, account: sourceBasis.account, credentialReference: sourceBasis.credentialReference, executableArtifact: sourceBasis.executableArtifact, provider: sourceBasis.provider, model, route: sourceBasis.route, evidence: [source], call: 'offline-call', submittedDigest: enc(bytes).hash, strength: 'observation' },
+            terminal: { rawBase64: rawBytes.toString('base64'), rawDigest: `sha256:${createHash('sha256').update(rawBytes).digest('hex')}`,
+              evidence: terminal, reason: 'successful-final-reply', providerReason: 'success', limited: false,
+              errored: false, cancelled: false, timedOut: false, truncated: false, toolCall: false },
+            answer: { extractionContract: 'claude-code-json-result:1', answerDigest: hashBytes(answer) } } };
+      } });
+    registerProviderResponseEvidenceBounds(route, contract); return route;
+  };
+  const f = createStage2Owners({ directory, ownerNow: () => time, active: () => active,
+    start: time, deadline: time + 300000, model, question: options.question ?? 'What is two plus two?', conversation: [],
+    replyCharge: 20, routeFactory, ...options });
+  return { f, directory, calls: () => calls, time: (n: number) => { time = n; }, stop: () => { active = false; } };
+}
+
+import { realpathSync } from 'node:fs';
+// @ts-expect-error Physical host JavaScript.
+import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { stage2GuardedProviderPath } from './composition.js';
+import { openPreviewState } from './state.js';
+import { subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+export function stage2CompositionFixture(options: any = {}) {
+  const root = options.root ?? realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-composition-')));
+  let time = options.start ?? 1790000000000, active = true;
+  const configuration = { root, machine: 'preview-test-machine', botId: '8820318295', botUsername: '@echo_mmtest_seam_b27x_bot',
+    operatorSenderId: '7812716706', chatId: '7812716706', chatKind: 'private', forum: false, messageThreadId: null,
+    maxPollSeconds: 1, maxBatchItems: 1, maxContextTurns: 8, maxContextBytes: 65536, ...options.configuration };
+  const state = openPreviewState({ root, configuration, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, now: () => time,
+    replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128 });
+  const artifactBytes = Buffer.from('offline executable bytes'), model = 'claude-offline-exact-1';
+  const profile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login',
+    home: '/offline/home', configDirectory: '/offline/config', workingDirectory: '/offline/work',
+    expectedAccount: 'offline@example.invalid', organization: 'offline-org', plan: 'max', loginProfileIdentity: 'offline-profile',
+    executable: '/offline/cli', artifact: `sha256:${createHash('sha256').update(artifactBytes).digest('hex')}`,
+    version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: enc({}).hash });
+  const activation = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
+    waiver: 'offline-waiver', p11: 'offline-p11', reviewedHead: 'offline-head', trial: state.read().trial.id,
+    baseConfigurationDigest: state.read().trial.configurationDigest, profileDigest: enc(profile).hash,
+    executable: profile.executable, artifact: profile.artifact, version: profile.version, model,
+    invocationPolicyDigest: enc(subscriptionInvocationPolicy(model)).hash, expectedAccount: profile.expectedAccount,
+    observedAccount: profile.expectedAccount, authSource: 'claude.ai', operatorAssertion: 'offline-disabled-extra-usage',
+    assertedAt: time - 2, observer: 'offline-desk', observedAt: time - 1, method: 'offline', safeCaptureReference: 'offline-capture',
+    extraUsage: 'operator-asserted/unobservable', extraUsageReason: 'Offline account datum unavailable; assertion retained',
+    subscriptionLimit: 'unobservable', subscriptionLimitReason: 'Offline limit unavailable',
+    acceptedResiduals: ['unconfined preview', 'UNKNOWN charge/quiescence'], expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY };
+  const calls: any[] = [], models: any[] = [];
+  const updates = options.updates ?? [{ update_id: 1, message: { message_id: 1001,
+    from: { id: 7812716706, is_bot: false, first_name: 'Offline' }, chat: { id: 7812716706, type: 'private' },
+    date: Math.floor(time / 1000), text: options.question ?? 'What is two plus two?' } }];
+  const telegramIO = { invoke(request: any) {
+    calls.push(request); const body = request.body;
+    const response = (result: any) => ({ kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result }) });
+    if (request.method === 'getMe') return response({ id: 8820318295, is_bot: true, username: 'echo_mmtest_seam_b27x_bot', first_name: 'Offline', ...options.bot });
+    if (request.method === 'getUpdates') return response(updates.filter((row: any) => row.update_id >= Number(body.offset)).slice(0, Number(body.limit)));
+    options.onSend?.();
+    return response({ message_id: 2001, chat: { id: Number(body.chat_id), type: 'private' }, text: body.text });
+  } };
+  const io = { realpath: (p: string) => p, executableBytes: () => artifactBytes,
+    inspectSubscriptionProfile: () => ({ loginProfileIdentity: profile.loginProfileIdentity, managedConfigurationDigest: profile.managedConfigurationDigest }),
+    execute: async (command: any) => {
+      let text;
+      if (command.args[0] === '--version') text = '2.1.280 (Claude Code)';
+      else if (command.args[0] === 'auth') text = JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty',
+        analyticsDisabled: true, projectsDirectory: profile.configDirectory + '/projects', configDirectory: profile.configDirectory,
+        email: profile.expectedAccount, orgId: profile.organization, orgName: 'Offline', subscriptionType: 'max' });
+      else {
+        models.push(command); await options.onModel?.();
+        const binding = JSON.parse(JSON.parse(command.stdin).messages[1].content).bindings;
+        const decision = { type: 'Decision', schemaVersion: 1, id: 'offline-answer', at: binding.at, by: binding.by,
+          conclusion: { subject: 'preview-stage2-answer', predicate: 'answer-text', value: options.answer ?? 'Four. café <世界> & ready', evidence: binding.evidence },
+          reason: { subject: 'question', predicate: 'answered', value: options.reason ?? true, evidence: binding.evidence },
+          floor: { allowed: binding.floor, chosen: binding.floor.default } };
+        text = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(decision),
+          session_id: 'offline-call', usage: { input_tokens: 1, output_tokens: 2048 }, total_cost_usd: 1.25 });
+      }
+      return { code: 0, stdout: text, stdoutBytes: new Uint8Array(Buffer.from(text)), limited: false };
+    } };
+  const create = (): Promise<any> => stage2GuardedProviderPath({ configuration, state, storageKey: new Uint8Array(32).fill(19),
+    storageIO: productionStorageIO, telegramIO, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
+    stage2: { activation, profile, model, cutoff: (options.start ?? 1790000000000) - 1000, arm: true,
+      io, now: () => time, active: () => active, checkpoint: options.checkpoint } });
+  return { root, state, configuration, activation, profile, model, create, calls, models, now: () => time,
+    time: (n: number) => { time = n; }, revoke: () => { active = false; } };
+}

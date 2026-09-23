@@ -142,7 +142,10 @@ export function createSubscriptionProviderIO({ repository, stopped }) {
       policy.push({ path, settings });
     }
     // Unknown server policy formats are an activation hold, never ignored.
-    if (existsSync(join(profile.configDirectory, 'policy-limits.json')))
+    // 2.1.280 also reads remote-settings plus signed/cache companions. Never
+    // adopt an opaque cached server policy (including an orphan companion).
+    if (readdirSync(profile.configDirectory).some(name =>
+      name.startsWith('policy-limits.json') || name.startsWith('remote-settings')))
       throw Error('subscription server policy requires reviewed effective configuration');
     return Object.freeze({ loginProfileIdentity: digest(bindings), managedConfigurationDigest: digest(policy) });
   };

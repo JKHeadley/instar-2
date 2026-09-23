@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 16 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
+
+- **Record the amended 4096-byte supervised subscription preview, owner window, custody, cutover and terminal latch.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_
+
 ## Revision 15 · 2026-09-21 · draft — Astra blocked-build adjudication (astra-g6-blocked-adjudication.md, section (b)) correcting the M4 G6 supplement approved in PR 100: only Nine's owned bodies gain version 2; FactEnvelope.schemaVersion stays 1.
 
 - **Record owned-body versioning under unchanged outer schema 1 as an agent-owned engineering default in the decision inventory.** — Preserve signed history and current evidence checks without selecting deployment policy or amending the constitution; measure reconstruction and consumption/restart with P9-NF-65, P9-NF-66 and P10-SI-37. _(/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-g6-blocked-adjudication.md section (b), Exact correction for the desk to record, item 2)_

@@ -270,7 +270,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           ensure(request && message && request.run === r.run && request.digest === r.digest && request.attempt === r.attempt
             && message.run === r.run && message.purpose === 'ordinary-reply' && message.sourceResult === pair.acceptance
             && typeof message.text === 'string' && (hashBytes(message.text) === pair.answerDigest
-              || message.text === acceptedReplyPreviewText(facts, pair.reply))
+              || (() => { try { return message.text === acceptedReplyPreviewText(facts, pair.reply); } catch { return false; } })())
             && encoded(message).hash === r.digest && message.semanticMessage === r.semanticMessage,
           'reply reservation requires exact accepted-answer outbound request; no model operation');
         }
