@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { setImmediate as yieldImmediate } from 'node:timers';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from '../../scripts/build-register.mjs';
@@ -37,15 +38,22 @@ describe('compiled register build adapter lifecycle', () => {
   // consecutive passing tests can otherwise starve Vitest's 60s reporting RPC.
   // The long multi-case test also yields between cases; no assertion is relaxed.
   afterEach(() => new Promise<void>(done => setImmediate(done)));
-  it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', () => {
+  it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', async () => {
+    // Yield only between completed fixture/build phases; owner calls remain synchronous.
+    const yieldToRunner = () => new Promise<void>(done => yieldImmediate(done));
     const root = mkdtempSync(join(tmpdir(), 'instar-register-normal-e2e-'));
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) {
+        cpSync(path, join(root, path), { recursive: true });
+        await yieldToRunner();
+      }
       installOwnerFixture(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init'); git('add', '.'); git('commit', '-qm', 'fixture bootstrap');
       const initial = git('rev-parse', 'HEAD').trim();
+      await yieldToRunner();
       const replay = build(root, initial, { mode: 'replay', now: 100 });
+      await yieldToRunner();
       const conversion = replay.conversion;
       expectOwnerPrerequisites(root, replay.authorityPrerequisites);
       expect(replay.register.entries.find(e => e.declaration.id === 'rungraph.contract')!.approvedIn).toEqual({ state: 'pending-landing' });
@@ -76,6 +84,7 @@ describe('compiled register build adapter lifecycle', () => {
         verifyShapeChange: () => { throw new Error('unchanged parent shape must not ask for approval'); }, types: s.f.ctx, separations: ownerSeparations };
       expect(() => build(root, initial, { mode: 'bootstrap', now: 100 })).toThrow('phase verification');
       expect(() => build(root, initial, { mode: 'bootstrap', provider, now: 100 })).toThrow('phase verification');
+      await yieldToRunner();
       let phase: 'converted-unanchored' | 'anchored' = 'converted-unanchored';
       const bootstrapProvider = { ...provider, verifyBootstrap: (binding: BootstrapBinding) => {
         calls.push('bootstrap:' + binding.commit);
@@ -84,12 +93,16 @@ describe('compiled register build adapter lifecycle', () => {
       // Conversion-phase approval is not approval of the later owner's contract.
       expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('lacks approved history');
       expect(calls).toContain('bootstrap:' + initial);
+      await yieldToRunner();
       phase = 'anchored';
       expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('already anchored');
+      await yieldToRunner();
       phase = 'converted-unanchored';
       expect(() => build(root, initial, { mode: 'bootstrap', now: 101, provider: { ...bootstrapProvider,
         verifyBootstrap: binding => bootstrapProvider.verifyBootstrap({ ...binding, checkedAt: 100 }) } })).toThrow('stale/mismatched');
+      await yieldToRunner();
       expect(() => build(root, initial, { mode: 'replay', provider: bootstrapProvider, now: 100 })).toThrow('offline shape verdict');
+      await yieldToRunner();
       const workflow = { mode: 'normal', branch: 'fixture', conversion, parent: { register: parent, generation },
         extract: { ...s.extract, rows: ownerRows, vector: { owner: 'part-two', name: 'FactPositionVector', id: 'fixture:mirrored' } },
         runs: [], catalog: { fixtures: [], probes: [], sentinels: [], semanticReviews: [] }, landedParts: [], references: [],
@@ -98,15 +111,18 @@ describe('compiled register build adapter lifecycle', () => {
       const revision = commit();
       expect(() => build(root, revision, { mode: 'normal', workflow, now: 100 })).toThrow('provider');
       const result = build(root, revision, { mode: 'normal', workflow, provider, now: 100 });
+      await yieldToRunner();
       expect(() => build(root, revision, { mode: 'normal', workflow, provider: { ...provider, separations: [] }, now: 100 })).toThrow('standing evidence');
       expect(result.authorityPrerequisites).toEqual([]);
       expect(result.register.entries.find(e => e.declaration.id === 'rungraph.contract')!.approvedIn).toEqual(ownerRows[0]!.approvedIn);
       expect(result.graph.prerequisites).toEqual([]); expect(result.graph.loops).toHaveLength(115);
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
       expect(calls).toContain('extract:fixture:mirrored'); expect(calls).toContain('force'); expect(calls).toContain('current');
+      await yieldToRunner();
       const source = workflow.conversion.sources.find(s => s.declaration.requiredFacts.number === 4)!;
       source.declaration.requiredFacts.deadline = 99;
       expect(() => build(root, commit(), { mode: 'normal', workflow, provider, now: 100 })).toThrow('deadline passed');
+      await yieldToRunner();
       source.declaration.requiredFacts.deadline = 1000;
       const machine = s.f.principal('landing', 'system');
       // Enter the emitted package's boundary: its nominal decoder session is
@@ -129,6 +145,7 @@ describe('compiled register build adapter lifecycle', () => {
         provider: { ...provider, types: s.f.ctx, landingStanding: { principal: compiledMachine, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now } } });
       expect(completed.register.commit).toBe(revision);
       expect(completed.register.entries.every(e => !('state' in e.approvedIn))).toBe(true);
+      await yieldToRunner();
       // R1.1: normal ingestion must bind the sidecar to a real function, then
       // derive its record read/decoder observations and check live separation.
       const guarded = { ...s.holder([]), requiredFacts: { ...s.holder([]).requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
@@ -154,9 +171,12 @@ describe('compiled register build adapter lifecycle', () => {
         const run = () => build(root, git('rev-parse', 'HEAD').trim(), { mode: 'normal', workflow: governed, provider: separated, now: 100 });
         if (error) expect(run).toThrow(error);
         else expect(run().register.entries.find(e => e.declaration.id === 'holder')!.declaration.declaredBy).toMatchObject({ path: 'src/guard.ts', symbol: 'guard' });
+        await yieldToRunner();
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 60_000);
+  // Full-tree workflow measured 63.4s at six workers and 81.9s under CPU stress.
+  // This is a fixture execution budget, not an owner/runtime latency requirement.
+  }, 120_000);
   it('P3-NF-09 P3-NF-13 P3-NF-19 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
