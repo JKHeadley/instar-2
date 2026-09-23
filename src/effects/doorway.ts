@@ -3,7 +3,7 @@ import type { Result } from '../index.js';
 import type { FactEnvelope, FactStorePort } from '../facts/index.js';
 import { causalCone } from '../facts/index.js';
 import { createTransportAuthority, createTransportSpine, invokeConsumedDispatch } from '../transport/index.js';
-import type { TransportHost, AdmissionReservation, DispatchClaim, FenceToken } from '../transport/index.js';
+import type { TransportHost, AdmissionReservation, DispatchClaim, FenceToken, RunPairAdmission } from '../transport/index.js';
 import type { EffectComposition, EffectDoorway, EffectRecord, EffectRequest, EffectSettlement, EffectValidation,
   OperationDefinition, OperationObservation, OutboundMessage } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
@@ -236,7 +236,16 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         demand(d.record, factsFor([consumed.fact.id, find(local.id, 'OperationObservation').fact.id]));
         const { m } = actual(q); ensure(v.record.expires > host.current().clock.value, 'validation expired before invocation');
         const invocation = { operation: claim.operation, claim: op.claim.id, digest: q.digest, message: m.record };
-        const { bytes, stage } = take(invokeConsumedDispatch(transport, claim, fence, host.boundary, () => {
+        // Select the pair boundary for this exact operation from the signed
+        // store, never a caller's role or a transport wrapper's inspection.
+        // Ordinary dispatch retains its existing transport-port contract.
+        const invocationFacts = snapshot();
+        const operationDomains = invocationFacts.filter(fact => fact.kind === 'transport-AdmissionReservation')
+          .map(fact => (fact.body as unknown as { record: AdmissionReservation }).record)
+          .filter(record => record.operation === claim.operation).map(record => record.domain);
+        const paired = invocationFacts.some(fact => fact.kind === 'transport-RunPairAdmission'
+          && operationDomains.includes((fact.body as unknown as { record: RunPairAdmission }).record.domain));
+        const invoke = () => {
           try {
             const response = adapter.invoke(invocation);
             return consumeResult<string, { bytes: string; stage: 'response' | 'unknown' }>(response, {
@@ -244,7 +253,9 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
               Refused: () => ({ bytes: 'adapter returned no conclusive response', stage: 'unknown' as const }),
             });
           } catch { return { bytes: 'invocation ended without a recorded service response', stage: 'unknown' as const }; }
-        }));
+        };
+        const { bytes, stage } = paired
+          ? take(invokeConsumedDispatch(transport, claim, fence, host.boundary, invoke)) : invoke();
         // Append failure after invoke is not a clean business-effect refusal.
         // The already-durable acceptance remains the observer-only disposition.
         try { const observed = observeRecord(q, consumed, stage, bytes); accepted.set(claim, observed); return observed; }
