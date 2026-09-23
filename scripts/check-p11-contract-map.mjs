@@ -1,4 +1,6 @@
 import { productionBindingHolds } from '../dist/assembly/production-holds.js';
+import { bootRecoveryEvidenceFiles, checkBootRecoveryCoverage } from './check-boot-conversation-evidence.mjs';
+import { productionGroundingSourceDigest } from './check-assembly-contracts.mjs';
 // Every P11-NF identifier in docs/15 resolves to an executed check. Dispositions
 // remain partial until the independently administered live phone/provider evidence
 // and the independent live phone/provider evidence named in src/operator/README.md is present.
@@ -12,7 +14,7 @@ export const productionSwitchOnContract = Object.freeze({
   executable: Object.freeze(['pre-poll switch-on posture names every U4-G missing real binding without claiming preserved input',
     'public production application uses the real minimal responder after Four preservation and Five answer acceptance']),
   evidence: Object.freeze(['tests/assembly/production-boot-refusals.test.ts', 'tests/assembly/production-boot-command.test.ts',
-    'tests/assembly/production-boot-conversation.test.ts']),
+    ...bootRecoveryEvidenceFiles]),
   fixtureAdmitted: productionBindingHolds,
   held: productionBindingHolds,
 });
@@ -121,6 +123,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const declarations = JSON.parse(readFileSync('src/operator/operator.declarations.json', 'utf8'));
   if (!declarations.length || declarations.some(row => row.status !== 'dark' || row.holds?.length)) throw new Error('operator declarations falsely claim held/live activation');
   const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
+  checkBootRecoveryCoverage(report, productionGroundingSourceDigest());
   const held = checkP11HeldCases(report);
   const rows = checkP11Coverage(report);
   console.log('| Check | Status | Executed test files |'); console.log('|---|---|---|');
