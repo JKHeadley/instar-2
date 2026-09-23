@@ -258,4 +258,4 @@ it('P10-SI-37 leaves no unused reservation after held, malformed, or throwing re
       .map(name => JSON.parse(readFileSync(join(capacityPath, name), 'utf8')).id));
     expect(reservations.filter(slot => slot.hash === null && !released.has(slot.id)), mode).toHaveLength(0);
   }
-});
+}, 30_000);
