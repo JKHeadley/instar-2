@@ -17,5 +17,5 @@ export { createRunClosureGraph } from './closure-service.js';
 export type { InstalledRunGovernanceReference } from './installed-governance.js';
 export { installedRunGovernanceSchemas, registerInstalledRunGovernanceBody, recordInstalledRunGovernanceReference, decodeInstalledRunGovernanceReferenceAtOrigin, decodeHistoricalInstalledRunGovernanceReference, loadInstalledRunGovernance } from './installed-governance.js';
 
-export { consumeAcceptedReplyOpening, acceptedReplyOpening } from './accepted-reply.js';
+export { consumeAcceptedReplyOpening, acceptedReplyOpening, acceptedReplyPreviewText } from './accepted-reply.js';
 export type { AcceptedReplyOpening } from './accepted-reply.js';

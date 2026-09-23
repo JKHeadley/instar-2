@@ -3,7 +3,7 @@ import type { Result } from '../index.js';
 import type { ProviderObservation } from '../judgment/index.js';
 import { hashBytes } from '../facts/index.js';
 import { boundary, encoded, ensure, take } from './boundary.js';
-import { createProviderCredentialCustodian } from './provider-credential-custodian.js';
+import { createProviderCredentialCustodian, createProviderSubscriptionCustodian } from './provider-credential-custodian.js';
 import type { ProviderCredentialCustodianInput } from './provider-credential-custodian.js';
 import { registerProviderResponseEvidenceBounds } from './provider-invocation.js';
 import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from './provider-invocation.js';
@@ -135,6 +135,173 @@ export function createClaudeCodeProductionRoute(input: Omit<ProviderCredentialCu
         maxMetadataBytes: approved.maxMetadataBytes, maxRawTerminalBytes: approved.maxRawTerminalBytes,
         maxCaptureBytes: approved.maxCaptureBytes });
     }
+    return route;
+  });
+}
+
+/** Deployment evidence, never a bill or an independent confinement claim. */
+export interface SubscriptionActivationRecord {
+  readonly type: 'SubscriptionActivationRecord'; readonly schemaVersion: 1;
+  readonly reference: string; readonly waiver: string; readonly p11: string; readonly reviewedHead: string;
+  readonly trial: string; readonly baseConfigurationDigest: string; readonly profileDigest: string;
+  readonly executable: string; readonly artifact: string; readonly version: string; readonly model: string;
+  readonly invocationPolicyDigest: string; readonly expectedAccount: string; readonly observedAccount: string;
+  readonly authSource: 'claude.ai'; readonly operatorAssertion: string; readonly assertedAt: number;
+  readonly observer: string; readonly observedAt: number; readonly method: string; readonly safeCaptureReference: string;
+  readonly extraUsage: 'observed-disabled' | 'operator-asserted/unobservable' | 'contradicted';
+  readonly extraUsageReason: string; readonly subscriptionLimit: 'available' | 'unobservable' | 'exhausted';
+  readonly subscriptionLimitReason: string; readonly acceptedResiduals: readonly string[]; readonly expiresAt: number;
+}
+
+// Fixed reviewed expiry: 2026-09-28T20:40:00Z. No ambient clock access.
+export const SUBSCRIPTION_PREVIEW_EXPIRY = 1790628000000;
+export function subscriptionInvocationPolicy(model: string) {
+  return Object.freeze({ args: Object.freeze(['--safe-mode', '--print', '--input-format', 'text', '--output-format', 'json',
+    '--model', model, '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    '--setting-sources', '', '--settings', '{"disableAllHooks":true}', '--disable-slash-commands',
+    '--no-session-persistence', '--max-turns', '1', '--permission-mode', 'dontAsk']),
+  path: '/usr/bin:/bin', retries: 0, maxTokens: 2048, timeout: 120000,
+  maxInputBytes: 131072, maxOutputBytes: 16384, maxRawTerminalBytes: 65536,
+  maxMetadataBytes: 8192, maxCaptureBytes: 1048576 });
+}
+
+export interface SubscriptionProviderIO extends ProductionProviderIO {
+  /** Checks canonical private directories and effective managed policy of the pinned CLI.
+   * The safe digest covers configuration, never credentials or token bytes. */
+  inspectSubscriptionProfile(profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile):
+    Readonly<{ loginProfileIdentity: string; managedConfigurationDigest: string }>;
+}
+
+export function validateSubscriptionActivation(record: SubscriptionActivationRecord,
+  profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile, model: string, now: number): void {
+  ensure(record?.type === 'SubscriptionActivationRecord' && record.schemaVersion === 1,
+    'subscription activation absent');
+  for (const value of [record.reference, record.waiver, record.p11, record.reviewedHead, record.trial,
+    record.baseConfigurationDigest, record.operatorAssertion, record.observer, record.method,
+    record.safeCaptureReference, record.extraUsageReason, record.subscriptionLimitReason])
+    ensure(typeof value === 'string' && value.trim().length > 0 && value.length <= 1024, 'subscription activation field absent');
+  ensure(Number.isSafeInteger(now) && Number.isSafeInteger(record.observedAt) && Number.isSafeInteger(record.assertedAt)
+    && record.assertedAt > 0 && record.assertedAt <= record.observedAt && record.observedAt <= now
+    && now < record.expiresAt && record.expiresAt === SUBSCRIPTION_PREVIEW_EXPIRY, 'subscription activation expired or clock differs');
+  ensure(/^claude-[a-z0-9][a-z0-9.-]+$/u.test(model) && !['auto', 'default'].includes(model)
+    && record.model === model, 'subscription exact model absent');
+  ensure(record.reference === profile.activationReference && record.profileDigest === encoded(profile).hash
+    && record.executable === profile.executable && record.artifact === profile.artifact
+    && record.version === profile.version && record.version === '2.1.280'
+    && record.invocationPolicyDigest === encoded(subscriptionInvocationPolicy(model)).hash,
+  'subscription activation artifact or policy differs');
+  ensure(record.expectedAccount === profile.expectedAccount && record.observedAccount === profile.expectedAccount
+    && record.authSource === 'claude.ai', 'subscription activation account differs');
+  ensure(['observed-disabled', 'operator-asserted/unobservable'].includes(record.extraUsage)
+    && ['available', 'unobservable'].includes(record.subscriptionLimit), 'subscription activation contradicted');
+  ensure(Array.isArray(record.acceptedResiduals) && record.acceptedResiduals.length > 0
+    && record.acceptedResiduals.every(value => typeof value === 'string' && value.length > 0 && value.length <= 1024),
+  'subscription residuals absent');
+}
+
+/** Subscription-only preview route; deliberately absent from production boot defaults. */
+export function createClaudeCodeSubscriptionRoute(input:
+  Omit<import('./provider-credential-custodian.js').ProviderSubscriptionCustodianInput, 'submit'> & Readonly<{
+    activation: SubscriptionActivationRecord; io: SubscriptionProviderIO; now: () => number;
+    active: () => boolean; adapterEvidenceContract: ProviderAdapterEvidenceContract;
+  }>): Result<ConfinedProviderRoute> {
+  return boundary('ClaudeCodeSubscriptionRoute', null, input.context, () => {
+    const config = Object.freeze({ ...input });
+    const profile = config.profile;
+    const activation = JSON.parse(JSON.stringify(config.activation)) as SubscriptionActivationRecord;
+    const approved = JSON.parse(JSON.stringify(config.adapterEvidenceContract)) as ProviderAdapterEvidenceContract;
+    const policy = subscriptionInvocationPolicy(config.model);
+    const check = () => {
+      ensure(config.active(), 'subscription preview stopped or revoked');
+      validateSubscriptionActivation(activation, profile, config.model, config.now());
+      ensure(config.provider === 'anthropic' && config.io.realpath(profile.executable) === profile.executable
+        && `sha256:${createHash('sha256').update(config.io.executableBytes(profile.executable)).digest('hex')}` === profile.artifact,
+      'subscription executable changed');
+      const observed = config.io.inspectSubscriptionProfile(profile);
+      ensure(observed.loginProfileIdentity === profile.loginProfileIdentity
+        && observed.managedConfigurationDigest === profile.managedConfigurationDigest,
+      'subscription profile or managed configuration changed');
+    };
+    check();
+    ensure(approved.parserReference === 'claude-code-json-result' && approved.parserVersion === '1'
+      && approved.reference === activation.reference && approved.version === activation.profileDigest
+      && approved.account === profile.expectedAccount && approved.credentialReference === profile.reference
+      && approved.endpoint === profile.loginProfileIdentity && approved.controller.length > 0
+      && approved.sourceEvidence.length > 0 && approved.terminalEvidence.length > 0
+      && approved.terminalReasonField === 'subtype' && JSON.stringify(approved.successfulFinalReplyReasons) === '["success"]'
+      && ['observation', 'attestation'].includes(approved.strength)
+      && approved.maxMetadataBytes === policy.maxMetadataBytes && approved.maxRawTerminalBytes === policy.maxRawTerminalBytes
+      && approved.maxCaptureBytes === policy.maxCaptureBytes, 'subscription source or completion contract differs');
+    const contract = { parserReference: approved.parserReference, parserVersion: approved.parserVersion,
+      evidenceContractReference: approved.reference, evidenceContractVersion: approved.version,
+      mode: 'single-final-reply' as const, maxMetadataBytes: policy.maxMetadataBytes,
+      maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
+    const route = take(createProviderSubscriptionCustodian({ ...config, submit: async (_profile, bytes, bounds) => {
+      const uncertain = (): ProviderObservation => ({ state: 'uncertain', bytes: null, providerOperation: null,
+        usage: { inputTokens: null, outputTokens: null, charge: null,
+          source: 'Subscription preview: charge and quiescence unknown; no retry or fallback' }, retryBlocked: false });
+      try {
+        ensure(bounds.automaticRetries === 0 && bounds.maxCharge === 0 && bounds.timeout > 0 && bounds.timeout <= policy.timeout
+          && Number.isSafeInteger(bounds.timeout) && bounds.maxTokens === policy.maxTokens
+          && bounds.maxOutputBytes === policy.maxOutputBytes && Buffer.byteLength(bytes) <= policy.maxInputBytes,
+        'subscription invocation bounds differ');
+        const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
+          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' });
+        const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number) => {
+          await new Promise<void>(resolve => setImmediate(resolve));
+          check();
+          const result = await config.io.execute({ executable: profile.executable, args, cwd: profile.workingDirectory,
+            env, stdin, timeout, maxBytes });
+          ensure(!result.limited && result.code === 0 && result.stdoutBytes.byteLength <= maxBytes,
+            'subscription physical command incomplete');
+          const text = new TextDecoder('utf-8', { fatal: true }).decode(result.stdoutBytes);
+          ensure(text === result.stdout, 'subscription stdout bytes differ');
+          return { text, raw: result.stdoutBytes };
+        };
+        const version = await command(['--version'], '', 5000, 1024);
+        ensure(version.text.trim() === `${profile.version} (Claude Code)`, 'subscription version differs');
+        const status = JSON.parse((await command(['auth', 'status', '--json'], '', 5000, 8192)).text);
+        const required = ['loggedIn', 'authMethod', 'apiProvider', 'analyticsDisabled', 'projectsDirectory',
+          'configDirectory', 'email', 'orgId', 'orgName', 'subscriptionType'];
+        ensure(status && typeof status === 'object' && !Array.isArray(status)
+          && Object.keys(status).every(key => required.includes(key) || key === 'forcedLoginMethod')
+          && required.every(key => Object.hasOwn(status, key)) && status.loggedIn === true
+          && status.authMethod === 'claude.ai' && status.apiProvider === 'firstParty'
+          && typeof status.analyticsDisabled === 'boolean' && typeof status.orgName === 'string'
+          && status.email === profile.expectedAccount && status.orgId === profile.organization
+          && status.subscriptionType === profile.plan && status.configDirectory === profile.configDirectory
+          && status.projectsDirectory === `${profile.configDirectory}/projects`
+          && (status.forcedLoginMethod === undefined || status.forcedLoginMethod === 'claudeai'),
+        'subscription authentication status refused');
+        const returned = await command(policy.args, bytes, bounds.timeout, policy.maxRawTerminalBytes);
+        const frame = JSON.parse(returned.text);
+        const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+        ensure(frame && frame.type === 'result' && frame.subtype === 'success' && frame.is_error === false
+          && frame.structured_output === undefined && typeof frame.result === 'string' && frame.result.length > 0
+          && Buffer.byteLength(frame.result) <= policy.maxOutputBytes && typeof frame.session_id === 'string'
+          && frame.session_id.length > 0 && frame.session_id.length <= 256
+          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens)
+          && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
+        const draft: ProviderResponseEvidenceDraft = { eligibility: 'admitted', contract,
+          basis: { sourceEvidence: approved.sourceEvidence, terminalEvidence: approved.terminalEvidence,
+            terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] },
+          source: { controller: approved.controller, evidence: approved.sourceEvidence, endpoint: approved.endpoint,
+            account: approved.account, credentialReference: profile.reference, executableArtifact: profile.artifact,
+            provider: config.provider, model: config.model, route: config.route, call: frame.session_id,
+            submittedDigest: encoded(bytes).hash, strength: approved.strength },
+          terminal: { rawBase64: Buffer.from(returned.raw).toString('base64'),
+            rawDigest: `sha256:${createHash('sha256').update(returned.raw).digest('hex')}`,
+            evidence: approved.terminalEvidence, reason: 'successful-final-reply', providerReason: 'success',
+            limited: false, errored: false, cancelled: false, timedOut: false, truncated: false, toolCall: false },
+          answer: { extractionContract: 'claude-code-json-result:1', answerDigest: hashBytes(frame.result) } };
+        return { state: 'complete', bytes: frame.result, providerOperation: frame.session_id,
+          usage: { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens, charge: null,
+            source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' },
+          retryBlocked: false, responseEvidenceDraft: draft };
+      } catch { return uncertain(); }
+    } }));
+    registerProviderResponseEvidenceBounds(route, contract);
     return route;
   });
 }

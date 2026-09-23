@@ -1,4 +1,4 @@
-import { acceptedReplyOpening } from '../rungraph/accepted-reply.js';
+import { acceptedReplyOpening, acceptedReplyPreviewText } from '../rungraph/accepted-reply.js';
 import { hashBytes } from '../facts/index.js';
 import { requireRunPairAdmission } from './run-pair.js';
 import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
@@ -269,7 +269,8 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           const message = messageFact && (messageFact.body as { record: Record<string, unknown> }).record;
           ensure(request && message && request.run === r.run && request.digest === r.digest && request.attempt === r.attempt
             && message.run === r.run && message.purpose === 'ordinary-reply' && message.sourceResult === pair.acceptance
-            && typeof message.text === 'string' && hashBytes(message.text) === pair.answerDigest
+            && typeof message.text === 'string' && (hashBytes(message.text) === pair.answerDigest
+              || message.text === acceptedReplyPreviewText(facts, pair.reply))
             && encoded(message).hash === r.digest && message.semanticMessage === r.semanticMessage,
           'reply reservation requires exact accepted-answer outbound request; no model operation');
         }

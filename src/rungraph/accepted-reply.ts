@@ -43,6 +43,24 @@ export function acceptedReplyOpening(facts: readonly FactEnvelope[], reply: stri
     answerDigest: a.answerDigest, conversation: encoded(run.resultDestination).hash });
 }
 
+/** Pure projection of owner-validated same-store facts; this grants no authority. */
+export function acceptedReplyPreviewText(facts: readonly FactEnvelope[], replyRun: string): string {
+  const join = acceptedReplyOpening(facts, replyRun);
+  const acceptance = facts.find(f => f.id === join.acceptance
+    && f.kind === 'judgment-provider-ProviderAnswerAcceptance');
+  need(acceptance, 'preview acceptance absent');
+  const body = object(acceptance.body);
+  need(object(body.record).answerDigest === join.answerDigest, 'preview answer digest differs');
+  const conclusion = object(object(body.decision).conclusion);
+  need(conclusion.subject === 'preview-stage2-answer' && conclusion.predicate === 'answer-text'
+    && typeof conclusion.value === 'string' && conclusion.value.length > 0, 'preview answer conclusion differs');
+  const text = 'PREVIEW — experimental test agent; production safeguards incomplete.' + '\n' + conclusion.value;
+  need(!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(text), 'preview answer contains unsupported controls');
+  const rendered = text.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
+  need(new TextEncoder().encode(rendered).length <= 4096, 'preview answer exceeds byte bound');
+  return rendered;
+}
+
 const graphs = new WeakMap<object, { store: FactStorePort; read: (run: string) => AcceptedReplyOpening }>();
 // Internal constructor registration; no caller role or structural port grants authority.
 export function bindAcceptedReplyGraph(graph: RunGraphPort, store: FactStorePort,
