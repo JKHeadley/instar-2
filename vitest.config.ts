@@ -1,20 +1,29 @@
+import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vitest/config';
+
+// VITEST_SERIAL_GATE=1 is the exact serial comparator (one fork worker, no file
+// parallelism) without editing source between evidence runs; the transitional FINAL
+// landing gate and small hosts use it.
+const serialGate = process.env.VITEST_SERIAL_GATE === '1';
+// Bounded fork parallelism: half the available logical CPUs, capped at six (16 CPUs → 6,
+// 4 → 2, 2 → 1). A conservative engineering starting point that bounds resource
+// pressure, not a measured optimum for every runner.
+const workerLimit = Math.max(1, Math.min(6, Math.floor(availableParallelism() / 2)));
+
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
-    // Nice each worker so its spawned children inherit reduced priority and the MAIN
-    // process keeps servicing its 60s RPC under CPU saturation on 2-core CI runners
-    // (REPAIR5; the starvation is suite-wide, not only the kill schedule). Priority-only,
-    // zero semantic change.
-    setupFiles: ['tests/setup/nice-worker.mjs'],
-    // x64 runs 34012982546 / 34012981173 passed all 516 assertions, then
-    // failed worker onTaskUpdate RPC at teardown under concurrent CPU-heavy
-    // compiled-CLI workloads. Vitest 3's RPC deadline is fixed at 60s (not
-    // teardownTimeout). Serialize isolated fork workers to avoid contention;
-    // keep test deadlines and unhandled-error reporting unchanged.
+    // nice-worker: best-effort priority reduction for each worker and its spawned children
+    // (a resource optimization, never a correctness gate). yield-worker: an awaited
+    // event-loop turn after every test case so the fork worker's task-update IPC can be
+    // answered between synchronous cases — the structural remedy for the runner's fixed
+    // 60s RPC deadline, which serialization and priority alone do not cure.
+    setupFiles: ['tests/setup/nice-worker.mjs', 'tests/setup/yield-worker.mjs'],
     pool: 'forks',
-    fileParallelism: false,
-    maxWorkers: 1,
+    isolate: true,
+    fileParallelism: !serialGate,
+    minWorkers: 1,
+    maxWorkers: serialGate ? 1 : workerLimit,
     // Full-gate workers run at reduced priority and exercise durable multi-owner
     // histories. Keep the runner deadline above the observed ~5.1s boundary so
     // valid serialized tests are not reported as semantic failures under load.
