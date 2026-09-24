@@ -14,6 +14,8 @@ export { bootProductionAssembly, inspectProductionAssemblyBindings, inspectOpene
   consumeProductionAssembly } from './production.js';
 export { createNativeHarnessAdapter } from './harness.js';
 export type { NativeHarnessDriverPort } from './harness.js';
+export { createProductionLaunchBoundary } from './production-launch-boundary.js';
+export type { ProductionLaunchBoundary } from './production-launch-boundary.js';
 export { contextDeliveryIdFor, createConfinedContextDeliveryDriver, createProductionGroundingReader } from './context-delivery.js';
 export type { ConfinedContextDeliveryDriverPort, ContextDeliveryExecutionPort, ProductionGroundingReaderInput } from './context-delivery.js';
 export { createCustodiedPersistenceAdapter } from './persistence.js';
