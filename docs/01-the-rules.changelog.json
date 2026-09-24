@@ -1,5 +1,21 @@
 [
   {
+    "revision": 12,
+    "date": "2026-09-23",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin directed adoption of skills over scripts and simplest robust route on 2026-09-23 at 18:05 and 18:25 PDT; Astra design adjudication. Exact-content operator approval remains pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 116, Skills over Scripts; Simplest Robust Route, in Needs building; require the agent-route review, exact guard references and unattended shipped-path completion evidence. Update group counts to 21/9/74/12, total 116.",
+        "why": "Changing live conditions require agent judgment within structural floors; repeated page-specific patches and a redundant successor condition exposed the missing design obligation.",
+        "ref": "topic 52075, 2026-09-23 18:05 and 18:25 PDT; proposed-standard-skills-over-scripts.md including all three evidence items; astra-standard-skills-over-scripts-ruling.md"
+      }
+    ]
+  },
+  {
     "date": "2026-09-04",
     "status": "draft",
     "cause": {

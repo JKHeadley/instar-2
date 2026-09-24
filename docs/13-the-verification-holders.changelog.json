@@ -1,5 +1,21 @@
 [
   {
+    "revision": 6,
+    "date": "2026-09-23",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Astra's Rule 116 adjudication of Justin's 2026-09-23 skills-over-scripts and simplest-robust-route direction; exact-content approval pending."
+    },
+    "changes": [
+      {
+        "what": "Specify the Rule 116 review contract in section 10, P9-NF-67 in section 13, and its declared/unbuilt disposition in section 14.",
+        "why": "The rule needs a refusing evidence gate without treating syntax as judgment, manual success as unattended proof, or a new skill as authority to bypass existing owners.",
+        "ref": "astra-standard-skills-over-scripts-ruling.md sections (a) and (b); topic 52075, 2026-09-23 18:05 and 18:25 PDT"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-09-21",
     "status": "draft",

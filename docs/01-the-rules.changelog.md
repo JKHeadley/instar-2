@@ -4,6 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 12 · 2026-09-23 · draft — Justin directed adoption of skills over scripts and simplest robust route on 2026-09-23 at 18:05 and 18:25 PDT; Astra design adjudication. Exact-content operator approval remains pending.
+
+- **Add Rule 116, Skills over Scripts; Simplest Robust Route, in Needs building; require the agent-route review, exact guard references and unattended shipped-path completion evidence. Update group counts to 21/9/74/12, total 116.** — Changing live conditions require agent judgment within structural floors; repeated page-specific patches and a redundant successor condition exposed the missing design obligation. _(topic 52075, 2026-09-23 18:05 and 18:25 PDT; proposed-standard-skills-over-scripts.md including all three evidence items; astra-standard-skills-over-scripts-ruling.md)_
+
 ## Revision 11 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **Rule 4 gains its third deciding-alone category: deterministic enforcement of recorded governed state — an exact test that refuses malformed, unverifiable, or standing-uncovered input and preserves it.** — Part one's decoders and part two's admission ladder block deterministically without being on the ruled-three list; part two surfaced the gap and the operator approved routing the amendment. _(part two question 10; operator approval 2026-09-04)_
