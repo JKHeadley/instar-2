@@ -2,7 +2,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -18,18 +18,21 @@ import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const root = () => { const p = realpathSync(mkdtempSync(join(tmpdir(), 'instar-peer-local-'))); roots.push(p); return p; };
-function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], hashIntent = false) {
+function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], hashIntent = false, escapeHeavy = false) {
   const base = root(), f = factsFixture(), intent = hashIntent ? f.intentInput() : null;
   const baseContext = hashIntent ? { ...f.ctx, schemas: [{ ...f.schema, optional: ['intent'], fields: { ...f.schema.fields,
-    intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }] } : f.ctx;
-  const first = hashIntent ? f.fact({ body: { identity: 'one', amount: '10', intent } }, baseContext) : f.fact();
+    intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }] }
+    : escapeHeavy ? { ...f.ctx, schemas: [{ ...f.schema, fields: { ...f.schema.fields,
+      identity: { kind: 'text' as const, maxLength: 100000 } } }] } : f.ctx;
+  const first = hashIntent ? f.fact({ body: { identity: 'one', amount: '10', intent } }, baseContext)
+    : escapeHeavy ? f.fact({ body: { identity: '\\'.repeat(30000), amount: '10' } }, baseContext) : f.fact();
   const second = f.next(first, {}, baseContext);
   const captures = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) =>
     [reference, { hash: hashBytes(bytes), bytes, byteLength: Buffer.byteLength(bytes), status: 'available' as const }]));
   const context = { ...baseContext, captures };
   const descriptor: PeerDescriptor = { installation: 'install:local-test', studio: 'machine-a', laptop: 'm_cc2ec651a91f',
     store: 'facts:local-test', epoch: 0, trust: 'ssh:local-process-test', custody: 'policy:local-test',
-    captureReferences: Object.keys(f.captures), capturePrefixes, limits: { maxRequestBytes: 100000, maxResponseBytes: 10000,
+    captureReferences: Object.keys(f.captures), capturePrefixes, limits: { maxRequestBytes: escapeHeavy ? 500000 : 100000, maxResponseBytes: 10000,
       maxFacts: 8, maxCaptures: Object.keys(f.captures).length + 1, maxCaptureBytes: 10000,
       maxDiskBytes, maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
   const config = join(base, 'installed-peer-config.mjs'), storeRoot = join(base, 'encrypted');
@@ -40,7 +43,7 @@ function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], h
     + `import { decodeMeasurement, consumeResult } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'dist/index.js')).href)};\n`
     + `import { hashBytes } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'dist/facts/index.js')).href)};\n`
     + `export function openFixedPeerConfiguration() { const f = factsFixture(); ${hashIntent ? 'f.intentInput();' : ''}\n`
-    + `const schemas = ${hashIntent ? "[{ ...f.schema, optional: ['intent'], fields: { ...f.schema.fields, intent: { kind: 'constitutional', type: 'Intent' } } }]" : 'f.ctx.schemas'};\n`
+    + `const schemas = ${hashIntent ? "[{ ...f.schema, optional: ['intent'], fields: { ...f.schema.fields, intent: { kind: 'constitutional', type: 'Intent' } } }]" : escapeHeavy ? "[{ ...f.schema, fields: { ...f.schema.fields, identity: { kind: 'text', maxLength: 100000 } } }]" : 'f.ctx.schemas'};\n`
     + `const captures = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) => [reference, { hash: hashBytes(bytes), bytes, byteLength: Buffer.byteLength(bytes), status: 'available' }]));\n`
     + `const receiverCaptures = ${hashIntent ? "Object.fromEntries(Object.entries(captures).map(([reference, capture]) => [reference, { ...capture, bytes: null, status: 'missing' }]))" : 'captures'};\n`
     + `return { descriptor: ${JSON.stringify(descriptor)}, machine: 'm_cc2ec651a91f', store: ${JSON.stringify(descriptor.store)}, policy: ${JSON.stringify(descriptor.custody)},\n`
@@ -116,6 +119,40 @@ it('R3 local-process store lock, disk reservation and corrupt config fail closed
   refused(exhausted.make().durability.ensure([exhausted.first, exhausted.second]), 'peer process refused');
   writeFileSync(h.config, 'corrupt');
   refused(h.make().durability.ensure([h.first, h.second]), 'peer process refused');
+});
+it('R3 escape-heavy valid history is refused before encrypted retention exceeds the disk allowance', () => {
+  const control = setup(500000, [], false, true);
+  expect(value(control.make().durability.ensure([control.first, control.second]))).toHaveLength(2);
+  const retained = readdirSync(control.storeRoot).reduce((bytes, name) =>
+    bytes + statSync(join(control.storeRoot, name)).size, 0);
+  expect(retained).toBeGreaterThan(150000);
+  const limited = setup(150000, [], false, true);
+  refused(limited.make().durability.ensure([limited.first, limited.second]), 'peer process refused');
+  const reopened = limited.disk();
+  expect(reopened.segment.read()).toHaveLength(0);
+  reopened.close();
+});
+it('R3 reservation includes the old encrypted facts alongside a rewrite temporary', () => {
+  const seed = (maxDiskBytes: number) => {
+    const h = setup(maxDiskBytes, [], false, true);
+    const disk = h.disk();
+    value(disk.segment.append(value(canonical(h.first)).bytes, null));
+    disk.close();
+    return h;
+  };
+  const control = seed(800000);
+  const oldFacts = statSync(join(control.storeRoot, 'facts.encrypted')).size;
+  expect(value(control.make().durability.ensure([control.first, control.second]))).toHaveLength(2);
+  const finalFacts = statSync(join(control.storeRoot, 'facts.encrypted')).size;
+  const finalRetained = readdirSync(control.storeRoot).reduce((bytes, name) =>
+    bytes + statSync(join(control.storeRoot, name)).size, 0);
+  expect(finalRetained).toBeLessThan(230000);
+  expect(oldFacts + finalFacts).toBeGreaterThan(230000);
+  const limited = seed(230000);
+  refused(limited.make().durability.ensure([limited.first, limited.second]), 'peer process refused');
+  const reopened = limited.disk();
+  expect(reopened.segment.read()).toHaveLength(1);
+  reopened.close();
 });
 it('R3 local-process wrong authenticated principal is denied before storage', () => {
   const h = setup(); writeFileSync(h.authInfo, 'publickey ssh-ed25519 T1RIRVJLRVk=\n');

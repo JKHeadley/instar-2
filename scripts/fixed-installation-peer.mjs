@@ -60,23 +60,44 @@ try {
   };
   const reserve = requestBytes => {
     // The exclusive production-storage lease is held. Count all retained files,
-    // including pending/retired artifacts, then budget an encrypted rewrite and
-    // its temporary copy before permitting any new durable write.
-    let used = 0, largest = 0;
+    // including failed-write artifacts. Each appended fact is JSON encoded as
+    // a string inside the facts array; both arrays/maps are then base64 sealed.
+    // Budget all additions plus the largest final rewrite temporary while the
+    // old files and every other retained file still coexist.
+    let used = 0n, factsSize = 0n, capturesSize = 0n;
     const count = dir => {
       for (const name of readdirSync(dir)) {
         const path = join(dir, name), entry = lstatSync(path);
         if (entry.isSymbolicLink()) throw Error('storage quota symlink refused');
         if (entry.isDirectory()) count(path);
-        else if (entry.isFile()) { used += entry.size; largest = Math.max(largest, entry.size); }
+        else if (entry.isFile()) {
+          const size = BigInt(entry.size);
+          used += size;
+          if (dir === config.root && name === 'facts.encrypted') factsSize = size;
+          if (dir === config.root && name === 'captures.encrypted') capturesSize = size;
+        }
         else throw Error('storage quota entry refused');
       }
     };
     count(config.root);
-    const extra = 2 * requestBytes + largest + 4096;
-    if (used + extra > config.descriptor.limits.maxDiskBytes) throw Error('storage allowance exhausted');
-    const available = statfsSync(config.root);
-    if (available.bavail * available.bsize < Math.max(extra, config.descriptor.limits.maxDiskBytes))
+    if (requestBytes > config.descriptor.limits.maxRequestBytes) throw Error('request allowance exhausted');
+    const factPlain = request.facts.reduce((size, fact) =>
+      size + BigInt(Buffer.byteLength(JSON.stringify(JSON.stringify(fact))) + 1), 2n);
+    const capturePlain = request.captures.reduce((size, capture) =>
+      size + BigInt(Buffer.byteLength(JSON.stringify(capture.reference))
+        + Buffer.byteLength(JSON.stringify(capture.bytes)) + 2), 2n);
+    // Four base64 bytes per three plaintext bytes, plus a full seal wrapper and
+    // rounding margin for each target. The old encrypted sizes already include
+    // their wrappers; unchanged rows retain their serialized byte lengths.
+    const growth = plain => (4n * plain + 2n) / 3n + 128n;
+    const factGrowth = growth(factPlain), captureGrowth = growth(capturePlain);
+    const temporary = factsSize + factGrowth > capturesSize + captureGrowth
+      ? factsSize + factGrowth : capturesSize + captureGrowth;
+    const extra = factGrowth + captureGrowth + temporary;
+    const limit = BigInt(config.descriptor.limits.maxDiskBytes);
+    if (used + extra > limit) throw Error('storage allowance exhausted');
+    const available = statfsSync(config.root, { bigint: true });
+    if (available.bavail * available.bsize < (extra > limit ? extra : limit))
       throw Error('disk reservation unavailable');
   };
   const result = consumeResult(receiveFixedPeerRequest({ request, descriptor: config.descriptor,
