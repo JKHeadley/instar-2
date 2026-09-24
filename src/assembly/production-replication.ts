@@ -199,13 +199,6 @@ export function receiveFixedPeerRequest(input: Readonly<{ request: PeerRequest; 
     const old = take(store.read());
     ensure(old.length <= request.facts.length, 'receiver has history beyond requested prefix');
     for (let i = 0; i < old.length; i++) ensure(bytes(old[i]) === bytes(request.facts[i]), 'immutable receiver prefix conflict');
-    const checkRequired = () => {
-      const supplied = Object.fromEntries(request.captures.map(c => [c.reference, {
-        hash: c.hash, bytes: c.bytes, byteLength: Buffer.byteLength(c.bytes), status: 'available' as const }]));
-      const required = requestedCaptures(d, supplied, input.context,
-        { owner: 'part-ten', read: () => request.facts, append: input.storage.append }, request.facts);
-      ensure(bytes(required) === bytes(request.captures), 'unrelated or missing custody capture');
-    };
     if (request.operation === 'verify') ensure(old.length === request.facts.length, 'prefix absent on verify');
     else {
       // Use Two's admission and snapshot ports before any durable mutation.
@@ -217,7 +210,6 @@ export function receiveFixedPeerRequest(input: Readonly<{ request: PeerRequest; 
       ensure(admitted.entries.length === request.facts.length && admitted.entries.every((entry, i) =>
         bytes(entry.fact) === bytes(request.facts[i]) && !entry.taint.length && !entry.conflicts.length),
       'candidate prefix tainted, conflicted or incomplete');
-      checkRequired();
       for (const c of request.captures) {
         ensure(input.captures.preserve(c.reference, c.bytes) && input.captures.read(c.reference) === c.bytes,
           'capture durable readback failed');
@@ -227,7 +219,6 @@ export function receiveFixedPeerRequest(input: Readonly<{ request: PeerRequest; 
         ensure(!receipt.taint.length && receipt.durability.kind === 'local-durable', 'receiver fact tainted or not durable');
       }
     }
-    if (request.operation === 'verify') checkRequired();
     for (const c of request.captures) ensure(input.captures.read(c.reference) === c.bytes, 'capture readback differs');
     const snapshot = take(store.readForProjection());
     ensure(snapshot.entries.length === request.facts.length && snapshot.entries.every((entry, i) =>

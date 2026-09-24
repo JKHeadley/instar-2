@@ -95,6 +95,32 @@ it('R3 local-process encrypted Laptop stand-in retains full prefix and captures 
   expect(value(a.verify())).toHaveLength(2);
   const restarted = h.disk(); expect(restarted.segment.read()).toHaveLength(2); restarted.close();
 });
+it('R6 local-process receiver retains an approved unrelated capture and refuses an unapproved one before storage', () => {
+  const bytes = 'approved bounded extra';
+  const extra = { reference: 'extra:approved', bytes, hash: hashBytes(bytes) };
+  const h = setup(100000, ['extra:']);
+  let supplied: PeerRequest | undefined;
+  refused(h.make({ transformRequest: request => {
+    expect(request.captures.some(c => c.reference === extra.reference)).toBe(false);
+    supplied = { ...request, captures: [...request.captures, extra] };
+    return supplied;
+  } }).durability.ensure([h.first, h.second]), 'peer response differs');
+  expect(supplied).toBeDefined();
+  const acknowledged = h.call({ ...supplied!, operation: 'verify' });
+  expect(acknowledged.persistedCaptures).toEqual(supplied!.captures.map(c => ({ reference: c.reference, hash: c.hash })));
+  const disk = h.disk();
+  expect(disk.captures.read(extra.reference)).toBe(bytes);
+  expect(disk.segment.read()).toHaveLength(2);
+  disk.close();
+  const blocked = setup();
+  refused(blocked.make({ transformRequest: request => ({ ...request,
+    captures: [...request.captures, { ...extra, reference: 'extra:unapproved' }] }) })
+    .durability.ensure([blocked.first, blocked.second]), 'peer process refused');
+  const untouched = blocked.disk();
+  expect(untouched.segment.read()).toHaveLength(0);
+  expect(untouched.captures.read('extra:unapproved')).toBeNull();
+  untouched.close();
+});
 it('R3 hash-addressed Intent.raw reaches encrypted cold receiver and survives process restart', () => {
   const h = setup(200000, [], true), rawHash = (h.first.body as { intent: { raw: string } }).intent.raw;
   expect(h.captures[rawHash]?.bytes).toBe(h.f.captures[rawHash]);

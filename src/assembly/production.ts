@@ -737,12 +737,17 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     const leaseHead = sixHistory.filter(row => row.record.type === 'Lease' && row.record.operation !== 'write').at(-1);
     const signedLease = references.find(row => row.name === 'dependency:lease');
     const signedFence = references.find(row => row.name === 'dependency:fence');
-    ensure(leaseHead?.record.type === 'Lease' && signedLease?.fact.id === leaseHead.fact.id
-      && signedFence?.fact.id === leaseHead.fact.id && leaseHead.record.state === 'held',
+    const signedAssignment = sixHistory.find(row => row.fact.id === signedLease?.fact.id);
+    ensure(leaseHead?.record.type === 'Lease' && leaseHead.record.state === 'held'
+      && signedAssignment?.record.type === 'Lease' && signedAssignment.record.operation === 'acquire'
+      && signedAssignment.record.state === 'held' && signedFence?.fact.id === signedAssignment.fact.id
+      && sixHistory.indexOf(signedAssignment) <= sixHistory.indexOf(leaseHead)
+      && signedAssignment.record.holder === leaseHead.record.holder
+      && signedAssignment.record.machine === leaseHead.record.machine
+      && signedAssignment.record.generation === leaseHead.record.generation,
     'current Six lease and assignment source differ');
     const currentFence = fenceFor(sixHistory, leaseHead.record);
-    ensure(currentFence.assignment === leaseHead.fact.id
-      && currentFence.generation === composition.host.current().generation
+    ensure(currentFence.generation === composition.host.current().generation
       && currentFence.machine === composition.host.machine
       && currentFence.holder === composition.host.principal.id,
     'current Six fence differs from installed owner');

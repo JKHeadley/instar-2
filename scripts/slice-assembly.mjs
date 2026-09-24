@@ -441,8 +441,10 @@ function restartProductionAssembly(slice, admissionId = 'admission:restart-produ
         validUntil: clock(Math.min(lease.record.expires - 1, 99999)) }));
     } else {
       const head = take(slice.transport.inspectCapacity()).heads.find(row => row.record.capacity === prior.record.capacity);
-      if (!head?.usable) take(slice.transport.rebindCapacity({ command: `slice-capacity-rebind:${slice.incarnation}`,
-        previousCapacity: prior.record.capacity, fence, validUntil: prior.record.validUntil }));
+      if (!head) throw new Error('installed capacity head absent on restart');
+      if (!head.usable || head.record.fence.assignment !== fence.assignment)
+        take(slice.transport.rebindCapacity({ command: `slice-capacity-rebind:${slice.incarnation}`,
+        previousCapacity: head.fact, fence, validUntil: prior.record.validUntil }));
     }
     const capacityFact = slice.transportFacts().find(row => row.record.type === 'CapacityReservation')?.fact;
     if (!capacityFact) throw new Error('installed capacity source absent');
@@ -2730,7 +2732,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
       const childUsage = childRows.length ? null : quantities(null);
       const inspected = currentHeads.get(capacity);
       const blocker = authorityUnavailable ?? (currentCapacity && !currentCapacity.ok ? currentCapacity.detail
-        : inspected?.blocker ?? (head.state === 'released' ? 'released' : 'current Six capacity head unavailable'))
+        : inspected ? inspected.blocker : (head.state === 'released' ? 'released' : 'current Six capacity head unavailable'))
         ?? (childUsage === null ? 'child-usage source unavailable' : null);
       return { capacity, reference: history.at(-1).fact.id, history: history.map(item => item.fact.id),
         installation: head.installation, scope: head.scope, generation: head.generation,
