@@ -4,6 +4,11 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 18 · 2026-09-23 · draft — M4-L2 unpark after operator-confirmed preview stage 2; bounded correction from Astra launch-blocked adjudication; independent review and LIVE content approval remain pending
+
+- **Specialize initial confined-launch preparation to Five’s admitted unfinished Run with Eight-derived launch identities and exact acyclic prior-allocation/prepared-fact joins in §16 §12 and M4-L-S2/S3/S9.** — Remove the pre-grounding RunStep cycle without changing Five, grounding or no-repeat semantics. _(astra-m4-launch-blocked-adjudication.md; astra-m4-l2-unpark-ruling.md)_
+- **Add only LIVE Six consumer row M4-L-S11 at current-base run-admission.ts:306–313, narrow the read-only exception and extend P1 only for its reviewed digest.** — Resolve the prepared fact reference before following its operation while retaining legacy placement and current reservation/fence checks. _(build-m4-launch-BLOCKED.md; m4-launch-build-brief-v2.md)_
+
 ## Revision 17 · 2026-09-23 · draft — PREVIEW-S2 framing amendment and separate-attestation ruling; review, pins and gate remain desk-owned
 
 - **Record fixed system-channel framing, the stricter combined 4096-byte prompt bound and separate signed invocation binding.** — Preserve exact owner authority contracts and stdin identity while retaining complete policy/input evidence. _(astra-preview-s2-framing.md; astra-preview-s2-framing-attestation.md)_
