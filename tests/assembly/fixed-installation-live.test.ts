@@ -4,6 +4,13 @@ import { createRunGraph } from '../../src/rungraph/index.js';
 import { createProductionRunAdmission, decodeLoopPolicy } from '../../src/transport/index.js';
 import { createLiveInputAssemblyFixture, value, refused, digest } from './live-input-owner-fixture.js';
 import { assemblyInput } from './fixture.js';
+import { generateKeyPairSync } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { canonical } from '../../src/index.js';
+import { frame, unframe, request as monitorRequest, signReply, verifyReply,
+  launchIdentity, OfflineJournal } from '../../scripts/fixed-native-worker-monitor.mjs';
 
 function reservationFixture() {
   const f = createLiveInputAssemblyFixture(undefined, { minimal: true });
@@ -157,4 +164,102 @@ it('Ten refuses a prepared fact copied from another signed store before Six exec
     harness: local.f.harnessId, processOperation: foreignPrepared.fact.id,
     resourceReferences: [foreignPrepared.fact.id] })))
     .toContain('processOperation reference missing from signed history');
+});
+
+function monitorFixture() {
+  const digestValue = value(canonical('monitor-test')).hash;
+  const launch = { v: 1, method: 'launch', challenge: 'ab'.repeat(32),
+    installation: 'installation:test', machine: 'machine:test',
+    body: { request: 'request:test', specification: 'specification:test',
+      claim: 'claim:test', consumed: 'consumed:test', operation: 'operation:test',
+      digest: digestValue } };
+  const identity = launchIdentity(launch, 'boot:test');
+  const receipt = { installation: launch.installation, machine: launch.machine,
+    bootId: 'boot:test', releaseDigest: digestValue, request: launch.body.request,
+    operation: launch.body.operation, digest: digestValue, claim: launch.body.claim,
+    consumed: launch.body.consumed, specification: launch.body.specification,
+    launchIdentity: identity, uid: 501, pid: 123, processStartIdentity:
+      { bootId: 'boot:test', uniqueId: '7', startTicks: '12' },
+    artifactDigest: digestValue, profileDigest: digestValue,
+    handlePolicyDigest: digestValue, limitsDigest: digestValue,
+    originalDeadline: { ownerClockReference: 'clock:test', ownerValidUntil: 100,
+      bootId: 'boot:test', continuousTicks: '200', timebaseNumer: '1', timebaseDenom: '1' },
+    state: 'running', reason: 'ok', sequence: 1,
+    observedAt: { clockReference: 'clock:test', value: 50 },
+    freshForMs: 500, currentBootId: 'boot:test', evidenceReferences: ['fact:test'] };
+  const keys = generateKeyPairSync('ed25519');
+  return { launch, receipt, keys, digestValue, identity };
+}
+
+it('synthetic monitor uses exact two-method canonical wire and bound signed receipts', () => {
+  const { launch, receipt, keys, digestValue, identity } = monitorFixture();
+  expect(monitorRequest(unframe(frame(launch)))).toEqual(launch);
+  const reply = signReply(launch, receipt, 'key:test', keys.privateKey);
+  const trust = { keyId: 'key:test', publicKey: keys.publicKey,
+    releaseDigest: digestValue, artifactDigest: digestValue, profileDigest: digestValue,
+    handlePolicyDigest: digestValue, limitsDigest: digestValue, currentBootId: 'boot:test',
+    clockReference: 'clock:test', now: 50, authorityValidUntil: 100, millisecondsPerUnit: 1 };
+  expect(verifyReply(launch, unframe(frame(reply)), trust)).toEqual(receipt);
+  const observe = { v: 1, method: 'observe', challenge: 'cd'.repeat(32),
+    installation: launch.installation, machine: launch.machine,
+    body: { request: launch.body.request, operation: launch.body.operation,
+      digest: digestValue, launchIdentity: identity, observationAuthority: 'fact:query' } };
+  expect(monitorRequest(unframe(frame(observe)))).toEqual(observe);
+  expect(verifyReply(observe, signReply(observe, receipt, 'key:test', keys.privateKey),
+    trust)).toEqual(receipt);
+  for (const method of ['stop', 'kill', 'cancel', 'cleanup', 'restart', 'replace', 'extend', 'install', 'updatePolicy'])
+    expect(() => monitorRequest({ ...launch, method })).toThrow('unsupported method');
+  expect(() => monitorRequest({ ...launch, executable: '/bin/sh' })).toThrow('closed shape');
+  expect(() => monitorRequest({ ...launch, body: { ...launch.body, argv: [] } })).toThrow('closed shape');
+  expect(() => verifyReply(launch, { ...reply, challenge: 'cd'.repeat(32) }, trust)).toThrow();
+  expect(() => verifyReply(launch, { ...reply, receipt: { ...receipt, pid: 999 } },
+    trust)).toThrow('invalid receipt signature');
+  expect(() => verifyReply(launch, reply, { ...trust, keyId: 'key:foreign' }))
+    .toThrow('reply request or trust binding differs');
+  expect(() => verifyReply(launch, reply, { ...trust, now: 49 }))
+    .toThrow('stale, future or unauthorized');
+  expect(() => verifyReply(launch, reply, { ...trust, now: 551 }))
+    .toThrow('stale, future or unauthorized');
+  expect(() => verifyReply(launch, reply, { ...trust, authorityValidUntil: 49 }))
+    .toThrow('stale, future or unauthorized');
+  expect(() => verifyReply(launch, reply, { ...trust, profileDigest: value(canonical('wrong')).hash }))
+    .toThrow('trusted profileDigest differs');
+  expect(() => signReply(launch, { ...receipt, processStartIdentity: null },
+    'key:test', keys.privateKey)).toThrow('attributable process evidence required');
+});
+
+it('synthetic monitor rejects noncanonical, oversized and truncated frames', () => {
+  const { launch } = monitorFixture();
+  const encoded = Buffer.from(JSON.stringify(launch));
+  const raw = Buffer.alloc(4 + encoded.length);
+  raw.writeUInt32BE(encoded.length); encoded.copy(raw, 4);
+  expect(() => unframe(raw)).toThrow('noncanonical frame');
+  expect(() => unframe(frame(launch).subarray(0, -1))).toThrow('invalid frame length');
+  const tooLarge = Buffer.alloc(4); tooLarge.writeUInt32BE(65537);
+  expect(() => unframe(tooLarge)).toThrow('invalid frame length');
+  const duplicate = Buffer.from('{"v":1,"v":1}');
+  const dupFrame = Buffer.alloc(4 + duplicate.length);
+  dupFrame.writeUInt32BE(duplicate.length); duplicate.copy(dupFrame, 4);
+  expect(() => unframe(dupFrame)).toThrow('noncanonical frame');
+});
+
+it('synthetic journal retains a decided original across reopen and refuses torn history', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'instar-monitor-'));
+  try {
+    const path = join(dir, 'journal');
+    const first = new OfflineJournal(path);
+    const { launch, identity } = monitorFixture();
+    const originalKey = `${launch.installation}/${launch.body.request}/${launch.body.operation}`;
+    expect(first.decide(identity, originalKey, launch.body).newDecision).toBe(true);
+    expect(new OfflineJournal(path).original(identity)?.value.value.request).toBe(launch.body.request);
+    expect(new OfflineJournal(path).decide(identity, originalKey, launch.body).newDecision).toBe(false);
+    expect(() => first.decide(identity, originalKey, { ...launch.body, claim: 'claim:changed' }))
+      .toThrow('original launch conflicts');
+    expect(() => first.decide('different-boot-identity', originalKey, launch.body))
+      .toThrow('original launch conflicts');
+    expect(new OfflineJournal(path).original('another')).toBeNull();
+    const bytes = readFileSync(path);
+    writeFileSync(path, bytes.subarray(0, -1));
+    expect(() => new OfflineJournal(path)).toThrow('journal-untrusted');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
