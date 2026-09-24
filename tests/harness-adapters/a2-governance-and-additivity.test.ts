@@ -13,7 +13,7 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
     ['tests/rungraph/provider-answer-reply.test.ts', '94c81465fa9e2137becb8224fd4e9823f30d0074c6751f6bf2263e862dc297e6'],
     // GRANT M3-S (astra-m3-structural-adjudication.md section 3): exact additive Five early-guard tests.
     ['tests/rungraph/installed-governance.test.ts', '4741c9e14be82d3329fcee03e30ef6e661c95aba210ef0fa5cbd010f5c251737'],
-    ['tests/assembly/production-grounding-inventory.json', '60cf876d7f781dd0e2c436a53ab88819c1de758c118a9f01a5b1d0a14add7c56'],
+    ['tests/assembly/production-grounding-inventory.json', '46cb6e88956c82ef5603f4c618b6632b8e7419976b5ef1ee9404f2b75e0f083e'],
     // GRANT S2-FRAMING (astra-preview-s2-framing.md section 4; astra-preview-s2-framing-source-review-3907fcf.md step 2): the landed subscription-route test's final reviewed content.
     ['tests/assembly/production-provider-subscription.test.ts', '1ba516e39bd5040fd7559a9770908bdc8dd8b79a80a6f45bce79e3be121c70ce'],
     // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
