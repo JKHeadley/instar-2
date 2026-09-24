@@ -1327,31 +1327,36 @@ named M3-S/M4-L/§11 exceptions, the sole §8 P10-SI-20 definition, inspection p
 original-bound strict-consumer gates, and the historical-context/generation-transition holds.
 
 **Rule — each proposed grant is separately reviewable.** Owner: Eight/Ten for their boundaries,
-Three for registration tooling, the desk for final pins and the operator for protected content.
-Predicates: P10-SI-19/20/36. These are proposed grants pending independent review convergence and
-operator approval; documentation approval closes only the design hold. No source implementation,
+Six for the sole S11 consumer addition, Three for registration tooling, the desk for final pins
+and the operator for protected content. Predicates: P10-SI-19/20/36. These are proposed grants
+pending independent review convergence and operator approval; documentation approval closes only the design hold. No source implementation,
 protected-content approval, pin or runtime pass is created by this text. Source coordinates in
 this subsection are immutable base `9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec`. `:1 (new)` means
-an absent path whose proposed file starts at line 1, not an existing source location.
+an absent path whose proposed file starts at line 1, not an existing source location. S11 alone
+uses base `452729a0d791f9b5425c2fe288de428e88dc30fb`; its :306–313 region is the :288–295
+consumer identified at `c5e2b67d3df0cca7321aa806d0da2cb1d8910d97`. §12 fixes the initial-worker
+preparation and resource-reference interpretation consumed by S2/S3/S9/S11, without a Five edit.
 
 | Grant | Exact source path and bounded delta | Protected-artifact disposition |
 |---|---|---|
 | M4-L-S1 | `src/effects/contracts.ts:7–51,112–137`: closed v2 process record and public execution/executor consumer types from Eight §4a; retain all v1 message types/purposes and provider interpretations. | LIVE `src/effects/**` |
-| M4-L-S2 | `src/effects/records.ts:18–47,89–182,204–217`: exact v2 shapes, registrations, producers, origin/historical decoders, canonical joins and version-aware validation/settlement references; preserve v1 meaning. | LIVE `src/effects/**` |
-| M4-L-S3 | `src/effects/doorway.ts:21–42,132–246,359–402`: genuine same-store launch constructor/check, bounded admission, durable one-use handoff, observation and restart reconstruction only. Message/live-input/provider behavior stays intact. | LIVE `src/effects/**` |
+| M4-L-S2 | `src/effects/records.ts:18–47,89–182,204–217`: exact v2 shapes, registrations, producers, origin/historical decoders, canonical joins and version-aware validation/settlement references; enforce §12's initial Run anchor, Eight-derived identities and exact prior-allocation/prepared-fact join; preserve v1 meaning. | LIVE `src/effects/**` |
+| M4-L-S3 | `src/effects/doorway.ts:21–42,132–246,359–402`: genuine same-store launch constructor/check, bounded admission, durable one-use handoff, observation and restart reconstruction only, including §12's admitted unfinished Run preparation and original mapping recovery. No Five-owned pre-grounding RunStep or launch-attempt producer is required or invented. Message/live-input/provider behavior stays intact. | LIVE `src/effects/**` |
 | M4-L-S4 | `src/effects/index.ts:1–7`: public process types, constructor/check, producer and decoder exports from Eight §4a only. | LIVE `src/effects/**` |
 | M4-L-S5 | `src/effects/effect.declarations.json:1–6`: only `native-confined-launch` feature/operation, its explicit schema/producer/decoder bindings, bounds/metrics and P10-SI-36/inherited checks. Preserve both protection declarations. | LIVE `src/effects/**` |
 | M4-L-S6 | `src/assembly/harness.ts:7–39,83–97`: bind launch and original-launch observation to Eight's genuine consumer and durable identity; remove reliance on the launch map as authority. No delivery shortcut or new lifecycle method. | Declared `src/assembly/**` is DARK at this base, not LIVE |
 | M4-L-S7 | `src/assembly/production-native-context.ts:9–22,40–58`: bind current process identity/artifact and loading readback to the exact admitted launch; keep context delivery's separate consumed claim and payload checks. | Same DARK assembly pattern |
 | M4-L-S8 | `src/assembly/production-launch-boundary.ts:1 (new)`: the exact restricted OS executor, canonical profile/artifact/identity/handle checks, bounded expiry enforcement and original-process observation. No policy authoring, arbitrary executable, hidden kill/cleanup operation or new record. | Same DARK assembly pattern |
-| M4-L-S9 | `src/assembly/production-composition.ts:22–37,46–92`: only public-owner launch constructor/executor wiring on the same store; no positive boot/dependency selection or capacity bypass. | Same DARK assembly pattern |
+| M4-L-S9 | `src/assembly/production-composition.ts:22–37,46–92`: only public-owner launch constructor/executor wiring on the same store, consuming Five's unchanged Run open/read and the genuine Six execution consumer with S11 under §12; no replacement admission wrapper, positive boot/dependency selection or capacity bypass. | Same DARK assembly pattern |
 | M4-L-S10 | `src/assembly/index.ts:14–17,49`: only exports for the named launch boundary and its public types. | Same DARK assembly pattern |
+| M4-L-S11 | `src/transport/run-admission.ts:306–313` at `452729a` (the :288–295 consumer at `c5e2b67`), inside `createProductionRunAdmission.execution`: add only §12's prepared-fact-reference arm. Resolve the exact prepared AdmissionReservation in the existing verified prefix by fact id, validate kind/run/original fence and required resource reference, derive its operation and select that operation's current reservation; compare immutable request/attempt/digest bindings and retain non-closed/current-run/current-assignment checks. Preserve the legacy operation-key arm and all its checks; an invalid fact reference cannot fall back to a guessed key. No change to prefix verification, placement selection, provenance, authority, contracts, schemas, settlement, indexes or other methods. | LIVE `src/transport/**`; separate exact protected-content approval at landing, no directory grant |
 
 Eight's LIVE declaration is `src/effects/effect.declarations.json:2–3`; Ten's DARK declaration
 is `src/assembly/assembly.declarations.json:7–10`. A future unprotected runtime posture does
 not downgrade repository protection. Exact LIVE source content requires operator approval.
-No new effects source file is assumed. Six, Nine, held M3 files and the pending selection-set
-design remain read-only. The separate G6 `provider-path.ts` grant does not become a launch grant.
+No new effects source file is assumed. Six remains read-only except S11's exact additive consumer
+region; Nine, held M3 files and the pending selection-set design remain read-only. The separate
+G6 `provider-path.ts` grant does not become a launch grant.
 
 | Grant | Exact helper/input dependency and bounded delta | Protected-artifact disposition |
 |---|---|---|
@@ -1365,8 +1370,9 @@ without assuming a register can be synthesized. Toolchain protection is declared
 `src/register/toolchain.declarations.json:119–126,135–142`. Both manifest contents and H1's
 exact script delta require operator approval. Existing `boundary.ts`, Two canonical/owned-body
 registration and historical decoding, Six authority/records, Ten contracts/records/history and
-Nine public assessment are consumed unchanged. Their public behavior, not copied validation,
-is the source of truth. If an additional helper/schema/fold dependency is needed, name its
+Nine public assessment are consumed unchanged. Six's production run-admission execution consumer
+has only the separately reviewed S11 exception; every surrounding check remains unchanged.
+Their public behavior, not copied validation, is the source of truth. If an additional helper/schema/fold dependency is needed, name its
 file:line and keep that dependent mode held; these rows do not authorize it.
 
 | Grant | Exact test or pin boundary |
@@ -1375,7 +1381,7 @@ file:line and keep that dependent mode held; these rows do not authorize it.
 | M4-L-T2 | `tests/assembly/fixed-installation-live.test.ts:1 (new at this base)`: launch-specific full-port integration and actual physical lifecycle/attack evidence for P10-SI-36 and its named neighbors only. Preserve the message-purpose decoder diagnostic when bringing in the independently prepared test (diagnostic coordinates are :8–26 in the confined-runtime worktree, not landed lines here). Exact temporary profile/worker proof artifacts may be constructed inside this test's bounded temporary directory and S8's granted boundary; no new helper file is granted. |
 | M4-L-T3 | `tests/operator/round15-regressions.test.ts:80,89`: V79 source allowlist only; the four S1–S4 paths are already present, retain them and add exactly `src/effects/effect.declarations.json`. Retain other approved entries, assertions and comparisons. No `src/effects/` prefix. |
 | M4-L-T4 | `tests/rungraph/production-grounding-scope.test.ts:5,9`: exact `liveInputGrant` addition of `src/effects/effect.declarations.json`; preserve S1–S4 and every other entry/comparison. Existing assembly prefix is no semantic grant beyond S6–S10. |
-| M4-L-P1 | `tests/assembly/production-grounding-inventory.json:5241`: after independent review add/update only changed S1–S10, H1–H3, T1–T4 artifact digests and applicable `reviewedSupportSources` entries. Preserve obligation rows, mappings and unrelated hashes; P10-SI-36's new evidence cannot replace a landed obligation. |
+| M4-L-P1 | `tests/assembly/production-grounding-inventory.json:5241`: after independent review add/update only changed S1–S11, H1–H3, T1–T4 artifact digests and applicable `reviewedSupportSources` entries, including the final independently reviewed `src/transport/run-admission.ts` digest for S11. Preserve obligation rows, mappings and unrelated hashes; P10-SI-36's new evidence cannot replace a landed obligation. |
 | M4-L-P2 | `scripts/check-assembly-contracts.mjs:178`: only resulting `REVIEWED_GROUNDING_INVENTORY` digest of P1's reviewed final bytes; no checker logic change. |
 | M4-L-T5 | `tests/harness-adapters/a2-governance-and-additivity.test.ts:7,10–19`: A2's `grantedContent` inventory and scope-test final digests only for this base. If T2 has landed independently before this cut, its exact approved launch-only additions need its own desk-reviewed content entry; preserve its diagnostic and all unrelated assertions. No general test exemption. |
 | M4-L-P3 | `scripts/check-p13-contract-map.mjs:266`: only the enclosing digest of T5's final reviewed bytes. No architecture predicate change. |
@@ -1974,6 +1980,87 @@ are denied and an additional endpoint is unsupported. There is no
 command text, arbitrary executable, new outbound-purpose literal, automatic restart/replacement,
 provider access or implicit readiness. The exact five-field control/costly/agent/none/bounded
 profile and all four constitutional tests are enforced at registration and actual use.
+
+**Rule — the first loading worker anchors on Five's admitted unfinished Run.** Owners: Five
+for unchanged Run admission/read and actual-start grounding; Eight for initial-launch identity
+and preparation; Six for reservation; Ten for the bound specification. Check: P10-SI-36 in
+M4-L-T1/T2. For this initial-worker arm, the following is the controlling specialization of
+Eight §4a's preparation wording: pending work means the already admitted Run, not a pre-grounding
+pending RunStep; Eight derives the launch identities, not a Five semanticMessage slot or launch
+attempt producer. The v2 fields and their owners otherwise retain Eight §4a's contract. This arm
+adds no Five record, source change, resume protocol or replacement worker.
+
+1. Five's genuine same-store `createRunGraph(...).open` admits the Run. `pending` is the exact
+   `run-opening` fact containing that Run, not `Run.opening` (the earlier stimulus), an arbitrary
+   same-kind fact or a caller-created step. Resolve it through the admitted store and Five's
+   genuine reader. Require the same Run with `head === run.id`, `state === ready`, no conflicts
+   and no pending RunSteps; set `expectedPredecessor = run.id`. Recheck actual scope, authority,
+   generation, stop, finite budget and Six's current fence at preparation and dispatch.
+2. Let `H(x)` be the existing canonical encoder's `.hash` for the exact JSON tuple x, including
+   its normal hash prefix. Set `k = H(["native-confined-launch", pending])`,
+   `step = "initial-step:" + k`, `semanticMessage = "initial-launch:" + k`, and
+   `attempt = "initial-launch-attempt:" + k`. Eight owns these exact derivations. `step` reserves
+   the intended first-step identity; it is not evidence of an admitted RunStep. Ten's launch,
+   initial context delivery/grounding and subsequent first-step preparation bind that identity.
+   The existing request id remains `"request:" + H(["native-confined-launch", installation,
+   machine, run, step, incarnation])`; `digest` remains H of the complete canonical parameters.
+3. Before creating a reservation, reconstruct any original mapping for this immutable Run anchor
+   from admitted owner history, including Six's prepared rows when the complete Eight request
+   has not yet been appended. Six first durably fixes the exact request/attempt/digest and
+   original incarnation/fence mapping; Ten records the final specification; Eight records the
+   complete request and verification obligation. All required causal preparation is durable
+   before dispatch. A crash before reservation creates no launch effect to repeat. Once the
+   mapping exists, recovery reuses it: changed incarnation, generation, parameters or request
+   key cannot create a second launch for that Run. Concurrent conflicting preparations refuse;
+   stale, missing or ambiguous original evidence holds dispatch, never derives replacement work.
+4. Six's recovery obligation and Eight's history retain outstanding launch uncertainty and
+   allocation. Do not insert a fake item into `RunView.pending`, declare the Run running or
+   grounded, complete it or release resources on launch/expiry alone. After actual launch,
+   context delivery and real grounding still precede Five's admitted first RunStep. Observation
+   of a progressed Run is not fresh initial-launch permission. New work, resume and replacement
+   require their own contracts, not this initial-worker arm.
+
+**Rule — the resource join is acyclic and the Six interpretation additive.** Owners: Eight
+for the full body/allocation join, Six for S11's genuine execution consumer, Ten for its unchanged
+specification. Check: P10-SI-36, retaining P6-NF-09/12/35. Let A be the exact sorted unique list
+of genuine prior allocation facts, each predating the prepared launch reservation fact P.
+This specializes Eight §4a's shared-resource comparison for this one field only:
+
+| Field | Exact value |
+|---|---|
+| `parameters.resourceReferences` | A, checked through its genuine owners against the installed finite limits; excludes the future P, claim and specification |
+| `HarnessLaunchSpec.processOperation` | P, the prepared Six AdmissionReservation fact id, never its operation key |
+| `HarnessLaunchSpec.resourceReferences` | sorted unique A union {P} |
+| Eight admission | Exact derived list relation, prepared reservation/request/attempt/digest/run/fence and every other shared parameter; both complete canonical bodies and their required causal closure |
+
+An operation spend reservation is not installation capacity. Missing required prior allocation
+remains held; no empty-list substitute, invented allocation or new generic Six capacity reader
+is granted. The parameter digest is computable before P; the specification can reference P
+because it is recorded afterward. This supplies neither a fabricated claim nor a hash cycle.
+
+S11 resolves P by exact fact id in the existing verified transport prefix and requires kind
+`transport-AdmissionReservation`, owner-decoded type AdmissionReservation, state `prepared`,
+matching Run and original fence, with P present in the specification's resource references.
+It takes the operation only from that prepared record and follows its current reservation.
+Prepared/current immutable request, attempt, digest, Run and fence bindings must agree; current
+reservation must remain non-closed, for the current Run and current lease assignment. Historical
+preparation never revives a closed or foreign operation. Preserve the verified-prefix, current
+placement/ownership selection, provenance and surrounding execution checks unchanged. The legacy
+operation-key arm keeps its original reservation-reference and current-state checks for existing
+placements; a fact reference that is missing, wrong-kind or otherwise invalid never falls back
+to it. Eight's v2 decoder requires P, so legacy compatibility cannot admit operation-key v2 input.
+No Six authority, record contract, schema, settlement, index or public-interface change follows.
+
+T1/T2 require genuine owner-produced positive preparation before grounding; refusal of raw
+stimulus, forged Run, stale head, terminal/stopped/conflicted Run and caller-changed identity
+before OS invocation; and cuts after reservation/specification/request/consumption recovering
+one original mapping with no launch under a new incarnation. T2 calls the genuine
+`createProductionRunAdmission.execution` and real Five/Ten grounding chain using P with its
+current consumed reservation, including reconstruction. Refuse wrong kind/run/fence, claim or
+consumed fact substituted for P, closed current reservation, missing P, missing/extra/wrong prior
+allocation, changed request/attempt/digest, stale placement and foreign store. Keep legacy
+placement, existing Six admission and Five actual-grounding regressions green. These are required
+checks, not reported executions, and all landed test bodies remain unchanged.
 
 P10-SI-36 refuses message/context/provider/fact-append substitution; copied owner labels;
 unapproved definition/version; changed executable, artifact, OS profile, environment, working
