@@ -2,10 +2,11 @@
   {
     "revision": 12,
     "date": "2026-09-23",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "conversation",
-      "note": "Justin adopted the 17-line simplicity audit and directed a fundamental Occam standard on 2026-09-23; Astra Occam ruling supersedes the earlier Rule 116 checker proposal. Exact-content operator approval remains pending."
+      "note": "Justin adopted the 17-line simplicity audit and directed a fundamental Occam standard on 2026-09-23; Astra Occam ruling supersedes the earlier Rule 116 checker proposal. Exact content approved by the operator in topic 52075 at 15:58Z 2026-09-24 ('approved'); merged as PR 116.",
+      "pr": 116
     },
     "changes": [
       {
@@ -18,7 +19,11 @@
         "why": "The operator adopted the simplicity audit and its one risk-scaled review with targeted repair.",
         "ref": "astra-instar2-simplicity-audit.md section 7; astra-occam-standard-ruling.md section 1"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 116,
+      "mergeCommit": "5df77b05521442987942aebf3c4d5bab44c4daa5"
+    }
   },
   {
     "date": "2026-09-04",

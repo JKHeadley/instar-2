@@ -2,10 +2,11 @@
   {
     "revision": 7,
     "date": "2026-09-24",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "conversation",
-      "note": "Justin adopted the simplicity audit and requested a fundamental Occam standard; Astra specified the smallest replay publication fix. Exact-content approval remains pending."
+      "note": "Justin adopted the simplicity audit and requested a fundamental Occam standard; Astra specified the smallest replay publication fix. Exact content approved by the operator in topic 52075 at 15:58Z 2026-09-24 ('approved'); merged as PR 116.",
+      "pr": 116
     },
     "changes": [
       {
@@ -13,7 +14,11 @@
         "why": "The first offline conversion must not prohibit later reviewed rule-book publication or imply that replay grants entering-force authority.",
         "ref": "astra-occam-standard-ruling.md section 2"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 116,
+      "mergeCommit": "5df77b05521442987942aebf3c4d5bab44c4daa5"
+    }
   },
   {
     "revision": 6,
