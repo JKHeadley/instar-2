@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, validateSubscriptionActivation,
-  SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 
@@ -15,10 +16,10 @@ export function encoded(value: unknown) {
   return result.value;
 }
 
-/** The bindings are instructions, not a fabricated answer or a repair template. */
+/** Application bindings and retained conversation are measured data. */
 export function decisionContext(bindings: unknown, selectedContext: readonly unknown[]): string {
-  return encoded({ instruction: 'Return only one complete JSON object, no Markdown fences or extra top-level fields. Shape: {type:"Decision",schemaVersion:1,id:<nonempty string>,at:bindings.at,by:bindings.by,conclusion:{subject:"preview-stage2-answer",predicate:"answer-text",value:<brief answer string>,evidence:bindings.evidence},reason:{subject:<nonempty string>,predicate:<nonempty string>,value:<your reason as JSON>,evidence:bindings.evidence},floor:{allowed:bindings.floor,chosen:<action in bindings.floor.actions>}}. Copy at/by/floor.allowed and both evidence ID arrays exactly. Author the answer and reason. standsOn may be omitted; it is derived. No tools.',
-    bindings, conversation: selectedContext }).bytes;
+  return encoded({ bindings, conversationKind: 'captured-telegram-updates',
+    conversation: selectedContext }).bytes;
 }
 export function submittedEnvelope(input: { provider: string; model: string; route: string; question: string;
   context: string; floor: unknown; evidence: readonly string[]; point: string; generation: string }) {
@@ -27,11 +28,14 @@ export function submittedEnvelope(input: { provider: string; model: string; rout
     attachments: [], tools: [], settings: STAGE2_SETTINGS, outputSchema: STAGE2_OUTPUT_SCHEMA });
 }
 export function inputMeasurements(question: string, context: string, submitted: string) {
-  return Object.freeze({ question: Buffer.byteLength(question), context: Buffer.byteLength(context),
+  const system = Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8');
+  return Object.freeze({ system, prompt: system + Buffer.byteLength(submitted, 'utf8'), question: Buffer.byteLength(question), context: Buffer.byteLength(context),
     submitted: Buffer.byteLength(submitted), maximum: 4096 });
 }
 export function requireInputBound(question: string, context: string, submitted: string): void {
-  if (inputMeasurements(question, context, submitted).submitted > 4096) throw new Error('preview: complete input bound');
+  const lengths = inputMeasurements(question, context, submitted);
+  if (lengths.submitted > 4096 || lengths.prompt > 4096)
+    throw Object.assign(new Error('preview: complete input bound'), { previewBound: lengths });
 }
 /** Includes identities, sourceResult and escaping, not just the visible text. */
 export function requireOutboundBound(message: unknown, maxBytes: number): string {
@@ -65,7 +69,10 @@ export function stage2RouteFactory(input: {
     const source = { version: a.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       endpoint: p.loginProfileIdentity, account: p.expectedAccount, credentialReference: p.reference,
       controller: 'preview-local-recorder', executableArtifact: p.artifact,
-      provider: 'anthropic', model: input.model, route: STAGE2_ROUTE };
+      provider: 'anthropic', model: input.model, route: STAGE2_ROUTE,
+      invocationPolicyDigest: encoded(subscriptionInvocationPolicy(input.model)).hash,
+      systemPromptDigest: `sha256:${createHash('sha256').update(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8').digest('hex')}`,
+      framing: subscriptionInvocationPolicy(input.model).framing };
     const terminal = { version: a.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] };
     const record = (predicate: string, value: unknown) => evidence(a.reference, encoded(value).hash, predicate, undefined,

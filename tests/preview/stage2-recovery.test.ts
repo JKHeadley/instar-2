@@ -200,6 +200,7 @@ it('cuts over a stopped predecessor with unchanged counters, cursor, exclusions 
 import { chmodSync, existsSync as requireExists } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { encoded, subscriptionInvocationPolicy } from './stage2-provider.js';
 // @ts-expect-error Physical host; inspection only, no installed CLI is executed.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
@@ -227,15 +228,22 @@ import {appendFileSync} from 'node:fs';
 let stdin='';for await(const bytes of process.stdin)stdin+=bytes;
 if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)');
 else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(JSON.stringify(auth))});
-else {appendFileSync(${JSON.stringify(log)},'model'+String.fromCharCode(10));
+else {appendFileSync(${JSON.stringify(log)},JSON.stringify({args:process.argv.slice(2),stdin,env:process.env})+String.fromCharCode(10));
  const signal=${JSON.stringify(signal)};
  if(signal){process.kill(process.ppid,signal);setInterval(()=>{},1000);}
- else {const binding=JSON.parse(JSON.parse(stdin).messages[1].content).bindings;
+ else {const request=JSON.parse(stdin), context=JSON.parse(request.messages[1].content), binding=context.bindings;
+ if(JSON.stringify(process.argv.slice(2))!==${JSON.stringify(JSON.stringify(subscriptionInvocationPolicy('claude-offline-exact-1').args))}
+ || Object.keys(context).sort().join(',')!=='bindings,conversation,conversationKind'
+ || context.conversationKind!=='captured-telegram-updates' || context.conversation.length!==1
+ || context.conversation[0].message.text!==request.messages[0].content
+ || JSON.stringify(binding.floor)!==JSON.stringify(request.floor) || JSON.stringify(binding.evidence)!==JSON.stringify(request.evidence)
+ || binding.by.model!==request.model || binding.by.route!==request.route || binding.by.judgment!==request.point)process.exit(42);
  const decision={type:'Decision',schemaVersion:1,id:'spawned-answer',at:binding.at,by:binding.by,
  conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value:'A spawned answer 世界 <>& &lt;',evidence:binding.evidence},
  reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},floor:{allowed:binding.floor,chosen:binding.floor.default}};
- process.stdout.write(JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify(decision),
- session_id:'offline-call',usage:{input_tokens:1,output_tokens:20},total_cost_usd:1.25}));}}
+ const raw=JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify(decision),
+ session_id:'offline-call',usage:{input_tokens:1,output_tokens:20},total_cost_usd:1.25});
+ appendFileSync(${JSON.stringify(log + '.raw')},raw);process.stdout.write(raw);}}
 `;
   writeFileSync(executable, source); chmodSync(executable, 0o700);
   const seed = { type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login', home, configDirectory, workingDirectory,
@@ -282,6 +290,23 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
   if (signal) expect(state.read().stop?.reason).toBe('signal');
   else {
     expect(calls.find((row: any) => row.method === 'sendMessage').body.text).toContain('A spawned answer 世界 &lt;&gt;&amp; &amp;lt;');
+    const spawned=JSON.parse(readFileSync(log,'utf8').trim());
+    expect(spawned.args).toEqual(subscriptionInvocationPolicy(model).args);
+    expect(Object.keys(spawned.env).filter(key=>key!=='__CF_USER_TEXT_ENCODING').sort()).toEqual(
+      ['PATH','HOME','CLAUDE_CONFIG_DIR','CLAUDE_CODE_MAX_RETRIES','CLAUDE_CODE_MAX_OUTPUT_TOKENS','CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'].sort());
+    const facts=JSON.parse(readFileSync(join(root,'.preview-stage2/facts.json'),'utf8'));
+    const q=facts.find((f:any)=>f.kind==='judgment-provider-ProviderJudgmentRequest').body.record;
+    expect(readFileSync(join(root,'.preview-stage2/captures',q.submitted.hash.slice(7)),'utf8')).toBe(spawned.stdin);
+    const response=facts.find((f:any)=>f.kind==='judgment-provider-ProviderJudgmentAttemptRecord'&&f.body.record.phase==='response-observed').body.record;
+    const receipt=JSON.parse(readFileSync(join(root,'.preview-stage2/captures',response.receipt.hash.slice(7)),'utf8'));
+    expect(Buffer.from(readFileSync(join(root,'.preview-stage2/captures',receipt.responseEvidence.terminal.raw.hash.slice(7)),'utf8'),'base64'))
+      .toEqual(readFileSync(log+'.raw'));
+    for(const kind of ['verification-VerificationAssessment','judgment-provider-ProviderAnswerAcceptance','transport-RunPairAdmission','effect-EffectRequest'])
+      expect(facts.some((f:any)=>f.kind===kind)).toBe(true);
+    expect(facts.find((f:any)=>f.kind==='transport-SettlementApplication').body.record).toMatchObject({unresolved:1,actualCharge:-1,retryEligible:0,exposure:0});
+    const source=facts.find((f:any)=>f.body.evidence?.claim.predicate==='provider-response-source-contract').body.evidence.claim.value;
+    expect(source).toMatchObject({framing:'preview-decision-system-v2',invocationPolicyDigest:encoded(subscriptionInvocationPolicy(model)).hash,
+      systemPromptDigest:'sha256:'+createHash('sha256').update(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT).digest('hex')});
     state.latchStop('operator');
     const before = retainedFiles(root);
     const statusEnv = { ...env }; delete statusEnv.NODE_OPTIONS;
@@ -414,3 +439,159 @@ it('replays the synthetic launcher preload clock independently of the runner cal
     expect(reading.end + 300000).toBeLessThan(1790628000000);
   }
 });
+
+import { cpSync, rmSync } from 'node:fs';
+import { cutoverRefusedStage2Root, validateStage2Successor } from './state.js';
+import { validateRefusedStage2Predecessor } from './stage2-owners.js';
+const refusalFixture = JSON.parse(readFileSync(join(process.cwd(), 'tests/preview/fixtures/stage2-first-live-refusal.json'), 'utf8'));
+const retainedProseTerminal = () => Buffer.from(refusalFixture.rawBase64, 'base64').toString('utf8');
+
+async function refusedSuccessorFixture(options: any = {}) {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-successor-evidence-')));
+  const source = join(parent, 'attempt-1'), target = join(parent, 'attempt-2');
+  mkdirSync(source); mkdirSync(target);
+  const s = stage2CompositionFixture({ root: source, terminal: retainedProseTerminal(), ...options });
+  const c = await s.create(); c.pollOnce(); await c.resume(); const sidecar = c.sidecar.read(); c.close();
+  s.state.latchStop('operator');
+  const now = s.now() + 2000, model = 'claude-offline-exact-2', reference = 'offline-activation-2';
+  const configuration = { ...s.configuration, root: target };
+  const profile = Object.freeze({ ...s.profile, activationReference: reference });
+  const activation = { ...s.activation, reference, model, profileDigest: encoded(profile).hash,
+    baseConfigurationDigest: 'sha256:' + createHash('sha256').update(JSON.stringify(configuration)).digest('hex'),
+    invocationPolicyDigest: encoded(subscriptionInvocationPolicy(model)).hash, assertedAt: now - 2, observedAt: now - 1 };
+  const input: any = { predecessorRoot: source, root: target, predecessorConfiguration: s.configuration, configuration,
+    quiescenceReference: 'desk:old-poller-and-local-child-exited', cutoff: now - 1000, now: () => now,
+    activation, profile, model };
+  const marker = join(parent, `.preview-s2-framing-v2-${createHash('sha256').update(s.state.read().trial.id).digest('hex')}.json`);
+  return { s, source, target, parent, input, marker, sidecar, now };
+}
+
+it('replays exact first-live refusal bytes through genuine route/owners and retains the terminal unresolved slot across restart', async () => {
+  expect('sha256:' + createHash('sha256').update(Buffer.from(refusalFixture.rawBase64, 'base64')).digest('hex')).toBe(refusalFixture.rawDigest);
+  const f = await refusedSuccessorFixture();
+  expect(f.sidecar).toMatchObject({ phase: 'held', hold: { code: 'REFUSED' }, terminalLatch: true, modelAttemptUsed: 1 });
+  const proof = validateRefusedStage2Predecessor(f.source, f.s.state.read(), f.s.configuration);
+  expect(proof).toMatchObject({ rawDigest: refusalFixture.rawDigest, answerDigest: refusalFixture.answerDigest,
+    unresolvedObligation: { charge: 'UNKNOWN', quiescence: 'UNKNOWN', actualCharge: -1, unresolved: 1, released: 0, retryEligible: 0, exposure: 0 } });
+  expect(f.s.models).toHaveLength(1); expect(f.s.calls.filter(r => r.method === 'sendMessage')).toHaveLength(0);
+  const before = retainedFiles(f.source), c = await f.s.create(); await c.resume(); c.close();
+  expect(retainedFiles(f.source)).toEqual(before); expect(f.s.models).toHaveLength(1);
+}, 60000);
+
+it('performs only one successor cutover, inherits all history and bounds, and pairs only one fresh post-cutoff turn', async () => {
+  const f = await refusedSuccessorFixture(), before = retainedFiles(f.source), old = f.s.state.read();
+  const results = await Promise.allSettled([cutoverRefusedStage2Root(f.input), cutoverRefusedStage2Root(f.input)]);
+  expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+  expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
+  const inherited = JSON.parse(readFileSync(join(f.target, 'preview-state.json'), 'utf8'));
+  expect(inherited).toEqual({ ...old, stop: null, trial: { ...old.trial, configurationDigest: f.input.activation.baseConfigurationDigest } });
+  expect(retainedFiles(f.source)).toEqual(before);
+  const predecessor = JSON.parse(readFileSync(join(f.target, 'preview-predecessor.json'), 'utf8'));
+  for (const [path, hash] of Object.entries(predecessor.snapshot)) expect('sha256:' + createHash('sha256')
+    .update(readFileSync(join(f.target, '.preview-predecessor', path))).digest('hex')).toBe(hash);
+  const marker = JSON.parse(readFileSync(f.marker, 'utf8'));
+  expect(marker.reservationDigest).toBe(encoded(marker.reservation).hash);
+  expect(predecessor.continuation.reservationDigest).toBe(marker.reservationDigest);
+  expect(marker.completion).toEqual({ archiveInventoryDigest: encoded(predecessor.snapshot).hash, predecessorRecordDigest: encoded(predecessor).hash });
+  expect(requireExists(join(f.target, '.preview-stage2'))).toBe(false);
+  const s = stage2CompositionFixture({ root: f.target, start: f.now, cutoff: f.input.cutoff,
+    model: f.input.model, activationReference: f.input.activation.reference,
+    updates: [{ update_id: 2, message: { message_id: 1002, from: { id: 7812716706, is_bot: false, first_name: 'Offline' },
+      chat: { id: 7812716706, type: 'private' }, date: Math.floor(f.now / 1000), text: 'And three plus three?' } }] });
+  expect(s.activation).toEqual(f.input.activation);
+  let c = await s.create();
+  expect(c.sidecar.read().excludedTurns).toEqual(Object.keys(old.turns).sort());
+  expect(c.sidecar.read().modelAttemptUsed).toBe(0);
+  c.close(); // active restart must validate the same marker before polling
+  const markerBytes = readFileSync(f.marker, 'utf8');
+  writeFileSync(f.marker, JSON.stringify({ ...marker, completion: null })); await expect(s.create()).rejects.toThrow();
+  writeFileSync(f.marker, markerBytes);
+  c = await s.create(); c.pollOnce(); await c.resume();
+  expect(c.sidecar.read()).toMatchObject({ phase: 'api-accepted', modelAttemptUsed: 1, selectedTurn: 'telegram:8820318295:update:2' });
+  expect(JSON.parse(JSON.parse(s.models[0].stdin).messages[1].content).conversation.map((r: any) => r.update_id)).toEqual([1, 2]);
+  c.close(); c = await s.create(); await c.resume(); expect(c.pollOnce()).toBeNull(); c.close();
+  expect(f.s.models.length + s.models.length).toBe(2); expect(s.calls.filter(r => r.method === 'sendMessage')).toHaveLength(1);
+  expect(retainedFiles(f.source)).toEqual(before);
+  const other = join(f.parent, 'alternate'); mkdirSync(other);
+  await expect(cutoverRefusedStage2Root({ ...f.input, root: other, configuration: { ...f.input.configuration, root: other } })).rejects.toThrow();
+  await expect(cutoverRefusedStage2Root(f.input)).rejects.toThrow();
+  s.state.latchStop('operator');
+  await expect(cutoverRefusedStage2Root({ ...f.input, predecessorRoot: f.target, predecessorConfiguration: s.configuration,
+    root: other, configuration: { ...s.configuration, root: other } })).rejects.toThrow();
+}, 120000);
+
+it('refuses successor stop/window/config/activation/lease/lineage/capture corruption without reserving or launching', async () => {
+  const f = await refusedSuccessorFixture(), original = retainedFiles(f.source);
+  const rejects = async (input = f.input) => {
+    await expect(cutoverRefusedStage2Root(input)).rejects.toThrow(); expect(requireExists(f.marker)).toBe(false);
+    expect(f.s.models).toHaveLength(1); expect(f.s.calls.filter(r => r.method === 'sendMessage')).toHaveLength(0);
+  };
+  for (const change of [ { quiescenceReference: '' }, { now: () => f.s.state.read().trial.expiresAt },
+    { now: () => f.s.state.read().trial.expiresAt - 299999 }, { configuration: { ...f.input.configuration, maxContextTurns: 99 } },
+    { activation: { ...f.input.activation, trial: 'wrong' } }, { activation: { ...f.input.activation, invocationPolicyDigest: f.s.activation.invocationPolicyDigest } },
+    { activation: { ...f.input.activation, reference: f.s.activation.reference } }, { profile: { ...f.input.profile, activationReference: 'wrong' } } ]) await rejects({ ...f.input, ...change });
+  const mutateFile = async (path: string, bytes: string | null) => {
+    const saved = readFileSync(path); if (bytes === null) renameSync(path, path + '.retained'); else writeFileSync(path, bytes);
+    try { await rejects(); } finally { if (bytes === null) renameSync(path + '.retained', path); else writeFileSync(path, saved); }
+  };
+  for (const reason of ['expiry', 'breaker', 'capacity', null]) {
+    const path = join(f.source, 'preview-state.json'), saved = readFileSync(path);
+    const old = JSON.parse(saved.toString()); writeFileSync(path, JSON.stringify({ ...old, stop: reason ? { latchedAt: f.now, reason } : null }));
+    await mutateFile(join(f.source, 'preview-stop.json'), JSON.stringify(reason ? { latchedAt: f.now, reason } : null));
+    writeFileSync(path, saved);
+  }
+  for (const name of ['.boot-lease', '.boot-lease-guard', '.preview-stage2/append.lock']) {
+    mkdirSync(join(f.source, name)); await rejects(); rmSync(join(f.source, name), { recursive: true });
+  }
+  for (const bytes of ['{', '[]']) await mutateFile(join(f.source, '.preview-stage2/facts.json'), bytes);
+  await mutateFile(join(f.source, '.preview-stage2/facts.json'), null);
+  const proof = validateRefusedStage2Predecessor(f.source, f.s.state.read(), f.s.configuration);
+  for (const digest of [proof.receiptDigest, proof.answerDigest, proof.rawCaptureDigest, proof.submittedDigest]) {
+    const path = join(f.source, '.preview-stage2/captures', digest.slice(7)); await mutateFile(path, null); await mutateFile(path, 'changed');
+  }
+  const sidecarPath = join(f.source, 'preview-stage2-state.json');
+  for (const change of [{ hold: { code: 'UNKNOWN', lengths: {}, references: [] } }, { modelAttemptUsed: 0 },
+    { references: { ...f.sidecar.references, responseFact: f.sidecar.references.requestFact } }])
+    await mutateFile(sidecarPath, JSON.stringify({ ...f.sidecar, ...change }));
+  mkdirSync(join(f.source, '.preview-predecessor'));
+  mkdirSync(join(f.source, '.preview-predecessor/.preview-stage2')); await rejects();
+  rmSync(join(f.source, '.preview-predecessor'), { recursive: true });
+  writeFileSync(join(f.source, 'preview-predecessor.json'), JSON.stringify({ continuation: { marker: 'prior' } })); await rejects();
+  rmSync(join(f.source, 'preview-predecessor.json'));
+  // Byte restoration, not mtime restoration, after intentional corruption.
+  expect(Object.keys(retainedFiles(f.source) as object)).toEqual(Object.keys(original as object));
+}, 120000);
+
+it('refuses valid JSON failure and any accepted/reply outcome as successor predecessors', async () => {
+  for (const options of [{ terminal: JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '{}',
+    session_id: 'offline-call', usage: { input_tokens: 1, output_tokens: 1 } }) }, { terminal: undefined }]) {
+    const f = await refusedSuccessorFixture(options);
+    if (f.sidecar.phase === 'api-accepted') {
+      // A false held sidecar cannot conceal existing acceptance, reply Run, pair,
+      // outbound request/message or dispatch claims in the signed store.
+      writeFileSync(join(f.source, 'preview-stage2-state.json'), JSON.stringify({ ...f.sidecar, phase: 'held', hold: { code: 'REFUSED', lengths: {}, references: [] } }));
+    }
+    await expect(cutoverRefusedStage2Root(f.input)).rejects.toThrow(); expect(requireExists(f.marker)).toBe(false);
+  }
+}, 120000);
+
+it('holds partial/corrupt lineage markers and copy crashes without another cutover or startup', async () => {
+  const f = await refusedSuccessorFixture();
+  for (const bytes of ['{', JSON.stringify({ reservation: {}, reservationDigest: 'wrong', completion: null })]) {
+    writeFileSync(f.marker, bytes);
+    await expect(cutoverRefusedStage2Root(f.input)).rejects.toThrow(); expect(readFileSync(f.marker, 'utf8')).toBe(bytes);
+    expect(() => validateStage2Successor({ ...f.input, outer: { ...f.s.state.read(), trial: { ...f.s.state.read().trial,
+      configurationDigest: f.input.activation.baseConfigurationDigest } } })).toThrow();
+    rmSync(f.marker); // explicit test reset only; helper never removes a marker
+  }
+  // Fault injection at the actual fs copy boundary, after exclusive reservation.
+  const fs = await import('node:fs'), module = await import('node:module');
+  const original = fs.default.cpSync;
+  fs.default.cpSync = (() => { throw Error('synthetic copy crash'); }) as typeof original; module.syncBuiltinESMExports();
+  try { await expect(cutoverRefusedStage2Root(f.input)).rejects.toThrow('synthetic copy crash'); }
+  finally { fs.default.cpSync = original; module.syncBuiltinESMExports(); }
+  expect(JSON.parse(readFileSync(f.marker, 'utf8')).completion).toBeNull();
+  await expect(cutoverRefusedStage2Root(f.input)).rejects.toThrow();
+  expect(requireExists(join(f.target, '.preview-stage2'))).toBe(false);
+  expect(f.s.models).toHaveLength(1);
+}, 60000);

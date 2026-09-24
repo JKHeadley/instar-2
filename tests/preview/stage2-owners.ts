@@ -1,4 +1,5 @@
 // @ts-nocheck -- waived preview shell; authority, admission and dispatch use public owner constructors.
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,7 +17,7 @@ import type { EffectHost, EffectSettlement, ProviderEffectDoorway } from '../../
 import { createProductionProviderOwners } from '../../src/assembly/production-provider-owners.js';
 import { admitAcceptedProviderReply, createProductionRunAdmission } from '../../src/transport/index.js';
 import { acceptedReplyPreviewText, runIdFor } from '../../src/rungraph/index.js';
-import { STAGE2_SETTINGS, STAGE2_OUTPUT_SCHEMA, STAGE2_DISCLOSURE, OWNER_WINDOW_MS, stage2Description, decisionContext, submittedEnvelope, requireInputBound, requireOutboundBound, encoded } from './stage2-provider.js';
+import { STAGE2_SETTINGS, STAGE2_OUTPUT_SCHEMA, STAGE2_DISCLOSURE, OWNER_WINDOW_MS, stage2Description, decisionContext, submittedEnvelope, inputMeasurements, requireInputBound, requireOutboundBound, encoded } from './stage2-provider.js';
 import { createTelegramReplyOperationAdapter, installTelegramReplyOperation, telegramConversation, renderTelegramHtml } from '../../src/conversation/index.js';
 import { readRecordFact, validateGrounding } from '../../src/rungraph/graph.js';
 import { decodeSessionGrounding } from '../../src/rungraph/records.js';
@@ -494,9 +495,8 @@ export function stage2Lifecycle(input) {
     if (!reconcile() || terminal()) return false;
     d = sidecar.read();
     if (d.phase === 'armed') {
-      const lengths = { question: Buffer.byteLength(owner.question.question), context: Buffer.byteLength(owner.question.context),
-        submitted: Buffer.byteLength(owner.submitted), maximum: 4096 };
-      if (lengths.submitted > 4096) { hold('BOUND', lengths, d.contextReferences); return false; }
+      const lengths = inputMeasurements(owner.question.question, owner.question.context, owner.submitted);
+      if (lengths.submitted > 4096 || lengths.prompt > 4096) { hold('BOUND', lengths, d.contextReferences); return false; }
       const { prepared, request } = owner.prepare();
       save('provider-prepared', { requestFact: prepared.request.id, preparedFact: prepared.prepared.id,
         providerRequest: request.id, submittedCapture: request.payload.submitted.reference, providerRun: owner.id });
@@ -692,7 +692,7 @@ export function reconcileStage2History(directory, d, outer, configuration, requi
   }
   for (const [role, id] of Object.entries(d.references)) check(expected[role] === id);
   if (requireResponse) check(expected.replyObservationFact);
-  return { facts, observation: expected.replyObservationFact && record(facts.find(f => f.id === expected.replyObservationFact)),
+  return { facts, readCapture, one, check, observation: expected.replyObservationFact && record(facts.find(f => f.id === expected.replyObservationFact)),
     observationFact: expected.replyObservationFact };
 }
 
@@ -712,4 +712,76 @@ function acceptedTelegram(f, observation, message, target) {
       && result.text.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;') === message.text
       && (target.messageThreadId === null || result.message_thread_id === target.messageThreadId);
   } catch { return false; }
+}
+
+/** Sole continuation class: complete terminal prose, assessed but never accepted.
+ * Uses only signed historical frames and exact capture bytes, never live owners. */
+export function validateRefusedStage2Predecessor(root, outer, configuration) {
+  const d = validateStage2State(JSON.parse(readFileSync(join(root, 'preview-stage2-state.json'), 'utf8')), outer, configuration.root);
+  const { facts, readCapture, one, check } = reconcileStage2History(join(root, '.preview-stage2'), d, outer, configuration);
+  check(d.phase === 'held' && d.hold?.code === 'REFUSED' && d.terminalLatch && d.modelAttemptUsed === 1);
+  for (const role of ['requestFact', 'preparedFact', 'providerRequest', 'submittedCapture', 'providerRun', 'responseFact', 'receipt']) check(d.references[role]);
+  const q = record(one('judgment-provider-ProviderJudgmentRequest'));
+  const response = record(one('judgment-provider-ProviderJudgmentAttemptRecord', r => r.phase === 'response-observed'));
+  check(response.request === q.id && response.operation);
+  const receipt = JSON.parse(readCapture(response.receipt)), evidence = receipt.responseEvidence;
+  check(receipt.state === 'complete' && receipt.usage.charge === null && evidence?.eligibility === 'admitted');
+  const subject = stage2ResponseSubject({ all: () => facts, captures: { read: cap => ({ kind: 'Success', value: readCapture(cap) }) } });
+  const inspect = v => {
+    if (!v || typeof v !== 'object') return;
+    if (v.name === 'FactEnvelope' && v.contentHash) check(enc(ownerReference(facts.find(f => f.id === v.id))).bytes === enc(v).bytes);
+    if (v.reference?.startsWith('judgment-capture:') && v.hash) readCapture(v);
+    Object.values(v).forEach(inspect);
+  };
+  inspect(subject); inspect(receipt); facts.forEach(f => inspect(f.body));
+  const answer = readCapture(evidence.answer.source), base64 = readCapture(evidence.terminal.raw);
+  const raw = Buffer.from(base64, 'base64');
+  check(raw.toString('base64') === base64 && raw.length <= 65536);
+  const terminal = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(raw));
+  check(`sha256:${createHash('sha256').update(raw).digest('hex')}` === evidence.terminal.rawDigest);
+  check(terminal.type === 'result' && terminal.subtype === 'success' && terminal.is_error === false
+    && terminal.structured_output === undefined && terminal.result === answer && answer.trim().length > 0
+    && Buffer.byteLength(answer) <= 16384 && receipt.bytes === answer && hashBytes(answer) === evidence.answer.answerDigest
+    && terminal.session_id === receipt.providerOperation && evidence.source.call === terminal.session_id
+    && Number.isSafeInteger(terminal.usage?.input_tokens) && terminal.usage.input_tokens >= 0
+    && Number.isSafeInteger(terminal.usage?.output_tokens) && terminal.usage.output_tokens >= 0 && terminal.usage.output_tokens <= 2048);
+  let isJson = true; try { JSON.parse(answer); } catch { isJson = false; } check(!isJson);
+  check(evidence.answer.extractionContract === 'claude-code-json-result:1'
+    && evidence.contract.parserReference === 'claude-code-json-result' && evidence.contract.parserVersion === '1'
+    && evidence.terminal.reason === 'successful-final-reply' && evidence.terminal.providerReason === 'success');
+  for (const field of ['limited', 'errored', 'cancelled', 'timedOut', 'truncated', 'toolCall']) check(evidence.terminal[field] === false);
+  for (const [key, expected] of Object.entries({ request: d.references.requestFact, attempt: q.attempt,
+    operation: response.operation, claim: response.claim, submittedDigest: q.inputDigest, provider: q.provider, model: q.model, route: q.route }))
+    check(evidence.source[key] === expected);
+  const vf = one('verification-VerificationRequest', r => r.operation === response.operation), vr = record(vf);
+  const af = one('verification-VerificationAssessment', r => r.request === vr.id), a = record(af);
+  for (const r of [vr, a]) check(r.operation === response.operation && r.operationDigest === q.inputDigest
+    && r.attempt === q.attempt && enc(r.subject).bytes === enc(subject).bytes);
+  check(af.predecessors.required.includes(vf.id));
+  for (const [predicate, verdict] of [['response-authenticity', 'satisfied'], ['response-completeness', 'insufficient']])
+    check(a.predicates.filter(p => p.predicate === predicate && p.verdict === verdict).length === 1);
+  const sf = one('effect-provider-ProviderEffectSettlement', r => r.operation === response.operation), settlement = record(sf);
+  const cf = one('transport-SettlementApplication', r => r.operation === response.operation), accounting = record(cf);
+  check(settlement.acceptance === af.id && sf.predecessors.required.includes(af.id)
+    && settlement.finalCharge === 'unknown' && settlement.delayedExecutionExcluded === false
+    && settlement.retainedExposure === 0 && settlement.retryEligible === false
+    && accounting.settlement === settlement.id && accounting.settlementFact === sf.id && accounting.settlementHash === sf.contentHash
+    && cf.predecessors.required.includes(sf.id) && accounting.actualCharge === -1 && accounting.unresolved === 1
+    && accounting.released === 0 && accounting.retryEligible === 0 && accounting.exposure === 0);
+  for (const r of [settlement, accounting]) check(r.request === q.effectRequest && r.digest === q.inputDigest
+    && r.claim === response.claim && r.reservation === response.reservation);
+  check(facts.filter(f => f.kind === 'run-opening').length === 1);
+  for (const f of facts) {
+    check(!['judgment-provider-ProviderAnswerAcceptance', 'transport-RunPairAdmission', 'effect-OutboundMessage',
+      'effect-EffectRequest', 'effect-OperationObservation'].includes(f.kind));
+    if (f.kind === 'transport-AdmissionReservation') check(record(f).run === q.run);
+  }
+  return { failedTurn: d.selectedTurn, operation: response.operation, receiptDigest: response.receipt.hash,
+    answerDigest: evidence.answer.answerDigest, rawDigest: evidence.terminal.rawDigest,
+    rawCaptureDigest: evidence.terminal.raw.hash, submittedDigest: q.submitted.hash,
+    oldActivationDigest: d.activationDigest, oldPolicyDigest: d.policyDigest,
+    oldActivationReference: evidence.contract.evidenceContractReference,
+    unresolvedObligation: { store: join(configuration.root, '.preview-stage2/facts.json'),
+      assessment: ownerReference(af), settlement: ownerReference(sf), accounting: ownerReference(cf),
+      charge: 'UNKNOWN', quiescence: 'UNKNOWN', actualCharge: -1, unresolved: 1, released: 0, retryEligible: 0, exposure: 0 } };
 }

@@ -295,12 +295,12 @@ export function stage2CompositionFixture(options: any = {}) {
     maxPollSeconds: 1, maxBatchItems: 1, maxContextTurns: 8, maxContextBytes: 65536, ...options.configuration };
   const state = openPreviewState({ root, configuration, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, now: () => time,
     replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128 });
-  const artifactBytes = Buffer.from('offline executable bytes'), model = 'claude-offline-exact-1';
+  const artifactBytes = Buffer.from('offline executable bytes'), model = options.model ?? 'claude-offline-exact-1';
   const profile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login',
     home: '/offline/home', configDirectory: '/offline/config', workingDirectory: '/offline/work',
     expectedAccount: 'offline@example.invalid', organization: 'offline-org', plan: 'max', loginProfileIdentity: 'offline-profile',
     executable: '/offline/cli', artifact: `sha256:${createHash('sha256').update(artifactBytes).digest('hex')}`,
-    version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: enc({}).hash });
+    version: '2.1.280', activationReference: options.activationReference ?? 'offline-activation', managedConfigurationDigest: enc({}).hash });
   const activation = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
     waiver: 'offline-waiver', p11: 'offline-p11', reviewedHead: 'offline-head', trial: state.read().trial.id,
     baseConfigurationDigest: state.read().trial.configurationDigest, profileDigest: enc(profile).hash,
@@ -345,7 +345,7 @@ export function stage2CompositionFixture(options: any = {}) {
     } };
   const create = (): Promise<any> => stage2GuardedProviderPath({ configuration, state, storageKey: new Uint8Array(32).fill(19),
     storageIO: productionStorageIO, telegramIO, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
-    stage2: { activation, profile, model, cutoff: (options.start ?? 1790000000000) - 1000, arm: true,
+    stage2: { activation, profile, model, cutoff: options.cutoff ?? (options.start ?? 1790000000000) - 1000, arm: true,
       io, now: () => time, active: () => active, checkpoint: options.checkpoint } });
   return { root, state, configuration, activation, profile, model, create, calls, models, now: () => time,
     time: (n: number) => { time = n; }, revoke: () => { active = false; } };

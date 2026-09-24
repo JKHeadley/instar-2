@@ -20,7 +20,7 @@ import { conversationFixture } from '../conversation/fixture.js';
 import { effectFixture } from '../effects/fixture.js';
 import { createProductionBootOwnerFixture } from '../assembly/production-boot-owner-fixture.js';
 import { json, privateKey, value } from '../facts/fixtures.js';
-import { durablePreviewWrite, previewTurnId, stage2SidecarExists, openStage2State } from './state.js';
+import { durablePreviewWrite, previewTurnId, stage2SidecarExists, openStage2State, validateStage2Successor } from './state.js';
 import { stage2Activation, stage2RouteFactory, encoded, subscriptionInvocationPolicy, OWNER_WINDOW_MS } from './stage2-provider.js';
 import { stage2Lifecycle, stage2HistoricalStatus } from './stage2-owners.js';
 import type { PreviewIntakeDisposition, PreviewState, PreviewTurn } from './state.js';
@@ -359,6 +359,7 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       throw Error('preview: stage2 deployment binding differs');
     const activationDigest = stage2Activation({ ...config, now: stage2Now(), trial: stateDocument.trial.id,
       configurationDigest: stateDocument.trial.configurationDigest });
+    validateStage2Successor({ ...config, root: configuration.root, outer: stateDocument });
     sidecarOptions = { root: configuration.root, state: input.state, activationDigest,
       policyDigest: encoded(subscriptionInvocationPolicy(config.model)).hash, cutoff: config.cutoff,
       create: config.arm === true, ownerFactsExist: () => existsSync(join(stage2Directory, 'facts.json')) };
