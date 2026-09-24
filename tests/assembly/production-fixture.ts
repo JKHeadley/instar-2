@@ -142,7 +142,8 @@ function bindingFacts(binding: AssemblyProductionBindingSet): readonly { referen
 }
 
 export function prepareProductionSelectionSet(f: RuntimeFixture, binding: AssemblyProductionBindingSet,
-  options: { capacityHolder?: 'bob'; installation?: (generation: string) => import('../../src/assembly/production-installation.js').ProductionInstallation } = {}) {
+  options: { capacityHolder?: 'bob'; peerBacked?: boolean;
+    installation?: (generation: string) => import('../../src/assembly/production-installation.js').ProductionInstallation } = {}) {
   if (!f.ownerFixture) throw new Error('production set fixture requires the same owner source store');
   const baseline = productionBindingSet(binding.scope);
   let capacityFact = '', conversationFact = '', leaseFact = '';
@@ -191,11 +192,11 @@ export function prepareProductionSelectionSet(f: RuntimeFixture, binding: Assemb
     }
   };
   for (const [role, instance] of installationSelectionSlots)
-    if (role !== 'fact-segment' || instance !== 'fact-replication-receipt') refs(role, instance);
+    if (options.peerBacked || role !== 'fact-segment' || instance !== 'fact-replication-receipt') refs(role, instance);
   refs('scope-protection', 'protected');
   const fixed = fixedRecordFixture(({ generation, scopeId, boundary }) => {
     const rows = installationSelectionSlots
-      .filter(([role, instance]) => role !== 'fact-segment' || instance !== 'fact-replication-receipt')
+      .filter(([role, instance]) => options.peerBacked || role !== 'fact-segment' || instance !== 'fact-replication-receipt')
       .map(([role, instance]) => {
         const fields = { type: 'InstallationSelection' as const, schemaVersion: 1 as const,
           installation: 'host', machine: 'machine-a', scope: scopeId, role, instance,

@@ -33,7 +33,7 @@ export interface InstallationReservationRow {
   readonly budgetPolicy: string; readonly units: Readonly<Record<CapacityResource, string>>;
   readonly windows: Readonly<Record<CapacityResource, string>>;
   readonly allocation: CapacityQuantities; readonly parent: CapacityQuantities;
-  readonly parentRemainder: CapacityQuantities; readonly childUsage: CapacityQuantities;
+  readonly parentRemainder: CapacityQuantities; readonly childUsage: CapacityQuantities | null;
   readonly state: 'held' | 'released'; readonly usable: boolean; readonly blocker: string | null;
 }
 export interface OperationSourceRow {
@@ -172,15 +172,18 @@ export function withinExecution(report: SliceReport, expectedInput: string, boun
     if (report.currentAuthority?.available === false && row.usable)
       bad.push(`authority-unavailable capacity reported usable: ${row.capacity}`);
     for (const resource of ['worker', 'memory', 'storage', 'queue', 'transport', 'effect'] as const) {
-      const values = [row.allocation[resource], row.parent[resource], row.parentRemainder[resource], row.childUsage[resource]];
+      const values = [row.allocation[resource], row.parent[resource], row.parentRemainder[resource],
+        ...(row.childUsage === null ? [] : [row.childUsage[resource]])];
       if (values.some(value => !Number.isSafeInteger(value) || value < 0)
-        || row.childUsage[resource] > row.allocation[resource]
+        || row.childUsage !== null && row.childUsage[resource] > row.allocation[resource]
         || row.parentRemainder[resource] + (row.state === 'held' ? row.allocation[resource] : 0) > row.parent[resource])
         bad.push(`capacity parent/child conservation differs: ${row.capacity}:${resource}`);
       if (!row.units[resource] || !row.windows[resource])
         bad.push(`capacity unit/window missing: ${row.capacity}:${resource}`);
     }
   }
+  if (report.installationReservations.some(row => row.childUsage === null && row.usable))
+    bad.push('unknown capacity child usage reported usable');
   if (report.sourceCategory === 'installed' && (!report.selectedCapacityReferences.length || !report.installationReservations.length))
     bad.push('installed responder has no selected capacity');
   if (report.sourceCategory === 'unit-noninstallation' && report.selectedCapacityReferences.length)

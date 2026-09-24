@@ -38,7 +38,8 @@ export function installedFixtureHost(root, route, options = {}) {
     botCredential: t.declaration.token, providerCredential: secret('provider'), storageCredential: secret('storage') };
   const prepared = prepareProductionSelectionSet({ ownerFixture: t.intake, setGeneration: () => {},
     success: t.intake.f.success, c: {} },
-    productionBindingSet(), { capacityHolder: 'bob', installation: generation => ({ ...initialRecord, generation }) });
+    productionBindingSet(), { capacityHolder: 'bob', peerBacked: true,
+      installation: generation => ({ ...initialRecord, generation }) });
   const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
   const record = { ...initialRecord, generation: c.register.generation.id };
   let underlyingAdmission, state;

@@ -1845,9 +1845,13 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     }
     return [...latest.entries()].map(([operation, record]) => ({ operation, record, opened: first.get(operation) }));
   };
-  const roleOf = opened => String(opened.command).startsWith('judgment:') ? 'model-judgment'
-    : factsOfKind('effect-EffectRequest').some(f => f.body.record.id === opened.request
-      && f.body.record.definition === contextDefinition.id) ? 'harness-live-input' : 'outbound-reply';
+  const roleOf = opened => {
+    if (String(opened.command).startsWith('judgment:')) return 'model-judgment';
+    const request = factsOfKind('effect-EffectRequest').find(f => f.body.record.id === opened.request)?.body.record;
+    if (request?.definition === contextDefinition.id) return 'harness-live-input';
+    if (request?.definition === operationDefinition.id) return 'outbound-reply';
+    throw new Error(`unclassified Six operation: ${opened.operation}`);
+  };
   const modelOperation = () => sixOperationRows().find(row => roleOf(row.opened) === 'model-judgment');
   const applicationFor = operation => transportFacts()
     .filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1);
@@ -2326,6 +2330,42 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
           unresolved: application.record.unresolved, actualCharge: application.record.actualCharge } : null,
         resolved: !authorityUnavailable && (row.record.state === 'closed' || (application ? application.record.unresolved === 0 : false)) };
     };
+    const operationSources = new Map();
+    for (const row of observedTransport.filter(item => item.record.type === 'AdmissionReservation')) {
+      const history = operationSources.get(row.record.operation) ?? [];
+      history.push(row.fact.id);
+      operationSources.set(row.record.operation, history);
+    }
+    const operationSourceReferences = [...operationSources].map(([operation, history]) => ({
+      operation, initial: history[0], latest: history.at(-1),
+    }));
+    const capacitySource = observedTransport.filter(item => item.record.type === 'CapacityReservation');
+    const capacityGroups = new Map();
+    for (const row of capacitySource) {
+      const history = capacityGroups.get(row.record.capacity) ?? [];
+      history.push(row);
+      capacityGroups.set(row.record.capacity, history);
+    }
+    const capacityResources = ['worker', 'memory', 'storage', 'queue', 'transport', 'effect'];
+    const quantities = vector => Object.fromEntries(capacityResources.map(resource => [resource, vector?.[resource]?.quantity ?? 0]));
+    const capacityHeads = [...capacityGroups.values()].map(history => history.at(-1).record);
+    const installationReservations = [...capacityGroups.entries()].map(([capacity, history]) => {
+      const head = history.at(-1).record, policy = transportHost.capacityPolicy;
+      const parent = quantities(policy?.parent);
+      const allocated = capacityHeads.filter(item => item.state === 'held'
+        && item.budgetPolicy === head.budgetPolicy);
+      const parentRemainder = Object.fromEntries(capacityResources.map(resource => [resource,
+        Math.max(0, parent[resource] - allocated.reduce((total, item) => total + item.allocation[resource].quantity, 0))]));
+      const blocker = authorityUnavailable ?? (head.state === 'released' ? 'released' : 'child-usage source unavailable');
+      return { capacity, reference: history.at(-1).fact.id, history: history.map(item => item.fact.id),
+        installation: head.installation, scope: head.scope, generation: head.generation,
+        ordinaryDomain: head.ordinaryDomain, responderDomain: head.responderDomain,
+        budgetPolicy: head.budgetPolicy,
+        units: Object.fromEntries(capacityResources.map(resource => [resource, head.allocation[resource].unit])),
+        windows: Object.fromEntries(capacityResources.map(resource => [resource, head.allocation[resource].window])),
+        allocation: quantities(head.allocation), parent, parentRemainder, childUsage: null,
+        state: head.state, usable: blocker === null, blocker };
+    });
     return {
       ...(authorityUnavailable ? { currentAuthority: { owner: 'part-six', available: false, detail: authorityUnavailable } } : {}),
       boot: bootIndex, incarnation, profile: config.profile, adapter: config.adapter,
@@ -2341,6 +2381,9 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
         return Object.fromEntries(Object.entries(trail).map(([k, v]) => [k, [...new Set(v)]]));
       })(),
       operations: semanticOperations.map(row => row.operation),
+      sourceCategory: config.productionRestart === true ? 'installed' : 'unit-noninstallation', installationReservations,
+      capacitySourceReferences: capacitySource.map(row => row.fact.id), selectedCapacityReferences: [],
+      operationSourceReferences,
       // Section-7 semantic work and context-control work retain separate tables;
       // every control is also exposed with Six's complete accounting below.
       contextOperations: controlOperations.map(operationReport),

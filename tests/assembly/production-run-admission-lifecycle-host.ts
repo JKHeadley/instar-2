@@ -70,6 +70,24 @@ function recoveryProof(installed, stage) {
   const reservationRows = accounting.filter(row => row.record.type === 'AdmissionReservation');
   const latestReservations = [...new Map(reservationRows.map(row => [row.record.operation, row.record])).values()];
   const settled = new Set(accounting.filter(row => row.record.type === 'SettlementApplication').map(row => row.record.operation));
+  const capacity = value(f.effects.transport.inspectCapacity());
+  const capacitySourceReferences = capacity.history.map(row => row.fact.id);
+  const installationReservations = capacity.heads.map(head => ({
+    capacity: head.capacity, reference: head.fact,
+    history: capacity.history.filter(row => row.record.type === 'CapacityReservation'
+      && row.record.capacity === head.capacity).map(row => row.fact.id),
+    installation: head.record.installation, scope: head.record.scope, generation: head.record.generation,
+    ordinaryDomain: head.record.ordinaryDomain, responderDomain: head.record.responderDomain,
+    budgetPolicy: head.record.budgetPolicy, allocation: head.record.allocation,
+    state: head.record.state, usable: head.usable, blocker: head.blocker,
+    parentRemainder: capacity.parentRemainder,
+  }));
+  const representedCapacity = installationReservations.flatMap(row => row.history);
+  if (new Set(representedCapacity).size !== representedCapacity.length
+    || representedCapacity.length !== capacitySourceReferences.length
+    || representedCapacity.some(reference => !capacitySourceReferences.includes(reference))
+    || reservationRows.some(row => representedCapacity.includes(row.fact.id)))
+    throw Error('recovery capacity source identity coverage differs');
   let view, readRefusal;
   try { view = value(graph.read(f.id)); } catch (error) { readRefusal = String(error?.message ?? error); }
   return { stage, runCount: new Set(admissionFacts.filter(row => row.kind === 'run-opening').map(row => row.body.run)).size,
@@ -77,6 +95,8 @@ function recoveryProof(installed, stage) {
     admissionFacts: admissionFacts.length, verified, state: view?.state, readRefusal,
     reservationCount: latestReservations.length,
     reservationStates: latestReservations.map(row => row.state),
+    installationReservations, capacitySourceReferences,
+    operationSourceReferences: reservationRows.map(row => ({ operation: row.record.operation, reference: row.fact.id })),
     uncertainReleased: latestReservations.some(row => row.state === 'closed' || settled.has(row.operation)),
     admissionWrites: accounting.filter(row => row.record.type === 'Lease' && row.record.operation === 'write'
       && row.record.command.startsWith('run-admission:')).length };

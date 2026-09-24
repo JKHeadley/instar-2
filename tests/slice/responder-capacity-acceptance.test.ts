@@ -70,3 +70,10 @@ it('P10-SI-27 refuses a foreign operation omitted from both operation categories
     { operation, initial: 'fact:capacity:one', latest: 'fact:capacity:one' }] }, SLICE_INPUT);
   expect(relabelled.some(reason => reason.includes('relabelled capacity'))).toBe(true);
 });
+
+it('P10-SI-27 refuses an unknown child usage claimed as usable capacity', () => {
+  const complete = report();
+  const unknown = withinExecution({ ...complete, installationReservations: complete.installationReservations.map(row =>
+    ({ ...row, childUsage: null })) }, SLICE_INPUT);
+  expect(unknown).toContain('unknown capacity child usage reported usable');
+});
