@@ -1,6 +1,7 @@
 // @ts-nocheck -- U4-G fixture admissions are enumerated in production-holds.ts.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { boundary as assemblyBoundary } from '../../src/assembly/boundary.js';
 import { canonical, decode } from '../../src/index.js';
 import { createFactStore, authorAndAppend } from '../../src/facts/index.js';
@@ -25,6 +26,8 @@ import { verificationInput } from '../verification/fixture.js';
 import { value, privateKey, json } from '../facts/fixtures.js';
 import { productionStorageIO, createProductionNativeContextIO } from '../../scripts/production-boot-io.mjs';
 import { createProductionRunAdmission } from '../../src/transport/index.js';
+import { openProductionStorage } from '../../src/assembly/production-storage.js';
+import { createFixedPeerReplication, receiveFixedPeerRequest } from '../../src/assembly/production-replication.js';
 
 export const fixtureAdmissionNames = productionBindingHolds.join(', ');
 export function installedFixtureHost(root, route, options = {}) {
@@ -42,10 +45,47 @@ export function installedFixtureHost(root, route, options = {}) {
       installation: generation => ({ ...initialRecord, generation }) });
   const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
   const record = { ...initialRecord, generation: c.register.generation.id };
+  // Offline channel authentication and failure domain are simulated. The receiver
+  // has a different encrypted store identity, persisted under this fixture root.
+  const peerDescriptor = { installation: record.id, studio: record.machineIdentity, laptop: 'm_cc2ec651a91f',
+    store: 'store:fixture-laptop', epoch: 0, trust: 'offline-fixture-channel', custody: 'offline-fixture-receiver',
+    captureReferences: Object.keys(t.intake.context.captures),
+    capturePrefixes: ['sha256:', 'message:', 'record:', 'capture:', 'live-input-capture:', 'effect-capture:'], limits: {
+      maxRequestBytes: 32 * 1024 * 1024, maxResponseBytes: 1024 * 1024, maxFacts: 4096,
+      maxCaptures: 1024, maxCaptureBytes: 2 * 1024 * 1024, maxDiskBytes: 128 * 1024 * 1024,
+      maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
+  let peerConnected = true, channelPeer = peerDescriptor.laptop;
+  const peerAdapter = (local, context, boundary) => value(createFixedPeerReplication({
+    descriptor: peerDescriptor, local, context, captures: () => context.captures,
+    boundary, transport: { owner: 'part-ten', roundTrip: request => {
+      if (!peerConnected) throw Error('offline receiver channel disconnected');
+      const receiver = value(openProductionStorage({ root: join(root, 'fixture-peer'), machine: peerDescriptor.laptop,
+        key: Buffer.alloc(32, 23), policy: peerDescriptor.custody, store: peerDescriptor.store,
+        context: boundary, io: productionStorageIO }));
+      try {
+        const response = value(receiveFixedPeerRequest({ request, descriptor: peerDescriptor,
+          authenticatedStudio: peerDescriptor.studio, context, storage: receiver.segment,
+          captures: receiver.captures, boundary,
+          reserve: bytes => { if (bytes * 2 + 4096 > peerDescriptor.limits.maxDiskBytes) throw Error('receiver disk bound'); } }));
+        return { peer: channelPeer, trust: peerDescriptor.trust, response };
+      } finally { receiver.close(); }
+    } } }));
+  const currentPeer = (local, context, boundary, setFactId) => {
+    const sourceRows = local.read();
+    const source = sourceRows.find(row => row.id === setFactId);
+    if (!source || source.kind !== 'assembly-InstallationSelectionSet') return false;
+    const receipts = value(peerAdapter(local, context, boundary).durability.ensure(sourceRows));
+    return receipts.some(row => row.fact.id === source.id && row.fact.contentHash === source.contentHash
+      && !row.taint.length && row.durability.kind === 'replicated' && row.durability.n === 1
+      && row.durability.peers.length === 1 && row.durability.peers[0] === peerDescriptor.laptop);
+  };
+  let activePeer = { local: t.intake.storage, context: t.intake.context, boundary: t.intake.f.c };
+  const currentSelectedPeer = setFactId => currentPeer(activePeer.local, activePeer.context, activePeer.boundary, setFactId);
   let underlyingAdmission, state;
   // Same landed Six fixture binding, constructed inside configure over the root.
   const admission = createProductionRunAdmission({ resolve: () => underlyingAdmission });
-  const admittedDependencies = () => Object.fromEntries(requiredMinimalDependencies.map(name => [name, true]));
+  const admittedDependencies = () => Object.fromEntries(requiredMinimalDependencies.map(name => [name,
+    name === 'replication-peer' ? currentSelectedPeer(prepared.set.id) : true]));
   const host = { context: c, storageIO: options.storageIO ?? productionStorageIO, storagePolicy: 'StoreCustodyPolicy',
     store: 'store:fact', repairOwner: 'operator', runAdmission: admission, missingBindings: [],
     dependencies: admittedDependencies, resolveSecret: reference => reference.name === 'storage' ? '13'.repeat(32)
@@ -94,6 +134,7 @@ export function installedFixtureHost(root, route, options = {}) {
       underlyingAdmission = createProductionRunAdmission({ authority: f.effects.transport, store: f.store, context: f.c });
       f.deps.admission = admission;
       const context = f.ctx, dc = context.decode, boundary = { ...f.c, register: dc.register };
+      activePeer = { local: storage.segment, context, boundary };
       f.deps.context.evidenceSources.settlement = f.bob.provenance.adapter;
       const captures = value(createProductionJudgmentCaptures({ custody: storage.captures, context: boundary,
         capacity: 1048576, metadata: context.captures, decodeCaptures: dc.captures }));
@@ -207,7 +248,9 @@ export function installedFixtureHost(root, route, options = {}) {
         placement = { admitted, reservation };
         return placement;
       };
-      const bindings = productionComposition(f, binding);
+      const bindings = productionComposition(f, binding, { peerReceipt: setFactId =>
+        currentPeer(storage.segment, context, boundary, setFactId) });
+      Object.assign(f.effects.composition, { durability: peerAdapter(storage.segment, context, boundary).durability });
       bindings.lease.port = f.effects.transport;
       const operator = operatorFixture();
       const operatorRoot = value(f.store.read()).find(row => row.kind === 'genesis-grant'
@@ -274,5 +317,8 @@ export function installedFixtureHost(root, route, options = {}) {
       return assemblyBoundary('RecordedInstallationHost', null, boundary, () => () => ({ owners, manifest: manifest.id, scope: binding.scope, installationFact }));
     } };
   return { host, record, state: () => state,
+    peer: { setFactId: prepared.set.id, current: setFactId => currentSelectedPeer(setFactId),
+      disconnect: () => { peerConnected = false; }, reconnect: () => { peerConnected = true; },
+      channelPeer: id => { channelPeer = id; }, captures: t.intake.context.captures },
     boot: () => { const application = value(bootProductionApplication(record, host)); state.application = application; return state; } };
 }

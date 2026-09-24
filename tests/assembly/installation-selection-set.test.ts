@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { authorizationRequestDigest, canonical } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import { installationRoleOwners, installationSelectionSlots, recordInstallationSelectionSet,
-  inspectOpenedProductionInstallation } from '../../src/assembly/index.js';
+  inspectOpenedProductionInstallation, bootProductionAssembly } from '../../src/assembly/index.js';
 import { reportInstallationHolds } from '../../src/assembly/production-installation-report.js';
 import { hashBytes, prepareSnapshot } from '../../src/facts/index.js';
+import type { FactEnvelope } from '../../src/facts/index.js';
 import { loadProductionBootstrap } from '../../src/assembly/production-installation-loader.js';
 import { planInstallationImport } from '../../src/assembly/production-installation-import.js';
 import { capacityPolicyArtifact, createTransportAuthority, createTransportSpine, registerTransportBodies,
@@ -14,9 +18,13 @@ import { decodeMeasurement } from '../../src/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { fixedRecordFixture } from './fixed-installation-contract.test.js';
 import { assemblyRuntimeFixture } from './round8-extended-fixture.js';
-import { installProduction } from './production-fixture.js';
+import { installProduction, productionBindingSet, productionComposition } from './production-fixture.js';
 import { intakeFixture } from '../intake/fixtures.js';
 import { value, refused } from '../facts/fixtures.js';
+import { installedFixtureHost } from './production-boot-installed-fixture.js';
+import { openProductionStorage } from '../../src/assembly/production-storage.js';
+// @ts-expect-error Existing runtime IO module has no TypeScript declaration.
+import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 
 const digest = (input: unknown) => value(canonical(input)).hash;
 function setFixture(change?: (rows: Record<string, unknown>[]) => Record<string, unknown>[]) {
@@ -218,6 +226,79 @@ describe('P10-SI-32/33 atomic selection set closed wire', () => {
     expect(set.rows).toHaveLength(20);
     expect(value(recordInstallationSelectionSet(x.set, x.writer)).kind).toBe('assembly-InstallationSelectionSet');
   });
+  it('does not turn a 19-row roster and absent peer into a peer-backed boot handle', () => {
+    const runtime = assemblyRuntimeFixture();
+    const binding = productionBindingSet();
+    const installed = installProduction(runtime, binding);
+    const production = productionComposition(runtime, binding, { peerReceipt: () => false });
+    refused(bootProductionAssembly({ ...runtime.composition, production },
+      installed.manifest.id, installed.binding.scope));
+  }, 60000);
+  it('admits the installed 20-row set with the receiver-backed exact peer source', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'installed-peer-set-')));
+    const fixture = installedFixtureHost(root, { provider: 'test-provider', model: 'model', route: 'route',
+      disclosure: 'recorded provider', automaticRetries: 0, environment: 'local-test',
+      invoke: async () => { throw Error('provider must not execute during boot'); } });
+    let built: ReturnType<typeof fixture.boot> | undefined;
+    try {
+      built = fixture.boot();
+      const source = value(built.f.store.read()) as FactEnvelope[];
+      const set = source.find(row => row.kind === 'assembly-InstallationSelectionSet')!;
+      expect((set.body as { record: { rows: readonly unknown[] } }).record.rows).toHaveLength(20);
+      expect(built.application.boot.posture.serve).toBe(true);
+      expect((built.application.boot.coordinator.references as readonly { name: string; fact: { id: string } }[])
+        .some(row => row.name === 'dependency:replication-peer'
+        && row.fact.id === set.id)).toBe(true);
+      const receiver = value(openProductionStorage({ root: join(root, 'fixture-peer'), machine: 'm_cc2ec651a91f',
+        key: Buffer.alloc(32, 23), policy: 'offline-fixture-receiver', store: 'store:fixture-laptop',
+        context: built.f.c, io: productionStorageIO }));
+      try {
+        expect((receiver.segment.read() as readonly FactEnvelope[])
+          .some(row => row.id === set.id && row.contentHash === set.contentHash)).toBe(true);
+      } finally { receiver.close(); }
+    } finally { built?.application.close(); rmSync(root, { recursive: true, force: true }); }
+  }, 180000);
+  it('refuses wrong peer, absent source, missing capture and disconnected current peer evidence', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'installed-peer-refusal-')));
+    try {
+      const fixture = installedFixtureHost(root, { provider: 'test-provider', model: 'model', route: 'route' });
+      const peer = fixture.peer;
+      expect(peer.current(peer.setFactId)).toBe(true);
+      expect(peer.current('wrong-source')).toBe(false);
+      peer.channelPeer('wrong-peer');
+      expect(() => peer.current(peer.setFactId)).toThrow();
+      peer.channelPeer('m_cc2ec651a91f');
+      const captures = peer.captures as Record<string, (typeof peer.captures)[string]>;
+      const saved = Object.entries(captures);
+      for (const [reference, capture] of saved) captures[reference] = { ...capture, bytes: null, status: 'missing' };
+      try { expect(() => peer.current(peer.setFactId)).toThrow(); }
+      finally { for (const [reference, capture] of saved) captures[reference] = capture; }
+      peer.disconnect();
+      expect(() => peer.current(peer.setFactId)).toThrow();
+      peer.reconnect();
+      expect(peer.current(peer.setFactId)).toBe(true);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 180000);
+  it('holds the next effect durability use after peer loss while retaining admitted input', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'installed-peer-loss-')));
+    const fixture = installedFixtureHost(root, { provider: 'test-provider', model: 'model', route: 'route',
+      disclosure: 'recorded provider', automaticRetries: 0, environment: 'local-test',
+      invoke: async () => { throw Error('provider must not execute'); } });
+    let built: ReturnType<typeof fixture.boot> | undefined;
+    try {
+      built = fixture.boot();
+      built.receive(built.application);
+      const source = value(built.f.store.read()) as FactEnvelope[];
+      const input = source.find(row => row.kind === 'intake-admitted')!;
+      const effects = source.filter(row => row.kind === 'effect-OperationObservation' || row.kind === 'effect-EffectSettlement');
+      fixture.peer.disconnect();
+      refused(built.f.effects.composition.durability.ensure(source));
+      const after = value(built.f.store.read()) as FactEnvelope[];
+      expect(after.find(row => row.id === input.id)).toEqual(input);
+      expect(after.filter(row => row.kind === 'effect-OperationObservation' || row.kind === 'effect-EffectSettlement'))
+        .toEqual(effects);
+    } finally { built?.application.close(); rmSync(root, { recursive: true, force: true }); }
+  }, 180000);
   it('reuses the exact signed set after an append with a lost acknowledgment', () => {
     const x = genuineSetFixture();
     const initial = x.f.frames.length;

@@ -73,7 +73,8 @@ export function productionPublicPorts(scope = 'scope:minimal'): AssemblyManifest
   ];
 }
 
-export function productionComposition(f: RuntimeFixture, binding = productionBindingSet()): AssemblyProductionComposition {
+export function productionComposition(f: RuntimeFixture, binding = productionBindingSet(),
+  options: { peerReceipt?: (setFactId: string) => boolean } = {}): AssemblyProductionComposition {
   const ok = <T>(value: T) => f.success(value);
   const noValue = () => ok(undefined as never);
   let cutAt: (typeof requiredMinimalDependencies)[number] | null = null;
@@ -120,7 +121,10 @@ export function productionComposition(f: RuntimeFixture, binding = productionBin
           case 'clock': return ok({ ...common, name: input.name, clock: 'clock:fixture' });
           case 'lease': return ok({ ...common, name: input.name, exclusive: true as const });
           case 'fence': return ok({ ...common, name: input.name, exclusive: true as const });
-          case 'replication-peer': return ok({ ...common, name: input.name, replicas: 1 as const, distinctPeer: true as const });
+          case 'replication-peer': {
+            if (options.peerReceipt && !options.peerReceipt(input.fact.id)) throw new Error('current peer receipt unavailable');
+            return ok({ ...common, name: input.name, replicas: 1 as const, distinctPeer: true as const });
+          }
           case 'conversation-binding': return ok({ ...common, name: input.name, binding: 'binding:fixture' });
           case 'route': return ok({ ...common, name: input.name, route: 'route:fixture' });
           case 'delivery-evidence': return ok({ ...common, name: input.name, administration: 'independent' as const });
