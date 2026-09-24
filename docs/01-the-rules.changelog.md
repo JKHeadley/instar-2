@@ -4,9 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 12 · 2026-09-23 · draft — Justin directed adoption of skills over scripts and simplest robust route on 2026-09-23 at 18:05 and 18:25 PDT; Astra design adjudication. Exact-content operator approval remains pending.
+## Revision 12 · 2026-09-23 · draft — Justin adopted the 17-line simplicity audit and directed a fundamental Occam standard on 2026-09-23; Astra Occam ruling supersedes the earlier Rule 116 checker proposal. Exact-content operator approval remains pending.
 
-- **Add Rule 116, Skills over Scripts; Simplest Robust Route, in Needs building; require the agent-route review, exact guard references and unattended shipped-path completion evidence. Update group counts to 21/9/74/12, total 116.** — Changing live conditions require agent judgment within structural floors; repeated page-specific patches and a redundant successor condition exposed the missing design obligation. _(topic 52075, 2026-09-23 18:05 and 18:25 PDT; proposed-standard-skills-over-scripts.md including all three evidence items; astra-standard-skills-over-scripts-ruling.md)_
+- **Widen Rule 116 to Occam's Razor / Simplest Robust Route, add its value rationale, move it to Held by the mind, and require simplestRobustRoute in the existing independent design and landing review. Update group counts to 21/9/73/13, total 116.** — The fundamental standard applies across architecture and process; existing review can judge whether added machinery prevents a credible failure the simpler route cannot handle. _(astra-occam-standard-ruling.md section 1; topic 52075, 2026-09-23 operator direction)_
+- **Correct Rules 1 and 49 to preserve named floors and risk-scoped review instead of machine-enforcement counts and a universal rule-parent stop; remove Rule 65's minimum review-round floor.** — The operator adopted the simplicity audit and its one risk-scaled review with targeted repair. _(astra-instar2-simplicity-audit.md section 7; astra-occam-standard-ruling.md section 1)_
 
 ## Revision 11 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 

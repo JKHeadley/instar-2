@@ -724,14 +724,7 @@ comparison and independent acceptance, never an unrecorded carry-forward. Concur
 reviews produce a dispute and the conservative unreviewed/partial current rendering, not a
 clock-selected approval. New weak evidence cannot overwrite an earlier adverse record silently.
 
-**Rule — a simpler agent route is considered before fixed workflow decisions.** Rule 116;
-**check: P9-NF-67**. The review record binds the exact change, agent instructions and admitted access,
-retained fixed decisions and their reasons, and the start, end-state and limit guards. An independent
-reviewer assesses the route and each classifier finding. Missing or mismatched records refuse design
-convergence. For autonomous completion, the record also binds a real unattended run through the
-shipped entry and its accepted end-state evidence; manual intervention refuses that claim. Syntax
-findings are signals, never semantic verdicts. Existing verification, custody and effect owners remain
-unchanged.
+**Rule — the simplest robust route is considered in the existing review.** Rule 116; **check: the existing independent design and landing review.** Its review record includes `simplestRobustRoute`, stating the simplest robust route and why the proposal differs, or that it is that route. The reviewer refuses added machinery without a named credible failure and an adequate reason the simpler route cannot handle it. Applicable start, end-state and limit guards remain explicit. An autonomous-completion claim requires evidence of a real unattended run through the shipped path; human or ad-hoc session takeover does not prove that claim. The record uses the existing change binding and review disposition. No separate classifier, checker, gate or runtime owner is introduced.
 
 **Rule — all held edges enter the review obligation.** **Checks: P9-NF-14/30/58**.
 Each generation's full held-edge set is compared with reviewed records. Review scheduling covers
@@ -904,7 +897,6 @@ lifecycle tiers are mandatory for significant features. A document lint proves n
 | P9-NF-64 | contract/integration | Occurrence without answer, authentic partial/error answer, complete unauthenticated answer, wrong subject/capture/parser/terminal event or invented completion refuses output; exact authenticated-channel completed answer passes its declared bar without a truth claim |
 | P9-NF-65 | decode/rebuild | Real v2 producer/origin/historical registration preserves v1 settlement, exact closure and canonical conflicts; forged history, duplicate unequal identity and v1 promotion refuse; source-only reconstruction finds the same genuine assessment |
 | P9-NF-66 | lifecycle/consumption | Missing/changed bytes, stale/incomparable clock, taint/withdrawal or retained view refuses new use; same-assessment G6 join passes with unknown charge/quiescence and retained exposure; stop/predecessor change or second use refuses and restart makes zero second model calls |
-| P9-NF-67 | review/release | Missing agent-route comparison, undisposed classifier finding, stale or self-approved review, unresolved guard reference, manual takeover or wrong-artifact proof refuses the affected design/completion claim; exact independently reviewed records and an admitted unattended shipped-path case pass. |
 
 **Rule — non-functional claims carry measured subjects and failure actions.** Rules 13, 34,
 39, 43, 46, 55, 60, 75 and 113; **checks: P9-NF-09/13/20/46/50/59/62/63**. Activation
@@ -948,7 +940,7 @@ honesty remains separate from these design dispositions.
 | 9.7 — live canary/authentication per adapter class | **Partial:** enumerated live matrix and independent challenges P9-NF-17–21; channel-attestation compromise and opaque provider internals cannot be eliminated by sampling. Unsupported classes never claim full protection. |
 | 9.8 — semanticallyReviewed generation tracking and coverage | **Held:** exact-generation independent records, every-edge population and separated totals P9-NF-14/30/57/58; wisdom of the semantic judgment remains inference. |
 | 9.9 — proposed redacts closed-list addition | **Held/resolved:** drop the redundant proposed addition and use approved part-three amendment three; P3-NF-05 and P9-NF-48 enforce existing eligibility, no second growth value. |
-| Rule 116 — skills over scripts; simplest robust route | **Declared check contract; runtime enforcement unbuilt; semantic adequacy remains independently judged.** P9-NF-67 specifies the review and completion evidence gate. Nine's verification-policy/review obligation owns the unheld implementation gap; no affected capability completion is claimed from this declaration. |
+| Rule 116 — Occam's Razor / Simplest Robust Route | Held through the existing independent design and landing review; semantic adequacy is judged, not certified by a simplicity executable. Runtime register coverage remains as actually evidenced. |
 | Shared seven/eight/nine/ten — exact-response output use | **Held contract; runtime held:** P9-NF-64–66 with P10-SI-17/18/24/37. Nine owns both response verdicts; Ten/Seven must supply real source/completion captures. Occurrence never closes this duty. M4-G6-N and provider-response-source-and-completion-evidence remain open until approved owner implementation and tier-appropriate proof. |
 | Shared eight/nine — uncertainty reconciliation | **Held evidence contract, claimed here:** distinct predicates P9-NF-04–06/22–25; eight owns settled Outcome, six release and five progression. Adapter without decisive evidence stays uncertain, automatic retry ineligible. |
 | Shared nine/eleven — external protection anchor | **Held enforcement contract, claimed here:** separate administrator, mandatory write/load boundary, broker journal and probes P9-NF-15/51–56. Deployment without ten's isolation/eleven's verified surface is explicitly unprotected, never assumed complete. |

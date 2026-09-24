@@ -4,9 +4,9 @@ _Generated from `13-the-verification-holders.changelog.json` by `scripts/render-
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 6 · 2026-09-23 · draft — Astra's Rule 116 adjudication of Justin's 2026-09-23 skills-over-scripts and simplest-robust-route direction; exact-content approval pending.
+## Revision 6 · 2026-09-23 · draft — Astra Occam ruling supersedes the earlier Rule 116 P9-NF-67 proposal following Justin's 2026-09-23 adoption of the simplicity audit; exact-content approval pending.
 
-- **Specify the Rule 116 review contract in section 10, P9-NF-67 in section 13, and its declared/unbuilt disposition in section 14.** — The rule needs a refusing evidence gate without treating syntax as judgment, manual success as unattended proof, or a new skill as authority to bypass existing owners. _(astra-standard-skills-over-scripts-ruling.md sections (a) and (b); topic 52075, 2026-09-23 18:05 and 18:25 PDT)_
+- **Replace the proposed Rule 116 checker contract with simplestRobustRoute in the existing independent design and landing review; withdraw P9-NF-67 from the governing fixture and disposition tables.** — Semantic adequacy belongs to the existing reviewer; a separate simplicity classifier, checker or gate adds machinery without a distinct protection. _(astra-occam-standard-ruling.md section 1; earlier P9-NF-67 proposal remains recorded in astra-standard-skills-over-scripts-ruling.md)_
 
 ## Revision 5 · 2026-09-21 · draft — Astra blocked-build adjudication (astra-g6-blocked-adjudication.md, section (b)) correcting the M4 G6 supplement approved in PR 100: only Nine's owned bodies gain version 2; FactEnvelope.schemaVersion stays 1.
 

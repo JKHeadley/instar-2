@@ -26,15 +26,20 @@ core, stated as a number.
 **Needs building.** Checkable in principle, but something has to be built first.
 
 **Held by the mind.** The pass/fail decision genuinely needs judgment — no script can make it.
-That does *not* mean nothing is done. This system is intelligent, not just programmatic, so a rule
-in this group is held three ways: it is *read* (injected into every session so it shapes behavior),
-it is *watched* (a focused background intelligence — a sentinel — whose one job is to look for
-violations of that rule), and it is *reviewed in retrospect* (on a cadence, a strong model reads
-the collected transcripts, decisions, and outcomes as a whole and looks for the patterns no single
-message shows; its findings feed the improvement loop). The script's job shrinks to one thing:
-proving the reader, the watcher, and the retrospective review actually exist and actually ran.
-Every rule in this group is as fundamental and binding as any other; the difference is *who*
-holds it, not *whether*.
+These rules are binding and require delivered instructions and recorded judgment; their holding
+mechanisms depend on the rule and may share an existing review.
+
+These standards require delivered instructions and recorded judgment. A shared review can hold several standards; each does not require a separate watcher. Rule 116 is held by the existing independent design and landing review and considered in the existing retrospective review. It requires no new sentinel, reader-attendance check, or automated simplicity verdict.
+
+The existing review artifact used for Rules 65, 74 and 111 includes this required prose field:
+
+> **simplestRobustRoute:** State the required outcome and the simplest robust route through existing mechanisms, including an agent with instructions and scoped tools where conditions vary. State why this proposal is not that route, or say explicitly that it is. For added machinery, name the credible failure it prevents, why the simpler route is inadequate, and why the benefit warrants the added operating, maintenance and recovery cost. Identify the applicable start, end-state and limit guards. For an autonomous-completion claim, cite the actual unattended shipped-path result.
+
+An editorial change can answer in one sentence. Components preventing the same failure can be
+grouped. The independent reviewer requests repair when the field is absent or inadequate through
+the existing review disposition. Landing review may cite the accepted design answer and confirm
+that the final diff still matches; changed dependencies or substantive repairs receive targeted
+review. Presence of the field alone does not establish adequate judgment.
 
 A deliberate note on *when* review happens. Reviewing every outbound message live, one at a
 time, has been a trap in 1.x: it judges a message with no history, it adds latency and cost to
@@ -52,8 +57,8 @@ meaning.
 |---|---|
 | Checkable now | 21 |
 | Free from the core | 9 |
-| Needs building | 74 |
-| Held by the mind | 12 |
+| Needs building | 73 |
+| Held by the mind | 13 |
 | **Total** | **116** |
 
 Twenty-one of one hundred sixteen can be checked by a script today. That is the honest starting
@@ -206,19 +211,19 @@ reconstructable from the log* — argues the same way.
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
-| 1 | Structure beats Willpower | If a behavior matters, build it into the system so it cannot be skipped. Never rely on the agent remembering an instruction. | Count how many rules are enforced by machinery versus by prose, and refuse any change that lowers that number. This measures the *result* of the rule, not the rule itself. |
+| 1 | Structure beats Willpower | Enforce named safety, authority, durability and resource floors structurally. Use judgment for contextual choices within them. | The existing review names affected floors and checks evidence that they remain held; reducing machinery or machine-enforced rule counts is not itself a failure. |
 | 5 | Documentation IS Being | For an agent that lives in files, an undocumented part is effectively missing. Every part must be written down. | Every shipped module has a documentation entry. A script walks the module list and fails on a gap. |
 | 30 | Framework-Agnostic — and Framework-Optimizing | Every feature works on every harness (Claude Code, Codex, Gemini, and so on). No harness is special-cased outside the adapter written for it. | A lint: no code outside an adapter compares against a harness name. The one check 1.x most needed and never had. |
 | 35 | Test Identity Never Enters Production State | A test user, test account, or fixture must never be written into a real store. | The write path into every production store refuses test identities. |
 | 37 | Zero-Failure | The test suite is green at all times on main and at merge; red-then-green on a branch is fine. "Pre-existing failure" is not a category — and neither is being held hostage by a flaky test: a test that flips without a code change is quarantined and a defect is filed, and the work it interrupted proceeds. | Run the suite. It passes or it doesn't. A quarantined flake is visible as its own defect; a passing re-run is never exoneration. (Rulings 6 and 33 on the decision sheet.) |
 | 44 | Migration Parity | A change to files an agent already has installed must reach existing agents through the update path, not only new installs. | A change touching those paths must include a migration. A rule over which paths changed. |
 | 47 | Compaction Parity | Whatever a session is told at its first message, it must be told again after its context is compacted. | Compare the list injected at start with the list injected after compaction. They must match. |
-| 49 | Constitutional Traceability | No work ships unless it names the rule it serves. Work that fits no rule stops until the rules are amended. | A front-matter field on every spec naming its parent standard. |
+| 49 | Constitutional Traceability | Work states its intended outcome and the governing constraints it affects. Ordinary engineering defaults belong to the agent; they do not require a new constitutional parent. | The existing review checks affected constraints and records any genuine direction, policy or authority question for the operator. |
 | 52 | Bounded Notification Surface | No feature may flood the user. Anything that notifies per item must aggregate into one message. | A hard budget where notification containers are created, plus a burst test that fails the build if the bound breaks. |
 | 53 | Notices Route to the Alerts Topic, Never a New One | Alerts and system notices go to the one alerts channel. Never a new conversation per event. | A lint at the one place conversations are created. |
 | 56 | Keep the Doorway/Model Map Current | The list of ways to reach a model, and which models are behind each, rots. A standing process keeps it fresh. | The map's age. Older than its refresh window and it fails. |
 | 59 | Stall Coverage Is Enumerated, Not Discovered | When adding a harness, list every way a session can silently stop, and for each one say how it is detected and how it is recovered. Don't wait to discover them in production. | Onboarding refuses to complete without the filled-in table. 1.x already works this way. |
-| 65 | Iterative Audit to Convergence | An audit is not done after one pass. Fix what you found, re-audit, repeat — until the findings shrink to detail that no longer changes the outcome. That is an 80/20 judgment, made by an independent reviewer, never the author — and it applies fractally, at every level of the review: to the audit as a whole and to each category of findings within it. A category that keeps producing new findings does not by itself keep the review open; the test is the trend, not the count — when a category's new findings run progressively less severe, or fall below the review's severity threshold, that category has converged even though new material keeps appearing, and the reviewer may accept the residue — recorded, not fixed — so the review can converge. A round count is a floor and a confusion detector, never the stopping rule. | A claim of "converged" must carry a machine-written record of the passes, name the independent reviewer who judged it, and name any accepted residue with the severity basis on which it was accepted. 1.x already enforces the record; the reviewer and residue fields are new. (Ruling 1 on the decision sheet.) |
+| 65 | Iterative Audit to Convergence | An audit is not done after one pass. Fix what you found, re-audit, repeat — until the findings shrink to detail that no longer changes the outcome. That is an 80/20 judgment, made by an independent reviewer, never the author — and it applies fractally, at every level of the review: to the audit as a whole and to each category of findings within it. A category that keeps producing new findings does not by itself keep the review open; the test is the trend, not the count — when a category's new findings run progressively less severe, or fall below the review's severity threshold, that category has converged even though new material keeps appearing, and the reviewer may accept the residue — recorded, not fixed — so the review can converge. Review ends when the independent reviewer accepts the evidence and recorded residue; no fixed minimum round count applies. | A claim of "converged" must carry a machine-written record of the passes, name the independent reviewer who judged it, and name any accepted residue with the severity basis on which it was accepted. 1.x already enforces the record; the reviewer and residue fields are new. (Ruling 1 on the decision sheet.) |
 | 69 | References Run From Both Ends | The rule book names the code that enforces each rule, and the code names the rule it enforces. Both must resolve. | A script follows every reference in both directions. |
 | 71 | No Deferrals | Ship complete work. A "later" note is only allowed with a tracked commitment in the same change. | A deferral phrase in a change requires a tracked commitment in that change. |
 | 74 | Side-Effects Review Gate | No fix ships without a written review of what else it could affect and how to undo it. | The review artifact exists for every change. 1.x refuses commits and pushes without it. Existence is checkable; quality is not. |
@@ -242,7 +247,7 @@ reconstructable from the log* — argues the same way.
 | 78 | No Manual Work (user *or* agent) | Capturing context and using available tools is automatic. Neither the user nor the agent should have to remember a feature exists. | Free once the capability list is generated from the modules rather than hand-written. The check: no hand-maintained list exists. |
 | 84 | Agent Awareness | Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. | Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one. |
 
-### Needs building — 74 of 116
+### Needs building — 73 of 116
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -319,11 +324,11 @@ reconstructable from the log* — argues the same way.
 | 113 | Every Change Declares Its Multi-Machine Posture | A change states in writing how it behaves when the agent runs on several machines — even when the answer is "machine-local, deliberately." Silence is not single-machine. #32 declares this for state; this declares it for every change. | A required posture field on the change artifact; absence fails. (First stated by the operator at #25011; recovered by the 2026-08-26 re-sweep.) |
 | 114 | Agency Composes Recursively | A session may delegate a bounded part of its work to other sessions or agents, which may delegate in turn. The topology is chosen for the work — including a user-facing session managing an orchestrator that manages specialist groups — never fixed by the platform. Delegation has the same meaning across a local process, another machine, or another agent: it preserves ownership, authority, evidence, resource bounds, cancellation, and the path by which results return. | Every parent-child run edge is a registered durable fact naming scope, owner, authority grant, budget, exit test, placement, transport, and result destination. The core exposes a protocol-independent agent-transport port. Its contract tests cover nested fan-out, worker loss, cancellation, duplicate delivery, capability-aware placement, and honest delivery states across local and remote agents, machines, harnesses, and models. (Operator review of PR #12 and follow-up on Threadline.) |
 | 115 | The System Has a Native Harness | Instar ships a first-party harness built only on the same public core ports available to every other harness. It can use any registered model doorway and can develop, test, extend, and repair Instar itself. It is the reference client, never a privileged bypass. | The native harness runs the full harness contract suite against every compatible registered model doorway; an architecture lint refuses private core imports or special-case authority, and the self-hosting suite builds and installs a real local capability through it. (Operator review of PR #12; makes rule 2 concrete.) |
-| 116 | Skills over Scripts; Simplest Robust Route | Judgment lives in the agent, guardrails in code. A skill supplies reusable instructions and scoped tools; the agent interprets changing live conditions. Before adding a rule, classifier, page catalog or special case, consider whether that agent would handle it. Fixed code belongs to exact safety and authority floors, end-state evidence checks, and steps that do not vary. A page-classifier workflow is a smell requiring review. An autonomous capability is done only when its shipped path completes a real case unattended, without human or ad-hoc session intervention. | Design review requires the agent route, justification for retained fixed decisions, and named start, end-state and limit guards; completion requires same-path evidence. Missing, stale or mismatched records refuse the affected claim. P9-NF-67 holds the record checks; independent review judges adequacy. |
+### Held by the mind — 13 of 116
 
-### Held by the mind — 12 of 116
+These are binding. Their adequacy is judged through the applicable review, with recorded evidence.
 
-These are binding. The mind holds them; the script proves the mind was looking.
+**Value — rationale for Rule 116.** Fractal 80/20 limits how long we refine a chosen design; it does not by itself test whether that design's machinery should exist. A review can converge on correct details while accepting an unnecessarily complicated premise, and many locally reasonable safeguards can combine into a brittle system whose review, operation and recovery cost exceeds their benefit. Counting machine-enforced rules and requiring a constitutional parent for ordinary work reinforced that accumulation. Occam's Razor supplies the missing question at every level: what is the simplest route that delivers the required behavior and preserves the named floors, and what concrete failure makes any added mechanism necessary? Apply 80/20 to the value of the mechanism as well as to the remaining findings. Preserve real protection and useful recovery; remove ceremony that proves only that other ceremony occurred.
 
 | # | Standard | What it means | How it's held |
 |---|---|---|---|
@@ -339,6 +344,7 @@ These are binding. The mind holds them; the script proves the mind was looking.
 | 54 | Conservative Outbound: Act, Don't Notify | The default for any candidate message is to act on it, not to tell the user about it. Notifying must clear a bar. | The per-message call is the mind's. Requiring a stated reason for notifying is the checkable arm. |
 | 80 | Operator-Surface Quality | A surface the operator uses must not just be reachable, it must be *good*: primary action first, plain language, nothing collapsed. | Whether it is genuinely clear is the mind's. #81 is the mechanical floor underneath it. |
 | 108 | A Conclusion and Its Reason Are Separately Falsifiable | A verdict records the conclusion and the justification as separate claims. Refuting the reason forces re-derivation even when the conclusion still stands — a right answer for a wrong reason is an unexamined answer. | The verdict record carries both fields (checkable); noticing that a cited reason has been refuted, and re-deriving, is the mind's — the retrospective review looks for verdicts standing on refuted reasons. (First stated by the operator at #47925; recovered by the 2026-08-26 re-sweep.) |
+| 116 | Occam's Razor / Simplest Robust Route | Choose the simplest route that delivers the required behavior and preserves named safety, authority, durability and resource floors. This is a fundamental development standard, applying to architecture and process alike. Prefer existing mechanisms; use agent judgment and skills for changing conditions, and code for enforced boundaries, fixed steps and exact evidence checks. Added machinery must prevent a named credible failure that the simpler route cannot adequately handle, with benefit proportionate to its operating, maintenance and recovery cost. An autonomous capability is done only when its shipped path completes a real case unattended. | Every design and landing review states the simplest robust route and why the proposal is not it, or explicitly states that it is. The existing independent reviewer refuses machinery with no named failure it prevents, or no adequate reason the simpler route fails. Record this in the required simplestRobustRoute field of the existing review record. Applicable start, end-state and limit guards and unattended shipped-path evidence remain part of the existing review. No separate simplicity checker or gate. |
 
 ---
 
@@ -350,4 +356,5 @@ fifteen are rules he stated in the full Telegram record and the original harvest
 recovered by the 2026-08-26 re-sweep (each cites the message id of its first statement). This
 document's history is in `01-the-rules.changelog.json` beside it. Rules 114 and 115 come from the
 operator's review of the big-picture design on PR #12. Rule 116 comes from the operator's
-2026-09-23 skills-over-scripts and simplest-robust-route direction.*
+2026-09-23 skills-over-scripts direction and adoption of the simplicity audit as a fundamental
+Occam's Razor / Simplest Robust Route development standard.*
