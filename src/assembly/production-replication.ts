@@ -5,7 +5,8 @@ import type { BoundaryContext, Hash, Result } from '../index.js';
 import { canonical, consumeResult } from '../index.js';
 import { causalCone, createFactStore, hashBytes, prepareSnapshot, verifyAndAdmit } from '../facts/index.js';
 import type { AppendReceipt, CapturedContent, FactContext, FactEnvelope, FactStorePort, SegmentStoragePort } from '../facts/index.js';
-import type { EffectDurabilityPort } from '../effects/contracts.js';
+import type { EffectComposition } from '../effects/index.js';
+type EffectDurabilityPort = EffectComposition['durability'];
 import type { TelegramDurableCapturePort } from './telegram-bot-api-custodian.js';
 import { boundary, ensure, take } from './boundary.js';
 
