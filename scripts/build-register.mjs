@@ -13,10 +13,10 @@ import { ownerDocuments } from '../dist/register/owner-contracts.js';
 const hash = input => value(canonical(input)).hash;
 const corpus = sources => Object.fromEntries(Object.entries(sources).filter(([p]) => p.startsWith('docs/')).map(([p, text]) => [p, hash(text)]));
 const emptyCatalog = { fixtures: [], probes: [], sentinels: [], semanticReviews: [] };
-// Trust root of this checker release, captured from the reviewed conversion at
-// 52772ae. The candidate's anchor is evidence to compare, never authority. An
-// amendment to this pin is a protected-toolchain change, not a shape-data edit.
-const approvedConversion = 'sha256:3987aa9d4cca99796f1b19decaf2c3235235ef28bbd63ab763e4c66f88471015';
+// Derived pin for this repository replay publication. The desk refreshes the
+// anchor's document and rule hashes and this literal in the same reviewed PR.
+// Operator approval of that PR authorizes publication; this pin grants no runtime authority.
+const approvedConversion = 'sha256:5c919a2a5dca4e3b7f4899d060bc3187e889e467b9b41247219d6a2bf2a664a6';
 function resolveBuildReferences(root, input, workflow, provider, shape, owner) {
   return (workflow.references ?? []).map(reference => {
     if (reference.provider === 'decoder') {

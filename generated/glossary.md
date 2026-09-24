@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:bddaaa6f673d7b46915d196de6fed048e8aef712cbb17a4c6bd484d86f9369e0
-Source commit: d3a14c2e3dc0941e72b7b149b94dc54fbde69bb4
+Register generation: sha256:5f34bb2a3ddf3549f12d937e2df5660f130cfc81ac62d8b26470a58291aa6b54
+Source commit: 6d9e4225beb5b7aac1b66aca76d595b1bce7d138
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -66,7 +66,7 @@ A feature is done when its register entry is `live`, its profile is declared, it
 required facts are present, and — if user-facing — its live proof exists. "Done" said in chat is
 a claim; "done" in the register is a fact. (Rule 62, and step one's "merged is approved".)
 
-Used by: rule:20, rule:62, rule:65, rule:8, rule:99
+Used by: rule:116, rule:20, rule:62, rule:65, rule:8, rule:99
 
 ## feature
 

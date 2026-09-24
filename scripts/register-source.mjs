@@ -36,8 +36,8 @@ export function readCommit(root, commit) {
 export function bootstrapDeclarations(documents, shape) {
   const sources = []; const glossary = documents['docs/03-the-glossary.md'];
   const terms = [];
-  // This is the one-time markdown conversion. After conversion references are data,
-  // not a runtime typography parser. The source documents remain pinned inputs.
+  // Repository replay converts approved Markdown revisions from pinned sources.
+  // Runtime anchoring is separate; after it, references are data, not typography parsing.
   for (const match of glossary.matchAll(/^\*\*([A-Z][A-Za-z -]+)\.\*\* ([^\n]*(?:\n(?!\n|\*\*)[^\n]+)*)/gm)) {
     const name = match[1].toLowerCase();
     if (['definition', 'used by', 'test', 'what it excludes', 'what this includes', 'consequence of the definition'].includes(name)) continue;
