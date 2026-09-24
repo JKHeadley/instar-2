@@ -54,7 +54,8 @@ export function installedFixtureHost(root, route, options = {}) {
       maxRequestBytes: 32 * 1024 * 1024, maxResponseBytes: 1024 * 1024, maxFacts: 4096,
       maxCaptures: 1024, maxCaptureBytes: 2 * 1024 * 1024, maxDiskBytes: 128 * 1024 * 1024,
       maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
-  let peerConnected = true, channelPeer = peerDescriptor.laptop;
+  let peerConnected = true, channelPeer = peerDescriptor.laptop, replayLastResponse = false, incompleteResponse = false;
+  let lastResponse;
   const peerAdapter = (local, context, boundary) => value(createFixedPeerReplication({
     descriptor: peerDescriptor, local, context, captures: () => context.captures,
     boundary, transport: { owner: 'part-ten', roundTrip: request => {
@@ -67,7 +68,10 @@ export function installedFixtureHost(root, route, options = {}) {
           authenticatedStudio: peerDescriptor.studio, context, storage: receiver.segment,
           captures: receiver.captures, boundary,
           reserve: bytes => { if (bytes * 2 + 4096 > peerDescriptor.limits.maxDiskBytes) throw Error('receiver disk bound'); } }));
-        return { peer: channelPeer, trust: peerDescriptor.trust, response };
+        const returned = replayLastResponse && lastResponse ? lastResponse
+          : incompleteResponse ? { ...response, persistedFacts: response.persistedFacts.slice(0, -1) } : response;
+        lastResponse = response;
+        return { peer: channelPeer, trust: peerDescriptor.trust, response: returned };
       } finally { receiver.close(); }
     } } }));
   const currentPeer = (local, context, boundary, setFactId) => {
@@ -80,12 +84,24 @@ export function installedFixtureHost(root, route, options = {}) {
       && row.durability.peers.length === 1 && row.durability.peers[0] === peerDescriptor.laptop);
   };
   let activePeer = { local: t.intake.storage, context: t.intake.context, boundary: t.intake.f.c };
+  let configured = false;
   const currentSelectedPeer = setFactId => currentPeer(activePeer.local, activePeer.context, activePeer.boundary, setFactId);
+  const recoveryPeerPreflight = () => {
+    if (!peerConnected || channelPeer !== peerDescriptor.laptop) return false;
+    const receiver = value(openProductionStorage({ root: join(root, 'fixture-peer'), machine: peerDescriptor.laptop,
+      key: Buffer.alloc(32, 23), policy: peerDescriptor.custody, store: peerDescriptor.store,
+      context: t.intake.f.c, io: productionStorageIO }));
+    try {
+      return receiver.segment.read().some(row => row.id === prepared.set.id
+        && row.contentHash === prepared.set.contentHash && row.kind === 'assembly-InstallationSelectionSet');
+    } finally { receiver.close(); }
+  };
   let underlyingAdmission, state;
   // Same landed Six fixture binding, constructed inside configure over the root.
   const admission = createProductionRunAdmission({ resolve: () => underlyingAdmission });
   const admittedDependencies = () => Object.fromEntries(requiredMinimalDependencies.map(name => [name,
-    name === 'replication-peer' ? currentSelectedPeer(prepared.set.id) : true]));
+    name === 'replication-peer' ? options.recovery && !configured
+      ? recoveryPeerPreflight() : currentSelectedPeer(prepared.set.id) : true]));
   const host = { context: c, storageIO: options.storageIO ?? productionStorageIO, storagePolicy: 'StoreCustodyPolicy',
     store: 'store:fact', repairOwner: 'operator', runAdmission: admission, missingBindings: [],
     dependencies: admittedDependencies, resolveSecret: reference => reference.name === 'storage' ? '13'.repeat(32)
@@ -122,6 +138,8 @@ export function installedFixtureHost(root, route, options = {}) {
             refreshFacts: () => base.success(undefined) };
           const verification = { ...assemblyHost, boundary, current: () => ({ decode: dc, clock: base.now,
             stopped: false, generation: dc.register.generation.id, facts: context, evidence: base.evidence }) };
+          context.ownedBodies = context.ownedBodies.filter(row =>
+            row.owner !== 'part-ten' || row.name !== 'ProductionInstallation');
           context.ownedBodies.push(...value(registerVerificationBodies(verification)),
             ...value(registerProviderJudgmentBodies(judgment, boundary)), ...value(registerProviderEffectBodies(th)),
             value(registerProductionInstallationBody({ ...dc, ...boundary })));
@@ -135,6 +153,7 @@ export function installedFixtureHost(root, route, options = {}) {
       f.deps.admission = admission;
       const context = f.ctx, dc = context.decode, boundary = { ...f.c, register: dc.register };
       activePeer = { local: storage.segment, context, boundary };
+      configured = true;
       f.deps.context.evidenceSources.settlement = f.bob.provenance.adapter;
       const captures = value(createProductionJudgmentCaptures({ custody: storage.captures, context: boundary,
         capacity: 1048576, metadata: context.captures, decodeCaptures: dc.captures }));
@@ -319,6 +338,8 @@ export function installedFixtureHost(root, route, options = {}) {
   return { host, record, state: () => state,
     peer: { setFactId: prepared.set.id, current: setFactId => currentSelectedPeer(setFactId),
       disconnect: () => { peerConnected = false; }, reconnect: () => { peerConnected = true; },
-      channelPeer: id => { channelPeer = id; }, captures: t.intake.context.captures },
+      channelPeer: id => { channelPeer = id; },
+      replayLastResponse: value => { replayLastResponse = value; },
+      incompleteResponse: value => { incompleteResponse = value; }, captures: t.intake.context.captures },
     boot: () => { const application = value(bootProductionApplication(record, host)); state.application = application; return state; } };
 }

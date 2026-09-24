@@ -4,7 +4,7 @@ import { minimalPlaneProjections, requiredMinimalDependencies } from '../../src/
 import { assemblyInput } from './fixture.js';
 import { assemblyRuntimeFixture, productionReferenceKinds } from './round8-extended-fixture.js';
 import { value } from '../facts/fixtures.js';
-import { fixedRecordFixture } from './fixed-installation-contract.test.js';
+import { fixedRecordFixture } from './fixed-installation-record-fixture.js';
 import { installationRoleOwners, installationSelectionSlots, recordInstallationSelectionSet } from '../../src/assembly/index.js';
 import { capacityPolicyArtifact, createTransportAuthority, createTransportSpine, registerTransportBodies,
   transportSchemas } from '../../src/transport/index.js';

@@ -22,6 +22,7 @@ import { installProduction, productionBindingSet, productionComposition } from '
 import { intakeFixture } from '../intake/fixtures.js';
 import { value, refused } from '../facts/fixtures.js';
 import { installedFixtureHost } from './production-boot-installed-fixture.js';
+import { recordedCheckpoint } from './production-boot-checkpoint.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // @ts-expect-error Existing runtime IO module has no TypeScript declaration.
 import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
@@ -279,6 +280,30 @@ describe('P10-SI-32/33 atomic selection set closed wire', () => {
       expect(peer.current(peer.setFactId)).toBe(true);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 180000);
+  it('refuses stale or incomplete receiver receipts after a later local source append', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'installed-peer-stale-')));
+    const fixture = installedFixtureHost(root, { provider: 'test-provider', model: 'model', route: 'route',
+      disclosure: 'recorded provider', automaticRetries: 0, environment: 'local-test',
+      invoke: async () => { throw Error('provider must not execute'); } });
+    let built: ReturnType<typeof fixture.boot> | undefined;
+    try {
+      built = fixture.boot();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const peer = fixture.peer;
+      expect(peer.current(peer.setFactId)).toBe(true);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      built.f.appendReference('check-run-record', { id: 'later-peer-prefix' });
+      peer.replayLastResponse(true);
+      expect(() => peer.current(peer.setFactId)).toThrow();
+      peer.replayLastResponse(false);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      peer.incompleteResponse(true);
+      expect(() => peer.current(peer.setFactId)).toThrow();
+      peer.incompleteResponse(false);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(peer.current(peer.setFactId)).toBe(true);
+    } finally { built?.application.close(); rmSync(root, { recursive: true, force: true }); }
+  }, 180000);
   it('holds the next effect durability use after peer loss while retaining admitted input', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'installed-peer-loss-')));
     const fixture = installedFixtureHost(root, { provider: 'test-provider', model: 'model', route: 'route',
@@ -298,6 +323,43 @@ describe('P10-SI-32/33 atomic selection set closed wire', () => {
       expect(after.filter(row => row.kind === 'effect-OperationObservation' || row.kind === 'effect-EffectSettlement'))
         .toEqual(effects);
     } finally { built?.application.close(); rmSync(root, { recursive: true, force: true }); }
+  }, 180000);
+  it('restarts from the original signed set, Run and Six capacity debit after reconciliation', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'installed-peer-restart-')));
+    const route = { provider: 'test-provider', model: 'model', route: 'route',
+      disclosure: 'recorded provider', automaticRetries: 0, environment: 'local-test',
+      invoke: async () => { throw Error('provider must not execute'); } };
+    let first: ReturnType<ReturnType<typeof installedFixtureHost>['boot']> | undefined;
+    let second: typeof first;
+    try {
+      const installed = installedFixtureHost(root, route);
+      first = installed.boot();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      first.receive(first.application);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      value(first.application.owners.run.open(first.f.run));
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const original = value(first.f.store.read()) as FactEnvelope[];
+      const set = original.find(row => row.kind === 'assembly-InstallationSelectionSet')!;
+      const opening = original.find(row => row.kind === 'run-opening')!;
+      const before = value(first.f.effects.transport.inspectCapacity()) as { history: { fact: { id: string }; record: unknown }[];
+        parentRemainder: unknown };
+      const checkpoint = recordedCheckpoint(first, 'peer-reconciliation');
+      first.application.close(); first = undefined;
+      const restarted = installedFixtureHost(root, route, { recovery: checkpoint });
+      second = restarted.boot();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const restored = value(second.f.store.read()) as FactEnvelope[];
+      const after = value(second.f.effects.transport.inspectCapacity()) as typeof before;
+      expect(restored.find(row => row.kind === 'assembly-InstallationSelectionSet')).toEqual(set);
+      expect(restored.find(row => row.kind === 'run-opening')).toEqual(opening);
+      expect(restored.filter(row => row.kind === 'transport-CapacityReservation').map(row => row.id))
+        .toEqual(original.filter(row => row.kind === 'transport-CapacityReservation').map(row => row.id));
+      expect(after.history.map(row => [row.fact.id, row.record])).toEqual(before.history.map(row => [row.fact.id, row.record]));
+      expect(after.parentRemainder).toEqual(before.parentRemainder);
+      expect((value(second.application.owners.run.read(second.f.id)) as { state: string }).state).toBe('ready');
+      expect(restarted.peer.current(set.id)).toBe(true);
+    } finally { first?.application.close(); second?.application.close(); rmSync(root, { recursive: true, force: true }); }
   }, 180000);
   it('reuses the exact signed set after an append with a lost acknowledgment', () => {
     const x = genuineSetFixture();

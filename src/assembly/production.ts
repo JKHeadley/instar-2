@@ -734,7 +734,7 @@ export function bootProductionAssembly(composition: AssemblyComposition, manifes
     requireMethod(production.minimalResponder.respond, 'AssemblyMinimalResponderPort.respond');
 
     const sixHistory = take(production.lease.port.inspect());
-    const leaseHead = sixHistory.filter(row => row.record.type === 'Lease').at(-1);
+    const leaseHead = sixHistory.filter(row => row.record.type === 'Lease' && row.record.operation !== 'write').at(-1);
     const signedLease = references.find(row => row.name === 'dependency:lease');
     const signedFence = references.find(row => row.name === 'dependency:fence');
     ensure(leaseHead?.record.type === 'Lease' && signedLease?.fact.id === leaseHead.fact.id

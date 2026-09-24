@@ -48,7 +48,8 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   if (seed) {
     Object.assign(types.captures, seed.decode.captures);
     Object.assign(captures, seed.captures);
-    types.register = { ...seed.decode.register, sites: { ...types.register.sites, ...seed.decode.register.sites }, entries: [...new Set([...types.register.entries, ...seed.decode.register.entries])],
+    types.register = { ...seed.decode.register, subjects: { ...types.register.subjects, ...seed.decode.register.subjects },
+      sites: { ...types.register.sites, ...seed.decode.register.sites }, entries: [...new Set([...types.register.entries, ...seed.decode.register.entries])],
       methods: [...new Set([...types.register.methods, ...seed.decode.register.methods])] };
     types.principals = [...types.principals ?? [], ...seed.decode.principals ?? []];
     types.grants = [...types.grants ?? [], ...seed.decode.grants ?? []];
@@ -264,10 +265,11 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
       const d = value(store.read()).find(row => row.kind === 'effect-OperationDefinition' && row.body.record.id === definition.id)?.body.record
         ?? value(installOperationDefinition(definition, host, spine));
       const existingLease = value(transport.inspect()).filter((row: any) => row.record.type === 'Lease'
-        && row.record.state === 'held').at(-1);
+        && row.record.state === 'held' && row.record.operation === 'acquire').at(-1);
       let fence = existingLease ? fenceFor(value(transport.inspect()), existingLease.record)
         : value(transport.acquire('live-input-acquire', '', 500));
-      let leaseFact = value(transport.inspect()).filter((row: any) => row.record.type === 'Lease').at(-1)!.fact;
+      let leaseFact = existingLease?.fact ?? value(transport.inspect()).filter((row: any) => row.record.type === 'Lease'
+        && row.record.operation === 'acquire').at(-1)!.fact;
       const policy = value(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'live-input-policy', maxAttempts: 3,
         minDelay: 10, maxDuration: 1000, timeout: 10, concurrency: 1, failDirection: 'closed', breaker: 'stub-closed' }, host.boundary));
       const adapter = native ? createProductionNativeContextAdapter({ id: definition.adapter, harness: harnessId, incarnation: host.incarnation,

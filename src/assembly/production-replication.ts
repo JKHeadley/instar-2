@@ -87,7 +87,8 @@ function custodyContext(base: FactContext, captures: readonly PeerCapture[]): Fa
     captures: Object.fromEntries(captures.map(c => [c.reference, c.bytes])) } };
 }
 function requestedCaptures(d: PeerDescriptor, available: Readonly<Record<string, CapturedContent>>,
-  context: FactContext, local: SegmentStoragePort, facts: readonly FactEnvelope[]): PeerCapture[] {
+  context: FactContext, local: SegmentStoragePort, facts: readonly FactEnvelope[],
+  memo?: { key: string; candidates: readonly string[]; required: readonly PeerCapture[] }): PeerCapture[] {
   // The installed policy supplies the bounded candidate universe. Removing each
   // candidate is tested by Two's actual historical projection, so hash-addressed,
   // schema-owned and constitutional dependencies use their owner's semantics.
@@ -107,14 +108,34 @@ function requestedCaptures(d: PeerDescriptor, available: Readonly<Record<string,
   };
   // Available approved candidates are removed only when Two remains clean.
   // A missing approved capture is left for the final owner refusal below.
-  let required = all.filter((c): c is PeerCapture => c !== null);
-  for (const candidate of [...required]) {
-    const without = required.filter(c => c.reference !== candidate.reference);
-    if (clean(without)) required = without;
+  const candidates = all.filter((c): c is PeerCapture => c !== null);
+  const signature = (c: PeerCapture) => `${c.reference}\0${c.hash}`;
+  const current = new Map(candidates.map(c => [signature(c), c]));
+  const key = digest({ prefix: prefix(facts).digest,
+    captures: selected.map(reference => ({ reference, hash: available[reference]?.hash ?? null })) });
+  const previous = new Set(memo?.candidates ?? []);
+  const search = (start: PeerCapture[], inspect: readonly PeerCapture[] = start) => {
+    let required = [...start].sort((a, b) => a.reference < b.reference ? -1 : a.reference > b.reference ? 1 : 0);
+    for (const candidate of inspect) {
+      const without = required.filter(c => c.reference !== candidate.reference);
+      if (clean(without)) required = without;
+    }
+    return required;
+  };
+  // The sender may reuse only the necessity search. The final Two projection below
+  // still verifies every exact current prefix and capture on every transfer.
+  let required = memo?.key ? memo.required.map(c => current.get(signature(c))).filter((c): c is PeerCapture => c !== undefined)
+    : candidates;
+  if (memo?.key && memo.key !== key) {
+    const newlyAvailable = candidates.filter(c => !previous.has(signature(c)));
+    required = search([...required, ...newlyAvailable], newlyAvailable);
   }
+  else if (!memo?.key) required = search(required);
+  if (memo?.key && memo.key !== key && !clean(required)) required = search(candidates);
   ensure(required.length <= d.limits.maxCaptures, 'capture count bound');
   ensure(clean(required), 'required capture unavailable or outside approved disclosure');
   ensure(required.every(c => Buffer.byteLength(c.bytes) <= d.limits.maxCaptureBytes), 'capture byte bound');
+  if (memo) { memo.key = key; memo.candidates = candidates.map(signature); memo.required = required; }
   return required;
 }
 function checkRequest(request: PeerRequest, d: PeerDescriptor): void {
@@ -224,6 +245,7 @@ export function createFixedPeerReplication(input: Readonly<{ descriptor: PeerDes
     const d = input.descriptor; validateDescriptor(d);
     ensure(input.local.owner === 'part-ten' && input.transport.owner === 'part-ten', 'peer port owner differs');
     const localStore: FactStorePort = createFactStore(input.context, input.local);
+    const captureMemo = { key: '', candidates: [] as readonly string[], required: [] as readonly PeerCapture[] };
     const transfer = (required: readonly FactEnvelope[], operation: PeerRequest['operation']): readonly AppendReceipt[] => {
       ensure(required.length > 0 && required.length <= d.limits.maxFacts, 'fact count bound');
       const snapshot = take(localStore.readForProjection());
@@ -234,7 +256,7 @@ export function createFixedPeerReplication(input: Readonly<{ descriptor: PeerDes
         'required exact fact absent from local prefix');
       for (const fact of required) ensure(causalCone(fact, facts).every(ancestor => requiredIds.has(ancestor.id)),
         'required causal ancestor missing');
-      const captures = requestedCaptures(d, input.captures(), input.context, input.local, facts);
+      const captures = requestedCaptures(d, input.captures(), input.context, input.local, facts, captureMemo);
       const custodySnapshot = take(createFactStore(custodyContext(input.context, captures), input.local).readForProjection());
       ensure(custodySnapshot.entries.length === facts.length && custodySnapshot.entries.every((entry, i) =>
         bytes(entry.fact) === bytes(facts[i]) && !entry.taint.length && !entry.conflicts.length),
