@@ -1,18 +1,18 @@
 {
   "phase": "converted-unanchored",
-  "approvalBasis": "docs/02-the-register.md and docs/07-the-declarations.md approved designs; provisional conversion has no entering-force authority",
+  "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
   "shape": "sha256:9b11f3e33cdcc03e091aa12c3828f042b1c3591c5b03073a24457fef16713536",
   "documents": {
-    "docs/01-the-rules.md": "sha256:a396a68c53cd611ed89430a1c4a6dbe91611d85a840f00dfdec93e956dfc168b",
+    "docs/01-the-rules.md": "sha256:d9e51b6d049d877511600b974eb334f4bfade433703cecda0545987579fbbb61",
     "docs/02-the-register.md": "sha256:206e4995e8707590f8bd07f643100fbb5cd4112ae6f8b466f314329b551f056b",
     "docs/03-the-glossary.md": "sha256:e33d1368c609151951a0892c57b10ac3357fe5dc96ed68573974fafa2e1dcf9a",
-    "docs/07-the-declarations.md": "sha256:21362d9c0475300a84395d1ac096c02c300067e321ec603902ca3f7e9b733e11",
+    "docs/07-the-declarations.md": "sha256:c5cb704ed2245f433a1d385f4b9128aa0110ae2b2b33562ee40a5f097f20559e",
     "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:49e37e4f31009804f28a2dd38f67b3c894a5d662d3a4ea2d9c703310252492a0"
   },
   "rules": [
     {
       "number": 1,
-      "declarationHash": "sha256:ffcdde81c13e36b5fe8cc5788ac989329cb7237ef2727129aa48b90ef4fdf180",
+      "declarationHash": "sha256:f7cc3a9c69d1eca358ace439754ddd8fbedb438cfa7002ea448ef621fcdbdb7b",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -47,7 +47,7 @@
     },
     {
       "number": 49,
-      "declarationHash": "sha256:75bfcbd43ce0dc5e88f9235a565d4056a864c838d17fe969b0feb0603890f056",
+      "declarationHash": "sha256:f3d2821dee1267407746fe21f223a9611b9a12a4f7528ca4ef905601fc2e46ec",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -72,7 +72,7 @@
     },
     {
       "number": 65,
-      "declarationHash": "sha256:41280218f74a61d0093f216c9ffa7e77785819b1754a532c85608edaad461e74",
+      "declarationHash": "sha256:22de21e76a0746331f0ed3e8badca8c4902c384fc16a5f3df4ec813906c05990",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -583,6 +583,11 @@
     {
       "number": 108,
       "declarationHash": "sha256:954c1a5118fbbe4a1ed3e145bde146446000106bb95479a96a2f17eb65457440",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 116,
+      "declarationHash": "sha256:d0f72060b8437c8e0ac86b575cb383dc07fccefa1b8825882f493c60d6fa4323",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     }
   ]
