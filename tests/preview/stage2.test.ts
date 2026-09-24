@@ -33,32 +33,45 @@ it('composes exact Four input to one signed accepted answer in the bound private
     c.pollOnce(); await c.resume();
     expect(c.sidecar.read()).toMatchObject({ phase: 'api-accepted', terminalLatch: true, modelAttemptUsed: 1 });
     expect(s.models).toHaveLength(1);
+    const facts = JSON.parse(readFileSync(join(s.root, '.preview-stage2/facts.json'), 'utf8'));
+    const evidence = (predicate: string) => facts.find((f: any) => f.body.evidence?.claim.predicate === predicate).body.evidence;
+    expect(evidence('provider-response-source-contract').claim.value).toEqual({ version: s.activation.profileDigest,
+      parserReference: 'claude-code-json-result', parserVersion: '1', endpoint: s.profile.loginProfileIdentity,
+      account: s.profile.expectedAccount, credentialReference: s.profile.reference, controller: 'preview-local-recorder',
+      executableArtifact: s.profile.artifact, provider: 'anthropic', model: s.model, route: 'preview-subscription' });
+    expect(evidence('provider-response-terminal-contract').claim.value).toEqual({ version: s.activation.profileDigest,
+      parserReference: 'claude-code-json-result', parserVersion: '1', terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] });
+    const binding = evidence('preview-invocation-binding');
+    expect(Object.keys(binding.claim.value).sort()).toEqual(['schemaVersion', 'activationReference', 'activationDigest',
+      'profileDigest', 'invocationPolicyDigest', 'systemPromptDigest', 'framing', 'invocationPolicy', 'request', 'prepared',
+      'effectRequest', 'run', 'attempt', 'submitted', 'submittedDigest'].sort());
+    expect(binding).toMatchObject({ source: 'probe', strength: 'attestation' });
+    expect(readFileSync(join(s.root, '.preview-stage2/captures', binding.capture.hash.slice(7)), 'utf8')).toBe(encoded(binding.claim.value).bytes);
     const dispatched = JSON.parse(s.models[0].stdin);
     const context = JSON.parse(dispatched.messages[1].content);
     expect(Buffer.byteLength(s.models[0].stdin)).toBeLessThanOrEqual(4096);
     expect(context.conversation[0].message.text).toBe('What is two plus two?');
-    for (const field of ['type:"Decision"', 'schemaVersion:1', 'id:<nonempty string>', 'at:bindings.at', 'by:bindings.by',
-      'conclusion:{subject:"preview-stage2-answer",predicate:"answer-text",value:<brief answer string>,evidence:bindings.evidence}',
-      'reason:{subject:<nonempty string>,predicate:<nonempty string>,value:<your reason as JSON>,evidence:bindings.evidence}',
-      'floor:{allowed:bindings.floor,chosen:<action in bindings.floor.actions>}', 'standsOn may be omitted; it is derived',
-      'no Markdown fences or extra top-level fields']) expect(context.instruction).toContain(field);
+    expect(Object.keys(context).sort()).toEqual(['bindings', 'conversation', 'conversationKind']);
+    expect(context.conversationKind).toBe('captured-telegram-updates');
+    expect(s.models[0].args).toEqual(subscriptionInvocationPolicy(s.model).args);
+    expect(inputMeasurements('', '', s.models[0].stdin).prompt).toBeLessThanOrEqual(4096);
     expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(1);
     expect(s.calls.find(row => row.method === 'sendMessage').body.text).toContain('Four. café &lt;世界&gt; &amp; ready');
     expect(c.pollOnce()).toBeNull(); await c.resume(); expect(s.models).toHaveLength(1);
   } finally { c.close(); }
 }, 60000);
 
-import { encoded, inputMeasurements, requireOutboundBound } from './stage2-provider.js';
+import { encoded, inputMeasurements, requireOutboundBound, subscriptionInvocationPolicy } from './stage2-provider.js';
 import { createProviderJudgmentPort } from '../../src/judgment/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { acceptedReplyPreviewText } from '../../src/rungraph/index.js';
 
-it('admits exactly 4096 canonical UTF-8 input bytes including Unicode and JSON escaping; refuses 4097', async () => {
+it('admits exactly 4096 combined UTF-8 prompt bytes including Unicode and JSON escaping; refuses 4097', async () => {
   const prefix = '世界"\n';
   const seed = offlineStage2({ question: prefix });
-  const room = 4096 - Buffer.byteLength(seed.f.submitted);
+  const room = 4096 - inputMeasurements('', '', seed.f.submitted).prompt;
   const exact = offlineStage2({ question: prefix + 'x'.repeat(room) });
-  expect(inputMeasurements(exact.f.question.question, exact.f.question.context, exact.f.submitted).submitted).toBe(4096);
+  expect(inputMeasurements(exact.f.question.question, exact.f.question.context, exact.f.submitted).prompt).toBe(4096);
   const p = exact.f.prepare(); value(await exact.f.api.dispatch(p.request, exact.f.fence));
   expect(exact.calls()).toBe(1);
   const over = offlineStage2({ question: prefix + 'x'.repeat(room + 1) });

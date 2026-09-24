@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -35,6 +35,7 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd(),stdin})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
     else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(status))});
+    else if(process.argv.slice(2).filter(v=>v==='--system-prompt').length!==1 || process.argv[process.argv.indexOf('--system-prompt')+1]!==${JSON.stringify(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)})process.exit(42);
     else ${options.pending ? 'setInterval(()=>{},1000)' : `process.stdout.write(Buffer.from(${JSON.stringify(raw.toString('base64'))},'base64'))`};\n`;
   writeFileSync(executable, source); chmodSync(executable, 0o700);
   let active = true;
@@ -83,6 +84,9 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
   expect(f.resolves()).toBe(1); expect(Object.isFrozen(route.custodyProof)).toBe(true);
   const commands = f.commands(); expect(commands).toHaveLength(3);
   expect(commands[2].args).toEqual(subscriptionInvocationPolicy(f.input.model).args);
+  expect(commands[0].args).toEqual(['--version']); expect(commands[1].args).toEqual(['auth', 'status', '--json']);
+  expect(commands[2].args.filter((arg: string) => arg === '--system-prompt')).toHaveLength(1);
+  expect(commands[2].args[commands[2].args.indexOf('--system-prompt') + 1]).toBe(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT);
   expect(commands[2].stdin).toBe('{"exact":"question 世界"}');
   expect(Object.keys(f.launched[2]!).sort()).toEqual(['PATH', 'HOME', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_MAX_RETRIES',
     'CLAUDE_CODE_MAX_OUTPUT_TOKENS', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'].sort());
@@ -158,9 +162,9 @@ it('refuses invalid UTF-8 and malformed auth JSON with bounded uncertain outcome
     expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(options.invalidUtf8 ? 1 : 0);
   }
 });
-it('admits 4096 physical stdin bytes unchanged and refuses 4097 before even a probe', async () => {
+it('admits 4096 combined prompt bytes with unchanged stdin and refuses 4097 before even a probe', async () => {
   for (const size of [4096, 4097]) {
-    const f = fixture(), bytes = '世界"\n' + 'x'.repeat(size - Buffer.byteLength('世界"\n'));
+    const f = fixture(), bytes = '世界"\n' + 'x'.repeat(size - Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT) - Buffer.byteLength('世界"\n'));
     const observation = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke(bytes, f.bounds);
     expect(observation.state).toBe(size === 4096 ? 'complete' : 'uncertain');
     if (size === 4096) expect(f.commands()[2].stdin).toBe(bytes); else expect(f.commands()).toHaveLength(0);
@@ -203,3 +207,29 @@ it('stops a pending synthetic physical child and returns UNKNOWN without fallbac
   finally { clearInterval(timer); }
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
 }, 10000);
+
+it('refuses the old invocation policy identity before any child', () => {
+  const f = fixture(), policy: any = { ...subscriptionInvocationPolicy(f.input.model) };
+  delete policy.framing; delete policy.maxPromptBytes;
+  policy.args = policy.args.filter((v: string) => v !== '--system-prompt' && v !== SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT);
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, activation: { ...f.input.activation,
+    invocationPolicyDigest: hash(policy) } }).kind).toBe('Refused');
+  expect(f.commands()).toHaveLength(0);
+  expect(Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)).toBe(1424);
+});
+
+for (const change of ['missing', 'changed', 'duplicated']) it(`synthetic CLI refuses ${change} system argument without a positive answer`, async () => {
+  const f = fixture(), execute = f.input.io.execute;
+  const io = { ...f.input.io, execute: (command: any) => {
+    if (command.args.includes('--print')) {
+      let args = [...command.args]; const index = args.indexOf('--system-prompt');
+      if (change === 'missing') args.splice(index, 2);
+      if (change === 'changed') args[index + 1] += '!';
+      if (change === 'duplicated') args.push('--system-prompt', SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT);
+      command = { ...command, args };
+    }
+    return execute(command);
+  } };
+  expect((await value(createClaudeCodeSubscriptionRoute({ ...f.input, io })).invoke('request', f.bounds)).state).toBe('uncertain');
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});

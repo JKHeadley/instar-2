@@ -3,6 +3,9 @@ import {
   closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync,
   realpathSync, renameSync, writeFileSync,
 } from 'node:fs';
+import { encoded, stage2Activation, stage2InvocationBinding, subscriptionInvocationPolicy } from './stage2-provider.js';
+import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
+import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { dirname, join, resolve } from 'node:path';
 
 export const PREVIEW_STATE_VERSION = 3 as const;
@@ -382,6 +385,11 @@ export function cutoverPreviewRoot(options: { predecessorRoot: string; root: str
     || options.cutoff > now || options.cutoff < old.trial.createdAt) throw new Error('preview: cutover must inherit trial bounds');
   mkdirSync(target, { mode: 0o700, recursive: true });
   if (realpathSync(target) !== target || readdirSync(target).length !== 0) throw new Error('preview: fresh empty cutover root required');
+  return archivePreviewRoot(options, source, target, old, stop, now).inherited;
+}
+
+function archivePreviewRoot(options: CutoverOptions, source: string, target: string, old: PreviewStateDocument,
+  stop: NonNullable<PreviewStateDocument['stop']>, now: number, continuation: Record<string, unknown> = {}) {
   const inventory: Record<string, string> = {};
   const visit = (directory: string, relative = '') => {
     for (const name of readdirSync(directory).sort()) {
@@ -413,8 +421,149 @@ export function cutoverPreviewRoot(options: { predecessorRoot: string; root: str
   durablePreviewWrite(join(target, 'preview-predecessor.json'), { version: 1, root: source,
     trial: old.trial.id, configurationDigest: old.trial.configurationDigest, snapshot: inventory,
     stateDigest: digest(old), stop, cursor: old.cursor, excludedTurns: Object.keys(old.turns).sort(),
-    quiescenceReference: options.quiescenceReference, cutoff: options.cutoff, recordedAt: now });
+    quiescenceReference: options.quiescenceReference, cutoff: options.cutoff, recordedAt: now, ...continuation });
   const inherited = { ...old, trial: { ...old.trial, configurationDigest: digest(options.configuration) }, stop: null };
   durablePreviewWrite(join(target, 'preview-state.json'), inherited);
-  return inherited;
+  return { inherited, inventory, predecessor: JSON.parse(readFileSync(join(target, 'preview-predecessor.json'), 'utf8')) };
+}
+
+type CutoverOptions = { predecessorRoot: string; root: string;
+  predecessorConfiguration: Record<string, unknown>; configuration: Record<string, unknown>;
+  quiescenceReference: string; cutoff: number; now?: () => number };
+type SuccessorOptions = CutoverOptions & { activation: SubscriptionActivationRecord;
+  profile: ProviderSubscriptionProfile; model: string };
+const FRAMING_AMENDMENT = 'astra-preview-s2-framing.md';
+const rawHash = (bytes: Uint8Array | string) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+const markerPath = (root: string, trial: string) => join(dirname(root), `.preview-s2-framing-v2-${rawHash(trial).slice(7)}.json`);
+function treeInventory(root: string): Record<string, string> {
+  const inventory: Record<string, string> = {};
+  const visit = (directory: string, relative = '') => {
+    for (const name of readdirSync(directory).sort()) {
+      const path = join(directory, name), key = relative ? `${relative}/${name}` : name, info = lstatSync(path);
+      if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile()) || name.endsWith('.lock')
+        || name === '.boot-lease' || name === '.boot-lease-guard') throw Error('preview: ambiguous predecessor custody');
+      if (info.isDirectory()) visit(path, key); else inventory[key] = rawHash(readFileSync(path));
+    }
+  };
+  visit(root); return inventory;
+}
+function noPreviousSuccessor(source: string): void {
+  for (let root = source; existsSync(root); root = join(root, '.preview-predecessor')) {
+    const recordPath = join(root, 'preview-predecessor.json');
+    if (existsSync(recordPath)) {
+      const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+      if (record.continuation || record.activationOrdinal !== undefined) throw Error('preview: previous successor lineage');
+    }
+    if (root !== source && (stage2SidecarExists(root) || existsSync(join(root, '.preview-stage2'))))
+      throw Error('preview: archived stage2 predecessor');
+  }
+}
+/** One exclusive desk reservation, never a rearm or a process launcher. A failed
+ * copy leaves its marker occupied for manual disposition, with no cleanup. */
+export async function cutoverRefusedStage2Root(options: SuccessorOptions) {
+  const source = options.predecessorRoot, target = options.root, now = options.now?.() ?? Date.now();
+  if (resolve(source) !== source || resolve(target) !== target || source === target
+    || dirname(source) !== dirname(target) || realpathSync(dirname(source)) !== dirname(source)
+    || realpathSync(source) !== source || !existsSync(target) || realpathSync(target) !== target
+    || !lstatSync(target).isDirectory() || readdirSync(target).length
+    || typeof options.quiescenceReference !== 'string' || !options.quiescenceReference.trim())
+    throw Error('preview: canonical empty sibling cutover required');
+  const old = validate(JSON.parse(readFileSync(join(source, 'preview-state.json'), 'utf8')));
+  const stop = existsSync(join(source, 'preview-stop.json')) ? JSON.parse(readFileSync(join(source, 'preview-stop.json'), 'utf8')) : old.stop;
+  assertInteger(now, 'cutover clock'); assertInteger(options.cutoff, 'cutover cutoff');
+  if (!stop || !['operator', 'signal'].includes(stop.reason) || !Number.isSafeInteger(stop.latchedAt)
+    || now + 300000 > old.trial.expiresAt || options.cutoff > now || options.cutoff < old.trial.createdAt
+    || old.trial.configurationDigest !== digest(options.predecessorConfiguration)
+    || options.predecessorConfiguration.root !== source || options.configuration.root !== target
+    || JSON.stringify({ ...options.predecessorConfiguration, root: target }) !== JSON.stringify(options.configuration))
+    throw Error('preview: successor must inherit stopped trial bounds');
+  const before = treeInventory(source);
+  const { validateRefusedStage2Predecessor } = await import('./stage2-owners.js');
+  const proof = validateRefusedStage2Predecessor(source, old, options.predecessorConfiguration);
+  noPreviousSuccessor(source);
+  const activationDigest = stage2Activation({ ...options, trial: old.trial.id,
+    configurationDigest: digest(options.configuration), now });
+  if (activationDigest === proof.oldActivationDigest || options.activation.reference === proof.oldActivationReference
+    || options.activation.invocationPolicyDigest === proof.oldPolicyDigest)
+    throw Error('preview: successor requires new activation and policy');
+  if (encoded(treeInventory(source)).hash !== encoded(before).hash) throw Error('preview: predecessor changed before reservation');
+  const binding = stage2InvocationBinding(options);
+  const reservation = { version: 1, amendment: FRAMING_AMENDMENT, trial: old.trial.id,
+    source, target, oldSidecarRawDigest: before['preview-stage2-state.json'],
+    oldStoreRawDigest: before['.preview-stage2/facts.json'], ...proof,
+    activationDigest, activationReference: options.activation.reference, profileDigest: encoded(options.profile).hash,
+    policyDigest: binding.invocationPolicyDigest, systemPromptDigest: binding.systemPromptDigest, framing: binding.framing, configurationDigest: digest(options.configuration),
+    cutoff: options.cutoff, localStopEvidence: options.quiescenceReference, originalExpiry: old.trial.expiresAt,
+    activationOrdinal: 2, maximumActivations: 2 };
+  const reservationDigest = encoded(reservation).hash;
+  const marker = markerPath(source, old.trial.id), initial = { reservation, reservationDigest, completion: null };
+  const fd = openSync(marker, 'wx', 0o600);
+  try { writeFileSync(fd, JSON.stringify(initial), 'utf8'); fsyncSync(fd); } finally { closeSync(fd); }
+  const parent = openSync(dirname(marker), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
+  // Check again after reservation, including locks and unchanged source bytes.
+  if (encoded(treeInventory(source)).hash !== encoded(before).hash) throw Error('preview: predecessor changed after reservation');
+  const result = archivePreviewRoot(options, source, target, old, stop, now, {
+    continuation: { marker, reservationDigest }, activationOrdinal: 2, maximumActivations: 2,
+    activationDigest, activationReference: options.activation.reference, profileDigest: reservation.profileDigest,
+    policyDigest: reservation.policyDigest, systemPromptDigest: reservation.systemPromptDigest, framing: reservation.framing, unresolvedObligation: proof.unresolvedObligation });
+  if (encoded(result.inventory).hash !== encoded(before).hash
+    || encoded(JSON.parse(readFileSync(marker, 'utf8'))).hash !== encoded(initial).hash)
+    throw Error('preview: successor reservation changed');
+  durablePreviewWrite(marker, { ...initial, completion: { archiveInventoryDigest: encoded(result.inventory).hash,
+    predecessorRecordDigest: encoded(result.predecessor).hash } });
+  return result.inherited;
+}
+
+/** Read-only startup verification; terminal history needs no live activation. */
+export function validateStage2Successor(input: { root: string; outer: PreviewStateDocument;
+  activation?: SubscriptionActivationRecord; profile?: ProviderSubscriptionProfile; model: string; cutoff: number; binding?: ReturnType<typeof stage2InvocationBinding> }) {
+  const path = join(input.root, 'preview-predecessor.json'), marker = markerPath(input.root, input.outer.trial.id);
+  if (!existsSync(path)) {
+    if (existsSync(marker) || existsSync(join(input.root, '.preview-predecessor'))) throw Error('preview: incomplete successor');
+    return;
+  }
+  const predecessor = JSON.parse(readFileSync(path, 'utf8'));
+  if (!predecessor.continuation) {
+    if (existsSync(marker)) throw Error('preview: successor binding absent');
+    noPreviousSuccessor(input.root); return;
+  }
+  const binding = input.activation || input.profile
+    ? stage2InvocationBinding({ activation: input.activation!, profile: input.profile!, model: input.model }) : input.binding;
+  const policy = subscriptionInvocationPolicy(input.model);
+  const systemPromptDigest = rawHash(policy.args[policy.args.indexOf('--system-prompt') + 1]!);
+  const check = (ok: unknown) => { if (!ok) throw Error('preview: successor evidence differs'); };
+  if (!binding) throw Error('preview: successor binding absent');
+  if (input.activation) check(input.profile?.activationReference === input.activation.reference
+    && input.activation.invocationPolicyDigest === encoded(policy).hash && input.activation.profileDigest === binding.profileDigest);
+  check(predecessor.continuation.marker === marker && realpathSync(marker) === marker);
+  const retained = JSON.parse(readFileSync(marker, 'utf8')), r = retained.reservation;
+  check(retained.completion && retained.reservationDigest === encoded(r).hash
+    && predecessor.continuation.reservationDigest === retained.reservationDigest
+    && r.version === 1 && r.amendment === FRAMING_AMENDMENT && r.activationOrdinal === 2 && r.maximumActivations === 2
+    && r.target === input.root && r.source === predecessor.root && dirname(r.source) === dirname(input.root)
+    && r.trial === input.outer.trial.id && r.originalExpiry === input.outer.trial.expiresAt
+    && r.configurationDigest === input.outer.trial.configurationDigest && r.cutoff === input.cutoff
+    && r.activationDigest === binding.activationDigest && r.activationReference === binding.activationReference
+    && r.profileDigest === binding.profileDigest
+    && r.policyDigest === binding.invocationPolicyDigest && r.policyDigest === encoded(subscriptionInvocationPolicy(input.model)).hash
+    && r.systemPromptDigest === binding.systemPromptDigest && r.systemPromptDigest === systemPromptDigest
+    && r.framing === binding.framing && r.framing === policy.framing
+    && predecessor.cutoff === r.cutoff && predecessor.quiescenceReference === r.localStopEvidence);
+  for (const key of ['activationOrdinal', 'maximumActivations', 'activationDigest', 'activationReference', 'profileDigest', 'policyDigest', 'systemPromptDigest', 'framing', 'unresolvedObligation'])
+    check(encoded(predecessor[key]).hash === encoded(r[key]).hash);
+  const inventory = treeInventory(join(input.root, '.preview-predecessor'));
+  check(encoded(inventory).hash === retained.completion.archiveInventoryDigest
+    && encoded(predecessor.snapshot).hash === retained.completion.archiveInventoryDigest
+    && encoded(predecessor).hash === retained.completion.predecessorRecordDigest
+    && inventory['preview-stage2-state.json'] === r.oldSidecarRawDigest && inventory['.preview-stage2/facts.json'] === r.oldStoreRawDigest);
+  const archived = validate(JSON.parse(readFileSync(join(input.root, '.preview-predecessor/preview-state.json'), 'utf8')));
+  check(encoded(Object.keys(archived.turns).sort()).hash === encoded(predecessor.excludedTurns).hash
+    && archived.trial.id === r.trial && archived.trial.expiresAt === r.originalExpiry);
+  for (const [id, turn] of Object.entries(archived.turns)) check(encoded(input.outer.turns[id]).hash === encoded(turn).hash);
+  check(input.outer.cursor.nextOffset >= archived.cursor.nextOffset);
+  if (stage2SidecarExists(input.root)) {
+    const sidecar = validateStage2State(JSON.parse(readFileSync(join(input.root, 'preview-stage2-state.json'), 'utf8')), input.outer, input.root);
+    check(predecessor.excludedTurns.every((id: string) => sidecar.excludedTurns.includes(id))
+      && sidecar.activationDigest === r.activationDigest && sidecar.policyDigest === r.policyDigest && sidecar.cutoff === r.cutoff);
+  }
 }

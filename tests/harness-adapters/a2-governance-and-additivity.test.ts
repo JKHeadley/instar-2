@@ -14,6 +14,8 @@ it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owne
     // GRANT M3-S (astra-m3-structural-adjudication.md section 3): exact additive Five early-guard tests.
     ['tests/rungraph/installed-governance.test.ts', '4741c9e14be82d3329fcee03e30ef6e661c95aba210ef0fa5cbd010f5c251737'],
     ['tests/assembly/production-grounding-inventory.json', '60cf876d7f781dd0e2c436a53ab88819c1de758c118a9f01a5b1d0a14add7c56'],
+    // GRANT S2-FRAMING (astra-preview-s2-framing.md section 4; astra-preview-s2-framing-source-review-3907fcf.md step 2): the landed subscription-route test's final reviewed content.
+    ['tests/assembly/production-provider-subscription.test.ts', '1ba516e39bd5040fd7559a9770908bdc8dd8b79a80a6f45bce79e3be121c70ce'],
     // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
     ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
     // GRANT M4-G6-N-T7: the two exhaustive P9 disposition counts 63 -> 66.

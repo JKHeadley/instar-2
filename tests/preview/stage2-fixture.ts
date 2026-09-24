@@ -232,7 +232,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStage2Owners } from './stage2-owners.js';
-import { STAGE2_DISCLOSURE } from './stage2-provider.js';
+import { STAGE2_DISCLOSURE, stage2InvocationBinding } from './stage2-provider.js';
 export function offlineStage2(options: any = {}) {
   const directory = options.directory ?? mkdtempSync(join(tmpdir(), 'preview-s2-owners-'));
   let calls = 0, time = options.start ?? 100, active = true;
@@ -275,7 +275,8 @@ export function offlineStage2(options: any = {}) {
       } });
     registerProviderResponseEvidenceBounds(route, contract); return route;
   };
-  const f = createStage2Owners({ directory, ownerNow: () => time, active: () => active,
+  const invocationBinding = stage2InvocationBinding({ model, activation: { reference: 'offline-contract' } as any, profile: {} as any });
+  const f = createStage2Owners({ invocationBinding, directory, ownerNow: () => time, active: () => active,
     start: time, deadline: time + 300000, model, question: options.question ?? 'What is two plus two?', conversation: [],
     replyCharge: 20, routeFactory, ...options });
   return { f, directory, calls: () => calls, time: (n: number) => { time = n; }, stop: () => { active = false; } };
@@ -295,12 +296,12 @@ export function stage2CompositionFixture(options: any = {}) {
     maxPollSeconds: 1, maxBatchItems: 1, maxContextTurns: 8, maxContextBytes: 65536, ...options.configuration };
   const state = openPreviewState({ root, configuration, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, now: () => time,
     replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128 });
-  const artifactBytes = Buffer.from('offline executable bytes'), model = 'claude-offline-exact-1';
+  const artifactBytes = Buffer.from('offline executable bytes'), model = options.model ?? 'claude-offline-exact-1';
   const profile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login',
     home: '/offline/home', configDirectory: '/offline/config', workingDirectory: '/offline/work',
     expectedAccount: 'offline@example.invalid', organization: 'offline-org', plan: 'max', loginProfileIdentity: 'offline-profile',
     executable: '/offline/cli', artifact: `sha256:${createHash('sha256').update(artifactBytes).digest('hex')}`,
-    version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: enc({}).hash });
+    version: '2.1.280', activationReference: options.activationReference ?? 'offline-activation', managedConfigurationDigest: enc({}).hash });
   const activation = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
     waiver: 'offline-waiver', p11: 'offline-p11', reviewedHead: 'offline-head', trial: state.read().trial.id,
     baseConfigurationDigest: state.read().trial.configurationDigest, profileDigest: enc(profile).hash,
@@ -311,7 +312,7 @@ export function stage2CompositionFixture(options: any = {}) {
     extraUsage: 'operator-asserted/unobservable', extraUsageReason: 'Offline account datum unavailable; assertion retained',
     subscriptionLimit: 'unobservable', subscriptionLimitReason: 'Offline limit unavailable',
     acceptedResiduals: ['unconfined preview', 'UNKNOWN charge/quiescence'], expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY };
-  const calls: any[] = [], models: any[] = [];
+  const calls: any[] = [], models: any[] = [], children: any[] = [];
   const updates = options.updates ?? [{ update_id: 1, message: { message_id: 1001,
     from: { id: 7812716706, is_bot: false, first_name: 'Offline' }, chat: { id: 7812716706, type: 'private' },
     date: Math.floor(time / 1000), text: options.question ?? 'What is two plus two?' } }];
@@ -326,6 +327,7 @@ export function stage2CompositionFixture(options: any = {}) {
   const io = { realpath: (p: string) => p, executableBytes: () => artifactBytes,
     inspectSubscriptionProfile: () => ({ loginProfileIdentity: profile.loginProfileIdentity, managedConfigurationDigest: profile.managedConfigurationDigest }),
     execute: async (command: any) => {
+      children.push(command);
       let text;
       if (command.args[0] === '--version') text = '2.1.280 (Claude Code)';
       else if (command.args[0] === 'auth') text = JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty',
@@ -345,8 +347,8 @@ export function stage2CompositionFixture(options: any = {}) {
     } };
   const create = (): Promise<any> => stage2GuardedProviderPath({ configuration, state, storageKey: new Uint8Array(32).fill(19),
     storageIO: productionStorageIO, telegramIO, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
-    stage2: { activation, profile, model, cutoff: (options.start ?? 1790000000000) - 1000, arm: true,
+    stage2: { activation, profile, model, cutoff: options.cutoff ?? (options.start ?? 1790000000000) - 1000, arm: true,
       io, now: () => time, active: () => active, checkpoint: options.checkpoint } });
-  return { root, state, configuration, activation, profile, model, create, calls, models, now: () => time,
+  return { root, state, configuration, activation, profile, model, create, calls, models, children, now: () => time,
     time: (n: number) => { time = n; }, revoke: () => { active = false; } };
 }

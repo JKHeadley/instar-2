@@ -1,5 +1,26 @@
 [
   {
+    "revision": 17,
+    "date": "2026-09-23",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "PREVIEW-S2 framing amendment and separate-attestation ruling; review, pins and gate remain desk-owned"
+    },
+    "changes": [
+      {
+        "what": "Record fixed system-channel framing, the stricter combined 4096-byte prompt bound and separate signed invocation binding.",
+        "why": "Preserve exact owner authority contracts and stdin identity while retaining complete policy/input evidence.",
+        "ref": "astra-preview-s2-framing.md; astra-preview-s2-framing-attestation.md"
+      },
+      {
+        "what": "Describe the retained first prose refusal and the single supervised second activation with immutable archive and lineage marker.",
+        "why": "Require a new operator update, preserve original unknown obligations and prevent replay, partial-transition launch or a third activation.",
+        "ref": "PREVIEW-S2 FRAMING v2 / ROUND 2"
+      }
+    ]
+  },
+  {
     "revision": 16,
     "date": "2026-09-23",
     "status": "draft",

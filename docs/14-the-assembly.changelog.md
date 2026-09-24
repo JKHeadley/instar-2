@@ -4,6 +4,11 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 17 · 2026-09-23 · draft — PREVIEW-S2 framing amendment and separate-attestation ruling; review, pins and gate remain desk-owned
+
+- **Record fixed system-channel framing, the stricter combined 4096-byte prompt bound and separate signed invocation binding.** — Preserve exact owner authority contracts and stdin identity while retaining complete policy/input evidence. _(astra-preview-s2-framing.md; astra-preview-s2-framing-attestation.md)_
+- **Describe the retained first prose refusal and the single supervised second activation with immutable archive and lineage marker.** — Require a new operator update, preserve original unknown obligations and prevent replay, partial-transition launch or a third activation. _(PREVIEW-S2 FRAMING v2 / ROUND 2)_
+
 ## Revision 16 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
 
 - **Record the amended 4096-byte supervised subscription preview, owner window, custody, cutover and terminal latch.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_

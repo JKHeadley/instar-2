@@ -157,15 +157,42 @@ references, exact observed/asserted account evidence, timestamps and safe captur
 Contradicted extra usage or known exhaustion refuses. Unobservable extra usage is expressly the
 operator's assertion, never relabelled measurement. Estimated cost in a CLI return is not a bill.
 
-The entire canonical Seven request is limited to 4096 UTF-8 bytes: exact input, every selected
-context record, Decision instructions/bindings, settings, schema, punctuation and escaping.
-Subscription policy, description, Seven payload and approved provider definition all use 4096.
+The fixed 1424-byte `SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT` goes only in the model command's
+single replacement `--system-prompt` argument. Stdin remains the exact canonical Seven envelope;
+its context is exactly `{bindings, conversationKind:'captured-telegram-updates', conversation}`.
+All selected Telegram updates remain in order, including prior operator messages. No transcript
+projection, prompt file, appended default prompt, `--json-schema`, repair or prose wrapping occurs.
+Version/auth probes retain their original arguments and the same six-variable environment.
+
+The combined UTF-8 system plus exact stdin limit is 4096 bytes (at most 2672 stdin bytes).
+Measure it before dispatch intent and again before any subscription child command. Safe bound
+lengths include system, submitted and prompt bytes; JSON escaping and multibyte text count.
+The stdin-only policy/description/Seven/approved Eight declaration remains 4096 as well.
 Input overflow preserves the turn/context and lengths and holds before model launch. No trimming,
 summarization, context dropping or second call is permitted. Independent bounds are Decision
 16384, raw terminal 65536, source/terminal metadata 8192 each, backing capture capacity 1048576,
 output tokens 2048 and model timeout 120000 ms. Seven reserves 330416 response bytes before
 physical invocation: receipt210264 + rawbase6487384 + answer16384 + 2×metadata8192. Existing
 retained input and other captures also consume backing capacity.
+
+The original eleven-field source-contract and terminal authority attestations remain exact.
+A separate signed `evidence-record` has predicate `preview-invocation-binding`, strength
+`attestation`, source `probe`, subject the prepared ProviderJudgmentRequest record id and ID
+`proof:preview-invocation-binding:<q.id>`. Its complete canonical claim is captured: schemaVersion
+1; activationReference/activationDigest/profileDigest; invocationPolicyDigest/systemPromptDigest;
+framing `preview-decision-system-v2`; complete frozen invocationPolicy; full request/prepared fact
+references including contentHash; effectRequest, run, attempt, submitted and submittedDigest.
+Policy/profile/activation digests hash canonical objects; systemPromptDigest hashes the raw UTF-8
+literal. submittedDigest remains the canonical-string hash of exact stdin. This local attestation
+identifies policy plus input; it is not independent execution proof and never enters Ten's source
+or terminal roster, Nine's response subject, or Seven's answer evidence.
+
+Append it after genuine Seven/Eight preparation and before dispatch intent. Repeated preparation
+requires exactly one identical claim/capture/join. An interrupted append can finish only before
+claim/consumption; missing evidence after dispatch is corruption. Preview preparation, dispatch
+and historical readers verify the signed chain, complete capture, owner joins, policy/system
+identity and combined bound. Legacy v1 history remains inspectable without retrofitting this
+fact; v2 policy or successor lineage requires it once preparation has completed.
 
 Selection persists an epoch-millisecond start and deadline exactly 300000 ms apart. Six's original
 lease and loop use that same clock domain as Eight current and Seven deadline. At least five
@@ -235,6 +262,46 @@ source latch or refills a budget. Update the activation's base configuration dig
 inherited target root. Arm before inviting one short new synthetic question; queued messages
 at/before cutoff are retained but ineligible.
 
+The retained first-live result was complete non-JSON prose: Seven refused it, no Telegram
+answer was sent, and the original provider slot/accounting remains unresolved. Its exact raw
+terminal fixture is base64 of 2115 bytes, raw SHA-256
+`df778ebf53e5957f1acef58d57c2ed3999cac637ae842aebd43256ab295d2ced`;
+the extracted answer digest is
+`44bf61d917e29ebaec6cb74910fee44fd792fea1b6ca670fcfa1dad0c0352b5f`.
+Synthetic channel-sensitive successes establish plumbing only, not real-model compliance.
+
+For this sole failure class, after reviewed/gated landing the desk may invoke the separate async
+`cutoverRefusedStage2Root` once. `cutoverPreviewRoot` still refuses every S2 predecessor. Supply
+canonical existing empty sibling target/source, the two complete configurations differing only
+in root, cutoff, local poller AND child exit evidence, new activation, frozen profile and exact
+model ID. Preserve the original trial and fixed expiry; at least 300000 ms must remain. Refresh
+account/extra-usage/limit observations without a model smoke call. Use a new activation reference
+and profile descriptor reference linked through profile.activationReference, the same isolated
+login/executable/account, the new-root configuration digest, reviewed head and current policy digest.
+The activation schema has no new fields. The helper neither arms nor launches anything.
+
+The strict signed predecessor proof requires held/REFUSED, consumed slot 1, the complete terminal
+prose response, genuine Nine assessment/Eight settlement/Six application and zero acceptance,
+reply Run, pair, outbound request/message or reply dispatch anywhere. It retains UNKNOWN charge
+and quiescence, actualCharge -1, unresolved 1, released/retryEligible/exposure 0 with store identity.
+It rejects prior S2 successor lineage, locks, live lease, expiry, corrupted evidence and JSON answers.
+Exclusive fsynced `wx` reservation at the canonical parent's
+`.preview-s2-framing-v2-<raw-sha256-trial-id>.json` happens before copying. Reservation and target
+predecessor record bind activation/profile/policy digests plus systemPromptDigest and framing,
+cutoff, stop evidence, original expiry, failed response/operation and unresolved obligation.
+The target binds reservationDigest; completion binds archive inventory and predecessor-record
+digests, avoiding a hash cycle. A partial/corrupt marker or copy holds permanently for desk
+disposition; the helper never deletes, retries, rearms or chooses another target.
+
+The complete source is archived unchanged, including its stopped/latching S2 store. Only outer
+history is inherited actively. Every old turn (including update 969389544) is excluded and the
+cursor retained. Startup/restart verifies marker, archive, predecessor, actual policy/activation,
+sidecar and, once prepared, the signed binding. Historical reconstruction verifies the same
+retained joins without live authority. One new post-cutoff update may create a fresh same-store
+provider/reply pair for activation 2 of maximum 2; success or hold burns that slot. A third
+activation requires another disposition. The fresh local Six ledger is not a restored trial
+budget: retain both outcomes and store identities; neither attempt proves charge or quiescence.
+
 Retain activation/evidence labels, selected update/context, raw requests/responses and hashes,
 Seven receipt/acceptance, Nine assessment, original Eight/Six UNKNOWN join, both Five Runs and
 groundings, pair/loops/reservations/claims, exact prepared labelled payload, Telegram response and
@@ -249,8 +316,8 @@ Stage 1 cases, provider boot/raw evidence, T3, both T4 files and landed pair sui
 six-worker gate, after reviewed commits/pins/regeneration and a matching build, is:
 
 ```sh
-/Users/dabombstudio/.instar/agents/echo/.instar/lanes/desk-par-gate.sh /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-preview-s2 preview-s2-final parallel
+/Users/dabombstudio/.instar/agents/echo/.instar/lanes/desk-par-gate.sh /Users/dabombstudio/.instar/agents/echo/.worktrees/seam-preview-s2-v2 preview-s2-framing-v2-round2 parallel
 ```
 
-Register-wiring's known source-pin dependency for `src/rungraph/index.ts` is desk-owned; the
+Register-wiring's expected final-content pin dependency at `check-register-wiring.mjs:308` is desk-owned; the
 builder does not alter that checker, owner manifests, pins, generated artifacts or full-gate setup.
