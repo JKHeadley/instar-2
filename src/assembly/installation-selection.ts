@@ -25,6 +25,28 @@ export interface InstallationSelection {
   /** Canonical One Clock bytes, or the explicit unbounded-time marker. */
   readonly validUntil: string;
 }
+export interface InstallationSelectionSet {
+  readonly type: 'InstallationSelectionSet'; readonly schemaVersion: 1; readonly id: string;
+  readonly installation: string; readonly machine: string; readonly scope: string;
+  readonly generation: string; readonly rows: readonly InstallationSelection[];
+}
+/** Exact fixed-profile slots. The replicated prefix is present only in the peer-backed arm. */
+export const installationSelectionSlots = Object.freeze([
+  ['operator-surface', 'operator-surface-registration'],
+  ['challenge-verifier', 'operator-challenge-verifier-binding'],
+  ['verified-act-intake', 'intake-verified-act-binding'],
+  ...['minimal.intake-ledger', 'minimal.principal-binding', 'minimal.run-view',
+    'minimal.outbound-obligation', 'minimal.authority-queue', 'minimal.guard-repair']
+    .map(instance => ['minimal-plane-fold', instance]),
+  ['minimal-plane-replay', 'minimal-plane-replay-binding'],
+  ['minimal-responder', 'minimal-responder-binding'],
+  ['prerequisite-cut', 'prerequisite-cut'], ['prerequisite-recovery', 'prerequisite-recovery'],
+  ['delivery-witness', 'platform-delivery-witness-binding'],
+  ['fact-segment', 'fact-local-durable-segment'],
+  ['fact-segment', 'fact-replication-receipt'],
+  ['verification-clock', 'clock-source'], ['conversation-route', 'conversation-route'],
+  ['delivery-evidence-service', 'delivery-evidence-service'],
+] as const);
 export interface InstallationRecordGeneration {
   readonly register: VerifiedRegister; readonly context: RegisterContext;
 }
@@ -47,7 +69,13 @@ const shape = { kind: 'object', fields: {
   role: text, instance: text, implementation: text, owner: text, generation: text,
   references: { kind: 'array', maxLength: 128, items: text }, validUntil: text,
 } } satisfies OwnedShape;
+const setShape: OwnedShape = { kind: 'object', fields: {
+  type: text, schemaVersion: { kind: 'integer' }, id: text, installation: text,
+  machine: text, scope: text, generation: text,
+  rows: { kind: 'array', maxLength: 20, items: shape },
+} };
 const active = new WeakMap<InstallationRecordAdmission, string>();
+const activeSet = new WeakMap<InstallationRecordAdmission, string>();
 const ownerDirectories: Readonly<Record<string, string>> = {
   'part-two': 'facts', 'part-three': 'register', 'part-four': 'intake', 'part-five': 'rungraph',
   'part-six': 'transport', 'part-seven': 'judgment', 'part-eight': 'effects', 'part-nine': 'verification',
@@ -122,6 +150,7 @@ export function installationRecordBasis(record: Readonly<{ installation: string;
   if (origin) {
     const paths: Readonly<Record<string, string>> = {
       'assembly-InstallationSelection': 'src/assembly/installation-selection.ts',
+      'assembly-InstallationSelectionSet': 'src/assembly/installation-selection.ts',
       'assembly-ProductionSignerReference': 'src/assembly/production-signer-reference.ts',
     };
     const declared = take(readRegisterEntry(origin.kind, admission.generation.register, admission.generation.context));
@@ -254,6 +283,15 @@ function validateFresh(input: unknown, context: OwnedBodyContext, admission: Ins
   const basis = installationRecordBasis(record, admission, context.facts, context.origin);
   ensure(admission.packageRecords.some(candidate => encoded(candidate).bytes === encoded(record).bytes),
     'selection: body not in approved package');
+  validateRow(record, context, admission, basis, false);
+  if (context.mode === 'origin') {
+    ensure(active.get(admission) === encoded(record).hash, 'selection: active owner admission guard required');
+    ensure(record.generation === context.facts.decode.register.generation.id, 'selection: stale generation');
+  }
+  return record;
+}
+function validateRow(record: InstallationSelection, context: OwnedBodyContext,
+  admission: InstallationRecordAdmission, basis: ReturnType<typeof installationRecordBasis>, setRow: boolean): void {
   declaration(record.implementation, record.owner, admission);
   const owners = new Set<string>();
   const factKinds = new Set<string>();
@@ -297,7 +335,7 @@ function validateFresh(input: unknown, context: OwnedBodyContext, admission: Ins
     : record.role === 'conversation-route' ? ['part-four', 'part-twelve']
     : ['delivery-witness', 'delivery-evidence-service'].includes(record.role) ? ['part-nine', 'part-twelve'] : [record.owner];
   ensure(requiredOwners.every(owner => owners.has(owner)), 'selection: role-specific owner references missing');
-  if (record.role === 'minimal-responder') ensure(factKinds.has('transport-AdmissionReservation'),
+  if (record.role === 'minimal-responder') ensure(factKinds.has(setRow ? 'transport-CapacityReservation' : 'transport-AdmissionReservation'),
     'selection: Six reservation fact required');
   if (record.role === 'conversation-route') ensure(factKinds.has('conversation-binding'),
     'selection: Four conversation binding fact required');
@@ -314,11 +352,6 @@ function validateFresh(input: unknown, context: OwnedBodyContext, admission: Ins
     ensure(horizon.subject.kind === 'clock' && horizon.subject.instance === context.origin.at.subject.instance
       && horizon.unit === context.origin.at.unit && horizon.value >= context.origin.at.value, 'selection: invalid owner-comparable horizon');
   }
-  if (context.mode === 'origin') {
-    ensure(active.get(admission) === encoded(record).hash, 'selection: active owner admission guard required');
-    ensure(record.generation === context.facts.decode.register.generation.id, 'selection: stale generation');
-  }
-  return record;
 }
 export function decodeInstallationSelectionAtOrigin(input: unknown, context: OwnedBodyContext,
   admission: InstallationRecordAdmission): Result<InstallationSelection> {
@@ -368,5 +401,129 @@ export function recordInstallationSelection(input: unknown, writer: Installation
       principal: json(writer.principal), provenance: json(writer.principal.provenance), at: json(writer.at), body: json({ record }), required },
     writer.context, writer.store, writer.privateKey)).fact; }
     finally { active.delete(writer.admission); }
+  });
+}
+
+function closedSet(input: unknown): InstallationSelectionSet {
+  const value = JSON.parse(encoded(input).bytes) as InstallationSelectionSet;
+  ensure(value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).sort().join(',') === 'generation,id,installation,machine,rows,schemaVersion,scope,type',
+  'selection set: closed fields required');
+  ensure(value.type === 'InstallationSelectionSet' && value.schemaVersion === 1,
+    'selection set: type/version');
+  for (const field of ['id', 'installation', 'machine', 'scope', 'generation'] as const)
+    ensure(typeof value[field] === 'string' && value[field].length > 0 && value[field].length <= 4096,
+      `selection set: bounded ${field} required`);
+  ensure(Array.isArray(value.rows) && value.rows.length >= 19 && value.rows.length <= 20,
+    'selection set: exact applicable roster required');
+  const rows = value.rows.map(closed);
+  ensure(rows.every(row => row.installation === value.installation && row.machine === value.machine
+    && row.scope === value.scope && row.generation === value.generation),
+  'selection set: mixed installation, machine, scope or generation');
+  const sorted = [...rows].sort((a, b) => a.role < b.role ? -1 : a.role > b.role ? 1
+    : a.instance < b.instance ? -1 : a.instance > b.instance ? 1 : 0);
+  ensure(encoded(sorted).bytes === encoded(rows).bytes, 'selection set: canonical row order required');
+  const slot = (row: InstallationSelection) => `${row.role}:${row.instance}`;
+  ensure(new Set(rows.map(slot)).size === rows.length && new Set(rows.map(row => row.id)).size === rows.length,
+    'selection set: duplicate slot or row digest');
+  const required = installationSelectionSlots.filter(([role, instance]) =>
+    !(role === 'fact-segment' && instance === 'fact-replication-receipt' && rows.length === 19));
+  ensure(rows.filter(row => row.role !== 'scope-protection').length === required.length
+    && required.every(([role, instance]) => rows.some(row => row.role === role && row.instance === instance))
+    && rows.filter(row => row.role === 'scope-protection').length === 1,
+  'selection set: missing, excess or wrong instance');
+  const { id, ...fields } = value;
+  ensure(id === encoded(fields).hash, 'selection set: immutable digest differs');
+  return freeze({ ...value, rows });
+}
+function setConflicts(record: InstallationSelectionSet, facts: FactContext): FactEnvelope[] {
+  const sameKey = (other: { installation: string; machine: string; scope: string; generation: string }) =>
+    other.installation === record.installation && other.machine === record.machine
+      && other.scope === record.scope && other.generation === record.generation;
+  // The opened history is already supplied by Two. Re-entering its whole
+  // snapshot decoder here would recursively decode this same set.
+  const sets = facts.facts.filter(fact => fact.kind === 'assembly-InstallationSelectionSet'
+    && sameKey((fact.body as unknown as { record: InstallationSelectionSet }).record));
+  ensure(sets.every(fact => encoded(fact.body).bytes === encoded({ record }).bytes),
+  'selection set: immutable same-key conflict inhibits scope');
+  ensure(sets.length <= 1, 'selection set: duplicate envelope inhibits scope');
+  const singles = facts.facts.filter(fact => fact.kind === 'assembly-InstallationSelection'
+    && sameKey((fact.body as unknown as { record: InstallationSelection }).record));
+  for (const fact of singles) {
+    const single = (fact.body as unknown as { record: InstallationSelection }).record;
+    const row = record.rows.find(candidate => candidate.role === single.role && candidate.instance === single.instance);
+    ensure(row && encoded(row).bytes === encoded(single).bytes,
+    'selection set: conflicting singleton row in opened history');
+  }
+  return sets;
+}
+function validateSet(input: unknown, context: OwnedBodyContext,
+  admission: InstallationRecordAdmission): InstallationSelectionSet {
+  const record = closedSet(input);
+  ensure(context.origin.kind === 'assembly-InstallationSelectionSet' && record.scope === admission.scopeId,
+    'selection set: wrong fact kind or scope');
+  if (context.mode === 'origin') ensure(activeSet.get(admission) === encoded(record).hash,
+    'selection set: active owner admission guard required');
+  const basis = installationRecordBasis(record, admission, context.facts, context.origin);
+  ensure(admission.packageRecords.some(candidate => encoded(candidate).bytes === encoded(record).bytes),
+    'selection set: body not in approved package');
+  const failures: string[] = [];
+  for (const row of record.rows) {
+    try { validateRow(row, context, admission, basis, true); }
+    catch (error) { failures.push(`${row.role}/${row.instance}/${row.id}: ${error instanceof Error ? error.message : 'unresolved owner'}`); }
+  }
+  ensure(failures.length === 0, `selection set: unresolved rows: ${failures.join('; ')}`);
+  if (context.mode === 'origin') ensure(record.generation === context.facts.decode.register.generation.id,
+    'selection set: stale generation');
+  setConflicts(record, context.facts);
+  return record;
+}
+export function decodeInstallationSelectionSetAtOrigin(input: unknown, context: OwnedBodyContext,
+  admission: InstallationRecordAdmission): Result<InstallationSelectionSet> {
+  return boundary('InstallationSelectionSetOrigin', input, admission.boundary, () => {
+    ensure(context.mode === 'origin', 'selection set: origin mode required');
+    return validateSet(input, context, admission);
+  });
+}
+export function decodeHistoricalInstallationSelectionSet(input: unknown, context: OwnedBodyContext,
+  admission: InstallationRecordAdmission): Result<InstallationSelectionSet> {
+  return boundary('InstallationSelectionSetHistorical', input, admission.boundary, () => {
+    ensure(context.mode === 'historical', 'selection set: historical mode required');
+    return validateSet(input, context, admission);
+  });
+}
+export function installationSelectionSetSchemas(scope: Scope): readonly FactSchema[] {
+  return [{ kind: 'assembly-InstallationSelectionSet', version: 1,
+    fields: { record: { kind: 'owned', owner: 'part-ten', name: 'InstallationSelectionSet' } },
+    machineScope: 'shared', standing: 'delegate', action: 'work', scope, causallyBound: true,
+    requiredReferences: [], authority: 'none' }];
+}
+export function registerInstallationSelectionSetBody(admission: InstallationRecordAdmission): Result<OwnedBodyRegistration> {
+  return registerOwnedBody({ name: 'InstallationSelectionSet', owner: 'part-ten', currentVersion: 1,
+    versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {}, decodeCurrent: (value, context) => {
+      try { return { ok: true, value: take((context.mode === 'origin' ? decodeInstallationSelectionSetAtOrigin
+        : decodeHistoricalInstallationSelectionSet)(value, context, admission)) }; }
+      catch (error) { return { ok: false, detail: error instanceof Error ? error.message : 'selection set refused' }; }
+    } }, setShape, admission.boundary);
+}
+export function recordInstallationSelectionSet(input: unknown, writer: InstallationRecordWriter): Result<FactEnvelope> {
+  return boundary('RecordInstallationSelectionSet', input, writer.admission.boundary, () => {
+    const record = closedSet(input), facts = { ...writer.context, facts: take(writer.store.read()) };
+    const basis = installationRecordBasis(record, writer.admission, facts);
+    ensure(record.generation === writer.context.decode.register.generation.id,
+      'selection set: stale current generation');
+    ensure(writer.admission.packageRecords.some(candidate => encoded(candidate).bytes === encoded(record).bytes),
+      'selection set: body outside approved package');
+    installationRecordAuthor('assembly-InstallationSelectionSet', record, writer, basis);
+    const prior = setConflicts(record, facts);
+    if (prior[0]) return prior[0];
+    const required = [...new Set([...basis.required,
+      ...writer.context.grants.filter(row => row.grant.grantee.id === writer.principal.id).map(row => row.factId),
+      ...record.rows.flatMap(row => row.references).filter(id => facts.facts.some(fact => fact.id === id))])].sort();
+    activeSet.set(writer.admission, encoded(record).hash);
+    try { return take(authorAndAppend({ kind: 'assembly-InstallationSelectionSet', schemaVersion: 1,
+      machine: record.machine, principal: json(writer.principal), provenance: json(writer.principal.provenance),
+      at: json(writer.at), body: json({ record }), required }, writer.context, writer.store, writer.privateKey)).fact; }
+    finally { activeSet.delete(writer.admission); }
   });
 }

@@ -4,10 +4,10 @@ import { bindRunPairIssuer, withRunPairAdmission } from './run-pair.js';
 import type { BoundaryContext, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
-import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, RunPairAdmission, ScanCursor,
+import type { AdmissionReservation, BoundedDueScanPort, CapacityReservation, CapacitySuccessorInput, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, ReserveCapacityInput, RunPairAdmission, ScanCursor,
   SettlementAccountingInput, SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, checkPairParent, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
+import { capacityHeads, capacityRemainder, checkFence, checkPairParent, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows, withCapacityOriginGuard,
   validateScanGeneration, validateTransition } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
@@ -142,13 +142,16 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     validateTransition(r, all, host, true, take(spine.store.read()));
     const required = r.predecessor ? [r.predecessor] : [];
     if (r.type === 'SettlementApplication') required.push(r.settlementFact);
+    if (r.type === 'CapacityReservation') required.push(r.approval, r.grant);
     if (r.type === 'RunPairAdmission') required.push(r.opening, r.acceptance, r.obligation);
     if (r.type === 'AdmissionReservation' && all.some(p => p.record.type === 'RunPairAdmission')) {
       const request = take(spine.store.read()).find(f => f.kind === 'effect-EffectRequest'
         && (f.body as { record: { id: string } }).record.id === r.request);
       if (request) required.push(request.id);
     }
-    const receipt = take(spine.append(r, [...new Set(required)]));
+    const receipt = take(r.type === 'CapacityReservation'
+      ? withCapacityOriginGuard(host, r, () => spine.append(r, [...new Set(required)]))
+      : spine.append(r, [...new Set(required)]));
     ensure(!receipt.taint.length, 'append was provisional or contested');
     ensure(receipt.fact.kind === kindFor(r.type) && encoded(receipt.fact.body).bytes === encoded({ record: r }).bytes, 'append returned different record');
     if (r.type === 'AdmissionReservation' && r.durability === 'replicated')
@@ -204,6 +207,76 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
   };
   const authority: TransportAuthority<S> = Object.freeze({
     inspect: () => boundary('TransportInspect', null, c, read),
+    inspectCapacity: () => boundary('CapacityInspect', null, c, () => {
+      const all = read(), policy = host.capacityPolicy;
+      ensure(policy, 'finite parent capacity policy required');
+      const now = host.monotonic(), lease = latestLease(all)?.record;
+      return freeze({ sourceFrontier: all.at(-1)?.fact.id ?? '',
+        history: all.filter(row => row.record.type === 'CapacityReservation'),
+        heads: capacityHeads(all).map(row => {
+          const blocker = row.record.state === 'released' ? 'released'
+            : !lease || lease.state !== 'held' ? 'lease absent'
+            : lease.authority !== host.authorityIncarnation || lease.incarnation !== host.incarnation ? 'authority changed'
+            : lease.expires <= now ? 'lease expired'
+            : row.record.validUntil.value <= now ? 'capacity expired'
+            : lease.generation !== row.record.generation ? 'generation changed'
+            : row.record.fence.epoch !== lease.epoch && row.record.incarnation === host.incarnation ? 'fence changed'
+            : null;
+          return { capacity: row.record.capacity, fact: row.fact.id, record: row.record,
+            usable: blocker === null, blocker };
+        }), parentRemainder: capacityRemainder(all, host) });
+    }),
+    reserveCapacity: (input: ReserveCapacityInput) => checked('CapacityReserve', input, () => {
+      const all = read(), policy = host.capacityPolicy;
+      ensure(policy, 'finite parent capacity policy required');
+      const priorCommand = all.find(row => row.record.command === input.command);
+      if (priorCommand) {
+        ensure(priorCommand.record.type === 'CapacityReservation' && priorCommand.record.transition === 'reserve'
+          && priorCommand.record.installation === input.installation && priorCommand.record.scope === input.scope
+          && priorCommand.record.instance === input.instance && priorCommand.record.approval === input.approval
+          && priorCommand.record.grant === input.grant && priorCommand.record.predecessor === input.expected
+          && encoded(priorCommand.record.fence).bytes === encoded(input.fence).bytes
+          && encoded(priorCommand.record.allocation).bytes === encoded(input.allocation).bytes
+          && encoded(priorCommand.record.validUntil).bytes === encoded(input.validUntil).bytes,
+        'capacity command changed');
+        return priorCommand.record;
+      }
+      ensure(input.expected === (all.at(-1)?.fact.id ?? ''), 'conditional predecessor changed');
+      const lease = fence(all, input.fence), m = meta(all, input.command);
+      const capacity = `capacity:${encoded([input.installation, host.machine, input.scope, input.instance,
+        policy.reference, lease.generation]).hash}`;
+      return write(all, { ...m, type: 'CapacityReservation', capacity,
+        installation: input.installation, machine: host.machine, scope: input.scope, instance: input.instance,
+        generation: lease.generation, budgetPolicy: policy.reference, approval: input.approval, grant: input.grant,
+        ordinaryDomain: policy.ordinaryDomain, responderDomain: policy.responderDomain,
+        allocation: input.allocation, fence: input.fence, holder: lease.holder, incarnation: lease.incarnation,
+        validUntil: input.validUntil, transition: 'reserve', state: 'held', previousCapacity: '' } as CapacityReservation).record;
+    }),
+    rebindCapacity: (input: CapacitySuccessorInput) => checked('CapacityRebind', input, () => {
+      const all = read();
+      const priorCommand = all.find(row => row.record.command === input.command);
+      if (priorCommand) {
+        ensure(priorCommand.record.type === 'CapacityReservation' && priorCommand.record.transition === 'rebind'
+          && priorCommand.record.previousCapacity === input.previousCapacity
+          && encoded(priorCommand.record.fence).bytes === encoded(input.fence).bytes
+          && encoded(priorCommand.record.validUntil).bytes === encoded(input.validUntil).bytes,
+        'capacity rebind command changed');
+        return priorCommand.record;
+      }
+      const lease = fence(all, input.fence), old = capacityHeads(all).find(row => row.fact.id === input.previousCapacity);
+      ensure(old && old.record.state === 'held', 'current held capacity successor required');
+      const m = meta(all, input.command);
+      return write(all, { ...old.record, ...m, fence: input.fence, holder: lease.holder,
+        incarnation: lease.incarnation, validUntil: input.validUntil, transition: 'rebind',
+        previousCapacity: old.fact.id } as CapacityReservation).record;
+    }),
+    releaseCapacity: (input: CapacitySuccessorInput) => checked('CapacityRelease', input, () => {
+      // A caller cannot assert withdrawal or absence of child obligations. An
+      // independent withdrawal owner and child-use consumer are required.
+      const all = read(); fence(all, input.fence);
+      ensure(capacityHeads(all).some(row => row.fact.id === input.previousCapacity), 'current capacity successor required');
+      throw new Error('capacity release requires independently admitted withdrawal and child-use proof');
+    }),
     settle: (token, settlement) => checked('SettlementApply', { token }, () => {
       ensure(settlementConsumer, 'eight settlement consumer is not installed');
       requireSettlementConsumer(host, settlementConsumer);

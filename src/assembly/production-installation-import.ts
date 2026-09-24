@@ -13,17 +13,20 @@ import type { InstallationImmutableIO, VerifiedProductionBootstrap } from './pro
 import { decode } from '../index.js';
 import { decodeHistoricalInstalledRunGovernanceReference } from '../rungraph/index.js';
 import { decodeHistoricalProductionSignerReference } from './production-signer-reference.js';
-import { decodeHistoricalInstallationSelection, installationRecordBasis, installationRoleOwners } from './installation-selection.js';
+import { decodeHistoricalInstallationSelection, decodeHistoricalInstallationSelectionSet,
+  installationRecordBasis, installationRoleOwners, installationSelectionSlots } from './installation-selection.js';
 import type { InstallationRecordAdmission } from './installation-selection.js';
 import { installationSupervisorHold } from './production-installation-report.js';
 
 const recordKinds = Object.freeze({ InstallationSelection: 'assembly-InstallationSelection',
+  InstallationSelectionSet: 'assembly-InstallationSelectionSet',
   ProductionSignerReference: 'assembly-ProductionSignerReference',
   InstalledRunGovernanceReference: 'rungraph-installed-governance-reference' } as const);
 type ImportRecordType = keyof typeof recordKinds;
 /** Fields that identify "the same configuration slot"; an unequal record under the same key inhibits the scope. */
 const sameKeyFields: Readonly<Record<ImportRecordType, readonly string[]>> = Object.freeze({
   InstallationSelection: ['installation', 'scope', 'generation', 'role', 'instance'],
+  InstallationSelectionSet: ['installation', 'machine', 'scope', 'generation'],
   ProductionSignerReference: ['installation', 'machine', 'generation'],
   InstalledRunGovernanceReference: ['installation', 'generation'] });
 
@@ -79,6 +82,7 @@ io: InstallationImmutableIO, context: DecodeContext & BoundaryContext): Result<I
     // Semantic checks that need an actual signed origin remain explicitly held on append steps.
     const fields: Record<ImportRecordType, readonly string[]> = {
       InstallationSelection: ['type', 'schemaVersion', 'id', 'installation', 'machine', 'scope', 'role', 'instance', 'implementation', 'owner', 'generation', 'references', 'validUntil'],
+      InstallationSelectionSet: ['type', 'schemaVersion', 'id', 'installation', 'machine', 'scope', 'generation', 'rows'],
       ProductionSignerReference: ['type', 'schemaVersion', 'id', 'installation', 'machine', 'signer', 'keySet', 'generation', 'bootstrapDigest'],
       InstalledRunGovernanceReference: ['type', 'schemaVersion', 'id', 'installation', 'scope', 'generation', 'contract', 'feature', 'bound', 'gates', 'capture', 'groundingPolicy'],
     };
@@ -90,12 +94,47 @@ io: InstallationImmutableIO, context: DecodeContext & BoundaryContext): Result<I
         && Object.hasOwn(recordKinds, record.type) && record.schemaVersion === 1, `import: record ${index} is not an approved installation body`);
       const type = record.type as ImportRecordType, { id, ...body } = record;
       ensure(Object.keys(record).sort().join(',') === [...fields[type]].sort().join(','), `import: record ${index} closed owner body required`);
-      for (const field of fields[type].filter(field => !['schemaVersion', 'references', 'signer', 'gates', 'groundingPolicy'].includes(field)))
+      for (const field of fields[type].filter(field => !['schemaVersion', 'references', 'rows', 'signer', 'gates', 'groundingPolicy'].includes(field)))
         ensure(text(record[field]), `import: record ${index} required owner field ${field}`);
       ensure(typeof id === 'string' && id === encoded(body).hash, `import: record ${index} immutable digest differs`);
       ensure(record.installation === prepared.installation && record.generation === prepared.generation
         && (record.scope === undefined || record.scope === prepared.scope), `import: record ${index} is outside the package installation, scope or generation`);
-      if (type === 'InstallationSelection') {
+      if (type === 'InstallationSelectionSet') {
+        const rows = record.rows as readonly Readonly<Record<string, Json>>[];
+        ensure(Array.isArray(rows) && (rows.length === 19 || rows.length === 20),
+          'import: complete applicable set roster required');
+        const slots = new Set<string>(), digests = new Set<string>();
+        for (const row of rows) {
+          ensure(row && typeof row === 'object' && !Array.isArray(row)
+            && Object.keys(row).sort().join(',') === fields.InstallationSelection.slice().sort().join(',')
+            && row.type === 'InstallationSelection' && row.schemaVersion === 1,
+          'import: closed selection set row required');
+          const { id: rowId, ...rowFields } = row;
+          ensure(typeof rowId === 'string' && rowId === encoded(rowFields).hash
+            && row.installation === record.installation && row.machine === record.machine
+            && row.scope === record.scope && row.generation === record.generation,
+          'import: set row digest or shared basis differs');
+          ensure(typeof row.role === 'string' && Object.hasOwn(installationRoleOwners, row.role)
+            && row.owner === installationRoleOwners[row.role as keyof typeof installationRoleOwners],
+          'import: set row role owner differs');
+          const slot = `${row.role}:${row.instance}`;
+          ensure(!slots.has(slot) && !digests.has(rowId), 'import: duplicate set row slot or digest');
+          slots.add(slot); digests.add(rowId);
+          ensure(Array.isArray(row.references) && row.references.length > 0 && row.references.length <= 128
+            && row.references.every(text) && encoded(row.references).bytes === encoded([...new Set(row.references)].sort()).bytes,
+          'import: set row references differ');
+        }
+        const selected = installationSelectionSlots.filter(([role, instance]) =>
+          !(rows.length === 19 && role === 'fact-segment' && instance === 'fact-replication-receipt'));
+        ensure(selected.every(([role, instance]) => slots.has(`${role}:${instance}`))
+          && slots.size === selected.length + 1
+          && [...slots].filter(slot => slot.startsWith('scope-protection:')).length === 1,
+        'import: missing, excess or wrong set slot');
+        ensure(encoded(rows).bytes === encoded([...rows].sort((a, b) =>
+          String(a.role) < String(b.role) ? -1 : String(a.role) > String(b.role) ? 1
+            : String(a.instance) < String(b.instance) ? -1 : String(a.instance) > String(b.instance) ? 1 : 0)).bytes,
+        'import: set row order differs');
+      } else if (type === 'InstallationSelection') {
         ensure(typeof record.role === 'string' && Object.hasOwn(installationRoleOwners, record.role)
           && record.owner === installationRoleOwners[record.role as keyof typeof installationRoleOwners], 'import: exact role owner required');
         ensure(Array.isArray(record.references) && record.references.length > 0 && record.references.length <= 128
@@ -132,7 +171,9 @@ io: InstallationImmutableIO, context: DecodeContext & BoundaryContext): Result<I
         ensure(!row.taint.length && !row.conflicts.length, 'import: owner history unavailable or conflicted');
         const body = (row.fact.body as { record?: unknown }).record;
         const ownerContext = { ...input.admission.boundary, origin: row.fact, mode: 'historical' as const, facts: input.facts };
-        const decoded = row.fact.kind === recordKinds.InstallationSelection
+        const decoded = row.fact.kind === recordKinds.InstallationSelectionSet
+          ? take(decodeHistoricalInstallationSelectionSet(body, ownerContext, input.admission))
+          : row.fact.kind === recordKinds.InstallationSelection
           ? take(decodeHistoricalInstallationSelection(body, ownerContext, input.admission))
           : row.fact.kind === recordKinds.ProductionSignerReference
             ? take(decodeHistoricalProductionSignerReference(body, ownerContext, { ...input.admission, bootstrap: input.bootstrap }))

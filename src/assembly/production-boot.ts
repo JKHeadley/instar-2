@@ -108,7 +108,7 @@ export function bootProductionInstallation(record: unknown, host: ProductionBoot
       // The public boot resolves signed history and actual live handles. An
       // optimistic preflight cannot substitute for these owner admissions.
       const admitted = Object.fromEntries(requiredMinimalDependencies.map(name => [name,
-        coordinator.handles.dependencies[name].current === true])) as Record<MinimalDependency, boolean>;
+        coordinator.handles.dependencies[name]?.current === true])) as Record<MinimalDependency, boolean>;
       const current = take(productionSwitchOnPosture({ admitted, unavailableAdapters: [], repairOwner: host.repairOwner }, host.context));
       ensure(current.serve, `switch-on refused: missing binding ${current.missing.join(', ')}`);
       return Object.freeze({ owner: 'part-ten' as const, installation, posture: current, coordinator, close: storage.close });

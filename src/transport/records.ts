@@ -2,10 +2,10 @@ import { acceptedReplyOpening, acceptedReplyPreviewText } from '../rungraph/acce
 import { hashBytes } from '../facts/index.js';
 import { requireRunPairAdmission } from './run-pair.js';
 import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
-import type { BoundaryContext, Json, Result } from '../index.js';
+import type { BoundaryContext, Hash, Json, Result } from '../index.js';
 import { causalCone, registerOwnedBody } from '../facts/index.js';
-import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, RunPairAdmission, ScanCursor, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
+import type { FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
+import type { AdmissionReservation, CapacityAmount, CapacityParentPolicy, CapacityReservation, CapacityResource, CapacityVector, FenceToken, Lease, LoopPolicy, LoopRecord, RunPairAdmission, ScanCursor, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
@@ -14,6 +14,9 @@ const int = { kind: 'integer' } as const;
 const common = { type: txt, schemaVersion: int };
 const row = { ...common, domain: txt, command: txt, predecessor: txt, authority: txt, tick: int };
 const fence: OwnedShape = { kind: 'object', fields: { ...common, domain: txt, epoch: int, assignment: txt, holder: txt, machine: txt, incarnation: txt, authority: txt, generation: txt } };
+const amount: OwnedShape = { kind: 'object', fields: { quantity: int, unit: txt, window: txt } };
+const vector: OwnedShape = { kind: 'object', fields: { worker: amount, memory: amount, storage: amount, queue: amount, transport: amount, effect: amount } };
+const clock: OwnedShape = { kind: 'object', fields: { ...common, subject: { kind: 'object', fields: { kind: txt, instance: txt } }, value: int, unit: txt, at: int, by: txt } };
 const policy: OwnedShape = { kind: 'object', fields: { ...common, id: txt, maxAttempts: int, minDelay: int, maxDuration: int, timeout: int, concurrency: int, failDirection: txt, breaker: txt } };
 export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   Lease: { kind: 'object', fields: { ...row, epoch: int, holder: txt, machine: txt, incarnation: txt, generation: txt, expires: int, state: txt, operation: txt, term: int } },
@@ -27,9 +30,20 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
   SettlementApplication: { kind: 'object', fields: { ...row, operation: txt, request: txt, reservation: txt, claim: txt, digest: txt,
     settlement: txt, settlementFact: txt, settlementHash: txt, actualCharge: int, exposure: int, released: int, unresolved: int, capViolation: int, retryEligible: int } },
 });
+export const capacityReservationShape: OwnedShape = freeze({ kind: 'object', fields: { ...row, capacity: txt,
+  installation: txt, machine: txt, scope: txt, instance: txt, generation: txt,
+  budgetPolicy: txt, approval: txt, grant: txt, ordinaryDomain: txt, responderDomain: txt,
+  allocation: vector, fence, holder: txt, incarnation: txt, validUntil: clock,
+  transition: txt, state: txt, previousCapacity: txt } });
 export const runPairAdmissionShape: OwnedShape = freeze({ kind: 'object', fields: { ...row, profile: txt, provider: txt, reply: txt, opening: txt,
   acceptance: txt, originalPredecessor: txt, obligation: txt, operation: txt, answerDigest: txt, conversation: txt, budget: int, replyPolicy: policy } });
-const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication', 'RunPairAdmission'];
+const recordNames = ['Lease', 'AdmissionReservation', 'CapacityReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication', 'RunPairAdmission'];
+const capacityOriginGuard = new WeakMap<TransportHost, string>();
+export function withCapacityOriginGuard<T>(host: TransportHost, record: CapacityReservation, run: () => T): T {
+  ensure(!capacityOriginGuard.has(host), 'capacity owner append already active');
+  capacityOriginGuard.set(host, encoded(record).hash);
+  try { return run(); } finally { capacityOriginGuard.delete(host); }
+}
 export const kindFor = (name: string) => `transport-${name}`;
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
   return recordNames.map(name => ({ kind: kindFor(name), version: 1,
@@ -90,6 +104,60 @@ export function reservations(all: readonly TransportFact[]): AdmissionReservatio
   const ops = new Map<string, AdmissionReservation>();
   for (const { record: r } of all) if (r.type === 'AdmissionReservation') ops.set(r.operation, r);
   return [...ops.values()];
+}
+export const capacityResources = ['worker', 'memory', 'storage', 'queue', 'transport', 'effect'] as const;
+/** Exact operator-approved policy artifact; the approval fact itself is outside the digest. */
+export function capacityPolicyArtifact(policy: Omit<CapacityParentPolicy, 'reference' | 'approval'>): Hash {
+  return encoded({ owner: policy.owner, installation: policy.installation, machine: policy.machine,
+    scope: policy.scope, generation: policy.generation, ordinaryDomain: policy.ordinaryDomain,
+    responderDomain: policy.responderDomain, grant: policy.grant, parent: policy.parent,
+    required: policy.required, validUntil: policy.validUntil }).hash;
+}
+function resourceAmount(value: CapacityVector, resource: CapacityResource): CapacityAmount {
+  switch (resource) {
+    case 'worker': return value.worker;
+    case 'memory': return value.memory;
+    case 'storage': return value.storage;
+    case 'queue': return value.queue;
+    case 'transport': return value.transport;
+    case 'effect': return value.effect;
+  }
+}
+export function capacityHeads(all: readonly TransportFact[]): readonly (TransportFact & { readonly record: CapacityReservation })[] {
+  const heads = new Map<string, TransportFact & { readonly record: CapacityReservation }>();
+  for (const entry of all) if (entry.record.type === 'CapacityReservation') heads.set(entry.record.capacity,
+    entry as TransportFact & { readonly record: CapacityReservation });
+  return [...heads.values()];
+}
+export function capacityVectorCheck(value: CapacityVector, policy?: CapacityVector): void {
+  shapeCheck(value, vector);
+  for (const resource of capacityResources) {
+    const amount = resourceAmount(value, resource);
+    ensure(Number.isSafeInteger(amount.quantity) && amount.quantity >= 0 && amount.unit.length > 0
+      && amount.window.length > 0, 'finite capacity amount, unit and window required');
+    if (policy) ensure(amount.unit === resourceAmount(policy, resource).unit
+      && amount.window === resourceAmount(policy, resource).window,
+      'capacity policy unit or window changed');
+  }
+}
+export function capacityRemainder(all: readonly TransportFact[], host: TransportHost): CapacityVector {
+  const policy = host.capacityPolicy;
+  ensure(policy, 'finite parent capacity policy required');
+  ensure(policy.reference === capacityPolicyArtifact(policy), 'approved parent capacity policy artifact differs');
+  capacityVectorCheck(policy.parent); capacityVectorCheck(policy.required, policy.parent);
+  const heads = capacityHeads(all);
+  ensure(heads.every(row => row.record.budgetPolicy === policy.reference
+    && row.record.installation === policy.installation && row.record.machine === policy.machine
+    && row.record.scope === policy.scope && row.record.generation === policy.generation
+    && row.record.ordinaryDomain === policy.ordinaryDomain
+    && row.record.responderDomain === policy.responderDomain),
+  'capacity head differs from the approved parent policy');
+  return Object.fromEntries(capacityResources.map(resource => {
+    const parent = resourceAmount(policy.parent, resource), held = heads.filter(row => row.record.state === 'held')
+      .reduce((n, row) => n + resourceAmount(row.record.allocation, resource).quantity, 0);
+    ensure(Number.isSafeInteger(held) && held <= parent.quantity, 'parent capacity overspent');
+    return [resource, freeze({ ...parent, quantity: parent.quantity - held })];
+  })) as CapacityVector;
 }
 export function latestScanCursor(all: readonly TransportFact[], scan: string): (TransportFact & { readonly record: ScanCursor }) | undefined {
   return all.filter((v): v is TransportFact & { readonly record: ScanCursor } => v.record.type === 'ScanCursor' && v.record.scan === scan).at(-1);
@@ -202,6 +270,58 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(r.holder === p.holder && r.machine === p.machine && r.incarnation === p.incarnation && r.generation === p.generation, 'renew/release changed owner');
     }
     ensure(r.expires > r.tick && r.expires - r.tick <= host.maxLeaseTerm, 'lease term outside finite bound');
+  } else if (r.type === 'CapacityReservation') {
+    const lease = active(), policy = host.capacityPolicy;
+    ensure(policy && policy.owner === 'part-ten' && policy.reference === capacityPolicyArtifact(policy),
+      'approved finite parent capacity policy required');
+    ensure(policy.installation === r.installation && policy.machine === r.machine && policy.scope === r.scope
+      && policy.generation === r.generation && policy.ordinaryDomain === r.ordinaryDomain
+      && policy.responderDomain === r.responderDomain && r.ordinaryDomain === host.domain
+      && r.responderDomain !== host.domain, 'capacity policy, generation or domain differs');
+    ensure(r.budgetPolicy === policy.reference && r.instance === 'minimal-responder-binding'
+      && r.capacity === `capacity:${encoded([r.installation, r.machine, r.scope, r.instance, r.budgetPolicy, r.generation]).hash}`,
+    'capacity stable identity differs');
+    capacityVectorCheck(r.allocation, policy.parent);
+    for (const resource of capacityResources) ensure(resourceAmount(r.allocation, resource).quantity
+      === resourceAmount(policy.required, resource).quantity,
+      'capacity differs from approved required allocation');
+    ensure(r.approval === policy.approval && r.grant === policy.grant && r.approval.length > 0 && r.grant.length > 0
+      && facts.some(fact => fact.id === r.approval && fact.kind === 'intake-verified-act'
+        && (fact.body as { record?: { disposition?: string; artifact?: string; generation?: string } }).record?.disposition === 'approved'
+        && (fact.body as { record?: { artifact?: string } }).record?.artifact === policy.reference
+        && (fact.body as { record?: { generation?: string } }).record?.generation === r.generation)
+      && facts.some(fact => fact.id === r.grant && fact.kind === 'genesis-grant'
+        && (fact.body as { grant?: { grantee?: { id?: string } } }).grant?.grantee?.id === r.holder)
+      && r.holder === lease.holder
+      && r.incarnation === lease.incarnation && r.generation === lease.generation
+      && encoded(r.fence).bytes === encoded(fenceFor(all, lease)).bytes, 'capacity approval, grant or current assignment differs');
+    const horizon = take(decodeMeasurement('clock', r.validUntil, host.current().decode));
+    const approvedHorizon = take(decodeMeasurement('clock', policy.validUntil, host.current().decode));
+    ensure(horizon.subject.instance === approvedHorizon.subject.instance && horizon.unit === approvedHorizon.unit
+      && horizon.value <= approvedHorizon.value && horizon.value > r.tick && horizon.value <= lease.expires,
+    'capacity horizon exceeds policy or lease');
+    const head = capacityHeads(all).find(row => row.record.capacity === r.capacity);
+    if (r.transition === 'reserve') {
+      ensure(r.state === 'held' && r.previousCapacity === '' && !head, 'capacity reserve must be unique');
+      for (const resource of capacityResources) ensure(resourceAmount(r.allocation, resource).quantity
+        <= resourceAmount(capacityRemainder(all, host), resource).quantity,
+        'parent capacity exhausted');
+      ensure(policy.parent.effect.unit === 'charge' && policy.parent.effect.quantity <= host.budget
+        && reservations(all).filter(operation => operation.state !== 'closed')
+          .reduce((n, operation) => n + operation.charge, r.allocation.effect.quantity) <= policy.parent.effect.quantity,
+      'capacity plus retained operation charge exceeds finite parent');
+    } else {
+      ensure(head && r.previousCapacity === head.fact.id, 'capacity successor missing or ambiguous');
+      ensure(encoded({ ...r, command: '', predecessor: '', authority: '', tick: 0, fence: head.record.fence,
+        holder: head.record.holder, incarnation: head.record.incarnation, validUntil: head.record.validUntil,
+        transition: head.record.transition, state: head.record.state, previousCapacity: head.record.previousCapacity }).bytes
+        === encoded({ ...head.record, command: '', predecessor: '', authority: '', tick: 0 }).bytes,
+      'capacity successor changed immutable allocation');
+      if (r.transition === 'rebind') ensure(head.record.state === 'held' && r.state === 'held', 'rebind requires held capacity');
+      else ensure(r.transition === 'release' && head.record.state === 'held' && r.state === 'released', 'capacity transition invalid');
+    }
+    // A capacity fact cannot spend or schedule by itself. Its parent debit is
+    // reconstructed from the same signed source prefix as operation accounting.
   } else if (r.type === 'ScanCursor') {
     ensure(r.scan.length > 0 && r.generation.length > 0 && /^sha256:[a-f0-9]{64}$/.test(r.orderedKeysDigest), 'scan cursor identity');
     ensure(r.keyCount >= 0 && r.selectedFrom >= 0 && r.selectedCount >= 0 && r.nextIndex >= 0
@@ -297,7 +417,20 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           : latestApplication(all, p.operation) ?? { exposure: p.charge, unresolved: 1 }]));
         ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
           || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution or charge prohibits a new attempt; unproven accounting durability is unresolved');
-        ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= Math.min(host.budget, pair?.budget ?? host.budget), 'spend bound exhausted');
+        const held = host.capacityPolicy ? capacityHeads(all).filter(row => row.record.state === 'held') : [];
+        if (host.capacityPolicy) {
+          ensure(held.length === 1 && held.at(0)!.record.budgetPolicy === host.capacityPolicy.reference,
+            'required installation capacity absent or conflicted');
+          ensure(held.at(0)!.record.validUntil.value > r.tick && held.at(0)!.record.incarnation === lease.incarnation
+            && encoded(held.at(0)!.record.fence).bytes === encoded(fenceFor(all, lease)).bytes,
+          'installation capacity is not current for operation admission');
+          ensure(host.capacityPolicy.parent.effect.unit === 'charge'
+            && host.capacityPolicy.parent.effect.quantity <= host.budget, 'operation charge unit differs from finite parent');
+        }
+        const ordinaryBudget = host.capacityPolicy
+          ? host.capacityPolicy.parent.effect.quantity - held.reduce((n, row) => n + row.record.allocation.effect.quantity, 0)
+          : host.budget;
+        ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= Math.min(ordinaryBudget, pair?.budget ?? ordinaryBudget), 'spend bound exhausted');
         const loop = latestLoop(all, r.run); ensure(loop && loop.state !== 'stopped', 'durable recovery wake required before reservation');
       } else {
         const immutable = (v: AdmissionReservation) => ({ ...v, command: '', predecessor: '', tick: 0, authority: '', state: '', executor: '' });
@@ -319,6 +452,13 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
       const prior = latestLoop(all, r.run);
       if (!prior) {
+        if (host.capacityPolicy) {
+          const held = capacityHeads(all).filter(row => row.record.state === 'held');
+          ensure(held.length === 1 && held.at(0)!.record.validUntil.value > r.tick
+            && held.at(0)!.record.incarnation === lease.incarnation
+            && encoded(held.at(0)!.record.fence).bytes === encoded(fenceFor(all, lease)).bytes,
+          'required installation capacity absent or not current');
+        }
         ensure(!all.some(p => p.record.type === 'LoopRecord') || pair?.reply === r.run,
           'slice supports one run only');
         const opening = facts.find(f => f.kind === 'run-opening' && (f.body as { run?: string }).run === r.run);
@@ -366,9 +506,56 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
     }
   }
 }
+function decodeCapacity(input: unknown, context: OwnedBodyContext, host: TransportHost, origin: boolean): CapacityReservation {
+  shapeCheck(input, capacityReservationShape);
+  const record = input as CapacityReservation;
+  ensure(context.mode === (origin ? 'origin' : 'historical')
+    && context.origin.kind === kindFor('CapacityReservation') && record.type === 'CapacityReservation',
+  'capacity decoder kind or mode differs');
+  if (origin) ensure(capacityOriginGuard.get(host) === encoded(record).hash,
+    'capacity active owner append guard required');
+  ensure(context.origin.machine === host.machine && context.origin.principal.id === host.principal.id,
+    'capacity issuer is not this authority');
+  const historicalHost: TransportHost = origin ? host : { ...host,
+    capacityPolicy: historicalCapacityPolicy(record, context) };
+  const facts = causalCone(context.origin, context.facts.facts);
+  const past = rows(facts.filter(fact => fact.id !== context.origin.id), historicalHost.domain);
+  ensure(past.every(row => row.fact.machine === host.machine && row.fact.principal.id === host.principal.id),
+    'capacity predecessor issuer differs');
+  validateTransition(record, past, historicalHost, origin, facts);
+  if (origin) {
+    live(host);
+    ensure(record.authority === host.authorityIncarnation && record.tick <= host.monotonic()
+      && record.predecessor === (rows(context.facts.facts, host.domain).at(-1)?.fact.id ?? ''),
+    'capacity stale origin authority or predecessor');
+  }
+  return freeze(record);
+}
+function historicalCapacityPolicy(record: CapacityReservation, context: OwnedBodyContext): CapacityParentPolicy {
+  const capture = context.facts.captures[record.budgetPolicy];
+  ensure(capture?.status === 'available' && typeof capture.bytes === 'string'
+    && capture.hash === record.budgetPolicy && hashBytes(capture.bytes) === record.budgetPolicy,
+  'historical capacity policy artifact is unavailable');
+  const fields = JSON.parse(capture.bytes) as Omit<CapacityParentPolicy, 'reference' | 'approval'>;
+  ensure(Object.keys(fields).sort().join(',') ===
+    'generation,grant,installation,machine,ordinaryDomain,owner,parent,required,responderDomain,scope,validUntil',
+  'historical capacity policy is not closed');
+  ensure(capacityPolicyArtifact(fields) === record.budgetPolicy,
+    'historical capacity policy artifact differs');
+  return { ...fields, reference: record.budgetPolicy, approval: record.approval };
+}
+export function decodeCapacityReservationAtOrigin(input: unknown, context: OwnedBodyContext,
+  host: TransportHost, c: BoundaryContext): Result<CapacityReservation> {
+  return boundary('CapacityReservationOrigin', input, c, () => decodeCapacity(input, context, host, true));
+}
+export function decodeHistoricalCapacityReservation(input: unknown, context: OwnedBodyContext,
+  host: TransportHost, c: BoundaryContext): Result<CapacityReservation> {
+  return boundary('CapacityReservationHistorical', input, c, () => decodeCapacity(input, context, host, false));
+}
 export function registerTransportBodies<S = never>(host: TransportHost, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): Result<readonly OwnedBodyRegistration[]> {
   return boundary('TransportRegistrations', null, c, () => {
-    const registrations = Object.entries({ ...transportShapes, RunPairAdmission: runPairAdmissionShape }).map(([name, shape]) => take(registerOwnedBody({
+    const registrations = Object.entries({ ...transportShapes, CapacityReservation: capacityReservationShape,
+      RunPairAdmission: runPairAdmissionShape }).map(([name, shape]) => take(registerOwnedBody({
     name, owner: 'part-six', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, ctx) => {
       try {
@@ -380,6 +567,9 @@ export function registerTransportBodies<S = never>(host: TransportHost, c: Bound
           const past = rows(causalCone(ctx.origin, ctx.facts.facts), host.domain), lease = latestLease(past)?.record;
           ensure(lease && encoded(input).bytes === encoded(fenceFor(past, lease)).bytes, 'fence lacks committed assignment');
           if (ctx.mode === 'origin') { live(host); checkFence(past, input as unknown as FenceToken, host, host.monotonic()); }
+        }
+        else if (name === 'CapacityReservation') {
+          take((ctx.mode === 'origin' ? decodeCapacityReservationAtOrigin : decodeHistoricalCapacityReservation)(input, ctx, host, c));
         }
         else if (recordNames.includes(name)) {
           // The independently configured one-voter identity is invariant across

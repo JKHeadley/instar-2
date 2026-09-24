@@ -9,7 +9,7 @@ import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { prepareSnapshot } from '../facts/index.js';
 import type { FactContext } from '../facts/index.js';
 import type { OpenedProductionInstallationInspection } from './contracts.js';
-import { decodeHistoricalInstallationSelection } from './installation-selection.js';
+import { decodeHistoricalInstallationSelection, decodeHistoricalInstallationSelectionSet } from './installation-selection.js';
 import type { InstallationRecordAdmission, InstallationRole } from './installation-selection.js';
 import { productionMissingBindings } from './production-holds.js';
 
@@ -111,6 +111,15 @@ export function reportInstallationHolds(input: Readonly<{ installation: string; 
           ensure(record.installation === input.installation && record.scope === input.scope && record.generation === input.generation
             && record.role === preparationRoles[hold] && record.instance === verdict.subject && record.owner === owner,
           'report: configuration role or subject differs from hold');
+          prepared = fact.id;
+        } else if (fact.kind === 'assembly-InstallationSelectionSet') {
+          const set = take(decodeHistoricalInstallationSelectionSet((fact.body as { record?: unknown }).record,
+            { ...admission.boundary, origin: fact, mode: 'historical', facts: history }, admission));
+          ensure(set.installation === input.installation && set.scope === input.scope
+            && set.generation === input.generation, 'report: set installation, scope or generation differs');
+          const selected = set.rows.filter(record => record.role === preparationRoles[hold]
+            && record.instance === verdict.subject && record.owner === owner);
+          ensure(selected.length === 1, 'report: set configuration role or subject differs from hold');
           prepared = fact.id;
         }
       }

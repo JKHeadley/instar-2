@@ -8,6 +8,7 @@ import { registerVerificationBodies, verificationSchemas } from '../../src/verif
 import { factsFixture, privateKey, value } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
 import { assemblyInput } from './fixture.js';
+import { intakeFixture } from '../intake/fixtures.js';
 
 export const productionReferenceKinds = Object.freeze([
   'GrowthPolicy', 'Measurement', 'CheckRunRecord', 'ProbeRecord',
@@ -21,7 +22,9 @@ export const productionReferenceKinds = Object.freeze([
 
 export function assemblyRuntimeFixture(storageFactory?: (f: ReturnType<typeof factsFixture>) => SegmentStoragePort,
   options: { verifiedProbes?: boolean } = {}) {
-  const f = factsFixture(); let stopped = false; let now = 100; let context: FactContext = f.ctx;
+  const ownerFixture = storageFactory ? null : intakeFixture();
+  const f = ownerFixture?.f ?? factsFixture(); let stopped = false; let now = 100;
+  let generation = 'generation:fixture'; let context: FactContext = ownerFixture?.context ?? f.ctx;
   let store: FactStorePort; let spine: AssemblySpine; let historyContext: AssemblyDecodeContext;
   const history = Object.freeze({ owner: 'part-ten' as const,
     current: () => f.success(currentAssemblyRows(value(store.readForProjection()), historyContext)),
@@ -36,9 +39,9 @@ export function assemblyRuntimeFixture(storageFactory?: (f: ReturnType<typeof fa
     },
     resolve: (record: import('../../src/assembly/index.js').AssemblyRecord) => resolveAssemblyHistory(record, spine, historyContext),
   });
-  historyContext = Object.freeze({ ...f.c, history, validateReferences: true });
+  historyContext = { ...f.c, history, validateReferences: true };
   const host: AssemblyHost = { machine: 'machine-a', principal: f.alice, scope: f.scope, boundary: historyContext,
-    current: () => ({ facts: context, generation: 'generation:fixture', stopped, clock: f.clock(now) }) };
+    current: () => ({ facts: context, generation, stopped, clock: f.clock(now) }) };
   const registrations = value(registerAssemblyBodies(host));
   const probeSchemas: readonly FactSchema[] = options.verifiedProbes ? verificationSchemas(host as any)
     : [{ ...f.schema, kind: 'verification-ProbeRecord', fields: { id: { kind: 'text', maxLength: 2048 } } }];
@@ -50,14 +53,17 @@ export function assemblyRuntimeFixture(storageFactory?: (f: ReturnType<typeof fa
     { ...f.schema, kind: 'assembly-measurement-reference', fields: {
       id: { kind: 'text', maxLength: 2048 }, measurement: { kind: 'constitutional', type: 'Measurement' },
     } },
-    ...productionReferenceKinds.map(kind => ({ ...f.schema, kind, fields: { id: { kind: 'text' as const, maxLength: 2048 } } })),
+    ...productionReferenceKinds.filter(kind => !['transport-Lease', 'transport-FenceToken'].includes(kind))
+      .map(kind => ({ ...f.schema, kind, fields: { id: { kind: 'text' as const, maxLength: 2048 } } })),
   ];
-  context = { ...context,
-    schemas: [...context.schemas, ...assemblySchemas(host), ...referenceSchemas],
+  const additions = {
+    schemas: [...context.schemas, ...assemblySchemas(host),
+      ...referenceSchemas.filter(schema => !context.schemas.some(existing => existing.kind === schema.kind))],
     ownedBodies: [...context.ownedBodies ?? [], ...registrations,
       ...(options.verifiedProbes ? value(registerVerificationBodies(host as any)) : [])] };
+  context = ownerFixture ? Object.assign(ownerFixture.context, additions) : { ...context, ...additions };
   const raw: unknown[] = [];
-  const storage = storageFactory?.(f) ?? { owner: 'part-ten' as const, read: () => raw,
+  const storage = storageFactory?.(f) ?? ownerFixture?.storage ?? { owner: 'part-ten' as const, read: () => raw,
     append: (bytes: string, expected: string | null) => { const prior = raw.at(-1) as { contentHash?: string } | undefined;
       if ((prior?.contentHash ?? null) !== expected) throw new Error('compare-head mismatch'); raw.push(JSON.parse(bytes)); return f.success({ kind: 'local-durable' as const }); } };
   store = createFactStore(context, storage); spine = createAssemblySpine(host, { context, privateKey }, store);
@@ -87,6 +93,8 @@ export function assemblyRuntimeFixture(storageFactory?: (f: ReturnType<typeof fa
   // structural copy for legacy tests that add redundant schemas after fixture boot;
   // the store already owns every schema those tests use.
   const exposedContext = { ...context, schemas: [...context.schemas] };
-  return { ...f, c: historyContext, host, context: exposedContext, raw, storage, store, spine, composition, runtime, appendReference,
+  return { ...f, c: historyContext, host, context: exposedContext, raw: ownerFixture?.frames ?? raw,
+    ownerFixture, setGeneration: (id: string) => { generation = id; },
+    storage, store, spine, composition, runtime, appendReference,
     stop: (value = true) => { stopped = value; }, time: (value: number) => { now = value; }, protection: (value: typeof protectedPosture) => { protectedPosture = value; } };
 }

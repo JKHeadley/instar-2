@@ -370,6 +370,8 @@ export interface AssemblyResolvedProductionBinding {
   readonly fact: FactEnvelope;
   readonly completeness: 'complete' | 'partial';
   readonly missing: readonly string[];
+  /** Present only for a strict row of the real enclosing selection-set fact. */
+  readonly address: InstallationSelectionRowReference | null;
 }
 
 /** A row is addressed through its real enclosing set fact. The address is not
@@ -454,7 +456,8 @@ export interface AssemblyProductionCoordinator {
     replay: AssemblySourceOnlyReplayPort;
     minimalResponder: AssemblyMinimalResponderPort;
     dependencyAdmission: AssemblyDependencyAdmissionPort;
-    dependencies: Readonly<Record<MinimalDependency, AssemblyLiveDependencyHandle>>;
+    dependencies: Readonly<Record<Exclude<MinimalDependency, 'replication-peer'>, AssemblyLiveDependencyHandle>
+      & { readonly 'replication-peer'?: AssemblyLiveDependencyHandle }>;
     lifecycle: AssemblyPrerequisiteLifecyclePort;
     deliveryWitness: AssemblyPlatformDeliveryWitnessPort;
   }>;

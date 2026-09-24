@@ -18,7 +18,8 @@ import { requiredMinimalDependencies } from '../../src/operator/index.js';
 import { conversationFixture } from '../conversation/fixture.js';
 import { operatorFixture } from '../operator/fixture.js';
 import { createProductionBootOwnerFixture } from './production-boot-owner-fixture.js';
-import { productionBindingSet, productionComposition, appendProductionBindingFacts, productionPublicPorts } from './production-fixture.js';
+import { productionBindingSet, productionComposition, prepareProductionSelectionSet,
+  appendProductionBindingFacts, productionPublicPorts } from './production-fixture.js';
 import { assemblyInput } from './fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { value, privateKey, json } from '../facts/fixtures.js';
@@ -31,12 +32,15 @@ export function installedFixtureHost(root, route, options = {}) {
   const poll = readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8');
   const sent = readFileSync('tests/assembly/telegram-recorded/sendMessage.json', 'utf8');
   const bot = JSON.parse(getMe).result, t = conversationFixture({ botId: String(bot.id), skipInitialAdmission: true });
-  const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
-  c.register = { ...c.register, generation: { ...c.register.generation, id: 'generation:fixture' } };
   const secret = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'vault', name });
-  const record = { type: 'ProductionInstallation', schemaVersion: 1, id: 'host', generation: c.register.generation.id,
+  const initialRecord = { type: 'ProductionInstallation', schemaVersion: 1, id: 'host', generation: 'generation:fixture',
     botDeclaration: 'phone-surface', providerRoute: 'route', machineIdentity: 'machine-a', storageRoot: root,
     botCredential: t.declaration.token, providerCredential: secret('provider'), storageCredential: secret('storage') };
+  const prepared = prepareProductionSelectionSet({ ownerFixture: t.intake, setGeneration: () => {},
+    success: t.intake.f.success, c: {} },
+    productionBindingSet(), { capacityHolder: 'bob', installation: generation => ({ ...initialRecord, generation }) });
+  const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
+  const record = { ...initialRecord, generation: c.register.generation.id };
   let underlyingAdmission, state;
   // Same landed Six fixture binding, constructed inside configure over the root.
   const admission = createProductionRunAdmission({ resolve: () => underlyingAdmission });
@@ -47,8 +51,10 @@ export function installedFixtureHost(root, route, options = {}) {
       : reference.name === 'provider' ? 'synthetic-recorded-provider-credential' : '8820318295:synthetic_recorded_test_only_value',
     configure(installation, storage) {
       const initial = t.intake.context;
-      Object.assign(initial, { ownedBodies: [value(intakeWorkRegistration(c, t.intake.deps.author.principal.id)),
-        value(intakeStopRegistration(c, t.intake.deps.author.principal.id))] });
+      const intakeOwners = [value(intakeWorkRegistration(c, t.intake.deps.author.principal.id)),
+        value(intakeStopRegistration(c, t.intake.deps.author.principal.id))];
+      Object.assign(initial, { ownedBodies: [...(initial.ownedBodies ?? []).filter(row =>
+        !intakeOwners.some(own => own.owner === row.owner && own.name === row.name)), ...intakeOwners] });
       const recovery = options.recovery ? { ...options.recovery,
         captureBytes: Object.fromEntries(options.recovery.captures.map(reference => {
           const bytes = storage.captures.read(reference); if (bytes === null) throw Error(`recovery capture absent: ${reference}`);
@@ -83,7 +89,7 @@ export function installedFixtureHost(root, route, options = {}) {
           if (grantRoot) context.grants.push({ factId: grantRoot.id, grant: t.intake.f.g });
         } : undefined,
         native: { captures: storage.captures, io: nativeIO },
-        intake: { ...initial, facts: [], opening: undefined } });
+        intake: { ...initial, facts: t.intake.facts(), opening: undefined }, capacityPolicy: prepared.capacityPolicy });
       underlyingAdmission = createProductionRunAdmission({ authority: f.effects.transport, store: f.store, context: f.c });
       f.deps.admission = admission;
       const context = f.ctx, dc = context.decode, boundary = { ...f.c, register: dc.register };
@@ -140,7 +146,7 @@ export function installedFixtureHost(root, route, options = {}) {
       const api = value(createProductionTelegramCustodian({ context: c, declaration, credential: declaration.token,
         resolveSecret: host.resolveSecret, captures: telegramCaptures, machine: 'machine-a', now: () => f.deps.clock(), freshFor: 50,
         identityEvidence: { verification: t.verification, plan: identityPlan.id,
-          arm: identityPlan.arms.find(arm => arm.required).id, generation: 'generation:fixture' },
+          arm: identityPlan.arms.find(arm => arm.required).id, generation: identityPlan.subject.generation },
         io: { invoke: request => {
           calls.push(request.method);
           if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-before-response', state);
@@ -158,7 +164,7 @@ export function installedFixtureHost(root, route, options = {}) {
           return f.success(captured);
         } }, dedupGeneration: () => ({ reference: dc.register.generation, kinds: context.schemas.map(s => s.kind),
           lineages: { 'machine-a': { head: storage.segment.read().at(-1)?.segment ?? null, observedAt: 100, closed: false } } }) };
-      const binding = productionBindingSet();
+      const binding = prepared.prepared;
       binding.dependencies = binding.dependencies.map(row => row.name === 'lease' ? { ...row,
         fact: { ...row.fact, reference: f.effects.leaseFact.id } } : row);
       const grounding = f.groundingFor({ scope: binding.scope });
@@ -201,12 +207,14 @@ export function installedFixtureHost(root, route, options = {}) {
         return placement;
       };
       const bindings = productionComposition(f, binding);
+      bindings.lease.port = f.effects.transport;
       const operator = operatorFixture();
-      const operatorRoot = f.append('note', { identity: 'installation-grant-root', amount: '0' }).fact;
-      context.grants.push({ factId: operatorRoot.id, grant: t.intake.f.g });
+      const operatorRoot = value(f.store.read()).find(row => row.kind === 'genesis-grant'
+        && row.body.grant.grantee.id === t.intake.f.alice.id);
+      if (!operatorRoot) throw Error('prepared owner genesis grant absent');
       const installationContext = { ...context, decode: { ...dc, provenance: t.intake.f.alice.provenance } };
-      const installationFact = value(recordProductionInstallation({ record: installation, context: installationContext,
-        boundary: { ...dc, ...boundary }, store: createFactStore(installationContext, storage.segment), privateKey, principal: t.intake.f.alice, at: f.now, required: [operatorRoot.id] }));
+      const installationFact = value(f.store.read()).find(row => row.id === prepared.fixed.installationFact.id);
+      if (!installationFact) throw Error('prepared installation fact absent from opened source');
       for (const id of ['check-run:context', 'check:unit', 'check:integration', 'check:lifecycle']) f.appendReference('check-run-record', { id });
       for (const id of ['probe:native', 'probe:1', 'probe:word-count']) f.appendReference('verification-ProbeRecord', { record: { ...verificationInput('ProbeRecord'), id } });
       f.appendReference('assembly-reference-evidence', { id: 'bar:isolation' });
@@ -214,13 +222,14 @@ export function installedFixtureHost(root, route, options = {}) {
       const conversationBinding = value(f.store.read()).find(row => row.kind === 'conversation-binding' && row.body.channel === 'boot-fixture-channel') ?? value(authorAndAppend({ kind: 'conversation-binding', schemaVersion: 1,
         machine: f.host.machine, principal: json(t.intake.f.alice), provenance: json(t.intake.f.alice.provenance), at: json(f.now),
         required: [operatorRoot.id], body: { adapter: intake.adapter.id, channel: 'boot-fixture-channel', sender: 'boot-fixture-sender',
-          identityEpoch: 'installation-1', principalId: t.intake.f.alice.id, grantId: t.intake.f.g.id,
+          identityEpoch: 'installation-1', principalId: t.intake.f.alice.id, grantId: operatorRoot.body.grant.id,
           scope: json(f.scope), supersedes: 'none' } }, installationContext, createFactStore(installationContext, storage.segment), privateKey)).fact;
       binding.dependencies = binding.dependencies.map(row => row.name === 'conversation-binding'
         ? { ...row, fact: { ...row.fact, reference: conversationBinding.id } } : row);
       appendProductionBindingFacts(f, binding);
       const artifact = grounding.harness.describe().artifact;
-      const conformance = value(f.runtime.record('AdapterConformance', { ...assemblyInput('AdapterConformance'), artifact }));
+      const conformance = value(f.runtime.record('AdapterConformance', { ...assemblyInput('AdapterConformance'),
+        generation: dc.register.generation.id, artifact }));
       const policy = value(f.runtime.record('StoreCustodyPolicy', assemblyInput('StoreCustodyPolicy')));
       const isolation = value(f.runtime.record('HarnessObservation', assemblyInput('HarnessObservation')));
       const access = value(f.runtime.record('StorageAccessObservation', assemblyInput('StorageAccessObservation')));
@@ -230,8 +239,10 @@ export function installedFixtureHost(root, route, options = {}) {
         : row.port === 'ModelAdapterPort' ? { ...row, implementation: 'test-provider:model:route' }
         : row.port === 'PersistenceAdapterPort' ? { ...row, implementation: storage.persistence.id } : row);
       const manifest = value(f.runtime.record('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), id: 'manifest:production',
+        generation: dc.register.generation.id,
         publicPorts, productionBindings: [binding], dependencyFacts: [conformanceFact, policyFact] }));
       value(f.runtime.record('AssemblyAdmission', { ...assemblyInput('AssemblyAdmission'), id: 'admission:production',
+        sourceGeneration: dc.register.generation.id,
         manifest: manifest.id, scope: binding.scope, conformance: [conformanceFact], isolationEvidence: [factId(isolation.id)],
         custodyEvidence: [factId(access.id)], dependencyFacts: [factId(manifest.id), conformanceFact, policyFact] }));
       const owners = { assembly: { ...f.composition, persistence: storage.persistence }, grounding: { ...grounding, scope: binding.scope },

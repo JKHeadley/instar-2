@@ -8,5 +8,10 @@
     "type": "Declaration", "schemaVersion": 1, "id": "transport-reference-host", "kind": "protected artifacts", "status": "live",
     "requiredFacts": { "pattern": "scripts/transport-*.mjs", "why": "Reference host supplies verified configuration, durable signed storage and clocks, not candidate-controlled authority.", "surface": "repository review approval" },
     "standards": [82], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "transport-CapacityReservation", "kind": "protected artifacts", "status": "live",
+    "requiredFacts": { "pattern": "src/transport/records.ts", "why": "P6-NF-41–44: Six owns schema-1 CapacityReservation through reserveCapacity and the origin and historical decoders; finite parent and child conservation is preparation evidence, while physical activation remains held.", "surface": "repository review approval" },
+    "standards": [82], "holds": ["P6-NF-44 physical activation is not yet proven"]
   }
 ]
