@@ -41,7 +41,7 @@ function harness(limitChanges: Partial<PeerDescriptor['limits']> = {}) {
   const receive = (request: PeerRequest) => value(receiveFixedPeerRequest({ request, descriptor: d,
     authenticatedStudio: d.studio, context: receiverContext, storage: remote, captures, boundary: f.c, reserve: () => {} }));
   let alter: (response: PeerResponse, request: PeerRequest) => PeerResponse = response => response;
-  const transport = { owner: 'part-ten' as const, exchange: (request: PeerRequest) => ({ peer: d.laptop,
+  const transport = { owner: 'part-ten' as const, roundTrip: (request: PeerRequest) => ({ peer: d.laptop,
     trust: d.trust, response: alter(receive(request), request) }) };
   const adapter = value(createFixedPeerReplication({ descriptor: d, local: storage(localRows), context,
     captures: () => available, transport, boundary: f.c }));
@@ -75,9 +75,9 @@ it.each([
 it('R3-P2 missing ancestor, same machine alias and finite bounds refuse before receipt', () => {
   const h = harness(); refused(h.adapter.durability.ensure([h.second]), 'required causal ancestor missing');
   refused(createFixedPeerReplication({ descriptor: { ...h.d, studio: h.d.laptop }, local: h.adapter.storage,
-    context: h.context, captures: () => h.available, transport: { owner: 'part-ten', exchange: () => { throw Error('must not call'); } }, boundary: h.f.c }), 'distinct enrolled Laptop');
+    context: h.context, captures: () => h.available, transport: { owner: 'part-ten', roundTrip: () => { throw Error('must not call'); } }, boundary: h.f.c }), 'distinct enrolled Laptop');
   refused(createFixedPeerReplication({ descriptor: { ...h.d, limits: { ...h.d.limits, timeoutMs: 0 } },
-    local: h.adapter.storage, context: h.context, captures: () => h.available, transport: { owner: 'part-ten', exchange: () => { throw Error('must not call'); } },
+    local: h.adapter.storage, context: h.context, captures: () => h.available, transport: { owner: 'part-ten', roundTrip: () => { throw Error('must not call'); } },
     boundary: h.f.c }), 'finite peer bounds');
 });
 it('R3-P2 a smaller Eight closure transfers the entire segment prefix and receipts only its requested facts', () => {
@@ -92,12 +92,12 @@ it('R3-P2 wrong authenticated channel and unavailable receiver hold', () => {
   const wrong = value(createFixedPeerReplication({ descriptor: h.d,
     local: { owner: 'part-ten', read: () => h.localRows, append: () => h.f.success({ kind: 'local-durable' }) },
     context: h.context, captures: () => h.available, boundary: h.f.c,
-    transport: { owner: 'part-ten', exchange: request => ({ peer: 'machine-a', trust: h.d.trust, response: h.receive(request) }) } }));
+    transport: { owner: 'part-ten', roundTrip: request => ({ peer: 'machine-a', trust: h.d.trust, response: h.receive(request) }) } }));
   refused(wrong.durability.ensure([h.first, h.second]), 'authenticated Laptop');
   const offline = value(createFixedPeerReplication({ descriptor: h.d,
     local: { owner: 'part-ten', read: () => h.localRows, append: () => h.f.success({ kind: 'local-durable' }) },
     context: h.context, captures: () => h.available, boundary: h.f.c,
-    transport: { owner: 'part-ten', exchange: () => { throw Error('peer offline'); } } }));
+    transport: { owner: 'part-ten', roundTrip: () => { throw Error('peer offline'); } } }));
   refused(offline.durability.ensure([h.first, h.second]), 'peer offline');
 });
 it('R3-P2 unknown receiver schema, missing capture and changed descriptor limits hold', () => {
@@ -109,7 +109,7 @@ it('R3-P2 unknown receiver schema, missing capture and changed descriptor limits
   const candidate = value(createFixedPeerReplication({ descriptor: missing.d,
     local: { owner: 'part-ten', read: () => missing.localRows, append: () => missing.f.success({ kind: 'local-durable' }) },
     context: missing.context, captures: () => captures, boundary: missing.f.c,
-    transport: { owner: 'part-ten', exchange: request => ({ peer: missing.d.laptop,
+    transport: { owner: 'part-ten', roundTrip: request => ({ peer: missing.d.laptop,
       trust: missing.d.trust, response: missing.receive(request) }) } }));
   refused(candidate.durability.ensure([missing.first, missing.second]), 'required capture unavailable');
   const changed = harness(); changed.alter(r => ({ ...r, descriptorDigest: 'sha256:' + '0'.repeat(64) }));
@@ -125,7 +125,7 @@ it('R3-P2 request, response, fact, attempt and deadline bounds refuse without hi
   const make = (limits: PeerDescriptor['limits']) => createFixedPeerReplication({ descriptor: { ...h.d, limits },
     local: { owner: 'part-ten', read: () => h.localRows, append: () => h.f.success({ kind: 'local-durable' }) },
     context: h.context, captures: () => h.available, boundary: h.f.c,
-    transport: { owner: 'part-ten', exchange: request => ({ peer: h.d.laptop, trust: h.d.trust,
+    transport: { owner: 'part-ten', roundTrip: request => ({ peer: h.d.laptop, trust: h.d.trust,
       response: h.receive(request) }) } });
   refused(make({ ...h.d.limits, maxAttempts: 2 }), 'retry/queue');
   refused(make({ ...h.d.limits, timeoutMs: 0 }), 'finite peer bounds');
@@ -140,7 +140,7 @@ it('R3-P2 descriptor refuses a different source epoch before remote receipt', ()
   const wrong = value(createFixedPeerReplication({ descriptor: { ...h.d, epoch: 1 },
     local: { owner: 'part-ten', read: () => h.localRows, append: () => h.f.success({ kind: 'local-durable' }) },
     context: h.context, captures: () => h.available, boundary: h.f.c,
-    transport: { owner: 'part-ten', exchange: () => { throw Error('remote must not be called'); } } }));
+    transport: { owner: 'part-ten', roundTrip: () => { throw Error('remote must not be called'); } } }));
   refused(wrong.durability.ensure([h.first, h.second]), 'peer source/epoch differs');
 });
 it('R3 host wrapper requires exact installed host-key file and restricted Studio key before any socket', () => {
@@ -199,7 +199,7 @@ it('R3 owner-derived Intent.raw custody survives cold receiver and refuses conte
   const adapter = value(createFixedPeerReplication({ descriptor: d,
     local: { owner: 'part-ten', read: () => [fact], append: () => f.success({ kind: 'local-durable' }) },
     context, captures: () => captures, boundary: f.c,
-    transport: { owner: 'part-ten', exchange: request => {
+    transport: { owner: 'part-ten', roundTrip: request => {
       sent = request;
       return { peer: d.laptop, trust: d.trust, response: value(receiveFixedPeerRequest({ request, descriptor: d,
         authenticatedStudio: d.studio, context: cold, storage: remote, captures: port, boundary: f.c, reserve: () => {} })) };
@@ -212,7 +212,7 @@ it('R3 owner-derived Intent.raw custody survives cold receiver and refuses conte
   const contextOnly = value(createFixedPeerReplication({ descriptor: d,
     local: { owner: 'part-ten', read: () => [fact], append: () => f.success({ kind: 'local-durable' }) },
     context, captures: () => withoutRaw, boundary: f.c,
-    transport: { owner: 'part-ten', exchange: () => { throw Error('context bytes must not authorize transport'); } } }));
+    transport: { owner: 'part-ten', roundTrip: () => { throw Error('context bytes must not authorize transport'); } } }));
   refused(contextOnly.durability.ensure([fact]), 'required capture unavailable');
   const omitted = { ...sent!, captures: sent!.captures.filter(c => c.reference !== rawHash) };
   refused(receiveFixedPeerRequest({ request: omitted, descriptor: d, authenticatedStudio: d.studio,
@@ -234,7 +234,7 @@ function eightPeerHarness(online: boolean, stopAfterRemote = false) {
   const captures = { owner: 'part-ten' as const, preserve: (reference: string, bytes: string) => {
     if (captureRows.has(reference) && captureRows.get(reference) !== bytes) return false;
     captureRows.set(reference, bytes); return true; }, read: (reference: string) => captureRows.get(reference) ?? null };
-  const transport = { owner: 'part-ten' as const, exchange: (wire: PeerRequest) => {
+  const transport = { owner: 'part-ten' as const, roundTrip: (wire: PeerRequest) => {
     if (!online) throw Error('Laptop disconnected');
     const response = value(receiveFixedPeerRequest({ request: wire, descriptor: d, authenticatedStudio: d.studio,
       context: f.ctx, storage: remote, captures, boundary: f.host.boundary, reserve: () => {} }));

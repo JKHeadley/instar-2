@@ -32,7 +32,7 @@ export function createPinnedSshPeerTransport(config) {
     || (lstatSync(identityFile).mode & 0o077) !== 0)
     throw Error('installed Studio key handle missing');
   if (peer !== 'm_cc2ec651a91f') throw Error('enrolled Laptop identity required');
-  return Object.freeze({ owner: 'part-ten', exchange(request) {
+  return Object.freeze({ owner: 'part-ten', roundTrip(request) {
     const input = JSON.stringify(request);
     if (Buffer.byteLength(input) > maxRequestBytes || request.laptop !== peer || request.trust !== trust) throw Error('peer request bound differs');
     if (sha(readFileSync(knownHosts)) !== knownHostsDigest) throw Error('pinned trust file changed');

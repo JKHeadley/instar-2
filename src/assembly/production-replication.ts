@@ -38,7 +38,7 @@ export interface PeerResponse {
 }
 export interface AuthenticatedPeerTransport {
   readonly owner: 'part-ten';
-  exchange(request: PeerRequest): Readonly<{ peer: string; trust: string; response: PeerResponse }>;
+  roundTrip(request: PeerRequest): Readonly<{ peer: string; trust: string; response: PeerResponse }>;
 }
 const bytes = (value: unknown) => take(canonical(value)).bytes;
 const digest = (value: unknown) => hashBytes(bytes(value));
@@ -147,7 +147,7 @@ function responseFor(request: PeerRequest): PeerResponse {
     persistedFacts: request.facts.map(f => ({ id: f.id, hash: f.contentHash })),
     persistedCaptures: request.captures.map(c => ({ reference: c.reference, hash: c.hash })), durable: true };
 }
-function checkResponse(request: PeerRequest, d: PeerDescriptor, channel: ReturnType<AuthenticatedPeerTransport['exchange']>): void {
+function checkResponse(request: PeerRequest, d: PeerDescriptor, channel: ReturnType<AuthenticatedPeerTransport['roundTrip']>): void {
   ensure(channel.peer === d.laptop && channel.trust === d.trust, 'authenticated Laptop/trust differs');
   const expected = responseFor(request);
   ensure(bytes(channel.response) === bytes(expected), 'peer response differs from exact request');
@@ -243,7 +243,7 @@ export function createFixedPeerReplication(input: Readonly<{ descriptor: PeerDes
       const request: PeerRequest = { protocol: 'instar-fixed-peer-v1', operation, ...fields(d), descriptorDigest: digest(d),
         challenge: randomBytes(32).toString('hex'), prefixDigest: p.digest, frontier: p.frontier, facts, captures };
       checkRequest(request, d);
-      const channel = input.transport.exchange(request);
+      const channel = input.transport.roundTrip(request);
       checkResponse(request, d, channel);
       // The receipt is issued by this Ten durability port after current local Two status
       // and the authenticated remote Two append/readback both pass for these exact bytes.

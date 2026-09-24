@@ -71,7 +71,7 @@ function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], h
     facts?: readonly (typeof first)[]; transformRequest?: (request: PeerRequest) => PeerRequest } = {}) => value(createFixedPeerReplication({
     descriptor: opts.descriptor ?? descriptor, local: opts.facts ? { ...local, read: () => opts.facts! } : local,
     context, captures: () => captures, boundary: f.c,
-    transport: { owner: 'part-ten', exchange: request => ({ peer: descriptor.laptop, trust: descriptor.trust,
+    transport: { owner: 'part-ten', roundTrip: request => ({ peer: descriptor.laptop, trust: descriptor.trust,
       response: call(opts.transformRequest?.(request) ?? request,
         opts.dropResponse === undefined ? {} : { dropResponse: opts.dropResponse }) }) } }));
   const disk = () => value(openProductionStorage({ root: storeRoot, machine: descriptor.laptop,
