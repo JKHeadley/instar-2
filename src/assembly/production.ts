@@ -1,6 +1,6 @@
 import { productionGraphMatches } from './grounding-capability.js';
-import { consumeResult } from '../index.js';
-import type { FactEnvelopeReference, Json, Result } from '../index.js';
+import { consumeResult, decodeMeasurement } from '../index.js';
+import type { Clock, FactEnvelopeReference, Json, Result } from '../index.js';
 import { requiredMinimalDependencies } from '../operator/index.js';
 import { fenceFor } from '../transport/index.js';
 import { decodeHistoricalInstalledRunGovernanceReference, isProductionGroundedRunGraph } from '../rungraph/index.js';
@@ -62,7 +62,7 @@ function statusFor(snapshot: FactSnapshot, reference: string): FactStatus | null
 
 function resolveOne(name: string, requiredKind: string, declaredKind: string, reference: string, snapshot: FactSnapshot,
     partialAssemblyFacts: ReadonlySet<string>, unavailableAssemblyFacts: ReadonlySet<string>,
-    facts: FactContext, implementation: string, scope: string): AssemblyResolvedProductionBinding {
+    facts: FactContext, implementation: string, scope: string, now: Clock): AssemblyResolvedProductionBinding {
   const root = statusFor(snapshot, reference);
   ensure(root, `required production binding is missing from signed history: ${name}:${reference}`);
   const selection = inspectionSelection(name, requiredKind);
@@ -85,6 +85,12 @@ function resolveOne(name: string, requiredKind: string, declaredKind: string, re
     const row = rows[0]!;
     ensure(row.generation === facts.decode.register.generation.id,
       `required production set row generation differs: ${name}`);
+    if (row.validUntil !== 'not-time-bound') {
+      const horizon = take(decodeMeasurement('clock', JSON.parse(row.validUntil), facts.decode));
+      ensure(horizon.subject.instance === now.subject.instance && horizon.unit === now.unit,
+        `required production set row clock is incomparable: ${name}`);
+      ensure(now.value < horizon.value, `required production set row expired: ${name}`);
+    }
     return freeze({ name, reference, expectedKind: 'assembly-InstallationSelectionSet', fact: root.fact,
       completeness: 'complete' as const, missing: [], address: { type: 'InstallationSelectionRowReference' as const,
         schemaVersion: 1 as const, set: envelopeReference(root.fact), rowDigest: row.id,
@@ -149,7 +155,8 @@ function resolveReferences(composition: AssemblyComposition, runtime: AssemblyRu
 }> {
   const { manifest, binding } = selected(runtime, manifestId, scope);
   const snapshot = take(composition.spine.store.readForProjection());
-  const facts: FactContext = { ...composition.host.current().facts,
+  const current = composition.host.current();
+  const facts: FactContext = { ...current.facts,
     facts: snapshot.entries.map(entry => entry.fact) };
   const assembly = currentAssemblyRows(snapshot, composition.host.boundary);
   const partialAssemblyFacts = new Set(assembly.filter(row => row.record.type === 'GrowthObservation'
@@ -169,7 +176,7 @@ function resolveReferences(composition: AssemblyComposition, runtime: AssemblyRu
   const references = namedBindings(binding).filter(row => !localPeerMarker || row.name !== 'dependency:replication-peer')
     .map(({ name, requiredKind, row }) =>
     resolveOne(name, requiredKind, row.fact.expectedKind, row.fact.reference, snapshot,
-      partialAssemblyFacts, unavailableAssemblyFacts, facts, row.implementation, scope));
+      partialAssemblyFacts, unavailableAssemblyFacts, facts, row.implementation, scope, current.clock));
   const selectedSetFacts = new Set(references.filter(row => row.address).map(row => row.fact.id));
   ensure(selectedSetFacts.size === 1, 'production bindings select multiple installation selection sets');
   return freeze({ manifest, binding, references });
@@ -226,6 +233,7 @@ const directInspectionKinds: Readonly<Record<string, Readonly<{ kind: string; ow
   'identity-key-set': { kind: 'assembly-ProductionSignerReference', owner: 'part-two' },
   'transport-Lease': { kind: 'transport-Lease', owner: 'part-six' },
   'transport-FenceToken': { kind: 'transport-FenceToken', owner: 'part-six' },
+  'assembly-ProductionSignerReference': { kind: 'assembly-ProductionSignerReference', owner: 'part-two' },
   'conversation-binding': { kind: 'conversation-binding', owner: 'part-four' },
 });
 
@@ -483,6 +491,9 @@ export function inspectOpenedProductionInstallation(composition: AssemblyComposi
         } else detail = `${detail}; required installation selection set is unavailable`;
         return freeze({ name, owner: selection.owner, state: 'unresolved' as const, reason: detail, source, input });
       }
+      if (name === 'dependency:fence' && actual?.kind === 'transport-FenceToken')
+        return freeze({ name, owner: 'part-six', state: 'unresolved' as const, input: null,
+          reason: 'Six current assignment-derived fence cannot be established from a standalone stored token', source });
       const expected = directInspectionKinds[requiredKind];
       if (!expected) return freeze({ name, owner: 'part-ten', state: 'unresolved' as const,
         reason: `inspection has no approved binding map for ${requiredKind}`, source, input: null });

@@ -220,7 +220,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
             : lease.expires <= now ? 'lease expired'
             : row.record.validUntil.value <= now ? 'capacity expired'
             : lease.generation !== row.record.generation ? 'generation changed'
-            : row.record.fence.epoch !== lease.epoch && row.record.incarnation === host.incarnation ? 'fence changed'
+            : row.record.incarnation !== lease.incarnation ? 'incarnation changed'
+            : encoded(row.record.fence).bytes !== encoded(fenceFor(all, lease)).bytes ? 'fence changed'
             : null;
           return { capacity: row.record.capacity, fact: row.fact.id, record: row.record,
             usable: blocker === null, blocker };

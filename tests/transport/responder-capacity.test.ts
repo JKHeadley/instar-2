@@ -100,6 +100,29 @@ describeHere('P6-NF-41/42/43 Six standing responder capacity', () => {
     refused(other.reserveCapacity({ ...x.input, command: 'capacity:second', expected: head.sourceFrontier }), 'unique');
     expect(value(x.api.inspectCapacity()).parentRemainder.effect.quantity).toBe(80);
   });
+  it('blocks the old assignment after restart until one guarded rebind preserves its debit', () => {
+    const x = fixture();
+    const original = value(x.api.reserveCapacity(x.input));
+    const prior = value(x.api.inspectCapacity()).heads[0]!;
+    Object.assign(x.host, { incarnation: 'worker:capacity:restart',
+      authorityIncarnation: 'authority:capacity:restart' });
+    const restarted = createTransportAuthority(x.host, x.spine, x.boundary);
+    const fence = value(restarted.acquire('capacity:lease:restart', value(restarted.inspect()).at(-1)!.fact.id, 450));
+    expect(fence.assignment).not.toBe(x.lease.assignment);
+    expect(fence.incarnation).not.toBe(x.lease.incarnation);
+    const blocked = value(restarted.inspectCapacity());
+    expect(blocked.heads[0]).toMatchObject({ capacity: original.capacity, fact: prior.fact, usable: false });
+    expect(blocked.heads[0]!.blocker).not.toBeNull();
+    expect(blocked.parentRemainder.effect.quantity).toBe(80);
+    const next = value(restarted.rebindCapacity({ command: 'capacity:rebind:restart',
+      previousCapacity: prior.fact, fence, validUntil: x.clock(400) }));
+    const current = value(restarted.inspectCapacity());
+    expect(current.heads).toHaveLength(1);
+    expect(current.heads[0]).toMatchObject({ capacity: original.capacity, usable: true, blocker: null });
+    expect(current.heads[0]!.record.previousCapacity).toBe(prior.fact);
+    expect(next.capacity).toBe(original.capacity);
+    expect(current.parentRemainder.effect.quantity).toBe(80);
+  });
   it('retains an expired debit and needs a guarded current successor before use', () => {
     const x = fixture();
     value(x.api.reserveCapacity(x.input));

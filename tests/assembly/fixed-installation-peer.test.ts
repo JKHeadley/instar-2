@@ -302,6 +302,9 @@ it('R3 sender capture memo invalidates on approved hash or prefix change and fal
   reads = 0; value(adapter.durability.ensure([first]));
   expect(reads).toBeGreaterThan(cachedReads);
   available[raw] = original;
+  // Re-prime the memo with the unchanged capture set. The next prefix alone
+  // makes this previously excluded capture necessary.
+  value(adapter.durability.ensure([first]));
   localRows.push(second);
   value(adapter.durability.ensure([first, second]));
   expect(sent?.captures.some(c => c.reference === raw && c.hash === original.hash)).toBe(true);
