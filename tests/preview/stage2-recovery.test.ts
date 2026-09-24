@@ -305,7 +305,14 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
       expect(facts.some((f:any)=>f.kind===kind)).toBe(true);
     expect(facts.find((f:any)=>f.kind==='transport-SettlementApplication').body.record).toMatchObject({unresolved:1,actualCharge:-1,retryEligible:0,exposure:0});
     const source=facts.find((f:any)=>f.body.evidence?.claim.predicate==='provider-response-source-contract').body.evidence.claim.value;
-    expect(source).toMatchObject({framing:'preview-decision-system-v2',invocationPolicyDigest:encoded(subscriptionInvocationPolicy(model)).hash,
+    expect(Object.keys(source).sort()).toEqual(['version','parserReference','parserVersion','endpoint','account','credentialReference','controller','executableArtifact','provider','model','route'].sort());
+    const bindingFact=facts.find((f:any)=>f.body.evidence?.claim.predicate==='preview-invocation-binding');
+    const binding=bindingFact.body.evidence;
+    expect(binding.id).toBe(`proof:preview-invocation-binding:${q.id}`);
+    expect(binding.claim.subject).toBe(q.id);
+    expect(readFileSync(join(root,'.preview-stage2/captures',binding.capture.hash.slice(7)),'utf8')).toBe(encoded(binding.claim.value).bytes);
+    expect(receipt.responseEvidence.source.evidence).not.toContain(binding.id);
+    expect(binding.claim.value).toMatchObject({framing:'preview-decision-system-v2',invocationPolicyDigest:encoded(subscriptionInvocationPolicy(model)).hash,
       systemPromptDigest:'sha256:'+createHash('sha256').update(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT).digest('hex')});
     state.latchStop('operator');
     const before = retainedFiles(root);
@@ -506,6 +513,19 @@ it('performs only one successor cutover, inherits all history and bounds, and pa
   const markerBytes = readFileSync(f.marker, 'utf8');
   writeFileSync(f.marker, JSON.stringify({ ...marker, completion: null })); await expect(s.create()).rejects.toThrow();
   writeFileSync(f.marker, markerBytes);
+  // Recomputed hashes do not authorize changed immutable policy/system bindings.
+  const predecessorPath = join(f.target, 'preview-predecessor.json'), predecessorBytes = readFileSync(predecessorPath, 'utf8');
+  for (const [field, value] of [['systemPromptDigest', 'sha256:' + '1'.repeat(64)], ['framing', 'legacy'],
+    ['policyDigest', 'sha256:' + '2'.repeat(64)], ['profileDigest', 'sha256:' + '3'.repeat(64)]]) {
+    const changed = structuredClone(marker), pred = JSON.parse(predecessorBytes);
+    changed.reservation[field!] = value; pred[field!] = value;
+    changed.reservationDigest = encoded(changed.reservation).hash;
+    pred.continuation.reservationDigest = changed.reservationDigest;
+    changed.completion.predecessorRecordDigest = encoded(pred).hash;
+    writeFileSync(f.marker, JSON.stringify(changed)); writeFileSync(predecessorPath, JSON.stringify(pred));
+    await expect(s.create()).rejects.toThrow(); expect(s.children).toHaveLength(0);
+  }
+  writeFileSync(f.marker, markerBytes); writeFileSync(predecessorPath, predecessorBytes);
   c = await s.create(); c.pollOnce(); await c.resume();
   expect(c.sidecar.read()).toMatchObject({ phase: 'api-accepted', modelAttemptUsed: 1, selectedTurn: 'telegram:8820318295:update:2' });
   expect(JSON.parse(JSON.parse(s.models[0].stdin).messages[1].content).conversation.map((r: any) => r.update_id)).toEqual([1, 2]);
@@ -595,3 +615,155 @@ it('holds partial/corrupt lineage markers and copy crashes without another cutov
   expect(requireExists(join(f.target, '.preview-stage2'))).toBe(false);
   expect(f.s.models).toHaveLength(1);
 }, 60000);
+
+import { signEnvelope } from '../../src/facts/envelope.js';
+import { privateKey as fixtureSigningKey, factsFixture, value as factValue } from '../facts/fixtures.js';
+import { decodeFrame } from '../../src/facts/envelope.js';
+import { extendsChain } from '../../src/facts/index.js';
+
+// Test-only re-signing preserves valid chains so semantic negatives cannot pass
+// merely because a signature was broken. No live root or key is used.
+function signedBindingVariant(rows: any[], change: (e: any) => void, root: string) {
+  const copy = structuredClone(rows), last = copy.at(-1);
+  expect(last.body.evidence.claim.predicate).toBe('preview-invocation-binding');
+  change(last.body.evidence);
+  const bytes = encoded(last.body.evidence.claim.value).bytes;
+  const hash = 'sha256:' + createHash('sha256').update(bytes).digest('hex');
+  writeFileSync(join(root, '.preview-stage2/captures', hash.slice(7)), bytes);
+  last.body.evidence.capture = { reference: `judgment-capture:${hash}`, hash };
+  copy[copy.length - 1] = signEnvelope(last, fixtureSigningKey);
+  const verified: any[] = [], base = factsFixture();
+  for (const row of copy) {
+    const f = factValue(decodeFrame(row, base.ctx)).frame as any;
+    extendsChain(f, { ...base.ctx, facts: verified }); verified.push(f);
+  }
+  return copy;
+}
+
+it('rejects missing, altered, duplicate and wrongly joined signed invocation bindings before any child on active restart', async () => {
+  const s = stage2CompositionFixture(); let c = await s.create(); c.pollOnce(); await c.resumeOne(); c.close();
+  const path = join(s.root, '.preview-stage2/facts.json'), original = readFileSync(path, 'utf8'), rows = JSON.parse(original);
+  const binding = rows.at(-1), request = rows.find((f: any) => f.kind === 'judgment-provider-ProviderJudgmentRequest');
+  expect(binding.body.evidence.claim.value.request.id).toBe(request.id);
+  const calls = s.calls.length;
+  const refuses = async () => { await expect(s.create()).rejects.toThrow(); expect(s.calls).toHaveLength(calls); expect(s.models).toHaveLength(0); expect(s.children).toHaveLength(0); };
+  writeFileSync(path, JSON.stringify(rows.slice(0, -1))); await refuses();
+  for (const change of [
+    (e: any) => { e.claim.value.request = e.claim.value.prepared; },
+    (e: any) => { e.claim.value.attempt = request.body.record.run; },
+    (e: any) => { e.claim.subject = request.id; }, // fact id is not the prepared request record id
+    (e: any) => { e.claim.value.submittedDigest = e.claim.value.systemPromptDigest; },
+    (e: any) => { e.claim.value.activationDigest = 'sha256:' + '1'.repeat(64); },
+    (e: any) => { e.claim.value.profileDigest = 'sha256:' + '1'.repeat(64); },
+    (e: any) => { e.claim.value.framing = 'legacy'; },
+    (e: any) => { e.claim.value.invocationPolicy.args[7] += '!'; e.claim.value.invocationPolicyDigest = encoded(e.claim.value.invocationPolicy).hash; },
+    (e: any) => { e.claim.value.invocationPolicy.maxPromptBytes++; e.claim.value.invocationPolicyDigest = encoded(e.claim.value.invocationPolicy).hash; },
+    (e: any) => { e.claim.value.systemPromptDigest = 'sha256:' + '1'.repeat(64); },
+    (e: any) => { e.claim.value.extra = true; },
+    (e: any) => { e.type = 'Claim'; },
+    (e: any) => { e.extra = true; },
+  ]) { writeFileSync(path, JSON.stringify(signedBindingVariant(rows, change, s.root))); await refuses(); }
+  const duplicate = structuredClone(binding);
+  duplicate.segment.position++; duplicate.id = `${duplicate.machine}:${duplicate.segment.epoch}:${duplicate.segment.position}`;
+  duplicate.prevInSegment = binding.contentHash; duplicate.predecessors.inSegment = binding.id;
+  writeFileSync(path, JSON.stringify([...rows, signEnvelope(duplicate, fixtureSigningKey)])); await refuses();
+  writeFileSync(path, original);
+  const capture = join(s.root, '.preview-stage2/captures', binding.body.evidence.capture.hash.slice(7));
+  const captured = readFileSync(capture);
+  writeFileSync(capture, '{}'); await refuses(); writeFileSync(capture, captured);
+  c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('api-accepted'); c.close();
+  expect(s.models).toHaveLength(1);
+  // A dispatched binding cannot be reconstructed by replacing its missing capture.
+  writeFileSync(capture, '{}'); const before = readFileSync(path);
+  await expect(s.create()).rejects.toThrow(); expect(readFileSync(path)).toEqual(before); expect(s.models).toHaveLength(1);
+  writeFileSync(capture, captured);
+}, 120000);
+
+it('finishes an interrupted pre-binding preparation only before dispatch and never duplicates a repeated preparation', async () => {
+  const s = stage2CompositionFixture(); let c = await s.create(); c.pollOnce(); await c.resumeOne(); c.close();
+  const path = join(s.root, '.preview-stage2/facts.json'), rows = JSON.parse(readFileSync(path, 'utf8'));
+  expect(rows.at(-1).body.evidence.claim.predicate).toBe('preview-invocation-binding');
+  writeFileSync(path, JSON.stringify(rows.slice(0, -1)));
+  writeFileSync(join(s.root, '.preview-stage2/peer/facts.json'), JSON.stringify(rows.slice(0, -1)));
+  const sidePath = join(s.root, 'preview-stage2-state.json'), d = JSON.parse(readFileSync(sidePath, 'utf8'));
+  writeFileSync(sidePath, JSON.stringify({ ...d, phase: 'armed', references: {} }));
+  c = await s.create(); await c.resumeOne(); expect(c.sidecar.read().phase).toBe('provider-prepared'); c.close();
+  c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('api-accepted'); c.close();
+  expect(JSON.parse(readFileSync(path, 'utf8')).filter((f: any) => f.body.evidence?.claim.predicate === 'preview-invocation-binding')).toHaveLength(1);
+  expect(s.models).toHaveLength(1);
+}, 120000);
+
+// Produce synthetic legacy history from a genuine refused owner chain. Only this
+// fixture re-signs; historical production readers cannot author or retrofit facts.
+function legacyRefusalHistory(root: string) {
+  const path = join(root, '.preview-stage2/facts.json'), rows = JSON.parse(readFileSync(path, 'utf8'));
+  const replacements = new Map<string, string>();
+  const hash = (bytes: string) => 'sha256:' + createHash('sha256').update(bytes).digest('hex');
+  const walk = (v: any): any => {
+    if (typeof v === 'string') return replacements.get(v) ?? v;
+    if (v === null || typeof v !== 'object') return v;
+    if (v.reference?.startsWith('judgment-capture:') && v.hash && !replacements.has(v.hash)) {
+      const file = join(root, '.preview-stage2/captures', v.hash.slice(7)), bytes = readFileSync(file, 'utf8');
+      try {
+        const parsed = JSON.parse(bytes), changed = walk(parsed);
+        if (encoded(parsed).bytes !== encoded(changed).bytes) {
+          const nextBytes = encoded(changed).bytes, nextHash = hash(nextBytes);
+          writeFileSync(join(root, '.preview-stage2/captures', nextHash.slice(7)), nextBytes);
+          replacements.set(v.hash, nextHash); replacements.set(v.reference, `judgment-capture:${nextHash}`);
+          replacements.set(encoded(bytes).hash, encoded(nextBytes).hash);
+        }
+      } catch { /* Exact non-JSON answer/raw text stays unchanged. */ }
+    }
+    const next = Array.isArray(v) ? v.map(walk) : Object.fromEntries(Object.entries(v).map(([k, value]) => [k, walk(value)]));
+    if (encoded(v).bytes !== encoded(next).bytes) replacements.set(encoded(v).hash, encoded(next).hash);
+    return next;
+  };
+  const next: any[] = [];
+  for (const original of rows) {
+    const row = walk(original);
+    if (row.body.evidence?.claim.predicate === 'preview-invocation-binding') {
+      const e = row.body.evidence;
+      const bytes = encoded({ legacy: 'unrelated local attestation; no invocation binding' }).bytes, h = hash(bytes);
+      writeFileSync(join(root, '.preview-stage2/captures', h.slice(7)), bytes);
+      row.body = { evidence: { ...e, id: 'legacy-local-note', capture: { reference: `judgment-capture:${h}`, hash: h },
+        claim: { subject: 'legacy-history', predicate: 'local-note', value: JSON.parse(bytes) } } };
+    }
+    const signed: any = signEnvelope(row, fixtureSigningKey); replacements.set(original.contentHash, signed.contentHash); next.push(signed);
+  }
+  const verified: any[] = [], base = factsFixture();
+  for (const row of next) {
+    const fact = factValue(decodeFrame(row, base.ctx)).frame as any; extendsChain(fact, { ...base.ctx, facts: verified }); verified.push(fact);
+  }
+  writeFileSync(path, JSON.stringify(next));
+  writeFileSync(join(root, '.preview-stage2/peer/facts.json'), JSON.stringify(next));
+  cpSync(join(root, '.preview-stage2/captures'), join(root, '.preview-stage2/peer/captures'), { recursive: true });
+  const q = rows.find((r: any) => r.kind === 'judgment-provider-ProviderJudgmentRequest').body.record;
+  const { framing: _framing, maxPromptBytes: _maximum, ...legacy } = subscriptionInvocationPolicy(q.model);
+  const policy = { ...legacy, args: legacy.args.filter((_: string, i: number, args: readonly string[]) => args[i] !== '--system-prompt' && args[i - 1] !== '--system-prompt') };
+  const sidePath = join(root, 'preview-stage2-state.json'), d = JSON.parse(readFileSync(sidePath, 'utf8'));
+  writeFileSync(sidePath, JSON.stringify({ ...d, policyDigest: encoded(policy).hash }));
+}
+
+it('inspects and archives synthetic v1 predecessor history without retrofitting a binding; v2 continuation cannot use its absence allowance', async () => {
+  const f = await refusedSuccessorFixture(); legacyRefusalHistory(f.source);
+  const before = retainedFiles(f.source);
+  expect(validateRefusedStage2Predecessor(f.source, f.s.state.read(), f.s.configuration).unresolvedObligation)
+    .toMatchObject({ charge: 'UNKNOWN', quiescence: 'UNKNOWN', unresolved: 1 });
+  expect(stage2HistoricalStatus(f.source, f.s.state.read(), f.s.configuration).phase).toBe('held');
+  await cutoverRefusedStage2Root(f.input);
+  expect(retainedFiles(f.source)).toEqual(before);
+  const archive = JSON.parse(readFileSync(join(f.target, '.preview-predecessor/.preview-stage2/facts.json'), 'utf8'));
+  expect(archive.some((r: any) => r.body.evidence?.claim.predicate === 'preview-invocation-binding')).toBe(false);
+  const s = stage2CompositionFixture({ root: f.target, start: f.now, cutoff: f.input.cutoff,
+    model: f.input.model, activationReference: f.input.activation.reference,
+    updates: [{ update_id: 2, message: { message_id: 1002, from: { id: 7812716706, is_bot: false, first_name: 'Offline' },
+      chat: { id: 7812716706, type: 'private' }, date: Math.floor(f.now / 1000), text: 'A new question?' } }] });
+  let c = await s.create(); c.pollOnce(); await c.resumeOne(); c.close();
+  const path = join(s.root, '.preview-stage2/facts.json'), rows = JSON.parse(readFileSync(path, 'utf8'));
+  const sidePath = join(s.root, 'preview-stage2-state.json'), d = JSON.parse(readFileSync(sidePath, 'utf8'));
+  writeFileSync(path, JSON.stringify(rows.slice(0, -1)));
+  const legacyPolicy = JSON.parse(readFileSync(join(f.source, 'preview-stage2-state.json'), 'utf8')).policyDigest;
+  writeFileSync(sidePath, JSON.stringify({ ...d, policyDigest: legacyPolicy }));
+  const children = s.children.length;
+  await expect(s.create()).rejects.toThrow(); expect(s.children).toHaveLength(children); expect(s.models).toHaveLength(0);
+}, 120000);

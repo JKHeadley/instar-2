@@ -14,16 +14,17 @@ import type { JudgmentHost, JudgmentCapturePort, ProviderObservation } from '../
 import { createProviderEffectDoorway, providerEffectSchemas, providerEffectMigrations, registerProviderEffectBodies, effectSchemas, registerEffectBodies,
   createEffectSpine, installOperationDefinition, consumeEffectSettlement, createEffectDoorway, decodeOutboundMessage } from '../../src/effects/index.js';
 import type { EffectHost, EffectSettlement, ProviderEffectDoorway } from '../../src/effects/index.js';
+import { SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { createProductionProviderOwners } from '../../src/assembly/production-provider-owners.js';
 import { admitAcceptedProviderReply, createProductionRunAdmission } from '../../src/transport/index.js';
 import { acceptedReplyPreviewText, runIdFor } from '../../src/rungraph/index.js';
-import { STAGE2_SETTINGS, STAGE2_OUTPUT_SCHEMA, STAGE2_DISCLOSURE, OWNER_WINDOW_MS, stage2Description, decisionContext, submittedEnvelope, inputMeasurements, requireInputBound, requireOutboundBound, encoded } from './stage2-provider.js';
+import { STAGE2_SETTINGS, STAGE2_OUTPUT_SCHEMA, STAGE2_DISCLOSURE, OWNER_WINDOW_MS, stage2Description, decisionContext, submittedEnvelope, inputMeasurements, requireInputBound, requireOutboundBound, encoded, subscriptionInvocationPolicy } from './stage2-provider.js';
 import { createTelegramReplyOperationAdapter, installTelegramReplyOperation, telegramConversation, renderTelegramHtml } from '../../src/conversation/index.js';
 import { readRecordFact, validateGrounding } from '../../src/rungraph/graph.js';
 import { decodeSessionGrounding } from '../../src/rungraph/records.js';
 import { decodeFrame } from '../../src/facts/envelope.js';
 import { factsFixture } from '../facts/fixtures.js';
-import { validateStage2State, durablePreviewWrite } from './state.js';
+import { validateStage2State, validateStage2Successor, durablePreviewWrite } from './state.js';
 import type { ConfinedProviderRoute } from '../../src/assembly/index.js';
 import { createEffectSettlementAssessmentPort, createVerificationRuntime, createVerificationSpine, verificationSchemas, registerVerificationBodies } from '../../src/verification/index.js';
 import type { VerificationHost } from '../../src/verification/index.js';
@@ -252,7 +253,12 @@ export function createStage2Owners(options: any) {
   const route = options.routeFactory({ evidence, context: boundary, description, deadline: options.deadline,
     // A fresh Six write witness rechecks the current lease/fence/standing without
     // renewing expiry. The subscription route calls this before every child.
-    current: () => six.admitWrite(`preview-provider-current:${all().at(-1).id}`, fence).kind === 'Success' });
+    current: () => {
+      const facts = all(), requestFact = facts.find(f => f.kind === 'judgment-provider-ProviderJudgmentRequest');
+      if (requestFact) verifyInvocationBinding(facts, cap => strictInvocationCapture(directory, cap), requestFact,
+        facts.find(f => f.kind === 'judgment-provider-ProviderJudgmentAttemptRecord' && record(f).phase === 'prepared'), options.invocationBinding);
+      return six.admitWrite(`preview-provider-current:${all().at(-1).id}`, fence).kind === 'Success';
+    } });
   const owners = value(createProductionProviderOwners({ judgment: { host: jh, boundary, authority: six,
     captures, store, context, privateKey, runs: graph, settings: STAGE2_SETTINGS, outputSchema: STAGE2_OUTPUT_SCHEMA,
     maxTokens: 2048, maxCaptureBytes: 1048576, timeout: 120000, disclosure: STAGE2_DISCLOSURE },
@@ -261,7 +267,21 @@ export function createStage2Owners(options: any) {
   const seven = owners.seven, runtime = owners.nine;
   const prepare = () => { groundAndStart(); const prepared = value(seven.prepare(question, fence));
     const request = value(api.prepare({ prepared, definition: definition.id, verificationOwner: 'preview-recorder',
-      resultDestination: base.opening.id, obligation }, fence)); return { prepared, request }; };
+      resultDestination: base.opening.id, obligation }, fence));
+    const requestFact = all().find(f => f.id === prepared.request.id);
+    const preparedFact = all().find(f => f.id === prepared.prepared.id);
+    const q = record(requestFact), claim = invocationClaim(options.invocationBinding, requestFact, preparedFact);
+    const existing = invocationBindings(all(), q);
+    if (!existing.length) {
+      if (all().some(f => f.kind === 'transport-AdmissionReservation'
+        && record(f).run === q.run && ['dispatch-claimed', 'consumed'].includes(record(f).state)))
+        throw Error('preview: invocation binding missing after dispatch');
+      const capture = value(captures.put(enc(claim).bytes, 16384));
+      evidence(q.id, enc(claim).hash, 'preview-invocation-binding', undefined,
+        { capture, claim: { subject: q.id, predicate: 'preview-invocation-binding', value: claim } });
+    }
+    verifyInvocationBinding(all(), cap => strictInvocationCapture(directory, cap), requestFact, preparedFact, options.invocationBinding);
+    return { prepared, request }; };
   return { ...base, directory, dc, metadata, result, storage, context, store, th, host, jh, vh, six, fence,
     graph, deps, seven, api, runtime, route, captures, question, submitted, prepare, evidence, all, owners,
     durability, custody, definition, versions, author, verifyAtCurrent, effectAtCurrent,
@@ -271,6 +291,64 @@ export function createStage2Owners(options: any) {
 const record = fact => fact.body.record;
 const ownerReference = fact => ({ owner: 'part-two', name: 'FactEnvelope', id: fact.id,
   kind: fact.kind, schemaVersion: fact.schemaVersion, contentHash: fact.contentHash });
+
+const bindingPredicate = 'preview-invocation-binding';
+const invocationBindings = (facts, q) => facts.filter(f => f.kind === 'evidence-record'
+  && (f.body.evidence.id === `proof:${bindingPredicate}:${q.id}`
+    || f.body.evidence.claim.predicate === bindingPredicate));
+function invocationClaim(binding, requestFact, preparedFact) {
+  if (!binding) throw Error('preview: invocation binding descriptor absent');
+  const q = record(requestFact);
+  return { schemaVersion: 1, ...binding, request: ownerReference(requestFact), prepared: ownerReference(preparedFact),
+    effectRequest: q.effectRequest, run: q.run, attempt: q.attempt, submitted: q.submitted, submittedDigest: q.inputDigest };
+}
+function strictInvocationCapture(directory, cap) {
+  if (!/^sha256:[a-f0-9]{64}$/u.test(cap?.hash) || cap.reference !== `judgment-capture:${cap.hash}`)
+    throw Error('preview: invocation capture reference differs');
+  const bytes = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+    .decode(readFileSync(join(directory, 'captures', cap.hash.slice(7))));
+  if (hashBytes(bytes) !== cap.hash) throw Error('preview: invocation capture hash differs');
+  return bytes;
+}
+/** Called only with chain-verified facts and strict capture readers. */
+function verifyInvocationBinding(facts, readCapture, requestFact, preparedFact, expected) {
+  const q = record(requestFact), found = invocationBindings(facts, q);
+  const check = ok => { if (!ok) throw Error('preview: invocation binding differs'); };
+  check(found.length === 1);
+  const fact = found[0], wire = fact.body.evidence, captured = readCapture(wire.capture);
+  const context = factsFixture().ctx.decode;
+  const e = value(decode('Evidence', wire, { ...context, captures: { ...context.captures, [wire.capture.reference]: captured } }));
+  const v = e.claim.value;
+  const policy = subscriptionInvocationPolicy(q.model);
+  const binding = { activationReference: v.activationReference, activationDigest: v.activationDigest,
+    profileDigest: v.profileDigest, invocationPolicyDigest: enc(policy).hash,
+    systemPromptDigest: hashBytes(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT), framing: policy.framing, invocationPolicy: policy };
+  check(e.id === `proof:${bindingPredicate}:${q.id}` && e.claim.subject === q.id
+    && e.claim.predicate === bindingPredicate && e.source === 'probe' && e.strength === 'attestation');
+  check(enc(v).bytes === enc(invocationClaim(expected ?? binding, requestFact, preparedFact)).bytes
+    && enc(v).bytes === enc(invocationClaim(binding, requestFact, preparedFact)).bytes);
+  check(captured === enc(v).bytes && e.capture.hash === hashBytes(enc(v).bytes));
+  check(fact.segment.position > preparedFact.segment.position && fact.segment.position > requestFact.segment.position);
+  const p = record(preparedFact);
+  check(p.request === q.id && p.attempt === q.attempt && p.submittedDigest === q.inputDigest && p.phase === 'prepared');
+  const effects = facts.filter(f => f.kind === 'effect-provider-ProviderEffectRequest' && record(f).id === q.effectRequest);
+  check(effects.length === 1);
+  const effect = record(effects[0]);
+  check(effect.run === q.run && effect.attempt === q.attempt && effect.digest === q.inputDigest
+    && effect.payload.effectRequest === q.effectRequest && effect.payload.run === q.run
+    && effect.payload.attempt === q.attempt && effect.payload.submittedDigest === q.inputDigest
+    && enc(effect.payload.submitted).bytes === enc(q.submitted).bytes
+    && enc(effect.payload.request).bytes === enc({ owner: 'part-seven', name: 'JudgmentRequest', id: requestFact.id }).bytes
+    && enc(effect.payload.prepared).bytes === enc({ owner: 'part-seven', name: 'JudgmentAttemptRecord', id: preparedFact.id }).bytes);
+  check(facts.filter(f => f.kind === 'run-opening' && record(f).id === q.run).length === 1);
+  for (const f of facts.filter(f => f.kind === 'transport-AdmissionReservation'
+    && record(f).run === q.run && ['dispatch-claimed', 'consumed'].includes(record(f).state)))
+    check(f.segment.position > fact.segment.position);
+  const stdin = readCapture(q.submitted);
+  check(enc(stdin).hash === q.inputDigest);
+  requireInputBound('', '', stdin);
+  return binding;
+}
 
 /** Rebuild Nine's exact subject from the verified same-store response chain. */
 export function stage2ResponseSubject(f) {
@@ -438,6 +516,7 @@ export function stage2Lifecycle(input) {
     f = createStage2Owners({ directory: input.directory, seed: selected.seed, messages: selected.messages,
       start: d.ownerStart, deadline: d.ownerDeadline, ownerNow: now,
       active: () => { try { gate(); return true; } catch { return false; } }, model: input.model,
+      invocationBinding: input.invocationBinding,
       question: selected.question, conversation: selected.conversation,
       replyCharge: input.telegram.declaration.limits.maxCharge,
       registerEntries: ['preview', 'telegram-ordinary-reply', input.telegram.admitted.id], routeFactory: input.routeFactory });
@@ -561,7 +640,7 @@ export function stage2Lifecycle(input) {
 
 /** Historical inspection has no writer, route, authority or live-clock dependency.
  * The preview's disclosed fixed signing key remains its trust anchor. */
-export function reconcileStage2History(directory, d, outer, configuration, requireResponse = d.phase === 'api-accepted') {
+export function reconcileStage2History(directory, d, outer, configuration, requireResponse = d.phase === 'api-accepted', bindingOnly = false) {
   validateStage2State(d, outer, configuration.root);
   const base = factsFixture(), facts = [];
   for (const raw of JSON.parse(readFileSync(join(directory, 'facts.json'), 'utf8'))) {
@@ -580,6 +659,32 @@ export function reconcileStage2History(directory, d, outer, configuration, requi
       .decode(readFileSync(join(directory, 'captures', cap.hash.slice(7))));
     check(hashBytes(bytes) === cap.hash); return bytes;
   };
+  const requests = facts.filter(f => f.kind === 'judgment-provider-ProviderJudgmentRequest');
+  if (requests.length) {
+    check(requests.length === 1);
+    const requestFact = requests[0], q = record(requestFact);
+    const continuation = existsSync(join(configuration.root, 'preview-predecessor.json'))
+      && JSON.parse(readFileSync(join(configuration.root, 'preview-predecessor.json'), 'utf8')).continuation;
+    const bindings = invocationBindings(facts, q);
+    const isV2 = !!continuation || d.policyDigest === enc(subscriptionInvocationPolicy(q.model)).hash || bindings.length > 0;
+    if (!isV2) {
+      const { framing: _framing, maxPromptBytes: _maximum, ...legacy } = subscriptionInvocationPolicy(q.model);
+      check(d.policyDigest === enc({ ...legacy, args: legacy.args.filter((_, i, args) => args[i] !== '--system-prompt' && args[i - 1] !== '--system-prompt') }).hash);
+    }
+    const dispatched = facts.some(f => f.kind === 'transport-AdmissionReservation'
+      && record(f).run === q.run && ['dispatch-claimed', 'consumed'].includes(record(f).state));
+    if (isV2 && (bindings.length || d.references.requestFact || dispatched || d.modelAttemptUsed)) {
+      const preparedFact = one('judgment-provider-ProviderJudgmentAttemptRecord', r => r.request === q.id && r.phase === 'prepared');
+      const binding = verifyInvocationBinding(facts, readCapture, requestFact, preparedFact);
+      check(binding.activationDigest === d.activationDigest && binding.invocationPolicyDigest === d.policyDigest);
+      const source = facts.filter(f => f.kind === 'evidence-record'
+        && f.body.evidence.claim.predicate === 'provider-response-source-contract');
+      check(source.length === 1 && source[0].body.evidence.claim.subject === binding.activationReference
+        && source[0].body.evidence.claim.value.version === binding.profileDigest);
+      validateStage2Successor({ root: configuration.root, outer, binding, model: q.model, cutoff: d.cutoff });
+    }
+  }
+  if (bindingOnly) return { facts, readCapture, one, check };
   const expected = {};
   const remember = (role, fact) => { expected[role] = fact.id; return record(fact); };
   if (d.references.requestFact) {
@@ -698,7 +803,8 @@ export function reconcileStage2History(directory, d, outer, configuration, requi
 
 export function stage2HistoricalStatus(root, outer, configuration) {
   const d = validateStage2State(JSON.parse(readFileSync(join(root, 'preview-stage2-state.json'), 'utf8')), outer, root);
-  if (d.phase === 'api-accepted') reconcileStage2History(join(root, '.preview-stage2'), d, outer, configuration);
+  if (existsSync(join(root, '.preview-stage2/facts.json'))) reconcileStage2History(join(root, '.preview-stage2'), d, outer, configuration, d.phase === 'api-accepted', !d.terminalLatch);
+  else if (Object.keys(d.references).length) throw Error('preview: historical owner facts absent');
   return d;
 }
 

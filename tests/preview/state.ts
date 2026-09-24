@@ -3,7 +3,7 @@ import {
   closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync,
   realpathSync, renameSync, writeFileSync,
 } from 'node:fs';
-import { encoded, stage2Activation, subscriptionInvocationPolicy } from './stage2-provider.js';
+import { encoded, stage2Activation, stage2InvocationBinding, subscriptionInvocationPolicy } from './stage2-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { dirname, join, resolve } from 'node:path';
@@ -487,11 +487,12 @@ export async function cutoverRefusedStage2Root(options: SuccessorOptions) {
     || options.activation.invocationPolicyDigest === proof.oldPolicyDigest)
     throw Error('preview: successor requires new activation and policy');
   if (encoded(treeInventory(source)).hash !== encoded(before).hash) throw Error('preview: predecessor changed before reservation');
+  const binding = stage2InvocationBinding(options);
   const reservation = { version: 1, amendment: FRAMING_AMENDMENT, trial: old.trial.id,
     source, target, oldSidecarRawDigest: before['preview-stage2-state.json'],
     oldStoreRawDigest: before['.preview-stage2/facts.json'], ...proof,
     activationDigest, activationReference: options.activation.reference, profileDigest: encoded(options.profile).hash,
-    policyDigest: options.activation.invocationPolicyDigest, configurationDigest: digest(options.configuration),
+    policyDigest: binding.invocationPolicyDigest, systemPromptDigest: binding.systemPromptDigest, framing: binding.framing, configurationDigest: digest(options.configuration),
     cutoff: options.cutoff, localStopEvidence: options.quiescenceReference, originalExpiry: old.trial.expiresAt,
     activationOrdinal: 2, maximumActivations: 2 };
   const reservationDigest = encoded(reservation).hash;
@@ -504,7 +505,7 @@ export async function cutoverRefusedStage2Root(options: SuccessorOptions) {
   const result = archivePreviewRoot(options, source, target, old, stop, now, {
     continuation: { marker, reservationDigest }, activationOrdinal: 2, maximumActivations: 2,
     activationDigest, activationReference: options.activation.reference, profileDigest: reservation.profileDigest,
-    policyDigest: reservation.policyDigest, unresolvedObligation: proof.unresolvedObligation });
+    policyDigest: reservation.policyDigest, systemPromptDigest: reservation.systemPromptDigest, framing: reservation.framing, unresolvedObligation: proof.unresolvedObligation });
   if (encoded(result.inventory).hash !== encoded(before).hash
     || encoded(JSON.parse(readFileSync(marker, 'utf8'))).hash !== encoded(initial).hash)
     throw Error('preview: successor reservation changed');
@@ -515,7 +516,7 @@ export async function cutoverRefusedStage2Root(options: SuccessorOptions) {
 
 /** Read-only startup verification; terminal history needs no live activation. */
 export function validateStage2Successor(input: { root: string; outer: PreviewStateDocument;
-  activation: SubscriptionActivationRecord; profile: ProviderSubscriptionProfile; model: string; cutoff: number }) {
+  activation?: SubscriptionActivationRecord; profile?: ProviderSubscriptionProfile; model: string; cutoff: number; binding?: ReturnType<typeof stage2InvocationBinding> }) {
   const path = join(input.root, 'preview-predecessor.json'), marker = markerPath(input.root, input.outer.trial.id);
   if (!existsSync(path)) {
     if (existsSync(marker) || existsSync(join(input.root, '.preview-predecessor'))) throw Error('preview: incomplete successor');
@@ -526,7 +527,14 @@ export function validateStage2Successor(input: { root: string; outer: PreviewSta
     if (existsSync(marker)) throw Error('preview: successor binding absent');
     noPreviousSuccessor(input.root); return;
   }
+  const binding = input.activation || input.profile
+    ? stage2InvocationBinding({ activation: input.activation!, profile: input.profile!, model: input.model }) : input.binding;
+  const policy = subscriptionInvocationPolicy(input.model);
+  const systemPromptDigest = rawHash(policy.args[policy.args.indexOf('--system-prompt') + 1]!);
   const check = (ok: unknown) => { if (!ok) throw Error('preview: successor evidence differs'); };
+  if (!binding) throw Error('preview: successor binding absent');
+  if (input.activation) check(input.profile?.activationReference === input.activation.reference
+    && input.activation.invocationPolicyDigest === encoded(policy).hash && input.activation.profileDigest === binding.profileDigest);
   check(predecessor.continuation.marker === marker && realpathSync(marker) === marker);
   const retained = JSON.parse(readFileSync(marker, 'utf8')), r = retained.reservation;
   check(retained.completion && retained.reservationDigest === encoded(r).hash
@@ -535,10 +543,13 @@ export function validateStage2Successor(input: { root: string; outer: PreviewSta
     && r.target === input.root && r.source === predecessor.root && dirname(r.source) === dirname(input.root)
     && r.trial === input.outer.trial.id && r.originalExpiry === input.outer.trial.expiresAt
     && r.configurationDigest === input.outer.trial.configurationDigest && r.cutoff === input.cutoff
-    && r.activationDigest === encoded(input.activation).hash && r.activationReference === input.activation.reference
-    && r.profileDigest === encoded(input.profile).hash && input.profile.activationReference === input.activation.reference
-    && r.policyDigest === encoded(subscriptionInvocationPolicy(input.model)).hash);
-  for (const key of ['activationOrdinal', 'maximumActivations', 'activationDigest', 'activationReference', 'profileDigest', 'policyDigest', 'unresolvedObligation'])
+    && r.activationDigest === binding.activationDigest && r.activationReference === binding.activationReference
+    && r.profileDigest === binding.profileDigest
+    && r.policyDigest === binding.invocationPolicyDigest && r.policyDigest === encoded(subscriptionInvocationPolicy(input.model)).hash
+    && r.systemPromptDigest === binding.systemPromptDigest && r.systemPromptDigest === systemPromptDigest
+    && r.framing === binding.framing && r.framing === policy.framing
+    && predecessor.cutoff === r.cutoff && predecessor.quiescenceReference === r.localStopEvidence);
+  for (const key of ['activationOrdinal', 'maximumActivations', 'activationDigest', 'activationReference', 'profileDigest', 'policyDigest', 'systemPromptDigest', 'framing', 'unresolvedObligation'])
     check(encoded(predecessor[key]).hash === encoded(r[key]).hash);
   const inventory = treeInventory(join(input.root, '.preview-predecessor'));
   check(encoded(inventory).hash === retained.completion.archiveInventoryDigest
@@ -552,6 +563,7 @@ export function validateStage2Successor(input: { root: string; outer: PreviewSta
   check(input.outer.cursor.nextOffset >= archived.cursor.nextOffset);
   if (stage2SidecarExists(input.root)) {
     const sidecar = validateStage2State(JSON.parse(readFileSync(join(input.root, 'preview-stage2-state.json'), 'utf8')), input.outer, input.root);
-    check(predecessor.excludedTurns.every((id: string) => sidecar.excludedTurns.includes(id)));
+    check(predecessor.excludedTurns.every((id: string) => sidecar.excludedTurns.includes(id))
+      && sidecar.activationDigest === r.activationDigest && sidecar.policyDigest === r.policyDigest && sidecar.cutoff === r.cutoff);
   }
 }

@@ -671,8 +671,12 @@ dollar allowance, paid overage permission or automatic retry. Unsupported manage
 contradicted extra usage, known subscription exhaustion, missing bindings or changed profile
 refuse before model launch. Unobservable extra usage remains explicitly operator-attested.
 
-The amended complete Seven request limit is 4096 UTF-8 bytes, including exact selected input,
-complete bounded context, Decision bindings, settings, schema and JSON escaping. Description,
+Framing v2 uses the exact fixed 1424-byte replacement `--system-prompt` instruction and unchanged
+canonical stdin, with data-only context `{bindings, conversationKind:'captured-telegram-updates',
+conversation}` preserving all selected updates. System plus stdin must fit 4096 UTF-8 bytes,
+including JSON escaping; measure before intent and before any child. No truncation, context
+projection, `--json-schema`, prose wrapping or second model call repairs an overflow or refusal.
+The independent stdin-only limit remains 4096. Description,
 Seven maxInputBytes and the approved Eight definition all use 4096; neither Eight owner is
 changed. Extracted Decision 16384, raw terminal 65536, metadata 8192 per envelope, backing capture
 capacity 1048576, max output tokens 2048 and model timeout 120000 ms remain independent bounds.
@@ -709,6 +713,27 @@ supports occurrence only, never proof of billing settlement or quiescence. Unkno
 send after a crash is held without replay. A preserved response may complete only the same owner
 chain within current authority and original deadline. A stopped predecessor is retained intact;
 desk cutover archives it and inherits expiry, counters, cursor and every prior turn exclusion.
+Framing v2 preserves the exact legacy source/terminal authority attestations. A separate ordinary
+signed `preview-invocation-binding` Evidence attestation, subject the prepared request record id,
+retains the complete canonical claim capture with activation/profile/policy and raw-system hashes,
+complete policy, framing, full request/prepared fact references, effect/Run/attempt and submitted
+capture/digest. It is appended after preparation before intent and verified on preparation,
+dispatch and recovery; duplicate/mismatched or post-dispatch missing bindings refuse. No owner
+schema, response evidence roster, authority equality or activation-record schema changes.
+
+The first live attempt returned captured non-JSON prose and correctly held without a send.
+The framing amendment allows one specific desk-supervised successor, maximum two activations
+in the existing lineage, for one new post-cutoff update. Its read-only predecessor proof requires
+the signed complete prose failure, genuine Nine/Eight/Six unresolved accounting, and no acceptance
+or reply authority anywhere. Exclusive fsynced marker reservation precedes complete immutable
+archive/copy; reservation/predecessor bind system/framing and policy/activation/profile, cutoff,
+stop proof and unresolved store references, and completion binds archive/predecessor hashes.
+Partial/corrupt copy or marker holds without replay or alternate-root retry. Active restarts and
+historical reads join the prepared binding to these records. Legacy v1 history needs no retrofit.
+All prior turns, cursor, bounds, expiry and counters remain inherited; the predecessor latch stays
+intact. The successor's fresh local ledger does not settle or reset the first obligation. Both
+outcomes retain UNKNOWN charge/quiescence and store identity. This is no production activation,
+real-model success prediction, general multi-activation mechanism or third-attempt authorization.
 The exact inputs, invocation and offline evidence inventory are in tests/preview/README.md.
 
 Historical decoding uses the origin-pinned schema, generation, causal predecessors, and captured

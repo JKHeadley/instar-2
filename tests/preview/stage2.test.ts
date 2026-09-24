@@ -33,6 +33,20 @@ it('composes exact Four input to one signed accepted answer in the bound private
     c.pollOnce(); await c.resume();
     expect(c.sidecar.read()).toMatchObject({ phase: 'api-accepted', terminalLatch: true, modelAttemptUsed: 1 });
     expect(s.models).toHaveLength(1);
+    const facts = JSON.parse(readFileSync(join(s.root, '.preview-stage2/facts.json'), 'utf8'));
+    const evidence = (predicate: string) => facts.find((f: any) => f.body.evidence?.claim.predicate === predicate).body.evidence;
+    expect(evidence('provider-response-source-contract').claim.value).toEqual({ version: s.activation.profileDigest,
+      parserReference: 'claude-code-json-result', parserVersion: '1', endpoint: s.profile.loginProfileIdentity,
+      account: s.profile.expectedAccount, credentialReference: s.profile.reference, controller: 'preview-local-recorder',
+      executableArtifact: s.profile.artifact, provider: 'anthropic', model: s.model, route: 'preview-subscription' });
+    expect(evidence('provider-response-terminal-contract').claim.value).toEqual({ version: s.activation.profileDigest,
+      parserReference: 'claude-code-json-result', parserVersion: '1', terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] });
+    const binding = evidence('preview-invocation-binding');
+    expect(Object.keys(binding.claim.value).sort()).toEqual(['schemaVersion', 'activationReference', 'activationDigest',
+      'profileDigest', 'invocationPolicyDigest', 'systemPromptDigest', 'framing', 'invocationPolicy', 'request', 'prepared',
+      'effectRequest', 'run', 'attempt', 'submitted', 'submittedDigest'].sort());
+    expect(binding).toMatchObject({ source: 'probe', strength: 'attestation' });
+    expect(readFileSync(join(s.root, '.preview-stage2/captures', binding.capture.hash.slice(7)), 'utf8')).toBe(encoded(binding.claim.value).bytes);
     const dispatched = JSON.parse(s.models[0].stdin);
     const context = JSON.parse(dispatched.messages[1].content);
     expect(Buffer.byteLength(s.models[0].stdin)).toBeLessThanOrEqual(4096);

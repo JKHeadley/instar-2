@@ -57,6 +57,16 @@ export function stage2Activation(input: { activation: SubscriptionActivationReco
     || input.activation.expiresAt !== SUBSCRIPTION_PREVIEW_EXPIRY) throw new Error('preview: activation trial differs');
   return encoded(input.activation).hash;
 }
+/** Pure descriptor of already validated deployment bindings; no live authority. */
+export function stage2InvocationBinding(input: { activation: SubscriptionActivationRecord;
+  profile: ProviderSubscriptionProfile; model: string }) {
+  const invocationPolicy = subscriptionInvocationPolicy(input.model);
+  return Object.freeze({ activationReference: input.activation.reference,
+    activationDigest: encoded(input.activation).hash, profileDigest: encoded(input.profile).hash,
+    invocationPolicyDigest: encoded(invocationPolicy).hash,
+    systemPromptDigest: `sha256:${createHash('sha256').update(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8').digest('hex')}`,
+    framing: invocationPolicy.framing, invocationPolicy });
+}
 export { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy };
 
 export function stage2RouteFactory(input: {
@@ -69,10 +79,7 @@ export function stage2RouteFactory(input: {
     const source = { version: a.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       endpoint: p.loginProfileIdentity, account: p.expectedAccount, credentialReference: p.reference,
       controller: 'preview-local-recorder', executableArtifact: p.artifact,
-      provider: 'anthropic', model: input.model, route: STAGE2_ROUTE,
-      invocationPolicyDigest: encoded(subscriptionInvocationPolicy(input.model)).hash,
-      systemPromptDigest: `sha256:${createHash('sha256').update(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8').digest('hex')}`,
-      framing: subscriptionInvocationPolicy(input.model).framing };
+      provider: 'anthropic', model: input.model, route: STAGE2_ROUTE };
     const terminal = { version: a.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] };
     const record = (predicate: string, value: unknown) => evidence(a.reference, encoded(value).hash, predicate, undefined,
