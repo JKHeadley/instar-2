@@ -303,11 +303,23 @@ export function createProductionRunAdmission(
         && typeof launch.record.processOperation === 'string' && Array.isArray(launch.record.resourceReferences),
       'signed current worker placement absent');
       const resourceReferences = launch.record.resourceReferences as unknown[];
-      const referenced = transport.find((row): row is TransportFact & { readonly record: AdmissionReservation } =>
-        row.record.type === 'AdmissionReservation' && row.record.operation === launch.record.processOperation
-          && row.record.run === run && resourceReferences.includes(row.fact.id));
+      const operationKey = launch.record.processOperation.startsWith('operation:');
+      const referenced = operationKey
+        ? transport.find((row): row is TransportFact & { readonly record: AdmissionReservation } =>
+          row.record.type === 'AdmissionReservation' && row.record.operation === launch.record.processOperation
+            && row.record.run === run && resourceReferences.includes(row.fact.id))
+        : transport.find((row): row is TransportFact & { readonly record: AdmissionReservation } =>
+          row.fact.id === launch.record.processOperation && row.fact.kind === 'transport-AdmissionReservation'
+            && row.record.type === 'AdmissionReservation' && row.record.state === 'prepared'
+            && row.record.run === run && row.record.fence.assignment === live.fence.assignment
+            && resourceReferences.includes(row.fact.id));
       const reservation = transport.filter((row): row is TransportFact & { readonly record: AdmissionReservation } =>
-        row.record.type === 'AdmissionReservation' && row.record.operation === launch.record.processOperation).at(-1);
+        row.record.type === 'AdmissionReservation' && row.record.operation === (operationKey
+          ? launch.record.processOperation : referenced?.record.operation)).at(-1);
+      if (!operationKey) ensure(referenced && reservation && referenced.record.request === reservation.record.request
+        && referenced.record.attempt === reservation.record.attempt && referenced.record.digest === reservation.record.digest
+        && referenced.record.run === reservation.record.run && same(referenced.record.fence, reservation.record.fence),
+      'prepared worker reservation mapping changed');
       ensure(referenced && reservation && reservation.record.state !== 'closed'
         && reservation.record.run === run && reservation.record.fence.assignment === live.fence.assignment,
       'current worker resource reservation absent');
