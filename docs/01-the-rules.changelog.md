@@ -4,6 +4,11 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 12 · 2026-09-23 · draft — Justin adopted the 17-line simplicity audit and directed a fundamental Occam standard on 2026-09-23; Astra Occam ruling supersedes the earlier Rule 116 checker proposal. Exact-content operator approval remains pending.
+
+- **Widen Rule 116 to Occam's Razor / Simplest Robust Route, add its value rationale, move it to Held by the mind, and require simplestRobustRoute in the existing independent design and landing review. Update group counts to 21/9/73/13, total 116.** — The fundamental standard applies across architecture and process; existing review can judge whether added machinery prevents a credible failure the simpler route cannot handle. _(astra-occam-standard-ruling.md section 1; topic 52075, 2026-09-23 operator direction)_
+- **Correct Rules 1 and 49 to preserve named floors and risk-scoped review instead of machine-enforcement counts and a universal rule-parent stop; remove Rule 65's minimum review-round floor.** — The operator adopted the simplicity audit and its one risk-scaled review with targeted repair. _(astra-instar2-simplicity-audit.md section 7; astra-occam-standard-ruling.md section 1)_
+
 ## Revision 11 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **Rule 4 gains its third deciding-alone category: deterministic enforcement of recorded governed state — an exact test that refuses malformed, unverifiable, or standing-uncovered input and preserves it.** — Part one's decoders and part two's admission ladder block deterministically without being on the ruled-three list; part two surfaced the gap and the operator approved routing the amendment. _(part two question 10; operator approval 2026-09-04)_

@@ -4,6 +4,10 @@ _Generated from `13-the-verification-holders.changelog.json` by `scripts/render-
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-09-23 · draft — Astra Occam ruling supersedes the earlier Rule 116 P9-NF-67 proposal following Justin's 2026-09-23 adoption of the simplicity audit; exact-content approval pending.
+
+- **Replace the proposed Rule 116 checker contract with simplestRobustRoute in the existing independent design and landing review; withdraw P9-NF-67 from the governing fixture and disposition tables.** — Semantic adequacy belongs to the existing reviewer; a separate simplicity classifier, checker or gate adds machinery without a distinct protection. _(astra-occam-standard-ruling.md section 1; earlier P9-NF-67 proposal remains recorded in astra-standard-skills-over-scripts-ruling.md)_
+
 ## Revision 5 · 2026-09-21 · draft — Astra blocked-build adjudication (astra-g6-blocked-adjudication.md, section (b)) correcting the M4 G6 supplement approved in PR 100: only Nine's owned bodies gain version 2; FactEnvelope.schemaVersion stays 1.
 
 - **Give only VerificationPlan, VerificationRequest and VerificationAssessment owned-body schemaVersion 2 under unchanged FactEnvelope.schemaVersion 1 and the existing record-owned field schema.** — The family schema is unchanged, so one genuine owned-body registration accepts exact v1 and output-use v2 bodies without a FactContext migration; existing producers and signed v1 history remain intact. _(/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-g6-blocked-adjudication.md section (b), Exact correction for the desk to record, item 1)_

@@ -1,15 +1,15 @@
 # Generated rules
 
-Register generation: sha256:bddaaa6f673d7b46915d196de6fed048e8aef712cbb17a4c6bd484d86f9369e0
-Source commit: d3a14c2e3dc0941e72b7b149b94dc54fbde69bb4
+Register generation: sha256:5f34bb2a3ddf3549f12d937e2df5660f130cfc81ac62d8b26470a58291aa6b54
+Source commit: 6d9e4225beb5b7aac1b66aca76d595b1bce7d138
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
 ## 1. Structure beats Willpower
 
-If a behavior matters, build it into the system so it cannot be skipped. Never rely on the agent remembering an instruction.
+Enforce named safety, authority, durability and resource floors structurally. Use judgment for contextual choices within them.
 
-Check: Count how many rules are enforced by machinery versus by prose, and refuse any change that lowers that number. This measures the *result* of the rule, not the rule itself.
+Check: The existing review names affected floors and checks evidence that they remain held; reducing machinery or machine-enforced rule counts is not itself a failure.
 Terms: (none)
 
 ## 10. Intelligence Infers, Keywords Only Guard
@@ -137,6 +137,13 @@ Instar ships a first-party harness built only on the same public core ports avai
 
 Check: The native harness runs the full harness contract suite against every compatible registered model doorway; an architecture lint refuses private core imports or special-case authority, and the self-hosting suite builds and installs a real local capability through it. (Operator review of PR #12; makes rule 2 concrete.)
 Terms: (none)
+
+## 116. Occam's Razor / Simplest Robust Route
+
+Choose the simplest route that delivers the required behavior and preserves named safety, authority, durability and resource floors. This is a fundamental development standard, applying to architecture and process alike. Prefer existing mechanisms; use agent judgment and skills for changing conditions, and code for enforced boundaries, fixed steps and exact evidence checks. Added machinery must prevent a named credible failure that the simpler route cannot adequately handle, with benefit proportionate to its operating, maintenance and recovery cost. An autonomous capability is done only when its shipped path completes a real case unattended.
+
+Check: Every design and landing review states the simplest robust route and why the proposal is not it, or explicitly states that it is. The existing independent reviewer refuses machinery with no named failure it prevents, or no adequate reason the simpler route fails. Record this in the required simplestRobustRoute field of the existing review record. Applicable start, end-state and limit guards and unattended shipped-path evidence remain part of the existing review. No separate simplicity checker or gate.
+Terms: term:done
 
 ## 12. Intelligent Prompts
 
@@ -420,9 +427,9 @@ Terms: (none)
 
 ## 49. Constitutional Traceability
 
-No work ships unless it names the rule it serves. Work that fits no rule stops until the rules are amended.
+Work states its intended outcome and the governing constraints it affects. Ordinary engineering defaults belong to the agent; they do not require a new constitutional parent.
 
-Check: A front-matter field on every spec naming its parent standard.
+Check: The existing review checks affected constraints and records any genuine direction, policy or authority question for the operator.
 Terms: (none)
 
 ## 5. Documentation IS Being
@@ -546,7 +553,7 @@ Terms: (none)
 
 ## 65. Iterative Audit to Convergence
 
-An audit is not done after one pass. Fix what you found, re-audit, repeat — until the findings shrink to detail that no longer changes the outcome. That is an 80/20 judgment, made by an independent reviewer, never the author — and it applies fractally, at every level of the review: to the audit as a whole and to each category of findings within it. A category that keeps producing new findings does not by itself keep the review open; the test is the trend, not the count — when a category's new findings run progressively less severe, or fall below the review's severity threshold, that category has converged even though new material keeps appearing, and the reviewer may accept the residue — recorded, not fixed — so the review can converge. A round count is a floor and a confusion detector, never the stopping rule.
+An audit is not done after one pass. Fix what you found, re-audit, repeat — until the findings shrink to detail that no longer changes the outcome. That is an 80/20 judgment, made by an independent reviewer, never the author — and it applies fractally, at every level of the review: to the audit as a whole and to each category of findings within it. A category that keeps producing new findings does not by itself keep the review open; the test is the trend, not the count — when a category's new findings run progressively less severe, or fall below the review's severity threshold, that category has converged even though new material keeps appearing, and the reviewer may accept the residue — recorded, not fixed — so the review can converge. Review ends when the independent reviewer accepts the evidence and recorded residue; no fixed minimum round count applies.
 
 Check: A claim of "converged" must carry a machine-written record of the passes, name the independent reviewer who judged it, and name any accepted residue with the severity basis on which it was accepted. 1.x already enforces the record; the reviewer and residue fields are new. (Ruling 1 on the decision sheet.)
 Terms: term:done

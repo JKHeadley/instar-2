@@ -1,5 +1,21 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-24",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin adopted the simplicity audit and requested a fundamental Occam standard; Astra specified the smallest replay publication fix. Exact-content approval remains pending."
+    },
+    "changes": [
+      {
+        "what": "Clarify that approved repository replay revisions use authored Markdown and refreshed derived publication pins, while runtime bootstrap and subsequent anchored changes retain their existing authority path.",
+        "why": "The first offline conversion must not prohibit later reviewed rule-book publication or imply that replay grants entering-force authority.",
+        "ref": "astra-occam-standard-ruling.md section 2"
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-09-04",
     "status": "approved",
@@ -27,7 +43,7 @@
     "cause": {
       "kind": "review",
       "pr": 17,
-      "note": "review desk round 4 (final) \u2014 internal confirmation: zero findings, converged; the external's five refinements folded"
+      "note": "review desk round 4 (final) — internal confirmation: zero findings, converged; the external's five refinements folded"
     },
     "changes": [
       {
@@ -48,7 +64,7 @@
     "cause": {
       "kind": "review",
       "pr": 17,
-      "note": "review desk round 3 \u2014 internal: zero design findings; external at minor"
+      "note": "review desk round 3 — internal: zero design findings; external at minor"
     },
     "changes": [
       {
@@ -69,7 +85,7 @@
     "cause": {
       "kind": "review",
       "pr": 17,
-      "note": "review desk round 2 \u2014 all round-1 closures verified; the redesign propagated into the parents"
+      "note": "review desk round 2 — all round-1 closures verified; the redesign propagated into the parents"
     },
     "changes": [
       {
@@ -90,7 +106,7 @@
     "cause": {
       "kind": "review",
       "pr": 17,
-      "note": "review desk round 1 \u2014 external + security/adversarial + rules-conformance: ~39 findings; full rewrite"
+      "note": "review desk round 1 — external + security/adversarial + rules-conformance: ~39 findings; full rewrite"
     },
     "changes": [
       {
