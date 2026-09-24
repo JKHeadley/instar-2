@@ -576,6 +576,11 @@ describe('P10-SI-32/33 atomic selection set closed wire', () => {
   it('does not let a genuine Six capacity rebind renew an expired selection row', () => {
     const f = finiteStrictFixture();
     const prior = value(f.x.capacityAuthority.inspectCapacity()).heads[0]!;
+    // Move both the assembly clock and Six's fixture clock past the row horizon (105)
+    // BEFORE the rebind, so the rebind genuinely happens after expiry.
+    f.runtime.time(106);
+    f.x.f.f.now = value(decodeMeasurement('clock', { ...f.x.f.f.now, value: 106, at: 106 }, f.x.f.context.decode));
+    refused(f.inspect(), 'required production set row expired: surface-adapter');
     value(f.x.capacityAuthority.rebindCapacity({ command: 'capacity:finite-row-successor',
       previousCapacity: prior.fact, fence: f.x.capacityFence,
       validUntil: value(decodeMeasurement('clock', { ...f.x.f.f.now, value: 400, at: 400 },
@@ -583,7 +588,6 @@ describe('P10-SI-32/33 atomic selection set closed wire', () => {
     const current = value(f.x.capacityAuthority.inspectCapacity());
     expect(current.heads[0]).toMatchObject({ capacity: prior.capacity, usable: true, blocker: null });
     expect(current.parentRemainder.effect.quantity).toBe(80);
-    f.runtime.time(106);
     refused(f.inspect(), 'required production set row expired: surface-adapter');
   });
   it('appends and reuses one genuine 19-row local set with a Four-approved Six allocation', () => {
