@@ -1175,7 +1175,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
   let peerConnected = true;
   const peerDescriptor = { installation: 'slice-installation', studio: config.machine, laptop: 'm_cc2ec651a91f',
     store: 'slice-peer-facts', epoch: 0, trust: 'offline-slice-channel', custody: 'offline-slice-captures',
-    captureReferences: [], capturePrefixes: ['sha256:', 'capture:', 'effect-capture:', 'message:', 'record:'],
+    captureReferences: [], capturePrefixes: ['sha256:', 'capture:', 'effect-capture:', 'message:', 'record:', 'judgment-capture:'],
     limits: { maxRequestBytes: 32 * 1024 * 1024, maxResponseBytes: 2 * 1024 * 1024, maxFacts: 4096,
       maxCaptures: 1024, maxCaptureBytes: 2 * 1024 * 1024, maxDiskBytes: 128 * 1024 * 1024,
       maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
