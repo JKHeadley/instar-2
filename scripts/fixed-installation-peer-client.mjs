@@ -7,12 +7,19 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 const sha = value => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const exact = (value, max = 256) => typeof value === 'string' && value.length > 0 && value.length <= max
   && /^[A-Za-z0-9._:@/-]+$/.test(value) && !value.startsWith('-');
+export const pinnedSshTrustOptions = (knownHosts, hostKeyAlias) => [
+  '-F', '/dev/null', '-o', 'StrictHostKeyChecking=yes',
+  '-o', `UserKnownHostsFile=${knownHosts}`, '-o', 'GlobalKnownHostsFile=/dev/null',
+  '-o', `HostKeyAlias=${hostKeyAlias}`, '-o', 'HostKeyAlgorithms=ssh-ed25519',
+  '-o', 'KnownHostsCommand=none', '-o', 'VerifyHostKeyDNS=no', '-o', 'UpdateHostKeys=no',
+];
 export function createPinnedSshPeerTransport(config) {
   const { host, port, user, knownHosts, knownHostsDigest, hostKeyAlias, identityFile,
     peer, trust, timeoutMs, maxRequestBytes, maxResponseBytes } = config;
   if (![host, user, hostKeyAlias, peer, trust].every(v => exact(v)) || !Number.isSafeInteger(port) || port < 1 || port > 65535
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxRequestBytes) || maxRequestBytes < 1
-    || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || !knownHosts?.startsWith('/')
+    || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1
+    || !/^\/[A-Za-z0-9._/@+-]+$/.test(knownHosts ?? '')
     || realpathSync(knownHosts) !== knownHosts || !lstatSync(knownHosts).isFile() || sha(readFileSync(knownHosts)) !== knownHostsDigest)
     throw Error('pinned SSH peer configuration invalid');
   const hostKeys = readFileSync(knownHosts, 'utf8').trim().split(/\r?\n/);
@@ -20,7 +27,8 @@ export function createPinnedSshPeerTransport(config) {
   if (trust !== knownHostsDigest || keyFields.length !== 3 || keyFields[0] !== hostKeyAlias
     || keyFields[1] !== 'ssh-ed25519' || !/^[A-Za-z0-9+/=]+$/.test(keyFields[2]))
     throw Error('enrolled host trust differs');
-  if (!identityFile?.startsWith('/') || realpathSync(identityFile) !== identityFile || !lstatSync(identityFile).isFile()
+  if (!/^\/[A-Za-z0-9._/@+-]+$/.test(identityFile ?? '')
+    || realpathSync(identityFile) !== identityFile || !lstatSync(identityFile).isFile()
     || (lstatSync(identityFile).mode & 0o077) !== 0)
     throw Error('installed Studio key handle missing');
   if (peer !== 'm_cc2ec651a91f') throw Error('enrolled Laptop identity required');
@@ -30,8 +38,7 @@ export function createPinnedSshPeerTransport(config) {
     if (sha(readFileSync(knownHosts)) !== knownHostsDigest) throw Error('pinned trust file changed');
     const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
     const child = spawnSync('/usr/bin/ssh', [
-      '-T', '-F', '/dev/null', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
-      '-o', `UserKnownHostsFile=${knownHosts}`, '-o', `HostKeyAlias=${hostKeyAlias}`,
+      '-T', ...pinnedSshTrustOptions(knownHosts, hostKeyAlias), '-o', 'BatchMode=yes',
       '-i', identityFile, '-o', 'IdentitiesOnly=yes',
       '-o', 'IdentityAgent=none', '-o', 'ConnectionAttempts=1', '-o', 'NumberOfPasswordPrompts=0',
       '-o', 'PreferredAuthentications=publickey', '-o', 'PasswordAuthentication=no',

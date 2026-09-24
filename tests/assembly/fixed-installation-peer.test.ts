@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,7 +12,7 @@ import type { PeerDescriptor, PeerRequest, PeerResponse } from '../../src/assemb
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { effectFixture } from '../effects/fixture.js';
 // @ts-expect-error fixed host transport is JavaScript outside the pure core.
-import { createPinnedSshPeerTransport } from '../../scripts/fixed-installation-peer-client.mjs';
+import { createPinnedSshPeerTransport, pinnedSshTrustOptions } from '../../scripts/fixed-installation-peer-client.mjs';
 
 const descriptor = (): PeerDescriptor => ({ installation: 'install:one', studio: 'machine-a', laptop: 'm_cc2ec651a91f',
   store: 'facts:one', epoch: 0, trust: 'ssh:installed-pin', custody: 'policy:one', captureReferences: [],
@@ -128,6 +129,7 @@ it('R3-P2 request, response, fact, attempt and deadline bounds refuse without hi
       response: h.receive(request) }) } });
   refused(make({ ...h.d.limits, maxAttempts: 2 }), 'retry/queue');
   refused(make({ ...h.d.limits, timeoutMs: 0 }), 'finite peer bounds');
+  refused(make({ ...h.d.limits, timeoutMs: undefined } as unknown as PeerDescriptor['limits']), 'finite peer bounds');
   refused(value(make({ ...h.d.limits, maxFacts: 1 })).durability.ensure([h.first, h.second]), 'fact count bound');
   refused(value(make({ ...h.d.limits, maxRequestBytes: 1 })).durability.ensure([h.first, h.second]), 'request byte bound');
   const smallResponse = harness({ maxResponseBytes: 1 });
@@ -145,17 +147,76 @@ it('R3 host wrapper requires exact installed host-key file and restricted Studio
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'instar-peer-host-pin-')));
   try {
     const knownHosts = join(root, 'known-hosts'), identityFile = join(root, 'identity');
+    const unrelatedSystemHosts = join(root, 'system-known-hosts');
     const known = 'laptop-fixed ssh-ed25519 VEVTVEtFWQ==\n';
     writeFileSync(knownHosts, known, { mode: 0o600 }); writeFileSync(identityFile, 'test-only', { mode: 0o600 });
+    writeFileSync(unrelatedSystemHosts, 'laptop-fixed ssh-ed25519 T1RIRVJLRVk=\n', { mode: 0o600 });
     const knownHostsDigest = `sha256:${createHash('sha256').update(known).digest('hex')}`;
     const config = { host: 'laptop.example', port: 22, user: 'instar-custody', knownHosts,
       knownHostsDigest, hostKeyAlias: 'laptop-fixed', identityFile, peer: 'm_cc2ec651a91f',
       trust: knownHostsDigest, timeoutMs: 1000, maxRequestBytes: 100000, maxResponseBytes: 10000 };
     expect(createPinnedSshPeerTransport(config).owner).toBe('part-ten');
+    const effective = spawnSync('/usr/bin/ssh', ['-G', ...pinnedSshTrustOptions(knownHosts, 'laptop-fixed'),
+      '-i', identityFile, 'laptop.example'], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: '/nonexistent' } });
+    expect(effective.status).toBe(0);
+    expect(effective.stdout).toContain(`userknownhostsfile ${knownHosts}`);
+    expect(effective.stdout).toContain('globalknownhostsfile /dev/null');
+    expect(effective.stdout).toContain('hostkeyalgorithms ssh-ed25519');
+    expect(pinnedSshTrustOptions(knownHosts, 'laptop-fixed')).toContain('KnownHostsCommand=none');
+    expect(effective.stdout).not.toMatch(/^knownhostscommand [^\n]+/m);
+    expect(effective.stdout).toContain('verifyhostkeydns false');
+    expect(effective.stdout).toContain('updatehostkeys false');
+    const withSystemTrust = spawnSync('/usr/bin/ssh', ['-G', ...pinnedSshTrustOptions(knownHosts, 'laptop-fixed'),
+      '-o', `GlobalKnownHostsFile=${unrelatedSystemHosts}`, '-i', identityFile, 'laptop.example'],
+    { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: '/nonexistent' } });
+    expect(withSystemTrust.status).toBe(0);
+    expect(withSystemTrust.stdout).toContain('globalknownhostsfile /dev/null');
+    expect(withSystemTrust.stdout).not.toContain(unrelatedSystemHosts);
     expect(() => createPinnedSshPeerTransport({ ...config, trust: 'wrong-pin' })).toThrow('enrolled host trust');
     writeFileSync(knownHosts, 'laptop-fixed ssh-ed25519 OTHERKEY\n');
     expect(() => createPinnedSshPeerTransport(config)).toThrow('pinned SSH peer configuration invalid');
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+it('R3 owner-derived Intent.raw custody survives cold receiver and refuses context-only bytes', () => {
+  const f = factsFixture(), intent = f.intentInput(), rawHash = intent.raw as string;
+  const captures = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) =>
+    [reference, { hash: hashBytes(bytes), bytes, byteLength: Buffer.byteLength(bytes), status: 'available' as const }]));
+  const schema = { ...f.schema, fields: { ...f.schema.fields, intent: { kind: 'constitutional' as const, type: 'Intent' as const } } };
+  const context: FactContext = { ...f.ctx, schemas: [schema], captures };
+  const fact = f.fact({ body: { identity: 'one', amount: '10', intent } }, context);
+  const d: PeerDescriptor = { ...descriptor(), captureReferences: Object.keys(captures),
+    limits: { ...descriptor().limits, maxCaptures: 64, maxCaptureBytes: 100000,
+      maxRequestBytes: 1000000, maxDiskBytes: 3000000 } };
+  const rows: FactEnvelope[] = [], persisted = new Map<string, string>();
+  const remote: SegmentStoragePort = { owner: 'part-ten', read: () => rows,
+    append: wire => { rows.push(JSON.parse(wire)); return f.success({ kind: 'local-durable' }); } };
+  const port = { owner: 'part-ten' as const,
+    preserve: (reference: string, bytes: string) => { persisted.set(reference, bytes); return true; },
+    read: (reference: string) => persisted.get(reference) ?? null };
+  const cold: FactContext = { ...context, captures: Object.fromEntries(Object.entries(captures).map(([reference, c]) =>
+    [reference, { ...c, bytes: null, status: 'missing' as const }])) };
+  let sent: PeerRequest | undefined;
+  const adapter = value(createFixedPeerReplication({ descriptor: d,
+    local: { owner: 'part-ten', read: () => [fact], append: () => f.success({ kind: 'local-durable' }) },
+    context, captures: () => captures, boundary: f.c,
+    transport: { owner: 'part-ten', exchange: request => {
+      sent = request;
+      return { peer: d.laptop, trust: d.trust, response: value(receiveFixedPeerRequest({ request, descriptor: d,
+        authenticatedStudio: d.studio, context: cold, storage: remote, captures: port, boundary: f.c, reserve: () => {} })) };
+    } } }));
+  expect(value(adapter.durability.ensure([fact]))).toHaveLength(1);
+  expect(sent?.captures.some(c => c.reference === rawHash && c.bytes === f.captures[rawHash])).toBe(true);
+  expect(persisted.get(rawHash)).toBe(f.captures[rawHash]);
+  expect(value(adapter.verify())).toHaveLength(1);
+  const withoutRaw = Object.fromEntries(Object.entries(captures).filter(([reference]) => reference !== rawHash));
+  const contextOnly = value(createFixedPeerReplication({ descriptor: d,
+    local: { owner: 'part-ten', read: () => [fact], append: () => f.success({ kind: 'local-durable' }) },
+    context, captures: () => withoutRaw, boundary: f.c,
+    transport: { owner: 'part-ten', exchange: () => { throw Error('context bytes must not authorize transport'); } } }));
+  refused(contextOnly.durability.ensure([fact]), 'required capture unavailable');
+  const omitted = { ...sent!, captures: sent!.captures.filter(c => c.reference !== rawHash) };
+  refused(receiveFixedPeerRequest({ request: omitted, descriptor: d, authenticatedStudio: d.studio,
+    context, storage: remote, captures: { ...port, read: () => null }, boundary: f.c, reserve: () => {} }));
 });
 function eightPeerHarness(online: boolean, stopAfterRemote = false) {
   const f = effectFixture(), request = f.prepare(), rows: FactEnvelope[] = [], captureRows = new Map<string, string>();

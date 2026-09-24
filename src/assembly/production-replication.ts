@@ -2,8 +2,8 @@
  * independently installed host configuration; this module creates no standing fact. */
 import { randomBytes } from 'node:crypto';
 import type { BoundaryContext, Hash, Result } from '../index.js';
-import { canonical } from '../index.js';
-import { causalCone, createFactStore, hashBytes } from '../facts/index.js';
+import { canonical, consumeResult } from '../index.js';
+import { causalCone, createFactStore, hashBytes, prepareSnapshot, verifyAndAdmit } from '../facts/index.js';
 import type { AppendReceipt, CapturedContent, FactContext, FactEnvelope, FactStorePort, SegmentStoragePort } from '../facts/index.js';
 import type { EffectDurabilityPort } from '../effects/contracts.js';
 import type { TelegramDurableCapturePort } from './telegram-bot-api-custodian.js';
@@ -51,7 +51,9 @@ function validateDescriptor(d: PeerDescriptor): void {
     ensure(typeof value === 'string' && value.length > 0 && value.length <= 256, 'peer descriptor binding missing');
   ensure(d.studio !== d.laptop && d.laptop === 'm_cc2ec651a91f', 'distinct enrolled Laptop required');
   ensure(Number.isSafeInteger(d.epoch) && d.epoch >= 0, 'peer epoch invalid');
-  ensure(Object.values(d.limits).every(positive), 'finite peer bounds required');
+  ensure(closed(d.limits, ['maxRequestBytes', 'maxResponseBytes', 'maxFacts', 'maxCaptures',
+    'maxCaptureBytes', 'maxDiskBytes', 'maxQueue', 'timeoutMs', 'maxAttempts'])
+    && Object.values(d.limits).every(positive), 'finite peer bounds required');
   ensure(d.limits.maxAttempts === 1 && d.limits.maxQueue === 1, 'peer retry/queue must be one');
   ensure(new Set(d.captureReferences).size === d.captureReferences.length
     && d.captureReferences.every(r => typeof r === 'string' && r.length > 0 && r.length <= 4096), 'capture policy invalid');
@@ -69,38 +71,50 @@ function prefix(facts: readonly FactEnvelope[]) {
   }
   return { frontier, digest: digest(facts.map(f => ({ id: f.id, hash: f.contentHash, bytes: bytes(f) }))) };
 }
-function captureLinks(facts: readonly FactEnvelope[]): Map<string, string> {
-  const found = new Map<string, string>();
-  const walk = (v: unknown) => {
-    if (!v || typeof v !== 'object') return;
-    if (Array.isArray(v)) { v.forEach(walk); return; }
-    const row = v as Record<string, unknown>;
-    if (typeof row.reference === 'string' && typeof row.hash === 'string' && /^sha256:[a-f0-9]{64}$/.test(row.hash)) {
-      const old = found.get(row.reference);
-      ensure(old === undefined || old === row.hash, 'capture reference hash conflict');
-      found.set(row.reference, row.hash);
-    }
-    Object.values(row).forEach(walk);
-  };
-  facts.forEach(walk);
-  return found;
+function custodyContext(base: FactContext, captures: readonly PeerCapture[]): FactContext {
+  const selected = new Map(captures.map(c => [c.reference, c]));
+  const entries: Record<string, CapturedContent> = {};
+  for (const [reference, capture] of Object.entries(base.captures)) {
+    const supplied = selected.get(reference);
+    entries[reference] = supplied ? { hash: supplied.hash, bytes: supplied.bytes,
+      byteLength: Buffer.byteLength(supplied.bytes), status: 'available' }
+      : { ...capture, bytes: null, status: capture.status === 'available' ? 'missing' : capture.status };
+  }
+  for (const capture of captures) if (!entries[capture.reference]) entries[capture.reference] = {
+    hash: capture.hash, bytes: capture.bytes, byteLength: Buffer.byteLength(capture.bytes), status: 'available' };
+  return { ...base, captures: entries, decode: { ...base.decode,
+    captures: Object.fromEntries(captures.map(c => [c.reference, c.bytes])) } };
 }
-function requestedCaptures(facts: readonly FactEnvelope[], d: PeerDescriptor, available: Readonly<Record<string, CapturedContent>>): PeerCapture[] {
-  // The installed policy names every permitted capture. A reference found in the
-  // signed envelopes must have that grant; undeclared capture disclosure refuses.
-  const found = captureLinks(facts);
-  for (const reference of found.keys()) ensure(permitted(d, reference), 'required capture outside approved disclosure');
-  const selected = [...found.keys()].sort();
-  ensure(selected.length <= d.limits.maxCaptures, 'capture count bound');
-  return selected.map(reference => {
+function requestedCaptures(d: PeerDescriptor, available: Readonly<Record<string, CapturedContent>>,
+  context: FactContext, local: SegmentStoragePort, facts: readonly FactEnvelope[]): PeerCapture[] {
+  // The installed policy supplies the bounded candidate universe. Removing each
+  // candidate is tested by Two's actual historical projection, so hash-addressed,
+  // schema-owned and constitutional dependencies use their owner's semantics.
+  const selected = Object.keys(available).filter(r => permitted(d, r)).sort();
+  ensure(selected.length <= d.limits.maxCaptures, 'capture candidate count bound');
+  const all = selected.map(reference => {
     const capture = available[reference];
-    ensure(capture?.status === 'available' && typeof capture.bytes === 'string'
-      && hashBytes(capture.bytes) === capture.hash && capture.hash === found.get(reference)
-      && Buffer.byteLength(capture.bytes) === capture.byteLength,
-    'required capture unavailable or changed');
-    ensure(Buffer.byteLength(capture.bytes) <= d.limits.maxCaptureBytes, 'capture byte bound');
-    return { reference, hash: capture.hash, bytes: capture.bytes };
+    return capture?.status === 'available' && typeof capture.bytes === 'string'
+      && hashBytes(capture.bytes) === capture.hash && Buffer.byteLength(capture.bytes) === capture.byteLength
+      ? { reference, hash: capture.hash, bytes: capture.bytes } : null;
   });
+  const clean = (captures: readonly PeerCapture[]) => {
+    const result = createFactStore(custodyContext(context, captures), local).readForProjection();
+    return consumeResult(result, { Success: snapshot => snapshot.entries.length === facts.length
+      && snapshot.entries.every((entry, i) => bytes(entry.fact) === bytes(facts[i])
+        && !entry.taint.length && !entry.conflicts.length), Refused: () => false });
+  };
+  // Available approved candidates are removed only when Two remains clean.
+  // A missing approved capture is left for the final owner refusal below.
+  let required = all.filter((c): c is PeerCapture => c !== null);
+  for (const candidate of [...required]) {
+    const without = required.filter(c => c.reference !== candidate.reference);
+    if (clean(without)) required = without;
+  }
+  ensure(required.length <= d.limits.maxCaptures, 'capture count bound');
+  ensure(clean(required), 'required capture unavailable or outside approved disclosure');
+  ensure(required.every(c => Buffer.byteLength(c.bytes) <= d.limits.maxCaptureBytes), 'capture byte bound');
+  return required;
 }
 function checkRequest(request: PeerRequest, d: PeerDescriptor): void {
   validateDescriptor(d);
@@ -117,9 +131,6 @@ function checkRequest(request: PeerRequest, d: PeerDescriptor): void {
     closed(c, ['reference', 'hash', 'bytes']) && permitted(d, c.reference) && Buffer.byteLength(c.bytes) <= d.limits.maxCaptureBytes
     && hashBytes(c.bytes) === c.hash), 'capture policy/hash bound');
   ensure(new Set(request.captures.map(c => c.reference)).size === request.captures.length, 'duplicate capture');
-  const links = captureLinks(request.facts);
-  ensure(links.size === request.captures.length && request.captures.every(c => links.get(c.reference) === c.hash),
-    'required capture set incomplete');
   ensure(/^[a-f0-9]{64}$/.test(request.challenge), 'challenge invalid');
   const actual = prefix(request.facts);
   ensure(actual.digest === request.prefixDigest && bytes(actual.frontier) === bytes(request.frontier), 'prefix digest/frontier differs');
@@ -151,24 +162,40 @@ export function receiveFixedPeerRequest(input: Readonly<{ request: PeerRequest; 
     const { request, descriptor: d } = input;
     checkRequest(request, d);
     ensure(input.authenticatedStudio === d.studio, 'authenticated Studio differs');
-    input.reserve(d.limits.maxDiskBytes);
+    input.reserve(Buffer.byteLength(bytes(request)));
     const captureMap: Record<string, CapturedContent> = { ...input.context.captures };
     for (const c of request.captures) {
       const existing = captureMap[c.reference];
-      ensure(!existing || (existing.status === 'available' && existing.hash === c.hash
+      ensure(!existing || (existing.status === 'missing' && existing.hash === c.hash)
+        || (existing.status === 'available' && existing.hash === c.hash
         && existing.bytes === c.bytes), 'receiver capture status conflict');
       captureMap[c.reference] = { hash: c.hash, bytes: c.bytes,
         byteLength: Buffer.byteLength(c.bytes), status: 'available' };
     }
-    const context: FactContext = { ...input.context, captures: captureMap };
+    const context = custodyContext({ ...input.context, captures: captureMap }, request.captures);
     const store = createFactStore(context, input.storage);
     const old = take(store.read());
     ensure(old.length <= request.facts.length, 'receiver has history beyond requested prefix');
     for (let i = 0; i < old.length; i++) ensure(bytes(old[i]) === bytes(request.facts[i]), 'immutable receiver prefix conflict');
-    // Validate every new envelope against real signed history before changing durable storage.
-    // The actual append repeats the admission check and refuses a changed head.
+    const checkRequired = () => {
+      const supplied = Object.fromEntries(request.captures.map(c => [c.reference, {
+        hash: c.hash, bytes: c.bytes, byteLength: Buffer.byteLength(c.bytes), status: 'available' as const }]));
+      const required = requestedCaptures(d, supplied, input.context,
+        { owner: 'part-ten', read: () => request.facts, append: input.storage.append }, request.facts);
+      ensure(bytes(required) === bytes(request.captures), 'unrelated or missing custody capture');
+    };
     if (request.operation === 'verify') ensure(old.length === request.facts.length, 'prefix absent on verify');
     else {
+      // Use Two's admission and snapshot ports before any durable mutation.
+      // The real append repeats admission against the current durable head.
+      const candidate = [...old];
+      for (const f of request.facts.slice(old.length))
+        candidate.push(take(verifyAndAdmit(f, d.studio, { ...context, facts: [...context.facts, ...candidate] })));
+      const admitted = take(prepareSnapshot(candidate, context));
+      ensure(admitted.entries.length === request.facts.length && admitted.entries.every((entry, i) =>
+        bytes(entry.fact) === bytes(request.facts[i]) && !entry.taint.length && !entry.conflicts.length),
+      'candidate prefix tainted, conflicted or incomplete');
+      checkRequired();
       for (const c of request.captures) {
         ensure(input.captures.preserve(c.reference, c.bytes) && input.captures.read(c.reference) === c.bytes,
           'capture durable readback failed');
@@ -178,11 +205,12 @@ export function receiveFixedPeerRequest(input: Readonly<{ request: PeerRequest; 
         ensure(!receipt.taint.length && receipt.durability.kind === 'local-durable', 'receiver fact tainted or not durable');
       }
     }
+    if (request.operation === 'verify') checkRequired();
+    for (const c of request.captures) ensure(input.captures.read(c.reference) === c.bytes, 'capture readback differs');
     const snapshot = take(store.readForProjection());
     ensure(snapshot.entries.length === request.facts.length && snapshot.entries.every((entry, i) =>
       bytes(entry.fact) === bytes(request.facts[i]) && !entry.taint.length && !entry.conflicts.length),
     'receiver prefix tainted, conflicted or incomplete');
-    for (const c of request.captures) ensure(input.captures.read(c.reference) === c.bytes, 'capture readback differs');
     return responseFor(request);
   });
 }
@@ -205,7 +233,11 @@ export function createFixedPeerReplication(input: Readonly<{ descriptor: PeerDes
         'required exact fact absent from local prefix');
       for (const fact of required) ensure(causalCone(fact, facts).every(ancestor => requiredIds.has(ancestor.id)),
         'required causal ancestor missing');
-      const captures = requestedCaptures(facts, d, input.captures());
+      const captures = requestedCaptures(d, input.captures(), input.context, input.local, facts);
+      const custodySnapshot = take(createFactStore(custodyContext(input.context, captures), input.local).readForProjection());
+      ensure(custodySnapshot.entries.length === facts.length && custodySnapshot.entries.every((entry, i) =>
+        bytes(entry.fact) === bytes(facts[i]) && !entry.taint.length && !entry.conflicts.length),
+      'required custody captures unavailable or unapproved');
       const p = prefix(facts);
       const request: PeerRequest = { protocol: 'instar-fixed-peer-v1', operation, ...fields(d), descriptorDigest: digest(d),
         challenge: randomBytes(32).toString('hex'), prefixDigest: p.digest, frontier: p.frontier, facts, captures };

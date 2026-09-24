@@ -1,7 +1,8 @@
 // One request per forced-command process. The service account's installed
 // configuration supplies every root, key, decoder and policy; stdin supplies none.
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync, statfsSync, writeSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, readdirSync, statfsSync, writeSync } from 'node:fs';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { consumeResult } from '../dist/index.js';
 import { openProductionStorage } from '../dist/assembly/production-storage.js';
@@ -57,9 +58,26 @@ try {
       return receipt;
     },
   };
-  const reserve = bytes => {
+  const reserve = requestBytes => {
+    // The exclusive production-storage lease is held. Count all retained files,
+    // including pending/retired artifacts, then budget an encrypted rewrite and
+    // its temporary copy before permitting any new durable write.
+    let used = 0, largest = 0;
+    const count = dir => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name), entry = lstatSync(path);
+        if (entry.isSymbolicLink()) throw Error('storage quota symlink refused');
+        if (entry.isDirectory()) count(path);
+        else if (entry.isFile()) { used += entry.size; largest = Math.max(largest, entry.size); }
+        else throw Error('storage quota entry refused');
+      }
+    };
+    count(config.root);
+    const extra = 2 * requestBytes + largest + 4096;
+    if (used + extra > config.descriptor.limits.maxDiskBytes) throw Error('storage allowance exhausted');
     const available = statfsSync(config.root);
-    if (available.bavail * available.bsize < bytes) throw Error('disk reservation unavailable');
+    if (available.bavail * available.bsize < Math.max(extra, config.descriptor.limits.maxDiskBytes))
+      throw Error('disk reservation unavailable');
   };
   const result = consumeResult(receiveFixedPeerRequest({ request, descriptor: config.descriptor,
     authenticatedStudio: config.authenticatedStudio, context: config.context,

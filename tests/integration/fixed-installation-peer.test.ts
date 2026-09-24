@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createFixedPeerReplication } from '../../src/assembly/production-replication.js';
+import { canonical } from '../../src/index.js';
 import type { PeerDescriptor, PeerRequest } from '../../src/assembly/production-replication.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { hashBytes } from '../../src/facts/index.js';
@@ -17,14 +18,18 @@ import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const root = () => { const p = realpathSync(mkdtempSync(join(tmpdir(), 'instar-peer-local-'))); roots.push(p); return p; };
-function setup(maxDiskBytes = 100000) {
-  const base = root(), f = factsFixture(), first = f.fact(), second = f.next(first);
+function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], hashIntent = false) {
+  const base = root(), f = factsFixture(), intent = hashIntent ? f.intentInput() : null;
+  const baseContext = hashIntent ? { ...f.ctx, schemas: [{ ...f.schema, optional: ['intent'], fields: { ...f.schema.fields,
+    intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }] } : f.ctx;
+  const first = hashIntent ? f.fact({ body: { identity: 'one', amount: '10', intent } }, baseContext) : f.fact();
+  const second = f.next(first, {}, baseContext);
   const captures = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) =>
     [reference, { hash: hashBytes(bytes), bytes, byteLength: Buffer.byteLength(bytes), status: 'available' as const }]));
-  const context = { ...f.ctx, captures };
+  const context = { ...baseContext, captures };
   const descriptor: PeerDescriptor = { installation: 'install:local-test', studio: 'machine-a', laptop: 'm_cc2ec651a91f',
     store: 'facts:local-test', epoch: 0, trust: 'ssh:local-process-test', custody: 'policy:local-test',
-    captureReferences: Object.keys(f.captures), capturePrefixes: [], limits: { maxRequestBytes: 100000, maxResponseBytes: 10000,
+    captureReferences: Object.keys(f.captures), capturePrefixes, limits: { maxRequestBytes: 100000, maxResponseBytes: 10000,
       maxFacts: 8, maxCaptures: Object.keys(f.captures).length + 1, maxCaptureBytes: 10000,
       maxDiskBytes, maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
   const config = join(base, 'installed-peer-config.mjs'), storeRoot = join(base, 'encrypted');
@@ -34,10 +39,12 @@ function setup(maxDiskBytes = 100000) {
   const source = `import { factsFixture } from ${JSON.stringify(fixtureURL)};\n`
     + `import { decodeMeasurement, consumeResult } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'dist/index.js')).href)};\n`
     + `import { hashBytes } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'dist/facts/index.js')).href)};\n`
-    + `export function openFixedPeerConfiguration() { const f = factsFixture();\n`
+    + `export function openFixedPeerConfiguration() { const f = factsFixture(); ${hashIntent ? 'f.intentInput();' : ''}\n`
+    + `const schemas = ${hashIntent ? "[{ ...f.schema, optional: ['intent'], fields: { ...f.schema.fields, intent: { kind: 'constitutional', type: 'Intent' } } }]" : 'f.ctx.schemas'};\n`
     + `const captures = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) => [reference, { hash: hashBytes(bytes), bytes, byteLength: Buffer.byteLength(bytes), status: 'available' }]));\n`
+    + `const receiverCaptures = ${hashIntent ? "Object.fromEntries(Object.entries(captures).map(([reference, capture]) => [reference, { ...capture, bytes: null, status: 'missing' }]))" : 'captures'};\n`
     + `return { descriptor: ${JSON.stringify(descriptor)}, machine: 'm_cc2ec651a91f', store: ${JSON.stringify(descriptor.store)}, policy: ${JSON.stringify(descriptor.custody)},\n`
-    + `authenticatedStudio: 'machine-a', clientPublicKey: ${JSON.stringify(clientPublicKey)}, testProofMode: true, testFaultCut: null, root: ${JSON.stringify(storeRoot)}, key: new Uint8Array(32).fill(17), context: { ...f.ctx, captures, genesis: { ...f.ctx.genesis, clock: consumeResult(decodeMeasurement('clock', f.clockRaw(), f.ctx.decode), { Success: v => v, Refused: r => { throw Error(r.detail); } }) } }, boundary: f.c }; }\n`;
+    + `authenticatedStudio: 'machine-a', clientPublicKey: ${JSON.stringify(clientPublicKey)}, testProofMode: true, testFaultCut: null, root: ${JSON.stringify(storeRoot)}, key: new Uint8Array(32).fill(17), context: { ...f.ctx, schemas, captures: receiverCaptures, genesis: { ...f.ctx.genesis, clock: consumeResult(decodeMeasurement('clock', f.clockRaw(), f.ctx.decode), { Success: v => v, Refused: r => { throw Error(r.detail); } }) } }, boundary: f.c }; }\n`;
   writeFileSync(config, source, { mode: 0o600 });
   let pin = `sha256:${createHash('sha256').update(source).digest('hex')}`;
   const setCut = (cut: null | 'before-fsync' | 'after-fsync' | 'before-response' | 'after-response') => {
@@ -85,6 +92,16 @@ it('R3 local-process encrypted Laptop stand-in retains full prefix and captures 
   expect(value(a.verify())).toHaveLength(2);
   const restarted = h.disk(); expect(restarted.segment.read()).toHaveLength(2); restarted.close();
 });
+it('R3 hash-addressed Intent.raw reaches encrypted cold receiver and survives process restart', () => {
+  const h = setup(200000, [], true), rawHash = (h.first.body as { intent: { raw: string } }).intent.raw;
+  expect(h.captures[rawHash]?.bytes).toBe(h.f.captures[rawHash]);
+  expect(value(h.make().durability.ensure([h.first, h.second]))).toHaveLength(2);
+  const reopened = h.disk();
+  expect(reopened.captures.read(rawHash)).toBe(h.f.captures[rawHash]);
+  expect(reopened.segment.read()).toHaveLength(2);
+  reopened.close();
+  expect(value(h.make().verify())).toHaveLength(2);
+});
 it('R3 local-process lost acknowledgment reconciles same bytes without duplicate history', () => {
   const h = setup();
   refused(h.make({ dropResponse: true }).durability.ensure([h.first, h.second]), 'acknowledgment lost');
@@ -129,4 +146,29 @@ it('R3 local-process immutable identity collision and corrupt capture/frame neve
   refused(h.make({ transformRequest: request => ({ ...request, root: '/tmp/unapproved' }) })
     .durability.ensure([h.first, h.second]), 'peer process refused');
   const retained = h.disk(); expect(retained.segment.read()).toHaveLength(2); retained.close();
+});
+it('R3 repeated invalid envelopes retain the admitted prefix without orphan captures across restarts', () => {
+  const h = setup(100000, ['orphan:']);
+  value(h.make().durability.ensure([h.first, h.second]));
+  const third = h.f.next(h.second), orphanBytes = 'x'.repeat(9000);
+  for (let i = 0; i < 12; i++) {
+    const bad = h.make({ facts: [h.first, h.second, third], transformRequest: request => {
+      const facts = [...request.facts]; facts[2] = { ...facts[2]!, signature: '0'.repeat(128) };
+      const prefixDigest = hashBytes(value(canonical(facts.map(f => ({ id: f.id, hash: f.contentHash,
+        bytes: value(canonical(f)).bytes })))).bytes);
+      return { ...request, facts, prefixDigest, captures: [...request.captures,
+        { reference: `orphan:${i}`, hash: hashBytes(orphanBytes), bytes: orphanBytes }] };
+    } });
+    refused(bad.durability.ensure([h.first, h.second, third]), 'peer process refused');
+  }
+  const reopened = h.disk();
+  expect(reopened.segment.read()).toHaveLength(2);
+  for (let i = 0; i < 12; i++) expect(reopened.captures.read(`orphan:${i}`)).toBeNull();
+  reopened.close();
+  expect(value(h.make().verify())).toHaveLength(2);
+  const retainedArtifact = join(h.storeRoot, '.pending-retained-failed-write');
+  writeFileSync(retainedArtifact, 'z'.repeat(90000));
+  refused(h.make().verify(), 'peer process refused');
+  rmSync(retainedArtifact);
+  expect(value(h.make().verify())).toHaveLength(2);
 });
