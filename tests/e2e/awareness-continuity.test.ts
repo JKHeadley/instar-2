@@ -23,9 +23,9 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
   const claim = 'telegram:42';
   const now0 = Date.now();
   const messages: ConversationMessage[] = [
-    { at: now0 - 120_000, from: 'user', speaker: 'Justin', text: 'Port the compaction recovery to 2.0, please.' },
-    { at: now0 - 100_000, from: 'agent', text: 'On it. I will report back once the continuity test passes.' },
-    { at: now0 - 20_000, from: 'user', speaker: 'Justin', text: 'Make sure a respawned session does not ask me to repeat myself.' },
+    { at: now0 - 120_000, id: 'test-message-1', from: 'user', speaker: 'Justin', text: 'Port the compaction recovery to 2.0, please.' },
+    { at: now0 - 100_000, id: 'test-message-2', from: 'agent', text: 'On it. I will report back once the continuity test passes.' },
+    { at: now0 - 20_000, id: 'test-message-3', from: 'user', speaker: 'Justin', text: 'Make sure a respawned session does not ask me to repeat myself.' },
   ];
   const commitments: OpenCommitment[] = [{ id: 'CMT-77', topic: '42', promise: 'report back once the continuity test passes', owner: 'agent', dueAt: null }];
   const live = new Map<string, { contextFile: string }>();
@@ -67,6 +67,7 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
     const session = `instar20-${randomUUID().replace(/-/g, '').slice(0, 24)}`;
     const contextFile = join(root, `${session}.context`);
     live.set(session, { contextFile });
+    awareness.tick(); // owner writes this session's current grounding before spawn
     const env = [`INSTAR_SESSION_NAME=${session}`, `INSTAR_SESSION_INBOX=${join(root, 'inbox')}`,
       `INSTAR_SESSION_GROUNDING_FILE=${io.groundingFileFor(claim)}`, `HARNESS_HOOK=${withHook ? hook : ''}`, `HARNESS_CONTEXT_FILE=${contextFile}`];
     expect(t(['new-session', '-d', '-s', session, '-x', '200', '-y', '50', '--', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin',

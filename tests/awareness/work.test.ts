@@ -44,7 +44,7 @@ describe('own-work awareness', () => {
   it('feeds grounding: other topics listed, overlap called out as a possible duplicate', () => {
     const index = buildWorkIndex(sessions, []);
     const work = workForTopic('42', index, detectOverlaps(index, { now }));
-    expect(work.map(row => row.topic).sort()).toEqual(['3', '7', '9']);
+    expect(work.map(row => row.topic).sort()).toEqual(['3', '42', '42', '7', '9']);
     const g = buildGrounding({ agent: { name: 'Echo', identity: 'Echo' }, topic: { id: '42', name: 'awareness' }, now, source: 'startup',
       conversation: [], commitments: [], work, recall: null });
     expect(g.text).toMatch(/topic sentinels: RUNNING — also editing src\/awareness\/sentinel\.ts.*POSSIBLE DUPLICATE.*src\/awareness\/sentinel\.ts/);

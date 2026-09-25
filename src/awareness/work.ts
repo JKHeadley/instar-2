@@ -18,9 +18,11 @@ export interface SessionActivity {
   readonly running: boolean;
   readonly focus: string;
   readonly updatedAt: number;
+  readonly secret?: boolean;
 }
 export interface WorkEntry extends WorkItem {
   readonly sessions: readonly string[];
+  readonly sessionWork: readonly SessionActivity[];
   readonly openCommitments: number;
   readonly tags: readonly string[];
 }
@@ -53,7 +55,7 @@ export function extractTags(text: string): readonly string[] {
 /** One row per topic: sessions merged, freshest focus wins, open commitments counted. */
 export function buildWorkIndex(sessions: readonly SessionActivity[], commitments: readonly OpenCommitment[]): readonly WorkEntry[] {
   const byTopic = new Map<string, SessionActivity[]>();
-  for (const row of sessions) byTopic.set(row.topic, [...(byTopic.get(row.topic) ?? []), row]);
+  for (const row of sessions) if (!row.secret) byTopic.set(row.topic, [...(byTopic.get(row.topic) ?? []), row]);
   for (const row of commitments) if (!byTopic.has(row.topic)) byTopic.set(row.topic, []);
   return [...byTopic.entries()].map(([topic, rows]) => {
     const latest = [...rows].sort((a, b) => b.updatedAt - a.updatedAt)[0];
@@ -64,7 +66,8 @@ export function buildWorkIndex(sessions: readonly SessionActivity[], commitments
       topic, ...(latest?.topicName !== undefined ? { topicName: latest.topicName } : {}),
       session: (running[0] ?? latest)?.session ?? null,
       sessions: [...new Set(rows.map(row => row.session).filter((value): value is string => !!value))].sort(),
-      running: running.length > 0, focus, updatedAt: latest?.updatedAt ?? 0, openCommitments, tags: extractTags(focus),
+      sessionWork: rows, running: running.length > 0, focus, updatedAt: latest?.updatedAt ?? 0, openCommitments,
+      tags: [...new Set(rows.flatMap(row => extractTags(row.focus)))].sort(),
     });
   }).sort((a, b) => b.updatedAt - a.updatedAt || a.topic.localeCompare(b.topic));
 }
@@ -91,12 +94,13 @@ export function detectOverlaps(entries: readonly WorkEntry[], options: Readonly<
   return pairs.sort((x, y) => y.score - x.score || x.signature.localeCompare(y.signature));
 }
 
-/** Work rows for one topic's grounding: every OTHER topic, annotated with any overlap against this one. */
+/** Work rows for one topic's grounding, preserving each session's checkpoint. */
 export function workForTopic(topic: string, entries: readonly WorkEntry[], overlaps: readonly OverlapPair[]): readonly WorkItem[] {
-  return entries.filter(row => row.topic !== topic).map(row => {
+  return entries.flatMap(row => {
     const pair = overlaps.find(p => (p.topicA === topic && p.topicB === row.topic) || (p.topicB === topic && p.topicA === row.topic));
-    return Object.freeze({ topic: row.topic, ...(row.topicName !== undefined ? { topicName: row.topicName } : {}),
-      session: row.session, focus: row.focus, running: row.running, updatedAt: row.updatedAt,
-      ...(pair ? { overlap: pair.shared } : {}) });
+    return row.sessionWork.map(work => Object.freeze({ topic: row.topic,
+      ...(work.topicName !== undefined ? { topicName: work.topicName } : {}),
+      session: work.session, focus: work.focus, running: work.running, updatedAt: work.updatedAt,
+      ...(pair && row.topic !== topic ? { overlap: pair.shared } : {}) }));
   });
 }

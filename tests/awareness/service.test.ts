@@ -6,16 +6,18 @@ const T = 1_790_000_000_000;
 function harness() {
   let now = T;
   const files = new Map<string, string>();
-  const receipts = new Map<string, { grounded: { at: number; source: string; digest: string }[]; compactions: number[]; turnsClosed: number[] }>();
+  const receipts = new Map<string, AwarenessReceipts>();
   const signals: Record<string, unknown>[] = [];
   let state: SentinelState = { sessions: [] };
   const messages: ConversationMessage[] = [
-    { at: T - 60_000, from: 'user', text: 'Please finish the sentinel port and tell me when tests pass.' },
-    { at: T - 50_000, from: 'agent', text: 'Will do — I will report back when the suite is green.' },
-    { at: T - 10_000, from: 'user', text: 'Also double-check the recall fallback.' },
+    { at: T - 60_000, id: 'test-message-1', from: 'user', text: 'Please finish the sentinel port and tell me when tests pass.' },
+    { at: T - 50_000, id: 'test-message-2', from: 'agent', text: 'Will do — I will report back when the suite is green.' },
+    { at: T - 10_000, id: 'test-message-3', from: 'user', text: 'Also double-check the recall fallback.' },
   ];
   const commitments: OpenCommitment[] = [{ id: 'CMT-1', topic: '42', promise: 'report back when the suite is green', owner: 'agent', dueAt: null }];
   const sessions: ObservedSession[] = [{ session: 's-42', topic: '42', alive: true, startedAt: T, pane: 'idle', stuck: null }];
+  const activity = [{ topic: '42', session: 's-42', running: true, focus: 'port src/awareness/sentinel.ts', updatedAt: T },
+    { topic: '7', session: 's-7', running: true, focus: 'weekly digest', updatedAt: T }];
   const delivered: { session: string; text: string; operation: string }[] = [];
   const recovered: string[] = [];
   let stopped = false;
@@ -31,15 +33,14 @@ function harness() {
       topics: () => [{ id: '42', name: 'awareness', claim: 'claim-42' }, { id: '7', name: 'digest', claim: 'claim-7' }],
       conversation: topic => ({ messages: topic === '42' ? messages : [] }),
       commitments: () => commitments,
-      sessions: () => [{ topic: '42', session: 's-42', running: true, focus: 'port src/awareness/sentinel.ts', updatedAt: T },
-        { topic: '7', session: 's-7', running: true, focus: 'weekly digest', updatedAt: T }],
+      sessions: () => activity,
     },
     recall: createLabelledFakeRecall([{ at: T - 86_400_000, source: 'topic 9', speaker: 'Justin', text: 'the recall fallback must be labelled', topic: '9' }]),
     io, observer: { observe: () => sessions },
     actions: { deliver: input => { delivered.push(input); }, recoverContext: input => { recovered.push(input.session); } },
     now: () => now, stopped: () => stopped, sentinel: { graceMs: 1_000, verifyMs: 5_000 },
   });
-  return { awareness, files, receipts, signals, delivered, recovered, sessions, messages, commitments,
+  return { awareness, files, receipts, signals, delivered, recovered, sessions, activity, messages, commitments,
     advance: (ms: number) => { now += ms; }, stop: () => { stopped = true; }, now: () => now };
 }
 
@@ -56,6 +57,39 @@ describe('awareness service', () => {
     expect(() => h.awareness.grounding('nope')).toThrow('unknown topic');
   });
 
+  it('grounds this session checkpoint and distinguishes another active session in the same topic', () => {
+    const h = harness();
+    h.activity[0]!.focus = 'UNIQUE_CURRENT_WORK_CHECKPOINT';
+    h.activity.push({ topic: '42', session: 's-other', running: true, focus: 'different session checkpoint', updatedAt: T + 1 });
+    const text = h.awareness.grounding('42').text;
+    expect(text).toContain('session s-42: RUNNING — UNIQUE_CURRENT_WORK_CHECKPOINT');
+    expect(text).toContain('session s-other: RUNNING — different session checkpoint');
+  });
+
+  it('observes an in-place clear independently of hook success and accepts matching owner consumption', () => {
+    const healthy = harness();
+    healthy.awareness.tick();
+    const digest = healthy.awareness.grounding('42').digest;
+    healthy.receipts.set('s-42', { grounded: [], compactions: [], turnsClosed: [], contextConsumed: [
+      { at: T + 5, source: 'startup', digest }] });
+    healthy.awareness.tick();
+    healthy.sessions[0] = { ...healthy.sessions[0]!, contextResets: [{ at: T + 1_000, source: 'clear', id: 'clear-ok' }] };
+    healthy.receipts.set('s-42', { grounded: [], compactions: [], turnsClosed: [], contextConsumed: [
+      { at: T + 1_001, source: 'clear', digest, resetId: 'clear-ok' }] });
+    healthy.advance(2_000);
+    expect(healthy.awareness.tick().actions.map(a => a.kind)).not.toContain('reground');
+    expect(healthy.signals.map(s => s.event)).toContain('grounding-verified');
+
+    const broken = harness();
+    broken.awareness.tick();
+    broken.receipts.set('s-42', { grounded: [], compactions: [], turnsClosed: [], contextConsumed: [
+      { at: T + 5, source: 'startup', digest: broken.awareness.grounding('42').digest }] });
+    broken.awareness.tick();
+    broken.sessions[0] = { ...broken.sessions[0]!, contextResets: [{ at: T + 1_000, source: 'clear', id: 'clear-broken' }] };
+    broken.advance(2_000);
+    expect(broken.awareness.tick().actions.map(a => a.kind)).toContain('reground');
+  });
+
   it('keeps grounding files fresh and rewrites only when content changes', () => {
     const h = harness();
     const first = h.awareness.tick();
@@ -63,7 +97,7 @@ describe('awareness service', () => {
     h.advance(60_000);
     h.receipts.set('s-42', { grounded: [{ at: T + 5, source: 'startup', digest: 'x' }], compactions: [], turnsClosed: [] });
     expect(h.awareness.tick().actions.filter(a => a.kind === 'write-grounding')).toEqual([]);
-    h.messages.push({ at: h.now(), from: 'user', text: 'new message arrives' });
+    h.messages.push({ at: h.now(), id: 'test-message-4', from: 'user', text: 'new message arrives' });
     expect(h.awareness.tick().actions.filter(a => a.kind === 'write-grounding').map(a => a.kind === 'write-grounding' && a.topic)).toEqual(['42']);
     expect(h.files.get('claim-42')).toContain('new message arrives');
   });
@@ -89,7 +123,8 @@ describe('awareness service', () => {
     h.awareness.tick();
     expect(h.delivered).toHaveLength(1);
     const r = h.receipts.get('s-42')!;
-    h.receipts.set('s-42', { ...r, turnsClosed: [h.now()] });
+    h.receipts.set('s-42', { ...r, turnsClosed: [h.now()], deliveriesConsumed: [{ at: h.now(),
+      operation: h.delivered[0]!.operation, lastInboundMessageId: h.messages.at(-1)!.id }] });
     h.advance(1_000);
     h.awareness.tick();
     expect(h.signals.map(s => s.event)).toContain('recovered-after-reground');

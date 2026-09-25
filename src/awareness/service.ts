@@ -1,6 +1,7 @@
 import { buildGrounding, withholdCredentials, type ConversationMessage, type Grounding, type GroundingTrigger,
   type OpenCommitment, type RecallItem, type RecallPacket } from './grounding.js';
-import { decideContext, type SentinelAction, type SentinelConfig, type SentinelState, type StuckSignature } from './sentinel.js';
+import { decideContext, type DeliveryReceipt, type GroundedReceipt, type ResetReceipt, type SentinelAction,
+  type SentinelConfig, type SentinelState, type StuckSignature } from './sentinel.js';
 import { buildWorkIndex, detectOverlaps, workForTopic, type OverlapPair, type SessionActivity, type WorkEntry } from './work.js';
 
 /**
@@ -13,7 +14,8 @@ export interface AwarenessTopic { readonly id: string; readonly name: string; re
 export interface AwarenessSources {
   identity(): Readonly<{ name: string; identity: string }>;
   topics(): readonly AwarenessTopic[];
-  conversation(topic: string): Readonly<{ messages: readonly ConversationMessage[]; summary?: string }>;
+  conversation(topic: string): Readonly<{ messages: readonly ConversationMessage[];
+    summary?: Readonly<{ text: string; throughAt: number; secret?: boolean }> }>;
   commitments(): readonly OpenCommitment[];
   sessions(): readonly SessionActivity[];
 }
@@ -22,7 +24,10 @@ export interface RecallPort {
   prepare(input: Readonly<{ topic: string; query: string; now: number; maxItems: number }>): RecallPacket;
 }
 export interface AwarenessReceipts {
-  readonly grounded: readonly Readonly<{ at: number; source: string; digest: string }>[];
+  readonly grounded: readonly GroundedReceipt[];
+  readonly contextConsumed?: readonly GroundedReceipt[];
+  readonly resets?: readonly ResetReceipt[];
+  readonly deliveriesConsumed?: readonly DeliveryReceipt[];
   readonly compactions: readonly number[];
   readonly turnsClosed: readonly number[];
 }
@@ -36,11 +41,14 @@ export interface AwarenessIO {
 }
 export interface ObservedSession {
   readonly session: string;
+  readonly sessionId?: string | null;
   readonly topic: string;
   readonly alive: boolean;
   readonly startedAt: number;
   readonly pane: 'idle' | 'busy' | 'unknown';
   readonly stuck: StuckSignature;
+  /** Session owner reports reset generations even if its grounding hook fails. */
+  readonly contextResets?: readonly ResetReceipt[];
 }
 /** Supplied by the session driver (port-sessions): its sessions and their live pane classification. */
 export interface SessionObserverPort { observe(): readonly ObservedSession[] }
@@ -57,7 +65,6 @@ export interface AwarenessConfig {
   readonly actions: AwarenessActions;
   readonly now: () => number;
   readonly stopped: () => boolean;
-  readonly recentMessages?: number;
   readonly recallItems?: number;
   readonly sentinel?: Partial<SentinelConfig>;
 }
@@ -106,7 +113,7 @@ export function createAwareness(config: AwarenessConfig) {
     if (!topic) throw new Error(`awareness: unknown topic ${topicId}`);
     const conversation = config.sources.conversation(topic.id);
     const entries = work();
-    const messages = conversation.messages.slice(-(config.recentMessages ?? 30));
+    const messages = conversation.messages;
     const own = entries.find(row => row.topic === topic.id);
     return buildGrounding({ agent: config.sources.identity(), topic: { id: topic.id, name: topic.name }, now: config.now(), source,
       conversation: messages, ...(conversation.summary !== undefined ? { summary: conversation.summary } : {}),
@@ -119,9 +126,13 @@ export function createAwareness(config: AwarenessConfig) {
     const topics = topicsById();
     const current = new Map([...topics.values()].map(topic => [topic.id, grounding(topic.id)]));
     const observed = config.observer.observe();
-    const observations = observed.map(row => ({ ...row, ...config.io.readReceipts(row.session) }));
+    const observations = observed.map(row => {
+      const receipts = config.io.readReceipts(row.session);
+      return { ...row, ...receipts, resets: [...(receipts.resets ?? []), ...(row.contextResets ?? [])] };
+    });
     const groundings = [...topics.values()].map(topic => ({ topic: topic.id, current: current.get(topic.id)!.digest,
-      file: config.io.readGroundingDigest(topic.claim) }));
+      file: config.io.readGroundingDigest(topic.claim),
+      lastInboundMessageId: config.sources.conversation(topic.id).messages.filter(m => m.from === 'user').at(-1)?.id ?? null }));
     const decision = decideContext({ now, stopped, state: config.io.loadState(), observations, groundings,
       ...(config.sentinel ? { config: config.sentinel } : {}) });
     // Record attempts before performing them: a crash can lose an attempt, never repeat one.
@@ -135,7 +146,10 @@ export function createAwareness(config: AwarenessConfig) {
           config.io.writeGrounding(topic.claim, current.get(action.topic)!.text);
         } else if (action.kind === 'reground') {
           const kind = decision.state.sessions.find(row => row.session === action.session)?.episode?.kind ?? 'respawn';
-          const text = regroundPreamble(kind) + grounding(action.topic, kind === 'compact' ? 'compact' : 'respawn').text;
+          const lastId = decision.state.sessions.find(row => row.session === action.session)?.episode?.lastInboundMessageId;
+          const text = regroundPreamble(kind) + `Delivery operation: ${action.operation}\n`
+            + (lastId ? `Last inbound message ID: ${withholdCredentials(lastId)}\n` : '')
+            + grounding(action.topic, kind === 'compact' ? 'compact' : 'respawn').text;
           config.actions.deliver({ session: action.session, text, operation: action.operation });
         } else config.actions.recoverContext({ session: action.session, operation: action.operation });
       } catch (error) {

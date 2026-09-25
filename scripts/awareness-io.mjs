@@ -46,7 +46,14 @@ export function createAwarenessIO({ stateDirectory, inboxDirectory }) {
         .filter(row => row && Number.isFinite(row.at));
       return {
         grounded: rows.filter(row => row.kind === 'grounded' && typeof row.digest === 'string')
-          .map(row => ({ at: row.at, source: String(row.source), digest: row.digest })),
+          .map(row => ({ at: row.at, source: String(row.source), digest: row.digest, resetId: row.resetId, sessionId: row.sessionId })),
+        contextConsumed: rows.filter(row => row.kind === 'context-consumed' && typeof row.digest === 'string')
+          .map(row => ({ at: row.at, source: String(row.source), digest: row.digest, resetId: row.resetId, sessionId: row.sessionId })),
+        resets: rows.filter(row => row.kind === 'context-reset' && typeof row.id === 'string')
+          .map(row => ({ at: row.at, source: String(row.source), id: row.id, sessionId: row.sessionId })),
+        deliveriesConsumed: rows.filter(row => row.kind === 'delivery-consumed' && typeof row.operation === 'string')
+          .map(row => ({ at: row.at, operation: row.operation, lastInboundMessageId: row.lastInboundMessageId ?? null,
+            sessionId: row.sessionId })),
         compactions: rows.filter(row => row.kind === 'compact').map(row => row.at),
         turnsClosed: rows.filter(row => row.kind === 'turn-closed').map(row => row.at),
       };
