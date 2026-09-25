@@ -5,7 +5,7 @@ import { acceptedReplyOpening, recordFromWire } from '../rungraph/index.js';
 import type { RunAdmissionPort, RunStep } from '../rungraph/index.js';
 import type { AdmissionReservation, FenceToken, Lease, TransportAuthority, TransportFact, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { runPairAdmissionShape, shapeCheck, transportShapes } from './records.js';
+import { runPairAdmissionShape, servingRecordShape, shapeCheck, transportShapes } from './records.js';
 
 export interface ProductionRunAdmissionInput {
   readonly authority: TransportAuthority<unknown>;
@@ -27,7 +27,7 @@ type CleanPrefix = Readonly<{
 const productionAdmissions = new WeakSet<object>();
 const runKinds = new Set(['run-opening', 'run-transition', 'session-grounding']);
 const transportFactNames = new Set(['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord',
-  'ScanCursor', 'SettlementApplication', 'RunPairAdmission']);
+  'ScanCursor', 'SettlementApplication', 'RunPairAdmission', 'ServingRecord']);
 
 const reference = (fact: FactEnvelope): FactEnvelopeReference => freeze({
   owner: 'part-two' as const, name: 'FactEnvelope' as const, id: fact.id,
@@ -71,7 +71,8 @@ function transportFrom(facts: readonly FactEnvelope[]): readonly TransportFact[]
     if (!transportFactNames.has(name)) return [];
     const record = object(fact.body, 'transport fact body required').record;
     ensure(record !== undefined, 'transport record body required');
-    shapeCheck(record, name === 'RunPairAdmission' ? runPairAdmissionShape : transportShapes[name]!);
+    shapeCheck(record, name === 'RunPairAdmission' ? runPairAdmissionShape
+      : name === 'ServingRecord' ? servingRecordShape : transportShapes[name]!);
     ensure(object(record, 'transport record required').type === name, 'transport fact kind differs from record');
     return [freeze({ fact, record: record as unknown as TransportRecord })];
   });
