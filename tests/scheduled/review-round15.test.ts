@@ -36,7 +36,9 @@ it('P15 round-fifteen F2 validates inherited assertions from the actual HEAD rep
   const checker = readFileSync('scripts/check-p15-additivity.mjs', 'utf8');
   expect(checker).not.toMatch(/git', \['(?:clone|checkout)'/);
   const packageOnMain = execFileSync('git', ['show', 'main:package.json'], { encoding: 'utf8' });
-  if (p15AdditivityApplies(p15AdditivityBaseline()))
+  const applicable = p15AdditivityApplies(p15AdditivityBaseline());
+  expect(applicable).toBe(false);
+  if (applicable)
     expect(readFileSync('package.json', 'utf8')).toBe(packageOnMain);
   expect(packageOnMain).not.toContain('--exclude tests/harness-adapters/contract-map.test.ts');
 

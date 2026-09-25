@@ -1,10 +1,17 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, it } from 'vitest';
+// @ts-expect-error The shared first-landing baseline checker is plain ESM.
+import { firstLanding } from '../../scripts/first-landing.mjs';
 
 // SEAM-LEDGER row 45 grant 08:48Z authorizes one additive Ten/Five unit.
-it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner source directories', () => {
-  const base = execFileSync('git', ['merge-base', 'origin/main', 'HEAD'], { encoding: 'utf8' }).trim();
-  const paths = execFileSync('git', ['diff', '--name-only', base, 'HEAD', '--', 'src'], { encoding: 'utf8' })
+function checkGroundingScope(root = process.cwd()) {
+  const scope = firstLanding(root, ['src/assembly/grounding-capability.ts']);
+  if (!scope.applicable) return scope;
+  const base = scope.mergeBase;
+  const paths = execFileSync('git', ['-C', root, 'diff', '--name-only', base, 'HEAD', '--', 'src'], { encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
   const liveInputGrant = ['src/effects/contracts.ts', 'src/effects/records.ts', 'src/effects/doorway.ts', 'src/effects/index.ts'];
   // GRANT U4-E: Eleven's two exact production switch-on paths.
@@ -29,4 +36,40 @@ it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner sou
     && !runAdmissionGrant.includes(path) && !storeProjectionGrant.includes(path)
     && !providerResponseAssessmentGrant.includes(path) && !runPairGrant.includes(path) && !['src/assembly/', 'src/rungraph/'].some(prefix => path.startsWith(prefix))))
     .toEqual([]);
+  return scope;
+}
+
+it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner source directories', () => {
+  expect(checkGroundingScope()).toMatchObject({ applicable: false });
+});
+
+it('grounding scope fixture accepts an addition, rejects foreign source, and permits later integration', () => {
+  const root = mkdtempSync(join(tmpdir(), 'grounding-first-landing-'));
+  const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.email', 'grounding-fixture@instar.local');
+    git('config', 'user.name', 'Grounding Fixture');
+    mkdirSync(join(root, 'src', 'assembly'), { recursive: true });
+    writeFileSync(join(root, 'src', 'assembly', 'index.ts'), 'older assembly package\n');
+    git('add', '.'); git('commit', '-m', 'older package');
+    git('switch', '-c', 'unlanded');
+    writeFileSync(join(root, 'src', 'assembly', 'grounding-capability.ts'), 'grounding addition\n');
+    git('add', '.'); git('commit', '-m', 'permitted addition');
+    expect(checkGroundingScope(root)).toMatchObject({ applicable: true });
+    writeFileSync(join(root, 'src', 'foreign.ts'), 'violating mutation\n');
+    git('add', '.'); git('commit', '-m', 'foreign mutation');
+    expect(() => checkGroundingScope(root)).toThrow();
+    git('switch', 'main');
+    writeFileSync(join(root, 'src', 'assembly', 'grounding-capability.ts'), 'landed grounding\n');
+    git('add', '.'); git('commit', '-m', 'land grounding');
+    git('switch', '-c', 'later');
+    writeFileSync(join(root, 'src', 'assembly', 'grounding-capability.ts'), 'later owner edit\n');
+    writeFileSync(join(root, 'src', 'foreign.ts'), 'later cross-owner edit\n');
+    git('add', '.'); git('commit', '-m', 'later integration');
+    expect(checkGroundingScope(root)).toMatchObject({ applicable: false });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
