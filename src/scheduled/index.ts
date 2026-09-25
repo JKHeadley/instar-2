@@ -1,7 +1,14 @@
 export type * from './contracts.js';
 export { normalizeCronV1, parseCronV1 } from './cron.js';
+export { nextCronInstant, cronMatchesInstant } from './next.js';
+export { shouldRunScheduledPriority } from './shedding.js';
+export type { ScheduledUsageLevel } from './shedding.js';
 export { decodeScheduledWorkManifest, canonicalManifest, SCHEDULED_MANIFEST_LIMITS } from './manifest.js';
 export { canonicalInstant, parseRfc3339Offset, validateRfc3339Offset } from './time.js';
 export { decodeScheduledCapacityMeasurement, SCHEDULED_CAPACITY_MAX_AGE_MS } from './capacity.js';
 export { importLegacyScheduledJob } from './legacy.js';
 export { createScheduledWorkPackagePort, consumeScheduledManifest, readScheduledBusinessDisposition } from './package.js';
+export { createScheduledIntakeAdapter, scheduledParserDeclarationId } from './intake-adapter.js';
+export type { ScheduledSource, ScheduledSourceAuthority } from './intake-adapter.js';
+export { createScheduledRunner } from './runner.js';
+export type { ScheduledRunnerDependencies } from './runner.js';

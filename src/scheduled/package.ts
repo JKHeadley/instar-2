@@ -8,6 +8,7 @@ import { boundary, ensure, freeze, take } from './boundary.js';
 import { inspectTopLevelJsonStringMemberValues, parseUnambiguousJson } from './json.js';
 import { canonicalManifest, decodeScheduledWorkManifest } from './manifest.js';
 import { canonicalInstant, parseRfc3339Offset } from './time.js';
+import { cronMatchesInstant } from './next.js';
 import type { ScheduledOccurrencePlan, ScheduledWorkPackagePort } from './contracts.js';
 
 function encoded(value: unknown): Readonly<{ bytes: string; hash: Hash }> { return take(canonical(value)); }
@@ -175,9 +176,11 @@ export function createScheduledWorkPackagePort(): ScheduledWorkPackagePort {
         ensure(typeof input.namespaceVersion === 'string' && input.namespaceVersion.length > 0, 'namespaceVersion must be nonempty text');
         ensure(typeof input.installationId === 'string' && input.installationId.length > 0, 'installationId must be nonempty text');
         const manifest = take(decodeScheduledWorkManifest(input.manifest, context));
-        ensure(manifest.schedule.kind === 'one-shot', 'recurring planning requires the unlanded pinned-calendar adapter seam');
         const scheduledInstant = canonicalInstant(input.scheduledInstant);
-        ensure(scheduledInstant === canonicalInstant(manifest.schedule.at), 'one-shot instant differs from the immutable manifest');
+        if (manifest.schedule.kind === 'one-shot')
+          ensure(scheduledInstant === canonicalInstant(manifest.schedule.at), 'one-shot instant differs from the immutable manifest');
+        else ensure(cronMatchesInstant(manifest.schedule.expression, manifest.schedule.timeZone, scheduledInstant),
+          'recurring instant does not match the immutable calendar');
         const scheduledAtMs = parseRfc3339Offset(scheduledInstant); const activationAt = parseRfc3339Offset(manifest.schedule.activationInstant);
         ensure(scheduledAtMs >= activationAt, 'occurrence precedes package activation');
         const asOf = take(decodeMeasurement('clock', input.asOf, context as unknown as Parameters<typeof decodeMeasurement>[2]));
