@@ -1,0 +1,49 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "slack-intake-v1",
+    "kind": "parsers",
+    "status": "dark",
+    "requiredFacts": {
+      "fixture": "P12-SLACK-ENVELOPE-CAPTURE",
+      "authenticationClass": [
+        {
+          "stimulusType": "message",
+          "class": "channel-attested"
+        }
+      ],
+      "eventIdAuthority": {
+        "mintedBy": "Slack event_id scoped to authenticated app and workspace",
+        "uniquenessScope": "app, team, event_id, sender and identity epoch",
+        "replayWindow": 0,
+        "fallbackFingerprint": {
+          "policy": "none",
+          "basis": "event_id is required"
+        }
+      },
+      "ackPolicy": "bound-only"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      14,
+      28,
+      29,
+      36,
+      42,
+      46,
+      89
+    ],
+    "holds": []
+  }
+]

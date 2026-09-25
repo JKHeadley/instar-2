@@ -9,3 +9,5 @@ export {
   normalizeTelegramTopic, renderTelegramDeliveryStatus, renderTelegramHtml, telegramAccount, telegramConversation,
   telegramFeatureDeclarationId, telegramParserDeclarationId,
 } from './telegram.js';
+export { createSlackIngress, createSlackIntakeAdapter } from './slack.js';
+export type { SlackSelection, SlackSocketAuthority } from './slack.js';

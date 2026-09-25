@@ -6,3 +6,5 @@ export type { TelegramEffectDoorway } from './telegram.js';
 export { createProductionRunAdmission, isProductionRunAdmission } from './run-admission.js';
 export { admitAcceptedProviderReply } from './run-pair.js';
 export { invokeConsumedDispatch } from './dispatch-invocation.js';
+export { createSequentialServingAdmission, isSequentialServingAdmission } from './sequential-serving-admission.js';
+export type { SequentialServingAdmissionPort, ServingBinding, ServingView } from './sequential-serving-admission.js';

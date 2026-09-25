@@ -8,6 +8,7 @@ import { createFactStore } from '../../src/facts/index.js';
 import { createIntakePort, intakeWorkRegistration, intakeStopRegistration } from '../../src/intake/index.js';
 import { admitTelegramAdapter, createTelegramIntakeAdapter, extractTelegramUpdate } from '../../src/conversation/index.js';
 import { createProductionTelegramCustodian } from '../../src/assembly/production-telegram.js';
+import { validateAssemblyRecordReferences } from '../../src/assembly/index.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { conversationFixture } from '../conversation/fixture.js';
 import { createProductionBootOwnerFixture } from './production-boot-owner-fixture.js';
@@ -54,8 +55,13 @@ it.each([false, true])('deferred admission %s: recorded Telegram → Four → na
       adapter: createTelegramIntakeAdapter(admitted, api), storage: storage.segment,
       capture: { owner: 'part-ten', preserve: (bytes, at) => {
         const captured = value(t.intake.deps.capture.preserve(bytes, at));
-        if (!storage.captures.preserve(captured.reference, bytes)) throw Error('intake custody failed');
-        return t.intake.f.success(captured);
+        const update = extractTelegramUpdate(bytes, declaration);
+        const witnessed = `capture:telegram:update-${update.updateId}:${captured.hash.slice(7)}`;
+        const readable = api.readCapture(witnessed);
+        if (readable.kind !== 'Success' || readable.value !== bytes
+          || !storage.captures.preserve(witnessed, bytes)) throw Error('intake custody failed');
+        t.intake.f.captures[witnessed] = bytes; t.intake.syncCaptures();
+        return t.intake.f.success({ ...captured, reference: witnessed });
       } }, dedupGeneration: () => ({ reference: context.decode.register.generation,
         kinds: context.schemas.map(schema => schema.kind), lineages: { 'machine-a': {
           head: storage.segment.read().at(-1)?.segment ?? null, observedAt: 100, closed: false } } }) }));
@@ -67,12 +73,28 @@ it.each([false, true])('deferred admission %s: recorded Telegram → Four → na
     const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true, deferred, native: { captures: storage.captures, io: createProductionNativeContextIO(storage.captures) },
       intake: { ...context, facts, opening: deferred ? undefined : opening } });
     if (deferred) f.bindIntake(opening);
+    let receiptCaptureChecked = false;
+    f.setMutation(spec => {
+      const signedFacts = value(f.store.read());
+      const receipt = signedFacts.find(row => row.id === opening.body.receipt);
+      const capture = receipt.body.capture;
+      expect(capture.reference).not.toBe(opening.body.rawHash);
+      expect(spec.contextManifest).toContainEqual({ class: 'message', reference: capture.reference, digest: capture.hash });
+      const validation = { ...f.c, history: f.runtime.history, ownerFacts: { ...f.ctx, facts: signedFacts } };
+      expect(() => validateAssemblyRecordReferences(spec, validation)).not.toThrow();
+      const unbound = { ...spec, contextManifest: spec.contextManifest.map(row => row.class === 'message'
+        ? { ...row, reference: opening.body.rawHash } : row) };
+      expect(() => validateAssemblyRecordReferences(unbound, validation))
+        .toThrow('context delivery manifest does not contain the exact input capture');
+      receiptCaptureChecked = true;
+    });
     const production = genuineProductionComposition(f, productionBindingSet());
     const run = value(production.run.port.open(f.run));
     expect(run.run.opening.id).toBe(opening.id);
     const grounding = value(production.run.port.ground(f.id, 'w', 'native', 'start', f.lease));
+    expect(receiptCaptureChecked).toBe(true);
     expect(grounding.body.record.intake.id).toBe(opening.id);
     expect(grounding.body.record.messages[0].hash).toBe(opening.body.rawHash);
-    expect(storage.captures.read(opening.body.rawHash)).toBe(raw);
+    expect(storage.captures.read(facts.find(row => row.id === opening.body.receipt).body.capture.reference)).toBe(raw);
   } finally { storage.close(); rmSync(root, { recursive: true, force: true }); }
 }, 120000);

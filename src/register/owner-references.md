@@ -1,14 +1,28 @@
-# P4/P5 source-reference consumption (P3 extension)
+# Owner source-reference consumption (P3 extension)
 
 Each owner owns its declarations, decoders and catalog data. P3 owns the resolver
 and source-wiring proof. No intake/rungraph record is added to P1's Inventory or
 P3's fact schemas. P2 consumer bindings below do not transfer P2 ownership to P4.
 
-Each declared owner (`part-four` or `part-five`, no arbitrary owner) supplies one
+Each admitted owner (no arbitrary owner) supplies one
 committed v1 manifest. The legacy `register-source/owner-references.json` accepts
-either owner. Both can coexist using `register-source/owner-references/part-four.json`
+`part-four` or `part-five`. Both can coexist using `register-source/owner-references/part-four.json`
 and `register-source/owner-references/part-five.json`, or one legacy and one named
 manifest. Named paths must match their owner. Duplicate-owner manifests refuse.
+
+## Part-twelve Slack fixture enrollment
+
+`register-source/owner-references/part-twelve.json` admits only build fixtures
+`P12-NF-19` at `tests/conversation/slack-preparation.test.ts` and `P12-NF-28`
+at `tests/conversation/slack-reply-hold.test.ts`. Each pin is the P1 canonical
+hash of the complete committed UTF-8 source text. The existing committed-file,
+hash, stage, owner-path and duplicate/conflict checks apply. Part Twelve admits
+no probes, decoders or documents through this manifest.
+
+These fixtures resolve the Slack preparation gates for shape-only replay.
+`P12-NF-19` remains partial preparation evidence, and the Slack `P12-NF-28`
+test proves refusal while the reply definition is uninstalled. The parser and
+reply stay dark; the pins do not establish live channel proof or send authority.
 
 P5 supplies **one committed** `register-source/owner-references.json`, version 1:
 
