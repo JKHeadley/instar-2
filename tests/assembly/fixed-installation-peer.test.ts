@@ -19,12 +19,12 @@ const descriptor = (): PeerDescriptor => ({ installation: 'install:one', studio:
   capturePrefixes: [],
   limits: { maxRequestBytes: 100000, maxResponseBytes: 10000, maxFacts: 8, maxCaptures: 4,
     maxCaptureBytes: 1000, maxDiskBytes: 100000, maxQueue: 1, timeoutMs: 1000, maxAttempts: 1 } });
-function harness(limitChanges: Partial<PeerDescriptor['limits']> = {}) {
+function harness(limitChanges: Partial<PeerDescriptor['limits']> = {}, extraReferences: readonly string[] = []) {
   const f = factsFixture(), first = f.fact(), second = f.next(first);
   const available = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) =>
     [reference, { hash: hashBytes(bytes), bytes, byteLength: Buffer.byteLength(bytes), status: 'available' as const }]));
   const context = { ...f.ctx, captures: available };
-  const d = { ...descriptor(), captureReferences: Object.keys(f.captures),
+  const d = { ...descriptor(), captureReferences: [...Object.keys(f.captures), ...extraReferences],
     limits: { ...descriptor().limits, maxCaptures: Object.keys(f.captures).length + 1, ...limitChanges } };
   const localRows: FactEnvelope[] = [first, second], remoteRows: FactEnvelope[] = [];
   const storage = (rows: FactEnvelope[]): SegmentStoragePort => ({ owner: 'part-ten', read: () => rows,
@@ -61,6 +61,54 @@ it('R3-P2 exact full prefix is admitted through real Two storage, projection and
     .toEqual([h.first.contentHash, h.second.contentHash]);
   expect(value(h.adapter.verify())).toHaveLength(2);
   expect(h.remoteRows).toHaveLength(2);
+});
+it('R6 receiver admits bounded approved extras with exact durable manifest, but rejects unapproved extras before persistence', () => {
+  const extra = { reference: 'extra:approved', bytes: 'bounded unrelated content', hash: hashBytes('bounded unrelated content') };
+  const h = harness({}, [extra.reference]);
+  let sent: PeerRequest | undefined;
+  const sender = value(createFixedPeerReplication({ descriptor: h.d,
+    local: { owner: 'part-ten', read: () => h.localRows,
+      append: () => h.f.success({ kind: 'local-durable' }) }, context: h.context,
+    captures: () => ({ ...h.available, [extra.reference]: { ...extra,
+      byteLength: Buffer.byteLength(extra.bytes), status: 'available' as const } }), boundary: h.f.c,
+    transport: { owner: 'part-ten', roundTrip: request => {
+      sent = request; throw Error('request probe before receiver');
+    } } }));
+  refused(sender.durability.ensure([h.first, h.second]), 'request probe');
+  expect(sent).toBeDefined();
+  expect(sent!.captures.some(c => c.reference === extra.reference)).toBe(false);
+  expect(sent!.captures.length).toBeGreaterThan(0);
+  const unapproved = { ...sent!, captures: [...sent!.captures,
+    { reference: 'extra:unapproved', hash: extra.hash, bytes: extra.bytes }] };
+  refused(receiveFixedPeerRequest({ request: unapproved, descriptor: h.d, authenticatedStudio: h.d.studio,
+    context: h.context, storage: { owner: 'part-ten', read: () => h.remoteRows,
+      append: () => { throw Error('must not persist'); } },
+    captures: { owner: 'part-ten', preserve: () => { throw Error('must not persist'); }, read: () => null },
+    boundary: h.f.c, reserve: () => {} }), 'capture policy/hash bound');
+  expect(h.remoteRows).toHaveLength(0);
+  const approved = { ...sent!, captures: [...sent!.captures, extra] };
+  let receiverCandidateReads = 0;
+  const watchedContext = { ...h.context };
+  Object.defineProperty(watchedContext, 'captures', { get: () => {
+    receiverCandidateReads++; return h.context.captures;
+  } });
+  h.receiverContext(watchedContext);
+  const append = h.receive(approved);
+  expect(receiverCandidateReads).toBe(2);
+  expect(append.persistedCaptures).toEqual(approved.captures.map(c => ({ reference: c.reference, hash: c.hash })));
+  expect(h.captureRows.get(extra.reference)).toBe(extra.bytes);
+  expect(h.remoteRows).toHaveLength(2);
+  const verified = h.receive({ ...approved, operation: 'verify' });
+  expect(receiverCandidateReads).toBe(4);
+  expect(verified.persistedCaptures).toEqual(append.persistedCaptures);
+  h.captureRows.delete(extra.reference);
+  refused(receiveFixedPeerRequest({ request: { ...approved, operation: 'verify' }, descriptor: h.d,
+    authenticatedStudio: h.d.studio, context: h.context,
+    storage: { owner: 'part-ten', read: () => h.remoteRows,
+      append: () => { throw Error('verify must not append'); } },
+    captures: { owner: 'part-ten', preserve: () => { throw Error('verify must not preserve'); },
+      read: reference => h.captureRows.get(reference) ?? null }, boundary: h.f.c, reserve: () => {} }),
+  'capture readback differs');
 });
 it.each([
   ['wrong machine', (r: PeerResponse) => ({ ...r, laptop: 'machine-a' })],
@@ -217,6 +265,50 @@ it('R3 owner-derived Intent.raw custody survives cold receiver and refuses conte
   const omitted = { ...sent!, captures: sent!.captures.filter(c => c.reference !== rawHash) };
   refused(receiveFixedPeerRequest({ request: omitted, descriptor: d, authenticatedStudio: d.studio,
     context, storage: remote, captures: { ...port, read: () => null }, boundary: f.c, reserve: () => {} }));
+});
+it('R3 sender capture memo invalidates on approved hash or prefix change and falls back when a removed capture becomes required', () => {
+  const f = factsFixture(), intent = f.intentInput(), raw = intent.raw as string;
+  const available = Object.fromEntries(Object.entries(f.captures).map(([reference, bytes]) =>
+    [reference, { hash: hashBytes(bytes), bytes, byteLength: Buffer.byteLength(bytes), status: 'available' as const }]));
+  const captured = { ...f.schema, kind: 'note-captured', fields: { ...f.schema.fields,
+    intent: { kind: 'constitutional' as const, type: 'Intent' as const } } };
+  const context: FactContext = { ...f.ctx, schemas: [f.schema, captured], captures: available };
+  const first = f.fact({}, context), second = f.next(first,
+    { kind: 'note-captured', body: { identity: 'two', amount: '10', intent } }, context);
+  const d: PeerDescriptor = { ...descriptor(), captureReferences: Object.keys(available),
+    limits: { ...descriptor().limits, maxFacts: 4, maxCaptures: 64, maxCaptureBytes: 100000,
+      maxRequestBytes: 1000000, maxDiskBytes: 3000000 } };
+  const localRows = [first], remoteRows: FactEnvelope[] = [], saved = new Map<string, string>();
+  let reads = 0, sent: PeerRequest | undefined;
+  const local: SegmentStoragePort = { owner: 'part-ten', read: () => { reads++; return localRows; },
+    append: () => f.success({ kind: 'local-durable' }) };
+  const remote: SegmentStoragePort = { owner: 'part-ten', read: () => remoteRows,
+    append: bytes => { remoteRows.push(JSON.parse(bytes)); return f.success({ kind: 'local-durable' }); } };
+  const adapter = value(createFixedPeerReplication({ descriptor: d, local, context, captures: () => available,
+    boundary: f.c, transport: { owner: 'part-ten', roundTrip: request => {
+      sent = request;
+      return { peer: d.laptop, trust: d.trust, response: value(receiveFixedPeerRequest({ request, descriptor: d,
+        authenticatedStudio: d.studio, context, storage: remote,
+        captures: { owner: 'part-ten', preserve: (reference, bytes) => { saved.set(reference, bytes); return true; },
+          read: reference => saved.get(reference) ?? null }, boundary: f.c, reserve: () => {} })) };
+    } } }));
+  value(adapter.durability.ensure([first]));
+  expect(sent?.captures.some(c => c.reference === raw)).toBe(false);
+  reads = 0; value(adapter.durability.ensure([first]));
+  const cachedReads = reads;
+  const original = available[raw]!;
+  const changed = 'different approved candidate bytes';
+  available[raw] = { ...original, bytes: changed, hash: hashBytes(changed), byteLength: Buffer.byteLength(changed) };
+  reads = 0; value(adapter.durability.ensure([first]));
+  expect(reads).toBeGreaterThan(cachedReads);
+  available[raw] = original;
+  // Re-prime the memo with the unchanged capture set. The next prefix alone
+  // makes this previously excluded capture necessary.
+  value(adapter.durability.ensure([first]));
+  localRows.push(second);
+  value(adapter.durability.ensure([first, second]));
+  expect(sent?.captures.some(c => c.reference === raw && c.hash === original.hash)).toBe(true);
+  expect(remoteRows.map(row => row.id)).toEqual([first.id, second.id]);
 });
 function eightPeerHarness(online: boolean, stopAfterRemote = false) {
   const f = effectFixture(), request = f.prepare(), rows: FactEnvelope[] = [], captureRows = new Map<string, string>();

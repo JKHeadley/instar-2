@@ -31,6 +31,48 @@ export interface AdmissionReservation extends Row, Owned {
   readonly executor: string; readonly durability: 'local-durable' | 'replicated';
   readonly replicas: number;
 }
+export type CapacityResource = 'worker' | 'memory' | 'storage' | 'queue' | 'transport' | 'effect';
+export interface CapacityAmount {
+  readonly quantity: number; readonly unit: string; readonly window: string;
+}
+export type CapacityVector = Readonly<Record<CapacityResource, CapacityAmount>>;
+/** Supplied by the installed policy owner, never inferred from spare host resources. */
+export interface CapacityParentPolicy {
+  readonly owner: 'part-ten'; readonly reference: string;
+  readonly installation: string; readonly machine: string; readonly scope: string;
+  readonly generation: string; readonly ordinaryDomain: string; readonly responderDomain: string;
+  readonly approval: string; readonly grant: string;
+  readonly parent: CapacityVector; readonly required: CapacityVector;
+  readonly validUntil: Clock;
+}
+export interface CapacityReservation extends Row, Owned {
+  readonly type: 'CapacityReservation'; readonly capacity: string;
+  readonly installation: string; readonly machine: string; readonly scope: string;
+  readonly instance: string; readonly generation: string;
+  readonly budgetPolicy: string; readonly approval: string; readonly grant: string;
+  readonly ordinaryDomain: string; readonly responderDomain: string;
+  readonly allocation: CapacityVector; readonly fence: FenceToken;
+  readonly holder: string; readonly incarnation: string; readonly validUntil: Clock;
+  readonly transition: 'reserve' | 'rebind' | 'release';
+  readonly state: 'held' | 'released'; readonly previousCapacity: string;
+}
+export interface ReserveCapacityInput {
+  readonly command: string; readonly expected: string; readonly fence: FenceToken;
+  readonly installation: string; readonly scope: string; readonly instance: string;
+  readonly approval: string; readonly grant: string;
+  readonly allocation: CapacityVector; readonly validUntil: Clock;
+}
+export interface CapacitySuccessorInput {
+  readonly command: string; readonly previousCapacity: string; readonly fence: FenceToken;
+  readonly validUntil: Clock;
+}
+export interface CapacityInspection {
+  readonly sourceFrontier: string;
+  readonly history: readonly TransportFact[];
+  readonly heads: readonly { readonly capacity: string; readonly fact: string;
+    readonly record: CapacityReservation; readonly usable: boolean; readonly blocker: string | null }[];
+  readonly parentRemainder: CapacityVector;
+}
 export interface LoopPolicy extends Owned {
   readonly type: 'LoopPolicy'; readonly schemaVersion: 1; readonly id: string;
   readonly maxAttempts: number; readonly minDelay: number; readonly maxDuration: number;
@@ -85,7 +127,7 @@ export interface SettlementAccountingInput {
 }
 export type SettlementConsumer<S> = <T>(value: S, boundary: BoundaryContext,
   consumer: (value: SettlementAccountingInput) => T) => Result<T>;
-export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication | RunPairAdmission;
+export type TransportRecord = Lease | AdmissionReservation | CapacityReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication | RunPairAdmission;
 export interface TransportFact { readonly fact: FactEnvelope; readonly record: TransportRecord }
 
 // Trusted host seams. P10 supplies the monotonic clock and fresh process identity.
@@ -94,6 +136,7 @@ export interface TransportHost {
   readonly domain: string; readonly machine: string; readonly incarnation: string;
   readonly authorityIncarnation: string; readonly principal: VerifiedPrincipal;
   readonly scope: Scope; readonly maxLeaseTerm: number; readonly budget: number;
+  readonly capacityPolicy?: CapacityParentPolicy;
   // P10 checks exact P2 facts/receipts, including after restart. Absence never
   // makes replicated accounting spendable; it does not block observation.
   readonly accountingDurability?: {
@@ -151,6 +194,10 @@ export interface TransportAuthority<S = never> {
   admitWrite(command: string, fence: FenceToken): Result<Lease>;
   schedule(command: string, fence: FenceToken, run: RunReference, policy: LoopPolicy): Result<LoopRecord>;
   reserve(input: ReserveInput): Result<AdmissionReservation>;
+  reserveCapacity(input: ReserveCapacityInput): Result<CapacityReservation>;
+  rebindCapacity(input: CapacitySuccessorInput): Result<CapacityReservation>;
+  releaseCapacity(input: CapacitySuccessorInput): Result<CapacityReservation>;
+  inspectCapacity(): Result<CapacityInspection>;
   claim(command: string, fence: FenceToken, operation: string): Result<DispatchClaim>;
   consume(claim: DispatchClaim, fence: FenceToken): Result<AdmissionReservation>;
   recover(command: string, fence: FenceToken, operation: string, observer: ObservationPort): Result<RecoveryRecord>;

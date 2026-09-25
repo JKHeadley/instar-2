@@ -1,6 +1,7 @@
 // @ts-nocheck -- U4-G fixture admissions are enumerated in production-holds.ts.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { boundary as assemblyBoundary } from '../../src/assembly/boundary.js';
 import { canonical, decode } from '../../src/index.js';
 import { createFactStore, authorAndAppend } from '../../src/facts/index.js';
@@ -18,12 +19,15 @@ import { requiredMinimalDependencies } from '../../src/operator/index.js';
 import { conversationFixture } from '../conversation/fixture.js';
 import { operatorFixture } from '../operator/fixture.js';
 import { createProductionBootOwnerFixture } from './production-boot-owner-fixture.js';
-import { productionBindingSet, productionComposition, appendProductionBindingFacts, productionPublicPorts } from './production-fixture.js';
+import { productionBindingSet, productionComposition, prepareProductionSelectionSet,
+  appendProductionBindingFacts, productionPublicPorts } from './production-fixture.js';
 import { assemblyInput } from './fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { value, privateKey, json } from '../facts/fixtures.js';
 import { productionStorageIO, createProductionNativeContextIO } from '../../scripts/production-boot-io.mjs';
 import { createProductionRunAdmission } from '../../src/transport/index.js';
+import { openProductionStorage } from '../../src/assembly/production-storage.js';
+import { createFixedPeerReplication, receiveFixedPeerRequest } from '../../src/assembly/production-replication.js';
 
 export const fixtureAdmissionNames = productionBindingHolds.join(', ');
 export function installedFixtureHost(root, route, options = {}) {
@@ -31,24 +35,83 @@ export function installedFixtureHost(root, route, options = {}) {
   const poll = readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8');
   const sent = readFileSync('tests/assembly/telegram-recorded/sendMessage.json', 'utf8');
   const bot = JSON.parse(getMe).result, t = conversationFixture({ botId: String(bot.id), skipInitialAdmission: true });
-  const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
-  c.register = { ...c.register, generation: { ...c.register.generation, id: 'generation:fixture' } };
   const secret = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'vault', name });
-  const record = { type: 'ProductionInstallation', schemaVersion: 1, id: 'host', generation: c.register.generation.id,
+  const initialRecord = { type: 'ProductionInstallation', schemaVersion: 1, id: 'host', generation: 'generation:fixture',
     botDeclaration: 'phone-surface', providerRoute: 'route', machineIdentity: 'machine-a', storageRoot: root,
     botCredential: t.declaration.token, providerCredential: secret('provider'), storageCredential: secret('storage') };
+  const prepared = prepareProductionSelectionSet({ ownerFixture: t.intake, setGeneration: () => {},
+    success: t.intake.f.success, c: {} },
+    productionBindingSet(), { capacityHolder: 'bob', peerBacked: true,
+      installation: generation => ({ ...initialRecord, generation }) });
+  const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
+  const record = { ...initialRecord, generation: c.register.generation.id };
+  // Offline channel authentication and failure domain are simulated. The receiver
+  // has a different encrypted store identity, persisted under this fixture root.
+  const peerDescriptor = { installation: record.id, studio: record.machineIdentity, laptop: 'm_cc2ec651a91f',
+    store: 'store:fixture-laptop', epoch: 0, trust: 'offline-fixture-channel', custody: 'offline-fixture-receiver',
+    captureReferences: Object.keys(t.intake.context.captures),
+    capturePrefixes: ['sha256:', 'message:', 'record:', 'capture:', 'live-input-capture:', 'effect-capture:', 'judgment-capture:'], limits: {
+      maxRequestBytes: 32 * 1024 * 1024, maxResponseBytes: 1024 * 1024, maxFacts: 4096,
+      maxCaptures: 1024, maxCaptureBytes: 2 * 1024 * 1024, maxDiskBytes: 128 * 1024 * 1024,
+      maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
+  let peerConnected = true, channelPeer = peerDescriptor.laptop, replayLastResponse = false, incompleteResponse = false;
+  let lastResponse;
+  const peerAdapter = (local, context, boundary) => value(createFixedPeerReplication({
+    descriptor: peerDescriptor, local, context, captures: () => context.captures,
+    boundary, transport: { owner: 'part-ten', roundTrip: request => {
+      if (!peerConnected) throw Error('offline receiver channel disconnected');
+      const receiver = value(openProductionStorage({ root: join(root, 'fixture-peer'), machine: peerDescriptor.laptop,
+        key: Buffer.alloc(32, 23), policy: peerDescriptor.custody, store: peerDescriptor.store,
+        context: boundary, io: productionStorageIO }));
+      try {
+        const response = value(receiveFixedPeerRequest({ request, descriptor: peerDescriptor,
+          authenticatedStudio: peerDescriptor.studio, context, storage: receiver.segment,
+          captures: receiver.captures, boundary,
+          reserve: bytes => { if (bytes * 2 + 4096 > peerDescriptor.limits.maxDiskBytes) throw Error('receiver disk bound'); } }));
+        const returned = replayLastResponse && lastResponse ? lastResponse
+          : incompleteResponse ? { ...response, persistedFacts: response.persistedFacts.slice(0, -1) } : response;
+        lastResponse = response;
+        return { peer: channelPeer, trust: peerDescriptor.trust, response: returned };
+      } finally { receiver.close(); }
+    } } }));
+  const currentPeer = (local, context, boundary, setFactId) => {
+    const sourceRows = local.read();
+    const source = sourceRows.find(row => row.id === setFactId);
+    if (!source || source.kind !== 'assembly-InstallationSelectionSet') return false;
+    const receipts = value(peerAdapter(local, context, boundary).durability.ensure(sourceRows));
+    return receipts.some(row => row.fact.id === source.id && row.fact.contentHash === source.contentHash
+      && !row.taint.length && row.durability.kind === 'replicated' && row.durability.n === 1
+      && row.durability.peers.length === 1 && row.durability.peers[0] === peerDescriptor.laptop);
+  };
+  let activePeer = { local: t.intake.storage, context: t.intake.context, boundary: t.intake.f.c };
+  let configured = false;
+  const currentSelectedPeer = setFactId => currentPeer(activePeer.local, activePeer.context, activePeer.boundary, setFactId);
+  const recoveryPeerPreflight = () => {
+    if (!peerConnected || channelPeer !== peerDescriptor.laptop) return false;
+    const receiver = value(openProductionStorage({ root: join(root, 'fixture-peer'), machine: peerDescriptor.laptop,
+      key: Buffer.alloc(32, 23), policy: peerDescriptor.custody, store: peerDescriptor.store,
+      context: t.intake.f.c, io: productionStorageIO }));
+    try {
+      return receiver.segment.read().some(row => row.id === prepared.set.id
+        && row.contentHash === prepared.set.contentHash && row.kind === 'assembly-InstallationSelectionSet');
+    } finally { receiver.close(); }
+  };
   let underlyingAdmission, state;
   // Same landed Six fixture binding, constructed inside configure over the root.
   const admission = createProductionRunAdmission({ resolve: () => underlyingAdmission });
-  const admittedDependencies = () => Object.fromEntries(requiredMinimalDependencies.map(name => [name, true]));
+  const admittedDependencies = () => Object.fromEntries(requiredMinimalDependencies.map(name => [name,
+    name === 'replication-peer' ? options.recovery && !configured
+      ? recoveryPeerPreflight() : currentSelectedPeer(prepared.set.id) : true]));
   const host = { context: c, storageIO: options.storageIO ?? productionStorageIO, storagePolicy: 'StoreCustodyPolicy',
     store: 'store:fact', repairOwner: 'operator', runAdmission: admission, missingBindings: [],
     dependencies: admittedDependencies, resolveSecret: reference => reference.name === 'storage' ? '13'.repeat(32)
       : reference.name === 'provider' ? 'synthetic-recorded-provider-credential' : '8820318295:synthetic_recorded_test_only_value',
     configure(installation, storage) {
       const initial = t.intake.context;
-      Object.assign(initial, { ownedBodies: [value(intakeWorkRegistration(c, t.intake.deps.author.principal.id)),
-        value(intakeStopRegistration(c, t.intake.deps.author.principal.id))] });
+      const intakeOwners = [value(intakeWorkRegistration(c, t.intake.deps.author.principal.id)),
+        value(intakeStopRegistration(c, t.intake.deps.author.principal.id))];
+      Object.assign(initial, { ownedBodies: [...(initial.ownedBodies ?? []).filter(row =>
+        !intakeOwners.some(own => own.owner === row.owner && own.name === row.name)), ...intakeOwners] });
       const recovery = options.recovery ? { ...options.recovery,
         captureBytes: Object.fromEntries(options.recovery.captures.map(reference => {
           const bytes = storage.captures.read(reference); if (bytes === null) throw Error(`recovery capture absent: ${reference}`);
@@ -75,6 +138,8 @@ export function installedFixtureHost(root, route, options = {}) {
             refreshFacts: () => base.success(undefined) };
           const verification = { ...assemblyHost, boundary, current: () => ({ decode: dc, clock: base.now,
             stopped: false, generation: dc.register.generation.id, facts: context, evidence: base.evidence }) };
+          context.ownedBodies = context.ownedBodies.filter(row =>
+            row.owner !== 'part-ten' || row.name !== 'ProductionInstallation');
           context.ownedBodies.push(...value(registerVerificationBodies(verification)),
             ...value(registerProviderJudgmentBodies(judgment, boundary)), ...value(registerProviderEffectBodies(th)),
             value(registerProductionInstallationBody({ ...dc, ...boundary })));
@@ -83,10 +148,12 @@ export function installedFixtureHost(root, route, options = {}) {
           if (grantRoot) context.grants.push({ factId: grantRoot.id, grant: t.intake.f.g });
         } : undefined,
         native: { captures: storage.captures, io: nativeIO },
-        intake: { ...initial, facts: [], opening: undefined } });
+        intake: { ...initial, facts: t.intake.facts(), opening: undefined }, capacityPolicy: prepared.capacityPolicy });
       underlyingAdmission = createProductionRunAdmission({ authority: f.effects.transport, store: f.store, context: f.c });
       f.deps.admission = admission;
       const context = f.ctx, dc = context.decode, boundary = { ...f.c, register: dc.register };
+      activePeer = { local: storage.segment, context, boundary };
+      configured = true;
       f.deps.context.evidenceSources.settlement = f.bob.provenance.adapter;
       const captures = value(createProductionJudgmentCaptures({ custody: storage.captures, context: boundary,
         capacity: 1048576, metadata: context.captures, decodeCaptures: dc.captures }));
@@ -140,7 +207,7 @@ export function installedFixtureHost(root, route, options = {}) {
       const api = value(createProductionTelegramCustodian({ context: c, declaration, credential: declaration.token,
         resolveSecret: host.resolveSecret, captures: telegramCaptures, machine: 'machine-a', now: () => f.deps.clock(), freshFor: 50,
         identityEvidence: { verification: t.verification, plan: identityPlan.id,
-          arm: identityPlan.arms.find(arm => arm.required).id, generation: 'generation:fixture' },
+          arm: identityPlan.arms.find(arm => arm.required).id, generation: identityPlan.subject.generation },
         io: { invoke: request => {
           calls.push(request.method);
           if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-before-response', state);
@@ -158,7 +225,7 @@ export function installedFixtureHost(root, route, options = {}) {
           return f.success(captured);
         } }, dedupGeneration: () => ({ reference: dc.register.generation, kinds: context.schemas.map(s => s.kind),
           lineages: { 'machine-a': { head: storage.segment.read().at(-1)?.segment ?? null, observedAt: 100, closed: false } } }) };
-      const binding = productionBindingSet();
+      const binding = prepared.prepared;
       binding.dependencies = binding.dependencies.map(row => row.name === 'lease' ? { ...row,
         fact: { ...row.fact, reference: f.effects.leaseFact.id } } : row);
       const grounding = f.groundingFor({ scope: binding.scope });
@@ -200,13 +267,31 @@ export function installedFixtureHost(root, route, options = {}) {
         placement = { admitted, reservation };
         return placement;
       };
-      const bindings = productionComposition(f, binding);
+      const bindings = productionComposition(f, binding, { peerReceipt: setFactId =>
+        currentPeer(storage.segment, context, boundary, setFactId) });
+      const effectPeer = peerAdapter(storage.segment, context, boundary);
+      Object.assign(f.effects.composition, { durability: { owner: 'part-ten', ensure: requested =>
+        assemblyBoundary('InstalledFixtureEffectDurability', requested.map(fact => fact.id), boundary, () => {
+          // Five names a narrow effect closure. The selected set has other causal
+          // ancestors, so verify the complete current source before returning C's
+          // exact receipts for only the facts Five requested.
+          const current = storage.segment.read();
+          const receipts = value(effectPeer.durability.ensure(current));
+          return requested.map(fact => {
+            const exact = receipts.find(row => row.fact.id === fact.id
+              && value(canonical(row.fact)).bytes === value(canonical(fact)).bytes && !row.taint.length);
+            if (!exact) throw Error(`current peer receipt lacks exact requested fact: ${fact.id}`);
+            return exact;
+          });
+        }) } });
+      bindings.lease.port = f.effects.transport;
       const operator = operatorFixture();
-      const operatorRoot = f.append('note', { identity: 'installation-grant-root', amount: '0' }).fact;
-      context.grants.push({ factId: operatorRoot.id, grant: t.intake.f.g });
+      const operatorRoot = value(f.store.read()).find(row => row.kind === 'genesis-grant'
+        && row.body.grant.grantee.id === t.intake.f.alice.id);
+      if (!operatorRoot) throw Error('prepared owner genesis grant absent');
       const installationContext = { ...context, decode: { ...dc, provenance: t.intake.f.alice.provenance } };
-      const installationFact = value(recordProductionInstallation({ record: installation, context: installationContext,
-        boundary: { ...dc, ...boundary }, store: createFactStore(installationContext, storage.segment), privateKey, principal: t.intake.f.alice, at: f.now, required: [operatorRoot.id] }));
+      const installationFact = value(f.store.read()).find(row => row.id === prepared.fixed.installationFact.id);
+      if (!installationFact) throw Error('prepared installation fact absent from opened source');
       for (const id of ['check-run:context', 'check:unit', 'check:integration', 'check:lifecycle']) f.appendReference('check-run-record', { id });
       for (const id of ['probe:native', 'probe:1', 'probe:word-count']) f.appendReference('verification-ProbeRecord', { record: { ...verificationInput('ProbeRecord'), id } });
       f.appendReference('assembly-reference-evidence', { id: 'bar:isolation' });
@@ -214,13 +299,14 @@ export function installedFixtureHost(root, route, options = {}) {
       const conversationBinding = value(f.store.read()).find(row => row.kind === 'conversation-binding' && row.body.channel === 'boot-fixture-channel') ?? value(authorAndAppend({ kind: 'conversation-binding', schemaVersion: 1,
         machine: f.host.machine, principal: json(t.intake.f.alice), provenance: json(t.intake.f.alice.provenance), at: json(f.now),
         required: [operatorRoot.id], body: { adapter: intake.adapter.id, channel: 'boot-fixture-channel', sender: 'boot-fixture-sender',
-          identityEpoch: 'installation-1', principalId: t.intake.f.alice.id, grantId: t.intake.f.g.id,
+          identityEpoch: 'installation-1', principalId: t.intake.f.alice.id, grantId: operatorRoot.body.grant.id,
           scope: json(f.scope), supersedes: 'none' } }, installationContext, createFactStore(installationContext, storage.segment), privateKey)).fact;
       binding.dependencies = binding.dependencies.map(row => row.name === 'conversation-binding'
         ? { ...row, fact: { ...row.fact, reference: conversationBinding.id } } : row);
       appendProductionBindingFacts(f, binding);
       const artifact = grounding.harness.describe().artifact;
-      const conformance = value(f.runtime.record('AdapterConformance', { ...assemblyInput('AdapterConformance'), artifact }));
+      const conformance = value(f.runtime.record('AdapterConformance', { ...assemblyInput('AdapterConformance'),
+        generation: dc.register.generation.id, artifact }));
       const policy = value(f.runtime.record('StoreCustodyPolicy', assemblyInput('StoreCustodyPolicy')));
       const isolation = value(f.runtime.record('HarnessObservation', assemblyInput('HarnessObservation')));
       const access = value(f.runtime.record('StorageAccessObservation', assemblyInput('StorageAccessObservation')));
@@ -230,8 +316,10 @@ export function installedFixtureHost(root, route, options = {}) {
         : row.port === 'ModelAdapterPort' ? { ...row, implementation: 'test-provider:model:route' }
         : row.port === 'PersistenceAdapterPort' ? { ...row, implementation: storage.persistence.id } : row);
       const manifest = value(f.runtime.record('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), id: 'manifest:production',
+        generation: dc.register.generation.id,
         publicPorts, productionBindings: [binding], dependencyFacts: [conformanceFact, policyFact] }));
       value(f.runtime.record('AssemblyAdmission', { ...assemblyInput('AssemblyAdmission'), id: 'admission:production',
+        sourceGeneration: dc.register.generation.id,
         manifest: manifest.id, scope: binding.scope, conformance: [conformanceFact], isolationEvidence: [factId(isolation.id)],
         custodyEvidence: [factId(access.id)], dependencyFacts: [factId(manifest.id), conformanceFact, policyFact] }));
       const owners = { assembly: { ...f.composition, persistence: storage.persistence }, grounding: { ...grounding, scope: binding.scope },
@@ -262,5 +350,10 @@ export function installedFixtureHost(root, route, options = {}) {
       return assemblyBoundary('RecordedInstallationHost', null, boundary, () => () => ({ owners, manifest: manifest.id, scope: binding.scope, installationFact }));
     } };
   return { host, record, state: () => state,
+    peer: { setFactId: prepared.set.id, current: setFactId => currentSelectedPeer(setFactId),
+      disconnect: () => { peerConnected = false; }, reconnect: () => { peerConnected = true; },
+      channelPeer: id => { channelPeer = id; },
+      replayLastResponse: value => { replayLastResponse = value; },
+      incompleteResponse: value => { incompleteResponse = value; }, captures: t.intake.context.captures },
     boot: () => { const application = value(bootProductionApplication(record, host)); state.application = application; return state; } };
 }

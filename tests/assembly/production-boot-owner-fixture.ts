@@ -28,7 +28,9 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
 } */
   const f = factsFixture(); const harnessId = options.harness ?? 'native'; f.grant({ id: 'live-input-agent-grant', grantee: f.bob }); let stopped = false; let now = f.now, liveLease = 'lease:1'; const wire: unknown[] = [];
   const types = { ...f.ctx.decode, provenance: f.bob.provenance,
-    register: { ...f.ctx.decode.register, generation: { ...f.ctx.decode.register.generation, id: 'generation:fixture' }, entries: [...f.ctx.decode.register.entries, 'harness-live-input', 'native-context'], subjects: { ...f.ctx.decode.register.subjects, 'elapsed-time': ['ms'], 'run-work': ['steps'] } } };
+    register: { ...f.ctx.decode.register, generation: seed?.decode.register.generation
+      ?? { ...f.ctx.decode.register.generation, id: 'generation:fixture' },
+      entries: [...f.ctx.decode.register.entries, 'harness-live-input', 'native-context'], subjects: { ...f.ctx.decode.register.subjects, 'elapsed-time': ['ms'], 'run-work': ['steps'] } } };
   const schemas: FactSchema[] = [
     { ...f.schema, kind: 'stimulus', fields: stimulus?.fields
       ?? { intent: { kind: 'constitutional', type: 'Intent' }, owner: { kind: 'constitutional', type: 'VerifiedPrincipal' }, capture: { kind: 'capture' } } },
@@ -46,9 +48,11 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   if (seed) {
     Object.assign(types.captures, seed.decode.captures);
     Object.assign(captures, seed.captures);
-    types.register = { ...types.register, sites: { ...types.register.sites, ...seed.decode.register.sites }, entries: [...new Set([...types.register.entries, ...seed.decode.register.entries])],
+    types.register = { ...seed.decode.register, subjects: { ...types.register.subjects, ...seed.decode.register.subjects },
+      sites: { ...types.register.sites, ...seed.decode.register.sites }, entries: [...new Set([...types.register.entries, ...seed.decode.register.entries])],
       methods: [...new Set([...types.register.methods, ...seed.decode.register.methods])] };
     types.principals = [...types.principals ?? [], ...seed.decode.principals ?? []];
+    types.grants = [...types.grants ?? [], ...seed.decode.grants ?? []];
   }
   let ctx: FactContext = { ...f.ctx, decode: types,
     schemas: [...schemas.filter(s => !seed?.schemas.some(t => t.kind === s.kind)), ...seed?.schemas ?? []], captures,
@@ -57,9 +61,13 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
     stimulusKinds: seed ? ['intake-admitted'] : ['stimulus', 'next-inbound'], evidenceSources: { settlement: 'probe', exit: 'probe' } };
   const assemblyHost: any = { machine: 'machine-a', principal: f.bob, scope: f.scope, boundary: { ...f.c, register: types.register },
     current: () => ({ facts: ctx, generation: types.register.generation.id, stopped, clock: now }) };
-  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native);
+  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native,
+    options.capacityPolicy);
   const registration = value(runFactSchemas(c));
-  ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas, ...assemblySchemas(assemblyHost), ...owners.schemas, ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...seed?.ownedBodies ?? [], ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
+  ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas.filter(s => !ctx.schemas.some(t => t.kind === s.kind)),
+    ...assemblySchemas(assemblyHost).filter(s => !ctx.schemas.some(t => t.kind === s.kind)),
+    ...owners.schemas.filter(s => !ctx.schemas.some(t => t.kind === s.kind)),
+    ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...(seed?.ownedBodies ?? []).filter((row: any) => !owners.registrations.some((own: any) => own.owner === row.owner && own.name === row.name)), ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
   if (options.recovery) {
     const saved = options.recovery;
     types.register = saved.register;
@@ -211,7 +219,7 @@ import { assemblySchemas, registerAssemblyBodies, createAssemblySpine, createAss
   createNativeHarnessAdapter, createConfinedContextDeliveryDriver, contextDeliveryIdFor } from '../../src/assembly/index.js';
 import { createEffectSpine, createEffectDoorway, createHarnessLiveInputExecution, consumeEffectSettlement, decodeOutboundMessage,
   installOperationDefinition, effectSchemas, registerEffectBodies } from '../../src/effects/index.js';
-import { createTransportAuthority, createTransportSpine, transportSchemas, registerTransportBodies, decodeLoopPolicy } from '../../src/transport/index.js';
+import { createTransportAuthority, createTransportSpine, transportSchemas, registerTransportBodies, decodeLoopPolicy, fenceFor } from '../../src/transport/index.js';
 import { assemblyInput } from './fixture.js';
 import { productionReferenceKinds } from './round8-extended-fixture.js';
 
@@ -224,7 +232,8 @@ function productionSchemas(f: any) {
     { ...f.schema, kind: 'assembly-measurement-reference', fields: { ...identity, measurement: { kind: 'constitutional', type: 'Measurement' } } },
   ];
 }
-function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string, native: any) {
+function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string, native: any,
+  capacityPolicy: any) {
   let authority: string[] = [], versions: any[] = [], ordinal = 0;
   const events: string[] = [];
   const host: any = { machine: 'machine-a', incarnation: 'incarnation:one', principal: f.bob, scope: f.scope,
@@ -236,6 +245,7 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
     } };
   const transportHost: any = { domain: 'conversation:1', machine: host.machine, incarnation: host.incarnation,
     authorityIncarnation: 'authority:1', principal: host.principal, scope: host.scope, maxLeaseTerm: 1000, budget: 1000,
+    ...(capacityPolicy ? { capacityPolicy } : {}),
     monotonic: () => clock().value, current: () => ({ decode: types, clock: clock(), generation: types.register.generation, stopped: stopped() }) };
   return { host, events, schemas: [...effectSchemas(host), ...transportSchemas(transportHost)],
     registrations: [...value(registerEffectBodies(host)), ...value(registerTransportBodies(transportHost, host.boundary, consumeEffectSettlement))],
@@ -254,8 +264,12 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
         since: note.id, supersedes: [], approvedIn, base: approvedIn.base, landedIn: null }];
       const d = value(store.read()).find(row => row.kind === 'effect-OperationDefinition' && row.body.record.id === definition.id)?.body.record
         ?? value(installOperationDefinition(definition, host, spine));
-      let fence = value(transport.acquire('live-input-acquire', '', 500));
-      let leaseFact = value(transport.inspect()).find((row: any) => row.record.type === 'Lease')!.fact;
+      const existingLease = value(transport.inspect()).filter((row: any) => row.record.type === 'Lease'
+        && row.record.state === 'held' && row.record.operation === 'acquire').at(-1);
+      let fence = existingLease ? fenceFor(value(transport.inspect()), existingLease.record)
+        : value(transport.acquire('live-input-acquire', '', 500));
+      let leaseFact = existingLease?.fact ?? value(transport.inspect()).filter((row: any) => row.record.type === 'Lease'
+        && row.record.operation === 'acquire').at(-1)!.fact;
       const policy = value(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'live-input-policy', maxAttempts: 3,
         minDelay: 10, maxDuration: 1000, timeout: 10, concurrency: 1, failDirection: 'closed', breaker: 'stub-closed' }, host.boundary));
       const adapter = native ? createProductionNativeContextAdapter({ id: definition.adapter, harness: harnessId, incarnation: host.incarnation,

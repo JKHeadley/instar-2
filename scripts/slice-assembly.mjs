@@ -17,7 +17,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { join } from 'node:path';
 
 import { authorizationRequestDigest, canonical, consumeResult, decode, decodeMeasurement, defineDecoder, deriveThrough } from '../dist/index.js';
-import { authorAndAppend, createFactStore, genesisHash, hashBytes, prepareSnapshot } from '../dist/facts/index.js';
+import { authorAndAppend, createFactStore, genesisHash, hashBytes, prepareSnapshot, registerOwnedBody } from '../dist/facts/index.js';
 import { decodeGenerationRecord, decodeShape, generateRegister, generationOf, loadRegister } from '../dist/register/index.js';
 import { createIntakePort, intakeFactSchemas, intakeStopRegistration, intakeVerifiedActFactSchemas, intakeVerifiedActRegistration,
   intakeWorkRegistration } from '../dist/intake/index.js';
@@ -28,7 +28,14 @@ import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, create
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
 import { assemblySchemas, bootProductionAssembly, createAssemblyRuntime, createAssemblySpine,
   inspectProductionAssemblyBindings, registerAssemblyBodies, createProductionGroundingReader,
-  createConfinedContextDeliveryDriver, createNativeHarnessAdapter, contextDeliveryIdFor } from '../dist/assembly/index.js';
+  createConfinedContextDeliveryDriver, createNativeHarnessAdapter, contextDeliveryIdFor,
+  installationRoleOwners, installationSelectionSlots, installationSelectionSetSchemas,
+  registerInstallationSelectionSetBody, recordInstallationSelectionSet,
+  productionInstallationSchemas, registerProductionInstallationBody,
+  productionSignerReferenceSchemas, registerProductionSignerReferenceBody,
+  recordProductionSignerReference, loadProductionBootstrap } from '../dist/assembly/index.js';
+import { capacityPolicyArtifact } from '../dist/transport/index.js';
+import { createFixedPeerReplication, receiveFixedPeerRequest } from '../dist/assembly/production-replication.js';
 import { createOperatorSurface, minimalPlaneProjectionIds, minimalPlaneProjections,
   requiredMinimalDependencies } from '../dist/operator/index.js';
 import { createVerificationRuntime, createVerificationSpine, registerVerificationBodies,
@@ -113,8 +120,20 @@ export function bootProductionSliceAssembly(input) {
     route: 'conversation-route', 'delivery-evidence': 'delivery-evidence-service',
   });
   const liveHandleMismatch = (name, reference, handle) => {
+    const directKind = { register: 'generation-record', 'identity-keys': 'assembly-ProductionSignerReference',
+      fence: 'transport-Lease' }[name] ?? dependencyKinds[name];
+    const setRole = { 'local-facts': 'fact-segment', 'replication-peer': 'fact-segment',
+      clock: 'verification-clock', route: 'conversation-route',
+      'delivery-evidence': 'delivery-evidence-service' }[name];
+    const selected = setRole && reference.expectedKind === 'assembly-InstallationSelectionSet'
+      && reference.fact.kind === 'assembly-InstallationSelectionSet'
+      && reference.address?.type === 'InstallationSelectionRowReference'
+      && reference.address.set.id === reference.fact.id
+      && reference.address.role === setRole && reference.address.instance === dependencyKinds[name];
+    const direct = !setRole && reference.expectedKind === directKind
+      && reference.fact.kind === directKind && reference.address === null;
     if (!handle || typeof handle !== 'object' || handle.name !== name || handle.reference !== reference.fact.id
-      || reference.expectedKind !== dependencyKinds[name] || reference.fact.kind !== dependencyKinds[name]
+      || !(selected || direct)
       || reference.completeness !== 'complete' || reference.missing.length !== 0
       || handle.current !== true || typeof handle.provider !== 'string' || handle.provider.trim().length === 0)
       return `live dependency handle differs, has the wrong kind, is incomplete, or is stale: ${name}`;
@@ -379,14 +398,102 @@ function restartProductionAssembly(slice, admissionId = 'admission:restart-produ
     else slice.decodeContext.evidence.push(witness);
     return existing ?? take(verification.record('ProbeRecord', probe));
   };
+  const installedOwner = () => {
+    const installed = slice.install();
+    const root = slice.factsOfKind('genesis-grant').find(row => row.body.grantId === slice.bindingGrant.id);
+    const agentRoot = slice.factsOfKind('genesis-grant').find(row => row.body.grantId === slice.agentGrant.id);
+    if (!root || !agentRoot) throw new Error('installed owner genesis grants absent');
+    const generation = slice.generation().reference.id;
+    const installationRecord = { type: 'ProductionInstallation', schemaVersion: 1, id: 'slice-installation',
+      generation, botDeclaration: 'phone-surface', providerRoute: 'route', machineIdentity: slice.config.machine,
+      storageRoot: slice.home, botCredential: { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'slice-bot' },
+      providerCredential: { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'slice-provider' },
+      storageCredential: { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'slice-store' } };
+    const installationFact = slice.factOfKind('assembly-ProductionInstallation')
+      ?? slice.append('assembly-ProductionInstallation', { record: installationRecord }, [root.id], slice.alice, slice.alice.provenance);
+    const generationFact = slice.factOfKind('generation-record')
+      ?? slice.append('generation-record', { record: slice.factContext.generationRecord }, [root.id], slice.alice, slice.alice.provenance);
+    const amount = quantity => ({ quantity, unit: 'charge', window: 'installation' });
+    const vector = quantity => ({ worker: amount(quantity), memory: amount(quantity), storage: amount(quantity),
+      queue: amount(quantity), transport: amount(quantity), effect: amount(quantity) });
+    const clock = instant => take(decodeMeasurement('clock', { ...json(slice.now()), value: instant, at: instant }, slice.decodeContext));
+    let policy = slice.transportHost.capacityPolicy;
+    if (!policy) {
+      const fields = { owner: 'part-ten', installation: installationRecord.id, machine: slice.config.machine,
+        scope, generation, ordinaryDomain: slice.config.domain, responderDomain: 'responder:slice',
+        grant: agentRoot.id, parent: vector(1000), required: vector(20), validUntil: clock(100000) };
+      const reference = capacityPolicyArtifact(fields);
+      const captured = slice.preserveInstalledArtifact(bytesOf(fields));
+      if (captured.hash !== reference) throw new Error('installed capacity policy capture differs');
+      const approval = slice.approveInstalledArtifact(reference, 'slice-capacity-policy-request');
+      policy = { ...fields, reference, approval: approval.id };
+      Object.assign(slice.transportHost, { capacityPolicy: policy });
+    }
+    const fence = slice.liveFence();
+    const lease = slice.transportFacts().filter(row => row.record.type === 'Lease').at(-1);
+    if (!lease) throw new Error('installed owner lease absent');
+    const prior = slice.transportFacts().find(row => row.record.type === 'CapacityReservation');
+    if (!prior) {
+      const expected = slice.transportFacts().at(-1).fact.id;
+      take(slice.transport.reserveCapacity({ command: 'slice-capacity-reserve', expected, fence,
+        installation: installationRecord.id, scope, instance: 'minimal-responder-binding',
+        approval: policy.approval, grant: agentRoot.id, allocation: policy.required,
+        validUntil: clock(Math.min(lease.record.expires - 1, 99999)) }));
+    } else {
+      const head = take(slice.transport.inspectCapacity()).heads.find(row => row.record.capacity === prior.record.capacity);
+      if (!head) throw new Error('installed capacity head absent on restart');
+      if (!head.usable || head.record.fence.assignment !== fence.assignment)
+        take(slice.transport.rebindCapacity({ command: `slice-capacity-rebind:${slice.incarnation}`,
+        previousCapacity: head.fact, fence, validUntil: prior.record.validUntil }));
+    }
+    const capacityFact = slice.transportFacts().find(row => row.record.type === 'CapacityReservation')?.fact;
+    if (!capacityFact) throw new Error('installed capacity source absent');
+    return { installed, installationFact, generationFact, capacityFact, lease: slice.transportFacts()
+      .filter(row => row.record.type === 'Lease').at(-1).fact };
+  };
+  const preparedOwner = installedOwner();
+  // Retain the signed route source observed by the existing late-loss cut;
+  // its runtime binding is the atomic set row.
+  appendReference('conversation-route', 'route:restart');
   let manifest = currentRecord('AssemblyManifest', 'manifest:restart-production');
   let binding;
   if (manifest) binding = manifest.productionBindings.find(row => row.scope === scope);
   if (!binding) {
-    const installed = slice.install();
-    slice.liveFence();
-    const lease = slice.transportFacts().filter(row => row.record.type === 'Lease').at(-1)?.fact;
+    const { installed, lease, capacityFact, installationFact, generationFact } = preparedOwner;
     if (!lease || !installed.binding) throw new Error('restart assembly requires actual Part Six lease and Part Four conversation binding records');
+    const generation = slice.generation().reference.id;
+    const blueprint = slice.factContext.selectionBlueprint;
+    const selectionRows = [...installationSelectionSlots, ['scope-protection', 'protected']].map(([role, instance]) => {
+      const fields = { type: 'InstallationSelection', schemaVersion: 1,
+        installation: 'slice-installation', machine: slice.config.machine, scope, role, instance,
+        implementation: blueprint.implementation(role, instance), owner: installationRoleOwners[role], generation,
+        references: blueprint.references(role, instance, capacityFact.id, installed.binding.id).sort(),
+        validUntil: 'not-time-bound' };
+      return { ...fields, id: hashOf(fields) };
+    }).sort((a, b) => a.role < b.role ? -1 : a.role > b.role ? 1
+      : a.instance < b.instance ? -1 : a.instance > b.instance ? 1 : 0);
+    const setFields = { type: 'InstallationSelectionSet', schemaVersion: 1,
+      installation: 'slice-installation', machine: slice.config.machine, scope, generation, rows: selectionRows };
+    const setRecord = { ...setFields, id: hashOf(setFields) };
+    const signerFields = { type: 'ProductionSignerReference', schemaVersion: 1,
+      installation: 'slice-installation', machine: slice.config.machine, signer: slice.factContext.bootstrap.package.signer,
+      keySet: slice.factContext.keys[0].id, generation, bootstrapDigest: slice.factContext.bootstrap.digest };
+    const signerRecord = { ...signerFields, id: hashOf(signerFields) };
+    const packageRecords = [setRecord, signerRecord];
+    const packageFields = { installation: 'slice-installation', scope, generation, records: packageRecords };
+    const packageDigest = hashOf(packageFields);
+    if (slice.preserveInstalledArtifact(bytesOf(packageFields)).hash !== packageDigest)
+      throw new Error('installed package capture differs');
+    const packageApproval = slice.approveInstalledArtifact(packageDigest, 'slice-installation-package-request');
+    const admissionFields = { installationFact: installationFact.id, generationFact: generationFact.id,
+      approvalFact: packageApproval.id, packageRecords };
+    Object.assign(slice.factContext.selectionAdmission, admissionFields);
+    Object.assign(slice.factContext.signerAdmission, admissionFields);
+    const writer = { admission: slice.factContext.selectionAdmission, context: slice.factContext,
+      store: slice.store, principal: slice.alice, at: slice.now(), privateKey: slice.privateKey };
+    const setFact = take(recordInstallationSelectionSet(setRecord, writer));
+    const signerFact = take(recordProductionSignerReference(signerRecord,
+      { ...writer, admission: slice.factContext.signerAdmission }));
     binding = {
       scope,
       surface: {
@@ -413,11 +520,28 @@ function restartProductionAssembly(slice, admissionId = 'admission:restart-produ
         requester: 'principal:requester', effectAdapter: 'adapter:telegram',
         fact: required('binding:delivery-witness', 'platform-delivery-witness-binding') },
     };
+    const selected = required(setFact.id, 'assembly-InstallationSelectionSet');
+    binding = { ...binding,
+      surface: { adapter: { ...binding.surface.adapter, fact: selected },
+        challengeVerifier: { ...binding.surface.challengeVerifier, fact: selected } },
+      verifiedActIntake: { ...binding.verifiedActIntake, fact: selected },
+      minimalPlane: { folds: binding.minimalPlane.folds.map(row => ({ ...row, fact: selected })),
+        sourceOnlyReplay: { ...binding.minimalPlane.sourceOnlyReplay, fact: selected } },
+      minimalResponder: { ...binding.minimalResponder, fact: selected },
+      dependencies: binding.dependencies.map(row => ({ ...row, fact: row.name === 'lease' || row.name === 'fence'
+        ? required(lease.id, 'transport-Lease') : row.name === 'register'
+          ? required(generationFact.id, 'generation-record') : row.name === 'identity-keys'
+            ? required(signerFact.id, 'assembly-ProductionSignerReference') : row.name === 'conversation-binding'
+              ? required(installed.binding.id, 'conversation-binding') : selected })),
+      lifecycle: { cut: { ...binding.lifecycle.cut, fact: selected },
+        recovery: { ...binding.lifecycle.recovery, fact: selected } },
+      deliveryWitness: { ...binding.deliveryWitness, fact: selected } };
     const bindingFacts = [binding.surface.adapter.fact, binding.surface.challengeVerifier.fact, binding.verifiedActIntake.fact,
       ...binding.minimalPlane.folds.map(row => row.fact), binding.minimalPlane.sourceOnlyReplay.fact,
       binding.minimalResponder.fact, ...binding.dependencies.map(row => row.fact), binding.lifecycle.cut.fact,
       binding.lifecycle.recovery.fact, binding.deliveryWitness.fact];
-    for (const row of bindingFacts) if (![lease.id, installed.binding.id].includes(row.reference)) appendReference(row.expectedKind, row.reference);
+    for (const row of bindingFacts) if (![setFact.id, lease.id, installed.binding.id,
+      generationFact.id, signerFact.id].includes(row.reference)) appendReference(row.expectedKind, row.reference);
   }
   const checkRun = appendReference('check-run-record', 'check-run:production');
   const bootstrapProbe = verificationRows().find(row => row.record.type === 'ProbeRecord' && row.record.id === 'probe:production')?.record
@@ -503,10 +627,20 @@ function restartProductionAssembly(slice, admissionId = 'admission:restart-produ
       current: () => ok(verificationHost.current().clock) },
     dependencyAdmission: { owner: 'part-ten', id: 'dependency:admission', admit: input => slice.result(() => {
       if (cutDependencies.has(input.name)) throw new Error(`deterministic prerequisite cut: ${input.name}`);
+      if (input.name === 'replication-peer') {
+        const receipts = take(slice.replicas.durability.ensure(slice.facts()));
+        const exact = receipts.find(row => row.fact.id === input.fact.id
+          && row.fact.contentHash === input.fact.contentHash && !row.taint.length
+          && row.durability.kind === 'replicated' && row.durability.n === 1
+          && row.durability.peers.length === 1 && row.durability.peers[0] === 'm_cc2ec651a91f');
+        if (!exact) throw new Error('current exact-prefix peer receipt unavailable');
+        return { name: input.name, reference: input.fact.id, provider: 'provider:replication-peer',
+          current: true, replicas: 1, distinctPeer: true };
+      }
       const commonHandle = { name: input.name, reference: input.fact.id, provider: `provider:${input.name}`, current: true };
       const extras = { 'local-facts': { durability: 'local-durable' }, register: { generation: slice.generation().reference.id },
         'identity-keys': { keys: 'keys:restart' }, clock: { clock: 'clock:restart' }, lease: { exclusive: true }, fence: { exclusive: true },
-        'replication-peer': { replicas: 1, distinctPeer: true }, 'conversation-binding': { binding: 'binding:restart' },
+        'conversation-binding': { binding: 'binding:restart' },
         route: { route: 'route:restart' }, 'delivery-evidence': { administration: 'independent' } };
       return { ...commonHandle, ...extras[input.name] }; }) },
     lifecycle: { owner: 'part-ten', cutId: 'lifecycle:cut', recoveryId: 'lifecycle:recovery',
@@ -785,7 +919,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     grants.push(grant); return grant;
   };
   const bindingGrant = makeGrant('slice-binding-grant', alice);
-  makeGrant('slice-agent-grant', bob);
+  const agentGrant = makeGrant('slice-agent-grant', bob);
 
   const floor = take(decode('ActionFloor', { type: 'ActionFloor', schemaVersion: 1, actions: ['work'], default: 'work' }, decodeContext));
   for (const id of ['slice-e1', 'slice-e2']) evidence.push(take(decode('Evidence', { type: 'Evidence', schemaVersion: 1, id,
@@ -809,7 +943,69 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
         fallbackFingerprint: { policy: 'none', basis: 'challenge id required' } }, ackPolicy: 'bound-only' },
     profile: { type: 'Profile', schemaVersion: 1, consequence: 'control', reversibility: 'irreversible', reach: 'operator',
       surface: 'device', repeats: { kind: 'no' } }, standards: [], holds: [] };
-  const declarations = [...intakeDeclarations, ...runDeclarations, parserDeclaration, surfaceDeclaration];
+  const ownerPaths = { 'part-two': 'facts', 'part-four': 'intake', 'part-five': 'rungraph',
+    'part-six': 'transport', 'part-nine': 'verification', 'part-ten': 'assembly',
+    'part-eleven': 'operator', 'part-twelve': 'conversation' };
+  const sourceIds = new Map();
+  const source = (id, owner) => { sourceIds.set(id, owner); return id; };
+  const selectionImplementation = (role, instance) => {
+    switch (role) {
+      case 'operator-surface': return 'surface:phone';
+      case 'challenge-verifier': return 'verifier:phone';
+      case 'verified-act-intake': return 'intake:verified-act';
+      case 'minimal-plane-fold': return `fold:${instance}`;
+      case 'minimal-plane-replay': return 'replay:source-only';
+      case 'minimal-responder': return 'responder:minimal';
+      case 'prerequisite-cut': return 'lifecycle:cut';
+      case 'prerequisite-recovery': return 'lifecycle:recovery';
+      case 'delivery-witness': return 'witness:platform';
+      case 'fact-segment': return instance === 'fact-replication-receipt' ? 'replication-peer' : 'local-facts';
+      case 'verification-clock': return 'clock';
+      case 'conversation-route': return 'route';
+      case 'delivery-evidence-service': return 'delivery-evidence';
+      case 'scope-protection': return 'installation-replay';
+      default: throw new Error(`unknown selection role: ${role}`);
+    }
+  };
+  const selectionReferences = (role, instance, capacityFact = null, conversationFact = null) => {
+    const owner = installationRoleOwners[role], implementation = source(selectionImplementation(role, instance), owner);
+    switch (role) {
+      case 'operator-surface': case 'verified-act-intake': return [implementation];
+      case 'challenge-verifier': return [implementation, source('fixture:part-nine:trust', 'part-nine'),
+        source('fixture:part-nine:administration', 'part-nine')];
+      case 'minimal-plane-fold': return [implementation, source(`fixture:part-two:fold:${instance}`, 'part-two')];
+      case 'minimal-plane-replay': return [implementation, source('installation-replay-matrix', 'part-ten')];
+      case 'minimal-responder': return [implementation, source('fixture:part-five:minimal-run-policy', 'part-five'),
+        ...(capacityFact ? [capacityFact] : [])];
+      case 'conversation-route': return [implementation, source('fixture:part-twelve:route-identity', 'part-twelve'),
+        ...(conversationFact ? [conversationFact] : [])];
+      case 'delivery-witness': case 'delivery-evidence-service': return [implementation,
+        source('fixture:part-twelve:delivery-stage', 'part-twelve')];
+      case 'scope-protection': return [implementation, source('installation-artifacts', 'part-ten')];
+      default: return [implementation, source(`fixture:${owner}:${role}:${instance}:support`, owner)];
+    }
+  };
+  if (config.productionRestart === true) {
+    for (const [role, instance] of installationSelectionSlots) selectionReferences(role, instance);
+    selectionReferences('scope-protection', 'protected');
+    for (const [id, owner] of [['slice-installation', 'part-ten'], ['phone-surface', 'part-eleven'], ['route', 'part-four'],
+      [config.machine, 'part-two'], ['assembly-InstallationSelectionSet', 'part-ten'],
+      ['assembly-ProductionSignerReference', 'part-ten'], ['transport-CapacityReservation', 'part-six']]) source(id, owner);
+  }
+  const selectionSources = config.productionRestart === true ? [...sourceIds].map(([id, owner]) => {
+    const declared = ['assembly-InstallationSelectionSet', 'assembly-ProductionSignerReference'].includes(id)
+      ? JSON.parse(readFileSync('src/assembly/assembly.declarations.json', 'utf8')).find(row => row.id === id)
+      : null;
+    return { declaration: declared ? { ...declared, status: 'live' } : { type: 'Declaration', schemaVersion: 1,
+      id, kind: 'protected artifacts', status: 'live', requiredFacts: {
+        pattern: `src/${ownerPaths[owner]}/**`, why: 'fixture-approved installed selection source', surface: 'operator approval' },
+      standards: [], holds: [] }, path: `src/${ownerPaths[owner]}/fixture.ts`, symbol: id };
+  }).filter(row => row.declaration.id !== surfaceDeclaration.id) : [];
+  const baseDeclarations = [...intakeDeclarations, ...runDeclarations, parserDeclaration, surfaceDeclaration];
+  const declarationSources = [...baseDeclarations.map(declaration => ({ declaration,
+    path: config.productionRestart === true && declaration.id === surfaceDeclaration.id
+      ? 'src/operator/fixture.ts' : 'scripts/slice-assembly.mjs', symbol: 'bootSliceAssembly' })), ...selectionSources];
+  const declarations = declarationSources.map(row => row.declaration);
   const fullEntries = [...baseEntries, ...declarations.map(d => d.id)];
   const registerRegister = { ...registerShape, entries: fullEntries };
   const shape = take(decodeShape(JSON.parse(readFileSync('register-source/bootstrap-shape.json', 'utf8')),
@@ -829,7 +1025,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     rows: declarations.map(d => ({ id: d.id, version: `slice-version:${d.id}`, status: 'live', since: 'slice-installation',
       supersedes: [], approvedIn: approvalReference, landedIn: 'slice-installation', base: 'slice-base', contentHash: hashOf(d) })) };
   const registerInput = { commit: 'slice-commit:1', complete: true,
-    sources: declarations.map(d => ({ declaration: d, path: 'scripts/slice-assembly.mjs', symbol: 'bootSliceAssembly' })),
+    sources: declarationSources,
     extract, instances: {} };
   const candidate = take(generateRegister(registerInput, registerContext));
   const registerGeneration = take(generationOf(candidate, registerContext));
@@ -849,7 +1045,10 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     isCurrent(vector) { registerChecks.push('current'); return registerReply(vector.id === candidate.extract.vector.id); },
   }, genesisClock));
   const governance = { register: verifiedRegister, context: registerContext };
-  Object.assign(registerShape, { generation: { owner: 'part-three', name: 'RegisterGeneration', id: registerGeneration.id } });
+  Object.assign(registerShape, { generation: { owner: 'part-three', name: 'RegisterGeneration', id: registerGeneration.id },
+    ...(config.productionRestart === true ? { entries: [...new Set([...baseEntries, ...sourceIds.keys()])] } : {}) });
+  const selectionBlueprint = { implementation: selectionImplementation, references: selectionReferences,
+    sources: sourceIds };
 
   // ------------------------------------------------------------ host results
   const boundaryContext = { site: 'facts.admit', preserved: decodeContext.preserved, register: registerShape };
@@ -972,25 +1171,74 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
   const peerStorage = Object.freeze({ owner: 'part-ten', read: peerCached, append: peerBase.append });
   const peerDurableStore = createFactStore(factContext, peerStorage);
   const peerStore = config.productionRestart === true ? verifiedStore(peerDurableStore, peerStorage) : peerDurableStore;
-  const replicas = createEffectReplicaStorage(paths.facts, { id: PEER_STANDIN_ID, store: peerStore }, result);
+  const localProductionStorage = createTransportFileStorage(paths.facts, result);
+  let peerConnected = true;
+  const peerDescriptor = { installation: 'slice-installation', studio: config.machine, laptop: 'm_cc2ec651a91f',
+    store: 'slice-peer-facts', epoch: 0, trust: 'offline-slice-channel', custody: 'offline-slice-captures',
+    captureReferences: [], capturePrefixes: ['sha256:', 'capture:', 'effect-capture:', 'message:', 'record:', 'judgment-capture:'],
+    limits: { maxRequestBytes: 32 * 1024 * 1024, maxResponseBytes: 2 * 1024 * 1024, maxFacts: 4096,
+      maxCaptures: 1024, maxCaptureBytes: 2 * 1024 * 1024, maxDiskBytes: 128 * 1024 * 1024,
+      maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
+  // The second local directory and channel authentication are simulated; they
+  // cannot establish a separate physical failure domain or Laptop custody.
+  const receiverCaptures = { owner: 'part-ten', read: reference => {
+    const file = join(paths.peerCaptures, `${hashBytes(reference).slice(7)}.peer-capture`);
+    if (!existsSync(file)) return null;
+    const row = JSON.parse(readFileSync(file, 'utf8'));
+    return row.reference === reference ? row.bytes : null;
+  }, preserve: (reference, bytes) => {
+    const file = join(paths.peerCaptures, `${hashBytes(reference).slice(7)}.peer-capture`);
+    const prior = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null;
+    if (prior) return prior.reference === reference && prior.bytes === bytes;
+    writeDurable(file, paths.peerCaptures, JSON.stringify({ reference, bytes }));
+    return receiverCaptures.read(reference) === bytes;
+  } };
+  const fixedPeer = config.productionRestart === true ? take(createFixedPeerReplication({
+    descriptor: peerDescriptor, local: localProductionStorage, context: factContext,
+    captures: () => factContext.captures, boundary: boundaryContext,
+    transport: { owner: 'part-ten', roundTrip: request => {
+      if (!peerConnected) throw new Error('offline peer disconnected');
+      const response = take(receiveFixedPeerRequest({ request, descriptor: peerDescriptor,
+        authenticatedStudio: config.machine, context: factContext, storage: peerStorage,
+        captures: receiverCaptures, boundary: boundaryContext,
+        reserve: bytes => { if (bytes * 2 + 4096 > peerDescriptor.limits.maxDiskBytes) throw new Error('offline peer disk bound'); } }));
+      return { peer: peerDescriptor.laptop, trust: peerDescriptor.trust, response };
+    } } })) : null;
+  const replicas = config.productionRestart === true ? {
+    storage: fixedPeer.storage, durability: fixedPeer.durability,
+    enable: value => { peerConnected = value; }, verify: fixedPeer.verify,
+  } : createEffectReplicaStorage(paths.facts, { id: PEER_STANDIN_ID, store: peerStore }, result);
   const originBytes = () => { const file = join(paths.facts, 'facts.json');
     return existsSync(file) ? readFileSync(file, 'utf8') : '[]'; };
   const originCached = config.productionRestart === true
     ? memoOn(originBytes, () => replicas.storage.read()) : memo(() => replicas.storage.read());
-  const localProductionStorage = createTransportFileStorage(paths.facts, result);
   const originStorage = Object.freeze({ owner: 'part-ten', read: originCached,
     append: config.productionRestart === true ? (bytes, expected) => {
       const fact = JSON.parse(bytes);
-      // Six's authority and accounting rows synchronously replicate before
-      // acknowledging, including consumption and settlement. Other
-      // facts acknowledge only local durability; Eight's unchanged demand()
-      // then replicates the entire exact causal closure before each effect.
-      // This batches observational/assembly records without weakening or
-      // inventing a replicated receipt, and preserves consume-before-invoke.
-      return fact.kind.startsWith('transport-')
+      // Six's replicated admission and accounting rows need their own current
+      // peer receipt. The remaining rows retain local append semantics until
+      // the exact current prefix is checked at a dependency or effect use.
+      // This preserves Six-before-effect without adding replication waits to
+      // unrelated lease, loop, scan and observation rows.
+      const record = fact.body?.record;
+      return record?.type === 'SettlementApplication'
+        || record?.type === 'AdmissionReservation' && record.durability === 'replicated'
         ? replicas.storage.append(bytes, expected) : localProductionStorage.append(bytes, expected);
     } : replicas.storage.append });
   const durableStore = createFactStore(factContext, originStorage);
+  if (fixedPeer) replicas.durability = Object.freeze({ owner: 'part-ten', ensure: requested => result(() => {
+    // Effect owners name their own closure. The installed set adds causal
+    // ancestors outside that owner closure, so ask C for the current complete
+    // source prefix and return only its genuine receipts for the named facts.
+    const current = take(durableStore.read());
+    const receipts = take(fixedPeer.durability.ensure(current));
+    return requested.map(fact => {
+      const receipt = receipts.find(row => row.fact.id === fact.id
+        && bytesOf(row.fact) === bytesOf(fact) && !row.taint.length);
+      if (!receipt) throw new Error(`current peer receipt lacks exact requested fact: ${fact.id}`);
+      return receipt;
+    });
+  }) });
   // P2 owns verification. Ten reuses its verified immutable results only while
   // the complete physical bytes and ALL semantic policy inputs remain equal.
   // Each store/composition has its own cache; no authority or invocation result
@@ -1082,7 +1330,60 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     const restartVerificationHost = { machine: config.machine, principal: observer, scope, boundary: restartBoundary,
       current: () => ({ decode: decodeContext, clock: now(), generation: registerShape.generation.id, stopped: false,
         facts: factContext, evidence: decodeContext.evidence ?? [] }) };
-    const ownerSchemas = [...assemblySchemas(restartAssemblyHost), ...verificationSchemas(restartVerificationHost)];
+    const ownerSchemas = [...assemblySchemas(restartAssemblyHost), ...verificationSchemas(restartVerificationHost),
+      ...productionInstallationSchemas(scope), ...installationSelectionSetSchemas(scope),
+      ...productionSignerReferenceSchemas(scope)];
+    const shapeText = { kind: 'text', maxLength: 4096 }, shapeInteger = { kind: 'integer' };
+    const shapeRef = { kind: 'object', fields: { owner: shapeText, name: shapeText, id: shapeText } };
+    const generationShape = { kind: 'object', fields: { type: shapeText, schemaVersion: shapeInteger,
+      generation: { kind: 'object', fields: { type: shapeText, schemaVersion: shapeInteger,
+        id: shapeText, commit: shapeText, vector: shapeRef } },
+      at: { kind: 'object', fields: { type: shapeText, schemaVersion: shapeInteger,
+        subject: { kind: 'object', fields: { kind: shapeText, instance: shapeText } },
+        value: shapeInteger, unit: shapeText, at: shapeInteger, by: shapeText } } } };
+    const generationSchema = { kind: 'generation-record', version: 1,
+      fields: { record: { kind: 'owned', owner: 'part-three', name: 'GenerationRecord' } },
+      machineScope: 'shared', standing: 'operator', action: 'work', scope,
+      causallyBound: true, requiredReferences: [], authority: 'none' };
+    const rawInstallation = originStorage.read();
+    const priorCapacity = rawInstallation.find(row => row.kind === 'transport-CapacityReservation');
+    if (priorCapacity) {
+      const policyReference = priorCapacity.body.record.budgetPolicy;
+      const policyBytes = captures[policyReference];
+      if (!policyBytes || hashBytes(policyBytes) !== policyReference)
+        throw new Error('installed capacity policy capture absent on restart');
+      const policyRequest = rawInstallation.find(row => row.kind === 'authorization-request'
+        && row.body.requestId === 'slice-capacity-policy-request');
+      const policyAct = rawInstallation.find(row => row.kind === 'intake-verified-act'
+        && row.body.request === policyRequest?.id);
+      if (!policyAct) throw new Error('installed capacity Four approval absent on restart');
+      Object.assign(transportHost, { capacityPolicy: { ...JSON.parse(policyBytes),
+        reference: policyReference, approval: policyAct.id } });
+    }
+    const priorSet = rawInstallation.find(row => row.kind === 'assembly-InstallationSelectionSet');
+    const priorSigner = rawInstallation.find(row => row.kind === 'assembly-ProductionSignerReference');
+    const packageRequest = rawInstallation.find(row => row.kind === 'authorization-request'
+      && row.body.requestId === 'slice-installation-package-request');
+    const packageAct = rawInstallation.find(row => row.kind === 'intake-verified-act'
+      && row.body.request === packageRequest?.id);
+    const selectionAdmission = { boundary: restartBoundary, scope, scopeId: 'scope:minimal',
+      installationFact: rawInstallation.find(row => row.kind === 'assembly-ProductionInstallation')?.id ?? '',
+      generationFact: rawInstallation.find(row => row.kind === 'generation-record')?.id ?? '',
+      approvalFact: packageAct?.id ?? '',
+      packageRecords: [priorSet?.body.record, priorSigner?.body.record].filter(Boolean),
+      generation: { register: verifiedRegister, context: registerContext } };
+    const signer = { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'slice-machine-signer' };
+    const bootstrapBytes = JSON.stringify({ installation: 'slice-installation', machine: config.machine,
+      genesisHash: factContext.genesis.hash, generation: registerGeneration.id,
+      trustRoots: [factContext.keys[0].publicKey], key: factContext.keys[0], signer });
+    const bootstrap = take(loadProductionBootstrap({ root: home, bootstrapLocator: '/tmp/slice-operator/bootstrap.json',
+      expectedBootstrapDigest: hashBytes(bootstrapBytes) }, { read: locator => result(() => ({ realPath: locator,
+      bytes: bootstrapBytes })) }, restartBoundary));
+    const signerAdmission = { ...selectionAdmission, bootstrap };
+    const generationRegistration = take(registerOwnedBody({ name: 'GenerationRecord', owner: 'part-three', currentVersion: 1,
+      versions: { 1: { validate: value => ({ ok: true, value }) } }, migrations: {},
+      decodeCurrent: input => ({ ok: true, value: take(decodeGenerationRecord(input, registerContext)) }) },
+    generationShape, restartBoundary));
     const dependencyKinds = ['fact-local-durable-segment', 'register-generation-record', 'identity-key-set',
       'clock-source', 'transport-Lease', 'transport-FenceToken', 'fact-replication-receipt', 'conversation-binding',
       'conversation-route', 'delivery-evidence-service'];
@@ -1091,7 +1392,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
       'minimal-plane-projection-binding', 'minimal-plane-replay-binding', 'minimal-responder-binding',
       ...dependencyKinds, 'assembly-lifecycle-control-binding', 'platform-delivery-witness-binding'])];
     const schemaBase = factContext.schemas[0];
-    factContext.schemas = [...factContext.schemas, ...ownerSchemas,
+    factContext.schemas = [...factContext.schemas, ...ownerSchemas, generationSchema,
       ...referenceKinds.filter(kind => ![...factContext.schemas, ...ownerSchemas].some(schema => schema.kind === kind))
         .map(kind => ({ ...schemaBase, kind, fields: { id: { kind: 'text', maxLength: 4096 } },
           causallyBound: false, requiredReferences: [], authority: 'none' }))]
@@ -1099,8 +1400,12 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     const verifiedActGeneration = { owner: 'part-three', name: 'RegisterGeneration', id: registerGeneration.id };
     factContext.ownedBodies = [...factContext.ownedBodies,
       take(intakeVerifiedActRegistration(restartBoundary, observer.id, verifiedActGeneration)),
-      ...take(registerAssemblyBodies(restartAssemblyHost)), ...take(registerVerificationBodies(restartVerificationHost))]
+      ...take(registerAssemblyBodies(restartAssemblyHost)), ...take(registerVerificationBodies(restartVerificationHost)),
+      generationRegistration, take(registerProductionInstallationBody(restartBoundary)),
+      take(registerInstallationSelectionSetBody(selectionAdmission)),
+      take(registerProductionSignerReferenceBody(signerAdmission))]
       .filter((row, index, all) => all.findIndex(candidate => candidate.owner === row.owner && candidate.name === row.name) === index);
+    Object.assign(factContext, { selectionAdmission, signerAdmission, bootstrap, selectionBlueprint, generationRecord: forceRecord });
   }
   const kinds = () => [...new Set(factContext.schemas.map(s => s.kind))];
 
@@ -1386,6 +1691,50 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
       } };
   }
 
+  function approveInstalledArtifact(artifact, requestId) {
+    const existingRequest = factsOfKind('authorization-request').find(row => row.body.requestId === requestId);
+    if (existingRequest) {
+      const accepted = factsOfKind('intake-verified-act').find(row => row.body.request === existingRequest.id);
+      if (!accepted) throw new Error(`installed approval incomplete: ${requestId}`);
+      return accepted;
+    }
+    const installed = install();
+    const base = 'slice-installation';
+    const requestDigest = authorizationRequestDigest({ approver: alice, action: { kind: 'work', scope }, artifact, base });
+    const requestEvidence = take(operatorCapturePort.preserve(`installed approval evidence:${requestId}`, now()));
+    const requestBody = { requestId, requestDigest, action: 'work', scope: json(scope), audience: 'operator',
+      artifact, base, expiresAt: 500000, grantExpiresAt: 400000, approverId: alice.id, requestedById: bob.id,
+      consequence: 'control', reversibility: 'irreversible', blockedWork: 'installed capacity and selection',
+      recurrence: JSON.stringify(['the same installed prefix is restored after a cut']),
+      requesterProse: 'approve this exact installed artifact', evidence: json(requestEvidence) };
+    const request = append('authorization-request', requestBody, [installed.root.id], alice, alice.provenance);
+    const at = now(), issuedAt = at.value;
+    const actPayload = { id: `act:${request.id}`, at, approver: alice, under: bindingGrant.id,
+      action: { kind: 'work', scope }, artifact, base, kind: { kind: 'approval' }, requestedBy: bob, requestDigest };
+    const actProofInput = proof(actPayload, { id: alice.id, kind: 'person' }, 'approval', false,
+      'surface:phone', at, true);
+    const actProof = take(decode('Provenance', actProofInput, decodeContext));
+    const priorBase = decodeContext.currentBase, priorArtifact = decodeContext.artifact;
+    Object.assign(decodeContext, { currentBase: base, artifact });
+    try {
+      const act = take(decode('Authorization', { type: 'Authorization', schemaVersion: 1,
+        ...actPayload, explicitYes: actProof }, { ...decodeContext, provenance: actProof,
+        now: at, actAt: at }));
+      const challengePayload = { type: 'VerifiedOperatorChallenge', schemaVersion: 1,
+        challenge: `challenge:${request.id}`, request: request.id, requestDigest,
+        renderingDigest: hashOf(requestBody), action: 'work', scope: json(scope), audience: 'operator',
+        operator: alice.id, requestedBy: bob.id, artifact, base, issuedAt, expiresAt: issuedAt + 1000,
+        singleUse: true, decision: 'approve', actDigest: hashOf(act), surface: 'surface:phone',
+        generation: registerShape.generation };
+      const challengeProofInput = proof(challengePayload, { id: alice.id, kind: 'person' },
+        'verified-operator-challenge', false, 'surface:phone', at, true);
+      const captureReference = take(operatorCapturePort.preserve(JSON.stringify({
+        type: 'VerifiedActProofBundle', schemaVersion: 1, challenge: challengeProofInput, act: actProofInput }), now()));
+      return take(intake.admitVerifiedAct({ request: factRef(request), requestDigest, decision: 'approve',
+        act, proof: captureReference, surface: 'surface:phone', generation: registerShape.generation })).fact;
+    } finally { Object.assign(decodeContext, { currentBase: priorBase, artifact: priorArtifact }); }
+  }
+
   // -------------------------------------------------------------------- five
   let fenceCache;
   const liveFence = () => {
@@ -1657,7 +2006,15 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
         body: json({ grantId: bindingGrant.id, principalId: alice.id, grant: bindingGrant }), required: [] },
       grantContext, createFactStore(grantContext, originStorage), PRIVATE_KEY)).fact;
     }
-    factContext.grants = [{ factId: root.id, grant: bindingGrant }];
+    let agentRoot = factsOfKind('genesis-grant').find(row => row.body.grantId === agentGrant.id);
+    if (!agentRoot) {
+      const grantContext = { ...factContext, decode: { ...decodeContext, provenance: agentGrant.source } };
+      agentRoot = take(authorAndAppend({ kind: 'genesis-grant', schemaVersion: 1, machine: config.machine,
+        principal: json(alice), provenance: json(agentGrant.source), at: json(now()),
+        body: json({ grantId: agentGrant.id, principalId: bob.id, grant: agentGrant }), required: [] },
+      grantContext, createFactStore(grantContext, originStorage), PRIVATE_KEY)).fact;
+    }
+    factContext.grants = [{ factId: root.id, grant: bindingGrant }, { factId: agentRoot.id, grant: agentGrant }];
     let binding = factOfKind('conversation-binding');
     if (!binding) binding = take(authorAndAppend({ kind: 'conversation-binding', schemaVersion: 1, machine: config.machine,
       principal: json(alice), provenance: json(alice.provenance), at: json(now()),
@@ -1675,7 +2032,10 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     return { root, binding, owner, placement };
   }
   // Restoring `factContext.grants` on every boot is part of reading state back.
-  const restoreGrants = () => { const root = factOfKind('genesis-grant'); if (root) factContext.grants = [{ factId: root.id, grant: bindingGrant }]; };
+  const restoreGrants = () => { const roots = factsOfKind('genesis-grant');
+    factContext.grants = roots.flatMap(row => row.body.grantId === bindingGrant.id
+      ? [{ factId: row.id, grant: bindingGrant }] : row.body.grantId === agentGrant.id
+        ? [{ factId: row.id, grant: agentGrant }] : []); };
   restoreGrants();
   /**
    * Delivery evidence written by an earlier boot is read back into the live context.
@@ -1845,9 +2205,13 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     }
     return [...latest.entries()].map(([operation, record]) => ({ operation, record, opened: first.get(operation) }));
   };
-  const roleOf = opened => String(opened.command).startsWith('judgment:') ? 'model-judgment'
-    : factsOfKind('effect-EffectRequest').some(f => f.body.record.id === opened.request
-      && f.body.record.definition === contextDefinition.id) ? 'harness-live-input' : 'outbound-reply';
+  const roleOf = opened => {
+    if (String(opened.command).startsWith('judgment:')) return 'model-judgment';
+    const request = factsOfKind('effect-EffectRequest').find(f => f.body.record.id === opened.request)?.body.record;
+    if (request?.definition === contextDefinition.id) return 'harness-live-input';
+    if (request?.definition === operationDefinition.id) return 'outbound-reply';
+    throw new Error(`unclassified Six operation: ${opened.operation}`);
+  };
   const modelOperation = () => sixOperationRows().find(row => roleOf(row.opened) === 'model-judgment');
   const applicationFor = operation => transportFacts()
     .filter(v => v.record.type === 'SettlementApplication' && v.record.operation === operation).at(-1);
@@ -2326,6 +2690,59 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
           unresolved: application.record.unresolved, actualCharge: application.record.actualCharge } : null,
         resolved: !authorityUnavailable && (row.record.state === 'closed' || (application ? application.record.unresolved === 0 : false)) };
     };
+    const operationSources = new Map();
+    for (const row of observedTransport.filter(item => item.record.type === 'AdmissionReservation')) {
+      const history = operationSources.get(row.record.operation) ?? [];
+      history.push(row.fact.id);
+      operationSources.set(row.record.operation, history);
+    }
+    const operationSourceReferences = [...operationSources].map(([operation, history]) => ({
+      operation, initial: history[0], latest: history.at(-1),
+    }));
+    const capacitySource = observedTransport.filter(item => item.record.type === 'CapacityReservation');
+    const capacityGroups = new Map();
+    for (const row of capacitySource) {
+      const history = capacityGroups.get(row.record.capacity) ?? [];
+      history.push(row);
+      capacityGroups.set(row.record.capacity, history);
+    }
+    const capacityResources = ['worker', 'memory', 'storage', 'queue', 'transport', 'effect'];
+    const quantities = vector => Object.fromEntries(capacityResources.map(resource => [resource, vector?.[resource]?.quantity ?? 0]));
+    const capacityHeads = [...capacityGroups.values()].map(history => history.at(-1).record);
+    const currentCapacity = capacityGroups.size && !authorityUnavailable
+      ? settled(transport.inspectCapacity()) : null;
+    const currentHeads = new Map((currentCapacity?.ok ? currentCapacity.value.heads : [])
+      .map(row => [row.record.capacity, row]));
+    const selectedSet = all.find(fact => fact.kind === 'assembly-InstallationSelectionSet');
+    const selectedRow = selectedSet?.body?.record?.rows?.find(row => row.role === 'minimal-responder'
+      && row.instance === 'minimal-responder-binding');
+    const capacityIds = new Set(capacitySource.map(row => row.fact.id));
+    const selectedCapacityReferences = (selectedRow?.references ?? []).filter(reference => capacityIds.has(reference));
+    const installationReservations = [...capacityGroups.entries()].map(([capacity, history]) => {
+      const head = history.at(-1).record, policy = transportHost.capacityPolicy;
+      const parent = quantities(policy?.parent);
+      const allocated = capacityHeads.filter(item => item.state === 'held'
+        && item.budgetPolicy === head.budgetPolicy);
+      const parentRemainder = Object.fromEntries(capacityResources.map(resource => [resource,
+        Math.max(0, parent[resource] - allocated.reduce((total, item) => total + item.allocation[resource].quantity, 0))]));
+      // Six's complete source is in the ordinary domain. An empty child-domain
+      // source proves zero Six-accounted child use; nonempty child rows need an
+      // owner usage decoder before they can be called usable.
+      const childRows = observedTransport.filter(item => item.record.domain === head.responderDomain);
+      const childUsage = childRows.length ? null : quantities(null);
+      const inspected = currentHeads.get(capacity);
+      const blocker = authorityUnavailable ?? (currentCapacity && !currentCapacity.ok ? currentCapacity.detail
+        : inspected ? inspected.blocker : (head.state === 'released' ? 'released' : 'current Six capacity head unavailable'))
+        ?? (childUsage === null ? 'child-usage source unavailable' : null);
+      return { capacity, reference: history.at(-1).fact.id, history: history.map(item => item.fact.id),
+        installation: head.installation, scope: head.scope, generation: head.generation,
+        ordinaryDomain: head.ordinaryDomain, responderDomain: head.responderDomain,
+        budgetPolicy: head.budgetPolicy,
+        units: Object.fromEntries(capacityResources.map(resource => [resource, head.allocation[resource].unit])),
+        windows: Object.fromEntries(capacityResources.map(resource => [resource, head.allocation[resource].window])),
+        allocation: quantities(head.allocation), parent, parentRemainder, childUsage,
+        state: head.state, usable: blocker === null, blocker };
+    });
     return {
       ...(authorityUnavailable ? { currentAuthority: { owner: 'part-six', available: false, detail: authorityUnavailable } } : {}),
       boot: bootIndex, incarnation, profile: config.profile, adapter: config.adapter,
@@ -2341,6 +2758,9 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
         return Object.fromEntries(Object.entries(trail).map(([k, v]) => [k, [...new Set(v)]]));
       })(),
       operations: semanticOperations.map(row => row.operation),
+      sourceCategory: config.productionRestart === true ? 'installed' : 'unit-noninstallation', installationReservations,
+      capacitySourceReferences: capacitySource.map(row => row.fact.id), selectedCapacityReferences,
+      operationSourceReferences,
       // Section-7 semantic work and context-control work retain separate tables;
       // every control is also exposed with Six's complete accounting below.
       contextOperations: controlOperations.map(operationReport),
@@ -2396,12 +2816,13 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
   return Object.freeze({
     home, config, paths, bootIndex, incarnation, authorityIncarnation,
     registerChecks, governance, decodeContext, factContext, boundaryContext, effectHost, judgmentHost, transportHost,
-    alice, bob, observer, scope, floor, bindingGrant, approval, operationDefinition, governedVersions, authorityClosure,
+    alice, bob, observer, scope, floor, bindingGrant, agentGrant, approval, operationDefinition, governedVersions, authorityClosure,
     store, peerStore, replicas, custody, judgmentCustody, service, captureIndex,
     intake, transport, transportFacts, judgment, effects, runGraph, composeProductionGrounding, assessor, model,
     facts, factsOfKind, factOfKind, factRef, append, kinds, generation, now, tick, result,
     adapterContract, declaredStage, install, restoreGrants, restoreEvidence, liveFence, currentFenceEpoch, boundary, reached, cutsFired,
-    drive, report, buildRun, rebuildAll, rebuildOne, obligation, restartOperator,
+    drive, report, buildRun, rebuildAll, rebuildOne, obligation, restartOperator, approveInstalledArtifact,
+    preserveInstalledArtifact: bytes => take(operatorCapturePort.preserve(bytes, now())),
     minimalProjections: () => minimalPlaneProjections(kinds()),
     snapshot: () => { const all = facts(); return take(prepareSnapshot(all, { ...factContext, facts: all })); },
     projectionTools: { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild },

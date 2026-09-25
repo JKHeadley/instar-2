@@ -27,6 +27,9 @@ function report(overrides: Partial<SliceReport> = {}): SliceReport {
     operations: [OPERATION], semanticKeys: ['sm:1'], routes: ['bot:slice/chat:slice'],
     sixOperations: [{ operation: OPERATION, role: 'outbound-reply', run: 'run:1', state: 'consumed', charge: 20,
       application: { exposure: 3, released: 17, unresolved: 0, actualCharge: 3 }, resolved: true }],
+    contextOperations: [], sourceCategory: 'unit-noninstallation', installationReservations: [],
+    capacitySourceReferences: [], selectedCapacityReferences: [],
+    operationSourceReferences: [{ operation: OPERATION, initial: 'fact:reserve:1', latest: 'fact:reserve:1' }],
     adapterCapabilities: { decisiveNonOccurrence: { status: 'supported' }, exclusionOfDelayedExecution: { status: 'supported' } },
     declaredStage: 'service-applied',
     rebuilds: minimalPlaneProjectionIds.map(id => ({ projection: id, hash: `sha256:${id}`, resumedHash: `sha256:${id}`,
@@ -35,7 +38,10 @@ function report(overrides: Partial<SliceReport> = {}): SliceReport {
       peakRssBytes: 250_000_000, peakRssSamples: 24, durationMs: 21_000, measuredBoots: 1,
       perBootDurationMs: [{ boot: 1, durationMs: 9000, bounded: true }, { boot: 2, durationMs: 12_000, bounded: false }] },
   };
-  return { ...base, ...overrides };
+  const merged = { ...base, ...overrides };
+  return { ...merged, operationSourceReferences: overrides.operationSourceReferences
+    ?? [...merged.sixOperations, ...merged.contextOperations].map(row => ({ operation: row.operation,
+      initial: `fact:reserve:${row.operation}`, latest: `fact:reserve:${row.operation}` })) };
 }
 
 it('P11-NF-45 the within-execution predicate accepts a complete execution and refuses a changed logical identity', () => {

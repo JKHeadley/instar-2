@@ -24,6 +24,21 @@ export interface SixOperationRow {
   readonly state: string; readonly charge: number;
   readonly application: SixAccountingRow | null; readonly resolved: boolean;
 }
+export type CapacityResource = 'worker' | 'memory' | 'storage' | 'queue' | 'transport' | 'effect';
+export type CapacityQuantities = Readonly<Record<CapacityResource, number>>;
+export interface InstallationReservationRow {
+  readonly capacity: string; readonly reference: string; readonly history: readonly string[];
+  readonly installation: string; readonly scope: string; readonly generation: string;
+  readonly ordinaryDomain: string; readonly responderDomain: string;
+  readonly budgetPolicy: string; readonly units: Readonly<Record<CapacityResource, string>>;
+  readonly windows: Readonly<Record<CapacityResource, string>>;
+  readonly allocation: CapacityQuantities; readonly parent: CapacityQuantities;
+  readonly parentRemainder: CapacityQuantities; readonly childUsage: CapacityQuantities | null;
+  readonly state: 'held' | 'released'; readonly usable: boolean; readonly blocker: string | null;
+}
+export interface OperationSourceRow {
+  readonly operation: string; readonly initial: string; readonly latest: string;
+}
 export interface Capability { readonly status: string; readonly source?: string; readonly predicate?: string; readonly observationBudget?: number }
 export interface SliceReport {
   readonly boot: number; readonly profile: string; readonly adapter: string;
@@ -51,6 +66,13 @@ export interface SliceReport {
   readonly serviceInbound: number;
   readonly operations: readonly string[]; readonly semanticKeys: readonly string[]; readonly routes: readonly string[];
   readonly sixOperations: readonly SixOperationRow[];
+  readonly contextOperations: readonly SixOperationRow[];
+  readonly sourceCategory: 'unit-noninstallation' | 'installed';
+  readonly installationReservations: readonly InstallationReservationRow[];
+  readonly capacitySourceReferences: readonly string[];
+  readonly selectedCapacityReferences: readonly string[];
+  readonly operationSourceReferences: readonly OperationSourceRow[];
+  readonly currentAuthority?: Readonly<{ owner: 'part-six'; available: boolean; detail: string }>;
   readonly adapterCapabilities: Readonly<Record<string, Capability>>;
   readonly declaredStage: string;
   readonly rebuilds: readonly RebuildRow[];
@@ -127,6 +149,62 @@ const unaccounted = (report: SliceReport): readonly SixOperationRow[] => report.
 /** Checks that hold WITHIN one execution. Returns the violations, empty when it passes. */
 export function withinExecution(report: SliceReport, expectedInput: string, bounds: Bounds = DECLARED_BOUNDS): string[] {
   const bad: string[] = [];
+
+  // Six source coverage is an identity-set comparison over the observed frontier.
+  // Capacity facts never enter semantic or control operation tables.
+  const sourceCapacity = new Set(report.capacitySourceReferences);
+  const representedCapacity = report.installationReservations.flatMap(row => row.history);
+  const representedCapacitySet = new Set(representedCapacity);
+  if (sourceCapacity.size !== report.capacitySourceReferences.length
+    || representedCapacitySet.size !== representedCapacity.length
+    || sourceCapacity.size !== representedCapacitySet.size
+    || [...sourceCapacity].some(reference => !representedCapacitySet.has(reference)))
+    bad.push('installation capacity source identity coverage differs');
+  const capacityKeys = new Set<string>();
+  for (const row of report.installationReservations) {
+    if (capacityKeys.has(row.capacity)) bad.push(`ambiguous capacity successor head: ${row.capacity}`);
+    capacityKeys.add(row.capacity);
+    if (!row.history.length || row.history.at(-1) !== row.reference)
+      bad.push(`capacity successor chain or head differs: ${row.capacity}`);
+    if (row.state === 'released' && row.usable || row.usable && row.blocker !== null
+      || !row.usable && row.blocker === null)
+      bad.push(`capacity current-use verdict differs: ${row.capacity}`);
+    if (report.currentAuthority?.available === false && row.usable)
+      bad.push(`authority-unavailable capacity reported usable: ${row.capacity}`);
+    for (const resource of ['worker', 'memory', 'storage', 'queue', 'transport', 'effect'] as const) {
+      const values = [row.allocation[resource], row.parent[resource], row.parentRemainder[resource],
+        ...(row.childUsage === null ? [] : [row.childUsage[resource]])];
+      if (values.some(value => !Number.isSafeInteger(value) || value < 0)
+        || row.childUsage !== null && row.childUsage[resource] > row.allocation[resource]
+        || row.parentRemainder[resource] + (row.state === 'held' ? row.allocation[resource] : 0) > row.parent[resource])
+        bad.push(`capacity parent/child conservation differs: ${row.capacity}:${resource}`);
+      if (!row.units[resource] || !row.windows[resource])
+        bad.push(`capacity unit/window missing: ${row.capacity}:${resource}`);
+    }
+  }
+  if (report.installationReservations.some(row => row.childUsage === null && row.usable))
+    bad.push('unknown capacity child usage reported usable');
+  if (report.sourceCategory === 'installed' && (!report.selectedCapacityReferences.length || !report.installationReservations.length))
+    bad.push('installed responder has no selected capacity');
+  if (report.sourceCategory === 'unit-noninstallation' && report.selectedCapacityReferences.length)
+    bad.push('noninstallation report selected capacity');
+  for (const reference of report.selectedCapacityReferences) {
+    const selected = report.installationReservations.filter(row => row.history.includes(reference));
+    if (selected.length !== 1)
+      bad.push(`selected capacity reference is absent or ambiguous: ${reference}`);
+    else if (!selected[0]!.usable) bad.push(`selected capacity is not currently usable: ${reference}`);
+  }
+  const sourceOperations = new Set(report.operationSourceReferences.map(row => row.operation));
+  const classifiedOperations = [...report.sixOperations, ...report.contextOperations].map(row => row.operation);
+  const classifiedSet = new Set(classifiedOperations);
+  if (sourceOperations.size !== report.operationSourceReferences.length
+    || classifiedSet.size !== classifiedOperations.length
+    || sourceOperations.size !== classifiedSet.size
+    || [...sourceOperations].some(operation => !classifiedSet.has(operation)))
+    bad.push('operation source identity coverage differs');
+  for (const row of report.operationSourceReferences)
+    if (!row.initial || !row.latest || sourceCapacity.has(row.initial) || sourceCapacity.has(row.latest))
+      bad.push(`operation source reference is missing or relabelled capacity: ${row.operation}`);
 
   // input preserved
   if (!report.intake) bad.push('no admitted input');

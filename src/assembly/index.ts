@@ -40,6 +40,10 @@ export type { ProductionApplication, ProductionApplicationHost } from './product
 
 export type { InstallationSelection, InstallationRole, InstallationRecordAdmission, InstallationRecordWriter, InstallationRecordGeneration } from './installation-selection.js';
 export { installationRoleOwners, installationSelectionSchemas, registerInstallationSelectionBody, recordInstallationSelection, decodeInstallationSelectionAtOrigin, decodeHistoricalInstallationSelection } from './installation-selection.js';
+export type { InstallationSelectionSet } from './installation-selection.js';
+export { installationSelectionSlots, installationSelectionSetSchemas, registerInstallationSelectionSetBody,
+  recordInstallationSelectionSet, decodeInstallationSelectionSetAtOrigin,
+  decodeHistoricalInstallationSelectionSet } from './installation-selection.js';
 export type { ProductionSignerReference, ProductionSignerAdmission } from './production-signer-reference.js';
 export { productionSignerReferenceSchemas, registerProductionSignerReferenceBody, recordProductionSignerReference, decodeProductionSignerReferenceAtOrigin, decodeHistoricalProductionSignerReference } from './production-signer-reference.js';
 export type { ProductionBootstrapPackage, VerifiedProductionBootstrap, InstallationImmutableIO } from './production-installation-loader.js';

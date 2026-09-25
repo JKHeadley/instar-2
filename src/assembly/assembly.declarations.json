@@ -26,6 +26,16 @@
     "holds": []
   },
   {
+    "type": "Declaration", "schemaVersion": 1, "id": "assembly-InstallationSelectionSet",
+    "kind": "protected artifacts", "status": "dark",
+    "requiredFacts": {
+      "pattern": "src/assembly/installation-selection.ts",
+      "why": "P10-SI-32–35 schema 1: recordInstallationSelectionSet admits one complete approved row roster through decodeInstallationSelectionSetAtOrigin; decodeHistoricalInstallationSelectionSet retains exact origin-pinned interpretation and set-row addresses remain tied to the real envelope.",
+      "surface": "repository review approval"
+    },
+    "standards": [82], "holds": []
+  },
+  {
     "type": "Declaration",
     "schemaVersion": 1,
     "id": "assembly-ProductionSignerReference",
