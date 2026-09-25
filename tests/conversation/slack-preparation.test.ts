@@ -25,8 +25,8 @@ function setup(directory?: string, bind = true, selected: SlackSelection = selec
   const parser = sourceParser.map(declaration => ({ ...declaration, status: 'live' }));
   Object.assign(f.r.context, { references: [...f.r.context.references ?? [],
     { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' },
-    { provider: 'fixture', id: 'P12-SLACK-PREPARATION' },
-    { provider: 'fixture', id: 'P12-SLACK-REPLY-HELD' }] });
+    { provider: 'fixture', id: 'P12-NF-19' },
+    { provider: 'fixture', id: 'P12-NF-28' }] });
   const features = JSON.parse(readFileSync('src/conversation/slack.declarations.json', 'utf8')) as object[];
   const governed = f.govern([...f.registerInput.sources.map(source => source.declaration), ...parser, ...features]);
   const hostPort = value(createIntakePort({ ...f.deps, governance: governed.governance }));
@@ -64,14 +64,14 @@ describe('Slack preparation', () => {
       expect.arrayContaining([expect.objectContaining({ id: 'slack-ordinary-reply', status: 'dark',
         profile: expect.objectContaining({ reversibility: 'irreversible' }) })]));
   });
-  it('extracts stable event identity separately from the delivery envelope', () => {
+  it('P12-NF-19 extracts stable event identity separately from the delivery envelope', () => {
     const first = extractSlackEnvelope(raw, selection);
     const retry = extractSlackEnvelope(raw.replace('"retry_attempt":0', '"retry_attempt":1'), selection);
     expect(retry.route).toEqual(first.route);
     expect(retry.envelopeId).toBe(first.envelopeId);
     expect(extractSlackEnvelope(changed, selection).route).toEqual(first.route);
   });
-  it('rejects a channel root and admits an exactly selected channel thread', () => {
+  it('P12-NF-19 rejects a channel root and admits an exactly selected channel thread', () => {
     const channel = { ...selection, channel: 'C12345678' };
     const channelEnvelope = raw.replace('D12345678', 'C12345678');
     const base = setup();
@@ -90,7 +90,7 @@ describe('Slack preparation', () => {
     expect(() => prepare({ ...thread, thread: 'not-a-root' }))
       .toThrow('selected thread root is malformed');
   });
-  it('writes the exact envelope capture and receipt before ack, then uses the shared intake owner', () => {
+  it('P12-NF-19 writes the exact envelope capture and receipt before ack, then uses the shared intake owner', () => {
     const s = setup();
     value(s.hostPort.receive('{"schemaVersion":1,"kind":"message","text":"host"}',
       { channel: 'chat-a', sender: 'platform-alice', identityEpoch: 'account-1', eventId: 'host-event' }));
@@ -117,7 +117,7 @@ describe('Slack preparation', () => {
     expect(ack).toEqual(['Ev1', 'Ev1']);
     expect(value(first.facts.read()).some(f => f.kind === 'intake-mismatch')).toBe(true);
   });
-  it('does not ack without durable receipt or after stale socket fencing', () => {
+  it('P12-NF-20 does not ack without durable receipt or after stale socket fencing', () => {
     const s = setup();
     const failed = createIntakePort({ ...s.deps, storage: { ...s.f.storage, append() { throw new Error('disk down'); } } });
     const port = value(failed);

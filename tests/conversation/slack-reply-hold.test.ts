@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { effectFixture, refused, value } from '../effects/fixture.js';
 import { decodeOutboundMessage } from '../../src/effects/index.js';
 
-it('an uninstalled Slack definition cannot pass Eight preparation or reach an external adapter', () => {
+it('P12-NF-28 an uninstalled Slack definition cannot pass Eight preparation or reach an external adapter', () => {
   const f = effectFixture();
   const message = value(decodeOutboundMessage({ ...f.message, id: 'slack-message:1',
     account: 'slack:v1:A12345678:T12345678',
