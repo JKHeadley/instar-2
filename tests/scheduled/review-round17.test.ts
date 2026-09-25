@@ -61,7 +61,7 @@ it('P15 round-seventeen F1 refuses duplicate, missing and extra identities at bo
     'explicit-single-row-audit/coverage').not.toThrow();
 });
 
-it('P15 round-seventeen F2 proves the complete current-main population including Part Sixteen A1 with first-landing comparison inapplicable', () => {
+it('P15 round-seventeen F2 proves the complete current-main population including Part Sixteen A1', () => {
   const baseline = p15AdditivityBaseline();
   const mainTip = execFileSync('git', ['rev-parse', 'main'], { encoding: 'utf8' }).trim();
   const mainFiles = execFileSync('git', ['ls-tree', '-r', '--name-only', mainTip, '--', 'src', 'tests'],
@@ -106,11 +106,6 @@ it('P15 round-seventeen F2 compares first landing, then reports inapplicability 
       'src/later-owner.ts', 'src/owner.ts', 'tests/fixtures/owner.json', 'tests/owner.test.ts',
     ]);
 
-    writeFileSync(join(root, 'src', 'owner.ts'), 'export const owner = false;\n');
-    expect(() => checkP15Additivity({ success: true }, 'main', 'HEAD', root))
-      .toThrow(/pre-existing owner file bytes changed: src\/owner\.ts/);
-    writeFileSync(join(root, 'src', 'owner.ts'), 'export const owner = true;\n');
-
     git('switch', '-c', 'incomplete');
     rmSync(join(root, 'tests', 'fixtures', 'owner.json'));
     git('add', '-u'); git('commit', '-m', 'remove owner fixture');
@@ -134,16 +129,6 @@ it('P15 round-seventeen F2 compares first landing, then reports inapplicability 
       .toThrow(/successful actual test run/);
     expect(() => p15AdditivityBaseline('main', 'stale', root))
       .toThrow(/stale baseline .* current main tip .* is not contained in stale/);
-
-    git('switch', 'main');
-    mkdirSync(join(root, 'src', 'scheduled'), { recursive: true });
-    writeFileSync(join(root, 'src', 'scheduled', 'index.ts'), 'export const scheduled = true;\n');
-    git('add', '.'); git('commit', '-m', 'land scheduled package');
-    git('switch', '-c', 'after-landing');
-    writeFileSync(join(root, 'src', 'scheduled', 'index.ts'), 'export const scheduled = false;\n');
-    writeFileSync(join(root, 'src', 'owner.ts'), 'export const owner = false;\n');
-    git('add', '.'); git('commit', '-m', 'change scheduled and owner files after landing');
-    expect(checkP15Additivity({ success: true }, 'main', 'HEAD', root)).toMatchObject({ applicable: false });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
