@@ -52,6 +52,21 @@ describe('context sentinel', () => {
     expect(kinds(r)).toEqual(['signal:grounding-verified']);
   });
 
+  it('opens a second compaction when only the first has a reset and owner consumption', () => {
+    const first = obs({ sessionId: 'owner', compactions: [T + 10_000],
+      resets: [{ at: T + 10_001, source: 'compact', id: 'compact-1', sessionId: 'owner' }],
+      contextConsumed: [{ at: T + 10_002, source: 'compact', digest: 'd', resetId: 'compact-1', sessionId: 'owner' }] });
+    const settled = run(T + 10_003, empty, [first]);
+    expect(kinds(settled)).toEqual(['signal:grounding-verified']);
+    const brokenSecond = obs({ ...first, compactions: [T + 10_000, T + 15_000] });
+    const changed = [{ topic: '42', current: 'd2', file: 'd2' }];
+    const pending = run(T + 15_001, settled.state, [brokenSecond], { groundings: changed });
+    expect(pending.state.sessions[0]!.episode).toMatchObject({ kind: 'compact', openedAt: T + 15_000, status: 'awaiting-receipt' });
+    const late = run(T + 90_000, pending.state, [brokenSecond], { groundings: changed });
+    expect(kinds(late)).toContain('reground');
+    expect(late.state.sessions[0]!.episode).toMatchObject({ kind: 'compact', openedAt: T + 15_000, status: 'verifying' });
+  });
+
   it('never lets a startup receipt just before a compaction verify that compaction', () => {
     const settled = run(T + 1_000, empty, [obs({ grounded: [{ at: T + 5, source: 'startup', digest: 'd' }] })]).state;
     const r = run(T + 80_000, settled, [obs({ compactions: [T + 8_000], grounded: [{ at: T + 5, source: 'startup', digest: 'd' }] })]);
@@ -143,6 +158,52 @@ describe('context sentinel', () => {
     expect(kinds(run(T + 2_101_000, recovered.state, [obs({ session: 's2', startedAt: T + 2_100_000,
       stuck: 'context-wedge', resets: [{ at: T + 2_100_050, source: 'compact', id: 'new' }],
       contextConsumed: [{ at: T + 2_100_060, source: 'compact', digest: 'd', resetId: 'new' }] })]))).toContain('recover-context');
+  });
+
+  it('retains the recovery cap across five dead and absent replacement cycles', () => {
+    let state = run(T + 1_000, empty, [obs({ contextConsumed: [{ at: T + 10, source: 'startup', digest: 'd' }] })]).state;
+    let recoveries = 0;
+    for (let cycle = 0; cycle < 5; cycle++) {
+      const at = T + 2_000 + cycle * 700_000;
+      const session = `s${cycle + 1}`;
+      const current = obs({ session, startedAt: cycle === 0 ? T : at, stuck: 'context-wedge' });
+      const attempt = run(at, state, [current]);
+      recoveries += attempt.actions.filter(action => action.kind === 'recover-context').length;
+      const dead = run(at + 1, attempt.state, [{ ...current, alive: false }]);
+      const absent = run(at + 2, dead.state, []);
+      expect(absent.state.sessions).toHaveLength(1);
+      state = absent.state;
+    }
+    expect(recoveries).toBe(2);
+    expect(state.sessions[0]!.recoveries).toHaveLength(2);
+  });
+
+  it('retires a dead predecessor when its exhaustion transfers in the same tick', () => {
+    const exhausted: SentinelState = { sessions: [{ session: 's1', topic: '42', startedAt: T,
+      episode: { kind: 'respawn', openedAt: T, status: 'session-gone', attempts: 0, lastAttemptAt: null, closedAt: T + 1 },
+      recoveries: [T + 1_000, T + 700_000], lastSignal: null }] };
+    const replacement = obs({ session: 's2', startedAt: T + 1_400_000, stuck: 'context-wedge' });
+    const transferred = run(T + 1_400_000, exhausted,
+      [obs({ alive: false }), replacement]);
+    expect(kinds(transferred)).not.toContain('recover-context');
+    expect(transferred.state.sessions.map(row => row.session)).toEqual(['s2']);
+    const recovered = run(T + 1_400_100, transferred.state, [obs({ ...replacement, stuck: null,
+      resets: [{ at: T + 1_400_050, source: 'compact', id: 'verified' }],
+      contextConsumed: [{ at: T + 1_400_060, source: 'compact', digest: 'd', resetId: 'verified' }] })]);
+    expect(recovered.state.sessions[0]!.recoveries).toEqual([]);
+    const gap = run(T + 1_400_200, recovered.state, []);
+    const freshWall = run(T + 1_400_300, gap.state,
+      [obs({ session: 's3', startedAt: T + 1_400_300, stuck: 'context-wedge' })]);
+    expect(kinds(freshWall)).toContain('recover-context');
+  });
+
+  it('keeps a live same-topic session separate from a new session', () => {
+    const old: SentinelState = { sessions: [{ session: 's1', topic: '42', startedAt: T,
+      episode: { kind: 'respawn', openedAt: T, status: 'recovered', attempts: 0, lastAttemptAt: null, closedAt: T + 1 },
+      recoveries: [T + 1_000, T + 700_000], lastSignal: null }] };
+    const r = run(T + 1_400_000, old, [obs(), obs({ session: 's2', startedAt: T + 1_400_000, stuck: 'context-wedge' })]);
+    expect(r.state.sessions.map(row => row.session)).toEqual(['s1', 's2']);
+    expect(kinds(r)).toContain('recover-context');
   });
 
   it('treats rate limits and policy wedges as signal-only', () => {

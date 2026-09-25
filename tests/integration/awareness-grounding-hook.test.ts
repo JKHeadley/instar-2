@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildGrounding, groundingDigest } from '../../src/awareness/grounding.js';
+import { buildGrounding, groundingDigest, GROUNDING_MAX_BYTES } from '../../src/awareness/grounding.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createAwarenessIO } from '../../scripts/awareness-io.mjs';
 
@@ -23,6 +23,19 @@ function runHook(env: Record<string, string>, stdin: string) {
 }
 
 describe('SessionStart grounding hook (real process)', () => {
+  it('fits a stale summary warning after selecting 300 messages and the physical writer accepts it', () => {
+    const at = 1_790_000_000_000;
+    const conversation = Array.from({ length: 300 }, (_, i) => ({ id: `m${i}`, at: at + i, from: 'agent' as const, text: 'x'.repeat(175) }));
+    const g = buildGrounding({ agent: { name: 'Echo', identity: 'I am Echo.' }, topic: { id: '42', name: 'awareness' },
+      now: at + 300, source: 'refresh', conversation, summary: { text: 's', throughAt: at },
+      commitments: [], work: [], recall: null });
+    expect(g.included.trimmed).toBe(true);
+    expect(g.text).toContain('WARNING: older conversation omitted without a current covering summary');
+    expect(g.bytes).toBeLessThanOrEqual(GROUNDING_MAX_BYTES);
+    const io = createAwarenessIO({ stateDirectory: join(root, 'state'), inboxDirectory: join(root, 'inbox') });
+    expect(io.writeGrounding('topic:42', g.text)).toBe(g.digest);
+  });
+
   it('injects the grounding for every source and writes a verifiable receipt', () => {
     const io = createAwarenessIO({ stateDirectory: join(root, 'state'), inboxDirectory: join(root, 'inbox') });
     const g = grounding();

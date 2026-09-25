@@ -120,10 +120,13 @@ export function decideContext(input: Readonly<{
 
   const prior = new Map(input.state.sessions.map(row => [row.session, row]));
   const next: SessionState[] = [];
+  const transferred = new Set<string>();
   for (const seen of input.observations) {
     const was = prior.get(seen.session);
-    const inherited = input.state.sessions.filter(old => old.topic === seen.topic && old.session !== seen.session && old.recoveries.length)
+    const inherited = input.state.sessions.filter(old => old.topic === seen.topic && old.session !== seen.session && old.recoveries.length
+      && !input.observations.some(other => other.session === old.session && other.alive))
       .sort((a, b) => b.recoveries.length - a.recoveries.length)[0];
+    if (!was && inherited) transferred.add(inherited.session);
     let row: SessionState = was && was.startedAt === seen.startedAt ? was
       : { session: seen.session, topic: seen.topic, startedAt: seen.startedAt, episode: null,
         recoveries: was?.recoveries ?? inherited?.recoveries ?? [], lastSignal: null };
@@ -144,12 +147,20 @@ export function decideContext(input: Readonly<{
     }
 
     const current = input.groundings.find(g => g.topic === seen.topic);
-    const lastReset = [...(seen.resets ?? [])].filter(r => r.at >= seen.startedAt
-      && (seen.sessionId == null || r.sessionId == null || r.sessionId === seen.sessionId))
-      .sort((a, b) => b.at - a.at)[0];
-    const lastCompaction = seen.compactions.filter(at => at >= seen.startedAt
-      && !(seen.resets ?? []).some(r => r.source === 'compact' && Math.abs(r.at - at) <= config.receiptSkewMs))
-      .reduce((a, b) => Math.max(a, b), -Infinity);
+    const resets = [...(seen.resets ?? [])].filter(r => r.at >= seen.startedAt
+      && (seen.sessionId == null || r.sessionId == null || r.sessionId === seen.sessionId));
+    const lastReset = resets.sort((a, b) => b.at - a.at)[0];
+    const unmatchedCompactions = seen.compactions.filter(at => at >= seen.startedAt);
+    // A reset accounts for one compact event, even when several occur inside the hook skew window.
+    for (const reset of resets.filter(r => r.source === 'compact')) {
+      let match = -1;
+      for (let index = 0; index < unmatchedCompactions.length; index++) {
+        if (Math.abs(unmatchedCompactions[index]! - reset.at) <= config.receiptSkewMs
+          && (match < 0 || Math.abs(unmatchedCompactions[index]! - reset.at) < Math.abs(unmatchedCompactions[match]! - reset.at))) match = index;
+      }
+      if (match >= 0) unmatchedCompactions.splice(match, 1);
+    }
+    const lastCompaction = unmatchedCompactions.reduce((a, b) => Math.max(a, b), -Infinity);
     const episodeFor = (kind: EpisodeKind, openedAt: number, generation?: string, sessionId?: string | null): Episode => ({
       kind, openedAt, status: 'awaiting-receipt', attempts: 0, lastAttemptAt: null, closedAt: null,
       ...(generation ? { generation } : {}), ...((sessionId ?? seen.sessionId) !== undefined ? { sessionId: sessionId ?? seen.sessionId } : {}),
@@ -217,9 +228,12 @@ export function decideContext(input: Readonly<{
     }
     next.push(row);
   }
+  // Transfer exhaustion to the replacement once; old copies cannot reinstate it after verified recovery.
+  for (let index = next.length - 1; index >= 0; index--)
+    if (transferred.has(next[index]!.session)) next.splice(index, 1);
   // Keep one unresolved recovery count through observer gaps and replacement names.
   for (const row of input.state.sessions)
-    if (!next.some(n => n.session === row.session) && row.episode
+    if (!transferred.has(row.session) && !next.some(n => n.session === row.session) && row.episode
       && (open(row.episode.status) || row.recoveries.length > 0)
       && !next.some(n => n.topic === row.topic && n.recoveries.length >= row.recoveries.length)) next.push(row);
   return Object.freeze({ state: Object.freeze({ sessions: next }), actions });

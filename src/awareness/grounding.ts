@@ -253,15 +253,16 @@ export function buildGrounding(input: GroundingInput): Grounding {
   } else {
     const summary = input.summary && input.summary.text.trim() && !input.summary.secret && Number.isFinite(input.summary.throughAt)
       ? `Covering summary through ${formatUtc(input.summary.throughAt)}: ${quoteLine(input.summary.text, 4_000)}` : null;
-    const coverage = summary ?? 'WARNING: older conversation omitted without a current covering summary; history is incomplete.';
-    const reserve = sizeOf([coverage]);
-    budget = Math.max(0, budget - reserve);
+    const warning = 'WARNING: older conversation omitted without a current covering summary; history is incomplete.';
+    const reserve = Math.min(budget, Math.max(sizeOf([summary ?? '']), sizeOf([warning])));
+    budget -= reserve;
     const selected = takeRows(conversationHead, messageLines, conversationTail, true);
     budget += reserve;
     const shown = selected.length ? selected.filter(line => line.startsWith('  [')).length : 0;
     const latestOmitted = ordered[ordered.length - shown - 1];
     const valid = summary && latestOmitted && input.summary!.throughAt >= latestOmitted.at;
-    const status = valid ? summary : 'WARNING: older conversation omitted without a current covering summary; history is incomplete.';
+    const status = valid ? summary : warning;
+    if (sizeOf([status]) > budget) throw new Error('grounding: byte bound smaller than history status');
     conversationBlock = selected.length ? [selected[0]!, status, ...selected.slice(1)] : [status];
     budget -= sizeOf([status]);
     trimmed = true;
