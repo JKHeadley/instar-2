@@ -286,7 +286,7 @@ import { realpathSync } from 'node:fs';
 // @ts-expect-error Physical host JavaScript.
 import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { stage2GuardedProviderPath } from './composition.js';
-import { openPreviewState } from './state.js';
+import { HOST_OUTAGE_TEXT, openPreviewState } from './state.js';
 import { subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 export function stage2CompositionFixture(options: any = {}) {
   const root = options.root ?? realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-composition-')));
@@ -295,7 +295,8 @@ export function stage2CompositionFixture(options: any = {}) {
     operatorSenderId: '7812716706', chatId: '7812716706', chatKind: 'private', forum: false, messageThreadId: null,
     maxPollSeconds: 1, maxBatchItems: 1, maxContextTurns: 8, maxContextBytes: 65536, ...options.configuration };
   const state = openPreviewState({ root, configuration, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, now: () => time,
-    replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128 });
+    replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128,
+    hostNotice: { botId: configuration.botId, chatId: configuration.chatId, message: HOST_OUTAGE_TEXT } });
   const artifactBytes = Buffer.from('offline executable bytes'), model = options.model ?? 'claude-offline-exact-1';
   const profile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login',
     home: '/offline/home', configDirectory: '/offline/config', workingDirectory: '/offline/work',

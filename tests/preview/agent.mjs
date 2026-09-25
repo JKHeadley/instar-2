@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { createProductionTelegramIO, productionStorageIO, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { createPreviewComposition, stage2GuardedProviderPath } from './composition.js';
 import { stage2HistoricalStatus } from './stage2-owners.js';
-import { MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
+import { HOST_OUTAGE_TEXT, MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
 import { decideUnansweredTurn } from '../../src/sentinels/unanswered-turn.js';
 
 const MAX_PREVIEW_BACKOFF_MS = 300_000;
@@ -82,7 +82,8 @@ function stateFor(config, options, create) {
   return openPreviewState({ root: config.root, configuration: stateConfiguration, expiresAt,
     replyLimit: stateConfiguration.replyLimit, replyWindowMs: stateConfiguration.replyWindowMs,
     errorLimit: stateConfiguration.errorLimit, totalErrorLimit, maxPendingTurns: stateConfiguration.maxPendingTurns,
-    maxTrialTurns: stateConfiguration.maxTrialTurns, create });
+    maxTrialTurns: stateConfiguration.maxTrialTurns, create,
+    hostNotice: { botId: config.botId, chatId: config.chatId, message: HOST_OUTAGE_TEXT } });
 }
 
 function resolveHostSecret(reference) {
@@ -167,7 +168,15 @@ async function main() {
     process.stdout.write(`${JSON.stringify(publicStatus(state.latchStop('operator'), config))}\n`);
     return 0;
   }
-  if (command !== 'run') throw new Error('preview: command must be run, status, or stop');
+  if (command === 'host-notice') {
+    const notice = createPreviewComposition({ configuration: config, state, noticeOnly: true,
+      storageKey: storageKey(), storageIO: productionStorageIO,
+      resolveSecret: resolveHostSecret,
+      telegramIOFactory: storage => createProductionTelegramIO(config.root, storage.captures) });
+    try { notice.dispatchHostNotice(resolve(config.root, 'host-watch.json')); } finally { notice.close(); }
+    return 0;
+  }
+  if (command !== 'run') throw new Error('preview: command must be run, status, stop, or host-notice');
 
   // Historical terminal inspection stays credential-free on stopped and
   // answered roots. Only a live held turn with a pending fixed notice proceeds.

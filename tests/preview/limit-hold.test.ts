@@ -1,9 +1,12 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { openPreviewState } from './state.js';
 import { stage2CompositionFixture } from './stage2-fixture.js';
+import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
+// @ts-expect-error The physical provider host remains JavaScript.
+import { productionProviderIO } from '../../scripts/production-boot-io.mjs';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -24,6 +27,37 @@ it('holds spend durably, defaults unknown resets, caps long resets, and releases
   expect(state.read().limitHoldUntil).toBe(now + 18000000);
   now += 18000000;
   expect(() => state.gateSpend()).not.toThrow();
+});
+
+it('carries a parsed six-hour reset into the five-hour durable hold cap', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-long-reset-'))); roots.push(root);
+  const now = 1000000;
+  const state = openPreviewState({ root, configuration: { trial: 'long-reset' }, expiresAt: now + 30000000,
+    now: () => now, replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 100,
+    maxPendingTurns: 16, maxTrialTurns: 128 });
+  const failure = classifyProviderFailure({ code: 1, limited: false, now,
+    stdout: JSON.stringify({ type: 'result', is_error: true,
+      result: "You've hit your usage limit; resets in 6 hours" }) });
+  expect(failure).toMatchObject({ failureClass: 'limit', resetAt: now + 21600000 });
+  state.noteLimit(failure.resetAt);
+  expect(state.read().limitHoldUntil).toBe(now + 18000000);
+});
+
+it('caps the captured weekly reset at five hours across a state reopen', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-captured-limit-'))); roots.push(root);
+  const now = new Date('2026-09-24T21:01:00-07:00').getTime();
+  const state = openPreviewState({ root, configuration: { trial: 'captured-limit' }, expiresAt: now + 30000000,
+    now: () => now, replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 100,
+    maxPendingTurns: 16, maxTrialTurns: 128 });
+  const stdout = readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8');
+  const failure = classifyProviderFailure({ code: 1, limited: false, stdout, now,
+    calendarResetAt: productionProviderIO.calendarResetAt });
+  expect(failure.resetAt).toBe(1790506800000);
+  state.noteLimit(failure.resetAt);
+  expect(state.read().limitHoldUntil).toBe(now + 18000000);
+  expect(() => openPreviewState({ root, configuration: { trial: 'captured-limit' }, expiresAt: now + 30000000,
+    now: () => now, replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 100,
+    maxPendingTurns: 16, maxTrialTurns: 128, create: false }).gateSpend()).toThrow('usage limit hold');
 });
 
 it('refuses the real Stage 2 model path while a durable limit hold is active', async () => {

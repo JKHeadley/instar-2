@@ -7,6 +7,7 @@ import { decideUnansweredTurn } from '../../src/sentinels/unanswered-turn.js';
 import { stage2CompositionFixture } from './stage2-fixture.js';
 import { createPreviewComposition } from './composition.js';
 import { stage2HistoricalStatus } from './stage2-owners.js';
+import { durablePreviewWrite, HOST_OUTAGE_TEXT } from './state.js';
 // @ts-expect-error Physical storage host remains JavaScript.
 import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 
@@ -73,4 +74,48 @@ it('uses the existing prepared reply operation for one fixed notice', () => {
   expect(readFileSync(join(root, 'sends.log'), 'utf8')).toBe('send\n');
   const state = JSON.parse(readFileSync(join(root, 'preview-state.json'), 'utf8'));
   expect(Object.values(state.turns)[0]).toMatchObject({ phase: 'api-accepted' });
+}, 60000);
+
+it('binds a host notice to the recorded trial bot and target and consumes one prepared effect', () => {
+  const s = stage2CompositionFixture(); roots.push(s.root);
+  s.state.noteError();
+  const trial = s.state.read().trial, path = join(s.root, 'host-watch.json');
+  const episode = { version: 1, open: true, phase: 'prepared', id: '00000000-0000-4000-8000-000000000001',
+    trial: trial.id, configurationDigest: trial.configurationDigest, botId: s.configuration.botId,
+    chatId: s.configuration.chatId, message: HOST_OUTAGE_TEXT, failedAttempt: 2,
+    firstFailure: { at: s.now() - 1, code: 23, signal: null },
+    recoveryFailure: { at: s.now(), code: 23, signal: null }, preparedAt: s.now() };
+  const open = () => createPreviewComposition({ configuration: s.configuration, state: s.state, noticeOnly: true,
+    storageKey: new Uint8Array(32).fill(19), storageIO: productionStorageIO, telegramIO: s.telegramIO,
+    now: () => 100, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value' });
+  durablePreviewWrite(path, { ...episode, chatId: '999' });
+  let notice = open();
+  try { expect(() => (notice as any).dispatchHostNotice(path)).toThrow('authority differs'); } finally { notice.close(); }
+  durablePreviewWrite(path, { ...episode, botId: '999' });
+  notice = open();
+  try { expect(() => (notice as any).dispatchHostNotice(path)).toThrow('authority differs'); } finally { notice.close(); }
+  expect(s.calls.filter((call: any) => call.method === 'sendMessage')).toHaveLength(0);
+  durablePreviewWrite(path, episode);
+  notice = open();
+  try { expect((notice as any).dispatchHostNotice(path)).toBe(true); } finally { notice.close(); }
+  expect(s.calls.filter((call: any) => call.method === 'sendMessage')).toHaveLength(1);
+  expect(s.state.read().consecutiveErrors).toBe(1);
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
+    phase: 'dispatch-outcome-unknown', message: HOST_OUTAGE_TEXT, chatId: s.configuration.chatId });
+  notice = open();
+  try { expect(() => (notice as any).dispatchHostNotice(path)).toThrow('authority differs'); } finally { notice.close(); }
+  expect(s.calls.filter((call: any) => call.method === 'sendMessage')).toHaveLength(1);
+}, 60000);
+
+it('refuses a host notice when the token resolves to a different bot', () => {
+  const s = stage2CompositionFixture(); roots.push(s.root);
+  const wrongBotIO = { invoke(request: any, credential: string) {
+    if (request.method === 'getMe') return { kind: 'response', status: 200,
+      bytes: JSON.stringify({ ok: true, result: { id: 999, is_bot: true, username: 'other_bot' } }) };
+    return s.telegramIO.invoke(request);
+  } };
+  expect(() => createPreviewComposition({ configuration: s.configuration, state: s.state, noticeOnly: true,
+    storageKey: new Uint8Array(32).fill(19), storageIO: productionStorageIO, telegramIO: wrongBotIO,
+    now: () => 100, resolveSecret: () => '999:synthetic_recorded_test_only_value' })).toThrow();
+  expect(s.calls.filter((call: any) => call.method === 'sendMessage')).toHaveLength(0);
 }, 60000);

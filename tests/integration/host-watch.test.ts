@@ -3,67 +3,82 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, expect, it } from 'vitest';
+import { HOST_OUTAGE_TEXT, openPreviewState } from '../preview/state.js';
 // @ts-expect-error Physical launchd watcher is JavaScript.
 import { watchOnce, supervise } from '../../scripts/host-watch.mjs';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
-function fixture() {
+function fixture(errorLimit = 5) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'host-watch-'))); roots.push(root);
-  const state = { trial: { expiresAt: 1000000 }, stop: null, cycle: { at: 100, pid: 32111 } };
-  writeFileSync(join(root, 'preview-state.json'), JSON.stringify(state));
-  return { root, state };
+  const configuration = { trial: 'host', botId: '8820318295', chatId: '7812716706' };
+  const options = { root, configuration, expiresAt: Date.now() + 60000,
+    replyLimit: 6, replyWindowMs: 60000, errorLimit, totalErrorLimit: 100,
+    maxPendingTurns: 16, maxTrialTurns: 128,
+    hostNotice: { botId: configuration.botId, chatId: configuration.chatId, message: HOST_OUTAGE_TEXT } };
+  const state = openPreviewState(options);
+  return { root, state, options };
 }
 
-it('prepares one outage notice and closes its episode only on a fresh heartbeat', () => {
+it('waits for a failed restart, binds the prepared notice, and closes only on recovery', () => {
   const { root, state } = fixture(); let sends = 0;
   const send = () => { sends += 1; };
-  expect(watchOnce({ root, now: 40000, alive: () => false, send })).toBe('notified');
-  expect(watchOnce({ root, now: 41000, alive: () => false, send })).toBe('already-notified');
+  const now = Date.now();
+  expect(watchOnce({ root, now, failedAttempt: 1, failedOutcome: { code: 23, signal: null }, forceOutage: true, send })).toBe('recovering');
+  expect(sends).toBe(0);
+  expect(watchOnce({ root, now: now + 1, failedAttempt: 2, failedOutcome: { code: 23, signal: null }, forceOutage: true, send })).toBe('notified');
+  const episode = JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8'));
+  expect(episode).toMatchObject({ open: true, phase: 'prepared', trial: state.read().trial.id,
+    configurationDigest: state.read().trial.configurationDigest, botId: '8820318295', chatId: '7812716706',
+    message: HOST_OUTAGE_TEXT, failedAttempt: 2, recoveryFailure: { code: 23, signal: null } });
+  expect(watchOnce({ root, now: now + 2, failedAttempt: 3, failedOutcome: { code: 23, signal: null }, forceOutage: true, send })).toBe('already-notified');
   expect(sends).toBe(1);
-  writeFileSync(join(root, 'preview-state.json'), JSON.stringify({ ...state, cycle: { at: 42000, pid: 32112 } }));
-  expect(watchOnce({ root, now: 42001, alive: () => true, send })).toBe('healthy');
+  state.heartbeat(process.pid);
+  expect(watchOnce({ root, now: Date.now(), alive: () => true, send })).toBe('healthy');
   expect(JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8')).open).toBe(false);
-  expect(watchOnce({ root, now: 80000, alive: () => false, send })).toBe('notified');
-  expect(sends).toBe(2);
-  writeFileSync(join(root, 'preview-stop.json'), JSON.stringify({ reason: 'breaker', latchedAt: 80001 }));
-  expect(watchOnce({ root, now: 90000, forceOutage: true, send })).toBe('inactive');
-  expect(sends).toBe(2);
-  rmSync(join(root, 'preview-stop.json'));
-  expect(watchOnce({ root, now: 1000000, forceOutage: true, send })).toBe('inactive');
 });
 
-it('does not resend if the watcher fails after preparing the outage', () => {
-  const { root } = fixture(); let attempts = 0;
-  expect(() => watchOnce({ root, now: 40000, alive: () => false,
-    send: () => { attempts += 1; throw Error('interrupted send'); } })).toThrow('interrupted send');
-  expect(watchOnce({ root, now: 41000, alive: () => false,
-    send: () => { attempts += 1; } })).toBe('already-notified');
+it('a fresh heartbeat after the bounded restart suppresses escalation', () => {
+  const { root, state } = fixture(); let sends = 0;
+  expect(watchOnce({ root, failedAttempt: 1, failedOutcome: { code: 23, signal: null }, forceOutage: true, send: () => { sends++; } })).toBe('recovering');
+  state.heartbeat(process.pid);
+  expect(watchOnce({ root, alive: () => true, send: () => { sends++; } })).toBe('healthy');
+  expect(sends).toBe(0);
+  expect(JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8')).open).toBe(false);
+});
+
+it('a prepared but interrupted notice is non-retryable and a mismatched authority refuses', () => {
+  const { root, state } = fixture(); let attempts = 0;
+  expect(watchOnce({ root, failedAttempt: 1, failedOutcome: { code: 23, signal: null }, forceOutage: true, send: () => { attempts++; } })).toBe('recovering');
+  expect(() => watchOnce({ root, failedAttempt: 2, failedOutcome: { code: 23, signal: null }, forceOutage: true,
+    send: () => { attempts++; throw Error('interrupted'); } })).toThrow('interrupted');
+  expect(watchOnce({ root, failedAttempt: 3, failedOutcome: { code: 23, signal: null }, forceOutage: true, send: () => { attempts++; } })).toBe('already-notified');
   expect(attempts).toBe(1);
+  const path = join(root, 'host-watch.json'), episode = JSON.parse(readFileSync(path, 'utf8'));
+  writeFileSync(path, JSON.stringify({ ...episode, chatId: '999' }));
+  expect(() => watchOnce({ root, failedAttempt: 3, failedOutcome: { code: 23, signal: null }, forceOutage: true })).toThrow('episode authority changed');
+  state.latchStop('operator');
+  expect(watchOnce({ root, failedAttempt: 3, failedOutcome: { code: 23, signal: null }, forceOutage: true })).toBe('inactive');
 });
 
 it('ships a temporary-label launchd job with crash-only KeepAlive and no credential in argv', () => {
   const { root } = fixture();
   const template = readFileSync('scripts/host-watch.launchd.plist.template', 'utf8');
-  const label = `test.instar.host-watch.${process.pid}`;
-  const rendered = template.replace('__TEMP_OR_DEPLOYMENT_LABEL__', label)
+  const rendered = template.replace('__TEMP_OR_DEPLOYMENT_LABEL__', `test.instar.host-watch.${process.pid}`)
     .replace('__ABSOLUTE_NODE__', process.execPath)
     .replace('__ABSOLUTE_HOST_WATCH_SCRIPT__', join(process.cwd(), 'scripts/host-watch.mjs'))
     .replace('__ABSOLUTE_NON_SECRET_CONFIG__', join(root, 'config.json'))
     .replace('__ABSOLUTE_SAFE_STDOUT_LOG__', join(root, 'out.log'))
     .replace('__ABSOLUTE_SAFE_STDERR_LOG__', join(root, 'err.log'));
   const path = join(root, 'test.plist'); writeFileSync(path, rendered);
-  const lint = spawnSync('plutil', ['-lint', path], { encoding: 'utf8' });
-  expect(lint.status).toBe(0);
+  expect(spawnSync('plutil', ['-lint', path], { encoding: 'utf8' }).status).toBe(0);
   expect(rendered).toContain('<key>SuccessfulExit</key><false/>');
   expect(rendered).not.toContain('INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN');
-  expect(rendered).not.toContain('123456:secret');
-  expect(process.argv.join(' ')).not.toContain('123456:secret');
 });
 
-it('restarts a crashed child, then respects a durable stop latch', async () => {
+it('a recovered first crash produces no escalation, then respects a durable stop latch', async () => {
   const { root, state } = fixture();
-  writeFileSync(join(root, 'preview-state.json'), JSON.stringify({ ...state, trial: { expiresAt: Date.now() + 60000 } }));
+  state.noteError(); // Existing loop errors must not count as a failed host recovery attempt.
   const script = join(root, 'child.mjs');
   writeFileSync(script, `import { existsSync, writeFileSync } from 'node:fs';
 const marker = process.argv[2];
@@ -75,15 +90,41 @@ process.exit(0);
   expect(await supervise({ root, cwd: root, agent: [process.execPath, script, marker, stop] })).toBe(0);
   expect(existsSync(marker)).toBe(true);
   expect(JSON.parse(readFileSync(stop, 'utf8')).reason).toBe('breaker');
-  expect(JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8')).open).toBe(true);
+  expect(JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8')).phase).toBe('recovering');
 });
 
-it('does not restart a successful agent exit', async () => {
-  const { root, state } = fixture();
-  writeFileSync(join(root, 'preview-state.json'), JSON.stringify({ ...state, trial: { expiresAt: Date.now() + 60000 } }));
+it('sustained crashes reach the existing durable breaker and a reopening cannot restart', async () => {
+  const { root, options } = fixture(3);
+  const script = join(root, 'crash.mjs'), marker = join(root, 'launches');
+  writeFileSync(script, `import { appendFileSync } from 'node:fs'; appendFileSync(process.argv[2], 'one\\n'); process.exit(23);`);
+  const config = { root, cwd: root, agent: [process.execPath, script, marker, '--backoff-ms', '1', '--max-backoff-ms', '2'] };
+  expect(await supervise(config)).toBe(0);
+  expect(readFileSync(marker, 'utf8')).toBe('one\none\none\n');
+  expect(openPreviewState({ ...options, create: false }).read()).toMatchObject({
+    consecutiveErrors: 3, totalErrors: 3, stop: { reason: 'breaker' } });
+  expect(await supervise(config)).toBe(0);
+  expect(readFileSync(marker, 'utf8')).toBe('one\none\none\n');
+  expect(JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8')).failedAttempt).toBe(2);
+});
+
+it('does not restart a successful agent exit or a deliberate configuration refusal', async () => {
+  const { root } = fixture();
   const script = join(root, 'success.mjs'), marker = join(root, 'launches');
   writeFileSync(script, `import { appendFileSync } from 'node:fs'; appendFileSync(process.argv[2], 'one\\n'); process.exit(0);`);
   expect(await supervise({ root, cwd: root, agent: [process.execPath, script, marker] })).toBe(0);
   expect(readFileSync(marker, 'utf8')).toBe('one\n');
   expect(existsSync(join(root, 'host-watch.json'))).toBe(false);
+  const refused = join(root, 'refused.mjs');
+  writeFileSync(refused, `import { appendFileSync } from 'node:fs'; appendFileSync(process.argv[2], 'one\\n'); process.exit(1);`);
+  expect(await supervise({ root, cwd: root, agent: [process.execPath, refused, marker] })).toBe(0);
+  expect(readFileSync(marker, 'utf8')).toBe('one\none\n');
+  expect(JSON.parse(readFileSync(join(root, 'preview-stop.json'), 'utf8')).reason).toBe('breaker');
+});
+
+it('a missing executable latches the existing breaker without a launchd retry', async () => {
+  const { root } = fixture();
+  const missing = join(root, 'missing-provider-executable');
+  expect(await supervise({ root, cwd: root, agent: [missing] })).toBe(0);
+  expect(JSON.parse(readFileSync(join(root, 'preview-stop.json'), 'utf8')).reason).toBe('breaker');
+  expect(JSON.parse(readFileSync(join(root, 'preview-state.json'), 'utf8')).totalErrors).toBe(1);
 });

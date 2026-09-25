@@ -11,6 +11,7 @@ import { dirname, join, resolve } from 'node:path';
 export const PREVIEW_STATE_VERSION = 3 as const;
 export const MAX_PREVIEW_ERROR_LIMIT = 10_000 as const;
 export const MAX_PREVIEW_TOTAL_ERROR_LIMIT = 1_000_000 as const;
+export const HOST_OUTAGE_TEXT = 'PREVIEW — experimental test agent; production safeguards incomplete.\nPreview host watcher: The agent did not recover after a restart attempt. Replies are unavailable right now. Messages already admitted to this trial remain preserved.';
 
 export type PreviewIntakeDisposition =
   | 'admitted-bound' | 'admitted-unbound' | 'held' | 'stopped' | 'refused' | 'preserved-unresolved';
@@ -39,7 +40,8 @@ export interface PreviewTurn {
 export interface PreviewStateDocument {
   readonly version: typeof PREVIEW_STATE_VERSION;
   readonly trial: Readonly<{ id: string; configurationDigest: string; createdAt: number; expiresAt: number;
-    maxPendingTurns: number; maxTrialTurns: number; errorLimit: number; totalErrorLimit: number }>;
+    maxPendingTurns: number; maxTrialTurns: number; errorLimit: number; totalErrorLimit: number;
+    hostNotice?: Readonly<{ botId: string; chatId: string; message: string }> }>;
   readonly cursor: Readonly<{ nextOffset: number }>;
   readonly stop: null | Readonly<{ latchedAt: number; reason: 'operator' | 'signal' | 'expiry' | 'breaker' | 'capacity' }>;
   readonly consecutiveErrors: number;
@@ -62,6 +64,7 @@ export interface PreviewStateOptions {
   readonly maxPendingTurns: number;
   readonly maxTrialTurns: number;
   readonly create?: boolean;
+  readonly hostNotice?: Readonly<{ botId: string; chatId: string; message: string }>;
 }
 
 const digest = (input: unknown): string =>
@@ -79,6 +82,9 @@ function validate(document: PreviewStateDocument): PreviewStateDocument {
   }
   assertInteger(document.trial.createdAt, 'createdAt');
   assertInteger(document.trial.expiresAt, 'expiresAt', 1);
+  if (document.trial.hostNotice && (typeof document.trial.hostNotice.botId !== 'string'
+    || typeof document.trial.hostNotice.chatId !== 'string'
+    || document.trial.hostNotice.message !== HOST_OUTAGE_TEXT)) throw new Error('preview state: invalid host notice authority');
   assertInteger(document.trial.maxPendingTurns, 'max pending turns', 1);
   assertInteger(document.trial.maxTrialTurns, 'max trial turns', 1);
   assertInteger(document.trial.errorLimit, 'error limit', 1, MAX_PREVIEW_ERROR_LIMIT);
@@ -175,7 +181,8 @@ export function openPreviewState(options: PreviewStateOptions) {
     durablePreviewWrite(path, { version: PREVIEW_STATE_VERSION,
       trial: { id: `preview-trial:${randomUUID()}`, configurationDigest, createdAt: instant,
         expiresAt: options.expiresAt, maxPendingTurns: options.maxPendingTurns, maxTrialTurns: options.maxTrialTurns,
-        errorLimit: options.errorLimit, totalErrorLimit: options.totalErrorLimit },
+        errorLimit: options.errorLimit, totalErrorLimit: options.totalErrorLimit,
+        ...(options.hostNotice ? { hostNotice: options.hostNotice } : {}) },
       cursor: { nextOffset: 0 }, stop: null, consecutiveErrors: 0, totalErrors: 0, limitHoldUntil: null, cycle: null,
       replyWindow: { startedAt: instant, count: 0 }, turns: {} });
   }

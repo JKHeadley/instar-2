@@ -20,7 +20,7 @@ import { conversationFixture } from '../conversation/fixture.js';
 import { effectFixture } from '../effects/fixture.js';
 import { createProductionBootOwnerFixture } from '../assembly/production-boot-owner-fixture.js';
 import { json, privateKey, value } from '../facts/fixtures.js';
-import { durablePreviewWrite, previewTurnId, stage2SidecarExists, openStage2State, validateStage2Successor } from './state.js';
+import { durablePreviewWrite, HOST_OUTAGE_TEXT, previewTurnId, stage2SidecarExists, openStage2State, validateStage2Successor } from './state.js';
 import { stage2Activation, stage2InvocationBinding, stage2RouteFactory, encoded, subscriptionInvocationPolicy, OWNER_WINDOW_MS } from './stage2-provider.js';
 import { stage2Lifecycle, stage2HistoricalStatus } from './stage2-owners.js';
 import type { PreviewIntakeDisposition, PreviewState, PreviewTurn } from './state.js';
@@ -540,18 +540,16 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       } catch { return false; }
     };
 
-    const dispatch = (turn: PreviewTurn, noticeText?: string) => {
+    const dispatchPrepared = (key: string, outbound: string, beforePhysical, afterPhysical,
+      accountOutcome = true) => {
       input.state.gate('dispatch');
-      const currentFacts = value(createFactStore(factContext(), storage.segment).read());
-      const opening = openingFor(turn); if (!opening) throw new Error('preview: durable opening unavailable');
-      recoverFiveAndSix(runDirectory(configuration, turn), factContext(), currentFacts, opening, turn.contextReferences);
       input.state.reserveReply();
-      const effectRoot = join(configuration.root, '.preview-effects', `${turn.updateId}-${randomUUID()}`);
+      const effectRoot = join(configuration.root, '.preview-effects', `${key}-${randomUUID()}`);
       mkdirSync(effectRoot, { recursive: true, mode: 0o700 });
-      const effects = effectFixture(effectRoot, `preview-executor:${turn.updateId}`);
+      const effects = effectFixture(effectRoot, `preview-executor:${key}`);
       effects.host.boundary.register.entries.push('telegram-ordinary-reply', admitted.id);
       const conversation = telegramConversation(configuration.botId, target);
-      const definition = { type: 'OperationDefinition', schemaVersion: 1, id: `preview-reply-definition:${turn.updateId}`,
+      const definition = { type: 'OperationDefinition', schemaVersion: 1, id: `preview-reply-definition:${key}`,
         feature: 'telegram-ordinary-reply', version: 'telegram:9.2:ordinary-reply:v1', adapter: admitted.id,
         account: admitted.account, conversation, generation: effects.host.current().decode.register.generation.id,
         speaker: effects.host.principal.id, scopeDigest: value(canonical(effects.host.scope)).hash,
@@ -559,8 +557,8 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         lossModel: 'Same-machine fixture peer STAND-IN; shared disk loss is NOT covered.',
         maxBytes: declaration.limits.maxReplyBytes, maxCharge: declaration.limits.maxCharge,
         timeout: declaration.limits.timeout, verificationBar: 'preview-recorded-reply-bar' };
-      const approvedIn = effects.authorize({ id: `preview-reply-approval:${turn.updateId}`,
-        artifact: effects.capture(value(canonical(definition)).bytes), base: `preview-reply-base:${turn.updateId}` });
+      const approvedIn = effects.authorize({ id: `preview-reply-approval:${key}`,
+        artifact: effects.capture(value(canonical(definition)).bytes), base: `preview-reply-base:${key}` });
       effects.versions([{ id: definition.version, subject: definition.feature, content: json(definition),
         contentHash: value(canonical(definition)).hash, since: effects.pending.id, supersedes: [],
         approvedIn, base: approvedIn.base, landedIn: null }]);
@@ -568,31 +566,45 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         admitted, target, speaker: definition.speaker, scopeDigest: definition.scopeDigest,
         durability: definition.durability, replicas: definition.replicas, lossModel: definition.lossModel,
         verificationBar: definition.verificationBar }, effects.host, effects.spine));
-      const outbound = noticeText ? `${PREVIEW_LABEL}\n${noticeText}` : FIXED_LIMITED_RESPONSE;
       const rendered = value(renderTelegramHtml(outbound, declaration, effects.host.boundary));
       if (!rendered.startsWith(PREVIEW_LABEL)) throw new Error('preview: outbound label missing before preparation');
       const message = value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
-        id: `preview-reply:${turn.updateId}`, semanticMessage: `preview-semantic:${turn.updateId}`,
+        id: `preview-reply:${key}`, semanticMessage: `preview-semantic:${key}`,
         run: effects.run.id, speaker: effects.host.principal.id, account: admitted.account, conversation,
         text: rendered, purpose: 'ordinary-reply', sourceResult: effects.pending.id }, effects.host));
       const adapter = createTelegramReplyOperationAdapter(admitted, api, target, effects.host.boundary);
       const doorway = createEffectDoorway({ ...effects.composition, adapter, assessment: null });
       const request = value(adapter.prepare(doorway, { definition: installed.id, message, run: effects.run,
-        pending: effects.pending.id, attempt: `preview-attempt:${turn.updateId}`,
+        pending: effects.pending.id, attempt: `preview-attempt:${key}`,
         verificationOwner: 'preview-recorded-verifier', obligation: effects.obligation, closure: [], fence: effects.fence }));
       input.state.gate('dispatch');
-      input.state.advance(turn.id, 'grounded', 'dispatch-outcome-unknown', { replyOperation: request.id });
-      if (noticeText) input.hooks?.afterNoticePrepare?.(input.state.read().turns[turn.id]);
+      beforePhysical(request);
       const observation = value(doorway.dispatch(request, effects.fence));
-      input.hooks?.afterDispatch?.(input.state.read().turns[turn.id]);
-      if (!exactApiAcceptance(observation, effects, outbound)) {
-        input.state.advance(turn.id, 'dispatch-outcome-unknown', 'dispatch-outcome-unknown', {
-          replyOperation: observation.operation, replyObservation: observation.id });
-        input.state.noteError(); return false;
+      const accepted = exactApiAcceptance(observation, effects, outbound);
+      afterPhysical(observation, accepted);
+      if (!accepted) {
+        if (accountOutcome) input.state.noteError();
+        return false;
       }
-      input.state.advance(turn.id, 'dispatch-outcome-unknown', 'api-accepted', {
-        replyOperation: observation.operation, replyObservation: observation.id });
-      input.state.noteSuccess(); return true;
+      if (accountOutcome) input.state.noteSuccess();
+      return true;
+    };
+
+    const dispatch = (turn: PreviewTurn, noticeText?: string) => {
+      input.state.gate('dispatch');
+      const currentFacts = value(createFactStore(factContext(), storage.segment).read());
+      const opening = openingFor(turn); if (!opening) throw new Error('preview: durable opening unavailable');
+      recoverFiveAndSix(runDirectory(configuration, turn), factContext(), currentFacts, opening, turn.contextReferences);
+      const outbound = noticeText ? `${PREVIEW_LABEL}\n${noticeText}` : FIXED_LIMITED_RESPONSE;
+      return dispatchPrepared(String(turn.updateId), outbound, request => {
+        input.state.advance(turn.id, 'grounded', 'dispatch-outcome-unknown', { replyOperation: request.id });
+        if (noticeText) input.hooks?.afterNoticePrepare?.(input.state.read().turns[turn.id]);
+      }, (observation, accepted) => {
+        input.hooks?.afterDispatch?.(input.state.read().turns[turn.id]);
+        input.state.advance(turn.id, 'dispatch-outcome-unknown',
+          accepted ? 'api-accepted' : 'dispatch-outcome-unknown',
+          { replyOperation: observation.operation, replyObservation: observation.id });
+      });
     };
 
     const resumeOne = () => {
@@ -612,6 +624,33 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       input.state.gate('dispatch');
       if (turn.phase === 'intake-preserved') ground(turn);
       return dispatch(input.state.read().turns[turnId], text);
+    };
+    const dispatchHostNotice = (episodePath: string) => {
+      if (!input.noticeOnly || episodePath !== join(configuration.root, 'host-watch.json'))
+        throw Error('preview: host notice path refused');
+      const state = input.state.gate('dispatch');
+      const authority = state.trial.hostNotice;
+      const episode = JSON.parse(readFileSync(episodePath, 'utf8'));
+      if (!authority || authority.botId !== configuration.botId || authority.chatId !== configuration.chatId
+        || authority.message !== HOST_OUTAGE_TEXT || episode.version !== 1 || episode.open !== true
+        || episode.phase !== 'prepared' || episode.trial !== state.trial.id
+        || episode.configurationDigest !== state.trial.configurationDigest
+        || episode.botId !== authority.botId || episode.chatId !== authority.chatId
+        || episode.message !== authority.message || !/^[-a-f0-9]{36}$/.test(episode.id)
+        || !Number.isSafeInteger(episode.failedAttempt) || episode.failedAttempt < 2
+        || !Number.isSafeInteger(episode.firstFailure?.at)
+        || !Number.isSafeInteger(episode.recoveryFailure?.at)
+        || episode.firstFailure.at > episode.recoveryFailure.at
+        || episode.recoveryFailure.at > episode.preparedAt
+        || !(episode.recoveryFailure.code === null || Number.isSafeInteger(episode.recoveryFailure.code))
+        || !(episode.recoveryFailure.signal === null || typeof episode.recoveryFailure.signal === 'string'))
+        throw Error('preview: host notice authority differs');
+      return dispatchPrepared(`host-${episode.id}`, episode.message, request => {
+        input.state.gate('dispatch');
+        const latest = JSON.parse(readFileSync(episodePath, 'utf8'));
+        if (JSON.stringify(latest) !== JSON.stringify(episode)) throw Error('preview: host episode changed');
+        durablePreviewWrite(episodePath, { ...episode, phase: 'dispatch-outcome-unknown', operation: request.id });
+      }, () => { /* uncertain and accepted outcomes are both one attempt */ }, false);
     };
     const pollOnce = () => {
       reconcileDurableIntake(false);
@@ -675,7 +714,7 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         close: () => storage.close() });
     }
     return Object.freeze({ storage, api, admitted, intake, ingress, declaration, target,
-      standIns: PREVIEW_STAND_IN_LEDGER, reconcileDurableIntake, pollOnce, resumeOne, resume, dispatchNotice,
+      standIns: PREVIEW_STAND_IN_LEDGER, reconcileDurableIntake, pollOnce, resumeOne, resume, dispatchNotice, dispatchHostNotice,
       close: () => storage.close() });
   } catch (error) { storage.close(); throw error; }
 }

@@ -254,12 +254,18 @@ the exact reviewed preview launcher arguments. The desk substitutes absolute
 paths and a label in `scripts/host-watch.launchd.plist.template`. The job uses
 `KeepAlive: {SuccessfulExit: false}`; the supervisor exits successfully on a
 normal, stopped, expired, or breaker-latched agent exit. It restarts only after
-a crash, prepares `host-watch.json` before one fixed outage message, and closes
-the episode after a fresh cycle heartbeat. The desk binds the existing
-`INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` SecretRef environment value and
-`INSTAR_PREVIEW_OPERATOR_CHAT_ID` outside the config and plist. Neither value
-belongs in `ProgramArguments` or a log. Tests use temporary labels and never
-install a launchd job.
+a crash, counts failed launches against the trial's durable error ceilings,
+and uses the launcher's bounded backoff. The first failure starts a recovery
+episode. A failed restart prepares one notice bound to the trial's recorded bot,
+recipient, and fixed host-watcher message, then sends through the preview's
+prepared Telegram effect operation. A fresh cycle heartbeat closes the episode.
+The existing `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` SecretRef environment
+value remains outside the config and plist; the authorized chat comes from the
+trial, not a separate watcher environment variable. The token never belongs
+in `ProgramArguments` or a log. Tests use temporary labels and never install
+a launchd job. An existing trial that lacks the recorded host-notice authority
+cannot send this notice; the reviewed live proof must use a new trial with that
+authority recorded at creation.
 
 ## Desk cutover and retained evidence
 

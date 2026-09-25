@@ -36,7 +36,7 @@ import {createHash} from 'node:crypto'; import {tmpdir} from 'node:os'; import {
 import {syncBuiltinESMExports} from 'node:module';
 import {productionStorageIO} from ${JSON.stringify(join(process.cwd(), 'scripts/production-boot-io.mjs'))};
 import {stage2GuardedProviderPath} from ${JSON.stringify(join(process.cwd(), 'tests/preview/composition.ts'))};
-import {openPreviewState} from ${JSON.stringify(join(process.cwd(), 'tests/preview/state.ts'))};
+import {HOST_OUTAGE_TEXT,openPreviewState} from ${JSON.stringify(join(process.cwd(), 'tests/preview/state.ts'))};
 import {encoded as enc} from ${JSON.stringify(join(process.cwd(), 'tests/preview/stage2-provider.ts'))};
 import {subscriptionInvocationPolicy,SUBSCRIPTION_PREVIEW_EXPIRY} from ${JSON.stringify(join(process.cwd(), 'src/assembly/production-provider.ts'))};
 `;
