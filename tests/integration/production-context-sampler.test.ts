@@ -17,7 +17,7 @@ afterEach(() => { for (const directory of directories.splice(0)) rmSync(director
 const QUESTION_ONE = 'What is Instar for?';
 const QUESTION_TWO = 'Can this installation talk in any conversation other than this one?';
 const SECOND_DETAIL = 'one pre-bound Telegram conversation';
-const PROPOSED_INPUT_BOUND = 16384; // the R5 proposed Seven route bound; see progress handoff
+const PROPOSED_INPUT_BOUND = 12288; // the R5 proposed Seven route bound; see progress handoff
 
 function turnOne(maxInputBytes = PROPOSED_INPUT_BOUND) {
   const f = groundingFixture(), directory = mkdtempSync(join(tmpdir(), 'r5-join-'));

@@ -29,7 +29,7 @@ const preview = subscriptionInvocationPolicy('claude-offline-measure');
 const previewBounds = { systemBytes: Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8'),
   maxPromptBytes: preview.maxPromptBytes, maxInputBytes: preview.maxInputBytes, maxOutputBytes: preview.maxOutputBytes,
   maxCaptureBytes: preview.maxCaptureBytes, maxDeliveryBytes: 4096, maxOutboundBytes: 4096 };
-const PROPOSED = { ...previewBounds, maxInputBytes: 16384, maxPromptBytes: 16384 + previewBounds.systemBytes };
+const PROPOSED = { ...previewBounds, maxInputBytes: 12288, maxPromptBytes: 12288 + previewBounds.systemBytes };
 
 function grounded() {
   const f = groundingFixture(), directory = mkdtempSync(join(tmpdir(), 'r5-e2e-'));
