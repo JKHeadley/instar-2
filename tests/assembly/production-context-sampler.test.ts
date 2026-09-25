@@ -112,6 +112,17 @@ describe('R5 sampler through the real Ten reader and Five grounding', () => {
     value(f.graph.ground(f.id, 'w', 'native', 'resume', f.lease));
     expect(f.delivered().specification.contextManifest.filter(row => row.class === 'message')).toHaveLength(2);
   }, 60000);
+  it('refuses a reply that is not a Seven accepted answer or is bound to the current input', () => {
+    const forged = grounded(f => { f.plan.replies = []; });
+    value(forged.result);
+    const f = forged.f;
+    // A reply naming a non-acceptance fact cannot stand in for an accepted answer.
+    refused(f.render([{ input: f.opening.id, acceptance: f.opening.id }]), 'accepted reply is not bound to an earlier delivered input');
+    const notAccepted = grounded(g => { g.nextInput('second input'); g.plan.step = 'step:operation:1';
+      g.plan.replies = [{ input: g.opening.id, acceptance: g.bodies.identity.id }]; });
+    refused(notAccepted.result, `accepted reply ${notAccepted.f.bodies.identity.id} unavailable`);
+    expect(deliveries(notAccepted.f)).toBe(0);
+  }, 60000);
 });
 
 describe('R5 data-only rendering and whole-envelope measurement', () => {
