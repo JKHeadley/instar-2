@@ -81,7 +81,7 @@ it('P4-NF-06 R7 approved-history guard is independent of entering-force verifica
   expect(value(f.port().recover(f.facts().find(r => r.kind === 'intake-receipt')!.id)).kind).toBe('admitted');
 });
 
-it('P4-NF-06 P4-NF-13 P4-NF-14 R7 per-consumer directions preserve delivery and the ruled-three brake', () => {
+it('P4-NF-06 P4-NF-13 P4-NF-14 P4-NF-14-PARTIAL R7 per-consumer directions preserve delivery and the ruled-three brake', () => {
   for (const [site, decoder] of pairs) {
     const gate = declarations().find(d => d.id === site)!;
     const rungs = gate.requiredFacts.rungs as { failDirection: string; enforces: { record: string; decoder: string } }[];

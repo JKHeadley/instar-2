@@ -4,6 +4,10 @@ _Generated from `12-the-effect-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 8 · 2026-09-24 · draft — Bounded Slack second-channel constitutional amendment from astra-slack-closedset-ruling.md; operator approval PENDING; no merge or runtime activation.
+
+- **Include the bounded Slack reply in Eight’s installed local-durable closed set and keep its refusal example open to a further operation.** — An irreversible Slack reply needs explicit membership, a complete durable causal prefix and current installation policy; it cannot inherit Telegram authority. _(astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING)_
+
 ## Revision 7 · 2026-09-21 · draft — Justin, verified operator, 2026-09-21 ~09:30 PDT: "again, the driving rule/standard should be: an instar agent with only one avaiblable machine should still be FULLY FUNCTIONAL". Reaffirms the 2026-09-19 supported single-machine ruling. Draft for operator approval; actual HEAD/base 76b60b6984a4628e976fb5fdd83a5976390cc7d1; edits unstaged, desk owns commit.
 
 - **Scope the installed-shape closed-set rule to irreversible effects and make the ordinary four-test, finite-enforced-bound and full-causal-record rule explicit.** — Eight must follow the purpose's fully functional single-machine Rule while preserving the provider/reply pair, exact membership check and irreversible safeguards. _(Operator conversation, 2026-09-21 ~09:30 PDT; astra-m4-launch-amendment-review-d0e4ace.md finding 1; astra-m4-launch-amendment-ROUND2-DONE.md, The operator's remaining question; draft against 76b60b6984a4628e976fb5fdd83a5976390cc7d1)_
