@@ -7,6 +7,7 @@ import { assemblyInput } from './fixture.js';
 import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { canonical } from '../../src/index.js';
 import { frame, unframe, request as monitorRequest, signReply, verifyReply,
@@ -262,4 +263,108 @@ it('synthetic journal retains a decided original across reopen and refuses torn 
     writeFileSync(path, bytes.subarray(0, -1));
     expect(() => new OfflineJournal(path)).toThrow('journal-untrusted');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Installer (M5): synthetic host inventory only; --apply is never exercised here.
+const provisionScript = join(process.cwd(), 'scripts/provision-fixed-native-worker.sh');
+function provision(lines: string[], ...args: string[]) {
+  const dir = mkdtempSync(join(tmpdir(), 'instar-provision-'));
+  try {
+    const inventory = join(dir, 'inventory');
+    writeFileSync(inventory, lines.join('\n') + '\n');
+    const run = spawnSync('/bin/bash', [provisionScript, ...args, '--inventory', inventory,
+      '--agent-user', 'agent'], { encoding: 'utf8', env: {} });
+    return { status: run.status, out: run.stdout, err: run.stderr };
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+const cleanHost = ['os_name=Darwin', 'os_version=26.5', 'os_build=25F84', 'arch=arm64',
+  'users=root:0,daemon:1,_www:70,agent:501,', 'groups=wheel:0,staff:20,admin:80,',
+  'agent_groups=staff,everyone'];
+const worker = 'uid=499;gid=499;shell=/usr/bin/false;home=/private/var/instar-worker/home;hidden=1;auth=none;password=*;groups=_instar_worker+everyone+localaccounts';
+const provisionedDirs = ['/private/var/instar-worker|Directory|root|wheel|755',
+  '/private/var/instar-worker/home|Directory|root|wheel|755',
+  '/private/var/instar-worker/slot-0|Directory|root|wheel|755', '/Library/Instar2|Directory|root|wheel|755',
+  '/Library/Instar2/m4-launch|Directory|root|wheel|755', '/Library/Instar2/m4-launch/releases|Directory|root|wheel|755',
+  '/Library/Instar2/m4-launch/keys|Directory|root|wheel|700', '/private/var/db/instar2-worker|Directory|root|wheel|700',
+  '/Library/Instar2/.accounts-ledger|Regular File|root|wheel|600'].map(row => `path=${row}`);
+const provisionedHost = [...cleanHost.slice(0, 4), 'users=root:0,agent:501,_instar_worker:499,',
+  'groups=wheel:0,staff:20,_instar_worker:499,', 'agent_groups=staff', `worker_attrs=${worker}`, ...provisionedDirs];
+
+it('installer inspect and accounts-only dry run are read-only, digest-bound and choose an unused hidden ID', () => {
+  const inspect = provision(cleanHost, 'inspect');
+  expect(inspect.status).toBe(0);
+  expect(inspect.out).toContain('inventory.worker.user=absent');
+  expect(inspect.out).not.toContain('plan.step');
+  const plan = provision(cleanHost, 'accounts-only');
+  expect(plan.status).toBe(0);
+  expect(plan.out).toContain('plan.step=dscl . -create /Users/_instar_worker UniqueID 499');
+  expect(plan.out).toContain('plan.step=dscl . -create /Users/_instar_worker UserShell /usr/bin/false');
+  expect(plan.out).toContain('plan.step=dscl . -create /Users/_instar_worker Password *');
+  expect(plan.out).toContain('result=dry-run (nothing changed)');
+  expect(plan.out.split('\n').filter(line => line.startsWith('plan.step=')).join('\n'))
+    .not.toMatch(/sudoers|ssh|admin|LaunchDaemons|receipt|launchctl|AuthenticationAuthority/);
+  const steps = plan.out.split('\n').filter(line => line.startsWith('plan.step='));
+  expect(steps.indexOf('plan.step=ledger uid=499 gid=499')).toBeLessThan(
+    steps.indexOf('plan.step=dscl . -create /Groups/_instar_worker'));
+  const digestLine = plan.out.split('\n').find(line => line.startsWith('plan.digest=sha256:'));
+  expect(provision(cleanHost, 'accounts-only').out).toContain(digestLine);
+  const busy = provision([...cleanHost.slice(0, 4), 'users=root:0,x:499,', 'groups=wheel:0,y:498,', 'agent_groups=staff'], 'accounts-only');
+  expect(busy.out).toContain('UniqueID 497');
+  const pinned = provision(cleanHost, 'accounts-only', '--uid', '470', '--gid', '470');
+  expect(pinned.out).toContain('UniqueID 470');
+  expect(pinned.out.split('\n').find(line => line.startsWith('plan.digest='))).not.toBe(digestLine);
+  const admin = provision([...cleanHost.slice(0, 6), 'agent_groups=staff,admin'], 'inspect');
+  expect(admin.out).toContain('inventory.ADMIN=HOLD');
+});
+
+it('installer refuses collisions, synthetic apply, out-of-range IDs and every unreviewed monitor stage', () => {
+  const taken = provision(provisionedHost, 'accounts-only');
+  expect(taken.status).toBe(2);
+  expect(taken.err).toContain('already exists (uid 499); never taken over');
+  const groupOnly = provision([...cleanHost.slice(0, 5), 'groups=wheel:0,_instar_worker:300,', 'agent_groups=staff'], 'accounts-only');
+  expect(groupOnly.err).toContain('group _instar_worker already exists');
+  const foreignDir = provision([...cleanHost, 'path=/Library/Instar2|Directory|root|wheel|755'], 'accounts-only');
+  expect(foreignDir.err).toContain('path already exists: /Library/Instar2');
+  expect(provision(cleanHost, 'accounts-only', '--uid', '70', '--gid', '70').err).toContain('outside hidden range');
+  expect(provision(cleanHost, 'accounts-only', '--uid', '499').err).toContain('given together');
+  expect(provision([...cleanHost.slice(0, 4), 'users=root:0,x:480,', 'groups=wheel:0,', 'agent_groups=staff'],
+    'accounts-only', '--uid', '480', '--gid', '480').err).toContain('uid 480 already in use');
+  expect(provision(cleanHost, 'accounts-only', '--apply').err).toContain('never accepts a synthetic inventory');
+  expect(provision(['os_name=Linux', ...cleanHost.slice(1)], 'accounts-only').err).toContain('unsupported OS');
+  expect(provision([...cleanHost, 'mystery=1'], 'inspect').err).toContain('unknown inventory key');
+  for (const mode of ['install', 'uninstall']) {
+    const refused = provision(cleanHost, mode);
+    expect(refused.status).toBe(2);
+    expect(refused.err).toContain('not reviewed; this stage stays refusing');
+  }
+});
+
+it('installer verify checks the inert end state and rollback removes only ledger-recorded items', () => {
+  const ok = provision(provisionedHost, 'verify');
+  expect(ok.status).toBe(0);
+  expect(ok.out).toContain('verify.accounts=ok');
+  expect(ok.out).toContain('verify.monitor-stage=pending');
+  const privileged = provision(provisionedHost.map(row => row.startsWith('worker_attrs=')
+    ? row.replace('+everyone', '+admin') : row), 'verify');
+  expect(privileged.status).toBe(1);
+  expect(privileged.out).toContain('verify.privileged-groups=FAIL');
+  const writable = provision(provisionedHost.map(row => row.replace('slot-0|Directory|root|wheel|755',
+    'slot-0|Directory|root|wheel|777')), 'verify');
+  expect(writable.out).toContain('verify.dir:/private/var/instar-worker/slot-0=FAIL');
+  expect(provision(cleanHost, 'verify').out).toContain('verify.accounts=not-provisioned');
+  const rollback = provision(provisionedHost, 'accounts-rollback', '--uid', '499', '--gid', '499');
+  expect(rollback.status).toBe(0);
+  const steps = rollback.out.split('\n').filter(line => line.startsWith('plan.step=')).map(line => line.slice(10));
+  expect(steps).toEqual(['dscl . -delete /Users/_instar_worker', 'dscl . -delete /Groups/_instar_worker',
+    'rmdir /private/var/db/instar2-worker', 'rmdir /Library/Instar2/m4-launch/keys',
+    'rmdir /Library/Instar2/m4-launch/releases', 'rmdir /Library/Instar2/m4-launch',
+    'rmdir /private/var/instar-worker/slot-0', 'rmdir /private/var/instar-worker/home',
+    'rmdir /private/var/instar-worker', 'rm-ledger', 'rmdir /Library/Instar2']);
+  expect(provision(provisionedHost, 'accounts-rollback', '--uid', '498', '--gid', '499').err)
+    .toContain('differs from ledger');
+  expect(provision([...provisionedHost, 'worker_procs=1'], 'accounts-rollback', '--uid', '499', '--gid', '499').err)
+    .toContain('processes are running');
+  expect(provision([...provisionedHost, 'path=/Library/LaunchDaemons/ai.instar.worker-monitor.plist|Regular File|root|wheel|644'],
+    'accounts-rollback', '--uid', '499', '--gid', '499').err).toContain('uninstall it first');
+  expect(provision(cleanHost, 'accounts-rollback').err).toContain('no accounts ledger');
 });
