@@ -273,6 +273,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const continuation = session.continuation;
     ensure(continuation, 'continuation missing from session reservation');
     ensure(continuation.state === 'prepared', 'continuation delivery uncertain or already submitted');
+    ensure(classifyPaneIdle(capture(session.name), config.framework), 'pane is not at an idle prompt');
     armTurn(session);
     session = loadSession(identity);
     config.io.save(replaceSession(config.io.load(), { ...session,
@@ -314,6 +315,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         const identity = config.io.exclusive(() => {
           ensure(input.operation && input.claim && input.artifact && input.incarnation, 'launch identity required');
           ensure(input.handles.length === 0, 'session launch accepts no ambient handles');
+          checkStop();
           reconcileReservations();
           const journal = config.io.load();
           const existing = journal.sessions.find(row => row.operation === input.operation
@@ -491,9 +493,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           }
           const continuation = requireContinuation(session.operation, session.claim, session.incarnation, 'context-wall');
           ensure(!config.protectedSessions.includes(session.name), 'protected session cannot be killed');
-          run(['kill-session', '-t', literalTarget(session.name)]);
           const journal = config.io.load(); const resumes = { ...journal.resumes }; delete resumes[session.claim];
           config.io.save({ ...journal, resumes });
+          run(['kill-session', '-t', literalTarget(session.name)]);
           const nextIdentity = spawn(session.operation, session.claim, session.incarnation, config.cwd, null, 0, continuation);
           submitContinuation(nextIdentity);
           return { identity: nextIdentity, needsWait: true };

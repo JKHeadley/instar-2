@@ -32,7 +32,9 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
       if (args[0] === 'display-message') return { code: 0, stdout: `${stamp}\n` };
       if (args[0] === 'capture-pane') return { code: 0, stdout: pane };
       if (args[0] === 'has-session') return { code: !live.has(args[2] ?? '') || dead.has(args[2] ?? '') ? 1 : 0, stdout: '' };
-      if (args[0] === 'kill-session') { dead.add(args[2] ?? ''); return { code: 0, stdout: '' }; }
+      if (args[0] === 'kill-session') { dead.add(args[2] ?? '');
+        if (onKill) { const callback = onKill; onKill = null; callback(); }
+        return { code: 0, stdout: '' }; }
       if (args[0] === 'send-keys') {
         if (failSend) { failSend = false; throw Error('simulated process death before send'); }
         sends++; if (args.includes('Enter')) {
@@ -54,6 +56,7 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
     readInbox: () => hooks, transcriptExists: (_framework, _id, _cwd, directory) => transcript && directory === homes.a,
   };
   let onEnter: (() => void) | null = null;
+  let onKill: (() => void) | null = null;
   let onPrepared: (() => void) | null = null;
   const config = { operatorOwnUse: true as const, confinement: 'unconfined' as const,
     framework, executable: '/synthetic', cwd: '/work', home: homes.a, configHome: homes.a,
@@ -71,6 +74,7 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
     failNextIdentitySave: () => { failIdentitySave = true; }, changeStamp: (value: string) => { stamp = value; },
     failNextSpawn: () => { failSpawn = true; },
     transcript: (value: boolean) => { transcript = value; }, onEnter: (callback: () => void) => { onEnter = callback; },
+    onKill: (callback: () => void) => { onKill = callback; },
     onPrepared: (callback: () => void) => { onPrepared = callback; },
     hook: (at: number) => { hooks = [...hooks, { kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc',
       at, receiptId: `receipt-${hooks.length + 1}` }]; },
@@ -230,6 +234,15 @@ it('enforces cap, stop authority, and per-turn deadline', () => {
   expect(f.calls.some(row => row[0] === 'kill-session' && row[2]?.endsWith(':'))).toBe(true);
 });
 
+it('enforces emergency stop when launch reattaches an existing session', () => {
+  const f = fixture(), id = f.launch();
+  f.stop();
+  refused(f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work', handles: [] }), 'stop authority');
+  expect(f.calls.filter(row => row[0] === 'kill-session' && row[2] === `=${id.split(':')[0]}:`)).toHaveLength(1);
+  expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(1);
+});
+
 it.each(['claude-code', 'codex-cli'] as const)('uses a native %s resume only for a cache hit on the matching topic', framework => {
   const f = fixture(framework), id = f.launch();
   const resume = '12345678-1234-1234-1234-123456789abc';
@@ -299,6 +312,45 @@ it('does not repeat an uncertain continuation or admit the next input', () => {
   refused(driver.launch(launch), 'no automatic respawn');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
   expect(f.journal.deliveries).toHaveLength(0);
+});
+
+it('keeps a prepared continuation when startup menu persists across launch retry', () => {
+  const f = fixture(), id = f.launch();
+  value(f.driver.saveResume(id, '12345678-1234-1234-1234-123456789abc'));
+  const driver = createProductionSessionDriver({ ...f.config, home: f.homes.b, configHome: f.homes.b,
+    maxSessions: 2 });
+  const launch = { operation: 'next', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'next', workingScope: '/work', handles: [] };
+  f.changePane('❯ 1. Update\n  2. Skip');
+  refused(driver.launch(launch), 'menu');
+  const next = f.journal.sessions.at(-1)?.identity;
+  expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('prepared');
+  refused(driver.launch(launch), 'idle prompt');
+  expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('prepared');
+  expect(f.sends).toBe(0);
+  f.changePane('❯ ');
+  expect(value(driver.launch(launch))).toBe(next);
+  expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('completed');
+});
+
+it('checks readiness after reconciling a prepared continuation reservation', () => {
+  const f = fixture(), id = f.launch();
+  value(f.driver.saveResume(id, '12345678-1234-1234-1234-123456789abc'));
+  const driver = createProductionSessionDriver({ ...f.config, home: f.homes.b, configHome: f.homes.b,
+    maxSessions: 2 });
+  const launch = { operation: 'next', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'next', workingScope: '/work', handles: [] };
+  f.failNextIdentitySave();
+  refused(driver.launch(launch), 'identity save failed');
+  expect(f.journal.reservations?.at(-1)?.continuation?.state).toBe('prepared');
+  f.changePane('❯ 1. Update\n  2. Skip');
+  refused(driver.launch(launch), 'idle prompt');
+  expect(f.journal.reservations).toEqual([]);
+  expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('prepared');
+  expect(f.sends).toBe(0);
+  f.changePane('❯ ');
+  value(driver.launch(launch));
+  expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('completed');
 });
 
 it('records a visible refusal and starts no fresh session when continuation is unavailable', () => {
@@ -372,6 +424,26 @@ it('compacts an idle context wall once and then respawns through agent-owned con
   expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
   expect(f.journal.resumes.topic).toBeUndefined();
+});
+
+it('retains context-wall continuation intent across a cut immediately after kill', () => {
+  const f = fixture(), id = f.launch();
+  const resume = '12345678-1234-1234-1234-123456789abc';
+  value(f.driver.saveResume(id, resume));
+  f.changePane('conversation is too long\n❯ ');
+  expect(value(f.driver.recoverContext(id))).toBe('compact-requested');
+  f.time(1001); f.hook(1001);
+  value(f.driver.observe({ operation: 'observe', processIdentity: id }));
+  f.onKill(() => { throw Error('cut after kill'); });
+  refused(f.driver.recoverContext(id), 'cut after kill');
+  expect(f.journal.resumes.topic).toBeUndefined();
+  const next = f.launch();
+  expect(next).not.toBe(id);
+  const spawned = f.calls.filter(row => row[0] === 'new-session');
+  expect(spawned).toHaveLength(2);
+  expect(spawned[1]).not.toContain('--resume');
+  expect(spawned[1]).not.toContain(resume);
+  expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
 });
 
 it('recovers a delivered no-hook context failure, then respawns after failed compaction', () => {
