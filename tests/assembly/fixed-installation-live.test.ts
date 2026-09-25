@@ -616,7 +616,7 @@ import { createInstalledChannelNativeContextIO } from '../../src/assembly/produc
 import { createConfinedContextDeliveryDriver } from '../../src/assembly/context-delivery.js';
 import { hashBytes } from '../../src/facts/index.js';
 import { canonicalText } from '../../src/decode/canonical.js';
-import { createChannelIO } from '../../scripts/fixed-native-worker-monitor.mjs';
+import { createChannelIO, createMonitorClient } from '../../scripts/fixed-native-worker-monitor.mjs';
 import { realTenFixture } from './real-context-delivery-fixture.js';
 
 const monitorScript = join(process.cwd(), 'scripts/fixed-native-worker-monitor.mjs');
@@ -738,4 +738,118 @@ it('confined delivery driver checks current authority at dispatch and before a d
   expect(value<any[]>(f.runtime.inspectCurrent()).some(row => row.record.type === 'HarnessObservation'
     && row.record.phase === 'input-accepted' && row.record.contextDelivery !== undefined
     && row.record.launch === spec.launch && row.record.step === spec.step)).toBe(false); // delayed acceptance suppressed
+});
+
+// MUST-FIX 3: S8 constructor-bound locator resolution, fixed synchronous client
+// and receipt translation. The monitor below is a SYNTHETIC transport leaf only
+// (test key/time); the store, facts, claim and consumed successor are genuine.
+import { createProductionLaunchBoundary as createInstalledBoundary } from '../../src/assembly/production-launch-boundary.js';
+import { createFactStore } from '../../src/facts/index.js';
+
+function syntheticMonitor(state = 'running', reason = 'ok') {
+  const keys = generateKeyPairSync('ed25519');
+  const digestValue = value(canonical('release')).hash;
+  const calls: any[] = [];
+  let tamper = false;
+  const client = { exchange: (bytes: Uint8Array) => {
+    const request = monitorRequest(unframe(Buffer.from(bytes)));
+    calls.push(request);
+    const launch = request.method === 'launch';
+    const attributable = ['running', 'exited', 'expired', 'stopped'].includes(state);
+    const identity = launch ? launchIdentity(request, 'boot:test') : request.body.launchIdentity;
+    const receipt = { installation: request.installation, machine: request.machine, bootId: attributable ? 'boot:test' : null,
+      releaseDigest: digestValue, request: request.body.request, operation: request.body.operation, digest: request.body.digest,
+      claim: launch ? request.body.claim : null, consumed: launch ? request.body.consumed : null,
+      specification: launch ? request.body.specification : null,
+      launchIdentity: identity ?? null,
+      uid: attributable ? 499 : null, pid: attributable ? 4242 : null,
+      processStartIdentity: attributable ? { bootId: 'boot:test', uniqueId: '9', startTicks: '1' } : null,
+      artifactDigest: digestValue, profileDigest: digestValue, handlePolicyDigest: digestValue, limitsDigest: digestValue,
+      originalDeadline: attributable ? { ownerClockReference: 'clock:test', ownerValidUntil: 100, bootId: 'boot:test',
+        continuousTicks: '200', timebaseNumer: '1', timebaseDenom: '1' } : null,
+      state, reason, sequence: calls.length, observedAt: { clockReference: 'clock:test', value: 50 },
+      freshForMs: 500, currentBootId: 'boot:test', evidenceReferences: attributable ? ['monitor:evidence:1'] : [] };
+    const reply = signReply(request, receipt, 'key:test', keys.privateKey);
+    return frame(tamper ? { ...reply, receipt: { ...reply.receipt, pid: 1 } } : reply);
+  } };
+  const trust = { keyId: 'key:test', publicKey: keys.publicKey, releaseDigest: digestValue, artifactDigest: digestValue,
+    profileDigest: digestValue, handlePolicyDigest: digestValue, limitsDigest: digestValue, currentBootId: 'boot:test',
+    clockReference: 'clock:test', now: 50, authorityValidUntil: 100, millisecondsPerUnit: 1 };
+  return { client, trust, calls, tamperNext: () => { tamper = true; } };
+}
+
+it('S8 resolves exact launch locators from the genuine store, calls the fixed client once and maps the signed receipt', () => {
+  const root = diskRoot();
+  try {
+    const { f, spec, locators, writer, view } = monitorContextFixture(root);
+    const monitor = syntheticMonitor();
+    const installed = (trust: any = monitor.trust) => ({ installation: 'installation:test', machine: 'machine-a',
+      store: createFactStore(f.ctx, view.segment), client: monitor.client, trust: () => trust,
+      generation: () => f.host.current().generation });
+    value(view.refresh());
+    const s8 = createInstalledBoundary(f.c, installed());
+    expect(s8.state).toBe('monitor-installed');
+    // Unavailable trust or a non-exact specification: zero transport calls.
+    expect(refused(createInstalledBoundary(f.c, installed(null)).launch(spec, locators.operation, locators.claim)))
+      .toContain('installed receipt trust unavailable');
+    expect(refused(s8.launch({ ...spec, principal: 'someone-else' }, locators.operation, locators.claim)))
+      .toContain('exact signed launch specification absent');
+    expect(refused(createInstalledBoundary(f.c, installed()).launch(spec, locators.operation, locators.consumed)))
+      .toContain('original dispatch claim absent');
+    expect(monitor.calls).toHaveLength(0);
+    const launched = value(s8.launch(spec, locators.operation, locators.claim));
+    expect(monitor.calls).toHaveLength(1);
+    expect(monitor.calls[0].body).toEqual(locators);       // exactly the genuine owner tuple
+    expect(launched).toMatchObject({ phase: 'launched', launch: spec.id, run: spec.run, detail: 'running:ok',
+      sourceEvidence: ['monitor:evidence:1'] });
+    expect(refused(s8.launch(spec, locators.operation, locators.claim))).toContain('observe instead');
+    expect(monitor.calls).toHaveLength(1);                  // never resent
+    monitor.tamperNext();
+    const tampered = createInstalledBoundary(f.c, installed());
+    expect(refused(tampered.launch(spec, locators.operation, locators.claim))).toContain('invalid receipt signature');
+    view.close(); writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('S8 observation after restart resolves the original tuple and current Six wake, never a new operation', () => {
+  const root = diskRoot();
+  try {
+    const { f, spec, locators, writer, view } = monitorContextFixture(root);
+    const monitor = syntheticMonitor('unknown', 'not-observed');
+    const restarted = () => { value(view.refresh()); return createInstalledBoundary(f.c, { installation: 'installation:test',
+      machine: 'machine-a', store: createFactStore(f.ctx, view.segment), client: monitor.client,
+      trust: () => monitor.trust, generation: () => f.host.current().generation }); };
+    expect(refused(restarted().observe(locators.operation, locators.digest))).toContain('no current admitted wake');
+    expect(monitor.calls).toHaveLength(0);
+    f.time(f.host.current().clock.value + 2);
+    value(f.effects.transport.recover('s8-observe', f.effects.fence, locators.operation,
+      { owner: 'part-eight', observe: () => f.success({ owner: 'part-eight', name: 'OperationObservation', id: 'obs:s8' }) }));
+    const observed = value(restarted().observe(locators.operation, locators.digest));
+    expect(observed).toMatchObject({ phase: 'uncertain', launch: spec.id, detail: 'unknown:not-observed' });
+    const sent = monitor.calls[0];
+    expect(sent.method).toBe('observe');
+    expect(sent.body).toMatchObject({ request: locators.request, operation: locators.operation, digest: locators.digest,
+      launchIdentity: null });
+    expect(refused(restarted().observe('operation:new', locators.digest))).toContain('original operation absent');
+    expect(refused(restarted().observe(locators.operation, digest('changed')))).toContain('original operation absent or changed');
+    expect(monitor.calls).toHaveLength(1);
+    const refusedMonitor = syntheticMonitor('refused-before-release', 'authority');
+    const s8 = createInstalledBoundary(f.c, { installation: 'installation:test', machine: 'machine-a',
+      store: createFactStore(f.ctx, view.segment), client: refusedMonitor.client, trust: () => refusedMonitor.trust,
+      generation: () => f.host.current().generation });
+    expect(value(s8.observe(locators.operation, locators.digest)).phase).toBe('refused');
+    view.close(); writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.runIf(darwin)('M1 synchronous client is the pinned enforcer client role with a bounded timeout and no fallback', () => {
+  const dir = tempRoot();
+  try {
+    const enforcer = buildEnforcer(dir, join(dir, 'absent.sock'));
+    const client = createMonitorClient(enforcer);
+    const started = Date.now();
+    expect(() => client.exchange(frame({ v: 1 }))).toThrow('monitor client refused');
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(() => createMonitorClient('relative/enforcer')).toThrow('absolute pinned enforcer path required');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
