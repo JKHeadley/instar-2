@@ -4,7 +4,7 @@ import type { BoundaryContext, Clock, ProvenanceInput, Result } from '../index.j
 import { hashBytes } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakeAdapterPort, IntakePort, IntakeDisposition } from '../intake/index.js';
-import type { OperationAdapterPort, EffectDoorway, EffectRequest } from '../effects/index.js';
+import type { OperationAdapterPort } from '../effects/index.js';
 import { boundary, ensure, take } from './boundary.js';
 
 export const slackParserDeclarationId = 'slack-intake-v1';
@@ -16,6 +16,7 @@ export interface SlackSelection {
 export interface SlackSocketAuthority {
   readonly owner: 'part-ten';
   readonly incarnation: string;
+  readonly app: string; readonly team: string; readonly bot: string;
   currentIncarnation(): string;
   authenticate(input: Readonly<{ raw: string; route: InboundRoute; at: Clock }>): Result<ProvenanceInput>;
   readCapture(reference: string): Result<string>;
@@ -69,7 +70,9 @@ export function extractSlackEnvelope(raw: string, selection: SlackSelection): Re
 }
 export function createSlackIntakeAdapter(selection: SlackSelection, socket: SlackSocketAuthority,
   context: BoundaryContext): IntakeAdapterPort {
-  ensure(socket.owner === 'part-ten', 'Slack socket authority must be Part Ten');
+  ensure(socket.owner === 'part-ten' && socket.app === selection.app && socket.team === selection.team
+    && socket.bot === selection.bot && socket.incarnation === selection.epoch,
+    'Slack socket identity differs from selected app, workspace, bot or epoch');
   return Object.freeze({ id: slackParserDeclarationId,
     authenticate(raw: string, route: InboundRoute, at: Clock) {
       return boundary('SlackInboundAuthentication', { route }, context, () => {
@@ -93,7 +96,10 @@ export function createSlackIntakeAdapter(selection: SlackSelection, socket: Slac
 export function createSlackIngress(input: Readonly<{ selection: SlackSelection; socket: SlackSocketAuthority;
   intake: IntakePort; facts: FactStorePort; observer: string; boundary: BoundaryContext;
   acknowledge(envelopeId: string): Result<void> }>) {
-  ensure(input.socket.owner === 'part-ten' && input.observer.length > 0, 'Slack ingress needs owner custody');
+  ensure(input.socket.owner === 'part-ten' && input.observer.length > 0
+    && input.socket.app === input.selection.app && input.socket.team === input.selection.team
+    && input.socket.bot === input.selection.bot && input.socket.incarnation === input.selection.epoch,
+    'Slack ingress needs matching owner custody and verified socket identity');
   return Object.freeze({
     receive(raw: string): Result<Readonly<{ receipt: string; disposition: 'admitted' | 'duplicate' | 'held' }>> {
       return boundary('SlackSocketIngress', { hash: hashBytes(raw) }, input.boundary, () => {
@@ -127,17 +133,10 @@ export function createSlackIngress(input: Readonly<{ selection: SlackSelection; 
   });
 }
 /** Candidate only. The fixed profile has not admitted Slack to its local closed set. */
-export function createHeldSlackReplyOperation(selection: SlackSelection, context: BoundaryContext): OperationAdapterPort &
-  Readonly<{ prepare(doorway: EffectDoorway, request: Parameters<EffectDoorway['prepare']>[0]): Result<EffectRequest> }> {
+export function createHeldSlackReplyOperation(selection: SlackSelection, context: BoundaryContext): OperationAdapterPort {
   return Object.freeze({ owner: 'part-ten' as const, id: `slack:v1:${selection.app}:${selection.team}`,
     describe: () => ({ contract: 'slack-reply-held:v1', account: `slack:v1:${selection.app}:${selection.team}`,
       conversation: slackConversation(selection), maxCharge: 0, timeout: 30000, hiddenRetries: 0 as const }),
-    prepare(_doorway: EffectDoorway, request: Parameters<EffectDoorway['prepare']>[0]) {
-      return boundary<EffectRequest>('SlackReplyPreparationHeld', { message: request.message.id }, context, () => {
-        ensure(request.message.purpose === 'ordinary-reply', 'Slack candidate accepts only ordinary replies');
-        throw new Error('Slack local-durable ordinary reply is outside the current fixed-profile closed set');
-      });
-    },
     invoke(input: Parameters<OperationAdapterPort['invoke']>[0]) {
       return boundary<string>('SlackReplyDispatchHeld', { operation: input.operation }, context, () => {
         throw new Error('Slack reply dispatch is held until the constitutional and installed P-08 sets admit it');

@@ -21,8 +21,11 @@ function setup(directory?: string, bind = true) {
   const f = intakeFixture(directory ? { directory } : {});
   const parser = JSON.parse(readFileSync('src/conversation/slack.parser.json', 'utf8')) as object[];
   Object.assign(f.r.context, { references: [...f.r.context.references ?? [],
-    { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' }] });
-  const governed = f.govern([...f.registerInput.sources.map(source => source.declaration), ...parser]);
+    { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' },
+    { provider: 'fixture', id: 'P12-SLACK-PREPARATION' },
+    { provider: 'fixture', id: 'P12-SLACK-REPLY-HELD' }] });
+  const features = JSON.parse(readFileSync('src/conversation/slack.declarations.json', 'utf8')) as object[];
+  const governed = f.govern([...f.registerInput.sources.map(source => source.declaration), ...parser, ...features]);
   const hostPort = value(createIntakePort({ ...f.deps, governance: governed.governance }));
   Object.assign(f.context, { decode: { ...f.context.decode, register: { ...f.context.decode.register,
     entries: [...f.context.decode.register.entries, slackParserDeclarationId],
@@ -33,7 +36,7 @@ function setup(directory?: string, bind = true) {
   let current = 'socket:1';
   const proof = f.f.proof({ id: 'alice', kind: 'person' }, { id: 'alice', kind: 'person' }, 'identity', true);
   f.syncCaptures();
-  const socket = { owner: 'part-ten' as const, incarnation: 'socket:1', currentIncarnation: () => current,
+  const socket = { owner: 'part-ten' as const, app: selection.app, team: selection.team, bot: selection.bot, incarnation: 'socket:1', currentIncarnation: () => current,
     authenticate: () => { f.trace.push('authenticate'); return f.f.success({ ...proof.input, adapter: slackParserDeclarationId, evidence: { kind: 'channel' as const, authenticated: true } }); },
     readCapture: (reference: string) => f.f.success(f.f.captures[reference] ?? ''),
   };
@@ -54,6 +57,9 @@ describe('Slack preparation', () => {
     expect(escapeMrkdwn('<@U12345678>')).toBe('&lt;@U12345678&gt;');
     expect(validateChannelId('D12345678')).toBe(true);
     expect(validateChannelId('../etc')).toBe(false);
+    expect(JSON.parse(readFileSync('src/conversation/slack.declarations.json', 'utf8'))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'slack-ordinary-reply', status: 'dark',
+        profile: expect.objectContaining({ reversibility: 'irreversible' }) })]));
   });
   it('extracts stable event identity separately from the delivery envelope', () => {
     const first = extractSlackEnvelope(raw, selection);
@@ -93,7 +99,7 @@ describe('Slack preparation', () => {
     const s = setup();
     const failed = createIntakePort({ ...s.deps, storage: { ...s.f.storage, append() { throw new Error('disk down'); } } });
     const port = value(failed);
-    const noReceipt = createSlackIngress({ selection, socket: { owner: 'part-ten', incarnation: 'socket:1',
+    const noReceipt = createSlackIngress({ selection, socket: { owner: 'part-ten', app: selection.app, team: selection.team, bot: selection.bot, incarnation: 'socket:1',
       currentIncarnation: () => 'socket:1', authenticate: () => s.f.f.success({} as never),
       readCapture: reference => s.f.f.success(s.f.f.captures[reference] ?? '') },
       intake: port, facts: s.facts, observer: s.deps.author.principal.id,
@@ -109,12 +115,32 @@ describe('Slack preparation', () => {
     const stranger = raw.replace('U12345678', 'U99999999');
     expect(value(s.ingress.receive(stranger)).disposition).toBe('held');
     const adapter = createHeldSlackReplyOperation(selection, s.boundary);
-    let calls = 0;
-    const doorway = { prepare() { calls += 1; throw new Error('should not prepare'); } } as never;
-    refused(adapter.prepare(doorway, { message: { id: 'reply', purpose: 'ordinary-reply' } } as never), 'outside the current fixed-profile');
     refused(adapter.invoke({ operation: 'attempt', claim: 'claim', digest: 'hash', message: { account: adapter.describe().account,
       conversation: adapter.describe().conversation, text: 'hello', purpose: 'ordinary-reply' } } as never), 'dispatch is held');
-    expect(calls).toBe(0);
+  });
+  it('refuses a different selected app or workspace and never sends an ack', () => {
+    const s = setup();
+    expect(() => prepareSlackIntake({ shared: s.deps, selection: { ...selection, team: 'T99999999' },
+      socket: s.socket, boundary: s.boundary, acknowledge: envelope => { s.ack.push(envelope); return s.f.f.success(undefined); } }))
+      .toThrow('socket identity differs');
+    refused(s.ingress.receive(raw.replace('T12345678', 'T99999999')));
+    expect(s.ack).toEqual([]);
+  });
+  it('holds a non-text message with a durable receipt and no reply operation', () => {
+    const s = setup();
+    const unsupported = raw.replace('"text":"hello from Slack"', '"files":[{"id":"F12345678"}]');
+    expect(value(s.ingress.receive(unsupported)).disposition).toBe('held');
+    expect(s.ack).toEqual(['Ev1']);
+    expect(value(s.facts.read()).some(f => f.kind === 'intake-held')).toBe(true);
+  });
+  it('a post timeout stays uncertain and never retries through the client', async () => {
+    let calls = 0;
+    const client = createSlackApiClient({ owner: 'part-ten', async post() { calls += 1; throw new Error('timeout after invocation'); } },
+      { type: 'SecretRef', schemaVersion: 1, vault: 'vault', name: 'slack-fixture' } as never, 1000);
+    expect(await client.call('chat.postMessage', { text: 'hello' })).toMatchObject({ ok: false, uncertain: true });
+    expect(calls).toBe(1);
+    expect(await client.call('chat.postMessage', { text: 'x'.repeat(9000) })).toMatchObject({ error: 'request-too-large' });
+    expect(calls).toBe(1);
   });
   it('parses Slack API success, permanent and rate-limit responses without retrying a send', async () => {
     const calls: string[] = [];
