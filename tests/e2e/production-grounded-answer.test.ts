@@ -2,7 +2,8 @@
 // certification: the provider is a local recorded HTTP stand-in, approvals are synthetic,
 // and the answer is scripted. It proves wiring: the bytes the model adapter receives are
 // Seven's capture, and that capture holds the delivered manifest's actual evidence.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it } from 'vitest';
@@ -151,6 +152,46 @@ it('the real Eight provider doorway holds the grounded request at its current 4,
  * (the delivered status body's scope) and the generation (the delivery record) come from that
  * store; the context is re-rendered in `reconstruct` mode; and Seven's canonical submission is
  * rebuilt from the RETAINED policy inputs. Its digest must equal Five's durable pending digest. */
+/** Fixture storage for a held turn's restart inputs: the capture bytes its durable delivery
+ * record requires (its manifest's message captures and the capture-backed selections of the
+ * briefing bodies it names), content-addressed, plus the exact policy inputs as canonical bytes.
+ * The set is derived from durable records, never from what a render happened to read. */
+function retainHeldInputs(root, facts, deliveryId, captures, policyBytes) {
+  const delivery = facts.find(row => row.id === deliveryId).body.record;
+  const references = delivery.contextManifest.filter(row => row.class === 'message').map(row => row.reference);
+  for (const row of delivery.contextManifest.filter(entry => entry.class !== 'message')) {
+    const { items } = JSON.parse(facts.find(fact => fact.id === row.reference).body.content);
+    for (const item of items) if (item.source.capture) references.push(item.source.capture);
+  }
+  const required = [...new Set(references)];
+  mkdirSync(join(root, 'captures'), { recursive: true });
+  for (const reference of required) {
+    const bytes = captures.read(reference);
+    if (bytes === null) throw Error(`required capture unavailable: ${reference}`);
+    writeFileSync(join(root, 'captures', createHash('sha256').update(bytes, 'utf8').digest('hex')), bytes);
+  }
+  writeFileSync(join(root, 'captures.json'), JSON.stringify(required));
+  writeFileSync(join(root, 'policy.json'), policyBytes);
+  return required;
+}
+/** Reopen the retained inputs over the files alone. Each retained capture is hash-verified and
+ * re-registered in the fact context (as the file custody's own read does), so decoding, the
+ * reopened graph and the reconstruct render all read file bytes; the policy is parsed from its file. */
+function reopenHeldInputs(root, context) {
+  const read = reference => {
+    const hash = reference.slice(reference.indexOf('sha256:')), file = join(root, 'captures', hash.slice(7));
+    if (!/^sha256:[a-f0-9]{64}$/.test(hash) || !existsSync(file)) return null;
+    const bytes = readFileSync(file, 'utf8');
+    if ('sha256:' + createHash('sha256').update(bytes, 'utf8').digest('hex') !== hash) throw Error('retained capture changed');
+    context.captures[reference] = { hash, bytes, byteLength: Buffer.byteLength(bytes), status: 'available' };
+    context.decode.captures[reference] = bytes;
+    return bytes;
+  };
+  for (const reference of JSON.parse(readFileSync(join(root, 'captures.json'), 'utf8')))
+    if (read(reference) === null) throw Error(`retained capture missing: ${reference}`);
+  return { captures: { read }, policy: JSON.parse(readFileSync(join(root, 'policy.json'), 'utf8')) };
+}
+
 function heldFromRecords(f, store, captures, policy) {
   // Ten's assembly runtime/history and Five's run graph, both reopened over the new store.
   const reopened = f.groundingFor({ spine: createAssemblySpine(f.host, { context: f.ctx, privateKey }, store), scope: 'scope:minimal' });
@@ -180,7 +221,7 @@ function heldFromRecords(f, store, captures, policy) {
 }
 
 it('holds the preview-envelope overflow visibly before Seven or any provider IO, and reconstructs and reports the same hold after restart', async () => {
-  const { f, s, ready, ground, rendered } = grounded();
+  const { f, s, ready, ground, rendered, directory } = grounded();
   const http = await localProvider();
   try {
     // The question Seven would receive is the admitted input's own text.
@@ -188,10 +229,6 @@ it('holds the preview-envelope overflow visibly before Seven or any provider IO,
     const submission = s.submission(question, rendered);
     const transition = f.start(ready, ground, 'operation:1');
     value(f.graph.transition({ ...transition, step: { ...transition.step, operation: { ...transition.step.operation, digest: submission.digest } } }));
-    // The policy inputs of the held turn, retained as canonical bytes (not live objects).
-    const retainedPolicy = value(canonical({ name: 'subscription-preview-v2', provider: s.host.description.provider,
-      model: s.host.description.model, route: ROUTE, settings: SETTINGS, outputSchema: OUTPUT_SCHEMA, floor: f.floor,
-      point: 'judgment', bounds: previewBounds })).bytes;
     const held = { turn: 'step:operation:1', route: ROUTE, policy: 'subscription-preview-v2', question, context: rendered,
       submitted: submission.bytes, retained: [f.opening.id, f.bindings().delivery], bounds: previewBounds };
     const detail = refused(checkGroundingEnvelope(held, f.p.context), 'grounding-envelope-held turn=step:operation:1');
@@ -199,6 +236,15 @@ it('holds the preview-envelope overflow visibly before Seven or any provider IO,
     expect(detail).toContain(`combined-prompt=${previewBounds.systemBytes + Buffer.byteLength(submission.bytes)}/4096`);
     expect(detail).toContain(`retained=${f.opening.id}`);
     const originalHold = groundingEnvelopeHold(held);
+    // Retain the held turn's restart inputs in fixture storage: the capture bytes its durable
+    // delivery record requires, and the exact policy inputs as canonical bytes. Neither the
+    // policy object nor its bytes survive this block.
+    const retainedRoot = join(directory, 'held-turn');
+    const required = retainHeldInputs(retainedRoot, value(f.store.read()), f.bindings().delivery, f.captures,
+      value(canonical({ name: 'subscription-preview-v2', provider: s.host.description.provider,
+        model: s.host.description.model, route: ROUTE, settings: SETTINGS, outputSchema: OUTPUT_SCHEMA, floor: f.floor,
+        point: 'judgment', bounds: previewBounds })).bytes);
+    expect(required).toContain(f.initialCapture.reference);
     // Time and the owner plan move on: the old turn has no current permission to dispatch.
     f.nextInput('A later question arrives while turn one is held.');
     f.time(f.deps.clock().value + f.plan.statusMaxAge + 1);
@@ -206,7 +252,16 @@ it('holds the preview-envelope overflow visibly before Seven or any provider IO,
     // request, submission, graph read or old plan binding is reused.
     const store = createFactStore(f.ctx, f.storage);
     expect(value(store.read()).map(row => row.id)).toEqual(value(f.store.read()).map(row => row.id));
-    const rebuilt = heldFromRecords(f, store, f.captures, JSON.parse(retainedPolicy));
+    // The original process's capture state is gone: its accessor refuses and its in-memory
+    // bytes are dropped. Reconstruction reads only the reopened fixture-storage readers.
+    f.captures.read = () => { throw Error('original capture accessor unavailable after restart'); };
+    for (const reference of required) { delete f.ctx.captures[reference]; delete f.ctx.decode.captures[reference]; }
+    expect(() => f.captures.read(f.initialCapture.reference)).toThrow('unavailable after restart');
+    expect(f.ctx.captures[f.initialCapture.reference]).toBeUndefined();
+    // Without the retained files the restart cannot reconstruct: nothing in memory stands in.
+    expect(() => heldFromRecords(f, store, f.captures, null)).toThrow('decode:');
+    const retained = reopenHeldInputs(retainedRoot, f.ctx);
+    const rebuilt = heldFromRecords(f, store, retained.captures, retained.policy);
     refused(f.render({ store, bindings: rebuilt.bindings }), 'bindings differ from the current owner plan');
     expect(rebuilt.context).toBe(rendered);
     // The reconstructed diagnostic travels with the existing installation hold report.
