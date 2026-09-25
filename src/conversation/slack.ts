@@ -6,6 +6,7 @@ import type { FactStorePort } from '../facts/index.js';
 import type { InboundRoute, IntakeAdapterPort, IntakePort, IntakeDisposition } from '../intake/index.js';
 import type { OperationAdapterPort } from '../effects/index.js';
 import { boundary, ensure, take } from './boundary.js';
+import { validateChannelId } from './slack-sanitize.js';
 
 export const slackParserDeclarationId = 'slack-intake-v1';
 export const slackFeatureDeclarationId = 'slack-conversation-adapter';
@@ -40,6 +41,13 @@ const timestamp = (v: unknown, field: string): string => {
   return s;
 };
 export function slackConversation(selection: SlackSelection): string {
+  ensure(validateChannelId(selection.channel), 'Slack selected channel is malformed');
+  if (selection.thread === null) ensure(selection.channel.startsWith('D'), 'Slack root selection must be a DM');
+  else {
+    ensure(selection.channel.startsWith('C') || selection.channel.startsWith('G'),
+      'Slack thread selection must be a channel');
+    timestamp(selection.thread, 'selected thread root');
+  }
   return `slack:v1:${selection.app}:${selection.team}:${selection.channel}:${selection.thread ?? 'dm'}`;
 }
 export function extractSlackEnvelope(raw: string, selection: SlackSelection): Readonly<{
@@ -73,6 +81,7 @@ export function createSlackIntakeAdapter(selection: SlackSelection, socket: Slac
   ensure(socket.owner === 'part-ten' && socket.app === selection.app && socket.team === selection.team
     && socket.bot === selection.bot && socket.incarnation === selection.epoch,
     'Slack socket identity differs from selected app, workspace, bot or epoch');
+  slackConversation(selection);
   return Object.freeze({ id: slackParserDeclarationId,
     authenticate(raw: string, route: InboundRoute, at: Clock) {
       return boundary('SlackInboundAuthentication', { route }, context, () => {

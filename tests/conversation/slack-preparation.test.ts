@@ -17,9 +17,12 @@ const selection: SlackSelection = { app: 'A12345678', team: 'T12345678', bot: 'B
   operator: 'U12345678', principal: 'alice', channel: 'D12345678', thread: null, epoch: 'socket:1' };
 const raw = readFileSync('tests/conversation/fixtures/slack/dm-message.json', 'utf8').trim();
 const changed = raw.replace('hello from Slack', 'changed payload');
-function setup(directory?: string, bind = true) {
+function setup(directory?: string, bind = true, selected: SlackSelection = selection, envelope = raw) {
   const f = intakeFixture(directory ? { directory } : {});
-  const parser = JSON.parse(readFileSync('src/conversation/slack.parser.json', 'utf8')) as object[];
+  const sourceParser = JSON.parse(readFileSync('src/conversation/slack.parser.json', 'utf8')) as Array<{ status: string }>;
+  // Synthetic shape/custody exercise only. Four's constructor requires a live parser.
+  expect(sourceParser[0]?.status).toBe('dark');
+  const parser = sourceParser.map(declaration => ({ ...declaration, status: 'live' }));
   Object.assign(f.r.context, { references: [...f.r.context.references ?? [],
     { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' },
     { provider: 'fixture', id: 'P12-SLACK-PREPARATION' },
@@ -30,13 +33,13 @@ function setup(directory?: string, bind = true) {
   Object.assign(f.context, { decode: { ...f.context.decode, register: { ...f.context.decode.register,
     entries: [...f.context.decode.register.entries, slackParserDeclarationId],
     methods: [...f.context.decode.register.methods, 'telegram-sender'] } } });
-  const route = extractSlackEnvelope(raw, selection).route;
+  const route = extractSlackEnvelope(envelope, selected).route;
   if (bind) f.bind({ adapter: slackParserDeclarationId, channel: route.channel, sender: route.sender,
     identityEpoch: route.identityEpoch, principalId: 'alice' });
   let current = 'socket:1';
   const proof = f.f.proof({ id: 'alice', kind: 'person' }, { id: 'alice', kind: 'person' }, 'identity', true);
   f.syncCaptures();
-  const socket = { owner: 'part-ten' as const, app: selection.app, team: selection.team, bot: selection.bot, incarnation: 'socket:1', currentIncarnation: () => current,
+  const socket = { owner: 'part-ten' as const, app: selected.app, team: selected.team, bot: selected.bot, incarnation: 'socket:1', currentIncarnation: () => current,
     authenticate: () => { f.trace.push('authenticate'); return f.f.success({ ...proof.input, adapter: slackParserDeclarationId, evidence: { kind: 'channel' as const, authenticated: true } }); },
     readCapture: (reference: string) => f.f.success(f.f.captures[reference] ?? ''),
   };
@@ -44,7 +47,7 @@ function setup(directory?: string, bind = true) {
   const deps = { ...f.deps, governance: governed.governance };
   const facts = createFactStore(f.context, f.storage);
   const ack: string[] = [];
-  const prepared = prepareSlackIntake({ shared: deps, selection, socket, boundary,
+  const prepared = prepareSlackIntake({ shared: deps, selection: selected, socket, boundary,
     acknowledge: envelope => { ack.push(envelope); return f.f.success(undefined); } });
   if ('kind' in prepared) throw new Error(prepared.detail);
   const { intake, ingress, adapter } = prepared;
@@ -67,6 +70,25 @@ describe('Slack preparation', () => {
     expect(retry.route).toEqual(first.route);
     expect(retry.envelopeId).toBe(first.envelopeId);
     expect(extractSlackEnvelope(changed, selection).route).toEqual(first.route);
+  });
+  it('rejects a channel root and admits an exactly selected channel thread', () => {
+    const channel = { ...selection, channel: 'C12345678' };
+    const channelEnvelope = raw.replace('D12345678', 'C12345678');
+    const base = setup();
+    const prepare = (selected: SlackSelection) => prepareSlackIntake({ shared: base.deps, selection: selected,
+      socket: base.socket, boundary: base.boundary,
+      acknowledge: envelope => { base.ack.push(envelope); return base.f.f.success(undefined); } });
+    expect(() => prepare(channel)).toThrow('root selection must be a DM');
+    expect(() => extractSlackEnvelope(channelEnvelope, channel)).toThrow('root selection must be a DM');
+    expect(base.ack).toEqual([]);
+    const thread = { ...channel, thread: '1727200000.000001' };
+    const threadedEnvelope = channelEnvelope.replace('"text":"hello from Slack"',
+      '"thread_ts":"1727200000.000001","text":"hello from Slack"');
+    const s = setup(undefined, true, thread, threadedEnvelope);
+    expect(value(s.ingress.receive(threadedEnvelope)).disposition).toBe('admitted');
+    expect(s.ack).toEqual(['Ev1']);
+    expect(() => prepare({ ...thread, thread: 'not-a-root' }))
+      .toThrow('selected thread root is malformed');
   });
   it('writes the exact envelope capture and receipt before ack, then uses the shared intake owner', () => {
     const s = setup();

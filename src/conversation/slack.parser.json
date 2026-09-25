@@ -4,7 +4,7 @@
     "schemaVersion": 1,
     "id": "slack-intake-v1",
     "kind": "parsers",
-    "status": "live",
+    "status": "dark",
     "requiredFacts": {
       "fixture": "P12-SLACK-ENVELOPE-CAPTURE",
       "authenticationClass": [

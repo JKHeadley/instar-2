@@ -1,12 +1,8 @@
 /**
- * Input sanitization for Slack adapter.
+ * Pure input normalization helpers for the Slack adapter.
  *
- * Prevents prompt injection, path traversal, and SSRF attacks
- * by validating and cleaning user-controlled fields before use.
- *
- * CONTRACT-EVIDENCE: EXEMPT — pure string-validation/slug helpers; this module
- * makes NO Slack API calls and touches no API-contract surface. The added
- * slugifyChannelName is covered by tests/unit/slack-channel-slug.test.ts.
+ * Validates and cleans selected user-controlled strings; this module makes no Slack API calls.
+ * The selected-route check uses validateChannelId before intake admission.
  */
 
 const CHANNEL_ID_PATTERN = /^[CDG][A-Z0-9]{8,12}$/;
@@ -55,7 +51,7 @@ export function validateChannelName(name: string): boolean {
  * lowercase, non-[a-z0-9] runs collapsed to a single hyphen, leading/trailing
  * hyphens trimmed, and clamped to Slack's 80-char limit.
  *
- * Mirrors the session-channel slug logic in SlackAdapter.
+ * Retained from the 1.x session-channel slug logic as a pure helper.
  */
 export function slugifyChannelName(name: string): string {
   return name

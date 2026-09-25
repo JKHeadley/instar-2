@@ -461,7 +461,7 @@ export function formatForSlack(
   };
 }
 
-// ─── Wire-up helper (the single outbound chokepoint contract) ───────────────
+// ─── Pure legacy formatting helper ────────────────────────────────────────────
 
 /** Slack Web API methods whose `text` is a user-visible message body. */
 const SEND_METHODS = new Set(['chat.postMessage', 'chat.update', 'chat.postEphemeral']);
