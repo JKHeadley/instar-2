@@ -5,10 +5,11 @@ import { createProductionRunAdmission, decodeLoopPolicy } from '../../src/transp
 import { createLiveInputAssemblyFixture, value, refused, digest } from './live-input-owner-fixture.js';
 import { assemblyInput } from './fixture.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { createServer } from 'node:net';
 import { canonical } from '../../src/index.js';
 import { frame, unframe, request as monitorRequest, signReply, verifyReply,
   launchIdentity, OfflineJournal } from '../../scripts/fixed-native-worker-monitor.mjs';
@@ -368,3 +369,108 @@ it('installer verify checks the inert end state and rollback removes only ledger
     'accounts-rollback', '--uid', '499', '--gid', '499').err).toContain('uninstall it first');
   expect(provision(cleanHost, 'accounts-rollback').err).toContain('no accounts ledger');
 });
+
+// Native enforcer (M2): compiled with the recorded clang command into the test
+// temp directory. These are unprivileged builder-local OS observations on the
+// running macOS build, NOT installed-host evidence. Non-macOS hosts do not run them.
+const darwin = process.platform === 'darwin';
+function buildEnforcer(dir: string, socket?: string) {
+  const out = join(dir, 'rel', 'bin', 'instar-worker-enforcer');
+  mkdirSync(join(dir, 'rel', 'bin'), { recursive: true });
+  const define = socket ? [`-DINSTAR_CONTROL_SOCKET="${socket}"`] : [];
+  const cc = spawnSync('/usr/bin/clang', ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', ...define,
+    '-o', out, join(process.cwd(), 'scripts/fixed-native-worker-enforcer.c')], { encoding: 'utf8' });
+  expect(cc.stderr).toBe('');
+  expect(cc.status).toBe(0);
+  return out;
+}
+function materializeProfile(dir: string) {
+  const rel = join(dir, 'rel'), slot = join(dir, 'slot');
+  mkdirSync(slot, { recursive: true });
+  const ancestors: string[] = [];
+  for (let p = rel; p !== '/'; ) { p = dirname(p); ancestors.push(`(literal "${p}")`); }
+  const profile = readFileSync(join(process.cwd(), 'deploy/macos/fixed-worker/worker.sb'), 'utf8')
+    .replaceAll('@RELEASE_DIR@', rel).replaceAll('@SLOT_DIR@', slot)
+    + `\n; test-only: ancestors of the temporary release path\n(allow file-read-metadata ${ancestors.join(' ')})\n`;
+  expect(profile).not.toMatch(/@[A-Z_]+@/);
+  writeFileSync(join(rel, 'worker.sb'), profile);
+  return join(rel, 'worker.sb');
+}
+const tempRoot = () => realpathSync(mkdtempSync(join(tmpdir(), 'instar-native-')));
+
+it.runIf(darwin)('native enforcer compiles warning-free and the confined chain denies writes, network and children', () => {
+  const dir = tempRoot();
+  try {
+    const enforcer = buildEnforcer(dir), profile = materializeProfile(dir);
+    mkdirSync(join(dir, 'scratch'));
+    const lines: Record<string, string> = {};
+    for (const which of ['nowrite', 'children', 'gate']) {
+      const run = spawnSync(enforcer, ['feasibility', which, profile, join(dir, 'scratch')],
+        { encoding: 'utf8', cwd: join(dir, 'slot'), timeout: 30_000 });
+      for (const line of run.stdout.split('\n')) {
+        const m = /^feasibility\.([a-z-]+)=(PASS|FAIL) (.*)$/.exec(line);
+        if (m) lines[m[1]] = `${m[2]} ${m[3]}`;
+      }
+    }
+    for (const name of ['nowrite', 'permitted-read', 'network', 'children', 'gate'])
+      expect(lines[name], name).toMatch(/^PASS /);
+    const unknown = spawnSync(enforcer, ['stop'], { encoding: 'utf8' });
+    expect(unknown.status).toBe(2);
+    const supervise = spawnSync(enforcer, ['supervise'], { encoding: 'utf8' });
+    expect(supervise.status).toBe(78);
+    expect(supervise.stderr).toContain('owner bindings unavailable; refusing');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 60_000);
+
+it.runIf(darwin)('native feasibility reports a verdict for every mandatory case and fails closed on an uninstallable limit', () => {
+  const dir = tempRoot();
+  try {
+    const enforcer = buildEnforcer(dir), profile = materializeProfile(dir);
+    mkdirSync(join(dir, 'scratch'));
+    const run = spawnSync(enforcer, ['feasibility', 'memory', profile, join(dir, 'scratch')],
+      { encoding: 'utf8', cwd: join(dir, 'slot'), timeout: 60_000 });
+    const memory = run.stdout.split('\n').find(line => line.startsWith('feasibility.memory='));
+    // A limit the kernel will not install must stop the launch before release
+    // (outcome 2), never run the worker unbounded.
+    expect(memory).toMatch(/outcome=(2|3) /);
+    expect(run.stdout).toMatch(/feasibility\.limit-raise=PASS/);
+    const task = spawnSync(enforcer, ['feasibility', 'task', profile, join(dir, 'scratch')],
+      { encoding: 'utf8', cwd: join(dir, 'slot'), timeout: 30_000 });
+    expect(task.stdout).toMatch(/feasibility\.task=(PASS|FAIL) task right acquired pre-gate: binding pre-exec=valid/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 90_000);
+
+it.runIf(darwin)('native client role relays exactly one bounded canonical frame and refuses trailing bytes', async () => {
+  const dir = tempRoot();
+  const socket = join(dir, 'control.sock');
+  const { launch } = monitorFixture();
+  const replyBytes = frame({ echo: launch.challenge });
+  const server = createServer(connection => {
+    const chunks: Buffer[] = [];
+    connection.on('data', chunk => chunks.push(chunk));
+    connection.on('end', () => {
+      const received = Buffer.concat(chunks);
+      connection.end(received.equals(frame(launch)) ? replyBytes : Buffer.alloc(0));
+    });
+  });
+  await new Promise<void>(resolve => server.listen(socket, resolve));
+  const client = (input: Buffer) => new Promise<{ status: number | null; out: Buffer }>(resolve => {
+    const child = spawn(buildEnforcer(dir, socket), ['client'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const out: Buffer[] = [];
+    child.stdout.on('data', chunk => out.push(chunk));
+    child.on('close', status => resolve({ status, out: Buffer.concat(out) }));
+    child.stdin.end(input);
+  });
+  try {
+    const ok = await client(frame(launch));
+    expect(ok.status).toBe(0);
+    expect(ok.out.equals(replyBytes)).toBe(true);
+    expect((await client(Buffer.concat([frame(launch), Buffer.from('x')]))).status).toBe(2);
+    const oversized = Buffer.alloc(4); oversized.writeUInt32BE(65_537);
+    expect((await client(oversized)).status).toBe(2);
+    server.close();
+    const absent = await client(frame(launch));
+    expect(absent.status).toBe(2);
+    expect(absent.out.length).toBe(0);
+  } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
+}, 60_000);

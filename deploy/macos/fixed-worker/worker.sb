@@ -1,0 +1,50 @@
+(version 1)
+; Fixed M4-L loading-worker profile (M3). Deny by default.
+; The installer materializes exactly two tokens with absolute root-owned paths
+; at staging, and the materialized bytes are what review pins:
+;   @RELEASE_DIR@  /Library/Instar2/m4-launch/releases/<release-digest>
+;   @SLOT_DIR@     /private/var/instar-worker/slot-0
+; Nothing here is supplied by a worker, a request or the agent.
+(deny default)
+
+; Execute only the pinned runtime and enforcer inside the immutable release.
+(allow process-exec
+  (literal "@RELEASE_DIR@/runtime/node")
+  (literal "@RELEASE_DIR@/bin/instar-worker-enforcer"))
+
+; Read/map the pinned release closure and the empty read-only working slot.
+(allow file-read* file-map-executable (subpath "@RELEASE_DIR@"))
+(allow file-read* (subpath "@SLOT_DIR@"))
+
+; Named OS runtime exceptions required by dyld/libSystem (read/map only).
+; Attack neighbor: any path outside these subpaths is denied (tested).
+(allow file-read* file-map-executable
+  (subpath "/usr/lib")
+  (subpath "/System/Library/Frameworks")
+  (subpath "/System/Library/PrivateFrameworks")
+  (subpath "/System/Cryptexes/OS")
+  (subpath "/System/Volumes/Preboot/Cryptexes/OS"))
+; Ancestor metadata of the fixed release and slot paths (path resolution only).
+(allow file-read-metadata
+  (literal "/") (literal "/private") (literal "/private/var") (literal "/private/var/instar-worker")
+  (literal "/Library") (literal "/Library/Instar2") (literal "/Library/Instar2/m4-launch")
+  (literal "/Library/Instar2/m4-launch/releases"))
+; libSystem startup reads the root directory entry itself (measured: without it
+; every process aborts). Attack neighbor: reading "/" lists top-level names only;
+; no file under "/" becomes readable (tested by the nowrite/read probes).
+(allow file-read-data (literal "/"))
+; The runtime's TLS library reads its system configuration at startup (measured:
+; node exits "OpenSSL configuration error" without it). Read-only, one file.
+(allow file-read* (literal "/System/Library/OpenSSL/openssl.cnf"))
+(allow file-read-data (literal "/dev/null") (literal "/dev/urandom") (literal "/dev/random"))
+
+; Runtime introspection needed by the runtime's startup (read-only sysctls).
+(allow sysctl-read)
+
+; Explicit denials kept visible for review (deny default already covers them).
+(deny process-fork)
+(deny network*)
+(deny mach-lookup)
+(deny file-write*)
+(deny process-info* (with no-report))
+(deny signal)

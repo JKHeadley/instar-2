@@ -63,6 +63,32 @@ group (never taken over), any pre-existing fixed path, an ID outside 450–499 o
 already in use, a non-macOS host or unknown architecture, unknown inventory
 keys, and a synthetic inventory combined with `--apply`.
 
+## Native package files and the feasibility gate
+
+- `scripts/fixed-native-worker-enforcer.c` (M2). Build command, recorded:
+  `/usr/bin/clang -std=c11 -O2 -Wall -Wextra -Werror -o instar-worker-enforcer scripts/fixed-native-worker-enforcer.c`.
+  Its roles are `client`, `bootstrap`, `guard`, `supervise`, `feasibility <case>` and `probe <payload>`.
+  `supervise` refuses (exit 78) until the reviewed release and the installed owner bindings exist.
+- `deploy/macos/fixed-worker/worker.sb` (M3). A deny-by-default profile with two tokens,
+  `@RELEASE_DIR@` and `@SLOT_DIR@`, materialized at staging. It carries three measured, named
+  exceptions: read-data of `/`, the OpenSSL config file, and metadata on the release/slot parent folders.
+- `deploy/macos/fixed-worker/ai.instar.worker-monitor.plist` (M4). One token, `@RELEASE_DIR@`. Only
+  the supervisor is kept alive, and no global resource keys are set.
+
+Run the feasibility cases on the staged binaries (unprivileged, isolated temp targets):
+`<release>/bin/instar-worker-enforcer feasibility all <release>/worker.sb <empty scratch dir> <release>/runtime/node`.
+A single FAIL keeps this worker mode unavailable. Do not broaden the mechanism to make it pass.
+
+Builder-local result on Studio, macOS 26.5.2 (25F84) arm64, 2026-09-24 (unprivileged, NOT installed-host evidence):
+
+| case | result |
+|---|---|
+| nowrite, permitted-read, network, children, gate, limit-raise | PASS |
+| memory | FAIL: the kernel rejects RLIMIT_AS below about 412 GiB, so the 8 GiB address-space ceiling cannot be installed. The bootstrap then refuses before release. |
+| cpu | FAIL: RLIMIT_CPU=1s with SIGXCPU ignored is not terminated by the kernel (8 s wall, 3 threads). |
+| task, task-runtime | FAIL: a task right taken before exec loses its binding after any exec, even a direct exec with no sandbox. |
+| guard (4 faults) | FAIL: the arm/ack/lapse logic runs, but termination depends on the lost task right. No PID-lookup kill is used. |
+
 ## Stage 2 — monitor install (refusing)
 
 `install`, `uninstall` refuse until the monitor release manifest (enforcer
