@@ -86,9 +86,11 @@ describe('grounding builder', () => {
       { at: T0, id: 'test-message-8', from: 'user', text: 'ordinary prose about passwords' },
       { at: T0 + 1, id: 'test-message-9', from: 'user', text: 'password=synthetic-review-password-123' },
       { at: T0 + 2, id: 'test-message-10', from: 'user', text: '{"password":"synthetic-review-password-123"}' },
+      { at: T0 + 3, id: 'short-secret', from: 'user', text: '{"password":"abc"}' },
     ] }));
     expect(g.text).toContain('ordinary prose about passwords');
     expect(g.text).not.toContain('synthetic-review-password-123');
+    expect(g.text).not.toContain('"abc"');
     expect(g.text).toContain('[credential withheld]');
   });
 
@@ -100,7 +102,7 @@ describe('grounding builder', () => {
   });
 
   it('uses the byte allowance for all 31 short messages and complete message bodies', () => {
-    const conversation = Array.from({ length: 31 }, (_, i) => ({ at: T0 + i, id: 'test-message-11', from: 'agent' as const,
+    const conversation = Array.from({ length: 31 }, (_, i) => ({ at: T0 + i, id: `short-${i}`, from: 'agent' as const,
       text: i === 0 ? 'FIRST_DECISION_' + 'x'.repeat(700) : `message ${i}` }));
     const g = buildGrounding(base({ conversation }));
     expect(g.included).toMatchObject({ messages: 31, trimmed: false });
@@ -108,7 +110,7 @@ describe('grounding builder', () => {
   });
 
   it('marks over-budget omissions and accepts only an owner summary covering the omitted history', () => {
-    const conversation = Array.from({ length: 220 }, (_, i) => ({ at: T0 + i, id: 'test-message-12', from: 'agent' as const,
+    const conversation = Array.from({ length: 220 }, (_, i) => ({ at: T0 + i, id: `history-${i}`, from: 'agent' as const,
       text: `history ${i} ${'x'.repeat(450)}` }));
     const uncovered = buildGrounding(base({ conversation }));
     expect(uncovered.included.trimmed).toBe(true);

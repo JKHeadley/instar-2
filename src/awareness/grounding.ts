@@ -99,8 +99,8 @@ const credentialShapes: readonly RegExp[] = [
   /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}/g,
   /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi,
-  /\b(?:password|passwd|passphrase|secret|token|api[_-]?key|auth[_-]?token|access[_-]?key)\s*[:=]\s*["']?[^\s"']{8,}/gi,
-  /["'](?:password|passwd|passphrase|secret|token|api[_-]?key|auth[_-]?token|access[_-]?key)["']\s*:\s*["'][^"'\r\n]{8,}["']/gi,
+  /\b(?:password|passwd|passphrase|secret|token|api[_-]?key|auth[_-]?token|access[_-]?key)\s*[:=]\s*["']?[^\s"']+/gi,
+  /["'](?:password|passwd|passphrase|secret|token|api[_-]?key|auth[_-]?token|access[_-]?key)["']\s*:\s*["'][^"'\r\n]+["']/gi,
 ];
 
 /** Withhold every known credential shape. Idempotent. */
