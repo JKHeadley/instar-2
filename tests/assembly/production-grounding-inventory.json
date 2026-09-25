@@ -5255,7 +5255,7 @@
     "src/assembly/custody.ts": "f9933ae70d2738b84c39ffcf339395c2f6f7689be5337564dd98fb0f5250c77f",
     "src/assembly/grounding-capability.ts": "1d26b5d45c8ecdeced295109f5373ec63fa6c60621ba7994e6e6aaba3b12db18",
     "src/assembly/growth.ts": "44dfad8e203734992a185b013ec8811362a6ff75438b70ee4fc312992cf77838",
-    "src/assembly/harness.ts": "df847ca76995a193d086524ed8e3ff9c260e356b48e1971840f6672f37abd91e",
+    "src/assembly/harness.ts": "d9d4d808deb557683f370b54949dc03a14539d8e49c6c385f1c58c027e763c73",
     "src/assembly/history.ts": "27be341923822c3e27cbf7395db8704d2a844e16e6382096e6941bca10b273e9",
     "src/assembly/index.ts": "6f65415a73cd689ef3e1dd2b5769d8d937d1d0bdc56fabbc5bedce252288a77c",
     "src/assembly/package.ts": "446effba83b5e4ce7367e3f789c02b661057eaee942de8de2cd25f23f5ac7c11",
