@@ -257,9 +257,16 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               return { kind: 'duplicate',logicalId,original: reference(prior) };
             }
             let principal: VerifiedPrincipal;
+            let authorityFacts: SenderEvidence['authorityFacts'];
             try {
               const { e,provenance }=authenticateSender(raw,{ channel,sender,identityEpoch,eventId: route.eventId },at,preserved);
               principal=resolvePrincipal(e,provenance,preserved);
+              authorityFacts=e.authorityFacts;
+              requireIntake(authorityFacts===undefined||adapterId==='scheduled-intake-v1',
+                'P4-NF-02: only scheduled intake may attach source authority facts','integrity');
+              if(authorityFacts) requireIntake(authorityFacts.manifest.length>0&&authorityFacts.approvedAct.length>0
+                &&authorityFacts.manifest!==authorityFacts.approvedAct,
+              'P4-NF-02: scheduled authority fact references are invalid','integrity');
             } catch { return hold('unresolved-sender',common,at,preserved); }
             const rows=statuses(preserved);
             const historicalGrants: NonNullable<FactContext['historicalGrants']>[number][]=[];
@@ -334,6 +341,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               if(!liveDirectives.some(d => d.id===live.id)) liveDirectives.push(live);
             }
             const required=[receipt.id,resolution.id,...binding? [binding.fact.id]:[]];
+            if(authorityFacts) required.push(authorityFacts.manifest,authorityFacts.approvedAct);
             const under: string[]=[];
             for(const directive of liveDirectives) {
               const record=rows.find(r => r.constitutional.some(f => f.value.type==='Directive'&&f.value.id===directive.id)&&!r.taint.length&&!r.conflicts.length);

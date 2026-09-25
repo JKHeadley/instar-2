@@ -79,7 +79,8 @@ export function createScheduledIntakeAdapter(authority: ScheduledSourceAuthority
         authenticated.set(raw, source);
         return { provenance, principalId: source.manifest.authority.systemPrincipal,
           principalKind: 'system' as const, channel: route.channel, sender: route.sender,
-          identityEpoch: route.identityEpoch };
+          identityEpoch: route.identityEpoch,
+          authorityFacts: { manifest: approved.manifestFact, approvedAct: approved.actFact } };
       });
     },
     parse(raw: string) {

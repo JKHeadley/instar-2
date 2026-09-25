@@ -3,7 +3,7 @@ import type { BoundaryContext, Clock, Result } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import type { IntakeDisposition, IntakePort, InboundRoute } from '../intake/index.js';
 import { boundary, ensure, take } from './boundary.js';
-import { nextCronInstant } from './next.js';
+import { nextCronInstant, previousCronInstant } from './next.js';
 import { createScheduledWorkPackagePort } from './package.js';
 import { shouldRunScheduledPriority } from './shedding.js';
 import type { ScheduledUsageLevel } from './shedding.js';
@@ -37,6 +37,8 @@ export function createScheduledRunner(deps: ScheduledRunnerDependencies) {
       if (refusal.detail.includes('preserved hold')) return null;
       throw Error(refusal.detail);
     } });
+  const mayStart = (source: ScheduledSource) => !deps.stopped() && deps.capacity()
+    && shouldRunScheduledPriority(source.manifest.admission.priority, deps.usage());
   function tick(now: number): Result<number> {
     return boundary('ScheduledTick', { now }, deps.context, () => {
       ensure(Number.isSafeInteger(now) && now >= 0, 'scheduled tick needs a whole-millisecond clock');
@@ -68,14 +70,23 @@ export function createScheduledRunner(deps: ScheduledRunnerDependencies) {
             intent, fact: { owner: 'part-two', name: 'FactEnvelope', id: fact.id },
             owner: String((data.work as Record<string, unknown>).owner), blockedOn: 'run-admission',
             standing: 'requester', boundOperator: false, flags: [] };
-          if (!deps.stopped() && deps.capacity() && shouldRunScheduledPriority(source.manifest.admission.priority, deps.usage())) {
+          if (mayStart(source)) {
             if (take(deps.startOnce(disposition))) started++;
           }
         }
-        if (deps.stopped() || !deps.capacity()
-          || !shouldRunScheduledPriority(source.manifest.admission.priority, deps.usage())) continue;
-        // A crash after capture leaves a receipt without admission. Recover it
-        // before discovering fresh due work, preserving its original tuple.
+        if (!mayStart(source)) continue;
+        // Select one currently eligible occurrence before considering captured
+        // but unadmitted receipts. Older captures remain durable evidence.
+        const latest = schedule.kind === 'one-shot' ? first
+          : previousCronInstant(schedule.expression, schedule.timeZone, now);
+        if (!latest || parseRfc3339Offset(latest) < parseRfc3339Offset(first)
+          || parseRfc3339Offset(latest) > now) continue;
+        const plan = take(planner.planOccurrence({ manifest: source.manifest,
+          namespaceVersion: source.namespaceVersion, installationId: source.installationId,
+          ...source.targetMachineId ? { targetMachineId: source.targetMachineId } : {},
+          scheduledInstant: latest, asOf: at }, deps.context));
+        if (plan.disposition === 'missed' && source.manifest.admission.catchUp === 'none') continue;
+        const route = routeFor(source, plan);
         const receipts = facts.filter(f => f.kind === 'intake-receipt'
           && body(f).adapter === 'scheduled-intake-v1' && (() => {
             try { const ingress = JSON.parse(String(body(f).ingress));
@@ -83,41 +94,19 @@ export function createScheduledRunner(deps: ScheduledRunnerDependencies) {
                 && ingress.identityEpoch === source.identityEpoch;
             } catch { return false; }
           })());
-        const recovered = new Set<string>();
-        for (const receipt of receipts) {
-          const ingress = JSON.parse(String(body(receipt).ingress));
-          if (recovered.has(ingress.eventId) || admitted.some(f => body(f).eventId === ingress.eventId)) continue;
-          recovered.add(ingress.eventId);
-          const outcome = extract(deps.intake.recover(receipt.id));
-          if (outcome?.kind === 'admitted' && take(deps.startOnce(outcome))) started++;
-        }
-        let candidate: string | null = first;
-        let latest: string | null = null, count = 0;
-        while (candidate && parseRfc3339Offset(candidate) <= now) {
-          latest = candidate;
-          if (schedule.kind === 'one-shot') break;
-          ensure(++count <= 100_000, 'scheduled catch-up exceeds bounded calendar scan');
-          candidate = nextCronInstant(schedule.expression, schedule.timeZone, parseRfc3339Offset(candidate));
-        }
-        if (!latest) continue;
-        const plan = take(planner.planOccurrence({ manifest: source.manifest,
-          namespaceVersion: source.namespaceVersion, installationId: source.installationId,
-          ...source.targetMachineId ? { targetMachineId: source.targetMachineId } : {},
-          scheduledInstant: latest, asOf: at }, deps.context));
-        if (plan.disposition === 'missed' && source.manifest.admission.catchUp === 'none') continue;
-        const route = routeFor(source, plan);
         const matching = receipts.filter(f => {
           try { return JSON.parse(String(body(f).ingress)).eventId === route.eventId; }
           catch { return false; }
         });
         const existing = admitted.find(f => body(f).eventId === route.eventId);
-        if (existing || recovered.has(plan.eventId)) continue;
+        if (existing || !mayStart(source)) continue;
         // A receipt is capture evidence only. Its original bytes and route are
         // recovered by Four under current stop, authority and capacity gates.
         const result = matching.length ? deps.intake.recover(matching[0]!.id)
           : deps.intake.receive(plan.tickBytes, route);
         const disposition = extract(result);
-        if (disposition?.kind === 'admitted' && take(deps.startOnce(disposition))) started++;
+        if (disposition?.kind === 'admitted' && mayStart(source)
+          && take(deps.startOnce(disposition))) started++;
       }
       return started;
     });

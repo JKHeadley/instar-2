@@ -26,6 +26,48 @@ function zoneFormatter(timeZone: string): Intl.DateTimeFormat {
   });
 }
 
+function matchingDayInstant(cron: NormalizedCronV1, formatter: Intl.DateTimeFormat, day: number,
+  cutoff: number, direction: 'next' | 'previous', inclusive = true): number | null {
+  const utc = new Date(day);
+  const weekday = utc.getUTCDay();
+  if (!dayAllowed(cron, utc.getUTCMonth() + 1, utc.getUTCDate(), weekday)) return null;
+  // Probe both sides of a zone change, then choose the earlier UTC instant
+  // for each repeated wall minute. Nonexistent wall minutes have no match.
+  const offsets = new Set<number>();
+  for (let hour = -36; hour <= 36; hour += 6) {
+    const probe = day + hour * 3_600_000;
+    const wall = fields(formatter, probe);
+    const wallAsUtc = parseRfc3339Offset(`${String(wall.year).padStart(4, '0')}-${String(wall.month).padStart(2, '0')}-${String(wall.day).padStart(2, '0')}T${String(wall.hour).padStart(2, '0')}:${String(wall.minute).padStart(2, '0')}:00Z`);
+    offsets.add(wallAsUtc - Math.floor(probe / minuteMs) * minuteMs);
+  }
+  const hours = cron.fields[1], minutes = cron.fields[0];
+  for (let hi = direction === 'next' ? 0 : hours.length - 1;
+    hi >= 0 && hi < hours.length; hi += direction === 'next' ? 1 : -1) {
+    const hour = hours[hi]!;
+    for (let mi = direction === 'next' ? 0 : minutes.length - 1;
+      mi >= 0 && mi < minutes.length; mi += direction === 'next' ? 1 : -1) {
+      const minute = minutes[mi]!;
+      const wallMinute = day + hour * 3_600_000 + minute * minuteMs;
+      let earliest: number | null = null;
+      for (const offset of offsets) {
+        const candidate = wallMinute - offset;
+        const actual = fields(formatter, candidate);
+        if (actual.year === utc.getUTCFullYear() && actual.month === utc.getUTCMonth() + 1
+          && actual.day === utc.getUTCDate() && actual.hour === hour && actual.minute === minute
+          && (earliest === null || candidate < earliest)) earliest = candidate;
+      }
+      if (earliest !== null && (direction === 'previous' ? earliest <= cutoff
+        : inclusive ? earliest >= cutoff : earliest > cutoff)) return earliest;
+    }
+  }
+  return null;
+}
+
+function localDay(formatter: Intl.DateTimeFormat, instant: number): number {
+  const local = fields(formatter, instant);
+  return parseRfc3339Offset(`${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}T00:00:00Z`);
+}
+
 /** The earliest matching UTC minute at or after `fromMs` (or strictly after it).
  * A repeated wall minute has one occurrence: its earlier UTC instant. */
 export function nextCronInstant(expression: string, timeZone: string, fromMs: number,
@@ -33,43 +75,29 @@ export function nextCronInstant(expression: string, timeZone: string, fromMs: nu
   ensure(Number.isSafeInteger(fromMs), 'next occurrence requires a whole-millisecond clock');
   const cron = parseCronV1(expression);
   const formatter = zoneFormatter(timeZone);
-  const local = fields(formatter, fromMs);
-  let day = parseRfc3339Offset(`${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}T00:00:00Z`);
+  let day = localDay(formatter, fromMs);
   const limit = day + 366 * 8 * dayMs;
   while (day < limit) {
-    const utc = fields(zoneFormatter('UTC'), day);
-    if (utc.year > 9999) return null;
-    const weekday = ((Math.floor(day / dayMs) + 4) % 7 + 7) % 7;
-    if (dayAllowed(cron, utc.month, utc.day, weekday)) {
-      // Offset probes bracket both sides of a seasonal change. Validate each
-      // candidate against Intl; nonexistent wall minutes are discarded.
-      const offsets = new Set<number>();
-      for (let hour = -36; hour <= 36; hour += 6) {
-        const probe = day + hour * 3_600_000;
-        const wall = fields(formatter, probe);
-        const wallAsUtc = parseRfc3339Offset(`${String(wall.year).padStart(4, '0')}-${String(wall.month).padStart(2, '0')}-${String(wall.day).padStart(2, '0')}T${String(wall.hour).padStart(2, '0')}:${String(wall.minute).padStart(2, '0')}:00Z`);
-        offsets.add(wallAsUtc - Math.floor(probe / minuteMs) * minuteMs);
-      }
-      let earliest: number | null = null;
-      for (const hour of cron.fields[1]) for (const minute of cron.fields[0]) {
-        const wallMinute = day + hour * 3_600_000 + minute * minuteMs;
-        let selected: number | null = null;
-        for (const offset of offsets) {
-          const candidate = wallMinute - offset;
-          const actual = fields(formatter, candidate);
-          if (actual.year === utc.year && actual.month === utc.month && actual.day === utc.day
-            && actual.hour === hour && actual.minute === minute
-            && (selected === null || candidate < selected)) selected = candidate;
-        }
-        if (selected !== null && (inclusive ? selected >= fromMs : selected > fromMs)
-          && (earliest === null || selected < earliest)) earliest = selected;
-      }
-      if (earliest !== null) return canonicalInstant(new Intl.DateTimeFormat('sv-SE', {
-        timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-      }).format(earliest).replace(' ', 'T') + 'Z');
-    }
+    if (new Date(day).getUTCFullYear() > 9999) return null;
+    const earliest = matchingDayInstant(cron, formatter, day, fromMs, 'next', inclusive);
+    if (earliest !== null) return canonicalInstant(new Date(earliest).toISOString());
     day += dayMs;
+  }
+  return null;
+}
+
+/** The newest matching UTC minute at or before `atMs`, independent of job age. */
+export function previousCronInstant(expression: string, timeZone: string, atMs: number): string | null {
+  ensure(Number.isSafeInteger(atMs), 'previous occurrence requires a whole-millisecond clock');
+  const cron = parseCronV1(expression);
+  const formatter = zoneFormatter(timeZone);
+  let day = localDay(formatter, atMs);
+  const limit = day - 366 * 8 * dayMs;
+  while (day > limit) {
+    if (new Date(day).getUTCFullYear() < 0) return null;
+    const latest = matchingDayInstant(cron, formatter, day, atMs, 'previous');
+    if (latest !== null) return canonicalInstant(new Date(latest).toISOString());
+    day -= dayMs;
   }
   return null;
 }

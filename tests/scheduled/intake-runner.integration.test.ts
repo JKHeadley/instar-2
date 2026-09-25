@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { consumeResult, decode } from '../../src/index.js';
 import type { Authorization, ProvenanceInput } from '../../src/index.js';
 import type { FactEnvelope } from '../../src/facts/index.js';
@@ -125,5 +125,91 @@ describe('scheduled adapter and durable runner', () => {
     expect(value(make().tick(due))).toBe(1);
     expect(value(make().tick(due))).toBe(0);
     expect(admissions).toBe(1); expect(starts.size).toBe(1); expect(receipts).toBe(1);
+  });
+
+  function recoveryCase(schedule: Record<string, unknown>, catchUp: 'latest' | 'none') {
+    const s = sourceFixture();
+    const manifest = value(decodeScheduledWorkManifest({ ...clone(s.source.manifest), schedule,
+      admission: { ...clone(s.source.manifest.admission), catchUp } }, s.f.context));
+    const source = { ...s.source, manifest };
+    const rows: FactEnvelope[] = [], starts = new Set<string>();
+    const recovered: string[] = [], received: string[] = [];
+    const occurrence = (instant: string) => {
+      const plan = value(createScheduledWorkPackagePort().planOccurrence({ manifest,
+        namespaceVersion: source.namespaceVersion, installationId: source.installationId,
+        scheduledInstant: instant, asOf: s.f.core.clock(Date.parse(instant)) }, s.f.context));
+      return { plan, route: { channel: `scheduled:${plan.jobInstanceId}`, sender: manifest.authority.systemPrincipal,
+        identityEpoch: source.identityEpoch, eventId: plan.eventId } };
+    };
+    const capture = (instant: string) => {
+      const { route } = occurrence(instant), id = `receipt:${rows.length}`;
+      rows.push({ id, kind: 'intake-receipt', body: { adapter: 'scheduled-intake-v1', ingress: JSON.stringify(route) } } as unknown as FactEnvelope);
+    };
+    const admit = (route: InboundRoute): Extract<IntakeDisposition, { kind: 'admitted' }> => {
+      const id = `admission:${route.eventId}`;
+      if (!rows.some(row => row.id === id)) rows.push({ id, kind: 'intake-admitted', body: {
+        adapter: 'scheduled-intake-v1', channel: route.channel, sender: route.sender,
+        eventId: route.eventId, logicalId: route.eventId, intent: {}, work: { owner: 'run-admission' },
+      } } as unknown as FactEnvelope);
+      return { kind: 'admitted', logicalId: String(route.eventId), lastInboundId: String(route.eventId),
+        intent: {} as Extract<IntakeDisposition, { kind: 'admitted' }>['intent'],
+        fact: { owner: 'part-two', name: 'FactEnvelope', id }, owner: 'run-admission', blockedOn: 'run-admission',
+        standing: 'requester', boundOperator: false, flags: [] };
+    };
+    const intake: IntakePort = { receive(_raw, route) { received.push(String(route.eventId)); return s.ok(admit(route)); },
+      recover(id) { recovered.push(id); const row = rows.find(row => row.id === id)!;
+        return s.ok(admit(JSON.parse(String((row.body as Record<string, unknown>).ingress)) as InboundRoute)); },
+      expireHolds: () => s.ok(0), admitVerifiedAct: () => s.fail('unused') };
+    const make = () => createScheduledRunner({ intake, sources: () => [source], facts: () => s.ok([...rows]),
+      clock: ms => s.f.core.clock(ms), usage: () => 'normal', stopped: () => false, capacity: () => true,
+      startOnce: item => { if (starts.has(item.fact.id)) return s.ok(false);
+        starts.add(item.fact.id); return s.ok(true); }, context: s.f.context });
+    return { rows, starts, recovered, received, occurrence, capture, make };
+  }
+
+  it('selects only the latest eligible hourly occurrence before recovering stale captures', () => {
+    const h = recoveryCase({ kind: 'recurring', expression: '0 * * * *', timeZone: 'UTC',
+      activationInstant: '2027-01-01T00:00:00Z', timeZoneDataVersion: 'tzdb:2027a',
+      calendarPolicyVersion: 'calendar:earlier-v1', currentLatenessCutoffMs: 300_000 }, 'latest');
+    h.capture('2027-01-01T00:00:00Z'); h.capture('2027-01-01T01:00:00Z');
+    const now = Date.UTC(2027, 0, 1, 10);
+    expect(value(h.make().tick(now))).toBe(1);
+    expect(h.received).toEqual([h.occurrence('2027-01-01T10:00:00Z').plan.eventId]);
+    expect(h.recovered).toEqual([]);
+    expect(value(h.make().tick(now))).toBe(0);
+    expect(h.starts.size).toBe(1);
+    expect(h.rows.filter(row => row.kind === 'intake-receipt')).toHaveLength(2);
+  });
+
+  it('keeps an expired one-shot capture as evidence without recovering it', () => {
+    const h = recoveryCase({ kind: 'one-shot', at: '2027-01-01T00:00:00Z',
+      activationInstant: '2026-12-01T00:00:00Z', timeZoneDataVersion: 'tzdb:2027a',
+      calendarPolicyVersion: 'calendar:earlier-v1', currentLatenessCutoffMs: 300_000 }, 'none');
+    h.capture('2027-01-01T00:00:00Z');
+    expect(value(h.make().tick(Date.UTC(2027, 0, 1, 1)))).toBe(0);
+    expect(h.recovered).toEqual([]); expect(h.received).toEqual([]);
+    expect(h.starts.size).toBe(0); expect(h.rows).toHaveLength(1);
+  });
+
+  it('discovers a minute job beyond lifetime scan bounds after history and an outage', () => {
+    const h = recoveryCase({ kind: 'recurring', expression: '* * * * *', timeZone: 'UTC',
+      activationInstant: '2026-01-01T00:00:00Z', timeZoneDataVersion: 'tzdb:2027a',
+      calendarPolicyVersion: 'calendar:earlier-v1', currentLatenessCutoffMs: 300_000 }, 'latest');
+    const established = h.occurrence('2026-10-01T00:00:00Z');
+    h.rows.push({ id: `admission:${established.plan.eventId}`, kind: 'intake-admitted', body: {
+      adapter: 'scheduled-intake-v1', channel: established.route.channel, sender: established.route.sender,
+      eventId: established.route.eventId, logicalId: established.route.eventId,
+      intent: {}, work: { owner: 'run-admission' } } } as unknown as FactEnvelope);
+    const now = Date.UTC(2027, 0, 1);
+    const formatted = vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts');
+    try {
+      expect(value(h.make().tick(now))).toBe(2); // prior admitted Run replay and newest catch-up
+      expect(formatted.mock.calls.length).toBeLessThan(2_000);
+    } finally { formatted.mockRestore(); }
+    expect(h.received).toEqual([h.occurrence('2027-01-01T00:00:00Z').plan.eventId]);
+    h.capture('2027-01-01T00:01:00Z');
+    expect(value(h.make().tick(now + 86_400_000))).toBe(1);
+    expect(h.received.at(-1)).toBe(h.occurrence('2027-01-02T00:00:00Z').plan.eventId);
+    expect(h.recovered).toEqual([]);
   });
 });
