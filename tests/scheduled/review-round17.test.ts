@@ -82,7 +82,7 @@ it('P15 round-seventeen F2 proves the complete current-main population including
   });
 });
 
-it('P15 round-seventeen F2 refuses an incomplete checkout and a stale merge base', () => {
+it('P15 round-seventeen F2 compares first landing, then reports inapplicability while retaining baseline checks', () => {
   const root = mkdtempSync(join(tmpdir(), 'p15-additivity-round17-'));
   const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
   try {
@@ -116,6 +116,22 @@ it('P15 round-seventeen F2 refuses an incomplete checkout and a stale merge base
     git('add', '-u'); git('commit', '-m', 'remove owner fixture');
     expect(() => checkP15Additivity({ success: true }, 'main', 'HEAD', root))
       .toThrow(/pre-existing owner file is missing: tests\/fixtures\/owner\.json/);
+    git('switch', 'complete');
+    writeFileSync(join(root, 'src', 'owner.ts'), 'export const owner = false;\n');
+    expect(() => checkP15Additivity({ success: true }, 'main', 'HEAD', root))
+      .toThrow(/pre-existing owner file bytes changed: src\/owner\.ts/);
+    writeFileSync(join(root, 'src', 'owner.ts'), 'export const owner = true;\n');
+    git('switch', 'main');
+    mkdirSync(join(root, 'src', 'scheduled'), { recursive: true });
+    writeFileSync(join(root, 'src', 'scheduled', 'index.ts'), 'export const scheduled = true;\n');
+    git('add', '.'); git('commit', '-m', 'land scheduled unit');
+    git('switch', '-c', 'later-edit');
+    writeFileSync(join(root, 'src', 'owner.ts'), 'export const owner = false;\n');
+    writeFileSync(join(root, 'src', 'scheduled', 'index.ts'), 'export const scheduled = false;\n');
+    git('add', '.'); git('commit', '-m', 'later owner and cross-owner edits');
+    expect(checkP15Additivity({ success: true }, 'main', 'HEAD', root).applicable).toBe(false);
+    expect(() => checkP15Additivity({ success: false }, 'main', 'HEAD', root))
+      .toThrow(/successful actual test run/);
     expect(() => p15AdditivityBaseline('main', 'stale', root))
       .toThrow(/stale baseline .* current main tip .* is not contained in stale/);
 
