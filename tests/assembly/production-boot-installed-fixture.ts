@@ -50,7 +50,7 @@ export function installedFixtureHost(root, route, options = {}) {
   const peerDescriptor = { installation: record.id, studio: record.machineIdentity, laptop: 'm_cc2ec651a91f',
     store: 'store:fixture-laptop', epoch: 0, trust: 'offline-fixture-channel', custody: 'offline-fixture-receiver',
     captureReferences: Object.keys(t.intake.context.captures),
-    capturePrefixes: ['sha256:', 'message:', 'record:', 'capture:', 'live-input-capture:', 'effect-capture:'], limits: {
+    capturePrefixes: ['sha256:', 'message:', 'record:', 'capture:', 'live-input-capture:', 'effect-capture:', 'judgment-capture:'], limits: {
       maxRequestBytes: 32 * 1024 * 1024, maxResponseBytes: 1024 * 1024, maxFacts: 4096,
       maxCaptures: 1024, maxCaptureBytes: 2 * 1024 * 1024, maxDiskBytes: 128 * 1024 * 1024,
       maxQueue: 1, timeoutMs: 3000, maxAttempts: 1 } };
@@ -269,7 +269,21 @@ export function installedFixtureHost(root, route, options = {}) {
       };
       const bindings = productionComposition(f, binding, { peerReceipt: setFactId =>
         currentPeer(storage.segment, context, boundary, setFactId) });
-      Object.assign(f.effects.composition, { durability: peerAdapter(storage.segment, context, boundary).durability });
+      const effectPeer = peerAdapter(storage.segment, context, boundary);
+      Object.assign(f.effects.composition, { durability: { owner: 'part-ten', ensure: requested =>
+        assemblyBoundary('InstalledFixtureEffectDurability', requested.map(fact => fact.id), boundary, () => {
+          // Five names a narrow effect closure. The selected set has other causal
+          // ancestors, so verify the complete current source before returning C's
+          // exact receipts for only the facts Five requested.
+          const current = storage.segment.read();
+          const receipts = value(effectPeer.durability.ensure(current));
+          return requested.map(fact => {
+            const exact = receipts.find(row => row.fact.id === fact.id
+              && value(canonical(row.fact)).bytes === value(canonical(fact)).bytes && !row.taint.length);
+            if (!exact) throw Error(`current peer receipt lacks exact requested fact: ${fact.id}`);
+            return exact;
+          });
+        }) } });
       bindings.lease.port = f.effects.transport;
       const operator = operatorFixture();
       const operatorRoot = value(f.store.read()).find(row => row.kind === 'genesis-grant'
