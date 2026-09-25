@@ -18,7 +18,10 @@ import { checkGroundingEnvelope, groundingEnvelopeMeasurements, verifyGroundedSu
   from '../../src/assembly/production-context-sampler.js';
 import { localProvider } from '../model-provider/http-provider.js';
 import { verificationInput } from '../verification/fixture.js';
-import { groundingFixture, withSeven, ROUTE } from '../assembly/production-context-sampler-fixture.js';
+import { OUTPUT_SCHEMA, ROUTE, SETTINGS, acceptedSecondTurn, groundingFixture, withSeven } from '../assembly/production-context-sampler-fixture.js';
+import { createProviderJudgmentPort } from '../../src/judgment/index.js';
+import { reportInstallationHolds } from '../../src/assembly/production-installation-report.js';
+import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 import { json, privateKey, refused, value } from '../facts/fixtures.js';
 
 const directories: string[] = [];
@@ -38,7 +41,7 @@ function grounded() {
   const s = withSeven(f, directory, PROPOSED.maxInputBytes);
   for (const evidence of f.evidence) f.append('evidence-record', json({ evidence }));
   const ready = value(f.graph.open(f.run)), ground = value(f.graph.ground(f.id, 'w', 'native', 'start', f.lease));
-  return { f, s, ready, ground, rendered: value(f.render()), evidence: f.evidence.map(e => e.id).slice(0, 2) };
+  return { f, s, ready, ground, directory, rendered: value(f.render()), evidence: f.evidence.map(e => e.id).slice(0, 2) };
 }
 
 it('the real Eight provider doorway holds the grounded request at its current 4,096-byte operation bound before any provider IO', async () => {
@@ -102,8 +105,8 @@ it('the real Eight provider doorway holds the grounded request at its current 4,
     const route = { provider: 'test-provider', model: 'model', route: ROUTE, disclosure: 'recorded provider', automaticRetries: 0,
       environment: 'local-test', invoke: async bytes => {
         // The join check runs at the adapter seam, before the external call.
-        value(verifyGroundedSubmission({ store: f.store, context: f.p.context, captures: f.captures, bindings, replies: [],
-          request: prepared.value, requestFact: prepared.request.id, received: bytes }));
+        value(verifyGroundedSubmission({ ...f.groundedInput({ bindings }), request: prepared.value,
+          requestFact: prepared.request.id, received: bytes }));
         received.push(bytes);
         const answer = await fetch(http.endpoint, { method: 'POST', body: bytes,
           headers: { Authorization: `Bearer ${http.credential}`, 'Content-Type': 'application/json' } });
@@ -123,8 +126,8 @@ it('the real Eight provider doorway holds the grounded request at its current 4,
     // (src/effects/records.ts). This unit does not edit it; see the progress handoff's bound proposal.
     // Seven's captured submission itself still holds exactly the delivered evidence (the join the
     // dispatch seam will run once the owner bound is granted).
-    value(verifyGroundedSubmission({ store: f.store, context: f.p.context, captures: f.captures, bindings, replies: [],
-      request: prepared.value, requestFact: prepared.request.id, received: submitted }));
+    value(verifyGroundedSubmission({ ...f.groundedInput({ bindings }), request: prepared.value,
+      requestFact: prepared.request.id, received: submitted }));
     const onWire = JSON.parse(JSON.parse(submitted).messages[1].content);
     expect(onWire.bindings.delivery).toBe(bindings.delivery);
     expect(onWire.sources.map(source => source.class)).toEqual(['identity', 'rules', 'directives', 'pending-work']);
@@ -140,68 +143,133 @@ it('the real Eight provider doorway holds the grounded request at its current 4,
   } finally { await http.close(); }
 }, 240000);
 
-it('holds the preview-envelope overflow visibly before Seven or any provider IO, and the hold survives restart', async () => {
+/** Rebuild the measured envelope input for a held turn from durable records only: the delivery
+ * and consumption facts of the Run's pending step, the question as the admitted input's own text,
+ * the context re-rendered from the (reopened) store, and Seven's canonical submission shape. Its
+ * digest must equal the operation digest Five durably recorded for the pending step. */
+function heldFromRecords(f, store, captures, route) {
+  const facts = value(store.read()), view = value(f.graph.read(f.id));
+  const step = view.pending[0];
+  const deliveryFact = facts.filter(row => row.kind === 'assembly-ContextDeliverySpecification'
+    && row.body.record.run === f.id && row.body.record.step === step.id).at(-1);
+  const consumption = facts.find(row => row.kind === 'assembly-HarnessObservation' && row.body.record.contextDelivery === deliveryFact.id
+    && row.body.record.phase === 'context-consumed');
+  const input = facts.find(row => row.id === deliveryFact.body.record.input);
+  const question = JSON.parse(captures.read(input.body.capture.reference)).text;
+  const bindings = { run: f.id, step: step.id, delivery: deliveryFact.id, consumption: consumption.id,
+    installation: f.plan.installation, generation: f.run.generation.id };
+  const context = value(f.render({ store, captures, bindings }));
+  const submitted = route(question, context);
+  expect(value(canonical(submitted.bytes)).hash).toBe(step.operation.digest);
+  return { step, deliveryFact, question, context, submitted: submitted.bytes, retained: [input.id, deliveryFact.id] };
+}
+
+it('holds the preview-envelope overflow visibly before Seven or any provider IO, and reconstructs the same hold after restart', async () => {
   const { f, s, ready, ground, rendered } = grounded();
   const http = await localProvider();
   try {
-    const submission = s.submission(QUESTION, rendered);
+    // The question Seven would receive is the admitted input's own text.
+    const question = JSON.parse(f.captures.read(f.initialCapture.reference)).text;
+    const submission = s.submission(question, rendered);
     const transition = f.start(ready, ground, 'operation:1');
     value(f.graph.transition({ ...transition, step: { ...transition.step, operation: { ...transition.step.operation, digest: submission.digest } } }));
-    const held = { turn: 'step:operation:1', route: ROUTE, policy: 'subscription-preview-v2', question: QUESTION, context: rendered,
+    const held = { turn: 'step:operation:1', route: ROUTE, policy: 'subscription-preview-v2', question, context: rendered,
       submitted: submission.bytes, retained: [f.opening.id, f.bindings().delivery], bounds: previewBounds };
     const detail = refused(checkGroundingEnvelope(held, f.p.context), 'grounding-envelope-held turn=step:operation:1');
     expect(detail).toContain(`canonical-request=${Buffer.byteLength(submission.bytes)}/4096`);
+    expect(detail).toContain(`combined-prompt=${previewBounds.systemBytes + Buffer.byteLength(submission.bytes)}/4096`);
     expect(detail).toContain(`retained=${f.opening.id}`);
-    expect(http.requests).toHaveLength(0);
-    expect(value(f.store.read()).some(row => row.kind === 'judgment-provider-ProviderJudgmentRequest')).toBe(false);
-    // Visible through Five's run view: the pending step remains, un-dispatched, with its admitted input.
-    expect(value(f.graph.read(f.id)).pending.map(step => step.id)).toEqual(['step:operation:1']);
-    // Restart: the same durable work is still held; the same measured refusal recurs, no new identity.
+    // Restart: a fresh FactStore over the same durable wire; no in-memory request object is reused.
     const store = createFactStore(f.ctx, f.storage);
     expect(value(store.read()).map(row => row.id)).toEqual(value(f.store.read()).map(row => row.id));
-    expect(value(store.read()).some(row => row.id === f.opening.id)).toBe(true);
-    expect(refused(checkGroundingEnvelope(held, f.p.context))).toBe(detail);
+    const rebuilt = heldFromRecords(f, store, f.captures, (q, c) => s.submission(q, c));
+    expect(rebuilt.context).toBe(rendered);
+    const reopenedDetail = refused(checkGroundingEnvelope({ turn: rebuilt.step.id, route: ROUTE, policy: 'subscription-preview-v2',
+      question: rebuilt.question, context: rebuilt.context, submitted: rebuilt.submitted,
+      retained: [f.opening.id, rebuilt.deliveryFact.id], bounds: previewBounds }, f.p.context));
+    expect(reopenedDetail).toBe(detail);
+    // The existing installation hold report keeps production-context-sampling held, carrying the
+    // retained delivery as its evidence reference; nothing is upgraded to admitted or live.
+    const report = value(reportInstallationHolds({ installation: f.plan.installation, scope: 'scope:minimal',
+      generation: f.run.generation.id, vector: 'vector:r5-offline', facts: { owner: 'part-ten', lookup: () => null },
+      verdicts: [{ hold: 'production-context-sampling', owner: 'part-ten', evidence: rebuilt.deliveryFact.id }] }, f.p.context));
+    const row = report.rows.find(entry => entry.hold === 'production-context-sampling');
+    expect([row.state, row.evidence, report.live]).toEqual(['held', rebuilt.deliveryFact.id, false]);
+    // Still held: the Five step stays pending, and no Seven request or provider call exists.
+    expect(value(f.graph.read(f.id)).pending.map(step => step.id)).toEqual(['step:operation:1']);
+    expect(value(store.read()).some(row => row.kind === 'judgment-provider-ProviderJudgmentRequest')).toBe(false);
+    expect(http.requests).toHaveLength(0);
   } finally { await http.close(); }
 }, 120000);
 
-it('measures the whole envelope for each turn shape against the owner limits (report table)', () => {
-  const { f, s, ready, ground, rendered } = grounded();
+it('measures the whole envelope for each turn shape against the actual fixture route and labelled preview projections', async () => {
+  const { f, s, ready, ground, rendered, directory } = grounded();
+  // The recorded offline route carries no system framing (0 B); its bounds come from Seven's own
+  // prepared request where one exists, else from the LABELLED 12,288-byte test route.
+  const route = s.host.description;
+  const boundsOf = (q) => ({ systemBytes: 0, maxPromptBytes: q.maxInputBytes, maxInputBytes: q.maxInputBytes,
+    maxOutputBytes: q.maxOutputBytes, maxCaptureBytes: q.maxCaptureBytes, maxDeliveryBytes: 4096, maxOutboundBytes: 4096 });
+  const testRoute = { ...boundsOf({ maxInputBytes: PROPOSED.maxInputBytes, maxOutputBytes: route.maxOutputBytes,
+    maxCaptureBytes: s.judgment.maxCaptureBytes }) };
+  const identity = { route: value(canonical(route)).hash, policy: value(canonical({ settings: SETTINGS, outputSchema: OUTPUT_SCHEMA,
+    maxTokens: s.judgment.maxTokens, timeout: s.judgment.timeout })).hash };
   const table = [];
-  const row = (name, question, context) => {
-    const submitted = s.submission(question, context).bytes;
-    const measured = groundingEnvelopeMeasurements({ turn: name, route: ROUTE, policy: 'subscription-preview-v2', question, context,
-      submitted, retained: [], bounds: previewBounds });
-    table.push({ turn: name, ...Object.fromEntries(measured.map(m => [m.subject.split(':')[0], m.bound === null ? m.measured : `${m.measured}/${m.bound}`])) });
-    return submitted;
+  const measure = (name, tier, question, context, submitted, bounds, boundsBasis, extra = {}) => {
+    const selection = value(canonical(JSON.parse(context).bindings.manifest)).hash;
+    const cells = (b, policy) => Object.fromEntries(groundingEnvelopeMeasurements({ turn: name, route: ROUTE, policy, question, context,
+      submitted, retained: [], bounds: b }).map(m => [m.subject.split(':')[0], m.bound === null ? m.measured : `${m.measured}/${m.bound}`]));
+    table.push({ turn: name, tier, ...identity, selection, boundsBasis, ...extra,
+      actual: cells(bounds, boundsBasis), previewProjection: cells(previewBounds, 'subscription-preview-v2 (projection)') });
   };
-  const first = row('first-turn', QUESTION, rendered);
-  // Seven's real owner input bound at limit+1 (refused, nothing recorded) and at the exact limit (prepared).
-  const size = Buffer.byteLength(first);
-  s.host.description.maxInputBytes = size - 1;
+  const first = s.submission(QUESTION, rendered).bytes, size = Buffer.byteLength(first);
+  // Seven's real input bound at limit+1 (refused, nothing recorded) and at the exact limit (prepared).
+  route.maxInputBytes = size - 1;
   refused(s.prepareTurn(ready, ground, 'operation:1', QUESTION, rendered), 'provider input/token/time bound exceeded');
   expect(value(f.store.read()).some(r => r.kind === 'judgment-provider-ProviderJudgmentRequest')).toBe(false);
-  s.host.description.maxInputBytes = size;
-  const prepared = value(s.seven.prepare({ id: 'r5-question:operation:1', run: { owner: 'part-five', name: 'Run', id: f.id },
-    step: 'step:operation:1', ordinal: 0, semanticMessage: 'operation:1', question: QUESTION, context: rendered, evidence: [],
-    deadline: 400 }, f.effects.fence));
+  route.maxInputBytes = size;
+  const question = { id: 'r5-question:operation:1', run: { owner: 'part-five', name: 'Run', id: f.id }, step: 'step:operation:1',
+    ordinal: 0, semanticMessage: 'operation:1', question: QUESTION, context: rendered, evidence: [], deadline: 400 };
+  // Seven's real capture allowance at its exact boundary and one byte under.
+  const allowance = Buffer.byteLength(QUESTION + rendered + first) + 6 * route.maxOutputBytes + 8192;
+  refused(createProviderJudgmentPort({ ...s.judgment, maxCaptureBytes: allowance - 1 }).prepare(question, f.effects.fence), 'capture bound exceeded');
+  expect(value(f.store.read()).some(r => r.kind === 'judgment-provider-ProviderJudgmentRequest')).toBe(false);
+  const prepared = value(createProviderJudgmentPort({ ...s.judgment, maxCaptureBytes: allowance }).prepare(question, f.effects.fence));
   expect(value(s.captures.read(prepared.value.submitted))).toBe(first);
-  expect(prepared.value.maxInputBytes).toBe(size);
-  row('restart-reconstruction', QUESTION, JSON.parse(value(s.captures.read(prepared.value.submitted))).messages[1].content);
-  f.nextInput('Can this installation talk in any conversation other than this one?');
+  expect([prepared.value.maxInputBytes, prepared.value.maxCaptureBytes]).toEqual([size, allowance]);
+  const captured = (p) => ({ request: p.request.id, submittedCapture: p.value.submitted.reference });
+  measure('first-turn', 'Seven capture', QUESTION, rendered, first, boundsOf(prepared.value), 'Seven prepared request',
+    { ...captured(prepared), captureAllowanceBoundary: allowance });
+  // Restart: the reconstruction row is read from REOPENED file-backed captures, not from memory.
+  const reopened = createJudgmentCaptures(directory, {}, fn => f.success(fn()), 1048576, {});
+  const reread = value(reopened.read(prepared.value.submitted));
+  expect(reread).toBe(first);
+  measure('restart-reconstruction', 'reopened Seven capture', QUESTION, JSON.parse(reread).messages[1].content, reread,
+    boundsOf(prepared.value), 'Seven prepared request', captured(prepared));
+  const QUESTION_TWO = 'Can this installation talk in any conversation other than this one?';
+  f.nextInput(QUESTION_TWO);
   value(f.graph.ground(f.id, 'w', 'native', 'resume', f.lease));
   const second = value(f.render());
-  row('second-turn-pending-predecessor', 'Can this installation talk in any conversation other than this one?', second);
-  // The first accepted reply's canonical conversation entry, inserted into the actual second-turn packet.
-  // Composed shape: a live ProviderAnswerAcceptance join in one store is R7's per-turn integration.
-  const packet = JSON.parse(second), answer = JSON.stringify(f.decisionInput());
-  packet.conversation.splice(1, 0, { reply: 'acceptance:composed', hash: 'sha256:' + '0'.repeat(64), text: answer });
-  row('second-turn-with-first-reply(composed)', 'Can this installation talk in any conversation other than this one?',
-    value(canonical(packet)).bytes);
-  // Eight's serialized context-delivery payload (the admitted OutboundMessage record, bound 4096).
-  const deliveries = value(f.store.read()).filter(r => r.kind === 'effect-OutboundMessage')
-    .map(r => Buffer.byteLength(value(canonical(r.body.record)).bytes));
+  // Five admits no new step while the predecessor is pending, so this shape cannot be captured by Seven yet.
+  measure('second-turn-pending-predecessor', 'real delivered packet; Seven-shape mirror (Five holds dispatch)', QUESTION_TWO, second,
+    s.submission(QUESTION_TWO, second).bytes, testRoute, 'labelled 12,288-byte test route');
+  // The genuine accepted-reply second turn (real Seven/Eight/Nine/Six acceptance of turn one).
+  const replyDirectory = mkdtempSync(join(tmpdir(), 'r5-e2e-reply-'));
+  directories.push(replyDirectory);
+  const r = await acceptedSecondTurn(replyDirectory, QUESTION_TWO, QUESTION);
+  measure('second-turn-with-accepted-reply', 'real delivered packet; Seven-shape mirror (Seven capture blocked, see progress)',
+    QUESTION_TWO, r.rendered, r.s.submission(QUESTION_TWO, r.rendered).bytes, testRoute, 'labelled 12,288-byte test route',
+    { acceptance: r.accepted.acceptanceFact.id });
+  // Eight's serialized context-delivery payloads (the admitted OutboundMessage records, bound 4096).
+  const deliveries = value(f.store.read()).filter(row => row.kind === 'effect-OutboundMessage')
+    .map(row => Buffer.byteLength(value(canonical(row.body.record)).bytes));
   expect(deliveries.every(bytes => bytes <= 4096)).toBe(true);
-  console.log('R5-MEASUREMENT-TABLE ' + JSON.stringify({ firstRequestBytes: size, contextDeliveryPayloadBytes: deliveries, table }, null, 1));
-  expect(table.every(entry => typeof entry['canonical-request'] === 'string')).toBe(true);
-}, 120000);
-
+  // A complete canonical outbound reply for an ordinary answer, measured against Eight's 4,096-byte envelope.
+  const outbound = value(canonical(f.effects.message(f.id, 'Instar keeps an agent coherent across sessions and machines.'))).bytes;
+  const outboundRow = value(checkGroundingEnvelope({ turn: 'reply:operation:1', route: ROUTE, policy: 'eight-outbound-4096', question: QUESTION,
+    context: rendered, submitted: first, outbound, retained: [prepared.request.id], bounds: PROPOSED }, f.p.context))
+    .find(m => m.subject.startsWith('outbound-message'));
+  console.log('R5-MEASUREMENT-TABLE ' + JSON.stringify({ firstRequestBytes: size, contextDeliveryPayloadBytes: deliveries,
+    completeOutboundBytes: outboundRow.measured, table }, null, 1));
+  expect(table.find(row => row.turn === 'first-turn').actual['canonical-request']).toBe(`${size}/${size}`);
+  expect(table.find(row => row.turn === 'first-turn').actual['capture-allowance']).toBe(`${allowance}/${allowance}`);
+}, 300000);

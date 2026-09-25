@@ -13,16 +13,20 @@ import { boundary, encoded, ensure, freeze, take } from './boundary.js';
  * `rungraph-briefing-material` facts and captures; it is not recall and adds no store. */
 
 /** Preprocessing ceilings for the candidate corpus. They never grant submission size:
- * every provider, delivery and outbound bound is measured separately below. */
-export const GROUNDING_CORPUS_LIMITS = freeze({ maxItems: 8, maxItemBytes: 16384, maxCorpusBytes: 65536 });
+ * every provider, delivery and outbound bound is measured separately below.
+ * `maxItems` and `maxCorpusBytes` bound each serialized body AND the whole frozen
+ * selection; `maxRefs` bounds each item's metadata arrays before any copy. */
+export const GROUNDING_CORPUS_LIMITS = freeze({ maxItems: 8, maxItemBytes: 16384, maxCorpusBytes: 65536, maxRefs: 16 });
 
 export type GroundingItemKind = 'purpose' | 'contract' | 'directive' | 'installation-status';
 const itemKinds: readonly GroundingItemKind[] = ['purpose', 'contract', 'directive', 'installation-status'];
 
-/** One labelled evidence item. Static documents cite path + immutable revision +
- * preserved source capture; derived status/directives cite their owner facts. The
- * approval is evidence of standing, never an authority flag; `synthetic` labels
- * offline test approvals honestly. */
+/** One labelled evidence item. Documents cite path + immutable revision + a
+ * preserved whole-source capture and byte selector. A directive is either an
+ * exact byte selection of an admitted operator input's capture, or Five's own
+ * Run directives. Status cites its owner facts and carries Five's current pending
+ * state. The approval is evidence of standing, never an authority flag;
+ * `synthetic` labels offline test approvals honestly. */
 export interface GroundingSourceItem {
   readonly id: string; readonly kind: GroundingItemKind;
   readonly source: Readonly<{ path: string; revision: string; capture: string; hash: string; selector: string; facts: readonly string[] }>;
@@ -36,6 +40,8 @@ export interface GroundingBriefingBody { readonly class: string; readonly conten
 const utf8 = (value: string) => new TextEncoder().encode(value).length;
 const text = (value: unknown, max = 4096): value is string => typeof value === 'string' && value.length > 0 && value.length <= max;
 const exactKeys = (value: object, keys: string) => Object.keys(value).sort().join(',') === keys;
+const refs = (value: unknown, max: number): value is readonly string[] => Array.isArray(value)
+  && value.length <= GROUNDING_CORPUS_LIMITS.maxRefs && value.every(entry => text(entry, max));
 
 function checkItem(value: unknown): GroundingSourceItem {
   const item = value as GroundingSourceItem;
@@ -45,17 +51,17 @@ function checkItem(value: unknown): GroundingSourceItem {
   const source = item.source;
   ensure(source && exactKeys(source, 'capture,facts,hash,path,revision,selector') && typeof source.path === 'string'
     && typeof source.revision === 'string' && typeof source.capture === 'string' && typeof source.hash === 'string'
-    && typeof source.selector === 'string' && Array.isArray(source.facts) && source.facts.every(fact => text(fact, 512)),
+    && typeof source.selector === 'string' && [source.path, source.revision, source.capture, source.hash, source.selector]
+      .every(field => field.length <= 512) && refs(source.facts, 512),
   'grounding item source shape differs');
   // A mutable path alone is insufficient: documents need revision + preserved
-  // bytes; derived items need their owner fact references.
+  // bytes + selector; derived items need their owner fact references.
   ensure(item.kind === 'purpose' || item.kind === 'contract'
     ? text(source.path, 512) && text(source.revision, 128) && text(source.capture, 512) && text(source.hash, 128) && text(source.selector, 256)
     : source.facts.length > 0, 'grounding item provenance incomplete');
   ensure(typeof item.content === 'string' && item.content.length > 0 && utf8(item.content) <= GROUNDING_CORPUS_LIMITS.maxItemBytes
     && item.selectedHash === hashBytes(item.content), 'grounding item content absent, oversized, or differs from its selected hash');
-  ensure(Array.isArray(item.audience) && item.audience.length > 0 && item.audience.every(entry => text(entry, 256)),
-    'grounding item audience absent');
+  ensure(refs(item.audience, 256) && item.audience.length > 0, 'grounding item audience absent');
   const standing = item.standing;
   ensure(standing && exactKeys(standing, 'approval,synthetic,version') && text(standing.approval, 512)
     && text(standing.version, 256) && typeof standing.synthetic === 'boolean', 'grounding item standing absent');
@@ -65,19 +71,23 @@ function checkItem(value: unknown): GroundingSourceItem {
 }
 
 /** Construct the one bounded `{ class, content }` briefing body for a class. The
- * caller appends it through Two under a registered schema; nothing here writes. */
+ * caller appends it through Two under a registered schema; nothing here writes.
+ * The serialized content obeys exactly the allowance its decoder enforces. */
 export function buildGroundingBriefingBody(className: string, items: readonly GroundingSourceItem[],
   context: AssemblyDecodeContext): Result<GroundingBriefingBody> {
   return boundary('BuildGroundingBriefingBody', null, context, () => {
     ensure(text(className, 256), 'briefing class required');
     ensure(Array.isArray(items) && items.length > 0 && items.length <= GROUNDING_CORPUS_LIMITS.maxItems,
       `grounding corpus must hold 1..${GROUNDING_CORPUS_LIMITS.maxItems} items`);
-    // Size checks precede any canonical copy of the candidate content.
+    // Size and shape checks precede the canonical copy: every field and array of
+    // every item is bounded before encoding.
     ensure(items.reduce((sum, item) => sum + (typeof item?.content === 'string' ? utf8(item.content) : 0), 0)
       <= GROUNDING_CORPUS_LIMITS.maxCorpusBytes, 'grounding corpus exceeds its preprocessing ceiling');
     items.forEach(checkItem);
     ensure(new Set(items.map(item => item.id)).size === items.length, 'grounding item ids repeat');
-    return freeze({ class: className, content: encoded({ items }).bytes });
+    const content = encoded({ items }).bytes;
+    ensure(utf8(content) <= GROUNDING_CORPUS_LIMITS.maxCorpusBytes, 'briefing body exceeds its preprocessing ceiling');
+    return freeze({ class: className, content });
   });
 }
 
@@ -95,8 +105,17 @@ export function decodeGroundingBriefingBody(body: unknown): readonly GroundingSo
   return parsed.items.map(checkItem);
 }
 
+/** Five's current pending work as the status item must carry it: each pending
+ * step with its operation and an UNKNOWN disposition (no settled outcome yet). */
+export function groundingPendingState(pending: readonly Readonly<{ id: string; operation: Readonly<{ key: string; digest: string }> }>[]) {
+  return pending.map(step => ({ step: step.id, operation: step.operation.key, digest: step.operation.digest, disposition: 'unknown' as const }));
+}
+/** Five's Run directives as a derived directive item carries them. */
+export const groundingRunDirectives = (directives: readonly unknown[]) => encoded({ runDirectives: directives }).bytes;
+
 /** The owner plan's exact selection for one turn. Every identity is supplied by
- * the owner plan and verified here; nothing is chosen as "latest". */
+ * the owner plan and verified here; nothing is chosen as "latest". Accepted
+ * replies are not supplied: they are resolved from Seven's acceptance records. */
 export interface GroundingSamplerPlan {
   readonly run: string; readonly opening: string; readonly step: string;
   readonly installation: string; readonly generation: string;
@@ -105,8 +124,6 @@ export interface GroundingSamplerPlan {
   readonly stimulusKinds: readonly string[];
   /** Exact ordered admitted inputs of this conversation; the last is the current input. */
   readonly frontier: readonly string[];
-  /** Accepted replies to earlier inputs, by Seven ProviderAnswerAcceptance fact. */
-  readonly replies: readonly Readonly<{ input: string; acceptance: string }>[];
   /** Installed Five briefing classes, each bound to its approved body fact and permitted item kinds. */
   readonly briefing: readonly Readonly<{ class: string; fact: string; digest: string; kinds: readonly GroundingItemKind[] }>[];
   readonly approvals: readonly string[];
@@ -114,13 +131,14 @@ export interface GroundingSamplerPlan {
   readonly previousActivity: Clock;
 }
 
+type Captures = Readonly<{ read(reference: string): string | null }>;
 export interface GroundingSamplerInput {
   readonly store: FactStorePort;
   readonly runtime: AssemblyRuntimePort;
   readonly context: AssemblyDecodeContext;
   /** Read at every invocation, never cached. */
   plan(): GroundingSamplerPlan;
-  captures: Readonly<{ read(reference: string): string | null }>;
+  captures: Captures;
   /** Eight's admitted context-delivery operation for exactly this input capture. */
   admitDelivery(input: Readonly<{ intake: FactEnvelope; capture: Readonly<{ reference: string; hash: string }> }>):
     Readonly<{ operation: string; claim: string }>;
@@ -129,39 +147,120 @@ export interface GroundingSamplerInput {
 type Row = Readonly<{ fact: FactEnvelope; taint: readonly unknown[]; conflicts: readonly unknown[] }>;
 const record = (value: unknown): Readonly<Record<string, unknown>> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : {};
+const owned = (fact: FactEnvelope) => record(record(fact.body).record);
 const clean = (row: Row | undefined, detail: string): FactEnvelope => {
   ensure(row && row.taint.length === 0 && row.conflicts.length === 0, detail);
   return row.fact;
 };
+const cleanRows = (rows: readonly Row[], kind: string) =>
+  rows.filter(row => row.fact.kind === kind && row.taint.length === 0 && row.conflicts.length === 0).map(row => row.fact);
 const inputCapture = (fact: FactEnvelope) => {
   const capture = record(record(fact.body).capture);
   ensure(text(capture.reference, 512) && text(capture.hash, 128), 'admitted input carries no capture');
   return { reference: capture.reference as string, hash: capture.hash as string };
 };
+const precedes = (fact: FactEnvelope, limit: FactEnvelope) => fact.machine === limit.machine
+  && (fact.segment.epoch < limit.segment.epoch || fact.segment.epoch === limit.segment.epoch && fact.segment.position < limit.segment.position);
 
-function resolveBriefing(rows: readonly Row[], plan: GroundingSamplerPlan, at: Clock) {
-  return plan.briefing.map(slot => {
+/** The item's content must be exactly the selected bytes of its preserved,
+ * hash-bound source capture. */
+function checkSelection(item: GroundingSourceItem, captures: Captures, where: string) {
+  const bytes = captures.read(item.source.capture);
+  ensure(bytes !== null && hashBytes(bytes) === item.source.hash, `${where}: item ${item.id} source capture unavailable or changed`);
+  const range = /^utf8-bytes:(\d+)-(\d+)$/.exec(item.source.selector);
+  const whole = new TextEncoder().encode(bytes), start = Number(range?.[1]), end = Number(range?.[2]);
+  ensure(range && start < end && end <= whole.length && new TextDecoder('utf-8', { fatal: true }).decode(whole.subarray(start, end)) === item.content,
+    `${where}: item ${item.id} content is not its selected source bytes`);
+}
+
+interface BriefingCheck {
+  readonly captures: Captures;
+  /** Five's current view at sampling; null at a later dispatch, where the frozen
+   * delivery is re-checked for current standing only. */
+  readonly view: Readonly<{ pending: Parameters<typeof groundingPendingState>[0]; directives: readonly unknown[] }> | null;
+  /** Current approval/audience/freshness standing, required before any dispatch. */
+  readonly standing: boolean;
+}
+function resolveBriefing(rows: readonly Row[], plan: GroundingSamplerPlan, slots: GroundingSamplerPlan['briefing'],
+  at: Clock, check: BriefingCheck, installation: string) {
+  let count = 0, bytes = 0;
+  const facts = slots.map(slot => {
     const fact = clean(rows.find(row => row.fact.id === slot.fact),
       `briefing ${slot.class}: approved source unavailable, tainted, or conflicted`);
     ensure(fact.kind === 'rungraph-briefing-material' && fact.contentHash === slot.digest,
       `briefing ${slot.class}: current body differs from its approved selection`);
     ensure(record(fact.body).class === slot.class, `briefing ${slot.class}: body class differs`);
     const items = decodeGroundingBriefingBody(fact.body);
+    count += items.length; bytes += utf8(String(record(fact.body).content));
     for (const item of items) {
       // Refusal details name identities only; they never reveal content.
-      ensure(slot.kinds.includes(item.kind), `briefing ${slot.class}: item ${item.id} kind is not mapped to this class`);
-      ensure(item.scope === plan.installation, `briefing ${slot.class}: item ${item.id} is outside this installation`);
-      ensure(item.audience.includes(plan.audience.principal) && item.audience.includes(plan.audience.route),
-        `briefing ${slot.class}: item ${item.id} is outside the verified audience or model route`);
-      ensure(plan.approvals.includes(item.standing.approval), `briefing ${slot.class}: item ${item.id} lacks current approval`);
-      ensure(item.observedAt <= at.value, `briefing ${slot.class}: item ${item.id} observed after this read`);
-      if (item.kind === 'installation-status') ensure(at.value - item.observedAt <= plan.statusMaxAge,
-        `briefing ${slot.class}: required status ${item.id} is stale`);
+      const where = `briefing ${slot.class}`;
+      ensure(slot.kinds.includes(item.kind), `${where}: item ${item.id} kind is not mapped to this class`);
+      ensure(item.scope === installation, `${where}: item ${item.id} is outside this installation`);
       for (const reference of item.source.facts) clean(rows.find(row => row.fact.id === reference),
-        `briefing ${slot.class}: item ${item.id} owner evidence unavailable`);
+        `${where}: item ${item.id} owner evidence unavailable`);
+      if (item.kind === 'purpose' || item.kind === 'contract') checkSelection(item, check.captures, where);
+      if (item.kind === 'directive' && item.source.capture !== '') {
+        // An operator constraint is the exact bytes of an admitted input in this frontier.
+        const input = rows.find(row => row.fact.id === item.source.facts[0])?.fact;
+        ensure(item.source.facts.length === 1 && input && plan.frontier.includes(input.id)
+          && inputCapture(input).reference === item.source.capture && inputCapture(input).hash === item.source.hash,
+        `${where}: item ${item.id} is not a selection of an admitted input of this conversation`);
+        checkSelection(item, check.captures, where);
+      } else if (item.kind === 'directive' && check.view) ensure(item.content === groundingRunDirectives(check.view.directives),
+        `${where}: item ${item.id} differs from Five's current Run directives`);
+      if (item.kind === 'installation-status' && check.view) {
+        const status = record(JSON.parse(item.content) as unknown);
+        ensure(status.generation === plan.generation
+          && encoded(status.pending ?? null).bytes === encoded(groundingPendingState(check.view.pending)).bytes,
+        `${where}: status ${item.id} differs from Five's current generation or pending state`);
+      }
+      if (!check.standing) continue;
+      ensure(item.audience.includes(plan.audience.principal) && item.audience.includes(plan.audience.route),
+        `${where}: item ${item.id} is outside the verified audience or model route`);
+      ensure(plan.approvals.includes(item.standing.approval), `${where}: item ${item.id} lacks current approval`);
+      ensure(item.observedAt <= at.value, `${where}: item ${item.id} observed after this read`);
+      if (item.kind === 'installation-status') ensure(at.value - item.observedAt <= plan.statusMaxAge,
+        `${where}: required status ${item.id} is stale`);
     }
     return fact;
   });
+  // The ceilings bound the whole frozen selection, not only each body.
+  ensure(count <= GROUNDING_CORPUS_LIMITS.maxItems && bytes <= GROUNDING_CORPUS_LIMITS.maxCorpusBytes,
+    `grounding selection ${count} items / ${bytes} B exceeds its preprocessing ceiling ${GROUNDING_CORPUS_LIMITS.maxItems} / ${GROUNDING_CORPUS_LIMITS.maxCorpusBytes} B`);
+  return facts;
+}
+
+/** Accepted replies of this conversation, resolved from Seven's records: each
+ * ProviderAnswerAcceptance → its ProviderJudgmentRequest → that request's Five
+ * step → the context delivery for that step → the admitted input it answers.
+ * `limit` freezes the set at the delivery fact that selected it. */
+function acceptedReplies(rows: readonly Row[], run: string, frontier: readonly string[], captures: Captures, limit?: FactEnvelope) {
+  const visible = limit ? rows.filter(row => precedes(row.fact, limit)) : rows;
+  const answered = new Map<string, string>();
+  for (const fact of cleanRows(visible, 'assembly-ContextDeliverySpecification')) {
+    const delivery = owned(fact);
+    if (delivery.run !== run) continue;
+    const step = String(delivery.step), input = String(delivery.input);
+    ensure(!answered.has(step) || answered.get(step) === input, `run step ${step} was delivered for more than one input`);
+    answered.set(step, input);
+  }
+  const replies = new Map<string, Readonly<{ input: string; acceptance: string; hash: string; bytes: string }>>();
+  for (const fact of cleanRows(visible, 'judgment-provider-ProviderAnswerAcceptance')) {
+    const acceptance = owned(fact), capture = record(acceptance.capture);
+    const request = cleanRows(visible, 'judgment-provider-ProviderJudgmentRequest').find(candidate => owned(candidate).id === acceptance.request);
+    ensure(request, `accepted reply ${fact.id} names no Seven request`);
+    if (owned(request).run !== run) continue;
+    const input = answered.get(String(owned(request).step));
+    ensure(input !== undefined && frontier.slice(0, -1).includes(input),
+      `accepted reply ${fact.id} does not answer an earlier delivered input of this conversation`);
+    ensure(!replies.has(input), `input ${input} has more than one accepted reply`);
+    ensure(text(capture.reference, 512) && capture.hash === acceptance.answerDigest, `accepted reply ${fact.id} capture differs`);
+    const bytes = captures.read(capture.reference as string);
+    ensure(bytes !== null && hashBytes(bytes) === capture.hash, `accepted reply ${fact.id} bytes unavailable or changed`);
+    replies.set(input, freeze({ input, acceptance: fact.id, hash: capture.hash as string, bytes }));
+  }
+  return frontier.flatMap(input => replies.has(input) ? [replies.get(input)!] : []);
 }
 
 /** Build the `ProductionGroundingReaderInput.sample` seam. Delivery, consumption
@@ -195,12 +294,11 @@ export function createProductionContextSampler(input: GroundingSamplerInput): Pr
       ensure(bytes !== null && hashBytes(bytes) === capture.hash, `admitted input ${fact.id} capture unavailable or changed`);
       return { fact, capture };
     });
-    for (const reply of plan.replies) {
-      ensure(plan.frontier.slice(0, -1).includes(reply.input), 'accepted reply is not bound to an earlier input');
-      clean(rows.find(row => row.fact.id === reply.acceptance && row.fact.kind === 'judgment-provider-ProviderAnswerAcceptance'),
-        `accepted reply ${reply.acceptance} unavailable`);
-    }
-    const briefing = resolveBriefing(rows, plan, at);
+    // Every accepted reply to an earlier input, from Seven's records; the renderer
+    // and verifier re-resolve the same set frozen at the resulting delivery fact.
+    acceptedReplies(rows, plan.run, plan.frontier, configured.captures);
+    const briefing = resolveBriefing(rows, plan, plan.briefing, at,
+      { captures: configured.captures, view: { pending: view.pending, directives: view.run.directives }, standing: true }, plan.installation);
     const launchRow = take(configured.runtime.history!.lookup(plan.launch));
     ensure(launchRow && launchRow.record?.type === 'HarnessLaunchSpec' && launchRow.taint.length === 0
       && launchRow.conflicts.length === 0, 'admitted launch unavailable');
@@ -250,9 +348,12 @@ export interface GroundedContextBindings {
 }
 export interface GroundedContextInput {
   readonly store: FactStorePort; readonly context: AssemblyDecodeContext;
-  captures: Readonly<{ read(reference: string): string | null }>;
+  captures: Captures;
   readonly bindings: GroundedContextBindings;
-  readonly replies: readonly Readonly<{ input: string; acceptance: string }>[];
+  /** The owner plan and clock read NOW: before any dispatch the frozen delivery's
+   * sources must still be current, approved, in audience and fresh. */
+  plan(): GroundingSamplerPlan;
+  clock(): Clock;
 }
 
 interface Resolved {
@@ -262,17 +363,29 @@ interface Resolved {
   readonly replies: readonly Readonly<{ input: string; acceptance: string; hash: string; bytes: string }>[];
 }
 
-function resolveDelivered(input: GroundedContextInput): Resolved {
+/** Resolve the exact owner relationship delivery ↔ consumption ↔ Five grounding ↔
+ * Run/step/input/installation. `dispatch` additionally requires the plan read now
+ * to name this exact turn and its sources to hold current standing; `reconstruct`
+ * reads a historical packet and grants no permission to dispatch it. */
+function resolveDelivered(input: GroundedContextInput, purpose: 'dispatch' | 'reconstruct'): Resolved {
   const rows = take(input.store.readForProjection()).entries as readonly Row[];
-  const delivery = clean(rows.find(row => row.fact.id === input.bindings.delivery), 'context delivery fact unavailable');
-  const specification = record(record(delivery.body).record) as unknown as ContextDeliverySpecification;
+  const b = input.bindings, plan = input.plan();
+  if (purpose === 'dispatch') ensure(b.run === plan.run && b.step === plan.step && b.installation === plan.installation
+    && b.generation === plan.generation, 'bindings differ from the current owner plan\'s run, step, installation, or generation');
+  const delivery = clean(rows.find(row => row.fact.id === b.delivery), 'context delivery fact unavailable');
+  const specification = owned(delivery) as unknown as ContextDeliverySpecification;
   ensure(delivery.kind === 'assembly-ContextDeliverySpecification' && specification.type === 'ContextDeliverySpecification'
-    && specification.run === input.bindings.run && specification.generation === input.bindings.generation,
-  'context delivery differs from the bound run or generation');
-  const consumption = clean(rows.find(row => row.fact.id === input.bindings.consumption), 'context consumption fact unavailable');
-  const observation = record(record(consumption.body).record);
+    && specification.run === b.run && specification.step === b.step && specification.generation === b.generation,
+  'context delivery differs from the bound run, step, or generation');
+  const consumption = clean(rows.find(row => row.fact.id === b.consumption), 'context consumption fact unavailable');
+  const observation = owned(consumption);
   ensure(consumption.kind === 'assembly-HarnessObservation' && observation.contextDelivery === delivery.id
     && observation.phase === 'context-consumed', 'consumption does not witness this exact delivery');
+  ensure(cleanRows(rows, 'session-grounding').some(fact => {
+    const grounding = owned(fact);
+    return grounding.run === b.run && grounding.step === specification.step && record(grounding.consumption).id === consumption.id
+      && grounding.incarnation === specification.incarnation;
+  }), 'no Five grounding accepted this delivery\'s consumption for the bound run and step');
   const facts = rows.map(row => row.fact);
   const inputs = specification.contextManifest.filter(row => row.class === 'message').map(row => {
     const owner = facts.find(fact => record(record(fact.body).capture).reference === row.reference);
@@ -280,23 +393,19 @@ function resolveDelivered(input: GroundedContextInput): Resolved {
     ensure(owner && bytes !== null && hashBytes(bytes) === row.digest, 'delivered input capture unavailable or changed');
     return { fact: owner.id, reference: row.reference, hash: row.digest, bytes };
   });
-  const sources = specification.contextManifest.filter(row => row.class !== 'message').map(row => {
-    const fact = clean(rows.find(candidate => candidate.fact.id === row.reference), 'delivered briefing unavailable');
-    ensure(fact.kind === 'rungraph-briefing-material' && fact.contentHash === row.digest
-      && record(fact.body).class === row.class, 'delivered briefing differs from its manifest row');
-    decodeGroundingBriefingBody(fact.body);
-    return { class: row.class, reference: row.reference, digest: row.digest, content: String(record(fact.body).content) };
-  });
-  const replies = input.replies.map(reply => {
-    ensure(inputs.slice(0, -1).some(entry => entry.fact === reply.input), 'accepted reply is not bound to an earlier delivered input');
-    const fact = clean(rows.find(row => row.fact.id === reply.acceptance), 'accepted reply unavailable');
-    const acceptance = record(record(fact.body).record), capture = record(acceptance.capture);
-    ensure(fact.kind === 'judgment-provider-ProviderAnswerAcceptance' && text(capture.reference, 512)
-      && capture.hash === acceptance.answerDigest, 'accepted reply capture differs');
-    const bytes = input.captures.read(capture.reference as string);
-    ensure(bytes !== null && hashBytes(bytes) === capture.hash, 'accepted reply bytes unavailable or changed');
-    return { input: reply.input, acceptance: fact.id, hash: capture.hash as string, bytes };
-  });
+  ensure(inputs.at(-1)?.fact === specification.input, 'delivered manifest does not end at its bound input');
+  const rowsOfSources = specification.contextManifest.filter(row => row.class !== 'message');
+  if (purpose === 'dispatch') ensure(encoded(inputs.map(entry => entry.fact)).bytes === encoded(plan.frontier).bytes
+    && encoded(rowsOfSources.map(row => [row.class, row.reference, row.digest])).bytes
+      === encoded(plan.briefing.map(slot => [slot.class, slot.fact, slot.digest])).bytes,
+  'a required input or source changed since this delivery: hold and reprepare');
+  const slots = rowsOfSources.map(row => ({ class: row.class, fact: row.reference, digest: row.digest,
+    kinds: plan.briefing.find(slot => slot.class === row.class)?.kinds ?? itemKinds }));
+  const bodies = resolveBriefing(rows, { ...plan, frontier: inputs.map(entry => entry.fact) }, slots, input.clock(),
+    { captures: input.captures, view: null, standing: purpose === 'dispatch' }, b.installation);
+  const sources = bodies.map((fact, index) => ({ class: rowsOfSources[index]!.class, reference: fact.id,
+    digest: fact.contentHash, content: String(record(fact.body).content) }));
+  const replies = acceptedReplies(rows, specification.run, inputs.map(entry => entry.fact), input.captures, delivery);
   return { specification, inputs, sources, replies };
 }
 
@@ -305,7 +414,7 @@ function resolveDelivered(input: GroundedContextInput): Resolved {
  * admitted system framing and no document becomes a system message. */
 export function renderGroundedContext(input: GroundedContextInput): Result<string> {
   return boundary('RenderGroundedContext', null, input.context, () => {
-    const resolved = resolveDelivered(input);
+    const resolved = resolveDelivered(input, 'dispatch');
     const conversation = resolved.inputs.flatMap(entry => [
       { input: entry.fact, capture: entry.reference, hash: entry.hash, text: entry.bytes },
       ...resolved.replies.filter(reply => reply.input === entry.fact)
@@ -397,6 +506,9 @@ export interface GroundedJoinInput extends GroundedContextInput {
   readonly requestFact: string;
   /** Bytes the model adapter actually received, when checking at the adapter. */
   readonly received?: string;
+  /** `dispatch` (default) is permission to send now: current plan and standing
+   * must still hold. `reconstruct` proves a historical packet and permits nothing. */
+  readonly purpose?: 'dispatch' | 'reconstruct';
 }
 
 /** Prove Seven's captured submission contains exactly the delivered manifest's
@@ -411,6 +523,8 @@ export function verifyGroundedSubmission(input: GroundedJoinInput): Result<Reado
       && encoded(record(requestFact.body).record).bytes === encoded(q).bytes, 'Seven request differs from its durable record');
     ensure(q.run === input.bindings.run && q.step === input.bindings.step && q.generation === input.bindings.generation,
       'Seven request is bound to a different run, step, or generation');
+    if (input.received !== undefined) ensure((input.purpose ?? 'dispatch') === 'dispatch',
+      'a reconstructed request grants no permission to reach the model adapter');
     const read = (capture: Readonly<{ reference: string; hash: string }>) => {
       const bytes = input.captures.read(capture.reference);
       ensure(bytes !== null && hashBytes(bytes) === capture.hash, 'Seven capture unavailable or changed');
@@ -427,7 +541,7 @@ export function verifyGroundedSubmission(input: GroundedJoinInput): Result<Reado
       sources?: readonly Readonly<Record<string, unknown>>[] };
     ensure(packet && typeof packet === 'object' && exactKeys(packet, 'bindings,conversation,sources')
       && Array.isArray(packet.conversation) && Array.isArray(packet.sources), 'submitted context is not a grounded packet');
-    const resolved = resolveDelivered(input);
+    const resolved = resolveDelivered(input, input.purpose ?? 'dispatch');
     ensure(encoded(packet.bindings).bytes === encoded({ ...input.bindings, manifest: resolved.specification.contextManifest }).bytes,
       'submitted bindings differ from this turn\'s delivery, consumption, or manifest');
     const expected = resolved.inputs.flatMap(entry => [{ kind: 'input', entry },
