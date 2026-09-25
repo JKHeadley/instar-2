@@ -44,6 +44,29 @@ describe('P3-P5 committed owner reference resolver', () => {
       expect(() => loadOwnerReferences(root, { commit, files: [], sources: { [path]: JSON.stringify(original) } })).toThrow('missing artifact');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+  it('resolves only the two paired Part Twelve Slack fixtures at their committed hashes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'p3-owner-slack-'));
+    try {
+      for (const path of ['docs', 'register-source']) cpSync(path, join(root, path), { recursive: true });
+      installOwnerFixture(root);
+      mkdirSync(join(root, 'tests/conversation'), { recursive: true });
+      for (const file of ['slack-preparation.test.ts', 'slack-reply-hold.test.ts'])
+        cpSync(join('tests/conversation', file), join(root, 'tests/conversation', file));
+      const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      git('init'); git('add', '.'); git('commit', '-qm', 'owner fixture');
+      const commit = git('rev-parse', 'HEAD'); const files = git('ls-tree', '-r', '--name-only', commit).split('\n');
+      const path = 'register-source/owner-references/part-twelve.json';
+      const original = JSON.parse(readFileSync(join(root, path), 'utf8'));
+      const load = (manifest = original) => loadOwnerReferences(root, { commit, files, sources: { [path]: JSON.stringify(manifest) } });
+      expect(load().references).toEqual([{ provider: 'fixture', id: 'P12-NF-19' }, { provider: 'fixture', id: 'P12-NF-28' }]);
+      const mutations = [
+        (m: typeof original) => { m.fixtures[0].id = 'P12-NF-20'; },
+        (m: typeof original) => { m.fixtures[0].artifact.path = 'tests/conversation/slack-reply-hold.test.ts'; },
+        (m: typeof original) => { m.fixtures[1].artifact.hash = hash('stale'); },
+      ];
+      for (const mutate of mutations) { const manifest = structuredClone(original); mutate(manifest); expect(() => load(manifest)).toThrow(); }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it('follows actual public owner exports, direct imports, namespaces and aliases, never local impostors', () => {
     const records = Object.fromEntries(ownerDecoders.map(id => [id, `export const ${id} = (v: unknown) => v;`]));
     const source: Record<string, string> = {
