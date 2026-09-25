@@ -304,7 +304,7 @@ Ten specification, resource and authority references, validation, verification o
 reservation, claim and consumption before execution. Strengthen the demand if actual loss
 consequences require it. Permanent machine loss can destroy launch history and leave unfinished
 work unknown; it grants no replacement attempt. This bounded local occupation does not add a
-third irreversible operation to P-08's provider/reply set. If bounded expiry or exclusion of
+further irreversible operation to P-08's provider/reply set. If bounded expiry or exclusion of
 irreversible effects cannot be established, this mode is unsupported under this contract. An
 irreversible local launch requires separate operator approval of the purpose's local-loss rule,
 Eight §5, and Ten installation §§1/2/9 and their loss checks; it cannot be obtained by renaming
@@ -458,7 +458,8 @@ never changes an installed demand automatically.
 owns the P-08 installation policy; Ten owns the fixed profile; Eight owns the operation demand;
 and Two owns its durability evidence. **Checks: P8-NF-25/26/27**. For irreversible effects, the
 single-machine shape makes `local-durable` available only to the profile-enumerated installed
-provider call and reply-only Telegram `ordinary-reply` send after one operator acceptance binds
+provider call, reply-only Telegram `ordinary-reply` send, and text-only, reply-only Slack
+`ordinary-reply` send in one workspace to the bound operator's pre-bound DM or thread, after one operator acceptance binds
 that complete set and the permanent-machine-loss model for the installation. The operator does not list those operations
 again by hand. Each exact local prefix covers authorization, preparation, disclosure,
 maximum-charge reservation, reply preparation, observations and later settlement predecessors

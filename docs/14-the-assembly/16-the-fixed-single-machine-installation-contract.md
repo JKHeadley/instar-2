@@ -5,9 +5,10 @@
 **Value — purpose.** This profile defines the bounded contracts for one usable installation.
 It does not define a general installer. It does not generate keys. It does not add a certification
 system. It does not turn the eighteen production resolver names into eighteen new record bodies.
-It selects one machine, one voter, one pre-bound Telegram conversation, one confined Native
-worker, one admitted model route, the six-fold minimal plane, and one operator-administered
-approval, clock, and observation host.
+It selects one machine, one voter, one pre-bound Telegram conversation and optionally one
+pre-bound Slack DM or thread for the same operator, one confined Native worker, one admitted
+model route, the six-fold minimal plane, and one operator-administered approval, clock, and
+observation host.
 
 **Rule — reading convention and evidence discipline.** Owner: Ten for this assembly profile;
 imported facts and behavior retain the owners named below. Predicate: P10-SI-01 passes only when
@@ -48,14 +49,17 @@ and assessment records are referenced through their public decoders. The owner m
 | Nine | independent challenge, delivery and provider-evidence assessment, protection posture, probes, and freshness |
 | Ten | manifest selection, installation references, assembly admission, confinement, custody, and lifecycle wiring |
 | Eleven | operator surface, minimal-plane dependency verdict, limited voice, and whole-slice acceptance |
-| Twelve | Telegram identity, route, capability, provider-acceptance limit, and delivery-stage evidence |
+| Twelve | Telegram and Slack identity, route, capability, provider-acceptance limit, and delivery-stage evidence |
 
 **Rule — the profile has one exact scope.** Owner: Ten, with operator standing verified through
 One and Eleven. Predicate: P10-SI-03 accepts only one named machine identity, one Six voter, one
 Native harness and model-route tuple, one Telegram bot/account/chat/topic route, one bound
-operator principal, one reply-only audience, and the six named Eleven folds. It rejects a second
-execution machine, voter, bot, conversation, provider tuple, platform, or protected-mutation
-capability. A separately enrolled durability peer is permitted, and required whenever a selected
+operator principal, one reply-only audience, and the six named Eleven folds. It may additionally
+select one Slack app/account route in one workspace to that same operator's pre-bound DM or
+single thread, for text-only replies to the same authorized audience. Both routes share the
+existing worker, admission and resource bounds. It rejects a second execution machine, voter,
+provider tuple, additional account or conversation beyond these two routes, any other platform,
+or protected-mutation capability. A separately enrolled durability peer is permitted, and required whenever a selected
 operation demands replication; it is not a second execution voter. When only one machine is
 enrolled, the admitted installation carries no peer dependency and uses the accepted closed
 irreversible local-durable P-08 set. Ordinary bounded operations follow the purpose's fully
@@ -83,7 +87,9 @@ of these two arms:
    enrolled store on a second independently failing machine.
 2. `local-durable` names a current, independently approved P-08 installation policy that binds
    this profile and the operator's one-time acceptance of its closed operation set: the installed
-   paid provider call and reply-only Telegram `ordinary-reply` send. The exact operation is a
+   paid provider call, reply-only Telegram `ordinary-reply` send, and text-only, reply-only Slack
+   `ordinary-reply` send in one workspace to the bound operator's pre-bound DM or thread.
+   The exact operation is a
    member of that set. Its local durable prefix contains authorization, preparation, provider
    disclosure and maximum-charge reservation, reply preparation, observations, and all later
    settlement predecessors available at dispatch. The operator does not hand-list the operations.
@@ -96,7 +102,7 @@ is named `replicated(0)`.
 
 **Rule — ordinary bounded operations have their own local durability rule.** Owner: Eight;
 predicates: P10-SI-04/36. `ordinary-local-durability-scope` is RESOLVED by the purpose's fully
-functional single-machine Rule and its ordinary bounded-operation Rule. The provider/reply pair
+functional single-machine Rule and its ordinary bounded-operation Rule. The provider/reply closed set
 and its exact membership check govern irreversible effects. An ordinary operation requires all
 four consequential-effect tests to be false, finite enforced bounds and the whole causal record
 retained durably at least locally, with its complete required prefix durable before dispatch.
@@ -106,7 +112,7 @@ holds remain open. Approval starts nothing and adds no peer prerequisite.
 
 **Value — the accepted loss model in plain words.** Permanent loss of this one machine can
 destroy the authority, work, captures, observations, and accounting evidence needed to
-reconstruct a paid model call or Telegram send. No peer survives that loss. An unknown earlier
+reconstruct a paid model call or Telegram or Slack send. No peer survives that loss. An unknown earlier
 effect cannot safely be repeated from memory or from a new installation. Losing the only voter,
 key, clock, route, or evidence path stops the dependent scope. No failover or delivered outage
 notice is promised when the path needed to deliver it is gone. The installer presents this text
@@ -1563,7 +1569,7 @@ fixture-only registry, or direct helper call is insufficient.
 
 | Owner and predicate | Negative | Positive neighbor |
 |---|---|---|
-| Eight/Two, P10-SI-04 | Local effect has no current policy or lacks one causal predecessor; zero provider/Telegram calls | Same exact operation has either a real peer receipt or approved local policy plus complete local receipt; one admitted dispatch |
+| Eight/Two, P10-SI-04 | Local effect has no current policy or lacks one causal predecessor; zero provider/Telegram/Slack calls | Same exact operation has either a real peer receipt or approved local policy plus complete local receipt; one admitted dispatch |
 | Ten, P10-SI-06/07 | Wrong role owner, duplicate unequal id, selection substituted for a direct owner fact, or peer silently omitted | One complete applicable roster resolves; local mode marks only peer not applicable under the exact policy |
 | Two/Ten, P10-SI-08/09 | Self-signed signer, bootstrap read from authenticated root, `.boot-lease` used as Six authority, or changed immutable pin | External pin and pre-provisioned handle agree with admitted key history; current Six fence/reservation resolves |
 | Five, P10-SI-10 | Serialized callback, stale generation, missing gate, or wrong decoder | Public loader constructs existing `RunGovernance` from current register and owner ports |

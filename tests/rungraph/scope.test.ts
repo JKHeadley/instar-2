@@ -82,7 +82,7 @@ it('P5-NF-54 P3 validates the actual colocated feature declaration; wrong profil
     ? { ...d, requiredFacts: { ...d.requiredFacts, liveProof: 'unavailable:production' } } : d)))
     .toThrow('unresolved rungraph-core.liveProof');
 });
-it('P5-NF-55 scoped live-core workload measures fold latency, retained facts, pending and conflicts', () => {
+it('P5-NF-55 P5-NF-55-PARTIAL scoped live-core workload measures fold latency, retained facts, pending and conflicts', () => {
   const f = setup(), ready = value(f.graph.open(f.run)), g = value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
   value(f.graph.transition(f.start(ready, g)));
   const start = performance.now(), view = value(f.graph.read(f.id)), foldMs = performance.now() - start;
