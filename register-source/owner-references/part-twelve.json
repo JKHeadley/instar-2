@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "owner": "part-twelve",
+  "fixtures": [
+    {
+      "id": "P12-NF-19",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/conversation/slack-preparation.test.ts",
+        "hash": "sha256:d79f9e43767b8eec3be6d06a98d59c99f503ee42b09c0ad96c3b2cb544b9c669"
+      }
+    },
+    {
+      "id": "P12-NF-28",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/conversation/slack-reply-hold.test.ts",
+        "hash": "sha256:749dc67c67a1af9c4cf2a27bfa24783ef38146b63bd195a8e733fc10158f1db7"
+      }
+    }
+  ],
+  "probes": [],
+  "decoders": [],
+  "documents": []
+}
