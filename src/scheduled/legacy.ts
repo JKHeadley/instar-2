@@ -85,8 +85,6 @@ function actualDeclaration(value: Record<string, unknown>, sourceBytes: string):
   if (value.enabled === false) residue.push('legacy job is disabled; explicit package enable choice required');
   if (value.perMachineIndependent === true) residue.push('per-machine work is not proven machine-local');
   const script = executionType === 'script';
-  if (script) residue.push('script job requires worker isolation and is not ported');
-  if (executionType === 'agentmd') residue.push('AgentMD job requires an explicit replacement package');
   const postCompletionLearning = !script && (living as { enabled?: boolean } | undefined)?.enabled === true
     && value.integrationGate !== false ? 'required' as const : 'off' as const;
   const plan: LegacyScheduledImportPlan = { slug: id, sourceBytes, sourceDigest: hashBytes(sourceBytes),
