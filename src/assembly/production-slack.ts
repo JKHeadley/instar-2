@@ -4,8 +4,8 @@ import { consumeResult } from '../index.js';
 import { createFactStore } from '../facts/index.js';
 import type { IntakeAdapterPort, IntakeDependencies, IntakePort } from '../intake/index.js';
 import { createIntakePort } from '../intake/index.js';
-import { createSlackIngress, createSlackIntakeAdapter } from '../conversation/slack.js';
-import type { SlackSelection, SlackSocketAuthority } from '../conversation/slack.js';
+import { createSlackIngress, createSlackIntakeAdapter } from '../conversation/index.js';
+import type { SlackSelection, SlackSocketAuthority } from '../conversation/index.js';
 
 type Prepared = Readonly<{ intake: IntakePort; adapter: IntakeAdapterPort; ingress: ReturnType<typeof createSlackIngress> }>;
 
