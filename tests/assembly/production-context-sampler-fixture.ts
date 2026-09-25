@@ -116,3 +116,47 @@ export function groundingFixture(options: { storage?: any; purpose?: any; status
   return { ...f, p, plan, bodies, corpus, appendBody, captures, sample, reader, graph, delivered, bindings, render,
     nextInput, events, ref };
 }
+
+import { createHash } from 'node:crypto';
+import { createProviderJudgmentPort, providerJudgmentSchemas, registerProviderJudgmentBodies } from '../../src/judgment/index.js';
+import { groundedSubmission } from '../../src/assembly/production-context-sampler.js';
+import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
+import { privateKey } from '../facts/fixtures.js';
+
+export const SETTINGS = { automaticRetries: 0, maxTokens: 128 }, OUTPUT_SCHEMA = { type: 'Decision' };
+
+/** Real Seven over the same store with file-backed judgment captures. The route
+ * description is a recorded offline provider; `maxInputBytes` is the bound under test. */
+export function withSeven(f: ReturnType<typeof groundingFixture>, directory: string, maxInputBytes: number) {
+  const context = f.ctx, dc = context.decode;
+  if (!dc.register.entries.includes('provider-call')) dc.register.entries.push('provider-call');
+  const boundary = { ...f.c, register: dc.register };
+  const th = { ...f.owners.host, domain: 'conversation:1', authorityIncarnation: 'authority:1',
+    monotonic: () => f.deps.clock().value, current: () => ({ ...f.owners.host.current(), generation: f.run.generation }) };
+  const host = { transport: th, point: 'judgment', floor: f.floor,
+    description: { owner: 'part-ten', provider: 'test-provider', model: 'model', route: ROUTE, automaticRetries: 0,
+      maxInputBytes, maxOutputBytes: 4096, maxCharge: 20, measured: false, basis: 'recorded offline HTTP provider (synthetic)' },
+    refreshFacts: () => f.success(undefined) };
+  Object.assign(context, { schemas: [...context.schemas, ...providerJudgmentSchemas(host)],
+    ownedBodies: [...context.ownedBodies, ...value(registerProviderJudgmentBodies(host, boundary))] });
+  const captures = createJudgmentCaptures(directory, context.captures, fn => f.success(fn()), 1048576, dc.captures);
+  f.owners.host.capture = bytes => captures.put(bytes, 262144);
+  for (const [reference, bytes] of Object.entries(dc.captures)) if (!context.captures[reference]) context.captures[reference] =
+    { bytes, hash: 'sha256:' + createHash('sha256').update(bytes).digest('hex'), byteLength: Buffer.byteLength(bytes), status: 'available' };
+  const judgment = { host, boundary, authority: f.effects.transport, captures, store: f.store, context, privateKey,
+    runs: f.graph, settings: SETTINGS, outputSchema: OUTPUT_SCHEMA, maxTokens: 128, maxCaptureBytes: 1048576, timeout: 100,
+    disclosure: 'recorded provider' };
+  const seven = createProviderJudgmentPort(judgment);
+  const submission = (question: string, rendered: string, evidence: string[] = []) => groundedSubmission({ provider: host.description.provider,
+    model: host.description.model, route: ROUTE, question, context: rendered, settings: SETTINGS, outputSchema: OUTPUT_SCHEMA,
+    floor: f.floor, evidence, point: 'judgment', generation: f.run.generation.id });
+  /** Put the grounded turn's pending step into Five with the exact submission digest, then prepare it in Seven. */
+  const prepareTurn = (ready, ground, key: string, question: string, rendered: string, evidence: string[] = []) => {
+    const transition = f.start(ready, ground, key), digest = submission(question, rendered, evidence).digest;
+    value(f.graph.transition({ ...transition, step: { ...transition.step, operation: { ...transition.step.operation, digest } } }));
+    const prepared = seven.prepare({ id: `r5-question:${key}`, run: { owner: 'part-five', name: 'Run', id: f.id },
+      step: `step:${key}`, ordinal: 0, semanticMessage: key, question, context: rendered, evidence, deadline: 400 }, f.effects.fence);
+    return prepared;
+  };
+  return { seven, host, captures, judgment, submission, prepareTurn };
+}
