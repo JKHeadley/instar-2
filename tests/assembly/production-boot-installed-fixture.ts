@@ -28,7 +28,7 @@ import { createProductionRunAdmission } from '../../src/transport/index.js';
 export const fixtureAdmissionNames = productionBindingHolds.join(', ');
 export function installedFixtureHost(root, route, options = {}) {
   const getMe = readFileSync('tests/assembly/telegram-recorded/getMe.json', 'utf8');
-  const poll = readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8');
+  const poll = options.pollResponse ?? readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8');
   const sent = readFileSync('tests/assembly/telegram-recorded/sendMessage.json', 'utf8');
   const bot = JSON.parse(getMe).result, t = conversationFixture({ botId: String(bot.id), skipInitialAdmission: true });
   const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
@@ -67,7 +67,7 @@ export function installedFixtureHost(root, route, options = {}) {
         prepareContext: recovery ? (context, assemblyHost, base) => {
           const dc = context.decode, boundary = { ...base.c, register: dc.register };
           const th = { ...assemblyHost, domain: 'conversation:1', incarnation: 'incarnation:one',
-            authorityIncarnation: 'authority:1', monotonic: () => base.now.value,
+            authorityIncarnation: 'authority:1', budget: 1000, monotonic: () => base.now.value,
             current: () => ({ decode: dc, clock: base.now, stopped: false, generation: dc.register.generation }) };
           const judgment = { transport: th, point: 'judgment', floor: base.floor,
             description: { owner: 'part-ten', provider: 'test-provider', model: 'model', route: 'route', automaticRetries: 0,
@@ -96,7 +96,8 @@ export function installedFixtureHost(root, route, options = {}) {
       }
       f.owners.host.capture = bytes => captures.put(bytes, 262144);
       const th = { ...f.owners.host, domain: 'conversation:1', authorityIncarnation: 'authority:1',
-        monotonic: () => f.deps.clock().value, current: () => ({ ...f.owners.host.current(), generation: f.run.generation }) };
+        budget: 1000, monotonic: () => f.deps.clock().value,
+        current: () => ({ ...f.owners.host.current(), generation: f.run.generation }) };
       const judgmentHost = { transport: th, point: 'judgment', floor: f.floor,
         description: { owner: 'part-ten', provider: 'test-provider', model: 'model', route: 'route', automaticRetries: 0,
           maxInputBytes: 4096, maxOutputBytes: 4096, maxCharge: 20, measured: false, basis: 'recorded HTTP provider' },
@@ -144,8 +145,14 @@ export function installedFixtureHost(root, route, options = {}) {
         io: { invoke: request => {
           calls.push(request.method);
           if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-before-response', state);
+          const reply = options.dynamicReplyResponse && request.method === 'sendMessage'
+            ? JSON.stringify({ ...JSON.parse(sent), result: { ...JSON.parse(sent).result,
+              text: request.body.text, chat: { ...JSON.parse(sent).result.chat, id: Number(request.body.chat_id) },
+              ...(request.body.message_thread_id ? { message_thread_id: request.body.message_thread_id } : {}),
+              entities: [] } }) : sent;
           const response = { kind: 'response', status: 200,
-            bytes: request.method === 'getMe' ? getMe : request.method === 'getUpdates' ? poll : sent };
+            bytes: request.method === 'getMe' ? getMe : request.method === 'getUpdates'
+              ? typeof poll === 'function' ? poll(request) : poll : reply };
           if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-after-response', state);
           return response;
         } } }));
@@ -162,24 +169,28 @@ export function installedFixtureHost(root, route, options = {}) {
       binding.dependencies = binding.dependencies.map(row => row.name === 'lease' ? { ...row,
         fact: { ...row.fact, reference: f.effects.leaseFact.id } } : row);
       const grounding = f.groundingFor({ scope: binding.scope });
-      let placement;
+      const placements = new Map();
       const originalStart = f.start;
       const originalMessage = f.effects.message;
       const originalPrepare = f.effects.prepare;
       const placeRun = () => {
-        if (placement) return placement;
+        const prior = placements.get(f.opening.id);
+        if (prior) return prior;
         const rows = value(f.store.read());
-        const inputs = rows.filter(row => row.kind === 'intake-admitted');
+        const inputs = rows.filter(row => row.kind === 'intake-admitted'
+          && row.segment.position <= f.opening.segment.position);
         const material = rows.filter(row => row.kind === 'rungraph-briefing-material');
         const manifest = [...inputs.map(row => ({ class: 'message', reference: row.body.rawHash, digest: row.body.rawHash })),
           ...material.map(row => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))];
-        const message = f.effects.message(f.id, 'actual delivered Telegram input');
+        const accepted = (state?.contextHistory ?? []).filter(item => item.acceptedReply)
+          .map(item => storage.captures.read(item.acceptedReply));
+        const message = f.effects.message(f.id, ['actual delivered Telegram input', ...accepted].join('\n'));
         const wireMessage = value(decodeOutboundMessage({ ...message, sourceResult: f.opening.id,
           context: { input: { fact: f.opening.id, reference: f.opening.body.rawHash, hash: f.opening.body.rawHash }, manifest } }, f.owners.host));
         const admitted = f.effects.prepare(wireMessage);
         const reservation = value(f.effects.transport.inspect()).find(row =>
           row.record.type === 'AdmissionReservation' && row.record.operation === admitted.operation);
-        value(f.runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: 'production-live-input-launch',
+        value(f.runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: `production-live-input-launch:${f.id}`,
           run: f.id, principal: 'w', machine: 'machine-a', incarnation: 'incarnation:one', harness: f.harnessId,
           artifactDigest: grounding.harness.describe().artifact, input: f.opening.id, inputDigest: f.opening.body.rawHash,
           processOperation: admitted.operation, resourceReferences: [reservation.fact.id] }));
@@ -197,7 +208,8 @@ export function installedFixtureHost(root, route, options = {}) {
           transition.blockedOn.reference = transition.step.id;
           return transition;
         };
-        placement = { admitted, reservation };
+        const placement = { admitted, reservation };
+        placements.set(f.opening.id, placement);
         return placement;
       };
       const bindings = productionComposition(f, binding);
@@ -256,8 +268,9 @@ export function installedFixtureHost(root, route, options = {}) {
           const received = value(application.owners.intake.receive(raw, extracted.route));
           if (received.kind !== 'admitted') throw Error('Four input not admitted');
           const opening = value(f.store.read()).find(row => row.id === received.fact.id);
-          f.bindIntake(opening); placeRun(); Object.assign(state, { raw, extracted, placement }); return received;
+          f.bindIntake(opening); const placement = placeRun(); Object.assign(state, { raw, extracted, placement }); return received;
         } };
+      state.placeTurn = opening => { f.bindIntake(opening); return placeRun(); };
       options.mutate?.(state, owners);
       return assemblyBoundary('RecordedInstallationHost', null, boundary, () => () => ({ owners, manifest: manifest.id, scope: binding.scope, installationFact }));
     } };

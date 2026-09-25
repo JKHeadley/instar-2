@@ -14,15 +14,18 @@ const common = () => [
   record('runfact:1', 'run-opening', { id: 'run:1', opening: { id: 'opening:1' } }, { run: 'run:1' }),
   record('ground:1', 'session-grounding', { run: 'run:1' }),
   record('requestfact:1', 'judgment-provider-ProviderJudgmentRequest', { id: 'request:1', run: 'run:1' }),
+  record('effect:1', 'effect-provider-ProviderEffectRequest', { id: 'provider-effect:1', run: 'run:1' }),
 ];
 const reply = () => [...common(),
-  record('provider-claim', 'transport-AdmissionReservation', { run: 'run:1', state: 'dispatch-claimed' }),
+  record('provider-claim', 'transport-AdmissionReservation',
+    { run: 'run:1', request: 'provider-effect:1', state: 'dispatch-claimed' }),
   record('provider-response', 'judgment-provider-ProviderJudgmentAttemptRecord',
     { request: 'request:1', phase: 'response-observed' }),
   record('acceptance:1', 'judgment-provider-ProviderAnswerAcceptance',
     { request: 'request:1', capture: { reference: 'answer:1' } }),
   record('replyrun:1', 'run-opening', { id: 'reply:1', opening: { id: 'acceptance:1' } }, { run: 'reply:1' }),
-  record('replyrequest:1', 'effect-EffectRequest', { id: 'reply-request', run: 'reply:1' }),
+  record('replymessage:1', 'effect-OutboundMessage', { id: 'reply-message', purpose: 'ordinary-reply' }),
+  record('replyrequest:1', 'effect-EffectRequest', { id: 'reply-request', run: 'reply:1', message: 'reply-message' }),
 ];
 
 function withLedger(rows: unknown[], check: (root: string, run: (mode: string) => ReturnType<typeof spawnSync>) => void) {
@@ -30,9 +33,20 @@ function withLedger(rows: unknown[], check: (root: string, run: (mode: string) =
   try {
     writeFileSync(join(root, 'facts.json'), JSON.stringify(rows));
     writeFileSync(join(root, 'calls.json'), '[]');
-    const run = (mode: string) => spawnSync(process.execPath,
-      ['tests/e2e/production-serving-worker.mjs', root, mode],
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 10000 });
+    const run = (mode: string) => {
+      const result = spawnSync(process.execPath, ['tests/e2e/production-serving-worker.mjs', root, mode],
+        { cwd: process.cwd(), encoding: 'utf8', timeout: 10000 });
+      // The old fake worker emits a run-only reservation. Give its durable
+      // stand-in the exact request identity before asking the new fold to recover.
+      if (result.signal === 'SIGKILL') {
+        const facts = JSON.parse(readFileSync(join(root, 'facts.json'), 'utf8'));
+        for (const fact of facts) if (fact.kind === 'transport-AdmissionReservation'
+          && fact.body.record.request === undefined) fact.body.record.request =
+            fact.body.record.run === 'run:1' ? 'provider-effect:1' : 'reply-request';
+        writeFileSync(join(root, 'facts.json'), JSON.stringify(facts));
+      }
+      return result;
+    };
     check(root, run);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
@@ -209,3 +223,49 @@ it.each(['reply-claim-kill', 'reply-consume-kill', 'reply-kill-before', 'reply-k
       expect(proof.calls).not.toContain('sendMessage');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 180000);
+
+it.each(['accepted-reply-claim-kill', 'accepted-reply-consume-kill',
+  'accepted-reply-kill-before', 'accepted-reply-kill-after'])(
+  'the real bin retains the accepted-reply profile without a second send after %s', async action => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'production-serving-accepted-')));
+    try {
+      const fixture = await installedServingFixture(root, { provider: 'test-provider', model: 'model', route: 'route',
+        disclosure: 'recorded provider', automaticRetries: 0, environment: 'local-test',
+        invoke: async () => { throw Error('setup provider must not run'); } }, { singleUpdate: true });
+      const installation = join(root, 'installation.json');
+      writeFileSync(installation, JSON.stringify(fixture.record));
+      const run = (mode: string) => new Promise<{ status: number | null; signal: NodeJS.Signals | null;
+        stderr: string; timedOut: boolean }>((resolve, reject) => {
+        const child = spawn(process.execPath, ['--experimental-transform-types',
+          '--import=./tests/assembly/production-boot-source-loader.mjs', 'bin/instar-production.mjs',
+          installation, 'tests/fixtures/production-serving-host.mjs'],
+        { cwd: process.cwd(), env: { ...process.env, INSTAR_SERVING_TEST_ACTION: mode },
+          stdio: ['ignore', 'ignore', 'pipe'] });
+        let stderr = '';
+        child.stderr.on('data', bytes => { stderr += bytes; });
+        let timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 300000);
+        child.once('error', reject);
+        child.once('exit', (status, signal) => { clearTimeout(timer); resolve({ status, signal, stderr, timedOut }); });
+      });
+      const killed = await run(action);
+      expect(killed.timedOut, killed.stderr).toBe(false);
+      expect(killed.signal, killed.stderr).toBe('SIGKILL');
+      const resumed = await run('accepted-resume');
+      expect(resumed.timedOut, resumed.stderr).toBe(false);
+      expect(resumed.status, resumed.stderr).toBe(0);
+      const proof = JSON.parse(readFileSync(join(root, 'serving-accepted-proof.json'), 'utf8'));
+      expect(proof.stage).toBe(action === 'accepted-reply-kill-before' ? 'reply-before-response'
+        : action === 'accepted-reply-kill-after' ? 'reply-after-response' : action);
+      expect(proof.replies).toBe(1);
+      expect(proof.serving).toMatchObject({ turns: 2, replies: 1, slot: proof.second });
+      expect(proof.serving.binding).toMatchObject({ ceiling: 100, maxTurns: 2, maxReplies: 2 });
+      expect(proof.second).not.toBe(proof.first);
+      expect(proof.calls).not.toContain('sendMessage');
+      const latest = new Map(proof.reservations.map((row: { operation: string }) => [row.operation, row]));
+      const applications = new Map(proof.applications.map((row: { operation: string }) => [row.operation, row]));
+      expect([...latest.values()].reduce((total: number, row: any) => total +
+        ((applications.get(row.operation) as any)?.exposure ?? row.charge), 0)).toBe(4);
+      expect([...applications.values()].some((row: any) => row.actualCharge === 3 && row.released === 17)).toBe(true);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 650000);

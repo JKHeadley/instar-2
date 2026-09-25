@@ -1,14 +1,16 @@
 import fs from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
 import { createDecipheriv, randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import { extractTelegramUpdate } from '../../src/conversation/index.js';
 import { runIdFor } from '../../src/rungraph/index.js';
+import { runAdmission } from '../../src/rungraph/rungraph.js';
 import { createProductionConversationHost, runConversationDriver } from '../../src/assembly/index.js';
 import { recordedCheckpoint } from '../assembly/production-boot-checkpoint.js';
-import { runRecordedConversation } from '../assembly/production-boot-trace.js';
+import { runRecordedConversation, createRecordedServingPlan,
+  recordedResponseEvidenceContract } from '../assembly/production-boot-trace.js';
+import { registerProviderResponseEvidenceBounds } from '../../src/assembly/provider-invocation.js';
 import { localProvider } from '../model-provider/http-provider.js';
 import { value, privateKey, json } from '../facts/fixtures.js';
 
@@ -64,31 +66,23 @@ function recordCut(root, stage, checkpointPath, current) {
  * existing installed owner fixture. Each update remains captured and witnessed
  * by the real Ten custodian when it polls; no production owner is replaced. */
 export async function installedServingFixture(root, route, options = {}) {
-  if (options.singleUpdate) {
-    const { installedFixtureHost } = await import('../assembly/production-boot-installed-fixture.js');
-    const { singleUpdate: _singleUpdate, ...rest } = options;
-    return installedFixtureHost(root, route, rest);
-  }
-  const original = fs.readFileSync;
-  const augmented = (() => {
-    const response = JSON.parse(original('tests/assembly/telegram-recorded/poll-0.json', 'utf8'));
+  const { installedFixtureHost } = await import('../assembly/production-boot-installed-fixture.js');
+  const response = JSON.parse(fs.readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8'));
+  if (!options.singleUpdate) {
     const next = structuredClone(response.result[0]);
     next.update_id += 1;
     next.message.message_id += 1;
     next.message.text = 'Distinct follow up';
     response.result.push(next);
-    return JSON.stringify(response);
-  })();
-  fs.readFileSync = (path, ...args) => String(path) === 'tests/assembly/telegram-recorded/poll-0.json'
-    ? augmented : original(path, ...args);
-  syncBuiltinESMExports();
-  try {
-    const { installedFixtureHost } = await import('../assembly/production-boot-installed-fixture.js');
-    return installedFixtureHost(root, route, options);
-  } finally {
-    fs.readFileSync = original;
-    syncBuiltinESMExports();
   }
+  const { singleUpdate: _singleUpdate, sequentialPoll: _sequentialPoll, ...rest } = options;
+  return installedFixtureHost(root, route, { ...rest, pollResponse: request => {
+    options.onPoll?.(request.body.offset);
+    const eligible = response.result.filter(update => update.update_id >= request.body.offset);
+    const next = options.sequentialPoll ? eligible.slice(0, 1) : eligible;
+    return JSON.stringify({ ...response,
+      result: next });
+  } });
 }
 
 /** The existing installed fixture starts with a binding for another route.
@@ -97,7 +91,18 @@ export function installServingBinding(built, raw) {
   const extracted = extractTelegramUpdate(raw, built.declaration), route = extracted.route;
   const existing = value(built.f.store.read()).find(row => row.kind === 'conversation-binding'
     && row.body.channel === route.channel && row.body.sender === route.sender);
-  if (existing) return existing;
+  if (existing) {
+    built.t.intake.syncCaptures();
+    for (const [reference, captured] of Object.entries(built.t.intake.context.captures))
+      if (captured.bytes !== null && captured.bytes !== undefined)
+        built.storage.captures.preserve(reference, captured.bytes);
+    Object.assign(built.f.ctx.captures, built.t.intake.context.captures);
+    Object.assign(built.f.ctx.decode.captures, built.t.intake.context.decode.captures);
+    const principal = built.t.intake.f.principal(extracted.principal.id, 'person');
+    if (!built.f.ctx.decode.principals.some(row => row.id === principal.id))
+      built.f.ctx.decode.principals.push(principal);
+    return existing;
+  }
   const original = value(built.f.store.read()).find(row => row.kind === 'conversation-binding');
   const owner = original.principal;
   const principal = built.t.intake.f.principal(extracted.principal.id, 'person');
@@ -134,14 +139,16 @@ export async function createProductionHost() {
   const installation = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
   const action = process.env.INSTAR_SERVING_TEST_ACTION ?? 'binding';
   const checkpointPath = `${installation.storageRoot}/serving-pending-checkpoint.json`;
-  const recovery = ['pending-resume', 'provider-resume', 'reply-resume'].includes(action)
+  const recovery = ['pending-resume', 'provider-resume', 'reply-resume', 'accepted-resume'].includes(action)
     ? JSON.parse(fs.readFileSync(checkpointPath, 'utf8')) : undefined;
+  const accepted = action.startsWith('accepted-');
   const http = action.startsWith('reply-') && action !== 'reply-resume'
     ? await localProvider() : null;
   const providerCut = action === 'provider-claim-kill' || action === 'provider-consume-kill';
   const replyCut = action === 'reply-claim-kill' || action === 'reply-consume-kill';
-  let fixture;
-  fixture = await installedServingFixture(installation.storageRoot, {
+  const acceptedCut = action === 'accepted-reply-claim-kill' || action === 'accepted-reply-consume-kill';
+  let fixture, acceptedPlan, acceptedBuilt;
+  const route = Object.freeze({
     provider: 'test-provider', model: 'model', route: 'route', disclosure: 'recorded provider',
     automaticRetries: 0, environment: 'local-test',
     invoke: async bytes => {
@@ -154,14 +161,23 @@ export async function createProductionHost() {
           headers: { Authorization: `Bearer ${http.credential}`, 'Content-Type': 'application/json' } });
         return response.json();
       }
+      if (accepted && action !== 'accepted-resume') {
+        const answer = JSON.stringify(acceptedBuilt.f.decisionInput());
+        return { state: 'complete', bytes: answer, providerOperation: 'accepted-provider-operation',
+          usage: { inputTokens: 11, outputTokens: 9, charge: 3, source: 'authenticated local provider receipt' },
+          retryBlocked: false, responseEvidenceDraft: acceptedPlan.responseDraft(bytes, answer) };
+      }
       throw Error('provider invocation is outside this binding test');
     },
-  }, { ...(recovery ? { recovery } : {}),
-    ...(providerCut || replyCut ? { storageIO: recordCut(installation.storageRoot, action,
+  });
+  if (accepted) registerProviderResponseEvidenceBounds(route, recordedResponseEvidenceContract);
+  fixture = await installedServingFixture(installation.storageRoot, route, { ...(recovery ? { recovery } : {}),
+    ...(providerCut || replyCut || acceptedCut ? { storageIO: recordCut(installation.storageRoot, action,
       checkpointPath, () => fixture.state()) } : {}),
-    ...(action.startsWith('reply-') ? { singleUpdate: true,
+    ...((action.startsWith('reply-') || accepted) ? { ...(accepted ? { sequentialPoll: true } : { singleUpdate: true }),
+      ...(accepted ? { dynamicReplyResponse: true } : {}),
       physicalCheckpoint(stage, state) {
-        const target = action === 'reply-kill-before' ? 'reply-before-response' : 'reply-after-response';
+        const target = action.endsWith('kill-before') ? 'reply-before-response' : 'reply-after-response';
         if (stage === target) {
           durableJSON(checkpointPath, recordedCheckpoint(state, stage));
           process.kill(process.pid, 'SIGKILL');
@@ -169,6 +185,65 @@ export async function createProductionHost() {
       } } : {}) });
   return { ...fixture.host, async run(application) {
     const built = fixture.state(); built.application = application;
+    if (accepted) {
+      const raw = JSON.stringify(JSON.parse(fs.readFileSync(
+        'tests/assembly/telegram-recorded/poll-0.json', 'utf8')).result[0]);
+      const binding = installServingBinding(built, raw);
+      const installationFact = value(built.f.store.read()).find(row => row.kind === 'assembly-ProductionInstallation');
+      const target = extractTelegramUpdate(raw, built.declaration).target;
+      acceptedBuilt = built;
+      acceptedPlan = action === 'accepted-resume' ? { plan: Object.fromEntries([
+        'open', 'grounding', 'pending', 'question', 'providerEffect', 'acceptance',
+        'replyOpening', 'replyPolicy', 'replyRoute', 'replyEffect'].map(key =>
+        [key, () => { throw Error(`recovered accepted reply tried ${key}`); }])) }
+        : createRecordedServingPlan(built, target);
+      let now = 100;
+      const run = createProductionConversationHost({
+        binding: { installation: installationFact.id, conversation: binding.id,
+          ceiling: 100, maxTurns: 2, maxReplies: 2, expires: 500,
+          providerMax: 20, replyMax: 5, errorLimit: 3, totalErrorLimit: 5 },
+        fence: () => built.f.effects.fence, admitted: built.admitted,
+        observer: built.owners.intake.author.principal.id, target, plan: acceptedPlan.plan,
+        capture: reference => built.storage.captures.read(reference),
+        now: () => now, stopped: () => false, executionQuiescent: () => true,
+        maxContextTurns: 2, maxContextBytes: 4096, maxCycles: action === 'accepted-resume' ? 1 : 2,
+        baseBackoffMs: 1, maxBackoffMs: 2, yieldBoundary: async () => {},
+        sleep: async milliseconds => { now += milliseconds; }, nextAttempt: randomUUID,
+      });
+      await run.run(application);
+      if (action !== 'accepted-resume') throw Error('accepted reply cut was not reached');
+      const secondUpdate = JSON.parse(fs.readFileSync(
+        'tests/assembly/telegram-recorded/poll-0.json', 'utf8')).result[0].update_id + 1;
+      const batch = value(built.api.poll({ token: built.declaration.token,
+        apiVersion: built.declaration.apiVersion, offset: secondUpdate, limit: 100, timeout: 0 }));
+      const next = batch.updates[0];
+      if (!next) throw Error('Ten did not witness the distinct accepted-profile follow up');
+      const received = value(application.owners.intake.receive(next,
+        extractTelegramUpdate(next, built.declaration).route));
+      if (received.kind !== 'admitted') throw Error('witnessed accepted-profile follow up was not admitted');
+      const input = value(built.f.store.read()).find(row => row.id === received.fact.id);
+      const opening = { owner: 'part-two', name: 'FactEnvelope', id: input.id };
+      const nextRun = { ...built.f.run, id: runIdFor(opening), opening,
+        intent: { type: 'Intent', id: input.body.intent.id, fact: opening, field: 'intent' },
+        authority: { resolution: opening, grants: [] },
+        resultDestination: { ...built.f.run.resultDestination, route: opening } };
+      const preserved = value(built.f.deps.governance.capture.preserve(nextRun));
+      value(runAdmission(nextRun, { ...built.f.runContext, preserved,
+        facts: { ...built.f.runContext.facts, facts: value(built.f.store.read()) } }, built.f.deps.governance));
+      const opened = value(application.owners.run.open(nextRun));
+      value(application.owners.serving.admitTurn(`turn:${input.id}`, built.f.effects.fence, input.id, opened.run.id));
+      fs.writeFileSync(`${installation.storageRoot}/serving-accepted-proof.json`, JSON.stringify({
+        stage: recovery.stage, serving: value(application.owners.serving.inspect()),
+        first: built.f.id, second: opened.run.id,
+        reservations: value(application.owners.transport.inspect()).filter(row =>
+          row.record.type === 'AdmissionReservation').map(row => row.record),
+        applications: value(application.owners.transport.inspect()).filter(row =>
+          row.record.type === 'SettlementApplication').map(row => row.record),
+        replies: value(built.f.store.read()).filter(row => row.kind === 'judgment-provider-ProviderAnswerAcceptance').length,
+        calls: built.calls,
+      }));
+      return;
+    }
     if (action.startsWith('reply-')) {
       if (action === 'reply-resume') {
         const rows = value(built.f.store.read());

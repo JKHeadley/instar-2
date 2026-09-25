@@ -12,7 +12,9 @@ const intake = () => [f('receipt:1', 'intake-receipt', { capture: { reference: '
 const grounded = () => [r('runfact:1', 'run-opening', { id: 'run:1', opening: { id: 'opening:1' } }, { run: 'run:1' }),
   r('ground:1', 'session-grounding', { run: 'run:1' }),
   r('request:1', 'judgment-provider-ProviderJudgmentRequest', { id: 'request:1', run: 'run:1' })];
-const claim = () => r('claim:1', 'transport-AdmissionReservation', { state: 'dispatch-claimed', run: 'run:1' });
+const providerEffect = () => r('effect:1', 'effect-provider-ProviderEffectRequest', { id: 'effect:1', run: 'run:1' });
+const claim = () => r('claim:1', 'transport-AdmissionReservation',
+  { state: 'dispatch-claimed', run: 'run:1', request: 'effect:1' });
 
 describe('production conversation fact fold', () => {
   it('advances monotonically and treats a claimed provider call with no outcome as UNKNOWN', () => {
@@ -20,7 +22,7 @@ describe('production conversation fact fold', () => {
     expect(turns(rows)[0]?.phase).toBe('admitted');
     rows.push(...grounded());
     expect(turns(rows)[0]?.phase).toBe('grounded');
-    rows.push(claim());
+    rows.push(providerEffect(), claim());
     expect(turns(rows)[0]?.phase).toBe('provider-dispatched-unknown');
     rows.push(r('response:1', 'judgment-provider-ProviderJudgmentAttemptRecord',
       { phase: 'response-observed', request: 'request:1' }));
@@ -29,8 +31,21 @@ describe('production conversation fact fold', () => {
       { request: 'request:1', capture: { reference: 'answer:1' } }));
     expect(turns(rows)[0]?.phase).toBe('accepted');
     rows.push(r('replyrun:1', 'run-opening', { id: 'reply:1', opening: { id: 'accepted:1' } }, { run: 'reply:1' }));
-    rows.push(r('replyclaim:1', 'transport-AdmissionReservation', { state: 'dispatch-claimed', run: 'reply:1' }));
+    rows.push(r('replymessage:1', 'effect-OutboundMessage', { id: 'replymessage:1', purpose: 'ordinary-reply' }),
+      r('replyrequest:1', 'effect-EffectRequest', { id: 'replyrequest:1', run: 'reply:1', message: 'replymessage:1' }),
+      r('replyclaim:1', 'transport-AdmissionReservation',
+        { state: 'dispatch-claimed', run: 'reply:1', request: 'replyrequest:1' }));
     expect(turns(rows)[0]?.phase).toBe('reply-dispatched-unknown');
+  });
+
+  it('keeps consumed context delivery grounded until the exact provider request is claimed', () => {
+    const rows = [...intake(), ...grounded(),
+      r('context-request', 'effect-EffectRequest', { id: 'context-request', run: 'run:1' }),
+      r('context-consumed', 'transport-AdmissionReservation',
+        { run: 'run:1', request: 'context-request', state: 'consumed' })];
+    expect(turns(rows)[0]?.phase).toBe('grounded');
+    rows.push(providerEffect(), claim());
+    expect(turns(rows)[0]?.phase).toBe('provider-dispatched-unknown');
   });
 
   it('refuses duplicate admission records for one update', () => {
@@ -63,7 +78,7 @@ function harness() {
   let stopped = false, now = 0, capacity = true, calls = 0;
   const operations: ConversationDriverOperations = {
     facts: () => rows, pollOnce: () => {}, ground: () => {},
-    dispatchProvider: () => { calls++; rows.push(claim()); },
+    dispatchProvider: () => { calls++; rows.push(providerEffect(), claim()); },
     acceptAndPrepareReply: () => {}, dispatchReply: () => { calls++; },
     capture: () => 'inbound', apiAccepted: () => false,
     admission: { owner: 'part-six', admitTurn: () => 'admitted', current: () => capacity },
@@ -81,12 +96,14 @@ describe('irreversible gates', () => {
       it(`${gate} closes before ${boundary} dispatch`, async () => {
         const h = harness();
         if (boundary === 'reply') {
-          h.rows.push(claim(), r('response:1', 'judgment-provider-ProviderJudgmentAttemptRecord',
+          h.rows.push(providerEffect(), claim(), r('response:1', 'judgment-provider-ProviderJudgmentAttemptRecord',
             { phase: 'response-observed', request: 'request:1' }),
           r('accepted:1', 'judgment-provider-ProviderAnswerAcceptance',
             { request: 'request:1', capture: { reference: 'answer:1' } }),
           r('replyrun:1', 'run-opening', { id: 'reply:1', opening: { id: 'accepted:1' } }, { run: 'reply:1' }),
-          r('replyrequest:1', 'effect-EffectRequest', { id: 'replyrequest:1', run: 'reply:1' }));
+          r('replymessage:1', 'effect-OutboundMessage', { id: 'replymessage:1', purpose: 'ordinary-reply' }),
+          r('replyrequest:1', 'effect-EffectRequest',
+            { id: 'replyrequest:1', run: 'reply:1', message: 'replymessage:1' }));
         }
         if (gate === 'stop') h.setStop();
         if (gate === 'expiry') h.setExpiry();

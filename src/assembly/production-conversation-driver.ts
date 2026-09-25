@@ -76,8 +76,11 @@ export function turns(facts: readonly ConversationFact[],
       && record(fact).run === providerRun);
     const request = providerRun && unique(facts.filter(fact => fact.kind === 'judgment-provider-ProviderJudgmentRequest'
       && record(fact).run === providerRun), 'provider request');
-    const providerClaims = providerRun ? facts.filter(fact => fact.kind === 'transport-AdmissionReservation'
-      && record(fact).run === providerRun && ['dispatch-claimed', 'consumed'].includes(str(record(fact).state))) : [];
+    const providerEffect = providerRun && unique(facts.filter(fact => fact.kind === 'effect-provider-ProviderEffectRequest'
+      && record(fact).run === providerRun), 'provider effect request');
+    const providerClaims = providerEffect ? facts.filter(fact => fact.kind === 'transport-AdmissionReservation'
+      && record(fact).request === record(providerEffect).id
+      && ['dispatch-claimed', 'consumed'].includes(str(record(fact).state))) : [];
     const response = request ? unique(facts.filter(fact => fact.kind === 'judgment-provider-ProviderJudgmentAttemptRecord'
       && record(fact).request === record(request).id && record(fact).phase === 'response-observed'), 'provider response') : undefined;
     const acceptance = request ? unique(facts.filter(fact => fact.kind === 'judgment-provider-ProviderAnswerAcceptance'
@@ -85,10 +88,12 @@ export function turns(facts: readonly ConversationFact[],
     const replyOpening = acceptance ? unique(facts.filter(fact => fact.kind === 'run-opening'
       && idOf(record(fact).opening) === acceptance.id), 'reply opening') : undefined;
     const replyRun = replyOpening ? str(replyOpening.body.run) || str(record(replyOpening).id) : null;
-    const replyClaims = replyRun ? facts.filter(fact => fact.kind === 'transport-AdmissionReservation'
-      && record(fact).run === replyRun && ['dispatch-claimed', 'consumed'].includes(str(record(fact).state))) : [];
     const replyRequest = replyRun ? unique(facts.filter(fact => fact.kind === 'effect-EffectRequest'
-      && record(fact).run === replyRun), 'reply request') : undefined;
+      && record(fact).run === replyRun && facts.some(message => message.kind === 'effect-OutboundMessage'
+        && record(message).id === record(fact).message && record(message).purpose === 'ordinary-reply')), 'reply request') : undefined;
+    const replyClaims = replyRequest ? facts.filter(fact => fact.kind === 'transport-AdmissionReservation'
+      && record(fact).request === record(replyRequest).id
+      && ['dispatch-claimed', 'consumed'].includes(str(record(fact).state))) : [];
     const replyObservation = replyRequest ? facts.find(fact => fact.kind === 'effect-OperationObservation'
       && record(fact).request === record(replyRequest).id && record(fact).stage === 'response') : undefined;
     let phase: TurnPhase = 'admitted';

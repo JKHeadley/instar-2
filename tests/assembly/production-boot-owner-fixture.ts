@@ -196,7 +196,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   };
   const installed = installAssemblySupport(base, options);
   installed.bindIntake = (fact: any) => {
-    if (!options.deferred || (!options.recovery && value(store.read()).some(row => row.kind === 'run-opening'))) throw Error('intake binding already in use');
+    if (!options.deferred) throw Error('intake binding already in use');
     if (fact.kind !== 'intake-admitted' || !value(store.read()).some(row => row.id === fact.id)) throw Error('durable Four input required');
     opening = fact; intent = fact.body.intent; id = runIdFor(ref(fact));
     c.intakeOwners[fact.body.work.owner] = owner;
@@ -331,7 +331,14 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
           return connected;
         },
         prepare(message: any) {
-          const previous = value(transport.inspect()).filter((r: any) => r.record.type === 'AdmissionReservation' && r.record.state === 'consumed');
+          const facts = value(store.read());
+          const ordinary = new Set(facts.filter((row: any) => row.kind === 'effect-EffectRequest'
+            && facts.some((message: any) => message.kind === 'effect-OutboundMessage'
+              && message.body.record?.id === row.body.record?.message
+              && message.body.record?.purpose === 'context-delivery'))
+            .map((row: any) => row.body.record.id));
+          const previous = value(transport.inspect()).filter((r: any) => r.record.type === 'AdmissionReservation'
+            && r.record.state === 'consumed' && ordinary.has(r.record.request));
           for (const row of previous) {
             const settled = value(transport.inspect()).some((r: any) => r.record.type === 'SettlementApplication' && r.record.operation === row.record.operation);
             if (!settled) value(transport.settle(fence, value(api.settle(row.record.operation))));
@@ -372,11 +379,11 @@ function installAssemblySupport(f: any, options: any) {
   const material = f.deps.groundingPolicy.briefingClasses.map((className: string) => f.append('rungraph-briefing-material', { class: className }).fact);
   let launch: any, launchFact: any;
   const ensureLaunch = () => {
-  if (launch) return;
+  if (launch?.run === f.id) return;
   const existing = value(runtime.inspect()).find((row: any) => row.record.type === 'HarnessLaunchSpec'
     && row.record.run === f.id && row.record.incarnation === 'incarnation:one');
   if (existing) { launch = existing.record; launchFact = existing.fact; return; }
-  launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: 'production-live-input-launch',
+  launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: `production-live-input-launch:${f.id}`,
     ...(options.native ? { artifactDigest: options.native.io.current().artifact } : {}),
     run: f.id, input: f.opening.id, inputDigest: options.intake ? f.opening.body.rawHash : f.initialCapture.hash, incarnation: 'incarnation:one', harness: f.harnessId }));
   launchFact = value(runtime.inspect()).find((r: any) => r.record.id === launch.id)!.fact;
@@ -403,8 +410,10 @@ function installAssemblySupport(f: any, options: any) {
       ensureLaunch();
       groundingCheckpoint('current-read-sample', { store: selected.store === f.store, generation: f.run.generation.id });
       f.owners.events.push('sample');
-      const snapshot = value(selected.store.read()), inputs = snapshot.filter((row: any) => options.intake ? row.kind === 'intake-admitted' : ['stimulus', 'next-inbound'].includes(row.kind));
-      const intake = inputs.at(-1)!;
+      const snapshot = value(selected.store.read()), inputs = snapshot.filter((row: any) => options.intake
+        ? row.kind === 'intake-admitted' && row.segment.position <= f.opening.segment.position
+        : ['stimulus', 'next-inbound'].includes(row.kind));
+      const intake = options.intake ? f.opening : inputs.at(-1)!;
       const captureFor = row => options.intake ? { reference: row.body.rawHash, hash: row.body.rawHash } : row.body.capture;
       const capture = captureFor(intake);
       const manifest = [...inputs.map(row => ({ class: 'message', ...{ reference: captureFor(row).reference, digest: captureFor(row).hash } })),
@@ -413,7 +422,8 @@ function installAssemblySupport(f: any, options: any) {
         sourceResult: intake.id, context: { input: { fact: intake.id, reference: capture.reference, hash: capture.hash }, manifest } }, f.owners.host))
         : JSON.parse(f.ctx.captures[capture.reference].bytes);
       const admitted = f.effects.prepare(wireMessage);
-      const previous = value(currentRuntime.inspectCurrent()).filter((r: any) => r.record.type === 'ContextDeliverySpecification').at(-1);
+      const previous = value(currentRuntime.inspectCurrent()).filter((r: any) => r.record.type === 'ContextDeliverySpecification'
+        && r.record.run === f.id).at(-1);
       const spec: any = { type: 'ContextDeliverySpecification', schemaVersion: 1, id: contextDeliveryIdFor(launchFact.id, admitted.operation),
         predecessors: [], dependencyFacts: [], launch: launchFact.id, run: f.id, step: `step:operation:${++serial}`, input: intake.id, inputDigest: capture.hash,
         incarnation: launch.incarnation, harness: launch.harness, artifactDigest: launch.artifactDigest, machine: launch.machine, generation: f.run.generation.id,

@@ -26,6 +26,10 @@ export interface ProductionConversationPlan {
   question(turn: ConversationTurn): ProviderQuestionInput;
   providerEffect(turn: ConversationTurn, prepared: PreparedProviderJudgment):
     Parameters<ProductionApplication['owners']['provider']['eight']['prepare']>[0];
+  /** Select a fresh genuine provider owner over the installed store for a turn's pinned Nine plan. */
+  providerOwners?(turn: ConversationTurn): ProductionApplication['owners']['provider'];
+  /** Ten may record turn-specific verification evidence before Nine assesses it. */
+  prepareAssessment?(turn: ConversationTurn, operation: string): void;
   acceptance(turn: ConversationTurn, facts: readonly ConversationFact[],
     assessment: OwnedReference<'part-nine', 'VerificationAssessment'>,
     settlement: EffectSettlement, accounting: SettlementApplication):
@@ -77,30 +81,37 @@ function ownerOperations(application: ProductionApplication, config: ProductionC
     pollOnce: () => { take(ingress.pollOnce()); },
     ground: (turn, context) => {
       const ready = take(owners.run.open(plan.open(turn, context)));
-      if (!turn.providerRun) return;
+      if (!turn.providerRun) take(owners.serving.admitTurn(`turn:${turn.opening}`,
+        fence, turn.opening, ready.run.id));
       const g = plan.grounding(turn);
       const grounded = take(owners.run.ground(ready.run.id, g.worker, g.harness, g.reason, g.ownership));
       take(owners.run.transition(plan.pending(turn, ready, grounded)));
     },
     dispatchProvider: async (turn, guard) => {
-      const prepared = take(owners.provider.seven.prepare(plan.question(turn), fence));
-      const request = take(owners.provider.eight.prepare(plan.providerEffect(turn, prepared), fence));
+      const provider = plan.providerOwners?.(turn) ?? owners.provider;
+      const prepared = take(provider.seven.prepare(plan.question(turn), fence));
+      const request = take(provider.eight.prepare(plan.providerEffect(turn, prepared), fence));
       guard();
-      take(await owners.provider.eight.dispatch(request, fence));
+      take(await provider.eight.dispatch(request, fence));
     },
     acceptAndPrepareReply: turn => {
+      const provider = plan.providerOwners?.(turn) ?? owners.provider;
+      const providerRequest = facts(application).find(fact => fact.kind === 'effect-provider-ProviderEffectRequest'
+        && record(fact).run === turn.providerRun);
+      ensure(providerRequest, 'conversation host: provider effect request absent');
       const operation = take(owners.transport.inspect()).filter(row =>
         row.record.type === 'AdmissionReservation' && row.record.run === turn.providerRun
-          && row.record.state === 'consumed').at(-1)?.record;
+          && row.record.request === record(providerRequest).id && row.record.state === 'consumed').at(-1)?.record;
       ensure(operation?.type === 'AdmissionReservation', 'conversation host: consumed provider operation absent');
-      const assessment = take(owners.provider.eight.assessResponse(operation.operation));
-      const settlement = take(owners.provider.eight.settle(operation.operation, assessment));
+      plan.prepareAssessment?.(turn, operation.operation);
+      const assessment = take(provider.eight.assessResponse(operation.operation));
+      const settlement = take(provider.eight.settle(operation.operation, assessment));
       const settle = owners.transport.settle as (token: FenceToken, value: EffectSettlement) =>
         import('../index.js').Result<SettlementApplication>;
       const accounting = take(settle(fence, settlement));
-      const acceptance = take(owners.provider.seven.recordProviderAnswerAcceptance(
+      const acceptance = take(provider.seven.recordProviderAnswerAcceptance(
         plan.acceptance(turn, facts(application), assessment, settlement, accounting),
-        owners.provider.responseAssessment, fence));
+        provider.responseAssessment, fence));
       const reply = take(owners.run.openAcceptedProviderReply(plan.replyOpening(turn, acceptance)));
       take(owners.admitReply(`reply:${turn.opening}`, fence, reply.run.id, plan.replyPolicy(turn)));
       const route = plan.replyRoute(turn), replyOwners = owners.reply(route.admitted, route.target);
@@ -108,8 +119,10 @@ function ownerOperations(application: ProductionApplication, config: ProductionC
     },
     dispatchReply: (turn, guard) => {
       const route = plan.replyRoute(turn), replyOwners = owners.reply(route.admitted, route.target);
-      const request = facts(application).find(fact => fact.kind === 'effect-EffectRequest'
-        && record(fact).run === turn.replyRun);
+      const current = facts(application);
+      const request = current.find(fact => fact.kind === 'effect-EffectRequest'
+        && record(fact).run === turn.replyRun && current.some(message => message.kind === 'effect-OutboundMessage'
+          && record(message).id === record(fact).message && record(message).purpose === 'ordinary-reply'));
       ensure(request, 'conversation host: prepared reply request absent');
       guard();
       take(replyOwners.doorway.dispatch(record(request) as unknown as EffectRequest, fence));

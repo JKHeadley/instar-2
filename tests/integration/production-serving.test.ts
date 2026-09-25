@@ -48,8 +48,10 @@ function serving(capacity = 20) {
     },
     dispatchProvider: (turn, guard) => {
       guard(); calls.push(`provider:${turn.updateId}`);
-      facts.push(record(`claim:${turn.updateId}`, 'transport-AdmissionReservation',
-        { run: `run:${turn.updateId}`, state: 'dispatch-claimed' }));
+      facts.push(record(`effect:${turn.updateId}`, 'effect-provider-ProviderEffectRequest',
+        { id: `effect:${turn.updateId}`, run: `run:${turn.updateId}` }),
+      record(`claim:${turn.updateId}`, 'transport-AdmissionReservation',
+        { run: `run:${turn.updateId}`, request: `effect:${turn.updateId}`, state: 'dispatch-claimed' }));
       if (turn.updateId === 1) { used += 12; return; } // honest UNKNOWN, retained maximum
       used += 3;
       facts.push(record(`response:${turn.updateId}`, 'judgment-provider-ProviderJudgmentAttemptRecord',
@@ -66,12 +68,15 @@ function serving(capacity = 20) {
       if (!facts.some(row => row.id === `replyrun:${n}`)) facts.push(
         record(`replyrun:${n}`, 'run-opening', { id: `reply:${n}`, opening: { id: `acceptance:${n}` } },
           { run: `reply:${n}` }),
-        record(`replyrequest:${n}`, 'effect-EffectRequest', { id: `replyrequest:${n}`, run: `reply:${n}` }));
+        record(`replymessage:${n}`, 'effect-OutboundMessage',
+          { id: `replymessage:${n}`, purpose: 'ordinary-reply' }),
+        record(`replyrequest:${n}`, 'effect-EffectRequest',
+          { id: `replyrequest:${n}`, run: `reply:${n}`, message: `replymessage:${n}` }));
     },
     dispatchReply: (turn, guard) => {
       guard(); const n = turn.updateId; calls.push(`sendMessage:${n}`);
       facts.push(record(`replyclaim:${n}`, 'transport-AdmissionReservation',
-        { run: `reply:${n}`, state: 'dispatch-claimed' }),
+        { run: `reply:${n}`, request: `replyrequest:${n}`, state: 'dispatch-claimed' }),
       record(`replyobservation:${n}`, 'effect-OperationObservation',
         { stage: 'response', request: `replyrequest:${n}` }));
     },

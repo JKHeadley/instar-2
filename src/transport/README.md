@@ -133,6 +133,14 @@ Bounds and honesty:
   Six reserves 128 domain-record positions per remaining turn before admitting it;
   there is no automatic renewal or budget refill. This profile does not alter old
   singleton or fixed-pair records, and does not activate the held production route.
+- The installed offline conversation host now uses a turn-derived Ten launch and
+  Five grounding, Seven question and acceptance, and a separate Five reply Run
+  for each admitted input. Its bounded context delivery carries preceding Four
+  inputs and captured accepted replies. The fixture proves an UNKNOWN provider
+  followed by an accepted reply, two settled provider replies, and restart cuts
+  at the accepted reply claim, consumption, and lost acknowledgement. Six keeps
+  original maxima until independent settlement applications qualify release;
+  Telegram API acknowledgement remains distinct from human delivery.
 - Rebuild is bounded to 4096 domain records; P2 verifies the signed prefix. This
   slice does not claim bounded P2 replay. Its bounded due-scan port persists the
   exact scan/generation/key digest and next position, resumes missed selection
