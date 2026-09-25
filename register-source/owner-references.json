@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/rungraph/closure-registration-additivity.test.ts",
-        "hash": "sha256:3ca5f0c46aac799b6ddf37c50fa591c543d9aa0e9423579e5d10f9bf12486520"
+        "hash": "sha256:95751105ec85a39894f8d849cfd93156e72e0cc95f7d4a8ae149d89e38ae2bda"
       }
     },
     {
