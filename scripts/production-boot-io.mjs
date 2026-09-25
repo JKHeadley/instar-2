@@ -13,14 +13,40 @@ export const productionStorageIO = Object.freeze({ pid: process.pid,
   unlinkSync, writeFileSync });
 
 export const productionProviderIO = Object.freeze({
+  now: () => Date.now(),
+  localClockResetAt: (hour, minute, now) => {
+    const candidate = new Date(now);
+    candidate.setHours(hour, minute, 0, 0);
+    if (candidate.getTime() <= now) candidate.setDate(candidate.getDate() + 1);
+    return candidate.getTime();
+  },
+  calendarResetAt: (month, day, hour, minute, zone, now) => {
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric',
+      day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23', timeZoneName: 'shortOffset' });
+    for (let year = new Date(now).getUTCFullYear() - 1; year <= new Date(now).getUTCFullYear() + 1; year++) {
+      const wallUtc = Date.UTC(year, month - 1, day, hour, minute);
+      const offset = formatter.formatToParts(wallUtc).find(part => part.type === 'timeZoneName')?.value;
+      const match = /^GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/.exec(offset ?? '');
+      if (!match) continue;
+      const minutes = (Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)) * (match[1] === '-' ? -1 : 1);
+      const candidate = wallUtc - minutes * 60000;
+      const fields = Object.fromEntries(formatter.formatToParts(candidate).map(part => [part.type, part.value]));
+      if (candidate > now && Number(fields.year) === year && Number(fields.month) === month
+        && Number(fields.day) === day && Number(fields.hour) === hour && Number(fields.minute) === minute)
+        return candidate;
+    }
+    return NaN;
+  },
   realpath: realpathSync,
   executableBytes: path => { if (!lstatSync(path).isFile()) throw Error('provider executable missing'); return readFileSync(path); },
   execute: input => new Promise(resolve => {
     if (input.stopped?.()) { resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); return; }
     const child = spawn(input.executable, input.args, { cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
-      shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
+      shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let chunks = [], size = 0, limited = false;
-    const fail = () => { limited = true; chunks = []; child.kill('SIGKILL'); };
+    const fail = () => { limited = true; chunks = [];
+      if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    };
     const timer = setTimeout(fail, input.timeout);
     const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(); }, 25) : undefined;
     child.on('error', () => { clearTimeout(timer); clearInterval(stopTimer); resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); });
