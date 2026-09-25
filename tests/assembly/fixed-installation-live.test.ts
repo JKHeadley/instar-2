@@ -964,7 +964,7 @@ function syntheticMonitor(state = 'running', reason = 'ok') {
   const digestValue = value(canonical('release')).hash;
   const calls: any[] = [];
   let tamper = false;
-  const client = { exchange: (bytes: Uint8Array) => {
+  const client = { roundTrip: (bytes: Uint8Array) => {
     const request = monitorRequest(unframe(Buffer.from(bytes)));
     calls.push(request);
     const launch = request.method === 'launch';
@@ -1046,8 +1046,8 @@ it('S8 validates trust before any transport and re-reads current trust and clock
     // exchange (authorityValidUntil=100). The delayed receipt is refused.
     let clock = 50;
     const delayed = createInstalledBoundary(f.c, installed(() => ({ ...monitor.trust, now: clock })));
-    const client = monitor.client.exchange;
-    monitor.client.exchange = (bytes: Uint8Array) => { const reply = client(bytes); clock = 1_001; return reply; };
+    const client = monitor.client.roundTrip;
+    monitor.client.roundTrip = (bytes: Uint8Array) => { const reply = client(bytes); clock = 1_001; return reply; };
     reads = 0;
     expect(refused(delayed.launch(spec, locators.operation, locators.claim))).toContain('installed receipt trust expired');
     expect(reads).toBe(2);                                  // before transport and again for verification
@@ -1055,11 +1055,11 @@ it('S8 validates trust before any transport and re-reads current trust and clock
     // (3) A changed binding (rotated key) during the exchange refuses too.
     const rotated = generateKeyPairSync('ed25519').publicKey;
     let key = monitor.trust.publicKey;
-    monitor.client.exchange = (bytes: Uint8Array) => { const reply = client(bytes); key = rotated; return reply; };
+    monitor.client.roundTrip = (bytes: Uint8Array) => { const reply = client(bytes); key = rotated; return reply; };
     expect(refused(createInstalledBoundary(f.c, installed(() => ({ ...monitor.trust, publicKey: key })))
       .launch(spec, locators.operation, locators.claim))).toContain('trust changed during the exchange');
     // Positive neighbour: trust unchanged and current -> launched, two reads.
-    monitor.client.exchange = client; reads = 0;
+    monitor.client.roundTrip = client; reads = 0;
     expect(value(createInstalledBoundary(f.c, installed(() => monitor.trust))
       .launch(spec, locators.operation, locators.claim))).toMatchObject({ phase: 'launched' });
     expect(reads).toBe(2);
@@ -1104,7 +1104,7 @@ it.runIf(darwin)('M1 synchronous client is the pinned enforcer client role with 
     const enforcer = buildEnforcer(dir, join(dir, 'absent.sock'));
     const client = createMonitorClient(enforcer);
     const started = Date.now();
-    expect(() => client.exchange(frame({ v: 1 }))).toThrow('monitor client refused');
+    expect(() => client.roundTrip(frame({ v: 1 }))).toThrow('monitor client refused');
     expect(Date.now() - started).toBeLessThan(1_500);
     expect(() => createMonitorClient('relative/enforcer')).toThrow('absolute pinned enforcer path required');
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -1140,7 +1140,7 @@ function serviceFixture(root: string, journalPath: string, options: { context?: 
     clockReference: 'clock:test', now: 50, authorityValidUntil: 100, millisecondsPerUnit: 1 };
   const s8 = () => { value(setup.view.refresh()); return createInstalledBoundary(setup.f.c, { installation: 'installation:test',
     machine: 'machine-a', store: createFactStore(setup.f.ctx, setup.view.segment),
-    client: { exchange: (bytes: Uint8Array) => service.handle(bytes) }, trust: () => trust,
+    client: { roundTrip: (bytes: Uint8Array) => service.handle(bytes) }, trust: () => trust,
     generation: () => setup.f.host.current().generation }); };
   return { ...setup, service, released, s8, trust, config };
 }

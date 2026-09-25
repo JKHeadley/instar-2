@@ -276,7 +276,7 @@ export function createNativeJournalSync(enforcerPath) {
  * there is no retry, no shell and no local worker-spawn fallback. */
 export function createMonitorClient(enforcerPath) {
   assert(typeof enforcerPath === 'string' && isAbsolute(enforcerPath), 'absolute pinned enforcer path required');
-  return Object.freeze({ exchange(requestBytes) {
+  return Object.freeze({ roundTrip(requestBytes) {
     try {
       return execFileSync(enforcerPath, ['client'], { input: Buffer.from(requestBytes), timeout: 1_000,
         maxBuffer: MAX_FRAME + 4, env: {}, stdio: ['pipe', 'pipe', 'ignore'], shell: false });

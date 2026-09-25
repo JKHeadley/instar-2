@@ -270,8 +270,9 @@ export function createLaunchLocatorResolver(store: FactStorePort) {
 // ---- S8 ----
 
 /** The installed synchronous client: the pinned enforcer `client` role run with
- * a bounded timeout. It exchanges exactly one frame; it never spawns a worker. */
-export interface MonitorClientPort { exchange(request: Uint8Array): Uint8Array }
+ * a bounded timeout. It round-trips exactly one frame; it never spawns a worker. It is not a
+ * model exchange: model calls go only through the judgment doorway. */
+export interface MonitorClientPort { roundTrip(request: Uint8Array): Uint8Array }
 
 export interface InstalledLaunchMonitor {
   readonly installation: string; readonly machine: string;
@@ -317,7 +318,7 @@ export function createProductionLaunchBoundary(context: AssemblyDecodeContext,
   // unavailable or already invalid trust means zero calls.
   const preflight = (): MonitorTrust => usableTrust(installed.trust());
   const exchange = (request: MonitorRequest, before: MonitorTrust): MonitorReceipt => {
-    const reply = monitorUnframe(installed.client.exchange(monitorFrame(request)));
+    const reply = monitorUnframe(installed.client.roundTrip(monitorFrame(request)));
     // Verification reads current trust and clock again: a revocation, expiry or
     // changed binding during the exchange refuses the delayed evidence.
     const after = usableTrust(installed.trust());
