@@ -6,9 +6,13 @@ import { boundary, encoded, ensure, take } from './boundary.js';
 import { createProviderCredentialCustodian, createProviderSubscriptionCustodian } from './provider-credential-custodian.js';
 import type { ProviderCredentialCustodianInput } from './provider-credential-custodian.js';
 import { registerProviderResponseEvidenceBounds } from './provider-invocation.js';
+import { classifyProviderFailure } from './provider-failure.js';
 import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from './provider-invocation.js';
 
 export interface ProductionProviderIO {
+  now(): number;
+  localClockResetAt(hour: number, minute: number, now: number): number;
+  calendarResetAt(month: number, day: number, hour: number, minute: number, zone: string, now: number): number;
   realpath(path: string): string;
   executableBytes(path: string): Uint8Array;
   execute(input: Readonly<{ executable: string; args: readonly string[]; cwd: string;
@@ -46,7 +50,7 @@ export function createClaudeCodeProductionRoute(input: Omit<ProviderCredentialCu
     const config = Object.freeze({ ...input });
     const route = take(createProviderCredentialCustodian({ ...config, submit: async (credential, bytes, bounds) => {
       exactExecutable();
-      const uncertain = (): ProviderObservation => ({ state: 'uncertain', bytes: null, providerOperation: null,
+      const uncertain = (failure = classifyProviderFailure({ code: null, limited: false, stdout: '', now: config.io.now() })): ProviderObservation => ({ state: 'uncertain', bytes: null, providerOperation: null, failure,
         usage: { inputTokens: null, outputTokens: null, charge: null,
           source: 'Claude Code transport unresolved; no retry; liability retained' }, retryBlocked: false });
       if (!Number.isSafeInteger(bounds.timeout) || bounds.timeout <= 0 || bounds.automaticRetries !== 0)
@@ -65,7 +69,8 @@ export function createClaudeCodeProductionRoute(input: Omit<ProviderCredentialCu
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' },
         stdin: bytes, timeout: bounds.timeout,
         maxBytes: config.adapterEvidenceContract?.maxRawTerminalBytes ?? 6 * bounds.maxOutputBytes + 8192 });
-      if (response.limited || response.code !== 0) return uncertain();
+      if (response.limited || response.code !== 0) return uncertain(classifyProviderFailure({ ...response, now: config.io.now(),
+        localClockResetAt: config.io.localClockResetAt, calendarResetAt: config.io.calendarResetAt }));
       try {
             const terminalBytes = new Uint8Array(response.stdoutBytes);
             const terminal = new TextDecoder('utf-8', { fatal: true }).decode(terminalBytes);
@@ -120,7 +125,8 @@ export function createClaudeCodeProductionRoute(input: Omit<ProviderCredentialCu
               usage: { inputTokens: result.usage.input_tokens, outputTokens: result.usage.output_tokens,
                 charge, source: 'Claude Code result usage; charge in micro-USD' }, retryBlocked: false,
               responseEvidenceDraft: draft };
-      } catch { return uncertain(); }
+      } catch { return uncertain(classifyProviderFailure({ ...response, now: config.io.now(),
+        localClockResetAt: config.io.localClockResetAt, calendarResetAt: config.io.calendarResetAt })); }
     } }));
     const approved = config.adapterEvidenceContract;
     if (approved) {
@@ -240,7 +246,8 @@ export function createClaudeCodeSubscriptionRoute(input:
       mode: 'single-final-reply' as const, maxMetadataBytes: policy.maxMetadataBytes,
       maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
     const route = take(createProviderSubscriptionCustodian({ ...config, submit: async (_profile, bytes, bounds) => {
-      const uncertain = (): ProviderObservation => ({ state: 'uncertain', bytes: null, providerOperation: null,
+      let lastFailure = classifyProviderFailure({ code: null, limited: false, stdout: '', now: config.now() });
+      const uncertain = (): ProviderObservation => ({ state: 'uncertain', bytes: null, providerOperation: null, failure: lastFailure,
         usage: { inputTokens: null, outputTokens: null, charge: null,
           source: 'Subscription preview: charge and quiescence unknown; no retry or fallback' }, retryBlocked: false });
       try {
@@ -259,6 +266,8 @@ export function createClaudeCodeSubscriptionRoute(input:
             'subscription owner deadline has insufficient command time');
           const result = await config.io.execute({ executable: profile.executable, args, cwd: profile.workingDirectory,
             env, stdin, timeout, maxBytes });
+          lastFailure = classifyProviderFailure({ ...result, now: config.now(), localClockResetAt: config.io.localClockResetAt,
+            calendarResetAt: config.io.calendarResetAt });
           ensure(!result.limited && result.code === 0 && result.stdoutBytes.byteLength <= maxBytes,
             'subscription physical command incomplete');
           const text = new TextDecoder('utf-8', { fatal: true }).decode(result.stdoutBytes);

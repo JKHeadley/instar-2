@@ -33,6 +33,8 @@ export interface SessionHarnessAdapterPackage {
   readonly adapter: HarnessAdapterPort;
   readonly handles: RuntimeHandleHolder;
   readonly evidence: HarnessEvidenceHolder;
+  /** Called once at boot after durable owner history and machine-local handles are restored. */
+  bootSweep(): Result<readonly HarnessObservation[]>;
 }
 
 class Inherited extends Error {
@@ -285,6 +287,23 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
             }
           }
           if (ownerWitness) return ownerWitness;
+          if (attempt.attempt.state === 'pending' && input.driver.recoverDelivery) {
+            const recovery = input.driver.recoverDelivery({
+              operation: delivery.operation, processIdentity: handle.processIdentity,
+              intake: delivery.intake, digest: delivery.digest, incarnation: delivery.incarnation,
+            });
+            const accepted = consumeResult(recovery, {
+              Success: evidence => evidence,
+              Refused: () => null,
+            });
+            if (accepted === null) return observation(input, spec, 'uncertain', attempt.attempt.evidence,
+              'pending delivery has ambiguous driver evidence; no automatic resend', attempt.attempt.attemptedAt);
+            const at = input.clock();
+            const finished = input.handles.finishAttempt(delivery.operation, accepted, at);
+            requireValue(finished.disposition !== 'refused', finished.reason);
+            return observation(input, spec, 'input-accepted', accepted,
+              'pending durable attempt recovered with driver non-arrival proof', at);
+          }
           return observation(input, spec, 'uncertain', attempt.attempt.evidence,
             'delivery may already have occurred but its owner receipt is unresolved; observe the original operation before any repeat',
             attempt.attempt.observedAt ?? attempt.attempt.attemptedAt);
@@ -344,6 +363,19 @@ export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): 
     adapter,
     handles: input.handles,
     evidence: input.evidence,
+    bootSweep: () => boundary('SessionHarnessBootSweep', null, input.context, () => {
+      const recovered: HarnessObservation[] = [];
+      for (const attempt of input.handles.pendingAttempts()) {
+        if (attempt.kind !== 'delivery') continue;
+        const spec = resolveLaunch(input, attempt.launch);
+        const handle = checkedHandle(input, attempt.launch);
+        requireValue(handleMatchesSpec(handle, spec) && attempt.incarnation === handle.incarnation,
+          'pending delivery has no exact retained session handle');
+        recovered.push(take(adapter.deliver({ launch: attempt.launch, intake: spec.input,
+          digest: spec.inputDigest, incarnation: attempt.incarnation, operation: attempt.operation })));
+      }
+      return recovered;
+    }),
   });
 }
 

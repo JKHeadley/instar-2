@@ -3,6 +3,8 @@ import type { FenceToken, LoopPolicy } from '../transport/index.js';
 import type { Result } from '../index.js';
 import { createIntakePort } from '../intake/index.js';
 import type { IntakeDependencies } from '../intake/index.js';
+import { createScheduledRunner } from '../scheduled/index.js';
+import type { ScheduledRunnerDependencies } from '../scheduled/index.js';
 import { createRunGraph } from '../rungraph/index.js';
 import type { AcceptedProviderAnswerReadPort, AcceptedProviderAnswerView, RunGraphDependencies } from '../rungraph/index.js';
 import { createOperatorSurface } from '../operator/index.js';
@@ -26,6 +28,8 @@ export interface ProductionOwnerCompositionInput {
   readonly grounding: ProductionGroundingReaderInput;
   readonly run: Omit<RunGraphDependencies, 'grounding' | 'assemblyHistory'>;
   readonly intake: IntakeDependencies;
+  readonly scheduled?: Readonly<{ intake: IntakeDependencies;
+    runner: Omit<ScheduledRunnerDependencies, 'intake'> }>;
   readonly telegram: TelegramBotApiCustodianPort;
   readonly provider: Omit<ProductionProviderOwnersInput, 'judgment'> & Readonly<{
     judgment: Omit<ProductionProviderOwnersInput['judgment'], 'runs'>;
@@ -62,6 +66,14 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
       && input.effect.spine.store === store, 'production owners: shared signed store required');
     ensure(input.assembly.harnesses.includes(input.grounding.harness), 'harness: actual grounding adapter required');
     const intake = take(createIntakePort(input.intake));
+    const scheduledIntake = input.scheduled ? (() => {
+      ensure(input.scheduled!.intake.storage === input.intake.storage
+        && input.scheduled!.intake.context === input.intake.context,
+      'scheduled and Telegram Four ports require one durable store and live context');
+      return take(createIntakePort(input.scheduled!.intake));
+    })() : undefined;
+    const scheduled = scheduledIntake && input.scheduled
+      ? createScheduledRunner({ ...input.scheduled.runner, intake: scheduledIntake }) : undefined;
     let acceptedTarget: AcceptedProviderAnswerReadPort | undefined;
     const acceptedAnswer: AcceptedProviderAnswerReadPort = Object.freeze({ owner: 'part-eight' as const,
       consumeAcceptedProviderAnswer<T>(reference: import('../index.js').OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>,
@@ -101,7 +113,8 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
     const admitReply = (command: string, fence: FenceToken, replyRun: string, policy: LoopPolicy) =>
       admitAcceptedProviderReply(input.provider.judgment.authority, run, command, fence,
         { owner: 'part-five', name: 'Run', id: replyRun }, policy, input.assembly.host.boundary);
-    return Object.freeze({ composition, intake, run, provider, responder, reply, admitReply, telegram: input.telegram });
+    return Object.freeze({ composition, intake, scheduledIntake, scheduled, run, provider, responder,
+      reply, admitReply, telegram: input.telegram });
   });
 }
 

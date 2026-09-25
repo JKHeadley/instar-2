@@ -284,9 +284,9 @@ export function offlineStage2(options: any = {}) {
 
 import { realpathSync } from 'node:fs';
 // @ts-expect-error Physical host JavaScript.
-import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { productionStorageIO, productionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { stage2GuardedProviderPath } from './composition.js';
-import { openPreviewState } from './state.js';
+import { HOST_OUTAGE_TEXT, openPreviewState } from './state.js';
 import { subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 export function stage2CompositionFixture(options: any = {}) {
   const root = options.root ?? realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-composition-')));
@@ -295,7 +295,8 @@ export function stage2CompositionFixture(options: any = {}) {
     operatorSenderId: '7812716706', chatId: '7812716706', chatKind: 'private', forum: false, messageThreadId: null,
     maxPollSeconds: 1, maxBatchItems: 1, maxContextTurns: 8, maxContextBytes: 65536, ...options.configuration };
   const state = openPreviewState({ root, configuration, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, now: () => time,
-    replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128 });
+    replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128,
+    hostNotice: { botId: configuration.botId, chatId: configuration.chatId, message: HOST_OUTAGE_TEXT } });
   const artifactBytes = Buffer.from('offline executable bytes'), model = options.model ?? 'claude-offline-exact-1';
   const profile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login',
     home: '/offline/home', configDirectory: '/offline/config', workingDirectory: '/offline/work',
@@ -325,6 +326,7 @@ export function stage2CompositionFixture(options: any = {}) {
     return response({ message_id: 2001, chat: { id: Number(body.chat_id), type: 'private' }, text: options.displayText ?? body.text.replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&') });
   } };
   const io = { realpath: (p: string) => p, executableBytes: () => artifactBytes,
+    calendarResetAt: productionProviderIO.calendarResetAt,
     inspectSubscriptionProfile: () => ({ loginProfileIdentity: profile.loginProfileIdentity, managedConfigurationDigest: profile.managedConfigurationDigest }),
     execute: async (command: any) => {
       children.push(command);
@@ -343,12 +345,13 @@ export function stage2CompositionFixture(options: any = {}) {
         text = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(decision),
           session_id: 'offline-call', usage: { input_tokens: 1, output_tokens: 2048 }, total_cost_usd: 1.25 });
       }
-      return { code: 0, stdout: text, stdoutBytes: new Uint8Array(Buffer.from(text)), limited: false };
+      return { code: command.args[0] === '--version' || command.args[0] === 'auth' ? 0 : options.terminalCode ?? 0,
+        stdout: text, stdoutBytes: new Uint8Array(Buffer.from(text)), limited: false };
     } };
   const create = (): Promise<any> => stage2GuardedProviderPath({ configuration, state, storageKey: new Uint8Array(32).fill(19),
     storageIO: productionStorageIO, telegramIO, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
     stage2: { activation, profile, model, cutoff: options.cutoff ?? (options.start ?? 1790000000000) - 1000, arm: true,
       io, now: () => time, active: () => active, checkpoint: options.checkpoint } });
-  return { root, state, configuration, activation, profile, model, create, calls, models, children, now: () => time,
+  return { root, state, configuration, activation, profile, model, create, calls, models, children, telegramIO, now: () => time,
     time: (n: number) => { time = n; }, revoke: () => { active = false; } };
 }

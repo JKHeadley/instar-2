@@ -88,7 +88,13 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const g={ ...deps.governance.context,preserved };
       take(constructGoverned('blocking sites','intake.resolution',deps.governance.register,g));
       take(readEnforcedRecord('intake.resolution','intake.contract','decode:VerifiedPrincipal',deps.governance.register,g));
-      requireIntake(e.principalKind==='person','P4-NF-09: system/agent stimuli are out of this message slice; locality grants nothing','standing');
+      // The registered scheduled parser is the sole system-message exception.
+      // Its authenticate callback verifies the source credential, immutable
+      // occurrence and live authority before this decoder binds identity.
+      requireIntake(e.principalKind==='person'||(adapterId==='scheduled-intake-v1'
+        &&e.principalKind==='system'&&provenance.class==='verified'
+        &&e.sender===e.principalId&&e.channel.startsWith('scheduled:')),
+      'P4-NF-09: system/agent stimuli require the verified scheduled parser','standing');
       return take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: e.principalId,kind: e.principalKind },
         { ...context(preserved).decode,provenance }));
     }
@@ -251,9 +257,16 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               return { kind: 'duplicate',logicalId,original: reference(prior) };
             }
             let principal: VerifiedPrincipal;
+            let authorityFacts: SenderEvidence['authorityFacts'];
             try {
               const { e,provenance }=authenticateSender(raw,{ channel,sender,identityEpoch,eventId: route.eventId },at,preserved);
               principal=resolvePrincipal(e,provenance,preserved);
+              authorityFacts=e.authorityFacts;
+              requireIntake(authorityFacts===undefined||adapterId==='scheduled-intake-v1',
+                'P4-NF-02: only scheduled intake may attach source authority facts','integrity');
+              if(authorityFacts) requireIntake(authorityFacts.manifest.length>0&&authorityFacts.approvedAct.length>0
+                &&authorityFacts.manifest!==authorityFacts.approvedAct,
+              'P4-NF-02: scheduled authority fact references are invalid','integrity');
             } catch { return hold('unresolved-sender',common,at,preserved); }
             const rows=statuses(preserved);
             const historicalGrants: NonNullable<FactContext['historicalGrants']>[number][]=[];
@@ -328,6 +341,7 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
               if(!liveDirectives.some(d => d.id===live.id)) liveDirectives.push(live);
             }
             const required=[receipt.id,resolution.id,...binding? [binding.fact.id]:[]];
+            if(authorityFacts) required.push(authorityFacts.manifest,authorityFacts.approvedAct);
             const under: string[]=[];
             for(const directive of liveDirectives) {
               const record=rows.find(r => r.constitutional.some(f => f.value.type==='Directive'&&f.value.id===directive.id)&&!r.taint.length&&!r.conflicts.length);
