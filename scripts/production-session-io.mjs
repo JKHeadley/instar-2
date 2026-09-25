@@ -64,6 +64,7 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
         if (current.status === 0 && `${name}:${current.stdout.trim()}` === identity)
           spawnSync(tmuxPath, ['kill-session', '-t', `=${name}:`], { cwd, env, timeout: 3000 });
       });
+      if (!child.pid) throw Error('independent session deadline failed to start');
       child.unref();
     },
     tmux(args) {

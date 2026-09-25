@@ -18,19 +18,31 @@ it.skipIf(!available)('independent deadline kills only the exact tmux identity a
   const io = createProductionSessionIO({ stateDirectory: root, tmuxPath: wrapper,
     home: root, configHome: root, cwd: root });
   const name = `instar20-${randomUUID().replaceAll('-', '').slice(0, 24)}`;
+  const reused = `instar20-${randomUUID().replaceAll('-', '').slice(0, 24)}`;
+  const completed = `instar20-${randomUUID().replaceAll('-', '').slice(0, 24)}`;
   try {
     expect(io.tmux(['new-session', '-d', '-s', name, '--', '/bin/cat']).code).toBe(0);
+    expect(io.tmux(['new-session', '-d', '-s', reused, '--', '/bin/cat']).code).toBe(0);
+    expect(io.tmux(['new-session', '-d', '-s', completed, '--', '/bin/cat']).code).toBe(0);
     const stamp = io.tmux(['display-message', '-p', '-t', `=${name}:`, '#{pane_pid}:#{session_created}']).stdout.trim();
+    const completedStamp = io.tmux(['display-message', '-p', '-t', `=${completed}:`, '#{pane_pid}:#{session_created}']).stdout.trim();
     const identity = `${name}:${stamp}`, deadline = Date.now() + 300;
-    io.save({ sessions: [{ name, identity, turnDeadline: deadline, turnStartedAt: Date.now(), closedAt: null }],
+    io.save({ sessions: [{ name, identity, turnDeadline: deadline, turnStartedAt: Date.now(), closedAt: null },
+      { name: reused, identity: `${reused}:0:0`, turnDeadline: deadline, turnStartedAt: Date.now(), closedAt: null },
+      { name: completed, identity: `${completed}:${completedStamp}`, turnDeadline: deadline,
+        turnStartedAt: Date.now(), closedAt: Date.now() }],
       deliveries: [], resumes: {} });
     io.armDeadline(name, identity, deadline);
+    io.armDeadline(reused, `${reused}:0:0`, deadline);
+    io.armDeadline(completed, `${completed}:${completedStamp}`, deadline);
     let alive = true;
     for (let attempt = 0; attempt < 25 && alive; attempt++) {
       io.sleep(50);
       alive = io.tmux(['has-session', '-t', `=${name}:`]).code === 0;
     }
     expect(alive).toBe(false);
+    expect(io.tmux(['has-session', '-t', `=${reused}:`]).code).toBe(0);
+    expect(io.tmux(['has-session', '-t', `=${completed}:`]).code).toBe(0);
   } finally {
     io.tmux(['kill-session', '-t', `=${name}:`]); io.tmux(['kill-server']);
     rmSync(root, { recursive: true, force: true });

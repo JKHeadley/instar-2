@@ -33,13 +33,12 @@ it.skipIf(!available)('one boot redelivery after server dies between durable rec
     const identity = value(first.launch({ operation: 'launch', claim: 'topic', artifact: 'sha256:test',
       incarnation: 'inc', workingScope: root, handles: [] }));
     const name = identity.split(':')[0]!;
-    const baseline = hash(io.tmux(['capture-pane', '-p', '-t', `=${name}:`, '-S', '-80']).stdout.trim());
-    const record = { operation: 'delivery', identity, intake: 'input', digest: hash('restart message'),
-      text: 'restart message', state: 'prepared', baseline, redeliveries: 0, evidence: '' };
     const worker = fileURLToPath(new URL('./session-restart-delivery-worker.mjs', import.meta.url));
-    const child = spawnSync(process.execPath, [worker, root, Buffer.from(JSON.stringify(record)).toString('base64url')],
+    const child = spawnSync(process.execPath, [worker, Buffer.from(JSON.stringify({ root, socket, tmux, executable,
+      identity, digest: hash('restart message'), context: { preserved: f.c.preserved, site: f.c.site,
+        register: f.c.register } })).toString('base64url')],
       { encoding: 'utf8', timeout: 3000 });
-    expect(child.signal).toBe('SIGKILL');
+    expect(child.signal, child.stderr).toBe('SIGKILL');
     expect(io.load().deliveries[0]?.state).toBe('prepared');
     const restarted = createProductionSessionDriver(config);
     expect(value(restarted.bootSweep())).toEqual(['delivery:redelivered']);

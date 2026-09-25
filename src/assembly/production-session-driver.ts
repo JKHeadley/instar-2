@@ -10,15 +10,19 @@ export interface SessionRecord {
   readonly operation: string; readonly claim: string; readonly name: string; readonly identity: string;
   readonly incarnation: string; readonly startedAt: number; readonly resumeId: string | null;
   readonly recovery: 0 | 1; readonly turnDeadline: number | null; readonly turnStartedAt: number | null;
-  readonly closedAt: number | null;
+  readonly closedAt: number | null; readonly turnBaseline?: string;
 }
 export interface DeliveryRecord {
   readonly operation: string; readonly identity: string; readonly intake: string;
   readonly digest: string; readonly text: string; readonly state: 'prepared' | 'sending' | 'accepted' | 'uncertain';
   readonly baseline: string; readonly redeliveries: 0 | 1; readonly evidence: string;
 }
+export interface SessionReservation {
+  readonly name: string; readonly operation: string; readonly claim: string; readonly incarnation: string;
+  readonly resumeId: string | null; readonly recovery: 0 | 1; readonly startedAt: number;
+}
 export interface SessionJournal { readonly sessions: readonly SessionRecord[]; readonly deliveries: readonly DeliveryRecord[];
-  readonly resumes: Readonly<Record<string, string>>; }
+  readonly resumes: Readonly<Record<string, string>>; readonly reservations?: readonly SessionReservation[]; }
 export interface SessionIO {
   exclusive<T>(run: () => T): T;
   tmux(args: readonly string[]): Readonly<{ code: number; stdout: string }>;
@@ -48,10 +52,20 @@ const literalTarget = (name: string) => `=${name}:`;
 /** 1.x classifier: a focused numbered menu wins over the prompt glyph. */
 export function classifyPaneReadiness(capture: string): 'ready' | 'menu' | 'not-ready' {
   const text = tail(capture, 6);
-  const options = text.split('\n').filter(line => /^\s*(?:[❯›>●○◉]\s*)?\d+\.\s/.test(line));
-  if (options.length >= 2 && options.some(line => /^\s*[❯›>●○◉]\s*\d+\.\s/.test(line))) return 'menu';
+  const options = text.split('\n').filter(line => /^\s*(?:[❯›>●○◉]\s*)?\d+[.)]\s/.test(line));
+  if (options.length >= 2 && options.some(line => /^\s*[❯›>●○◉]\s*\d+[.)]\s/.test(line))) return 'menu';
   if (/[❯›]/.test(text) || /(?:bypass permissions|shift\+tab to cycle|ctrl\+c to exit)/i.test(text)) return 'ready';
   return 'not-ready';
+}
+/** A prompt can remain visible throughout work; only a changed, quiet idle frame closes a turn. */
+export function classifyPaneIdle(capture: string, framework: SessionFramework): boolean {
+  const lines = tail(capture, 8).split('\n');
+  if (classifyPaneReadiness(capture) !== 'ready') return false;
+  if (/(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(lines.join('\n'))) return false;
+  const prompt = framework === 'codex-cli' ? /^[❯›>]\s*(?:[^\n]*)?$/ : /^[❯›]\s*(?:[^\n]*)?$/;
+  const promptIndex = lines.map(line => prompt.test(line)).lastIndexOf(true);
+  return promptIndex >= 0 && lines.slice(promptIndex + 1)
+    .every(line => /^(?:bypass permissions|shift\+tab to cycle|\? for shortcuts|gpt-|tokens?\b)/i.test(line));
 }
 export function classifyWedgeTail(capture: string): 'thinking-block-400' | 'aup-rejection' | null {
   const live = tail(capture, 10);
@@ -111,6 +125,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   const alive = (name: string) => config.io.tmux(['has-session', '-t', literalTarget(name)]).code === 0;
   const checkStop = () => {
     if (!config.stopped()) return;
+    reconcileReservations();
     for (const row of config.io.load().sessions) {
       if (config.protectedSessions.includes(row.name) || !namePattern.test(row.name)) continue;
       if (config.io.tmux(['has-session', '-t', literalTarget(row.name)]).code !== 0) continue;
@@ -134,6 +149,32 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const current = run(['display-message', '-p', '-t', literalTarget(session.name), '#{pane_pid}:#{session_created}']);
     ensure(session.identity === `${session.name}:${current}`, 'tmux process identity changed');
   };
+  const reconcileReservations = () => {
+    const journal = config.io.load();
+    for (const reservation of journal.reservations ?? []) {
+      ensure(namePattern.test(reservation.name), 'invalid reserved tmux name');
+      if (!alive(reservation.name)) {
+        const current = config.io.load();
+        config.io.save({ ...current, reservations: (current.reservations ?? []).filter(row => row.name !== reservation.name) });
+        continue;
+      }
+      const stamp = run(['display-message', '-p', '-t', literalTarget(reservation.name), '#{pane_pid}:#{session_created}']);
+      const session: SessionRecord = { ...reservation, identity: `${reservation.name}:${stamp}`,
+        turnDeadline: null, turnStartedAt: null, closedAt: null };
+      const current = config.io.load();
+      config.io.save({ ...replaceSession(current, session),
+        reservations: (current.reservations ?? []).filter(row => row.name !== reservation.name) });
+    }
+  };
+  const armTurn = (session: SessionRecord, recovery = session.recovery): SessionRecord => {
+    const started = config.now();
+    const deadline = started + config.turnDeadlineMs;
+    const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null,
+      turnBaseline: digestOf(capture(session.name)) };
+    config.io.save(replaceSession(config.io.load(), armed));
+    config.io.armDeadline(session.name, session.identity, deadline);
+    return armed;
+  };
   const sendText = (session: SessionRecord, text: string) => {
     verifyLive(session); checkStop();
     const target = literalTarget(session.name);
@@ -148,11 +189,15 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   };
   const spawn = (operation: string, claim: string, incarnation: string, workingScope: string, resumeId: string | null, recovery: 0 | 1): string => {
     checkStop(); ensure(workingScope === config.cwd, 'working scope differs from fixed session directory');
+    reconcileReservations();
     const existing = config.io.load().sessions.find(row => row.operation === operation && row.incarnation === incarnation);
     if (existing) { verifyLive(existing); return existing.identity; }
-    const active = config.io.load().sessions.filter(row => alive(row.name));
-    ensure(active.length < config.maxSessions, 'concurrent session cap reached');
+    const currentJournal = config.io.load();
+    const active = currentJournal.sessions.filter(row => alive(row.name));
+    ensure(active.length + (currentJournal.reservations ?? []).length < config.maxSessions, 'concurrent session cap reached');
     const name = `instar20-${createHash('sha256').update(`${operation}:${incarnation}:${randomUUID()}`).digest('hex').slice(0, 24)}`;
+    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId, recovery, startedAt: config.now() };
+    config.io.save({ ...currentJournal, reservations: [...(currentJournal.reservations ?? []), reservation] });
     const args = config.framework === 'claude-code'
       ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), '--dangerously-skip-permissions']
       : [ ...(resumeId ? ['resume', resumeId] : []), '--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false'];
@@ -161,7 +206,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       args.push('--settings', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: hook }] }],
         SessionStart: [{ matcher: 'compact', hooks: [{ type: 'command', command: `${hook} compact` }] }] } }));
     }
-    run(['new-session', '-d', '-s', name, '-c', config.cwd, '-x', '100', '-y', '30',
+    try { run(['new-session', '-d', '-s', name, '-c', config.cwd, '-x', '100', '-y', '30',
       '-e', `HOME=${config.home}`, '-e', `CLAUDE_CONFIG_DIR=${config.configHome}`,
       '-e', `CODEX_HOME=${config.configHome}`, '-e', `INSTAR_SESSION_NAME=${name}`,
       '-e', `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
@@ -170,12 +215,11 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       `CLAUDE_CONFIG_DIR=${config.configHome}`, `CODEX_HOME=${config.configHome}`,
       `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
       `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`,
-      config.executable, ...args]);
-    const current = run(['display-message', '-p', '-t', literalTarget(name), '#{pane_pid}:#{session_created}']);
-    const identity = `${name}:${current}`;
-    const session: SessionRecord = { operation, claim, name, identity, incarnation, startedAt: config.now(),
-      resumeId, recovery, turnDeadline: null, turnStartedAt: null, closedAt: null };
-    config.io.save(replaceSession(config.io.load(), session));
+      config.executable, ...args]); } catch (error) { reconcileReservations(); throw error; }
+    reconcileReservations();
+    const session = config.io.load().sessions.find(row => row.name === name);
+    ensure(session, 'spawned session identity missing');
+    const identity = session.identity;
     const until = config.now() + config.readyTimeoutMs;
     while (config.now() < until) {
       checkStop(); verifyLive(session);
@@ -187,6 +231,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     throw Error('session readiness deadline exceeded');
   };
   const stop = () => lockedBoundary('ProductionSessionStop', null, () => {
+    reconcileReservations();
     const killed: string[] = [];
     for (const session of config.io.load().sessions) {
       if (config.protectedSessions.includes(session.name)) continue;
@@ -226,15 +271,12 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         let delivery: DeliveryRecord = { ...input, identity: input.processIdentity, text,
           state: 'prepared', baseline, redeliveries: 0, evidence: '' };
         config.io.save(replaceDelivery(config.io.load(), delivery));
+        armTurn(session);
         delivery = { ...delivery, state: 'sending' };
         config.io.save(replaceDelivery(config.io.load(), delivery));
         sendText(session, text);
         delivery = { ...delivery, state: 'accepted', evidence: `tmux-input:${input.operation}` };
         config.io.save(replaceDelivery(config.io.load(), delivery));
-        const deadline = config.now() + config.turnDeadlineMs;
-        config.io.save(replaceSession(config.io.load(), { ...session, turnDeadline: deadline,
-          turnStartedAt: config.now(), closedAt: null }));
-        config.io.armDeadline(session.name, session.identity, deadline);
         return delivery.evidence;
       });
     },
@@ -260,9 +302,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           run(['kill-session', '-t', literalTarget(session.name)]);
           return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'per-turn deadline exceeded' };
         }
+        const baseline = session.turnBaseline ?? config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.baseline;
+        const idle = classifyPaneIdle(pane, config.framework) && (!baseline || digestOf(pane) !== baseline);
         const stuck = classifyStuckSignature(pane);
+        if (stuck && idle && session.turnDeadline !== null) {
+          config.io.save(replaceSession(config.io.load(), { ...session, closedAt: config.now(), turnDeadline: null }));
+        }
         if (stuck) return { phase: 'pause-observed' as const, evidence: session.identity, detail: stuck };
-        if (session.turnDeadline !== null && classifyPaneReadiness(pane) === 'ready') {
+        if (session.turnDeadline !== null && idle) {
           config.io.save(replaceSession(config.io.load(), { ...session, closedAt: config.now(), turnDeadline: null }));
           return { phase: 'output-observed' as const, evidence: `pane-idle:${session.name}:${config.now()}`,
             detail: 'idle prompt fallback; turn close not independently verified' };
@@ -272,7 +319,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     },
     bootSweep(): Result<readonly string[]> {
       return lockedBoundary('ProductionSessionBootSweep', null, () => {
-        checkStop(); const outcomes: string[] = [];
+        checkStop(); reconcileReservations(); const outcomes: string[] = [];
         for (const row of config.io.load().deliveries.filter(value => value.state === 'prepared' || value.state === 'sending')) {
           const session = loadSession(row.identity);
           if (!alive(session.name)) { config.io.save(replaceDelivery(config.io.load(), { ...row, state: 'uncertain' })); outcomes.push(`${row.operation}:uncertain`); continue; }
@@ -285,15 +332,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             config.io.save(replaceDelivery(config.io.load(), { ...row, state: 'uncertain' }));
             outcomes.push(`${row.operation}:uncertain`); continue;
           }
+          try { armTurn(session); } catch {
+            outcomes.push(`${row.operation}:deadline-unavailable`); continue;
+          }
           const sending: DeliveryRecord = { ...row, state: 'sending', redeliveries: 1 };
           config.io.save(replaceDelivery(config.io.load(), sending));
           try {
             sendText(session, row.text);
             config.io.save(replaceDelivery(config.io.load(), { ...sending, state: 'accepted', evidence: `tmux-input:${row.operation}` }));
-            const deadline = config.now() + config.turnDeadlineMs;
-            config.io.save(replaceSession(config.io.load(), { ...session, turnDeadline: deadline,
-              turnStartedAt: config.now(), closedAt: null }));
-            config.io.armDeadline(session.name, session.identity, deadline);
             outcomes.push(`${row.operation}:redelivered`);
           } catch {
             config.io.save(replaceDelivery(config.io.load(), { ...sending, state: 'uncertain' }));
@@ -334,16 +380,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     recoverContext(identity: string): Result<string> {
       return lockedBoundary('ProductionSessionContextRecovery', identity, () => {
         checkStop(); const session = loadSession(identity); verifyLive(session);
-        ensure(session.turnDeadline === null && classifyPaneReadiness(capture(session.name)) === 'ready',
+        const pane = capture(session.name);
+        ensure(session.turnDeadline === null && classifyPaneIdle(pane, config.framework),
           'context recovery requires an idle prompt');
-        const stuck = classifyStuckSignature(capture(session.name));
+        const stuck = classifyStuckSignature(pane);
         ensure(stuck === 'context-too-long' || stuck === 'context-wedge', 'no context wall evidence');
         if (session.recovery === 0) {
+          armTurn(session, 1);
           sendText(session, '/compact');
-          const deadline = config.now() + config.turnDeadlineMs;
-          config.io.save(replaceSession(config.io.load(), { ...session, recovery: 1,
-            turnDeadline: deadline, turnStartedAt: config.now(), closedAt: null }));
-          config.io.armDeadline(session.name, session.identity, deadline);
           return 'compact-requested';
         }
         ensure(!config.protectedSessions.includes(session.name), 'protected session cannot be killed');

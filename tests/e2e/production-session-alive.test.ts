@@ -16,13 +16,14 @@ it.skipIf(!available)('launches, delivers, observes, and stops a real trivial tm
   const root = mkdtempSync(join(tmpdir(), 'instar20-alive-'));
   const socket = `instar20-alive-${randomUUID().slice(0, 8)}`;
   const script = join(root, 'prompt.sh');
-  writeFileSync(script, '#!/bin/sh\nprintf "❯ "\nwhile IFS= read -r line; do printf "\\nseen:%s\\n❯ " "$line"; done\n');
+  writeFileSync(script, '#!/bin/sh\nif [ -n "${INSTAR_SESSION_TEST_CANARY+x}" ]; then printf "canary:present\\n"; else printf "canary:absent\\n"; fi\nprintf "❯ "\nwhile IFS= read -r line; do printf "\\nseen:%s\\n❯ " "$line"; done\n');
   chmodSync(script, 0o700);
   const physical = createProductionSessionIO({ stateDirectory: root, tmuxPath: tmux,
     home: root, configHome: root, cwd: root });
   const io = { ...physical, tmux: (args: readonly string[]) => physical.tmux(['-L', socket, ...args]) };
   const f = assemblyRuntimeFixture();
   const text = 'hello';
+  process.env.INSTAR_SESSION_TEST_CANARY = 'harmless-parent-only';
   const driver = createProductionSessionDriver({ operatorOwnUse: true, confinement: 'unconfined', framework: 'claude-code',
     executable: script, cwd: root, home: root, configHome: root, context: f.c, io,
     now: Date.now, stopped: () => false, resolveIntake: () => text,
@@ -31,6 +32,7 @@ it.skipIf(!available)('launches, delivers, observes, and stops a real trivial tm
     const identity = value(driver.launch({ operation: 'test-launch', claim: 'test-topic', artifact: 'sha256:test',
       incarnation: 'test-incarnation', workingScope: root, handles: [] }));
     expect(identity).toMatch(/^instar20-[a-f0-9]{24}:\d+:\d+$/);
+    expect(io.tmux(['capture-pane', '-p', '-t', `=${identity.split(':')[0]}:`, '-S', '-30']).stdout).toContain('canary:absent');
     expect(value(driver.deliver({ operation: 'test-delivery', processIdentity: identity, intake: 'test-input',
       digest: `sha256:${createHash('sha256').update(text).digest('hex')}`, incarnation: 'test-incarnation' }))).toBe('tmux-input:test-delivery');
     let seen = false;
@@ -43,6 +45,7 @@ it.skipIf(!available)('launches, delivers, observes, and stops a real trivial tm
     expect(value(driver.stop())).toHaveLength(1);
     expect(io.tmux(['has-session', '-t', `=${identity.split(':')[0]}:`]).code).not.toBe(0);
   } finally {
+    delete process.env.INSTAR_SESSION_TEST_CANARY;
     const sessions = io.load().sessions;
     for (const row of sessions) io.tmux(['kill-session', '-t', `=${row.name}:`]);
     io.tmux(['kill-server']);
