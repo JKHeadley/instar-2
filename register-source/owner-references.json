@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/rungraph/governance.test.ts",
-        "hash": "sha256:99265c7a0aa3af6c25ab78a3f30508b52c8af19061efa8d2c8c177339f889473"
+        "hash": "sha256:a6a0526034aa107f2eb3d9c99821ae0874cea00ad1fdccd9a11538a4a1f71bcc"
       }
     },
     {
@@ -16,6 +16,14 @@
       "artifact": {
         "path": "tests/rungraph/closure-registration-additivity.test.ts",
         "hash": "sha256:3ca5f0c46aac799b6ddf37c50fa591c543d9aa0e9423579e5d10f9bf12486520"
+      }
+    },
+    {
+      "id": "P5-NF-54-PARTIAL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/rungraph/governance.test.ts",
+        "hash": "sha256:a6a0526034aa107f2eb3d9c99821ae0874cea00ad1fdccd9a11538a4a1f71bcc"
       }
     },
     {
@@ -34,7 +42,16 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/rungraph/scope.test.ts",
-        "hash": "sha256:7151af0e423d73a6eb1bb32ed697e7dda6579c11d38f9dc755b37d0e7d28ecd1"
+        "hash": "sha256:ebcce1398cf494240c3e82a0f3acc53aee2192b28d15dacb9cc4fac7c8ce7713"
+      }
+    },
+    {
+      "id": "P5-NF-55-PARTIAL",
+      "cadence": 1000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/rungraph/scope.test.ts",
+        "hash": "sha256:ebcce1398cf494240c3e82a0f3acc53aee2192b28d15dacb9cc4fac7c8ce7713"
       }
     }
   ],

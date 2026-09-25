@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { relative } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import { checkProtectedTests } from './check-register-protection.mjs';
+import { ownerManifestPaths } from './register-owner-references.mjs';
 const design = readFileSync('docs/07-the-declarations.md', 'utf8');
 const expected = new Set([...design.matchAll(/^\| (P3-NF-\d+) \|/gm)].map(m => m[1]));
 const report = JSON.parse(readFileSync('.test-results.json', 'utf8')); const map = new Map();
@@ -13,10 +14,24 @@ const register = JSON.parse(readFileSync('generated/register.json', 'utf8'));
 checkProtectedTests(register, [...map.values()].flatMap(rows => rows.map(r => r.file)));
 const heldTests = new Set(register.entries.flatMap(entry => entry.declaration.holds ?? [])
   .filter(hold => hold.class !== 'deferred' && ['fixture', 'probe'].includes(hold.evidence.kind))
-  .map(hold => hold.evidence.id));
-for (const id of heldTests) {
+  .map(hold => `${hold.evidence.kind}:${hold.evidence.id}`));
+const catalog = new Map();
+for (const path of ownerManifestPaths) {
+  if (!existsSync(path)) continue;
+  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  for (const kind of ['fixture', 'probe']) for (const row of manifest[`${kind}s`]) {
+    const key = `${kind}:${row.id}`;
+    if (catalog.has(key)) throw new Error(`duplicate owner evidence ${key}`);
+    catalog.set(key, row.artifact.path);
+  }
+}
+for (const key of heldTests) {
+  const id = key.slice(key.indexOf(':') + 1);
+  const artifact = catalog.get(key);
+  if (!artifact) throw new Error(`held test ${id} has no owner-catalog artifact`);
   const matches = report.testResults.flatMap(file => file.assertionResults
-    .filter(test => test.fullName.split(/[^A-Za-z0-9-]+/u).includes(id))
+    .filter(test => realpathSync(resolve(file.name)) === realpathSync(resolve(artifact))
+      && test.fullName.split(/[^A-Za-z0-9-]+/u).includes(id))
     .map(test => ({ file: relative(process.cwd(), file.name), status: test.status })));
   if (!matches.length || matches.some(match => match.status !== 'passed'))
     throw new Error(`held test ${id} must pass in the current run`);

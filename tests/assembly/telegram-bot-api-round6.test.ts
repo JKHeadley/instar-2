@@ -92,9 +92,17 @@ describe('preserved direct-child guards', () => {
       expect(blocked.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'scan-policy' });
       expect(blocked.child.stdout).not.toContain(secret);
       expect(() => readFileSync(count)).toThrow();
-      const otherCredential = invoke(`Use sk-${'A'.repeat(24)} for the provider`);
-      expect(otherCredential.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'scan-policy' });
+      const encoded = invoke(`The bot token is ${[...secret].map(character => `&#${character.charCodeAt(0)};`).join('')}`);
+      expect(encoded.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'scan-policy' });
       expect(() => readFileSync(count)).toThrow();
+      for (const prose of [
+        'A PEM file begins with -----BEGIN PRIVATE KEY-----.',
+        `Use the fake placeholder sk-${'A'.repeat(24)} in the example.`,
+      ]) {
+        const allowed = invoke(prose);
+        expect(allowed.reply.kind).toBe('response');
+        expect(allowed.counts?.fetches).toBe(1);
+      }
       const ordinary = invoke('The deployment completed successfully.');
       expect(ordinary.reply.kind).toBe('response');
       expect(ordinary.counts?.fetches).toBe(1);

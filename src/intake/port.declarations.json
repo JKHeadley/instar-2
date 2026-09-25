@@ -303,8 +303,8 @@
       95
     ],
     "holds": [
-      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-14", "stage": "build" }, "portion": "authenticated operator stop at the intake brake", "remainder": "outbound-secret and spend-cap rungs and all other blocking sites" },
-      { "rule": 14, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-14", "stage": "build" }, "portion": "uncertain intake delivery and operator stop remain reachable", "remainder": "all inbound gates and live reachability proof" }
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-14-PARTIAL", "stage": "build" }, "portion": "authenticated operator stop at the intake brake", "remainder": "outbound-secret and spend-cap rungs and all other blocking sites" },
+      { "rule": 14, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-14-PARTIAL", "stage": "build" }, "portion": "uncertain intake delivery and operator stop remain reachable", "remainder": "all inbound gates and live reachability proof" }
     ]
   }
 ]

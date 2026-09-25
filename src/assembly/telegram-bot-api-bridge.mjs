@@ -230,13 +230,13 @@ function scanCredential(bytes) {
   return null;
 }
 
-// The confined child owns the actual bot token. Check the exact outbound body
-// before the irreversible network call, including representations already
-// covered by the bounded response scanner.
+// The confined child owns the actual bot token. Check that credential in the
+// complete outbound body before the irreversible network call, including the
+// bounded representations above. Other credentials need exact evidence from
+// protected custody; a credential-shaped string alone cannot block a send.
 if (request.method === 'sendMessage') {
   const outgoing = JSON.stringify(request.body);
-  if (scanCredential(outgoing) !== null
-    || /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16})\b/u.test(outgoing)) {
+  if (scanCredential(outgoing) !== null) {
     uncertain('scan-policy'); process.exit(0);
   }
 }
