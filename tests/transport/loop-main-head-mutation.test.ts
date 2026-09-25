@@ -6,6 +6,8 @@ import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
 import { decodeLoopPolicy } from '../../src/transport/index.js';
 import { transportFixture } from './fixture.js';
+// @ts-expect-error The shared first-landing baseline checker is plain ESM.
+import { firstLanding } from '../../scripts/first-landing.mjs';
 
 const MAIN_TIP = 'db15e137a259e7d56bf39be1b6839a1c56c33155';
 const LOOP_BREAKER_LANDING = '223d046df2194df8e36e1cf6fd5221a06fe1c1e7';
@@ -149,9 +151,11 @@ function runProbe(targetRoot: string, output: string, directory: string): void {
 }
 
 it('SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 generates and compares all 1313 main-vs-HEAD signed legacy mutations', () => {
+  const scope = firstLanding(process.cwd(), ['src/transport/loop-a1/index.ts']);
+  if (!scope.applicable) { expect(scope.applicable).toBe(false); return; }
   const directory = mkdtempSync(join(tmpdir(), 'transport-full-main-differential-'));
   const mainRoot = join(directory, 'main');
-  const archive = spawnSync('git', ['archive', '--format=tar', MAIN_TIP, 'src', 'tests',
+  const archive = spawnSync('git', ['archive', '--format=tar', scope.mainTip, 'src', 'tests',
     'scripts/transport-file-storage.mjs', 'package.json', 'tsconfig.json', 'vitest.config.ts'], {
     cwd: resolve('.'),
     encoding: null,

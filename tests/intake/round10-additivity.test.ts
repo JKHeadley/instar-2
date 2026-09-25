@@ -7,6 +7,8 @@ import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
 import { createIntakePort } from '../../src/intake/index.js';
 import { intakeFixture, message, route, value } from './fixtures.js';
+// @ts-expect-error The shared first-landing baseline checker is plain ESM.
+import { firstLanding } from '../../scripts/first-landing.mjs';
 
 type Factory = typeof createIntakePort;
 type Outcome = Readonly<{ ok: true; value: unknown }>
@@ -42,6 +44,8 @@ function outcome(result: unknown): Outcome {
 }
 
 it('R10 rereview8 V95 main-versus-HEAD ordinary receive/recover/expire outcomes remain byte-identical across 20 scenarios', async () => {
+  const scope = firstLanding(process.cwd(), ['src/operator/seams.ts']);
+  if (!scope.applicable) { expect(scope.applicable).toBe(false); return; }
   const legacy = await mainFactory();
   const payloads = [
     message(),

@@ -1,59 +1,94 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, it } from 'vitest';
 // @ts-expect-error the executable repository checker is intentionally plain ESM
 import { checkP13A2Architecture, checkP13DependencyCitations, p13A2Dispositions, p13A2PathAllowed } from '../../scripts/check-p13-contract-map.mjs';
+// @ts-expect-error The shared first-landing baseline checker is plain ESM.
+import { firstLanding } from '../../scripts/first-landing.mjs';
 
-it('P13-A2-ADDITIVITY permanent main-vs-HEAD comparison keeps every touched owner legacy fixture byte-identical', async () => {
-  const { createHash } = await import('node:crypto');
-  // GRANT 45-B/45-E: pin exactly the two authorized production fixture rewires.
-  const grantedContent = new Map([
-    // GRANT PAR-Q3-BUDGET (astra-par-q3-ruling.md): exact fixture execution budgets only.
-    ['tests/assembly/provider-response-evidence.test.ts', '7cdbe22f388a25071f4fd60c6f2620e1e189f5d100407f1d01e88a86fe47b2a4'],
-    ['tests/rungraph/provider-answer-reply.test.ts', '94c81465fa9e2137becb8224fd4e9823f30d0074c6751f6bf2263e862dc297e6'],
-    // GRANT M3-S (astra-m3-structural-adjudication.md section 3): exact additive Five early-guard tests.
-    ['tests/rungraph/installed-governance.test.ts', '4741c9e14be82d3329fcee03e30ef6e661c95aba210ef0fa5cbd010f5c251737'],
-    ['tests/assembly/production-grounding-inventory.json', '60cf876d7f781dd0e2c436a53ab88819c1de758c118a9f01a5b1d0a14add7c56'],
-    // GRANT S2-FRAMING (astra-preview-s2-framing.md section 4; astra-preview-s2-framing-source-review-3907fcf.md step 2): the landed subscription-route test's final reviewed content.
-    ['tests/assembly/production-provider-subscription.test.ts', '1ba516e39bd5040fd7559a9770908bdc8dd8b79a80a6f45bce79e3be121c70ce'],
-    // GRANT M3-C (Astra adjudication, 2026-09-20): the additive declaration baseline pin.
-    ['tests/rungraph/closure-registration-additivity.test.ts', '8eb190dfdbf931c2a169967798c0165ccc59cc74b0f01c8393b4db52990f4744'],
-    // GRANT M4-G6-N-T7: the two exhaustive P9 disposition counts 63 -> 66.
-    ['tests/verification/coverage.test.ts', 'ad5a8cb698bb8a55366192d62f621bcc17395b6f8801189a58fab43ecbc4ef94'],
-    ['tests/rungraph/production-grounding-scope.test.ts', '2c381217e8bdca174ae1ee4cd9f1be7df244e845f35a36c0aebd692730625dee'],
-    ['tests/assembly/round10-regressions.test.ts', '74548e6d7fbc2eaaa01a786330dceb773d29f87f7687999501fcfc175f82d605'],
-    ['tests/assembly/round12-regressions.test.ts', '6d0619c8c1340035ae6149101b19e5adaa012760688ec86e41560b195a037dc9'],
-    // Settlement seam baseline: exact helper bytes for landed Eight 189b346.
-    ['tests/transport/effect-pin.mjs', '19d668f4779b2057377de7daa64da59af7685277f59762f9f20ffae4d0081302'],
-  ]);
-  // GRANT BOOT-SPLIT (astra-boot-split-fence-ruling.md): retire only this exact path.
-  // Keep these checks after landing; the exception below applies only while main lists it.
-  const retiredBootTest = 'tests/assembly/production-boot-conversation.test.ts';
-  const replacementBootTests = [
-    'tests/assembly/production-boot-conversation-shard-0.test.ts',
-    'tests/assembly/production-boot-conversation-shard-1.test.ts',
-    'tests/assembly/production-boot-conversation-shard-2.test.ts',
-    'tests/assembly/production-boot-conversation-shard-3.test.ts',
-  ];
-  expect(lstatSync(retiredBootTest, { throwIfNoEntry: false }), retiredBootTest).toBeUndefined();
+const retiredBootTest = 'tests/assembly/production-boot-conversation.test.ts';
+const replacementBootTests = [
+  'tests/assembly/production-boot-conversation-shard-0.test.ts',
+  'tests/assembly/production-boot-conversation-shard-1.test.ts',
+  'tests/assembly/production-boot-conversation-shard-2.test.ts',
+  'tests/assembly/production-boot-conversation-shard-3.test.ts',
+];
+const inheritedPrefixes = ['tests/rungraph/', 'tests/transport/', 'tests/effects/', 'tests/verification/', 'tests/assembly/'];
+
+function checkBootShardReplacement(root: string) {
+  expect(lstatSync(join(root, retiredBootTest), { throwIfNoEntry: false }), retiredBootTest).toBeUndefined();
   for (const path of replacementBootTests)
-    expect(lstatSync(path, { throwIfNoEntry: false })?.isFile(), path).toBe(true);
-  const prefixes = ['tests/rungraph/', 'tests/transport/', 'tests/effects/', 'tests/verification/', 'tests/assembly/'];
-  const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' })
-    .trim().split('\n').filter(path => prefixes.some(prefix => path.startsWith(prefix)));
-  expect(paths.length).toBeGreaterThan(50);
+    expect(lstatSync(join(root, path), { throwIfNoEntry: false })?.isFile(), path).toBe(true);
+}
+
+function checkInheritedFixtures(root: string, mainTip: string, minimum: number) {
+  const paths = execFileSync('git', ['-C', root, 'ls-tree', '-r', '--name-only', mainTip], { encoding: 'utf8' })
+    .trim().split('\n').filter(path => inheritedPrefixes.some(prefix => path.startsWith(prefix)));
+  expect(paths.length).toBeGreaterThan(minimum);
   for (const path of paths) {
-    if (path === retiredBootTest) continue; // Its absence was asserted above.
-    const main = execFileSync('git', ['show', `main:${path}`]);
-    if (grantedContent.has(path)) {
-      expect(createHash('sha256').update(readFileSync(path)).digest('hex'), path).toBe(grantedContent.get(path));
-    } else {
-      expect(readFileSync(path), path).toEqual(main);
-    }
+    if (path === retiredBootTest) continue;
+    expect(readFileSync(join(root, path)), path).toEqual(execFileSync('git', ['-C', root, 'show', `${mainTip}:${path}`]));
+  }
+}
+
+it('P13 A2 fixture bytes compare only before A2 lands, with boot-shard assertions retained separately', () => {
+  const root = mkdtempSync(join(tmpdir(), 'p13-a2-byte-scope-'));
+  const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.email', 'p13-a2-fixture@instar.local');
+    git('config', 'user.name', 'P13 A2 Fixture');
+    mkdirSync(join(root, 'src', 'harness-adapters'), { recursive: true });
+    mkdirSync(join(root, 'tests', 'rungraph'), { recursive: true });
+    writeFileSync(join(root, 'src', 'harness-adapters', 'admission.ts'), 'landed A1\n');
+    writeFileSync(join(root, 'tests', 'rungraph', 'owner.test.ts'), 'inherited fixture\n');
+    git('add', '.'); git('commit', '-m', 'A1 and inherited owner fixture');
+    git('switch', '-c', 'a2');
+    writeFileSync(join(root, 'src', 'harness-adapters', 'adapter.ts'), 'permitted A2 addition\n');
+    const before = firstLanding(root, ['src/harness-adapters/adapter.ts']);
+    expect(before.applicable).toBe(true);
+    expect(() => checkInheritedFixtures(root, before.mainTip, 0)).not.toThrow();
+    writeFileSync(join(root, 'tests', 'rungraph', 'owner.test.ts'), 'violating fixture rewrite\n');
+    expect(() => checkInheritedFixtures(root, before.mainTip, 0)).toThrow();
+    writeFileSync(join(root, 'tests', 'rungraph', 'owner.test.ts'), 'inherited fixture\n');
+    rmSync(join(root, 'src', 'harness-adapters', 'adapter.ts'));
+    git('switch', 'main');
+    writeFileSync(join(root, 'src', 'harness-adapters', 'adapter.ts'), 'landed A2\n');
+    writeFileSync(join(root, 'src', 'harness-adapters', 'holder.ts'), 'landed A2 holder\n');
+    mkdirSync(join(root, 'tests', 'assembly'), { recursive: true });
+    for (const path of replacementBootTests) writeFileSync(join(root, path), 'replacement shard\n');
+    git('add', '.'); git('commit', '-m', 'land A2');
+    git('switch', '-c', 'later');
+    writeFileSync(join(root, 'src', 'harness-adapters', 'adapter.ts'), 'later owner edit\n');
+    writeFileSync(join(root, 'tests', 'rungraph', 'owner.test.ts'), 'later cross-owner edit\n');
+    expect(firstLanding(root, ['src/harness-adapters/adapter.ts', 'src/harness-adapters/holder.ts']).applicable)
+      .toBe(false);
+    expect(() => checkBootShardReplacement(root)).not.toThrow();
+    rmSync(join(root, replacementBootTests[0]!));
+    expect(() => checkBootShardReplacement(root)).toThrow();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('P13-A2-ADDITIVITY compares inherited fixtures during A2 first landing and retains boot-shard checks', () => {
+  // GRANT BOOT-SPLIT (astra-boot-split-fence-ruling.md): retire only this exact path.
+  // These replacement assertions remain permanent after the first-landing comparison ends.
+  checkBootShardReplacement(process.cwd());
+  const scope = firstLanding(process.cwd(), ['src/harness-adapters/adapter.ts', 'src/harness-adapters/holder.ts']);
+  if (scope.applicable) {
+    checkInheritedFixtures(process.cwd(), scope.mainTip, 50);
+  } else {
+    expect(scope.applicable).toBe(false); // Explicitly report inapplicability.
   }
   expect(p13A2PathAllowed('src/rungraph/a2-stand-in.ts')).toBe(false);
   expect(p13A2PathAllowed('tests/verification/rewrite.test.ts')).toBe(false);
-  expect(checkP13A2Architecture().sourceFiles).toEqual(expect.arrayContaining([
+  const architecture = checkP13A2Architecture();
+  expect(architecture.applicable).toBe(false);
+  expect(architecture.sourceFiles).toEqual(expect.arrayContaining([
     'adapter.ts', 'holder.ts', 'regression-boundaries.ts',
   ]));
   const stateHost = readFileSync('scripts/slice-p13-state-storage.mjs', 'utf8');
