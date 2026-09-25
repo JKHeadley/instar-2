@@ -158,6 +158,14 @@ export function unansweredMessages(conversation: readonly ConversationMessage[])
 const speakerOf = (message: ConversationMessage) =>
   quoteLine(message.speaker ?? (message.from === 'user' ? 'User' : 'Agent'), 40);
 
+/** Content digest: the trigger/generation-time line (line two) is excluded, so an unchanged
+ * grounding re-rendered later has the same digest and is not mistaken for new content. */
+export function groundingDigest(text: string): string {
+  const lines = text.split('\n');
+  const stable = lines.filter((line, index) => !(index === 1 && line.startsWith('Trigger: '))).join('\n');
+  return `sha256:${createHash('sha256').update(stable).digest('hex')}`;
+}
+
 export function buildGrounding(input: GroundingInput): Grounding {
   const maxBytes = Math.min(input.maxBytes ?? GROUNDING_MAX_BYTES, GROUNDING_MAX_BYTES);
   const topic = `${quoteLine(input.topic.name, 80)} (${quoteLine(input.topic.id, 64)})`;
@@ -238,7 +246,7 @@ export function buildGrounding(input: GroundingInput): Grounding {
     ...workBlock, ...recallBlock, ...footer].join('\n') + '\n';
   const messagesShown = conversationBlock.length ? conversationBlock.filter(line => line.startsWith('  [')).length : 0;
   return Object.freeze({
-    text, bytes: utf8Bytes(text), digest: `sha256:${createHash('sha256').update(text).digest('hex')}`,
+    text, bytes: utf8Bytes(text), digest: groundingDigest(text),
     included: Object.freeze({ identity: identityBlock.length > 0, messages: messagesShown,
       unanswered: unansweredBlock.length ? pending.length : 0,
       commitments: commitmentBlock.length ? commitmentBlock.length - 2 : 0,

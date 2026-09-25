@@ -47,7 +47,11 @@ describe('grounding builder', () => {
 
   it('is deterministic for the same input', () => {
     expect(buildGrounding(base()).digest).toBe(buildGrounding(base()).digest);
-    expect(buildGrounding(base({ now: T0 + 1 })).digest).not.toBe(buildGrounding(base()).digest);
+    // Only the generation-time/trigger line moved: same content digest.
+    expect(buildGrounding(base({ now: T0 + 3_660_000, source: 'startup' })).digest).toBe(buildGrounding(base()).digest);
+    expect(buildGrounding(base({ now: T0 + 3_660_000 })).text).not.toBe(buildGrounding(base()).text);
+    // Content moved (a commitment became overdue): new digest.
+    expect(buildGrounding(base({ now: T0 + 7_200_001 })).digest).not.toBe(buildGrounding(base()).digest);
   });
 
   it('never renders a credential: flagged items are dropped and known token shapes are withheld', () => {
