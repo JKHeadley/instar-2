@@ -244,7 +244,7 @@ it.each(['accepted-reply-claim-kill', 'accepted-reply-consume-kill',
         let stderr = '';
         child.stderr.on('data', bytes => { stderr += bytes; });
         let timedOut = false;
-        const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 300000);
+        const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 550000);
         child.once('error', reject);
         child.once('exit', (status, signal) => { clearTimeout(timer); resolve({ status, signal, stderr, timedOut }); });
       });

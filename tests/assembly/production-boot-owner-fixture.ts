@@ -312,10 +312,12 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
           consumeCurrent: (reference: any, input: any, consume: any) => f.success(consume(readAssessment(reference, input))) } };
       Object.assign(transportHost, { accountingDurability: composition.durability });
       let api = createEffectDoorway(composition), executor = createHarnessLiveInputExecution(api, transportHost);
-      const message = (run: string, text: string) => value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
-        id: intakeMode ? `live-input:${run}` : `live-input:${++ordinal}`,
-        semanticMessage: intakeMode ? `live-input:${run}` : `live-input:${ordinal}`, run, speaker: host.principal.id,
+      const message = (run: string, text: string) => {
+        const identity = intakeMode ? `${run}:${++ordinal}` : String(++ordinal);
+        return value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
+        id: `live-input:${identity}`, semanticMessage: `live-input:${identity}`, run, speaker: host.principal.id,
         account: definition.account, conversation: definition.conversation, text, purpose: 'context-delivery', sourceResult: note.id }, host));
+      };
       const connected = { api, executor, composition, transport, fence, leaseFact, message,
         renew() {
           fence = value(transport.renew('live-input-renew', fence, 500));
@@ -428,7 +430,7 @@ function installAssemblySupport(f: any, options: any) {
       const admitted = f.effects.prepare(wireMessage);
       const previous = value(currentRuntime.inspectCurrent()).filter((r: any) => r.record.type === 'ContextDeliverySpecification'
         && r.record.run === f.id).at(-1);
-      const identity = options.intake ? f.id : String(++serial);
+      const identity = options.intake ? `${f.id}:${++serial}` : String(++serial);
       const spec: any = { type: 'ContextDeliverySpecification', schemaVersion: 1, id: contextDeliveryIdFor(launchFact.id, admitted.operation),
         predecessors: [], dependencyFacts: [], launch: launchFact.id, run: f.id, step: `step:operation:${identity}`, input: intake.id, inputDigest: capture.hash,
         incarnation: launch.incarnation, harness: launch.harness, artifactDigest: launch.artifactDigest, machine: launch.machine, generation: f.run.generation.id,

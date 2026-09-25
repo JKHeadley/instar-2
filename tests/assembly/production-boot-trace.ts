@@ -145,20 +145,20 @@ export function createRecordedServingPlan(installed, target) {
       lossModel: 'Recorded local bytes; replication admitted only through the U4-C fixture handle.',
       maxBytes: installed.declaration.limits.maxReplyBytes, maxCharge: installed.declaration.limits.maxCharge,
       timeout: installed.declaration.limits.timeout, verificationBar: 'boot-telegram-reply-bar' };
-    if (byRecord('effect-OperationDefinition', definition.id)) return definition;
-    const approved = f.authorize({ id: 'boot-telegram-reply-approval',
-      artifact: f.capture(value(canonical(definition)).bytes), base: 'boot-telegram-reply-base' });
-    const prior = f.owners.host.current;
-    f.owners.host.current = () => ({ ...prior(), versions: [...prior().versions,
-      { id: definition.version, subject: definition.feature, content: json(definition),
-        contentHash: value(canonical(definition)).hash, since: f.opening.id,
-        supersedes: [], approvedIn: approved, base: approved.base, landedIn: null }] });
-    value(installTelegramReplyOperation({ id: definition.id, generation: definition.generation,
+    if (!byRecord('effect-OperationDefinition', definition.id)) {
+      const approved = f.authorize({ id: 'boot-telegram-reply-approval',
+        artifact: f.capture(value(canonical(definition)).bytes), base: 'boot-telegram-reply-base' });
+      const prior = f.owners.host.current;
+      f.owners.host.current = () => ({ ...prior(), versions: [...prior().versions,
+        { id: definition.version, subject: definition.feature, content: json(definition),
+          contentHash: value(canonical(definition)).hash, since: f.opening.id,
+          supersedes: [], approvedIn: approved, base: approved.base, landedIn: null }] });
+    }
+    return value(installTelegramReplyOperation({ id: definition.id, generation: definition.generation,
       admitted: installed.admitted, target, speaker: definition.speaker,
       scopeDigest: definition.scopeDigest, durability: definition.durability, replicas: 0,
       lossModel: definition.lossModel, verificationBar: definition.verificationBar }, f.owners.host,
     createEffectSpine(f.owners.host, { context, privateKey }, f.store)));
-    return definition;
   };
   const serving = {
     providerOwners(turn) {
@@ -344,6 +344,7 @@ export async function runRecordedConversation(installed, http, checkpoint = asyn
     const ready = value(graph.open(f.run));
     await checkpoint('run-opened', installed);
     const ground = value(graph.ground(f.id, 'w', 'native', 'start', f.lease));
+    question.step = ground.body.record.step;
     await checkpoint('provider-grounded', installed);
     const transition = f.start(ready, ground);
     value(graph.transition({ ...transition, step: { ...transition.step,

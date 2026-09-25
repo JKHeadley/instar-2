@@ -178,6 +178,7 @@ export async function createProductionHost() {
     ...((action.startsWith('reply-') || accepted) ? { ...(accepted ? { sequentialPoll: true } : { singleUpdate: true }),
       ...(accepted ? { dynamicReplyResponse: true } : {}),
       physicalCheckpoint(stage, state) {
+        if (action === 'accepted-resume') return;
         const target = action.endsWith('kill-before') ? 'reply-before-response' : 'reply-after-response';
         if (stage === target) {
           durableJSON(checkpointPath, recordedCheckpoint(state, stage));

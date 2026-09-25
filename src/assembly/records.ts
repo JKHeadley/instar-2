@@ -533,9 +533,19 @@ function validateContextDeliveryReferences(record: ContextDeliverySpecification,
     && launch.artifactDigest === record.artifactDigest && launch.machine === record.machine,
   'context delivery replaces or mismatches the immutable launch identity');
   const input = exactOwnerFact(record.input, undefined, context);
-  const inputBody = ownerBody(input), capture = object(inputBody.capture)
-    ?? (input.kind === 'intake-admitted' && typeof inputBody.rawHash === 'string'
-      ? { reference: inputBody.rawHash, hash: inputBody.rawHash } : undefined);
+  const inputBody = ownerBody(input);
+  let capture = object(inputBody.capture);
+  if (input.kind === 'intake-admitted') {
+    ensure(typeof inputBody.receipt === 'string' && context.ownerFacts,
+      'context delivery intake receipt is unavailable');
+    const receipt = exactOwnerFact(inputBody.receipt, 'intake-receipt', context);
+    ensure(causalCone(input, context.ownerFacts.facts).some(fact => fact.id === receipt.id),
+      'context delivery intake receipt is not a causal ancestor');
+    const receiptBody = ownerBody(receipt);
+    ensure(receiptBody.rawHash === inputBody.rawHash,
+      'context delivery intake receipt digest differs from admitted input');
+    capture = object(receiptBody.capture);
+  }
   ensure(typeof capture?.reference === 'string' && capture.hash === record.inputDigest,
     'context delivery input digest differs from the owner-resolved intake capture');
   ensure(record.contextManifest.some(row => row.class === 'message'
