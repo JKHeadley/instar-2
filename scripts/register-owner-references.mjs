@@ -6,7 +6,7 @@ import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
-export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-seven', 'part-nine', 'part-ten']
+export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-seven', 'part-nine', 'part-ten', 'part-twelve']
   .map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
 const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
@@ -82,6 +82,12 @@ const contracts = {
     fixture: id => Object.hasOwn(partTenFixturePaths, id),
     probe: () => false,
     test: (id, kind, path) => kind === 'fixture' && (partTenFixturePaths[id] ?? []).includes(path) },
+  'part-twelve': { decoders: {},
+    fixture: id => id === 'P12-NF-19' || id === 'P12-NF-28',
+    probe: () => false,
+    test: (id, kind, path) => kind === 'fixture' && (
+      id === 'P12-NF-19' && path === 'tests/conversation/slack-preparation.test.ts'
+      || id === 'P12-NF-28' && path === 'tests/conversation/slack-reply-hold.test.ts') },
 };
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))
