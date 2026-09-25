@@ -25,11 +25,16 @@ const neutral = (s: string) => s.replace(/<\/?\s*recalled-history[^>]*>?/gi, '[q
 function entryLine(e: RecalledExchange, text: string): string {
   return `- [${isoMinute(e.at)} · ${neutral(e.conversation)} · ${neutral(e.speakerName)} (${e.speakerRole})] ${text}`;
 }
+/** Every rendered or returned string is redacted (covers rows written before or outside capture). */
+function scrubbed(e: RecalledExchange): RecalledExchange {
+  return { ...e, conversation: redact(e.conversation).text, speakerName: redact(e.speakerName).text };
+}
 
 /**
- * Ground one turn. Refused while the stop floor holds. Every recalled exchange is either
- * revealed (rendered) or withheld (factId + reason, never rendered). The rendered block is
- * bounded by `maxChars`; entries that do not fit are dropped whole and `truncated` is set.
+ * Ground one turn. Refused while the stop floor holds, checked before recall and again after it.
+ * Every hit the render loop examines is either revealed (rendered) or withheld (factId + reason,
+ * never rendered). The rendered block is bounded by `maxChars`; entries that do not fit are dropped
+ * whole, and `truncated` is set then or when an entry's text is cut to `maxCharsPerExchange`.
  */
 export async function groundTurn(request: GroundingRequest, reader: RecallReader): Promise<Result<Grounding>> {
   const checked = boundary('RecallGroundRequest', request.audience ?? null, reader.context, () => {
@@ -41,19 +46,23 @@ export async function groundTurn(request: GroundingRequest, reader: RecallReader
   });
   const bounds = consumeResult(checked, { Success: v => v, Refused: () => undefined });
   if (!bounds) return checked as unknown as Result<Grounding>;
-  // Withheld exchanges must not crowd out revealable ones: recall wider, cap what is revealed.
+  // Recall wider than what is revealed so a few withheld hits do not crowd out revealable ones.
+  // Fifty or more higher-ranked withheld hits can still crowd them out (bounded cost, accepted).
   const recalled = await recall({ ...request, bounds: { ...bounds, maxResults: 50 } }, reader);
   const found = consumeResult(recalled, { Success: v => v, Refused: () => undefined });
   if (!found) return recalled as unknown as Result<Grounding>;
   return boundary('RecallGrounding', null, reader.context, () => {
+    // A stop asserted while recall was in flight still refuses the grounding.
+    ensure(!reader.stopped(), 'stopped: no grounding while the stop floor holds', 'floor');
     const revealed: GroundingEntry[] = [], withheld: { factId: string; reason: string }[] = [], lines: string[] = [];
     let used = open.length + close.length + 2, truncated = false;
-    for (const { exchange: e } of found.hits) {
+    for (const { exchange: hit } of found.hits) {
+      const e = scrubbed(hit);
       if (revealed.length >= bounds.maxResults) break;
       const verdict = mayReveal(e, request.audience);
       if (!verdict.reveal) { withheld.push({ factId: e.factId, reason: verdict.reason }); continue; }
       let text = neutral(redact(e.text).text);
-      if (text.length > bounds.maxCharsPerExchange) text = `${text.slice(0, Math.max(0, bounds.maxCharsPerExchange - 1))}…`;
+      if (text.length > bounds.maxCharsPerExchange) { text = `${text.slice(0, Math.max(0, bounds.maxCharsPerExchange - 1))}…`; truncated = true; }
       const line = entryLine(e, text);
       if (used + line.length + 1 > bounds.maxChars) { truncated = true; continue; }
       used += line.length + 1; lines.push(line);

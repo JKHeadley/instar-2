@@ -36,7 +36,7 @@ captureExchange({ conversation: 'telegram:<chat>:<topic>', session, messageId, s
   audience: ['<principal id>', ...] }, clockInput, writer)   // → Result<CaptureReceipt>
 
 // 3. Ground each turn before drafting.
-await groundTurn({ text: incomingText, excludeMessageIds: [incomingId],
+await groundTurn({ text: incomingText, exclude: [{ conversation, messageId: incomingId }],
   audience: { conversation, participants: ['<principal id>', ...] } }, reader)
 // → Result<{ text, revealed, withheld, manifest }>
 ```
@@ -59,16 +59,35 @@ participants. Recall itself never decides reveal.
 
 ## Floors
 
-- **Secrets:** credentials are redacted before append, so the exchange is kept without the
-  secret. Part two's envelope also refuses secret-shaped bytes. Text is redacted again at
-  render time to cover older or foreign rows.
-- **Spend cap:** the scan, results, rerank candidates, per-entry characters and total
-  characters are all bounded, with hard ceilings. A reranker is called only after
+- **Secrets:** credentials in the text and the display name are redacted before append, so the
+  exchange is kept without the secret. A credential-shaped identity key (conversation, session,
+  message id, speaker id, audience member) is refused, never rewritten into a colliding identity.
+  Part two's envelope also refuses secret-shaped bytes. Everything handed to a model or returned
+  (query, candidates, rendered lines, revealed entries) is redacted again, covering older or foreign rows.
+- **Spend cap (model and output):** results, rerank candidates, per-entry characters and total
+  characters are bounded, with hard ceilings. A reranker is called only after
   `spend.reserve(chargePerCall)` succeeds. With no spend port, nothing is spent.
-- **Stop:** `groundTurn` is refused with reason `floor` while stopped, and `recall` never calls
-  the reranker then. Capture is unaffected: intake stays durable during a stop.
+- **Not a resource ceiling:** `maxScan` bounds how many recent exchanges are *scored*, not how many
+  are read. Each query reads and decodes the whole fact store, keeps every eligible exchange and
+  sorts them (O(R log R), memory growing with history); the production adapter decrypts and parses
+  the whole facts file, and part-two append is O(n). Before live activation, assembly must supply an
+  enforced finite storage envelope or part two a bounded read path. Rule 60 is not claimed here.
+- **Stop:** `groundTurn` is refused with reason `floor` while stopped, checked before recall and
+  again before grounding is returned, so a stop asserted while recall is in flight still refuses.
+  `recall` never calls the reranker while stopped. An already-authorized in-flight call is not
+  cancelled. Capture is unaffected: intake stays durable during a stop.
 - **No duplicate sends:** recall never sends anything. Capture is idempotent on
-  (conversation, messageId). The same id arriving with different content is refused as `integrity`.
+  (conversation, messageId). The same id with different content (text, speaker id or role,
+  visibility, or audience as a set) is refused as `integrity`; session, observation time and
+  display name may differ on a redelivery.
+- **Exclusions** use the capture identity `{ conversation, messageId }`, since provider ids repeat
+  across conversations.
+- **Crowd-out:** grounding recalls 50 wide before the reveal check. Fifty or more higher-ranked
+  withheld hits can still crowd out every revealable one (recall coverage is lost; nothing
+  restricted is revealed).
+- **Manifest scope:** `withheld` lists the hits the render loop examined (it stops after
+  `maxResults` reveals), not every recalled hit. `truncated` is set when an entry is dropped for
+  `maxChars` or its text is cut to `maxCharsPerExchange`.
 - **Durable intake:** `captureExchange` returns success only with the store's durability
   receipt. A store refusal passes through unchanged.
 

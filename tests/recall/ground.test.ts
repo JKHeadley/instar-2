@@ -48,7 +48,7 @@ describe('reveal is separate from recall', () => {
     expect(g).toMatchObject({ text: '', revealed: [], withheld: [{ factId: note.factId, reason: 'private' }] });
   });
 
-  it('withheld exchanges do not crowd out revealable ones', async () => {
+  it('a few withheld exchanges do not crowd out revealable ones (recall runs 50 wide)', async () => {
     const { put, reader } = world();
     for (let i = 0; i < 6; i++) put(`p${i}`, `budget budget budget private item ${i}`, { visibility: 'private', audience: [] }, 1000 + i);
     put('ok', 'the budget was approved', {}, 500);
@@ -100,6 +100,38 @@ describe('groundTurn — the API the conversation driver calls each turn', () =>
       reranker: { id: 'x', chargePerCall: 1, rerank: () => { calls++; return { kind: 'Success', value: [] } as never; } } }));
     expect(refused(out)).toContain('stopped');
     expect(calls).toBe(0);
+  });
+
+  it('stop floor: a stop asserted while recall is in flight refuses the grounding; no stop returns it', async () => {
+    const { put, reader } = world(); put('m1', 'the budget was approved');
+    let stop = false;
+    const reranker = { id: 'slow', chargePerCall: 1, rerank: async () => { await Promise.resolve(); stop = true; return { kind: 'Success', value: [0] } as never; } };
+    const out = await groundTurn({ text: 'budget', audience: justin }, reader({ stopped: () => stop, spend: { reserve: () => true }, reranker }));
+    expect(refused(out)).toContain('stopped');
+    const calm = { id: 'calm', chargePerCall: 1, rerank: async () => { await Promise.resolve(); return { kind: 'Success', value: [0] } as never; } };
+    const ok = value(await groundTurn({ text: 'budget', audience: justin }, reader({ spend: { reserve: () => true }, reranker: calm })));
+    expect(ok.revealed.map(e => e.text)).toEqual(['the budget was approved']);
+  });
+
+  it('truncated is set when an entry text is cut, and stays false when nothing is cut', async () => {
+    const { put, reader } = world(); put('m1', 'Lisbon conference plans '.padEnd(120, 'x'));
+    const cut = value(await groundTurn({ text: 'Lisbon', audience: justin, bounds: { maxCharsPerExchange: 20 } }, reader()));
+    expect(cut.revealed[0]!.text).toHaveLength(20); expect(cut.manifest.truncated).toBe(true);
+    const whole = value(await groundTurn({ text: 'Lisbon', audience: justin, bounds: { maxCharsPerExchange: 600 } }, reader()));
+    expect(whole.manifest.truncated).toBe(false);
+  });
+
+  it('never renders a credential-shaped speaker name or conversation, even from a legacy row', async () => {
+    const { r, w, reader } = world();
+    const { authorAndAppend } = await import('../../src/facts/index.js');
+    value(authorAndAppend({ kind: 'recall-exchange', schemaVersion: 1, machine: 'machine-a', principal: r.fx.alice as never,
+      provenance: r.fx.alice.provenance as never, at: r.at(1000), required: [], body: { conversation: 'slack:xoxb-1234567890-convconvconv', session: 's',
+        messageId: 'legacy', speakerId: 'justin', speakerName: 'xoxb-1234567890-abcdefghij', speakerRole: 'user', text: 'the harbour plan', visibility: 'public',
+        audience: '', redactions: 0 } }, r.context, w.store, (await import('../facts/fixtures.js')).privateKey));
+    const g = value(await groundTurn({ text: 'harbour plan', audience: justin }, reader()));
+    expect(g.revealed).toHaveLength(1);
+    expect(JSON.stringify(g)).not.toContain('abcdefghij'); expect(JSON.stringify(g)).not.toContain('convconvconv');
+    expect(g.text).toContain('the harbour plan');
   });
 
   it('refuses a missing or malformed audience rather than guessing one', async () => {

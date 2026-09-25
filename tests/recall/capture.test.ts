@@ -38,6 +38,19 @@ describe('recall capture — exchanges become durable part-two facts', () => {
     expect(storage.rows).toHaveLength(1);
   });
 
+  it('conflicting visibility, audience or role is not a redelivery; session, time, order and name may differ', () => {
+    const r = recallFixture(); const storage = r.memoryStorage(); const w = r.writer(storage);
+    const first = value(captureExchange(r.exchange({ visibility: 'public', audience: ['justin', 'sarah'] }), r.at(1000), w));
+    for (const o of [{ visibility: 'private' as const, speakerRole: 'agent' as const, audience: ['justin', 'sarah'] },
+      { visibility: 'participants' as const, audience: ['justin', 'sarah'] }, { visibility: 'public' as const, audience: ['justin'] },
+      { visibility: 'public' as const, audience: ['justin', 'sarah'], speakerRole: 'system' as const }])
+      expect(refused(captureExchange(r.exchange(o), r.at(2000), w))).toContain('reused with different content');
+    expect(storage.rows).toHaveLength(1);
+    expect(value(captureExchange(r.exchange({ visibility: 'public', audience: ['sarah', 'justin'], session: 'session-b', speakerName: 'J.' }),
+      r.at(3000), w))).toMatchObject({ duplicate: true, factId: first.factId });
+    expect(storage.rows).toHaveLength(1);
+  });
+
   it('never stores a credential: the exchange is kept, the secret is redacted', () => {
     const r = recallFixture(); const storage = r.memoryStorage(); const w = r.writer(storage);
     const text = 'my key is sk-ant-abcdefghijklmnopqrstuvwxyz0123 and password=hunter22 ok';
@@ -46,6 +59,26 @@ describe('recall capture — exchanges become durable part-two facts', () => {
     expect(storage.rows.join('')).not.toContain('abcdefghijklmnopqrstuvwxyz0123');
     expect(storage.rows.join('')).not.toContain('hunter22');
     expect(readExchange(value(w.store.read())[0]!)!.text).toBe(`my key is ${redactionMark} and password=${redactionMark} ok`);
+  });
+
+  it('redacts a credential-shaped display name before append; a plain name is kept', () => {
+    const r = recallFixture(); const storage = r.memoryStorage(); const w = r.writer(storage);
+    const bad = value(captureExchange(r.exchange({ messageId: 'n1', speakerName: 'xoxb-1234567890-abcdefghij' }), r.at(1000), w));
+    expect(bad.redactions).toBe(1);
+    expect(storage.rows.join('')).not.toContain('abcdefghij');
+    value(captureExchange(r.exchange({ messageId: 'n2', speakerName: 'Justin' }), r.at(1000), w));
+    const names = value(w.store.read()).map(f => readExchange(f)!.speakerName);
+    expect(names).toEqual([redactionMark, 'Justin']);
+  });
+
+  it('refuses a credential-shaped identity key rather than rewriting it into a colliding identity', () => {
+    const r = recallFixture(); const storage = r.memoryStorage(); const w = r.writer(storage);
+    const tok = 'xoxb-1234567890-abcdefghij';
+    for (const o of [{ speakerId: tok }, { conversation: tok }, { messageId: tok }, { session: tok }, { audience: [tok] }])
+      refused(captureExchange(r.exchange(o), r.at(1000), w), 'credential-shaped identity');
+    expect(storage.rows).toHaveLength(0);
+    value(captureExchange(r.exchange({ speakerId: 'justin-telegram-12345' }), r.at(1000), w));
+    expect(storage.rows).toHaveLength(1);
   });
 
   it('redaction covers every shape the envelope refuses, plus common tokens', () => {

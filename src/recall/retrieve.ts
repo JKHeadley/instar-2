@@ -1,5 +1,8 @@
-// Recall: find the relevant earlier exchanges. Bounded (scan/k/candidate caps), offline
-// lexical first stage, optional spend-gated semantic rerank. Recall never decides reveal.
+// Recall: find the relevant earlier exchanges. Scoring, results, rerank candidates and text are
+// bounded; reading is not: each query reads and decodes the whole store and sorts every eligible
+// exchange (O(R log R), memory grows with history). An enforced storage envelope or a bounded
+// part-two read path is an activation dependency. Offline lexical first stage, optional
+// spend-gated semantic rerank. Recall never decides reveal.
 import type { BoundaryContext, Result } from '../index.js';
 import { consumeResult } from '../index.js';
 import { boundary, ensure, take } from './boundary.js';
@@ -31,7 +34,12 @@ function prepare(query: RecallQuery, reader: RecallReader): Result<Prepared> {
   return boundary('RecallPrepare', query, reader.context, () => {
     ensure(typeof query.text === 'string' && query.text.length <= 4000, 'query: text of at most 4000 characters required', 'policy');
     const bounds = resolveBounds(query.bounds);
-    const exclude = new Set(query.excludeMessageIds ?? []);
+    // Exclusions carry the same identity as capture: (conversation, messageId). Provider ids
+    // repeat across conversations, so a bare message id would silently hide unrelated memory.
+    const excluded = query.exclude ?? [];
+    ensure(Array.isArray(excluded) && excluded.length <= 64 && excluded.every(x => x !== null && typeof x === 'object'
+      && typeof x.conversation === 'string' && typeof x.messageId === 'string'), 'exclude: bounded list of {conversation, messageId} required', 'policy');
+    const exclude = new Set(excluded.map(x => `${x.conversation}\n${x.messageId}`));
     const facts = take(reader.store.read());
     let stored = 0, unreadable = 0;
     const all: { e: RecalledExchange; order: number }[] = [];
@@ -40,9 +48,9 @@ function prepare(query: RecallQuery, reader: RecallReader): Result<Prepared> {
       stored++;
       const e = readExchange(fact);
       if (!e) { unreadable++; return; }
-      if (!exclude.has(e.messageId)) all.push({ e, order });
+      if (!exclude.has(`${e.conversation}\n${e.messageId}`)) all.push({ e, order });
     });
-    // Newest first; the bounded scan keeps the most recent `maxScan` exchanges.
+    // Newest first; `maxScan` bounds how many of the most recent exchanges are scored, not read.
     all.sort((a, b) => b.e.at - a.e.at || b.order - a.order);
     const scanned = all.slice(0, bounds.maxScan).map(x => x.e);
     const q = terms(query.text, 32);
@@ -62,7 +70,8 @@ function prepare(query: RecallQuery, reader: RecallReader): Result<Prepared> {
     const candidates = lexical.slice(0, bounds.maxRerankCandidates).map(s => s.index);
     for (let i = 0; i < scanned.length && candidates.length < bounds.maxRerankCandidates; i++)
       if (!candidates.includes(i)) candidates.push(i);
-    return { scanned, lexical, candidates, bounds, queryText: query.text,
+    // Everything handed to a model is redacted: the query and every candidate field.
+    return { scanned, lexical, candidates, bounds, queryText: redact(query.text).text,
       manifest: { strategy, stored, scanned: scanned.length, unreadable, matched: lexical.length } };
   });
 }
@@ -87,7 +96,7 @@ export async function recall(query: RecallQuery, reader: RecallReader): Promise<
       charge = reranker.chargePerCall;
       try {
         const answer = await reranker.rerank(p.queryText, p.candidates.map(i => {
-          const e = p.scanned[i]!; return `${e.speakerName} (${e.speakerRole}): ${snippet(e, p.bounds.maxCharsPerExchange)}`;
+          const e = p.scanned[i]!; return `${redact(e.speakerName).text} (${e.speakerRole}): ${snippet(e, p.bounds.maxCharsPerExchange)}`;
         }));
         order = consumeResult(answer, { Success: v => v, Refused: () => undefined });
       } catch { order = undefined; }

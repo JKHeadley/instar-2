@@ -30,6 +30,19 @@ const key = (v: unknown, field: string, max: number = limits.key): string => {
   ensure(typeof v === 'string' && v.trim().length > 0 && v.length <= max && !/[\n\r]/.test(v), `${field}: bounded single-line text required`);
   return v;
 };
+// An identity key is never rewritten (two redacted keys would collide into one identity):
+// a credential-shaped key is refused before anything is appended.
+const identity = (v: unknown, field: string): string => {
+  const k = key(v, field);
+  ensure(redact(k).count === 0, `${field}: credential-shaped identity refused`);
+  return k;
+};
+/** The immutable content of an exchange; a redelivery must match it exactly. Session, observation
+ * time and display name may legitimately differ between deliveries. */
+const sameContent = (prior: RecalledExchange, e: ExchangeInput, text: string): boolean =>
+  prior.text === text && prior.speakerId === e.speakerId && prior.speakerRole === e.speakerRole
+  && prior.visibility === e.visibility && prior.audience.length === e.audience.length
+  && e.audience.every(p => prior.audience.includes(p));
 function validInput(raw: Json): ExchangeInput {
   ensure(raw !== null && typeof raw === 'object' && !Array.isArray(raw), 'exchange: object required');
   const v = raw as Record<string, Json>;
@@ -37,11 +50,11 @@ function validInput(raw: Json): ExchangeInput {
   ensure(visibilities.includes(v.visibility as Visibility), 'visibility: public|participants|private required');
   ensure(typeof v.text === 'string' && v.text.length <= limits.text, `text: at most ${limits.text} characters`);
   ensure(Array.isArray(v.audience) && v.audience.length <= limits.audience, 'audience: bounded list required');
-  const audience = v.audience.map(id => key(id, 'audience'));
+  const audience = v.audience.map(id => identity(id, 'audience'));
   ensure(new Set(audience).size === audience.length, 'audience: duplicate principal');
   ensure(v.visibility !== 'participants' || audience.length > 0, 'participants visibility requires an audience');
-  return { conversation: key(v.conversation, 'conversation'), session: key(v.session, 'session'),
-    messageId: key(v.messageId, 'messageId'), speakerId: key(v.speakerId, 'speakerId'),
+  return { conversation: identity(v.conversation, 'conversation'), session: identity(v.session, 'session'),
+    messageId: identity(v.messageId, 'messageId'), speakerId: identity(v.speakerId, 'speakerId'),
     speakerName: key(v.speakerName, 'speakerName', limits.name), speakerRole: v.speakerRole as SpeakerRole,
     text: v.text, visibility: v.visibility as Visibility, audience };
 }
@@ -66,28 +79,30 @@ export function readExchange(fact: FactEnvelope): RecalledExchange | null {
 /**
  * Durably records one exchange. Returns only after the store's durability receipt.
  * Idempotent on (conversation, messageId): a redelivery returns the original fact id and
- * appends nothing; the same id with different content is refused as an integrity signal.
+ * appends nothing; the same id with different content (text, speaker id/role, visibility or
+ * audience set) is refused as an integrity signal. Credentials in text and display name are
+ * redacted before append; a credential-shaped identity key is refused.
  * `at` is the part-one clock input sampled by the caller when the message was observed.
  */
 export function captureExchange(input: ExchangeInput, at: Json, writer: RecallWriter): Result<CaptureReceipt> {
   const c: BoundaryContext = { site: writer.context.site, preserved: writer.context.preserved, register: writer.context.decode.register };
   return boundary('RecallCapture', input, c, raw => {
     const exchange = validInput(raw);
-    const scrubbed = redact(exchange.text);
+    const scrubbed = redact(exchange.text), name = redact(exchange.speakerName);
     const facts = [...writer.context.facts, ...take(writer.store.read())];
     for (const fact of facts) {
       const prior = readExchange(fact);
       if (!prior || prior.conversation !== exchange.conversation || prior.messageId !== exchange.messageId) continue;
-      ensure(prior.text === scrubbed.text && prior.speakerId === exchange.speakerId,
+      ensure(sameContent(prior, exchange, scrubbed.text),
         `message id ${exchange.messageId} reused with different content`, 'integrity');
       return { factId: prior.factId, duplicate: true, redactions: prior.redactions, durability: { kind: 'already-recorded' as const } };
     }
     const body = { conversation: exchange.conversation, session: exchange.session, messageId: exchange.messageId,
-      speakerId: exchange.speakerId, speakerName: exchange.speakerName, speakerRole: exchange.speakerRole,
-      text: scrubbed.text, visibility: exchange.visibility, audience: exchange.audience.join('\n'), redactions: scrubbed.count };
+      speakerId: exchange.speakerId, speakerName: name.text, speakerRole: exchange.speakerRole,
+      text: scrubbed.text, visibility: exchange.visibility, audience: exchange.audience.join('\n'), redactions: scrubbed.count + name.count };
     const receipt = take(authorAndAppend({ kind: recallExchangeKind, schemaVersion: 1, machine: writer.machine,
       principal: writer.principal as Json, provenance: writer.provenance as Json,
       at, body, required: [] }, writer.context, writer.store, writer.privateKey));
-    return { factId: receipt.fact.id, duplicate: false, redactions: scrubbed.count, durability: receipt.durability };
+    return { factId: receipt.fact.id, duplicate: false, redactions: scrubbed.count + name.count, durability: receipt.durability };
   });
 }

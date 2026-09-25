@@ -34,7 +34,7 @@ it('an exchange from session A (topic 7) is recalled in session B (topic 9) afte
     const b = recallFixture(); const diskB = open(b);
     const storeB = createFactStore(b.context, diskB.segment);
     const reader = { context: b.fx.c, store: storeB, stopped: () => false };
-    const g = value(await groundTurn({ text: 'when is my Lisbon talk?', excludeMessageIds: ['900'],
+    const g = value(await groundTurn({ text: 'when is my Lisbon talk?', exclude: [{ conversation: 'telegram:-100:9', messageId: '900' }],
       audience: { conversation: 'telegram:-100:9', participants: ['justin'] } }, reader));
     expect(g.revealed.map(e => e.text)).toEqual(expect.arrayContaining(['The Lisbon conference talk is on October 12th at 3pm']));
     expect(g.revealed.find(e => e.factId === first.factId)).toMatchObject({ speakerName: 'Justin', speakerRole: 'user',

@@ -112,9 +112,33 @@ describe('recall — retrieval by meaning, bounded and offline', () => {
     refused(await recall({ text: 'x'.repeat(5000) }, reader()), 'query');
   });
 
-  it('excludes the message being answered', async () => {
+  it('excludes the message being answered, by (conversation, messageId)', async () => {
     const { reader } = loaded();
-    expect(ids(await recall({ text: 'hero image lighthouse', excludeMessageIds: ['c8'] }, reader()))).not.toContain('c8');
+    const c8 = corpus.find(c => c.id === 'c8')!;
+    expect(ids(await recall({ text: 'hero image lighthouse', exclude: [{ conversation: c8.conversation, messageId: 'c8' }] }, reader()))).not.toContain('c8');
+    refused(await recall({ text: 'x', exclude: ['c8'] as never }, reader()), 'exclude');
+  });
+
+  it('an exclusion in one conversation never hides the same provider id in another conversation', async () => {
+    const r = recallFixture(); const w = r.writer(r.memoryStorage());
+    value(captureExchange(r.exchange({ conversation: 'telegram:-100:A', messageId: '42', text: 'the Lisbon talk is on Friday' }), r.at(1000), w));
+    value(captureExchange(r.exchange({ conversation: 'telegram:-100:B', messageId: '42', text: 'when is the Lisbon talk?' }), r.at(2000), w));
+    const reader: RecallReader = { context: r.fx.c, store: w.store, stopped: () => false };
+    const out = value(await recall({ text: 'Lisbon talk', exclude: [{ conversation: 'telegram:-100:B', messageId: '42' }] }, reader));
+    expect(out.hits.map(h => h.exchange.conversation)).toEqual(['telegram:-100:A']);
+  });
+
+  it('secrets floor: the query and candidate metadata reach the reranker redacted', async () => {
+    const r = recallFixture(); const w = r.writer(r.memoryStorage());
+    value(captureExchange(r.exchange({ messageId: 'n1', speakerName: 'bot xoxb-1234567890-abcdefghij', text: 'deploy at noon' }), r.at(1000), w));
+    const seen: string[] = [];
+    const rr: RecallRerankPort = { id: 'spy', chargePerCall: 1, rerank(query, candidates) {
+      seen.push(query, ...candidates); return { kind: 'Success', value: [0] } as never; } };
+    const secret = 'sk-ant-' + 'k'.repeat(30);
+    const out = value(await recall({ text: `deploy ${secret}` }, { context: r.fx.c, store: w.store, stopped: () => false, reranker: rr, spend: { reserve: () => true } }));
+    expect(out.manifest.rerank).toBe('used');
+    expect(seen.join(' ')).not.toContain(secret); expect(seen.join(' ')).not.toContain('abcdefghij');
+    expect(seen[0]).toContain('deploy');
   });
 
   it('newer exchange wins an exact tie', async () => {
