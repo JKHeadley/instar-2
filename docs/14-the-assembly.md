@@ -193,7 +193,7 @@ operation definition, reservation, dispatch-claim and reconstructable verificati
 required by eight. A live lease quorum is not that acknowledgment, and a stored replication
 receipt is not current ownership. The supported single-machine shape carries no peer dependency.
 It consumes the one install-time P-08 acceptance of the fixed profile's closed local-durable
-provider-call and reply-only Telegram operation set and its explicit loss model. The assembly does
+provider-call and reply-only Telegram and Slack operation set defined in the purpose, with its explicit loss model. The assembly does
 not select local durability when an enrolled peer disappears, and an operation whose demand names
 replication still requires the peer. Reserved capacity alone changes neither demand nor authority.
 Local stop retains its existing admitted primitive and does not wait for an ordinary reply's
