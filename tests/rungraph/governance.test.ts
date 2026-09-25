@@ -7,7 +7,7 @@ import { governanceFixture } from './governance-fixture.js';
 import { setup, value, refused } from './fixtures.js';
 
 afterEach(() => vi.restoreAllMocks());
-it('P5-NF-54 R7 every built blocking gate consumes P3 and invokes its real enforced decoder', () => {
+it('P5-NF-54 P5-NF-54-PARTIAL R7 every built blocking gate consumes P3 and invokes its real enforced decoder', () => {
   const f = setup();
   const gates = [
     [runAdmission, 'decodeRun'], [stepAdmission, 'decodeRunStep'], [transitionAdmission, 'decodeRunTransition'],
@@ -22,7 +22,7 @@ it('P5-NF-54 R7 every built blocking gate consumes P3 and invokes its real enfor
   }
   expect(value(runAdmission(f.run, f.context(), f.deps.governance)).id).toBe(f.id);
 });
-it('P5-NF-54 R7 missing gates, wrong decoder bindings and wrong stop direction refuse construction', () => {
+it('P5-NF-54 P5-NF-54-PARTIAL R7 missing gates, wrong decoder bindings and wrong stop direction refuse construction', () => {
   const f = setup();
   for (const id of ['admit', 'step', 'transition', 'exit', 'grounding', 'stop']) {
     const g = governanceFixture(f.c, declarations => declarations.filter(d => d.id !== 'rungraph.' + id));

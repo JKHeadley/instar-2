@@ -1,13 +1,15 @@
 import { bindDispatchInvocation } from './dispatch-invocation.js';
 import { consumeAcceptedReplyOpening } from '../rungraph/accepted-reply.js';
 import { bindRunPairIssuer, withRunPairAdmission } from './run-pair.js';
+import { bindServingIssuer, servingView, withServingRecord } from './sequential-serving-admission.js';
+import type { ServingBinding } from './sequential-serving-admission.js';
 import type { BoundaryContext, Result } from '../index.js';
 import { authorAndAppend } from '../facts/index.js';
 import type { FactStorePort } from '../facts/index.js';
-import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, RunPairAdmission, ScanCursor,
+import type { AdmissionReservation, BoundedDueScanPort, DispatchClaim, FactAuthor, FenceToken, Lease, LoopRecord, RecoveryRecord, RunPairAdmission, ScanCursor, ServingRecord,
   SettlementAccountingInput, SettlementApplication, SettlementConsumer, TransportAuthority, TransportFact, TransportHost, TransportRecord, TransportSpine } from './contracts.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
-import { checkFence, checkPairParent, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows,
+import { checkFence, checkPairParent, checkServingRun, fenceFor, kindFor, latestLease, latestLoop, latestScanCursor, live, loopActive, observationAdmission, policyCheck, reservations, rows, servingPair, servingRecords,
   validateScanGeneration, validateTransition } from './records.js';
 import { accounting, accountingRevision, checkAccountingReceipt, checkApplicationEvidence, invalidateAccounting, qualifyAccounting,
   requireAccountingDurability, requireSettlementConsumer, settlementMatches, withApplication, withSettlementAttempt } from './settlement.js';
@@ -143,6 +145,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     const required = r.predecessor ? [r.predecessor] : [];
     if (r.type === 'SettlementApplication') required.push(r.settlementFact);
     if (r.type === 'RunPairAdmission') required.push(r.opening, r.acceptance, r.obligation);
+    if (r.type === 'ServingRecord') required.push(...[r.installation, r.conversation, r.input, r.opening]
+      .filter(Boolean));
     if (r.type === 'AdmissionReservation' && all.some(p => p.record.type === 'RunPairAdmission')) {
       const request = take(spine.store.read()).find(f => f.kind === 'effect-EffectRequest'
         && (f.body as { record: { id: string } }).record.id === r.request);
@@ -309,6 +313,11 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
       let all = read(); fence(all, token); ensure(observer.owner === 'part-eight', 'observation owner');
       const op = reservations(all).find(p => p.operation === operation);
       ensure(op && op.state !== 'prepared', 'unresolved claim not found');
+      const serving = servingView(servingRecords(all));
+      const pair = servingPair(all, op.run);
+      ensure(!serving.binding || !serving.slot || serving.slot === op.run ||
+        pair?.provider === serving.slot && pair.reply === op.run,
+      'recovery observer conflicts with active serving executor');
       const loop = latestLoop(all, op.run); ensure(loop && loop.state !== 'stopped', 'recovery loop stopped or missing');
       ensure(!loopActive(all, loop), 'observation already active; durable completion required');
       const m = meta(all, `${command}:wake`);
@@ -351,7 +360,14 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         && op.attempt === capability.attempt && op.digest === capability.digest
         && op.executor === capability.executor && op.executor === host.incarnation
         && encoded(op.fence).bytes === encoded(token).bytes, 'exact consumed operation required');
-      checkPairParent(all, facts);
+      const serving = servingView(servingRecords(all));
+      if (serving.binding) {
+        checkServingRun(all, op.run);
+        ensure(host.monotonic() < serving.binding.expires, 'serving profile expired before physical invocation');
+      }
+      const pair = servingView(servingRecords(all)).binding ? servingPair(all, op.run)
+        : all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+      if (pair) checkPairParent(all, facts, pair);
       // Storage/callback-capable work is complete. These host accessors are local,
       // non-waiting, and cannot reenter; invoke immediately after the live checks.
       live(host); fence(all, token);
@@ -361,7 +377,8 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
     ensure(reply.owner === 'part-five' && reply.name === 'Run', 'reply Run reference required');
     policyCheck(policy);
     let all = read(); fence(all, token);
-    const prior = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+    const joined = consumeAcceptedReplyOpening(graph, spine.store, reply.id, value => value);
+    const prior = servingPair(all, joined.provider);
     if (prior) {
       ensure(prior.reply === reply.id, 'fixed pair already has its one reply');
       ensure(encoded(prior.replyPolicy).bytes === encoded(policy).bytes, 'reply bounds cannot reset');
@@ -372,11 +389,106 @@ export function createTransportAuthority<S = never>(host: TransportHost, spine: 
         all = read(); fence(all, token);
         const record = { ...meta(all, command), type: 'RunPairAdmission', profile: 'provider-reply-v1',
           ...joined, predecessor: all.at(-1)?.fact.id ?? '', originalPredecessor: joined.predecessor,
-          budget: host.budget, replyPolicy: policy } as RunPairAdmission;
+          budget: servingView(servingRecords(all)).binding?.ceiling ?? host.budget, replyPolicy: policy } as RunPairAdmission;
         withRunPairAdmission(host, record, () => write(all, record));
       });
     }
     return take(authority.schedule(`${command}:reply-loop`, token, reply, policy));
   }));
+  const servingBase = (all: readonly TransportFact[]) => {
+    const bound = servingView(servingRecords(all)).binding;
+    ensure(bound, 'serving profile not bound');
+    return { installation: bound.installation, conversation: bound.conversation, generation: bound.generation,
+      ceiling: bound.ceiling, maxTurns: bound.maxTurns, maxReplies: bound.maxReplies,
+      expires: bound.expires, providerMax: bound.providerMax, replyMax: bound.replyMax,
+      errorLimit: bound.errorLimit, totalErrorLimit: bound.totalErrorLimit };
+  };
+  const servingWrite = (all: readonly TransportFact[], record: ServingRecord) =>
+    withServingRecord(host, record, () => write(all, record).record);
+  let servingQuiescence: ((run: string) => boolean) | undefined;
+  const returned = (run: string) => host.executionQuiescent
+    ? host.executionQuiescent(run) === true : servingQuiescence?.(run) === true;
+  bindServingIssuer(authority, {
+    registerQuiescence: check => checked('ServingQuiescence', null, () => {
+      ensure(typeof check === 'function' && !servingQuiescence,
+        'serving quiescence supervisor already registered or absent');
+      servingQuiescence = check;
+    }),
+    inspect: () => checked('ServingInspect', null, () => servingView(servingRecords(read()))),
+    bind: (command: string, token: FenceToken, binding: ServingBinding) => checked('ServingBind', binding, () => {
+      const all = read(); fence(all, token);
+      const existing = servingView(servingRecords(all)).binding;
+      if (existing) {
+        ensure(existing.command === command && encoded(binding).bytes === encoded({ installation: existing.installation,
+          conversation: existing.conversation, ceiling: existing.ceiling, maxTurns: existing.maxTurns,
+          maxReplies: existing.maxReplies, expires: existing.expires, providerMax: existing.providerMax,
+          replyMax: existing.replyMax, errorLimit: existing.errorLimit,
+          totalErrorLimit: existing.totalErrorLimit }).bytes, 'serving binding changed');
+        return existing;
+      }
+      const record = { ...meta(all, command), type: 'ServingRecord', profile: 'successive-turns-v1', action: 'bind',
+        ...binding, generation: token.generation, input: '', opening: '', provider: '', reply: '',
+        operation: '', attempt: '', operations: [], outcome: 'none' } as unknown as ServingRecord;
+      return servingWrite(all, record);
+    }),
+    admit: (command: string, token: FenceToken, input: string, provider: string) => checked('ServingAdmit',
+      { command, input, provider }, () => {
+        const all = read(); fence(all, token);
+        const history = servingRecords(all), prior = history.find(r => r.action === 'admit' && r.input === input);
+        if (prior) { ensure(prior.provider === provider, 'admitted input relabelled'); return prior; }
+        const facts = take(spine.store.read()), opening = facts.find(f => f.kind === 'run-opening'
+          && (f.body as { run?: string }).run === provider
+          && (f.body as { record?: { opening?: { id?: string } } }).record?.opening?.id === input);
+        ensure(opening, 'exact Five opening absent');
+        const record = { ...meta(all, command), type: 'ServingRecord', profile: 'successive-turns-v1',
+          action: 'admit', ...servingBase(all), input, opening: opening.id, provider,
+          reply: '', operation: '', attempt: '', operations: [], outcome: 'none' } as unknown as ServingRecord;
+        return servingWrite(all, record);
+      }),
+    retire: (command: string, token: FenceToken, provider: string, operation: string) => checked('ServingRetire',
+      { command, provider, operation }, () => {
+        let all = read(); fence(all, token);
+        const history = servingRecords(all), prior = history.find(r => r.action === 'retire' && r.provider === provider);
+        if (prior) { ensure(prior.operation === operation, 'retirement changed'); return prior; }
+        const pair = all.find(p => p.record.type === 'RunPairAdmission' && p.record.provider === provider)?.record as RunPairAdmission | undefined;
+        ensure(returned(provider) && (!pair || returned(pair.reply)),
+          'local executor has not returned or terminated');
+        for (const prepared of reservations(all).filter(p => p.state === 'prepared'
+          && (p.run === provider || p.run === pair?.reply))) {
+          take(authority.close(`${command}:close:${encoded(prepared.operation).hash}`, token, prepared.operation));
+          all = read(); fence(all, token);
+        }
+        ensure(returned(provider) && (!pair || returned(pair.reply)),
+          'local executor resumed before retirement');
+        const operations = reservations(all).filter(p => p.run === provider || p.run === pair?.reply)
+          .map(p => p.operation).sort();
+        const record = { ...meta(all, command), type: 'ServingRecord', profile: 'successive-turns-v1',
+          action: 'retire', ...servingBase(all), input: '', opening: '', provider,
+          reply: pair?.reply ?? '', operation, attempt: '', operations, outcome: 'none' } as unknown as ServingRecord;
+        return servingWrite(all, record);
+      }),
+    start: (command: string, token: FenceToken, attempt: string, provider: string) => checked('ServingStart',
+      { command, attempt, provider }, () => {
+        const all = read(); fence(all, token);
+        const prior = servingRecords(all).find(r => r.action === 'start' && r.attempt === attempt);
+        if (prior) { ensure(prior.provider === provider, 'attempt changed'); return prior; }
+        return servingWrite(all, { ...meta(all, command), type: 'ServingRecord', profile: 'successive-turns-v1',
+          action: 'start', ...servingBase(all), input: '', opening: '', provider,
+          reply: '', operation: '', attempt, operations: [], outcome: 'none' } as unknown as ServingRecord);
+      }),
+    result: (command: string, token: FenceToken, attempt: string, outcome: 'success' | 'error', operation: string) =>
+      checked('ServingResult', { command, attempt, outcome }, () => {
+        const all = read(); fence(all, token);
+        const history = servingRecords(all), start = history.find(r => r.action === 'start' && r.attempt === attempt);
+        ensure(start, 'attempt start absent');
+        const prior = history.find(r => r.action === 'result' && r.attempt === attempt);
+        if (prior) { ensure(prior.outcome === outcome && prior.operation === operation, 'attempt result changed'); return prior; }
+        if (outcome === 'error') ensure(returned(start.provider),
+          'pending attempt has a live local executor');
+        return servingWrite(all, { ...meta(all, command), type: 'ServingRecord', profile: 'successive-turns-v1',
+          action: 'result', ...servingBase(all), input: '', opening: '', provider: start.provider,
+          reply: '', operation, attempt, operations: [], outcome } as unknown as ServingRecord);
+      }),
+  });
   return authority;
 }

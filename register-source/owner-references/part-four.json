@@ -7,7 +7,39 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:84ad5f250493d01955cb57a89cd86c1144bd7a05cd31248d9f5ff81924923bc7"
+        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
+      }
+    },
+    {
+      "id": "P4-NF-13",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/governance.test.ts",
+        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
+      }
+    },
+    {
+      "id": "P4-NF-14",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/contract.test.ts",
+        "hash": "sha256:3efbde73df57474a8dcfc34214f07808b1c5799154c7f7bd23b8b03cb6c776d9"
+      }
+    },
+    {
+      "id": "P4-NF-14-PARTIAL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/governance.test.ts",
+        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
+      }
+    },
+    {
+      "id": "P4-NF-15",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/intake/contract.test.ts",
+        "hash": "sha256:3efbde73df57474a8dcfc34214f07808b1c5799154c7f7bd23b8b03cb6c776d9"
       }
     },
     {

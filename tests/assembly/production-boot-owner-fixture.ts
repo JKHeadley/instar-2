@@ -57,7 +57,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
     stimulusKinds: seed ? ['intake-admitted'] : ['stimulus', 'next-inbound'], evidenceSources: { settlement: 'probe', exit: 'probe' } };
   const assemblyHost: any = { machine: 'machine-a', principal: f.bob, scope: f.scope, boundary: { ...f.c, register: types.register },
     current: () => ({ facts: ctx, generation: types.register.generation.id, stopped, clock: now }) };
-  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native);
+  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native, !!seed);
   const registration = value(runFactSchemas(c));
   ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas, ...assemblySchemas(assemblyHost), ...owners.schemas, ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...seed?.ownedBodies ?? [], ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
   if (options.recovery) {
@@ -196,7 +196,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   };
   const installed = installAssemblySupport(base, options);
   installed.bindIntake = (fact: any) => {
-    if (!options.deferred || (!options.recovery && value(store.read()).some(row => row.kind === 'run-opening'))) throw Error('intake binding already in use');
+    if (!options.deferred) throw Error('intake binding already in use');
     if (fact.kind !== 'intake-admitted' || !value(store.read()).some(row => row.id === fact.id)) throw Error('durable Four input required');
     opening = fact; intent = fact.body.intent; id = runIdFor(ref(fact));
     c.intakeOwners[fact.body.work.owner] = owner;
@@ -224,7 +224,7 @@ function productionSchemas(f: any) {
     { ...f.schema, kind: 'assembly-measurement-reference', fields: { ...identity, measurement: { kind: 'constitutional', type: 'Measurement' } } },
   ];
 }
-function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string, native: any) {
+function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string, native: any, intakeMode: boolean) {
   let authority: string[] = [], versions: any[] = [], ordinal = 0;
   const events: string[] = [];
   const host: any = { machine: 'machine-a', incarnation: 'incarnation:one', principal: f.bob, scope: f.scope,
@@ -312,9 +312,12 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
           consumeCurrent: (reference: any, input: any, consume: any) => f.success(consume(readAssessment(reference, input))) } };
       Object.assign(transportHost, { accountingDurability: composition.durability });
       let api = createEffectDoorway(composition), executor = createHarnessLiveInputExecution(api, transportHost);
-      const message = (run: string, text: string) => value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
-        id: `live-input:${++ordinal}`, semanticMessage: `live-input:${ordinal}`, run, speaker: host.principal.id,
+      const message = (run: string, text: string) => {
+        const identity = intakeMode ? `${run}:${++ordinal}` : String(++ordinal);
+        return value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
+        id: `live-input:${identity}`, semanticMessage: `live-input:${identity}`, run, speaker: host.principal.id,
         account: definition.account, conversation: definition.conversation, text, purpose: 'context-delivery', sourceResult: note.id }, host));
+      };
       const connected = { api, executor, composition, transport, fence, leaseFact, message,
         renew() {
           fence = value(transport.renew('live-input-renew', fence, 500));
@@ -331,7 +334,14 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
           return connected;
         },
         prepare(message: any) {
-          const previous = value(transport.inspect()).filter((r: any) => r.record.type === 'AdmissionReservation' && r.record.state === 'consumed');
+          const facts = value(store.read());
+          const ordinary = new Set(facts.filter((row: any) => row.kind === 'effect-EffectRequest'
+            && facts.some((message: any) => message.kind === 'effect-OutboundMessage'
+              && message.body.record?.id === row.body.record?.message
+              && message.body.record?.purpose === 'context-delivery'))
+            .map((row: any) => row.body.record.id));
+          const previous = value(transport.inspect()).filter((r: any) => r.record.type === 'AdmissionReservation'
+            && r.record.state === 'consumed' && ordinary.has(r.record.request));
           for (const row of previous) {
             const settled = value(transport.inspect()).some((r: any) => r.record.type === 'SettlementApplication' && r.record.operation === row.record.operation);
             if (!settled) value(transport.settle(fence, value(api.settle(row.record.operation))));
@@ -372,11 +382,11 @@ function installAssemblySupport(f: any, options: any) {
   const material = f.deps.groundingPolicy.briefingClasses.map((className: string) => f.append('rungraph-briefing-material', { class: className }).fact);
   let launch: any, launchFact: any;
   const ensureLaunch = () => {
-  if (launch) return;
+  if (launch?.run === f.id) return;
   const existing = value(runtime.inspect()).find((row: any) => row.record.type === 'HarnessLaunchSpec'
     && row.record.run === f.id && row.record.incarnation === 'incarnation:one');
   if (existing) { launch = existing.record; launchFact = existing.fact; return; }
-  launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: 'production-live-input-launch',
+  launch = value(runtime.record('HarnessLaunchSpec', { ...assemblyInput('HarnessLaunchSpec'), id: `production-live-input-launch:${f.id}`,
     ...(options.native ? { artifactDigest: options.native.io.current().artifact } : {}),
     run: f.id, input: f.opening.id, inputDigest: options.intake ? f.opening.body.rawHash : f.initialCapture.hash, incarnation: 'incarnation:one', harness: f.harnessId }));
   launchFact = value(runtime.inspect()).find((r: any) => r.record.id === launch.id)!.fact;
@@ -403,9 +413,14 @@ function installAssemblySupport(f: any, options: any) {
       ensureLaunch();
       groundingCheckpoint('current-read-sample', { store: selected.store === f.store, generation: f.run.generation.id });
       f.owners.events.push('sample');
-      const snapshot = value(selected.store.read()), inputs = snapshot.filter((row: any) => options.intake ? row.kind === 'intake-admitted' : ['stimulus', 'next-inbound'].includes(row.kind));
-      const intake = inputs.at(-1)!;
-      const captureFor = row => options.intake ? { reference: row.body.rawHash, hash: row.body.rawHash } : row.body.capture;
+      const snapshot = value(selected.store.read()), inputs = snapshot.filter((row: any) => options.intake
+        ? row.kind === 'intake-admitted' && row.segment.position <= f.opening.segment.position
+        : ['stimulus', 'next-inbound'].includes(row.kind));
+      const intake = options.intake ? f.opening : inputs.at(-1)!;
+      const captureFor = row => options.intake
+        ? snapshot.find(fact => fact.id === row.body.receipt)?.body.capture
+          ?? { reference: row.body.rawHash, hash: row.body.rawHash }
+        : row.body.capture;
       const capture = captureFor(intake);
       const manifest = [...inputs.map(row => ({ class: 'message', ...{ reference: captureFor(row).reference, digest: captureFor(row).hash } })),
         ...material.map(row => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))];
@@ -413,15 +428,17 @@ function installAssemblySupport(f: any, options: any) {
         sourceResult: intake.id, context: { input: { fact: intake.id, reference: capture.reference, hash: capture.hash }, manifest } }, f.owners.host))
         : JSON.parse(f.ctx.captures[capture.reference].bytes);
       const admitted = f.effects.prepare(wireMessage);
-      const previous = value(currentRuntime.inspectCurrent()).filter((r: any) => r.record.type === 'ContextDeliverySpecification').at(-1);
+      const previous = value(currentRuntime.inspectCurrent()).filter((r: any) => r.record.type === 'ContextDeliverySpecification'
+        && r.record.run === f.id).at(-1);
+      const identity = options.intake ? `${f.id}:${++serial}` : String(++serial);
       const spec: any = { type: 'ContextDeliverySpecification', schemaVersion: 1, id: contextDeliveryIdFor(launchFact.id, admitted.operation),
-        predecessors: [], dependencyFacts: [], launch: launchFact.id, run: f.id, step: `step:operation:${++serial}`, input: intake.id, inputDigest: capture.hash,
+        predecessors: [], dependencyFacts: [], launch: launchFact.id, run: f.id, step: `step:operation:${identity}`, input: intake.id, inputDigest: capture.hash,
         incarnation: launch.incarnation, harness: launch.harness, artifactDigest: launch.artifactDigest, machine: launch.machine, generation: f.run.generation.id,
         executionContext: f.effects.leaseFact.id, contextManifest: [...inputs.slice(0, 1).map((row: any) => ({ class: 'message', reference: captureFor(row).reference, digest: captureFor(row).hash })),
           ...material.map((row: any) => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))],
         reason: previous ? 'live-input' : 'initial', operation: admitted.operation, claim: admitted.claim,
         previousDelivery: previous?.fact.id ?? '', controlObservation: '' };
-      const g: any = { type: 'SessionGrounding', schemaVersion: 2, id: `ground-native:${serial}`, run: f.id, expected: request.run.head,
+      const g: any = { type: 'SessionGrounding', schemaVersion: 2, id: `ground-native:${identity}`, run: f.id, expected: request.run.head,
         worker: request.worker, harness: request.harness, reason: request.reason, step: spec.step, incarnation: spec.incarnation, contextDeliveryReason: spec.reason,
         ownership: request.execution.ownership, executionContext: request.execution.context, at, previousActivity: at,
         elapsed: { type: 'Measurement', schemaVersion: 1, subject: { kind: 'elapsed-time', instance: request.worker }, value: 0, unit: 'ms', at, by: 'probe' },

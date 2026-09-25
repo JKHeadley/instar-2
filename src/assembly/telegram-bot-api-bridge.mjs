@@ -230,6 +230,17 @@ function scanCredential(bytes) {
   return null;
 }
 
+// The confined child owns the actual bot token. Check that credential in the
+// complete outbound body before the irreversible network call, including the
+// bounded representations above. Other credentials need exact evidence from
+// protected custody; a credential-shaped string alone cannot block a send.
+if (request.method === 'sendMessage') {
+  const outgoing = JSON.stringify(request.body);
+  if (scanCredential(outgoing) !== null) {
+    uncertain('scan-policy'); process.exit(0);
+  }
+}
+
 function countJsonValues(root) {
   const pending = [root]; let visited = 0;
   while (pending.length > 0) {

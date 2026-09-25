@@ -115,11 +115,16 @@ describe('compiled register build adapter lifecycle', () => {
       expect(() => build(root, revision, { mode: 'normal', workflow, provider: { ...provider, separations: [] }, now: 100 })).toThrow('standing evidence');
       expect(result.authorityPrerequisites).toEqual([]);
       expect(result.register.entries.find(e => e.declaration.id === 'rungraph.contract')!.approvedIn).toEqual(ownerRows[0]!.approvedIn);
-      expect(result.graph.prerequisites).toEqual([]); expect(result.graph.loops).toHaveLength(116);
+      expect(result.graph.prerequisites).toEqual([]);
+      const live = result.register.entries.map(e => e.declaration).filter(d => d.status === 'live');
+      const held = new Set(live.flatMap(d => d.holds.map(h => h.rule)));
+      const uncovered = live.filter(d => d.kind === 'rules' && !held.has(d.requiredFacts.number as number));
+      expect(result.graph.loops.map(l => l.id).sort()).toEqual(
+        uncovered.map(d => `gap:${d.requiredFacts.number}`).sort());
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
       expect(calls).toContain('extract:fixture:mirrored'); expect(calls).toContain('force'); expect(calls).toContain('current');
       await yieldToRunner();
-      const source = workflow.conversion.sources.find(s => s.declaration.requiredFacts.number === 4)!;
+      const source = workflow.conversion.sources.find(s => s.declaration.requiredFacts.number === uncovered[0]!.requiredFacts.number)!;
       source.declaration.requiredFacts.deadline = 99;
       expect(() => build(root, commit(), { mode: 'normal', workflow, provider, now: 100 })).toThrow('deadline passed');
       await yieldToRunner();

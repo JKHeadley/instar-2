@@ -242,9 +242,15 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         const invocationFacts = snapshot();
         const operationDomains = invocationFacts.filter(fact => fact.kind === 'transport-AdmissionReservation')
           .map(fact => (fact.body as unknown as { record: AdmissionReservation }).record)
-          .filter(record => record.operation === claim.operation).map(record => record.domain);
+          .filter(record => record.operation === claim.operation);
+        const serving = invocationFacts.some(fact => fact.kind === 'transport-ServingRecord'
+            && (fact.body as unknown as { record: { action: string; domain: string } }).record.action === 'bind'
+            && operationDomains.some(row => row.domain ===
+              (fact.body as unknown as { record: { domain: string } }).record.domain));
         const paired = invocationFacts.some(fact => fact.kind === 'transport-RunPairAdmission'
-          && operationDomains.includes((fact.body as unknown as { record: RunPairAdmission }).record.domain));
+          && operationDomains.some(row => row.domain ===
+            (fact.body as unknown as { record: RunPairAdmission }).record.domain
+            && (!serving || row.run === (fact.body as unknown as { record: RunPairAdmission }).record.reply)));
         const invoke = () => {
           try {
             const response = adapter.invoke(invocation);
@@ -254,7 +260,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
             });
           } catch { return { bytes: 'invocation ended without a recorded service response', stage: 'unknown' as const }; }
         };
-        const { bytes, stage } = paired
+        const { bytes, stage } = paired || serving
           ? take(invokeConsumedDispatch(transport, claim, fence, host.boundary, invoke)) : invoke();
         // Append failure after invoke is not a clean business-effect refusal.
         // The already-durable acceptance remains the observer-only disposition.

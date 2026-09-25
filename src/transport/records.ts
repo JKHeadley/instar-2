@@ -1,11 +1,12 @@
 import { acceptedReplyOpening, acceptedReplyPreviewText } from '../rungraph/accepted-reply.js';
 import { hashBytes } from '../facts/index.js';
 import { requireRunPairAdmission } from './run-pair.js';
+import { requireServingRecord, servingView } from './sequential-serving-admission.js';
 import { decode, decodeMeasurement, grantLiveness, scopeIncludes } from '../index.js';
 import type { BoundaryContext, Json, Result } from '../index.js';
 import { causalCone, registerOwnedBody } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, RunPairAdmission, ScanCursor, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
+import type { AdmissionReservation, FenceToken, Lease, LoopPolicy, LoopRecord, RunPairAdmission, ScanCursor, ServingRecord, SettlementConsumer, TransportFact, TransportHost, TransportRecord } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 import { admissionAccounting, bindSettlementConsumer, checkApplicationEvidence, latestApplication, noteAccountingCandidate, requireApplication } from './settlement.js';
 
@@ -29,7 +30,13 @@ export const transportShapes: Readonly<Record<string, OwnedShape>> = freeze({
 });
 export const runPairAdmissionShape: OwnedShape = freeze({ kind: 'object', fields: { ...row, profile: txt, provider: txt, reply: txt, opening: txt,
   acceptance: txt, originalPredecessor: txt, obligation: txt, operation: txt, answerDigest: txt, conversation: txt, budget: int, replyPolicy: policy } });
-const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication', 'RunPairAdmission'];
+export const servingRecordShape: OwnedShape = freeze({ kind: 'object', fields: { ...row, profile: txt, action: txt,
+  installation: txt, conversation: txt, generation: txt, ceiling: int, maxTurns: int, maxReplies: int,
+  expires: int, providerMax: int, replyMax: int, errorLimit: int, totalErrorLimit: int,
+  input: txt, opening: txt, provider: txt, reply: txt, operation: txt, attempt: txt,
+  operations: { kind: 'array', maxLength: 16, items: txt }, outcome: txt } });
+// The bounded operation list is a causal retirement inventory, not a budget ledger.
+const recordNames = ['Lease', 'AdmissionReservation', 'LoopRecord', 'RecoveryRecord', 'ScanCursor', 'SettlementApplication', 'RunPairAdmission', 'ServingRecord'];
 export const kindFor = (name: string) => `transport-${name}`;
 export function transportSchemas(host: TransportHost): readonly FactSchema[] {
   return recordNames.map(name => ({ kind: kindFor(name), version: 1,
@@ -41,6 +48,10 @@ export function transportSchemas(host: TransportHost): readonly FactSchema[] {
 export function shapeCheck(v: unknown, shape: OwnedShape): void {
   if (shape.kind === 'text') { ensure(typeof v === 'string' && v.length <= shape.maxLength, 'bounded text required'); return; }
   if (shape.kind === 'integer') { ensure(Number.isSafeInteger(v), 'safe integer required'); return; }
+  if (shape.kind === 'array') {
+    ensure(Array.isArray(v) && v.length <= shape.maxLength, 'bounded array required');
+    v.forEach(item => shapeCheck(item, shape.items)); return;
+  }
   ensure(shape.kind === 'object' && v !== null && typeof v === 'object' && !Array.isArray(v), 'closed object required');
   const r = v as Record<string, unknown>;
   ensure(Object.keys(r).length === Object.keys(shape.fields).length, 'undeclared or missing field');
@@ -90,6 +101,9 @@ export function reservations(all: readonly TransportFact[]): AdmissionReservatio
   const ops = new Map<string, AdmissionReservation>();
   for (const { record: r } of all) if (r.type === 'AdmissionReservation') ops.set(r.operation, r);
   return [...ops.values()];
+}
+export function servingRecords(all: readonly TransportFact[]): ServingRecord[] {
+  return all.flatMap(({ record }) => record.type === 'ServingRecord' ? [record] : []);
 }
 export function latestScanCursor(all: readonly TransportFact[], scan: string): (TransportFact & { readonly record: ScanCursor }) | undefined {
   return all.filter((v): v is TransportFact & { readonly record: ScanCursor } => v.record.type === 'ScanCursor' && v.record.scan === scan).at(-1);
@@ -156,8 +170,8 @@ export function live(host: TransportHost): void {
     && scopeIncludes(g.scope, scope) && (g.standing === 'operator' || g.actions.includes('work'))), 'current standing does not cover transport admission');
 }
 
-export function checkPairParent(all: readonly TransportFact[], facts: readonly FactEnvelope[]): void {
-  const pair = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+export function checkPairParent(all: readonly TransportFact[], facts: readonly FactEnvelope[],
+  pair: RunPairAdmission | undefined = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined): void {
   if (!pair) return;
   ensure(latestLoop(all, pair.provider)?.state !== 'stopped', 'parent stop inhibits dependent reply');
   ensure(!reservations(all).some(p => p.run === pair.provider && all.some(v => v.record.type === 'SettlementApplication'
@@ -172,6 +186,20 @@ export function checkPairParent(all: readonly TransportFact[], facts: readonly F
     'reply Run stopped or terminal');
   ensure(wire?.id === pair.originalPredecessor && !['halted', 'cancelled', 'completed', 'unreachable'].includes(wire.to ?? ''),
     'parent predecessor changed or stopped');
+}
+export function servingPair(all: readonly TransportFact[], run: string): RunPairAdmission | undefined {
+  return all.find(p => p.record.type === 'RunPairAdmission'
+    && (p.record.provider === run || p.record.reply === run))?.record as RunPairAdmission | undefined;
+}
+export function checkServingRun(all: readonly TransportFact[], run: string): void {
+  const view = servingView(servingRecords(all));
+  if (!view.binding) return;
+  const pair = servingPair(all, run);
+  ensure(view.slot !== null && (run === view.slot || pair?.provider === view.slot && pair.reply === run),
+    'run is outside active serving slot');
+  ensure(!view.stopped, 'durable serving breaker latched');
+  ensure(!all.some(v => v.record.type === 'SettlementApplication' && v.record.capViolation === 1),
+    'serving parent cap violation inhibits further work');
 }
 
 // The owner validator runs INSIDE P2's append boundary, after signed-chain checks and
@@ -218,12 +246,137 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
         && r.wrapped === (r.selectedCount > 0 && r.selectedFrom + r.selectedCount >= r.keyCount ? 1 : 0),
     'scan cursor progression changed');
     validateScanGeneration(all, r.scan, r.generation, r.orderedKeysDigest, r.keyCount);
+  } else if (r.type === 'ServingRecord') {
+    const lease = active();
+    const history = servingRecords(all), view = servingView(history), bound = view.binding;
+    ensure(r.profile === 'successive-turns-v1' && r.generation === lease.generation,
+      'serving profile or generation changed');
+    ensure(r.ceiling >= 0 && r.maxTurns > 0 && r.maxReplies >= 0 && r.maxReplies <= r.maxTurns
+      && r.providerMax >= 0 && r.replyMax >= 0 && r.errorLimit > 0 && r.totalErrorLimit > 0
+      && r.maxTurns <= 64,
+      'finite serving bounds or record headroom exhausted');
+    if (r.action === 'bind') {
+      ensure(!bound && !all.some(p => ['RunPairAdmission', 'LoopRecord', 'AdmissionReservation'].includes(p.record.type)),
+        'serving profile must bind before first provider loop');
+      ensure(r.expires > r.tick && r.maxTurns * 128 + all.length <= 4096,
+        'serving expiry or record headroom exhausted');
+      ensure(r.ceiling <= host.budget && r.installation.length > 0 && r.conversation.length > 0,
+        'serving binding lacks installation or budget');
+      const installation = facts.find(f => f.id === r.installation && f.kind === 'assembly-ProductionInstallation');
+      const wire = installation && (installation.body as { record?: { generation?: string } }).record;
+      ensure(wire?.generation === r.generation && facts.some(f => f.id === r.conversation && f.kind === 'conversation-binding'),
+        'serving installation or conversation binding absent');
+      ensure(!r.input && !r.opening && !r.provider && !r.reply && !r.operation && !r.attempt
+        && r.operations.length === 0 && r.outcome === 'none',
+        'initial serving binding contains work');
+    } else {
+      ensure(bound, 'serving binding absent');
+      const stable = (v: ServingRecord) => ({ installation: v.installation, conversation: v.conversation,
+        generation: v.generation, ceiling: v.ceiling, maxTurns: v.maxTurns, maxReplies: v.maxReplies,
+        expires: v.expires, providerMax: v.providerMax, replyMax: v.replyMax,
+        errorLimit: v.errorLimit, totalErrorLimit: v.totalErrorLimit });
+      ensure(encoded(stable(r)).bytes === encoded(stable(bound)).bytes, 'serving bounds changed');
+      ensure(!view.stopped && r.tick < bound.expires || r.action === 'result' || r.action === 'retire',
+        'serving expired or breaker latched');
+      if (r.action === 'admit') {
+        ensure(r.expires > r.tick && (bound.maxTurns - view.turns) * 128 + all.length <= 4096,
+          'serving admission cannot reserve completion headroom');
+        ensure(!view.slot && view.turns < bound.maxTurns && r.input.length > 0
+          && r.opening.length > 0 && r.provider.length > 0 && !r.reply && !r.operation
+          && !r.attempt && r.operations.length === 0 && r.outcome === 'none', 'serving slot unavailable');
+        const loops = new Map(all.flatMap(v => v.record.type === 'LoopRecord'
+          ? [[v.record.run, v.record] as const] : []));
+        ensure(![...loops.values()].some(loop => loopActive(all, loop)),
+          'active recovery observer retains serving slot');
+        const input = facts.find(f => f.id === r.input && f.kind === 'intake-admitted');
+        const body = input?.body as { logicalId?: string; binding?: string; receipt?: string; channel?: string;
+          sender?: string; identityEpoch?: string; eventId?: string } | undefined;
+        const receipt = facts.find(f => f.id === body?.receipt && f.kind === 'intake-receipt');
+        const conversation = facts.find(f => f.id === bound.conversation && f.kind === 'conversation-binding');
+        const source = conversation?.body as { channel?: string; sender?: string; identityEpoch?: string } | undefined;
+        const opening = facts.find(f => f.id === r.opening && f.kind === 'run-opening'
+          && (f.body as { run?: string }).run === r.provider);
+        const opened = opening && (opening.body as { record?: { opening?: { id?: string } } }).record;
+        ensure(body?.binding === bound.conversation && receipt && opening && opened?.opening?.id === input?.id,
+          'admission requires bound Four input and its exact Five opening');
+        ensure(body?.channel && body.channel.startsWith('telegram:v1:bot:')
+          && body.channel === source?.channel && body.sender === source?.sender
+          && body.identityEpoch === source?.identityEpoch && body.eventId && body.logicalId,
+          'original bound Telegram ingress identity absent');
+        ensure(!history.some(p => p.action === 'admit' && facts.some(f => f.id === p.input
+          && f.kind === 'intake-admitted' && (f.body as { logicalId?: string }).logicalId === body.logicalId)),
+          'original inbound already admitted');
+        ensure(!all.some(v => v.record.type === 'SettlementApplication' && v.record.capViolation === 1),
+          'serving parent cap violation inhibits further turns');
+        const max = bound.providerMax + bound.replyMax;
+        ensure(Number.isSafeInteger(max) && max <= bound.ceiling && max <= host.budget,
+          'configured turn maximum exceeds serving ceiling');
+        const exposed = reservations(all).reduce((sum, p) => {
+          const amount = p.state === 'closed' ? 0 : origin ? admissionAccounting(all, p, host).exposure
+            : Math.max(p.charge, ...all.filter(v => v.record.type === 'SettlementApplication'
+              && v.record.operation === p.operation).map(v => (v.record as { exposure: number }).exposure));
+          ensure(Number.isSafeInteger(sum + amount), 'serving exposure overflow'); return sum + amount;
+        }, 0);
+        ensure(Number.isSafeInteger(exposed + max) && exposed + max <= Math.min(bound.ceiling, host.budget),
+          'serving parent exposure exhausted');
+      } else if (r.action === 'retire') {
+        ensure(view.slot === r.provider && !r.input && !r.opening && !r.attempt,
+          'retirement requires active returned executor');
+        const ops = reservations(all).filter(p => p.run === r.provider ||
+          all.some(v => v.record.type === 'RunPairAdmission' && v.record.provider === r.provider
+            && v.record.reply === p.run));
+        ensure(encoded(r.operations).bytes === encoded(ops.map(p => p.operation).sort()).bytes,
+          'retirement operation inventory changed');
+        ensure(ops.every(p => p.state !== 'prepared') && (!r.operation || ops.some(p => p.operation === r.operation)),
+          'retirement cannot strand prepared work or relabel operation');
+        const pair = all.find(p => p.record.type === 'RunPairAdmission' && p.record.provider === r.provider)?.record as RunPairAdmission | undefined;
+        ensure(![r.provider, pair?.reply].filter(Boolean).some(run => {
+          const loop = latestLoop(all, run!); return loop && loopActive(all, loop);
+        }),
+          'active recovery observer retains serving slot');
+        ensure(r.reply === (pair?.reply ?? '') && r.outcome === 'none', 'retirement reply differs from exact pair');
+      } else if (r.action === 'start') {
+        const planned = !view.slot && r.provider && !history.some(p => p.action === 'admit'
+          && p.provider === r.provider) && facts.some(f => f.kind === 'run-opening'
+          && (f.body as { run?: string }).run === r.provider
+          && facts.some(input => input.id === (f.body as { record?: { opening?: { id?: string } } })
+            .record?.opening?.id && input.kind === 'intake-admitted'
+            && (input.body as { binding?: string }).binding === bound.conversation));
+        ensure(!view.pendingAttempt && r.attempt.length > 0 && r.outcome === 'none'
+          && !r.input && !r.opening && !r.reply && !r.operation && r.operations.length === 0
+          && (r.provider === '' || r.provider === view.slot || !!planned)
+          && history.filter(p => p.action === 'start').length < bound.maxTurns * 16,
+          'driver attempt unavailable or poll bound exhausted');
+        ensure(!history.some(p => p.attempt === r.attempt), 'driver attempt identity reused');
+      } else if (r.action === 'result') {
+        const start = history.find(p => p.action === 'start' && p.attempt === r.attempt);
+        ensure(start && view.pendingAttempt === r.attempt && r.provider === start.provider
+          && !r.input && !r.opening && !r.reply && r.operations.length === 0
+          && (!r.operation || reservations(all).some(p => p.operation === r.operation
+            && (p.run === r.provider || servingPair(all, p.run)?.provider === r.provider)))
+          && ['success', 'error'].includes(r.outcome),
+          'driver result does not close pending start');
+      } else ensure(false, 'unknown serving action');
+    }
+    if (origin) requireServingRecord(host, r);
   } else {
     const lease = active();
-    const pair = all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
+    const serving = servingView(servingRecords(all));
+    const pair = serving.binding
+      ? r.type === 'RunPairAdmission' ? servingPair(all, r.provider)
+        : r.type === 'AdmissionReservation' || r.type === 'LoopRecord' ? servingPair(all, r.run) : undefined
+      : all.find(p => p.record.type === 'RunPairAdmission')?.record as RunPairAdmission | undefined;
     if (r.type === 'RunPairAdmission') {
       ensure(!pair && r.profile === 'provider-reply-v1' && r.provider !== r.reply
-        && r.budget >= 0 && (!origin || r.budget === host.budget), 'fixed pair profile already admitted or bounds differ');
+        && r.budget >= 0 && (serving.binding ? r.budget === serving.binding.ceiling
+          : !origin || r.budget === host.budget),
+        'fixed pair profile already admitted or bounds differ');
+      if (serving.binding) {
+        checkServingRun(all, r.provider);
+        ensure(serving.replies < serving.binding.maxReplies
+          && !all.some(p => p.record.type === 'RunPairAdmission' && p.record.provider === r.provider),
+          'serving reply count exhausted or provider already paired');
+      } else ensure(!all.some(p => p.record.type === 'RunPairAdmission'), 'fixed pair already admitted');
       policyCheck(r.replyPolicy);
       const joined = acceptedReplyOpening(facts, r.reply);
       const parentHead = facts.filter(f => ['run-opening', 'run-transition'].includes(f.kind)
@@ -237,7 +390,7 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       const parent = latestLoop(all, r.provider);
       ensure(obligation?.record.type === 'LoopRecord' && obligation.record.run === r.provider
         && parent && parent.state !== 'stopped', 'pair requires original same-domain live obligation');
-      ensure(all.filter(p => p.record.type === 'LoopRecord').every(p => (p.record as LoopRecord).run === r.provider),
+      ensure(serving.binding || all.filter(p => p.record.type === 'LoopRecord').every(p => (p.record as LoopRecord).run === r.provider),
         'pair requires singleton provider history');
       const operation = reservations(all).find(p => p.operation === r.operation);
       ensure(operation?.run === r.provider && operation.state === 'consumed', 'pair provider operation not consumed');
@@ -247,12 +400,31 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
         && (f.body as unknown as { record: RunPairAdmission }).record.reply === r.reply), 'reply already admitted in another domain');
       if (origin) requireRunPairAdmission(host, r);
     } else if (r.type === 'AdmissionReservation') {
+      if (serving.binding && r.state !== 'closed') {
+        checkServingRun(all, r.run);
+        const request = facts.find(f => f.kind === 'effect-provider-ProviderEffectRequest'
+          && (f.body as { record?: { id?: string } }).record?.id === r.request);
+        const outbound = facts.find(f => f.kind === 'effect-EffectRequest'
+          && (f.body as { record?: { id?: string } }).record?.id === r.request);
+        const outboundMessage = outbound && facts.find(f => f.kind === 'effect-OutboundMessage'
+          && (f.body as { record?: { id?: string } }).record?.id ===
+            (outbound.body as { record?: { message?: string } }).record?.message);
+        const message = outboundMessage?.body as { record?: { run?: string; purpose?: string } } | undefined;
+        const contextDelivery = outbound && r.run === serving.slot
+          && message?.record?.run === r.run && message.record.purpose === 'context-delivery';
+        ensure(request || contextDelivery || outbound && pair?.reply === r.run,
+          'serving operation requires its provider, context delivery, or exact accepted-answer reply request');
+        if (request) ensure(r.run === serving.slot && r.charge <= serving.binding.providerMax,
+          'provider operation exceeds serving maximum');
+        if (pair?.reply === r.run) ensure(r.charge <= serving.binding.replyMax,
+          'reply operation exceeds serving maximum');
+      }
       const opening = facts.find(f => f.kind === 'run-opening' && (f.body as { run?: string }).run === r.run);
       const cause = opening && (opening.body as { record: { opening: { id: string } } }).record.opening.id;
       ensure(!facts.some(f => f.id === cause && f.kind === 'judgment-provider-ProviderAnswerAcceptance') || pair?.reply === r.run,
         'accepted reply requires same-domain pair admission');
       if (pair && r.state !== 'closed') {
-        checkPairParent(all, facts);
+        checkPairParent(all, facts, pair);
         ensure(![pair.provider, pair.reply].some(run => { const loop = latestLoop(all, run);
           return loop && loopActive(all, loop); }), 'pair recovery observation already active');
         ensure(r.run === pair.provider || r.run === pair.reply, 'fixed pair permits no other Run');
@@ -285,6 +457,17 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure((r.durability === 'local-durable' && r.replicas === 0) || (r.durability === 'replicated' && r.replicas > 0), 'effect durability requirement');
       const prior = reservations(all).find(p => p.operation === r.operation);
       if (!prior) {
+        if (serving.binding) {
+          const currentPair = servingPair(all, r.run);
+          ensure(reservations(all).filter(p => p.run === serving.slot || p.run === currentPair?.reply).length < 16,
+            'serving retirement operation inventory full');
+        }
+        if (serving.binding && facts.some(f => f.kind === 'effect-provider-ProviderEffectRequest'
+          && (f.body as { record?: { id?: string } }).record?.id === r.request))
+          ensure(!reservations(all).some(p => p.run === r.run && facts.some(f =>
+            f.kind === 'effect-provider-ProviderEffectRequest'
+              && (f.body as { record?: { id?: string } }).record?.id === p.request)),
+          'serving turn permits one provider operation');
         ensure(r.state === 'prepared' && r.executor === '', 'reservation must precede claim');
         // Inhibition is sticky until an owned governed reconciliation exists.
         // Different request/attempt/semantic keys cannot erase a same-run breach.
@@ -297,7 +480,12 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           : latestApplication(all, p.operation) ?? { exposure: p.charge, unresolved: 1 }]));
         ensure(!reservations(all).some(p => p.request === r.request || p.semanticMessage === r.semanticMessage
           || p.run === r.run && states.get(p.operation)!.unresolved !== 0), 'unresolved execution or charge prohibits a new attempt; unproven accounting durability is unresolved');
-        ensure(reservations(all).reduce((n, p) => n + states.get(p.operation)!.exposure, r.charge) <= Math.min(host.budget, pair?.budget ?? host.budget), 'spend bound exhausted');
+        const exposure = reservations(all).reduce((n, p) => {
+          const next = n + states.get(p.operation)!.exposure;
+          ensure(Number.isSafeInteger(next), 'spend accounting overflow'); return next;
+        }, r.charge);
+        ensure(Number.isSafeInteger(exposure) && exposure <= Math.min(host.budget,
+          serving.binding?.ceiling ?? pair?.budget ?? host.budget), 'spend bound exhausted');
         const loop = latestLoop(all, r.run); ensure(loop && loop.state !== 'stopped', 'durable recovery wake required before reservation');
       } else {
         const immutable = (v: AdmissionReservation) => ({ ...v, command: '', predecessor: '', tick: 0, authority: '', state: '', executor: '' });
@@ -314,24 +502,25 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
         }
       }
     } else if (r.type === 'LoopRecord') {
+      if (serving.binding && r.state !== 'stopped') checkServingRun(all, r.run);
       policyCheck(r.policy);
       ensure(r.run.length > 0 && r.episode === `loop:${encoded([r.domain, r.run]).hash}`, 'stable loop episode');
       ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
       const prior = latestLoop(all, r.run);
       if (!prior) {
-        ensure(!all.some(p => p.record.type === 'LoopRecord') || pair?.reply === r.run,
+        ensure(serving.binding || !all.some(p => p.record.type === 'LoopRecord') || pair?.reply === r.run,
           'slice supports one run only');
         const opening = facts.find(f => f.kind === 'run-opening' && (f.body as { run?: string }).run === r.run);
         const cause = opening && (opening.body as { record: { opening: { id: string } } }).record.opening.id;
         ensure(!facts.some(f => f.id === cause && f.kind === 'judgment-provider-ProviderAnswerAcceptance') || pair?.reply === r.run,
           'accepted reply requires same-domain pair admission');
-        if (pair) { checkPairParent(all, facts); ensure(r.run === pair.reply, 'fixed pair permits no third Run');
+        if (pair) { checkPairParent(all, facts, pair); ensure(r.run === pair.reply, 'fixed pair permits no third Run');
           ensure(encoded(r.policy).bytes === encoded(pair.replyPolicy).bytes, 'reply policy differs from durable pair admission'); }
         ensure(r.attempts === 0 && r.started === r.tick && r.pending === '' && r.state === 'scheduled', 'initial loop');
       }
       else {
         if (pair) {
-          if (r.run === pair.reply) checkPairParent(all, facts);
+          if (r.run === pair.reply) checkPairParent(all, facts, pair);
           ensure(![pair.provider, pair.reply].some(run => { const loop = latestLoop(all, run);
             return loop && loopActive(all, loop); }), 'pair recovery observation already active');
         }
@@ -368,7 +557,8 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
 }
 export function registerTransportBodies<S = never>(host: TransportHost, c: BoundaryContext, settlementConsumer?: SettlementConsumer<S>): Result<readonly OwnedBodyRegistration[]> {
   return boundary('TransportRegistrations', null, c, () => {
-    const registrations = Object.entries({ ...transportShapes, RunPairAdmission: runPairAdmissionShape }).map(([name, shape]) => take(registerOwnedBody({
+    const registrations = Object.entries({ ...transportShapes, RunPairAdmission: runPairAdmissionShape,
+      ServingRecord: servingRecordShape }).map(([name, shape]) => take(registerOwnedBody({
     name, owner: 'part-six', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
     decodeCurrent: (input, ctx) => {
       try {

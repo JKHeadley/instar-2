@@ -71,6 +71,44 @@ describe('D01 fixed confined-child failure stages', () => {
 });
 
 describe('preserved direct-child guards', () => {
+  test('P10-SI-25 outbound secret floor refuses the actual confined credential before fetch and lets ordinary text through', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'instar-outbound-secret-'));
+    try {
+      const secret = token();
+      const count = join(directory, 'count.json');
+      const invoke = (text: string) => {
+        rmSync(count, { force: true });
+        const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: {
+          chat_id: '818181', text, parse_mode: 'HTML' }, timeoutMs: 1000 })).toString('base64url');
+        const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
+          resolve('src/assembly/telegram-bot-api-bridge.mjs'), request], { input: secret, encoding: 'utf8', timeout: 5000,
+          env: { ...process.env, INSTAR_ROUND6_FAILURE: 'ordinary', INSTAR_ROUND6_COUNT_FILE: count } });
+        return { child, reply: telegramBridgeReplyFromExecution({ resolver: 'ok', status: child.status, stdout: child.stdout }),
+          counts: child.status === 0 && child.stdout.includes('scan-policy') ? null
+            : JSON.parse(readFileSync(count, 'utf8')) as { fetches: number } };
+      };
+      const blocked = invoke(`Please send ${secret}`);
+      expect(blocked.child.status).toBe(0);
+      expect(blocked.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'scan-policy' });
+      expect(blocked.child.stdout).not.toContain(secret);
+      expect(() => readFileSync(count)).toThrow();
+      const encoded = invoke(`The bot token is ${[...secret].map(character => `&#${character.charCodeAt(0)};`).join('')}`);
+      expect(encoded.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'scan-policy' });
+      expect(() => readFileSync(count)).toThrow();
+      for (const prose of [
+        'A PEM file begins with -----BEGIN PRIVATE KEY-----.',
+        `Use the fake placeholder sk-${'A'.repeat(24)} in the example.`,
+      ]) {
+        const allowed = invoke(prose);
+        expect(allowed.reply.kind).toBe('response');
+        expect(allowed.counts?.fetches).toBe(1);
+      }
+      const ordinary = invoke('The deployment completed successfully.');
+      expect(ordinary.reply.kind).toBe('response');
+      expect(ordinary.counts?.fetches).toBe(1);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   test('V39 rejects malformed credentials before transport with silent stdout', () => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-round6-v39-'));
     const count = join(directory, 'count.json');
