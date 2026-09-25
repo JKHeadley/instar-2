@@ -610,3 +610,132 @@ it('fixed monitor reader resolves observation only through the current admitted 
     view.close(); writer.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// MUST-FIX 2: the one mediated worker channel (seam 3) and per-dispatch currency.
+import { createInstalledChannelNativeContextIO } from '../../src/assembly/production-native-context.js';
+import { createConfinedContextDeliveryDriver } from '../../src/assembly/context-delivery.js';
+import { hashBytes } from '../../src/facts/index.js';
+import { canonicalText } from '../../src/decode/canonical.js';
+import { createChannelIO } from '../../scripts/fixed-native-worker-monitor.mjs';
+import { realTenFixture } from './real-context-delivery-fixture.js';
+
+const monitorScript = join(process.cwd(), 'scripts/fixed-native-worker-monitor.mjs');
+const ok = { type: 'Result', schemaVersion: 1, kind: 'Success', value: true } as any;
+const no = (detail: string) => ({ type: 'Result', schemaVersion: 1, kind: 'Refused', reason: 'decode', detail,
+  site: 'test', failDirection: 'closed', preserved: 'test' }) as any;
+// Test transport: node's 'pipe' stdio is an AF_UNIX socketpair; the worker gets
+// fd 3 exactly as in production. The parent end's raw descriptor is read through
+// libuv's handle (test-only access); production inherits the supervisor's fd.
+function workerChannel(script: string[]) {
+  const child = spawn(process.execPath, script, { stdio: ['ignore', 'ignore', 'pipe', 'pipe'] });
+  const socket = child.stdio[3] as any;
+  socket.pause(); socket._handle.readStop(); socket.on('error', () => {});   // the test reads the raw fd only
+  const fd = socket._handle.fd as number;
+  const exited = new Promise<number | null>(resolve => child.on('exit', code => resolve(code)));
+  return { child, io: createChannelIO(fd), exited };
+}
+const bigDelivery = JSON.stringify({ context: 'x'.repeat(100_000), note: 'ünïcode' });
+
+it('mediated channel streams one admitted delivery in bounded chunks and returns the worker\'s real readback', async () => {
+  const { io, exited } = workerChannel([monitorScript, 'loading-worker', 'handle:launch-1', 'native-context:op-1']);
+  let checks = 0;
+  const channel = createInstalledChannelNativeContextIO({ io, identity: 'process:1', artifact: hashBytes('artifact'),
+    handle: 'handle:launch-1', deadline: io.now() + 10_000, currency: () => { checks++; return ok; } });
+  expect(channel.current().identity).toBe('process:1');
+  const received = channel.consume('native-context:op-1', bigDelivery);
+  expect(received).toEqual({ identity: 'process:1', digest: hashBytes(bigDelivery) });
+  const chunks = Math.ceil(Buffer.byteLength(bigDelivery) / 32_768);
+  expect(checks).toBe(chunks * 2 + 2);                 // every dispatch and again before every return, incl. the final
+  expect(await exited).toBe(0);
+  expect(() => channel.consume('native-context:op-1', bigDelivery)).toThrow('second initial delivery');
+});
+
+it('mediated channel closes on revocation in flight, expiry and a late authority check, and never regains standing', async () => {
+  for (const scenario of ['revoked-mid-stream', 'expired', 'lapse'] as const) {
+    const { io, exited, child } = workerChannel([monitorScript, 'loading-worker', 'handle:launch-1', 'native-context:op-1']);
+    let checks = 0;
+    const channel = createInstalledChannelNativeContextIO({ io, identity: 'process:1', artifact: hashBytes('artifact'),
+      handle: 'handle:launch-1', deadline: io.now() + (scenario === 'expired' ? 0 : 10_000),
+      currency: () => {
+        checks++;
+        if (scenario === 'lapse') { const end = Date.now() + 300; while (Date.now() < end) { /* owner service stalls */ } }
+        return scenario === 'revoked-mid-stream' && checks > 2 ? no('stopped') : ok;
+      } });
+    expect(() => channel.consume('native-context:op-1', bigDelivery), scenario)
+      .toThrow(scenario === 'revoked-mid-stream' ? 'current authority refused: stopped'
+        : scenario === 'expired' ? 'original deadline' : 'lapse bound');
+    expect(channel.closed).toBe(true);
+    expect(() => channel.current()).toThrow('closed after revocation or expiry');
+    expect(() => channel.consume('native-context:op-1', bigDelivery)).toThrow(/closed|second initial/);
+    expect(await exited, scenario).not.toBe(0);           // worker sees the closed channel, never completes
+    child.kill();
+  }
+});
+
+it('mediated channel refuses hostile worker frames without dispatching on their behalf', async () => {
+  const hostile = (frames: unknown[]) => {
+    const encodedFrames = frames.map(frameValue => canonicalText(frameValue));
+    const body = `const {writeSync}=require('fs');const f=${JSON.stringify(encodedFrames)};` +
+      `for(const t of f){const p=Buffer.from(t);const h=Buffer.alloc(4);h.writeUInt32BE(p.length);writeSync(3,Buffer.concat([h,p]));}` +
+      `setTimeout(()=>{},2000);`;
+    return workerChannel(['-e', body]);
+  };
+  const base = { v: 1, sequence: 1, handle: 'handle:launch-1', method: 'loadContext',
+    authorityReference: 'native-context:op-1', body: { delivery: 'native-context:op-1', offset: 0, readback: null } };
+  const cases: [string, unknown[], string][] = [
+    ['foreign method', [{ ...base, method: 'invokeProvider' }], 'fixed allowlist'],
+    ['copied handle', [{ ...base, handle: 'handle:launch-0' }], 'this launch'],
+    ['other delivery', [{ ...base, body: { ...base.body, delivery: 'native-context:op-2' } }], 'another delivery'],
+    ['replayed sequence', [{ ...base, sequence: 2 }], 'out-of-order'],
+    ['early readback', [{ ...base, body: { ...base.body, readback: hashBytes('guess') } }], 'readback before complete'],
+    ['skip ahead', [{ ...base, body: { ...base.body, offset: 5 } }], 'rewind, skip'],
+    ['extra field', [{ ...base, path: '/etc/passwd' }], 'closed request shape'],
+    ['pipelined', [base, { ...base, sequence: 2 }], 'more than one outstanding'],
+  ];
+  for (const [name, frames, detail] of cases) {
+    const { io, child } = hostile(frames);
+    let dispatches = 0;
+    const channel = createInstalledChannelNativeContextIO({ io, identity: 'process:1', artifact: hashBytes('artifact'),
+      handle: 'handle:launch-1', deadline: io.now() + 2_000, currency: () => { dispatches++; return ok; } });
+    if (name === 'pipelined') io.wait(200);          // both frames already buffered
+    expect(() => channel.consume('native-context:op-1', bigDelivery), name).toThrow(detail);
+    expect(channel.closed, name).toBe(true);
+    if (name !== 'early readback' && name !== 'skip ahead') expect(dispatches, name).toBe(0);
+    child.kill();
+  }
+  // A forged final readback is returned verbatim; the existing native-context
+  // adapter's equality check against hashBytes(bytes) then refuses it.
+  const small = 'tiny delivery';
+  const second = canonicalText({ ...base, sequence: 2, body: { ...base.body, offset: Buffer.byteLength(small), readback: hashBytes('forged') } });
+  const forged = workerChannel(['-e', `const {readSync,writeSync}=require('fs');` +
+    `const send=t=>{const p=Buffer.from(t);const h=Buffer.alloc(4);h.writeUInt32BE(p.length);writeSync(3,Buffer.concat([h,p]));};` +
+    `send(${JSON.stringify(canonicalText(base))});const b=Buffer.alloc(65540);readSync(3,b,0,65540,null);` +
+    `send(${JSON.stringify(second)});setTimeout(()=>{},2000);`]);
+  const channel = createInstalledChannelNativeContextIO({ io: forged.io, identity: 'process:1', artifact: hashBytes('artifact'),
+    handle: 'handle:launch-1', deadline: forged.io.now() + 2_000, currency: () => ok });
+  const receipt = channel.consume('native-context:op-1', small);
+  expect(receipt.digest).not.toBe(hashBytes(small));
+  forged.child.kill();
+});
+
+it('confined delivery driver checks current authority at dispatch and before a delayed result returns', () => {
+  const f = realTenFixture();
+  const history = f.runtime.history;
+  const liveProcess = { owner: 'part-ten' as const, resolve: (l: any) => f.success({ launch: l.id, run: l.run,
+    incarnation: l.incarnation, harness: l.harness, artifactDigest: l.artifactDigest, machine: l.machine, processIdentity: 'pid:42:start:1' }) };
+  let verdicts: any[] = [];
+  const driver = createConfinedContextDeliveryDriver({ runtime: f.runtime, history, context: { ...f.host.boundary, history },
+    clock: () => f.deps.clock().value, liveProcess, execution: f.effects.executor, currency: () => verdicts.shift() ?? ok });
+  const spec = value<any>(f.runtime.recordContextDelivery(f.spec()));
+  const delivered = () => f.owners.events.filter((e: string) => e === 'deliver').length;
+  const before = delivered();
+  verdicts = [no('stopped before dispatch')];
+  expect(refused(driver.deliver(spec, { operation: spec.operation, claim: spec.claim }))).toContain('stopped before dispatch');
+  expect(delivered()).toBe(before);                          // never dispatched
+  verdicts = [ok, no('revoked while delivery was in flight')];
+  expect(refused(driver.deliver(spec, { operation: spec.operation, claim: spec.claim })))
+    .toContain('revoked while delivery was in flight');
+  expect(value<any[]>(f.runtime.inspectCurrent()).some(row => row.record.type === 'HarnessObservation'
+    && row.record.phase === 'input-accepted' && row.record.contextDelivery !== undefined
+    && row.record.launch === spec.launch && row.record.step === spec.step)).toBe(false); // delayed acceptance suppressed
+});
