@@ -16,6 +16,8 @@ export interface SenderEvidence {
   readonly principalKind: 'person'|'agent'|'system';
   // Authenticated transport identities must match the route, including identity churn.
   readonly channel: string; readonly sender: string; readonly identityEpoch: string;
+  /** Checked source and approval facts to retain in the admission's causal cone. */
+  readonly authorityFacts?: Readonly<{ manifest: string; approvedAct: string }>;
 }
 export interface IntakeAdapterPort {
   readonly id: string;

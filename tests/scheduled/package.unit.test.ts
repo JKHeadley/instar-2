@@ -10,6 +10,19 @@ function refusal<T>(result: ReturnType<ReturnType<typeof createScheduledWorkPack
 }
 
 describe('Part Fifteen package-local records and operations', () => {
+  it('plans recurring instants only on the calendar and after activation', () => {
+    const f = scheduledFixture(); const port = createScheduledWorkPackagePort();
+    const manifest = { ...clone(f.manifest), schedule: { kind: 'recurring', expression: '30 1 * * *',
+      timeZone: 'America/New_York', activationInstant: '2027-11-07T05:00:00Z',
+      timeZoneDataVersion: 'tzdb:2027a', calendarPolicyVersion: 'calendar:earlier-v1', currentLatenessCutoffMs: 300_000 } };
+    const plan = (scheduledInstant: string) => port.planOccurrence({ manifest,
+      namespaceVersion: 'scheduled:v1', installationId: 'install:a', scheduledInstant,
+      asOf: f.core.clock(Date.UTC(2027, 10, 7, 6)) }, f.context);
+    expect(value(plan('2027-11-07T05:30:00Z')).scheduledInstant).toBe('2027-11-07T05:30:00Z');
+    const why = (instant: string) => consumeResult(plan(instant), { Success: () => '', Refused: item => item.detail });
+    expect(why('2027-11-07T06:30:00Z')).toContain('does not match');
+    expect(why('2027-11-06T05:30:00Z')).toContain('precedes package activation');
+  });
   it('P15-NF-01 P15-NF-08 P15-NF-11 decodes one closed complete manifest without a new core record', () => {
     const f = scheduledFixture(); const port = createScheduledWorkPackagePort(); const decoded = value(port.decode(f.manifest, f.context));
     expect(decoded.bounds.tokens).toBe(0); expect(decoded.bounds.money).toBe(0); expect(Object.isFrozen(decoded)).toBe(true);
