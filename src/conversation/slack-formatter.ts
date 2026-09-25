@@ -1,39 +1,8 @@
 /**
- * SlackMrkdwnFormatter — server-side formatter that converts agent-authored
- * GitHub-flavored markdown into Slack mrkdwn on outbound sends (roadmap 0.1).
- *
- * Mirrors the TelegramMarkdownFormatter pattern (src/messaging/
- * TelegramMarkdownFormatter.ts): default ON ('mrkdwn'), config rollback to
- * 'legacy-passthrough' (byte-for-byte), per-call `_formatMode` opt-out for
- * callers that already produce mrkdwn.
- *
- * Wired at the single SlackAdapter outbound chokepoint (formattedApiCall) so
- * every chat.postMessage / chat.update / chat.postEphemeral send funnels
- * through it. See applySlackFormatter() below.
- *
- * Conversion contract (GFM → mrkdwn):
- *   **bold**        → *bold*
- *   __bold__        → *bold*
- *   *italic*        → _italic_        (tight word-boundary rule; `3*5` untouched)
- *   _italic_        → _italic_        (already mrkdwn — passes through)
- *   ***both***      → *_both_*
- *   ~~strike~~      → ~strike~
- *   `code`          → `code`          (content &<> escaped, otherwise verbatim)
- *   ```fenced```    → ```fenced```    (language tag dropped; content escaped)
- *   [text](url)     → <url|text>      (scheme allowlist; unsafe → literal)
- *   # Heading       → *Heading*       (Slack has no headings)
- *   - bullet        → • bullet
- *   1. numbered     → 1. numbered     (passes through — reads natively)
- *   > quote         → > quote         (preserved; Slack renders quotes)
- *   | tables |      → fenced code block (Slack has no tables)
- *   --- / *** / ___ → ─ rule line
- *   emoji + :shortcodes: untouched
- *
- * Escaping: Slack's API contract requires `&`, `<`, `>` HTML-entity-escaped in
- * the text payload; Slack decodes exactly these three entities everywhere
- * (including code blocks), so we escape ONCE per segment — prose and code
- * segment contents alike — and never re-process extracted segments (sentinel
- * placeholders make double-escaping structurally impossible).
+ * Pure 1.x GFM-to-Slack mrkdwn formatter, retained with its captured behavior tests.
+ * This module has no transport or dispatch authority. The current Slack reply
+ * candidate is held, so neither this formatter nor its legacy helper is wired
+ * to an outward send.
  */
 
 import { escapeMrkdwn } from './slack-sanitize.js';
@@ -498,8 +467,8 @@ export function formatForSlack(
 const SEND_METHODS = new Set(['chat.postMessage', 'chat.update', 'chat.postEphemeral']);
 
 /**
- * Shared formatter wire-up used by SlackAdapter.formattedApiCall — the Slack
- * sibling of applyTelegramFormatter. Pure function for testability.
+ * Pure 1.x formatting helper kept for its legacy tests. It is not wired to
+ * the 2.0 reply operation or any Slack transport.
  *
  * - Non-send methods pass through unchanged.
  * - `params._formatMode` is the per-call override (stripped before the HTTP
@@ -508,9 +477,7 @@ const SEND_METHODS = new Set(['chat.postMessage', 'chat.update', 'chat.postEphem
  *   deliberately; `text` is only the notification fallback.
  * - `params.mrkdwn === false` passes through — the caller asked Slack for
  *   plain text; converting would be nonsense.
- * - Mode resolution: per-call → config → `'mrkdwn'` (default ON, post-cutover;
- *   rollback via `formatMode: 'legacy-passthrough'` in the slack messaging
- *   config block).
+ * - Mode resolution for this pure helper: per-call → config → `mrkdwn`.
  */
 export function applySlackFormatter(
   method: string,
