@@ -2,22 +2,28 @@ import type { BoundaryContext, Clock, Result } from '../index.js';
 import { createFactStore } from '../facts/index.js';
 import type { FactContext, FactEnvelope, FactStorePort } from '../facts/index.js';
 import { createProductionRunAdmission } from '../transport/index.js';
-import type { AdmissionReservation, LoopRecord, TransportAuthority } from '../transport/index.js';
+import type { AdmissionReservation, Lease, LoopRecord, TransportAuthority } from '../transport/index.js';
 import type { ProductionStorageReader } from './production-storage.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
 
 /**
- * Lane A's public capacity reader (`TransportAuthority.inspectCapacity`, branch
- * impl-r1-m3i, NOT yet landed on this base). Stated structurally so this adapter
- * consumes that owner's verdicts without re-deriving them; absent means every
- * launch refuses for missing capacity authority A.
+ * Lane A's public capacity reader (`TransportAuthority.inspectCapacity` returning
+ * `CapacityInspection`, branch impl-r1-m3i, NOT yet landed on this base). Stated
+ * structurally as the exact subset of that public shape this adapter reads
+ * (`fact` is the capacity fact id string; `record` is the CapacityReservation),
+ * so lane A's own result is assignable without re-deriving its verdicts. Absent
+ * means every launch refuses for missing capacity authority A.
  */
 export interface MonitorCapacityReader {
   inspectCapacity(): Result<Readonly<{
     sourceFrontier: string;
-    heads: readonly Readonly<{ capacity: string; fact: Readonly<{ id: string }>; usable: boolean; blocker: string | null }>[];
+    heads: readonly Readonly<{ capacity: string; fact: string; usable: boolean; blocker: string | null;
+      record: Readonly<{ instance: string; installation: string; machine: string; state: string }> }>[];
   }>>;
 }
+
+/** Lane A's protected reserve. It never grants ordinary worker/control use. */
+const RESPONDER_RESERVE = 'minimal-responder-binding';
 
 /** Inputs the installed boot (R4/R6) supplies. None is selected by a request. */
 export interface InstalledMonitorInputs {
@@ -32,6 +38,15 @@ export interface InstalledMonitorInputs {
   /** Installed current context: stop, register generation and genuine clock. */
   current(): Readonly<{ stopped: boolean; generation: string; clock: Clock }>;
   readonly capacity?: MonitorCapacityReader;
+  /** R6: the capacity instance that is this installation's genuine worker/control
+   * allocation. Absent (today) means worker allocation is unavailable and every
+   * launch refuses; the responder reserve can never be named here. */
+  readonly workerCapacityInstance?: string;
+  /** R4/R6: the installed owner watermark (committed record count and head fact
+   * id), independent of the file being read, so a view rolled back across a
+   * reader restart is refused. Absent means restart currency is unavailable and
+   * every resolve refuses. */
+  watermark?(): Readonly<{ records: number; head: string }> | null;
   readonly context: BoundaryContext;
 }
 
@@ -99,6 +114,11 @@ export function createProductionMonitorContext(input: InstalledMonitorInputs): R
       ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length),
         'monitor-context: tainted or conflicted installed view');
       const facts = prefix.facts;
+      ensure(input.watermark, 'monitor-context: installed owner watermark unavailable (R4/R6); restart rollback cannot be excluded');
+      const mark = input.watermark();
+      ensure(mark && Number.isSafeInteger(mark.records) && mark.records > 0 && facts.length >= mark.records
+        && facts.findIndex(fact => fact.id === mark.head) >= 0,
+      'monitor-context: installed view is behind or diverges from the owner watermark');
       const transport = facts.filter(fact => fact.kind.startsWith('transport-'))
         .map(fact => freeze({ fact, record: bodyRecord(fact) ?? {} }) as Row);
       return { facts, transport };
@@ -109,6 +129,16 @@ export function createProductionMonitorContext(input: InstalledMonitorInputs): R
       ensure(now.clock.value >= lastClock, 'monitor-context: clock regressed');
       lastClock = now.clock.value;
       return now;
+    };
+    // Current owner standing, re-derived per call: Six's own execution verdict
+    // for the operation's lease assignment (current held lease, same fence and
+    // worker placement), plus that lease's finite horizon on the installed owner
+    // clock. Signed history alone is never present authority.
+    const standing = (transport: readonly Row[], run: string, assignment: string, clock: number) => {
+      take(admission.execution(run, { owner: 'part-six', name: 'Lease', id: assignment }));
+      const lease = (transport.filter(row => row.record.type === 'Lease').at(-1)?.record) as unknown as Lease | undefined;
+      ensure(lease && lease.state === 'held' && Number.isSafeInteger(lease.expires) && clock < lease.expires,
+        'monitor-context: owner lease horizon expired');
     };
     const reservations = (transport: readonly Row[], operation: string): Reservation[] =>
       transport.filter(row => row.fact.kind === 'transport-AdmissionReservation'
@@ -153,6 +183,7 @@ export function createProductionMonitorContext(input: InstalledMonitorInputs): R
       ensure(execution.harness === spec.harness && execution.worker === spec.principal,
         'monitor-context: Six execution differs from the specification');
       ensure(prepared.record.fence.generation === now.generation, 'monitor-context: register generation changed');
+      standing(transport, run, prepared.record.fence.assignment, now.clock.value);
       // Capacity A (lane A): resources are exactly sorted unique A union {P}.
       const resources = spec.resourceReferences as readonly string[];
       ensure(Array.isArray(resources) && encoded([...new Set(resources)].sort()).bytes === encoded(resources).bytes
@@ -162,9 +193,18 @@ export function createProductionMonitorContext(input: InstalledMonitorInputs): R
       ensure(input.capacity, 'monitor-context: capacity reader unavailable (lane A impl-r1-m3i not landed)');
       const inspection = take(input.capacity.inspectCapacity());
       ensure(inspection.sourceFrontier === transport.at(-1)?.fact.id, 'monitor-context: capacity view is not current');
-      for (const id of capacity)
-        ensure(inspection.heads.some(head => head.fact.id === id && head.usable && head.blocker === null),
-          'monitor-context: capacity reservation not usable');
+      for (const id of capacity) {
+        const head = inspection.heads.find(entry => entry.fact === id);
+        ensure(head && typeof head.record === 'object' && head.record !== null, 'monitor-context: capacity reservation not usable');
+        ensure(head.record.instance !== RESPONDER_RESERVE,
+          'monitor-context: capacity A is the protected minimal-responder reserve, not a worker/control allocation');
+        ensure(input.workerCapacityInstance && input.workerCapacityInstance !== RESPONDER_RESERVE,
+          'monitor-context: worker/control capacity allocation unavailable (R6)');
+        ensure(head.record.instance === input.workerCapacityInstance && head.record.installation === input.installation
+          && head.record.machine === input.machine && head.record.state === 'held',
+        'monitor-context: capacity A is not this installation\'s worker/control allocation');
+        ensure(head.usable && head.blocker === null, 'monitor-context: capacity reservation not usable');
+      }
       const closureFacts = [specification!, prepared.fact, claim.fact, consumed.fact,
         ...capacity.map(id => facts.find(fact => fact.id === id)!)];
       return freeze({ installation: input.installation, machine: input.machine, run,
@@ -177,7 +217,7 @@ export function createProductionMonitorContext(input: InstalledMonitorInputs): R
     const observation = (locators: MonitorObservationLocators): MonitorObservationClosure => {
       for (const field of ['request', 'operation', 'digest', 'observationAuthority'] as const)
         ensure(typeof locators[field] === 'string' && locators[field].length > 0, `monitor-context: ${field} locator required`);
-      currentContext();
+      const now = currentContext();
       const { transport } = view();
       const rows = reservations(transport, locators.operation);
       const original = rows[0];
@@ -192,6 +232,9 @@ export function createProductionMonitorContext(input: InstalledMonitorInputs): R
       ensure(wake && wake.fact.id === locators.observationAuthority && wake.record.pending === locators.operation
         && ['running', 'restoring', 'waiting'].includes(wake.record.state),
       'monitor-context: observation authority is not the current admitted wake for this operation');
+      const latest = rows.at(-1)!;
+      ensure(latest.record.fence.generation === now.generation, 'monitor-context: register generation changed');
+      standing(transport, original.record.run, latest.record.fence.assignment, now.clock.value);
       return freeze({ installation: input.installation, machine: input.machine, run: original.record.run,
         request: locators.request, operation: locators.operation, digest: locators.digest, wake: wake.fact.id,
         bundle: encoded([original.fact.contentHash, wake.fact.contentHash]).hash });

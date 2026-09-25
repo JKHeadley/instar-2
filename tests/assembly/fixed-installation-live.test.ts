@@ -557,7 +557,11 @@ it('read-only installed reader follows a live writer without taking its lease an
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-function monitorContextFixture(root: string, withCapacity = true, divergent = false) {
+// SYNTHETIC R6 stand-in: the worker/control capacity instance the installed
+// composition would name. Lane A today only produces the responder reserve.
+const workerInstance = 'worker-control-allocation:synthetic';
+function monitorContextFixture(root: string, withCapacity = true, divergent = false,
+  options: { instance?: string; worker?: string | null; watermark?: boolean } = {}) {
   const setup = onDisk(root);
   const { f, prepared, row, record } = setup;
   if (divergent) f.append('note', { identity: 'foreign-installation-history', amount: '9' });
@@ -574,13 +578,24 @@ function monitorContextFixture(root: string, withCapacity = true, divergent = fa
   const specFact = value(f.store.read()).filter(fact => fact.kind === 'assembly-HarnessLaunchSpec').at(-1);
   const locators = { request: prepared.request, specification: specFact.id, claim: rows.at(-2).fact.id,
     consumed: rows.at(-1).fact.id, operation: prepared.operation, digest: prepared.digest };
+  // Stand-in in lane A's exact public CapacityInspection head shape (fact is the id string).
   const capacity = { inspectCapacity: () => f.success({ sourceFrontier: value(f.effects.transport.inspect()).at(-1).fact.id,
-    heads: [{ capacity: "capacity:stand-in", fact: { id: standInA }, usable: true, blocker: null }] }) };
-  const view = setup.reader();
-  const context = value(createProductionMonitorContext({ installation: 'installation:test', machine: 'machine-a',
+    heads: [{ capacity: 'capacity:stand-in', fact: standInA, usable: true, blocker: null,
+      record: { type: 'CapacityReservation', instance: options.instance ?? workerInstance, installation: 'installation:test',
+        machine: 'machine-a', state: 'held' } }] }) };
+  // SYNTHETIC R4/R6 stand-in for the installed owner watermark: the writer's own
+  // committed count and head, or a pinned value set by a test.
+  let pinnedMark: { records: number; head: string } | null = null;
+  const liveMark = () => { const all = value(f.store.read()); return { records: all.length, head: all.at(-1).id }; };
+  const pinWatermark = () => { pinnedMark = liveMark(); };
+  const build = (view: any) => value(createProductionMonitorContext({ installation: 'installation:test', machine: 'machine-a',
     facts: f.ctx, storage: view, authority: f.effects.transport, current: () => f.host.current(),
-    capacity: withCapacity ? capacity : undefined, context: f.c }));
-  return { ...setup, spec, locators, context, view, standInA, resources };
+    capacity: withCapacity ? capacity : undefined,
+    workerCapacityInstance: options.worker === null ? undefined : options.worker ?? workerInstance,
+    watermark: options.watermark === false ? undefined : () => pinnedMark ?? liveMark(), context: f.c }));
+  const view = setup.reader();
+  const context = build(view);
+  return { ...setup, spec, locators, context, view, standInA, resources, build, pinWatermark };
 }
 
 it('fixed monitor reader joins the genuine same-store launch closure and refuses wrong-store, raw-row and changed locators', () => {
@@ -615,6 +630,61 @@ it('fixed monitor reader refuses every launch while lane A capacity authority is
     expect(refused(context.resolveLaunch(locators))).toContain('capacity reader unavailable (lane A impl-r1-m3i not landed)');
     view.close(); writer.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('fixed monitor reader consumes lane A\'s public capacity shape and never treats the responder reserve as worker allocation', () => {
+  const root = diskRoot();
+  try {
+    const base = monitorContextFixture(root);
+    expect(value(base.context.resolveLaunch(base.locators)).capacity).toEqual([base.standInA]);   // positive (synthetic R6 instance)
+    base.view.close(); base.writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  for (const [options, message] of [
+    [{ instance: 'minimal-responder-binding' }, 'protected minimal-responder reserve, not a worker/control allocation'],
+    [{ worker: null }, 'worker/control capacity allocation unavailable (R6)'],
+    [{ worker: 'minimal-responder-binding' }, 'worker/control capacity allocation unavailable (R6)'],
+    [{ instance: 'another-allocation' }, 'not this installation\'s worker/control allocation'],
+  ] as const) {
+    const other = diskRoot();
+    try {
+      const x = monitorContextFixture(other, true, false, options);
+      expect(refused(x.context.resolveLaunch(x.locators))).toContain(message);
+      x.view.close(); x.writer.close();
+    } finally { rmSync(other, { recursive: true, force: true }); }
+  }
+});
+
+it('fixed monitor reader requires current owner standing and the installed watermark, not signed history alone', () => {
+  const root = diskRoot(), rootB = diskRoot(), rootC = diskRoot();
+  try {
+    const x = monitorContextFixture(root);
+    const { f, locators, context } = x;
+    const closure = value(context.resolveLaunch(locators));
+    f.time(f.host.current().clock.value + 2);
+    value(f.effects.transport.recover('launch-monitor-observe', f.effects.fence, locators.operation,
+      { owner: 'part-eight', observe: () => f.success({ owner: 'part-eight', name: 'OperationObservation', id: 'obs:1' }) }));
+    const wake = value(f.effects.transport.inspect()).filter(entry => entry.record.type === 'LoopRecord'
+      && entry.record.pending === locators.operation).at(-1);
+    const query = { request: locators.request, operation: locators.operation, digest: locators.digest,
+      observationAuthority: wake.fact.id };
+    expect(value(context.resolveObservation(query)).wake).toBe(wake.fact.id);
+    // Review reproduction: the same genuine wake after the owner clock passes the lease horizon.
+    f.time(100_000);
+    expect(refused(context.resolveObservation(query))).toContain('owner lease horizon expired');
+    expect(refused(context.recheck(closure))).toMatch(/owner lease horizon expired|closure changed/);
+    // Watermark: unavailable refuses; a restarted reader over a rolled-back file refuses.
+    const unmarked = monitorContextFixture(rootB, true, false, { watermark: false });
+    expect(refused(unmarked.context.resolveLaunch(unmarked.locators))).toContain('installed owner watermark unavailable (R4/R6)');
+    unmarked.view.close(); unmarked.writer.close();
+    const y = monitorContextFixture(rootC);
+    const before = readFileSync(join(rootC, 'facts.encrypted'));
+    y.f.append('note', { identity: 'after-watermark-source', amount: '1' });
+    y.pinWatermark();
+    writeFileSync(join(rootC, 'facts.encrypted'), before);           // rolled back while no reader was open
+    const restarted = y.reader();
+    expect(refused(y.build(restarted).resolveLaunch(y.locators))).toContain('behind or diverges from the owner watermark');
+    restarted.close(); y.view.close(); y.writer.close(); x.view.close(); x.writer.close();
+  } finally { for (const dir of [root, rootB, rootC]) rmSync(dir, { recursive: true, force: true }); }
 });
 
 it('fixed monitor reader resolves observation only through the current admitted Six wake of the original operation', () => {
