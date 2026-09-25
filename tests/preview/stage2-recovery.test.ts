@@ -34,7 +34,7 @@ function crashWorker() {
   const imports = `import fs, {realpathSync,mkdtempSync,readFileSync,appendFileSync} from 'node:fs';
 import {createHash} from 'node:crypto'; import {tmpdir} from 'node:os'; import {join} from 'node:path';
 import {syncBuiltinESMExports} from 'node:module';
-import {productionStorageIO} from ${JSON.stringify(join(process.cwd(), 'scripts/production-boot-io.mjs'))};
+import {productionStorageIO,productionProviderIO} from ${JSON.stringify(join(process.cwd(), 'scripts/production-boot-io.mjs'))};
 import {stage2GuardedProviderPath} from ${JSON.stringify(join(process.cwd(), 'tests/preview/composition.ts'))};
 import {HOST_OUTAGE_TEXT,openPreviewState} from ${JSON.stringify(join(process.cwd(), 'tests/preview/state.ts'))};
 import {encoded as enc} from ${JSON.stringify(join(process.cwd(), 'tests/preview/stage2-provider.ts'))};
