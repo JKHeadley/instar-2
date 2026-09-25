@@ -183,6 +183,26 @@ export function verifyMonitorReply(input: unknown, reply: unknown, trust: unknow
   return receipt;
 }
 
+/**
+ * Installed receipt trust usable NOW: the closed shape, a public Ed25519 key,
+ * exact digest/identity bindings, finite clock values and a current horizon
+ * (`now <= authorityValidUntil`). Non-null alone is not trust.
+ */
+function usableTrust(input: MonitorTrust | null): MonitorTrust {
+  ensure(input !== null, 'installed receipt trust unavailable');
+  exact(input, trustFields);
+  const t = input as MonitorTrust;
+  ensure(id(t.keyId) && id(t.currentBootId) && id(t.clockReference)
+    && [t.releaseDigest, t.artifactDigest, t.profileDigest, t.handlePolicyDigest, t.limitsDigest].every(digest)
+    && typeof t.publicKey === 'object' && t.publicKey !== null && t.publicKey.type === 'public'
+    && t.publicKey.asymmetricKeyType === 'ed25519', 'installed receipt trust malformed');
+  ensure(Number.isFinite(t.now) && Number.isFinite(t.authorityValidUntil) && Number.isFinite(t.millisecondsPerUnit)
+    && t.millisecondsPerUnit > 0 && t.now <= t.authorityValidUntil, 'installed receipt trust expired');
+  return t;
+}
+const trustBinding = ['keyId', 'releaseDigest', 'artifactDigest', 'profileDigest', 'handlePolicyDigest',
+  'limitsDigest', 'currentBootId', 'clockReference', 'millisecondsPerUnit'] as const;
+
 // ---- seam 4: constructor-bound locator resolution over the genuine store ----
 
 type Located = Readonly<{ fact: FactEnvelope; record: Readonly<Record<string, unknown>> }>;
@@ -293,12 +313,17 @@ export function createProductionLaunchBoundary(context: AssemblyDecodeContext,
   }
   const resolver = createLaunchLocatorResolver(installed.store);
   const launched = new Map<string, Readonly<{ identity: string | null }>>();
-  const exchange = (request: MonitorRequest): MonitorReceipt => {
-    // Trust is read before transport: unavailable trust means zero calls.
-    const trust = installed.trust();
-    ensure(trust, 'installed receipt trust unavailable');
+  // Trust is validated (shape, bindings, current horizon) before transport:
+  // unavailable or already invalid trust means zero calls.
+  const preflight = (): MonitorTrust => usableTrust(installed.trust());
+  const exchange = (request: MonitorRequest, before: MonitorTrust): MonitorReceipt => {
     const reply = monitorUnframe(installed.client.exchange(monitorFrame(request)));
-    return verifyMonitorReply(request, reply, trust);
+    // Verification reads current trust and clock again: a revocation, expiry or
+    // changed binding during the exchange refuses the delayed evidence.
+    const after = usableTrust(installed.trust());
+    ensure(trustBinding.every(field => after[field] === before[field]) && after.publicKey.equals(before.publicKey),
+      'installed receipt trust changed during the exchange');
+    return verifyMonitorReply(request, reply, after);
   };
   const observation = (specification: HarnessLaunchSpec, receipt: MonitorReceipt, subject: string): HarnessObservation =>
     freeze({ type: 'HarnessObservation', schemaVersion: 1,
@@ -317,10 +342,11 @@ export function createProductionLaunchBoundary(context: AssemblyDecodeContext,
         // uncertainty afterwards is resolved by observe, never by a resend.
         ensure(!launched.has(operation), 'launch already attempted for this operation; observe instead');
         const body = resolver.launch(specification, operation, claim);
+        const trust = preflight();
         launched.set(operation, freeze({ identity: null }));
         const request = monitorRequest({ v: 1, method: 'launch', challenge: challenge(),
           installation: installed.installation, machine: installed.machine, body });
-        const receipt = exchange(request);
+        const receipt = exchange(request, trust);
         launched.set(operation, freeze({ identity: receipt.launchIdentity }));
         return observation(specification, receipt, 'launch');
       }),
@@ -329,10 +355,11 @@ export function createProductionLaunchBoundary(context: AssemblyDecodeContext,
         // After a restart the identity is unknown (null): the monitor looks the
         // original up by request/operation; it never creates or renews work.
         const located = resolver.observe(operation, operationDigest);
+        const trust = preflight();
         const request = monitorRequest({ v: 1, method: 'observe', challenge: challenge(),
           installation: installed.installation, machine: installed.machine,
           body: { ...located.body, launchIdentity: launched.get(operation)?.identity ?? null } });
-        return observation(located.specification, exchange(request), 'observe');
+        return observation(located.specification, exchange(request, trust), 'observe');
       }),
   });
 }

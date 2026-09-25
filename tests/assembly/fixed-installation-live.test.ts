@@ -844,6 +844,49 @@ it('S8 resolves exact launch locators from the genuine store, calls the fixed cl
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('S8 validates trust before any transport and re-reads current trust and clock to verify the reply', () => {
+  const root = diskRoot();
+  try {
+    const { f, spec, locators, writer, view } = monitorContextFixture(root);
+    value(view.refresh());
+    const monitor = syntheticMonitor();
+    let reads = 0;
+    const installed = (trust: () => any) => ({ installation: 'installation:test', machine: 'machine-a',
+      store: createFactStore(f.ctx, view.segment), client: monitor.client, trust: () => { reads += 1; return trust(); },
+      generation: () => f.host.current().generation });
+    // (1) Already expired, and malformed, non-null trust: refused with zero transport calls.
+    expect(refused(createInstalledBoundary(f.c, installed(() => ({ ...monitor.trust, now: 101 })))
+      .launch(spec, locators.operation, locators.claim))).toContain('installed receipt trust expired');
+    expect(refused(createInstalledBoundary(f.c, installed(() => ({ ...monitor.trust, releaseDigest: 'x' })))
+      .launch(spec, locators.operation, locators.claim))).toContain('installed receipt trust malformed');
+    expect(refused(createInstalledBoundary(f.c, installed(() => ({ ...monitor.trust, extra: 1 })))
+      .launch(spec, locators.operation, locators.claim))).toContain('closed shape required');
+    expect(monitor.calls).toHaveLength(0);
+    // (2) Review reproduction: the owner clock moves from 50 to 1001 inside the
+    // exchange (authorityValidUntil=100). The delayed receipt is refused.
+    let clock = 50;
+    const delayed = createInstalledBoundary(f.c, installed(() => ({ ...monitor.trust, now: clock })));
+    const client = monitor.client.exchange;
+    monitor.client.exchange = (bytes: Uint8Array) => { const reply = client(bytes); clock = 1_001; return reply; };
+    reads = 0;
+    expect(refused(delayed.launch(spec, locators.operation, locators.claim))).toContain('installed receipt trust expired');
+    expect(reads).toBe(2);                                  // before transport and again for verification
+    expect(monitor.calls).toHaveLength(1);
+    // (3) A changed binding (rotated key) during the exchange refuses too.
+    const rotated = generateKeyPairSync('ed25519').publicKey;
+    let key = monitor.trust.publicKey;
+    monitor.client.exchange = (bytes: Uint8Array) => { const reply = client(bytes); key = rotated; return reply; };
+    expect(refused(createInstalledBoundary(f.c, installed(() => ({ ...monitor.trust, publicKey: key })))
+      .launch(spec, locators.operation, locators.claim))).toContain('trust changed during the exchange');
+    // Positive neighbour: trust unchanged and current -> launched, two reads.
+    monitor.client.exchange = client; reads = 0;
+    expect(value(createInstalledBoundary(f.c, installed(() => monitor.trust))
+      .launch(spec, locators.operation, locators.claim))).toMatchObject({ phase: 'launched' });
+    expect(reads).toBe(2);
+    view.close(); writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('S8 observation after restart resolves the original tuple and current Six wake, never a new operation', () => {
   const root = diskRoot();
   try {
