@@ -93,6 +93,7 @@ export interface RuntimeHandleHolder {
     import('./contracts.js').HarnessAttemptAdmission;
   finishAttempt(operation: string, evidence: string, observedAt: number):
     import('./contracts.js').HarnessAttemptAdmission;
+  pendingAttempts(): readonly HarnessOperationAttempt[];
   put(handle: HarnessRuntimeHandle): HarnessHandleWriteReceipt;
   lookup(launch: string): HarnessHandleLookup;
   snapshot(id: string, capturedAt: number): Result<import('./contracts.js').HarnessHandleSnapshot>;
@@ -415,6 +416,9 @@ export function createRuntimeHandleHolder(input: Readonly<{
         return freeze({ disposition: 'refused' as const,
           reason: error instanceof Error ? error.message : 'operation-attempt journal is unavailable', attempt: null });
       }
+    },
+    pendingAttempts() {
+      return freeze(state.read().attempts.filter(row => row.state === 'pending'));
     },
     put(handleInput) {
       const decoded = consumeResult(decodeHarnessRuntimeHandle(handleInput, input.context), {
