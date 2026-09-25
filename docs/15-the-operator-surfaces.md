@@ -209,7 +209,7 @@ default is **replicated(1)** whenever a second machine is enrolled: local prepar
 dispatch permission until the required peer acknowledges the exact facts. The supported
 single-machine shape carries no peer dependency. At install time, its independently verified P-08
 choice accepts once the fixed profile's closed installed provider-call and reply-only Telegram
-operation set and permanent-machine-loss model. Only those `local-durable` operations with their
+and Slack operation set defined in the purpose, with its permanent-machine-loss model. Only those `local-durable` operations with their
 complete causal prefixes may dispatch. The operator does not hand-list them. This shape never
 creates `replicated(0)` or an automatic fallback after peer loss. The responder has a reserved
 finite worker, local storage, queue, transport and effect budget independent of ordinary workloads,
