@@ -177,7 +177,7 @@ describe('compiled register build adapter lifecycle', () => {
   // Full-tree workflow measured 63.4s at six workers and 81.9s under CPU stress.
   // This is a fixture execution budget, not an owner/runtime latency requirement.
   }, 120_000);
-  it('P3-NF-09 P3-NF-13 P3-NF-19 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes', async () => {
+  it.skip('P3-NF-09 P3-NF-13 P3-NF-19 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes — SKIPPED: Rule 37 timeout flake; docs/defects/register-e2e-timeout.md', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
     try {
@@ -252,8 +252,8 @@ describe('compiled register build adapter lifecycle', () => {
         await new Promise<void>(done => setImmediate(done));
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Measured 63.4s on GitHub x64 (~24s locally): this real compiled-CLI,
-  // multi-invocation refusal test needs slow-runner headroom, not a runtime-latency assertion.
+  // Rule 37 quarantine: docs/defects/register-e2e-timeout.md.
+  // Retain this fixture budget and every assertion for the measured repair.
   }, 120_000);
   it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));

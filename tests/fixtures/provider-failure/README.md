@@ -1,0 +1,4 @@
+# Claude Code failure evidence
+
+- `claude-limit-result.json` and `claude-limit-result.stream.jsonl`: genuine Claude Code output captured on 2026-09-24 21:01 PDT from an account past its weekly quota. The command exited 1. These copies change only the values of `session_id` and `uuid` to `REDACTED`; every other byte is retained. The stream's rate-limit event supplies an independent reset timestamp for the result parser test.
+- `claude-policy-assumed-result.json`: **text from a recorded incident; envelope assumed from the captured limit result**. The `result` text comes from Instar 1.x `ContextWedgeSentinel.ts` and its `IdleErrorClassifier.test.ts` fixture. All other fields are copied from the redacted limit result. There is no captured policy-classifier result envelope, so this is partial evidence for classification only.

@@ -7,6 +7,7 @@ import {
   sameMachineReconnectCandidate,
 } from '../../src/harness-adapters/holder.js';
 import { createFutureHarnessAdapter } from '../../src/harness-adapters/adapter.js';
+import { boundary as assemblyBoundary } from '../../src/assembly/boundary.js';
 import { correlatedRecoveryProgress } from '../../src/harness-adapters/regression-boundaries.js';
 import { decodeLoopPolicyA1 } from '../../src/transport/loop-a1/index.js';
 import type { SharedBreakerLoopPolicy } from '../../src/transport/loop-a1/index.js';
@@ -319,6 +320,56 @@ it('A2-INTEGRATION R3-F03 P13-NF-24 P13-NF-39 delivery replay preserves owner re
     }
     expect(driverCalls).toBe(0);
   }
+});
+
+it('session driver recovers a pending Part Thirteen attempt only through its durable recovery port', () => {
+  const f = a2Fixture();
+  const spec = value(f.owner.runtime.record('HarnessLaunchSpec', {
+    ...assemblyInput('HarnessLaunchSpec'), id: 'launch:session-recovery', run: 'run:session-recovery',
+    step: 'step:session-recovery', artifactDigest: f.handle.artifactDigest, inputDigest: f.handle.inputDigest,
+  }));
+  const handle = signedHandle(f, { id: 'handle:session-recovery', launch: spec.id,
+    run: spec.run, step: spec.step });
+  expect(f.handles.put(handle)).toMatchObject({ disposition: 'stored' });
+  const contract = value(f.owner.runtime.record('AdapterEvidenceContract', {
+    ...assemblyInput('AdapterEvidenceContract'), id: 'contract:session-recovery',
+    adapter: 'native', artifact: f.handle.artifactDigest,
+  }));
+  const conformance = value(f.owner.runtime.record('AdapterConformance', {
+    ...assemblyInput('AdapterConformance'), id: 'conformance:session-recovery', contract: contract.id,
+    adapter: 'native', artifact: f.handle.artifactDigest, platform: f.handle.platform, mode: 'advisory',
+  }));
+  const delivery = { launch: handle.launch, intake: handle.input, digest: handle.inputDigest,
+    incarnation: handle.incarnation, operation: 'operation:session-recovery' };
+  expect(f.handles.beginAttempt({ kind: 'delivery', operation: delivery.operation, launch: delivery.launch,
+    incarnation: delivery.incarnation, subjectDigest: value(canonical(delivery)).hash, attemptedAt: 20 }))
+    .toMatchObject({ disposition: 'started' });
+  let calls = 0, ambiguity = false;
+  const driver = { owner: 'part-eight' as const,
+    launch: () => { throw Error('unexpected launch'); },
+    deliver: () => { throw Error('unexpected ordinary delivery'); },
+    observe: () => { throw Error('unexpected observation'); },
+    recoverDelivery: () => { calls++; return ambiguity
+      ? assemblyBoundary('SyntheticAmbiguousSession', null, f.owner.c, () => { throw Error('send may have arrived'); })
+      : f.owner.success('tmux-input:recovered'); },
+  };
+  const packageView = createFutureHarnessAdapter({ id: 'native', artifact: f.handle.artifactDigest,
+    platform: handle.platform, conformance: conformance.id, machine: handle.machine,
+    driver, handles: f.handles, evidence: f.evidence, context: f.owner.c,
+    clock: () => 20, generation: () => f.owner.host.current().generation });
+  expect(value(packageView.bootSweep()).map(row => row.phase)).toEqual(['input-accepted']);
+  expect(value(packageView.bootSweep())).toEqual([]);
+  expect(calls).toBe(1);
+  expect(f.handles.beginAttempt({ kind: 'delivery', operation: delivery.operation, launch: delivery.launch,
+    incarnation: delivery.incarnation, subjectDigest: value(canonical(delivery)).hash, attemptedAt: 20 }).attempt?.state)
+    .toBe('observed');
+  const ambiguous = { ...delivery, operation: 'operation:session-recovery:ambiguous' };
+  expect(f.handles.beginAttempt({ kind: 'delivery', operation: ambiguous.operation, launch: ambiguous.launch,
+    incarnation: ambiguous.incarnation, subjectDigest: value(canonical(ambiguous)).hash, attemptedAt: 20 }))
+    .toMatchObject({ disposition: 'started' });
+  ambiguity = true;
+  expect(value(packageView.bootSweep()).map(row => row.phase)).toEqual(['uncertain']);
+  expect(calls).toBe(2);
 });
 
 it('A2-INTEGRATION R2-F09 P13-NF-04 base describe re-resolves real Ten conformance and refuses its expired neighbour without driver execution', () => {
