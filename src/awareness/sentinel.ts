@@ -138,7 +138,10 @@ export function decideContext(input: Readonly<{
 
     const episode = row.episode!;
     if (open(episode.status)) {
-      const receipt = seen.grounded.find(g => g.at >= episode.openedAt - config.receiptSkewMs);
+      const matches = (source: string) => episode.kind === 'compact' ? source === 'compact' : source !== 'compact';
+      // Skew is forgiven only for a receipt from the same kind of SessionStart as the episode.
+      const receipt = seen.grounded.find(g => g.at >= episode.openedAt
+        || (g.at >= episode.openedAt - config.receiptSkewMs && matches(g.source)));
       const processed = episode.lastAttemptAt !== null && seen.turnsClosed.some(at => at > episode.lastAttemptAt!);
       if (receipt) {
         closeEpisode('recovered'); signal('grounding-verified', `${episode.kind}: hook injected ${receipt.digest} (${receipt.source})`);

@@ -49,6 +49,12 @@ describe('context sentinel', () => {
     expect(kinds(r)).toEqual(['signal:grounding-verified']);
   });
 
+  it('never lets a startup receipt just before a compaction verify that compaction', () => {
+    const settled = run(T + 1_000, empty, [obs({ grounded: [{ at: T + 5, source: 'startup', digest: 'd' }] })]).state;
+    const r = run(T + 80_000, settled, [obs({ compactions: [T + 8_000], grounded: [{ at: T + 5, source: 'startup', digest: 'd' }] })]);
+    expect(kinds(r)).toEqual(['reground', 'signal:reground-requested']);
+  });
+
   it('defers while the session is busy without spending an attempt, then caps attempts loudly', () => {
     let state = run(T, empty, [obs()]).state;
     state = run(T + 70_000, state, [obs({ pane: 'busy' })]).state;
