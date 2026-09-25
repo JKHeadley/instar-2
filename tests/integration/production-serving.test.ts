@@ -2,8 +2,8 @@ import { expect, it } from 'vitest';
 import { buildConversationContext, createConversationStepper, turns } from '../../src/assembly/production-conversation-driver.js';
 import type { ConversationFact, ConversationDriverOperations, SequentialServingAdmission } from '../../src/assembly/production-conversation-driver.js';
 
-// Offline R6 interface fake. This checks driver ordering while the actual
-// successive-turn admission and installed owner fixture are unavailable.
+// Offline R6 interface fake. This checks driver ordering; genuine Six admission
+// and installed owner behavior are exercised in the sequential-serving suites.
 const fact = (id: string, kind: string, body: Record<string, unknown>): ConversationFact => ({ id, kind, body });
 const record = (id: string, kind: string, value: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
   fact(id, kind, { ...extra, record: value });
@@ -95,6 +95,15 @@ it('serves two distinct turns, retaining the first UNKNOWN exposure and groundin
   const context = buildConversationContext(turns(h.facts), turns(h.facts)[1]!,
     h.operations.capture, 3, 1000);
   expect(context[0]).toMatchObject({ inboundCapture: 'in:1', pending: true });
+});
+
+it('runs a bounded provider-only installation with zero reply allowance', async () => {
+  const h = serving(); h.receive(1, 'first');
+  const stepper = createConversationStepper({ ...h.operations, replyLimit: 0 });
+  expect(await stepper.step()).toBe('advanced');
+  expect(await stepper.step()).toBe('advanced');
+  expect(await stepper.step()).toBe('idle');
+  expect(h.calls).toEqual(['ground:1:in:1', 'provider:1']);
 });
 
 it('does not re-admit a duplicate update, even when caller labels change', async () => {

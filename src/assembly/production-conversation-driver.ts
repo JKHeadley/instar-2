@@ -1,6 +1,8 @@
 import type { ProductionApplication } from './production-application.js';
 import { hashBytes } from '../facts/index.js';
 import { take } from './boundary.js';
+import { isSequentialServingAdmission } from '../transport/index.js';
+import type { FenceToken, SequentialServingAdmissionPort } from '../transport/index.js';
 
 /** R6 `sequential-serving-admission` assumption. This port is deliberately
  * supplied by Six; this module never creates a lease, budget, or admission. */
@@ -47,10 +49,13 @@ const unique = (rows: readonly ConversationFact[], label: string): ConversationF
 /** Read-only phase fold. Only Four, Five, Six, Seven, and Eight owner facts
  * advance a turn. A lost acknowledgement cannot make a claimed call retryable. */
 export function turns(facts: readonly ConversationFact[],
-  apiAccepted: (observation: ConversationFact, request: ConversationFact) => boolean = () => false): readonly ConversationTurn[] {
+  apiAccepted: (observation: ConversationFact, request: ConversationFact) => boolean = () => false,
+  responseAnswered: (response: ConversationFact) => boolean = () => true,
+  conversation = ''): readonly ConversationTurn[] {
   const byId = new Map(facts.map(fact => [fact.id, fact]));
   if (byId.size !== facts.length) throw new Error('conversation-driver: duplicate fact identity');
-  const admitted = facts.filter(fact => fact.kind === 'intake-admitted' && fact.body.binding !== 'none');
+  const admitted = facts.filter(fact => fact.kind === 'intake-admitted'
+    && (conversation ? fact.body.binding === conversation : fact.body.binding !== 'none'));
   const byUpdate = new Map<number, ConversationFact>();
   for (const fact of admitted) {
     const update = safeInteger(fact.body.eventId);
@@ -89,7 +94,7 @@ export function turns(facts: readonly ConversationFact[],
     let phase: TurnPhase = 'admitted';
     if (grounding) phase = 'grounded';
     if (providerClaims.length) phase = 'provider-dispatched-unknown';
-    if (response) phase = 'provider-dispatched-answered';
+    if (response && responseAnswered(response)) phase = 'provider-dispatched-answered';
     if (acceptance) phase = 'accepted';
     if (replyClaims.length) phase = 'reply-dispatched-unknown';
     if (replyObservation && replyRequest && apiAccepted(replyObservation, replyRequest)) phase = 'api-accepted';
@@ -155,7 +160,10 @@ export interface ConversationDriverOperations {
   capture(reference: string): string;
   apiAccepted(observation: ConversationFact, request: ConversationFact,
     facts: readonly ConversationFact[]): boolean;
-  readonly admission: SequentialServingAdmission;
+  /** The offline fake is retained only for ordering tests. Installed serving uses Six. */
+  readonly admission?: SequentialServingAdmission;
+  readonly serving?: Readonly<{ port: SequentialServingAdmissionPort; fence: FenceToken }>;
+  readonly conversation?: string;
   readonly generation: string;
   readonly lease: string;
   readonly expiresAt: number;
@@ -174,24 +182,35 @@ export function createConversationStepper(operations: ConversationDriverOperatio
   for (const [name, value] of Object.entries({ maxContextTurns: operations.maxContextTurns,
     maxContextBytes: operations.maxContextBytes, replyLimit: operations.replyLimit,
     errorLimit: operations.errorLimit, totalErrorLimit: operations.totalErrorLimit })) {
-    if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`conversation-driver: invalid ${name}`);
+    if (!Number.isSafeInteger(value) || value < (name === 'replyLimit' ? 0 : 1))
+      throw new Error(`conversation-driver: invalid ${name}`);
   }
   let busy = false;
   let consecutiveErrors = 0;
   let totalErrors = 0;
-  const stop = () => operations.stopped() || operations.now() >= operations.expiresAt
-    || consecutiveErrors >= operations.errorLimit || totalErrors >= operations.totalErrorLimit;
+  const errors = () => operations.serving ? (() => { const view = take(operations.serving.port.inspect());
+    return { consecutiveErrors: view.consecutiveErrors, totalErrors: view.totalErrors }; })()
+    : { consecutiveErrors, totalErrors };
+  const stop = () => { if (operations.stopped() || operations.now() >= operations.expiresAt) return true;
+    const count = errors(); return count.consecutiveErrors >= operations.errorLimit
+      || count.totalErrors >= operations.totalErrorLimit; };
   const currentFacts = () => operations.facts();
   const gate = (facts: readonly ConversationFact[], reply = false): StepResult | null => {
     if (stop() || facts.some(fact => fact.kind === 'intake-stop' || fact.kind === 'intake-stop-signal')) return 'stopped';
-    if (!operations.admission.current({ generation: operations.generation, lease: operations.lease })) return 'bound';
-    if (reply && turns(facts).filter(turn =>
+    if (operations.serving) {
+      const view = take(operations.serving.port.inspect());
+      if (!view.binding || view.binding.generation !== operations.generation
+        || view.binding.expires <= operations.now() || view.stopped) return 'bound';
+    } else if (!operations.admission?.current({ generation: operations.generation, lease: operations.lease })) return 'bound';
+    if (reply && turns(facts, undefined, undefined, operations.conversation).filter(turn =>
       turn.phase === 'reply-dispatched-unknown' || turn.phase === 'api-accepted').length >= operations.replyLimit) return 'bound';
     return null;
   };
-  const requireGate = (reply = false) => {
+  const requireGate = (reply = false, provider = '') => {
     const reason = gate(currentFacts(), reply);
     if (reason) throw new Error(`conversation-driver: ${reason}`);
+    if (operations.serving && take(operations.serving.port.inspect()).slot !== provider)
+      throw new Error('conversation-driver: serving slot changed before final call');
   };
   const step = async (): Promise<StepResult> => {
     if (busy) return 'bound';
@@ -200,35 +219,60 @@ export function createConversationStepper(operations: ConversationDriverOperatio
       let facts = currentFacts();
       const blocked = gate(facts);
       if (blocked) return blocked;
-      const all = turns(facts, (observation, request) => operations.apiAccepted(observation, request, facts));
-      const turn = all.find(candidate => ['admitted', 'grounded', 'provider-dispatched-answered', 'accepted'].includes(candidate.phase));
+      const all = turns(facts, (observation, request) => operations.apiAccepted(observation, request, facts),
+        response => {
+          if (!operations.serving) return true;
+          const receipt = obj(record(response).receipt);
+          const reference = str(receipt.reference), hash = str(receipt.hash);
+          if (!reference || !hash) return false;
+          try { const bytes = operations.capture(reference);
+            return hashBytes(bytes) === hash && obj(JSON.parse(bytes)).state === 'complete'; }
+          catch { return false; }
+        }, operations.conversation);
+      const view = operations.serving ? take(operations.serving.port.inspect()) : null;
+      const active = view?.slot ? all.find(candidate => candidate.providerRun === view.slot) : undefined;
+      if (view?.slot && !active) throw new Error('conversation-driver: serving slot has no owner turn');
+      if (active && ['provider-dispatched-unknown', 'reply-dispatched-unknown', 'api-accepted'].includes(active.phase)) {
+        take(operations.serving!.port.retire(`retire:${active.providerRun}`, operations.serving!.fence,
+          active.providerRun!, ''));
+        return 'advanced';
+      }
+      const turn = view?.slot ? active : all.find(candidate =>
+        !view?.retired.includes(candidate.providerRun ?? '')
+        && (view ? candidate.phase === 'admitted'
+          : ['admitted', 'grounded', 'provider-dispatched-answered', 'accepted'].includes(candidate.phase)));
       if (!turn) return 'idle';
       if (turn.phase === 'admitted') {
         const context = buildConversationContext(all, turn, operations.capture,
           operations.maxContextTurns, operations.maxContextBytes);
-        const admitted = operations.admission.admitTurn({ updateId: turn.updateId, opening: turn.opening,
-          generation: operations.generation, lease: operations.lease });
-        if (admitted !== 'admitted' && admitted !== 'already-admitted') return 'bound';
+        if (operations.serving && turn.providerRun) {
+          take(operations.serving.port.admitTurn(`turn:${turn.opening}`,
+            operations.serving.fence, turn.opening, turn.providerRun));
+        } else if (!operations.serving) {
+          const admitted = operations.admission?.admitTurn({ updateId: turn.updateId, opening: turn.opening,
+            generation: operations.generation, lease: operations.lease });
+          if (admitted !== 'admitted' && admitted !== 'already-admitted') return 'bound';
+        }
         await operations.ground(turn, context);
       } else if (turn.phase === 'grounded') {
         facts = currentFacts(); const denied = gate(facts); if (denied) return denied;
-        await operations.dispatchProvider(turn, () => requireGate());
+        await operations.dispatchProvider(turn, () => requireGate(false, turn.providerRun!));
       } else if (turn.phase === 'provider-dispatched-answered') {
         await operations.acceptAndPrepareReply(turn);
       } else if (!turn.replyPrepared) {
         await operations.acceptAndPrepareReply(turn);
       } else {
         facts = currentFacts(); const denied = gate(facts, true); if (denied) return denied;
-        await operations.dispatchReply(turn, () => requireGate(true));
+        await operations.dispatchReply(turn, () => requireGate(true, turn.providerRun!));
       }
-      consecutiveErrors = 0;
+      if (!operations.serving) consecutiveErrors = 0;
       return 'advanced';
     } catch (error) {
-      consecutiveErrors++; totalErrors++;
+      if (!operations.serving) { consecutiveErrors++; totalErrors++; }
       throw error;
     } finally { busy = false; }
   };
-  return Object.freeze({ step, stopped: stop, errors: () => ({ consecutiveErrors, totalErrors }),
+  return Object.freeze({ step, stopped: stop, errors,
     noteError: () => { consecutiveErrors++; totalErrors++; },
     noteSuccess: () => { consecutiveErrors = 0; } });
 }
@@ -242,6 +286,8 @@ export interface ConversationDriverOptions extends Omit<ConversationDriverOperat
   readonly yieldBoundary: () => Promise<void>;
   readonly sleep: (milliseconds: number) => Promise<void>;
   readonly signal?: AbortSignal;
+  /** Ten supplies fresh attempt identities; Six persists starts and results. */
+  readonly nextAttempt?: () => string;
   readonly diagnostic?: (record: Readonly<{ reason: 'UNKNOWN'; phase: 'DRAIN' | 'POLL';
     consecutiveErrors: number; totalErrors: number; backoffMs: number }>) => void;
 }
@@ -255,8 +301,13 @@ const backoff = async (ms: number, options: ConversationDriverOptions, stopped: 
  * physical actions are passed in through owner-bound operations. */
 export async function runConversationDriver(application: ProductionApplication,
   options: ConversationDriverOptions): Promise<void> {
-  if (!application?.owners?.composition || options.admission.owner !== 'part-six')
+  if (!application?.owners?.composition || !options.serving && options.admission?.owner !== 'part-six')
     throw new Error('conversation-driver: installed owner binding absent');
+  if (options.serving && (!isSequentialServingAdmission(options.serving.port)
+    || options.serving.port !== application.owners.serving || !options.nextAttempt))
+    throw new Error('conversation-driver: genuine installed Six serving port required');
+  if (options.serving && options.conversation !== take(options.serving.port.inspect()).binding?.conversation)
+    throw new Error('conversation-driver: serving conversation binding changed');
   if (!Number.isSafeInteger(options.maxCycles) || options.maxCycles <= 0
     || !Number.isSafeInteger(options.baseBackoffMs) || options.baseBackoffMs <= 0
     || !Number.isSafeInteger(options.maxBackoffMs) || options.maxBackoffMs < options.baseBackoffMs)
@@ -273,21 +324,66 @@ export async function runConversationDriver(application: ProductionApplication,
     stopped: () => !!options.signal?.aborted || options.stopped() });
   const stopped = () => !!options.signal?.aborted || driver.stopped()
     || facts().some(fact => fact.kind === 'intake-stop' || fact.kind === 'intake-stop-signal');
+  let durabilityFailed = false;
+  const progress = options.serving;
+  const durable = <T>(result: import('../index.js').Result<T>): T => {
+    try { return take(result); } catch (error) { durabilityFailed = true; throw error; }
+  };
+  const operationFor = (provider: string): string => {
+    if (!provider) return '';
+    const rows = durable(application.owners.transport.inspect());
+    const pair = rows.flatMap(row => row.record.type === 'RunPairAdmission'
+      && row.record.provider === provider ? [row.record] : []).at(-1);
+    return rows.flatMap(row => row.record.type === 'AdmissionReservation'
+      && (row.record.run === provider || row.record.run === pair?.reply)
+      ? [row.record.operation] : []).at(-1) ?? '';
+  };
+  if (progress) {
+    const pending = durable(progress.port.inspect()).pendingAttempt;
+    if (pending) {
+      const start = durable(application.owners.transport.inspect()).find(row =>
+        row.record.type === 'ServingRecord' && row.record.action === 'start'
+          && row.record.attempt === pending)?.record;
+      durable(progress.port.result(`recovered:${pending}`, progress.fence, pending, 'error',
+        start?.type === 'ServingRecord' ? operationFor(start.provider) : ''));
+    }
+  }
+  const attempt = async <T>(phase: 'step' | 'poll', action: () => Promise<T> | T): Promise<T> => {
+    if (!progress) return action();
+    const id = options.nextAttempt!();
+    if (!id || id.length > 256) throw new Error('conversation-driver: invalid attempt identity');
+    const view = durable(progress.port.inspect());
+    const planned = phase === 'step' && !view.slot ? turns(facts(), undefined, undefined,
+      options.conversation).find(turn => turn.phase === 'admitted' && turn.providerRun
+        && !view.retired.includes(turn.providerRun))?.providerRun : null;
+    const provider = view.slot ?? planned ?? '';
+    durable(progress.port.start(`start:${id}`, progress.fence, id, provider));
+    try {
+      const value = await action();
+      durable(progress.port.result(`result:${id}`, progress.fence, id, 'success', operationFor(provider)));
+      return value;
+    } catch (error) {
+      if (durabilityFailed) throw error;
+      durable(progress.port.result(`result:${id}`, progress.fence, id, 'error', operationFor(provider)));
+      throw error;
+    }
+  };
   for (let cycle = 0; cycle < options.maxCycles && !stopped(); cycle++) {
     let phase: 'DRAIN' | 'POLL' = 'DRAIN';
     try {
       while (!stopped()) {
         await options.yieldBoundary();
-        if (await driver.step() !== 'advanced') break;
+        if (await attempt('step', () => driver.step()) !== 'advanced') break;
         await options.yieldBoundary();
       }
       if (stopped()) break;
       phase = 'POLL';
-      await options.pollOnce();
-      driver.noteSuccess();
+      await attempt('poll', () => options.pollOnce());
+      if (!progress) driver.noteSuccess();
       await options.yieldBoundary();
     } catch {
-      if (phase === 'POLL') driver.noteError();
+      if (durabilityFailed) throw new Error('conversation-driver: durable progress unavailable');
+      if (phase === 'POLL' && !progress) driver.noteError();
       const errors = driver.errors();
       const backoffMs = stopped() ? 0 : Math.min(options.maxBackoffMs,
         options.baseBackoffMs * 2 ** Math.min(errors.consecutiveErrors - 1, 8));

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { consumeResult, decode, readEvidence } from '../index.js';
 import type { BoundaryContext, Evidence, Json, Result } from '../index.js';
 import { authorAndAppend, hashBytes } from '../facts/index.js';
+import { invokeConsumedDispatch } from '../transport/index.js';
 import type { FactContext, FactStorePort } from '../facts/index.js';
 import type { DispatchClaim, FenceToken, TransportAuthority, TransportHost } from '../transport/index.js';
 import type { Capture, JudgmentCapturePort, ProviderObservation, ProviderResponseEvidence } from '../judgment/index.js';
@@ -165,9 +166,13 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
       return consumeResult(admission, { Refused: r => Promise.resolve(cleanup(issued) ?? r), Success: async admitted => {
         let observation: ProviderObservation;
         try {
-          const returned = await send(admitted.bytes, { operation: claim.operation, deadline: payload.deadline,
+          const invoke = () => send(admitted.bytes, { operation: claim.operation, deadline: payload.deadline,
             timeout: payload.timeout, maxOutputBytes: payload.maxOutputBytes, maxTokens: payload.maxTokens,
             maxCharge: payload.maxCharge, automaticRetries: 0 });
+          const serving = take(authority.inspect()).some(row => row.record.type === 'ServingRecord'
+            && row.record.action === 'bind');
+          const returned = await (serving
+            ? take(invokeConsumedDispatch(authority, claim, fence, c, invoke)) : invoke());
           // Copy once at the transport return; no SDK sees or edits this receipt.
           const own = (v: object, key: string) => Object.getOwnPropertyDescriptor(v, key)?.value as unknown;
           const usage = own(returned, 'usage');

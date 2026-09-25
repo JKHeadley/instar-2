@@ -37,6 +37,9 @@ export { decodeProductionInstallation, productionInstallationSchemas, registerPr
 export type { ProductionInstallation } from './production-installation.js';
 export { bootProductionApplication } from './production-application.js';
 export type { ProductionApplication, ProductionApplicationHost } from './production-application.js';
+export { createProductionConversationHost } from './production-conversation-host.js';
+export type { ProductionConversationHostConfig, ProductionConversationPlan } from './production-conversation-host.js';
+export { runConversationDriver, createConversationStepper, turns } from './production-conversation-driver.js';
 
 export type { InstallationSelection, InstallationRole, InstallationRecordAdmission, InstallationRecordWriter, InstallationRecordGeneration } from './installation-selection.js';
 export { installationRoleOwners, installationSelectionSchemas, registerInstallationSelectionBody, recordInstallationSelection, decodeInstallationSelectionAtOrigin, decodeHistoricalInstallationSelection } from './installation-selection.js';

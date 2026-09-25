@@ -1,4 +1,4 @@
-import { admitAcceptedProviderReply } from '../transport/index.js';
+import { admitAcceptedProviderReply, createSequentialServingAdmission } from '../transport/index.js';
 import type { FenceToken, LoopPolicy } from '../transport/index.js';
 import type { Result } from '../index.js';
 import { createIntakePort } from '../intake/index.js';
@@ -101,7 +101,9 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
     const admitReply = (command: string, fence: FenceToken, replyRun: string, policy: LoopPolicy) =>
       admitAcceptedProviderReply(input.provider.judgment.authority, run, command, fence,
         { owner: 'part-five', name: 'Run', id: replyRun }, policy, input.assembly.host.boundary);
-    return Object.freeze({ composition, intake, run, provider, responder, reply, admitReply, telegram: input.telegram });
+    const serving = createSequentialServingAdmission(input.provider.judgment.authority, input.assembly.host.boundary);
+    return Object.freeze({ composition, intake, run, provider, responder, reply, admitReply,
+      serving, transport: input.provider.judgment.authority, telegram: input.telegram });
   });
 }
 

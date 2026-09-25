@@ -354,6 +354,19 @@
       "scope": "Original-Run outbound after original accounting closes only. Its unchanged historical title is the limit of that test, not a new Six implementation blocker after reviewed pair closure."
     }
   },
+  "successiveTurnContract": {
+    "inventoryOnly": true,
+    "activation": "inherits the unchanged dark slice status; installed live serving and receipt evidence remain held",
+    "profile": "successive-turns-v1",
+    "owner": "part-six",
+    "record": "ServingRecord body v1 / transport-ServingRecord schema 1",
+    "port": "src/transport/sequential-serving-admission.ts:createSequentialServingAdmission",
+    "admission": "One verified Four intake and exact Five opening at a time under the existing Six fence and conditional predecessor chain",
+    "retirement": "Ten must establish local return or quiescence; original operations and unresolved exposure remain in the same ledger",
+    "breakers": "Bounded step and poll start/result records retain total and consecutive errors across restart",
+    "bounds": "Immutable parent ceiling, turn and reply maxima, expiry, and 4096-record replay bound; no renewal or automatic capacity refill",
+    "evidenceScope": "Offline Six tests and limited installed intake/port construction tests; complete real-owner two-turn reply and real-bin irreversible-call restart evidence remain open"
+  },
   "previewStage2": {
     "inventoryOnly": true,
     "activation": "Explicit supervised waiver only; dark slice and all source protections unchanged; no live evidence or rule closure.",

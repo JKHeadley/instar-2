@@ -38,6 +38,13 @@ describe('production conversation fact fold', () => {
       { eventId: '1', binding: 'binding', receipt: 'receipt:1' })])).toThrow('duplicate admitted update');
   });
 
+  it('selects only the installed conversation before a foreign input can open a Run', () => {
+    const rows = [...intake(), f('receipt:foreign', 'intake-receipt', { capture: { reference: 'foreign' } }),
+      f('opening:foreign', 'intake-admitted', {
+        eventId: '2', binding: 'other-conversation', receipt: 'receipt:foreign' })];
+    expect(turns(rows, undefined, undefined, 'binding').map(turn => turn.opening)).toEqual(['opening:1']);
+  });
+
   it('requires an exact captured Telegram reply acknowledgement', () => {
     const bytes = JSON.stringify({ ok: true, result: { message_id: 5, chat: { id: 42 }, text: 'reply' } });
     const observation = r('observation', 'effect-OperationObservation',
