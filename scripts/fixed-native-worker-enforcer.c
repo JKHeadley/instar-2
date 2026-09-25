@@ -6,6 +6,8 @@
  *   bootstrap ...        internal: hand task capability to parent, install limits,
  *                        drop privilege, wait on the gate, exec the sandboxed runtime
  *   supervise            installed service entry (refuses until owner bindings exist)
+ *   journal-sync <path>  durable journal primitive: F_FULLFSYNC of one owner-only
+ *                        regular journal file and then its directory; refuses otherwise
  *   feasibility <case>   the package's small native feasibility cases (memory, cpu,
  *                        task, guard, nowrite, children); prints PASS/FAIL per case
  *   probe <payload>      deterministic attack payloads run INSIDE the confined chain
@@ -46,6 +48,9 @@
 
 #ifndef INSTAR_CONTROL_SOCKET
 #define INSTAR_CONTROL_SOCKET "/private/var/run/instar2-worker/control.sock"
+#endif
+#ifndef INSTAR_CONTROL_PEER_UID
+#define INSTAR_CONTROL_PEER_UID 0   /* the administrator-owned supervisor */
 #endif
 #define MAX_FRAME 65536u
 #define CLIENT_TIMEOUT_MS 1000
@@ -114,6 +119,14 @@ static unsigned char *read_frame(int fd, uint32_t *len, uint64_t deadline) {
   return buf;
 }
 
+/* Kernel-attested identity of a connected local socket's peer. */
+static int peer_identity(int fd, uid_t *uid, pid_t *pid) {
+  gid_t gid;
+  if (getpeereid(fd, uid, &gid) != 0) return -1;
+  socklen_t len = sizeof *pid;
+  return getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, pid, &len);
+}
+
 /* ---- client: the only role S8 invokes. No privilege, no selector, no shell. ---- */
 static int role_client(void) {
   uint64_t deadline = now_ms() + CLIENT_TIMEOUT_MS;
@@ -128,6 +141,11 @@ static int role_client(void) {
   if (strlen(INSTAR_CONTROL_SOCKET) >= sizeof a.sun_path) { errno = 0; die("socket path"); }
   strcpy(a.sun_path, INSTAR_CONTROL_SOCKET);
   if (connect(s, (struct sockaddr *)&a, sizeof a) != 0) die("client connect");
+  /* Peer identity before any request byte leaves: a socket bound by anything
+   * other than the fixed supervisor account is refused, never spoken to. */
+  uid_t peer_uid; pid_t peer_pid;
+  if (peer_identity(s, &peer_uid, &peer_pid) != 0) die("client peer identity");
+  if (peer_uid != (uid_t)INSTAR_CONTROL_PEER_UID || peer_pid <= 0) { errno = 0; die("client peer is not the supervisor"); }
   if (write_exact(s, req, n + 4) != 0) die("client send");
   shutdown(s, SHUT_WR);
   uint32_t m;
@@ -700,6 +718,40 @@ static int feasibility(const char *which, const char *profile, const char *scrat
   return failures ? 1 : 0;
 }
 
+/* ---- durable journal primitive (M2) ----
+ * F_FULLFSYNC asks the drive to flush its cache: plain fsync on macOS does not
+ * make an append survive power loss. The journal must be a regular file owned
+ * by this account with no group/other write bit, reached without a symlink; its
+ * directory is flushed too so a newly created journal's entry is durable. Any
+ * deviation refuses (exit 2): the caller treats that as an untrusted journal and
+ * never releases. */
+static int full_sync(const char *path, int directory) {
+  int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | (directory ? O_DIRECTORY : 0));
+  if (fd < 0) return -1;
+  struct stat s;
+  int ok = fstat(fd, &s) == 0 && (directory ? S_ISDIR(s.st_mode) : S_ISREG(s.st_mode))
+           && s.st_uid == geteuid() && (s.st_mode & (S_IWGRP | S_IWOTH)) == 0;
+  if (!ok) { close(fd); errno = errno ? errno : EPERM; return -1; }
+  int r = fcntl(fd, F_FULLFSYNC);
+  int e = errno;
+  close(fd);
+  errno = e;
+  return r == -1 ? -1 : 0;
+}
+
+static int role_journal_sync(const char *path) {
+  size_t n = strlen(path);
+  if (path[0] != '/' || n < 2 || n >= 4096 || path[n - 1] == '/') { errno = 0; die("journal path"); }
+  char parent[4096];
+  memcpy(parent, path, n + 1);
+  char *slash = strrchr(parent, '/');
+  if (slash == parent) slash[1] = '\0'; else *slash = '\0';
+  errno = 0;
+  if (full_sync(path, 0) != 0) die("journal full sync");
+  if (full_sync(parent, 1) != 0) die("journal directory full sync");
+  return 0;
+}
+
 static int role_supervise(void) {
   /* The installed service stays refusing until the reviewed release manifest,
    * installed owner bindings and journal are present (see README). */
@@ -720,6 +772,7 @@ int main(int argc, char **argv) {
   if (!strcmp(role, "bootstrap")) return role_bootstrap(argc, argv);
   if (!strcmp(role, "guard") && argc == 2) return role_guard();
   if (!strcmp(role, "supervise") && argc == 2) return role_supervise();
+  if (!strcmp(role, "journal-sync") && argc == 3) return role_journal_sync(argv[2]);
   if (!strcmp(role, "feasibility") && argc >= 5)
     return feasibility(argv[2], argv[3], argv[4], argc > 5 ? argv[5] : "");
   errno = 0; die("unknown role");

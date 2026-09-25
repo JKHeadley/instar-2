@@ -67,8 +67,12 @@ keys, and a synthetic inventory combined with `--apply`.
 
 - `scripts/fixed-native-worker-enforcer.c` (M2). Build command, recorded:
   `/usr/bin/clang -std=c11 -O2 -Wall -Wextra -Werror -o instar-worker-enforcer scripts/fixed-native-worker-enforcer.c`.
-  Its roles are `client`, `bootstrap`, `guard`, `supervise`, `feasibility <case>` and `probe <payload>`.
+  Its roles are `client`, `bootstrap`, `guard`, `supervise`, `journal-sync <path>`, `feasibility <case>` and `probe <payload>`.
   `supervise` refuses (exit 78) until the reviewed release and the installed owner bindings exist.
+  `client` checks the kernel-attested peer of the control socket (`getpeereid` plus `LOCAL_PEERPID`)
+  before sending any byte; a peer that is not the supervisor account (uid 0 in the release build) is refused.
+  `journal-sync` is the durable journal primitive: `F_FULLFSYNC` of one regular, owner-only,
+  non-symlinked journal file and then its directory. Any other shape, or a failed flush, exits 2.
 - `deploy/macos/fixed-worker/worker.sb` (M3). A deny-by-default profile with two tokens,
   `@RELEASE_DIR@` and `@SLOT_DIR@`, materialized at staging. It carries three measured, named
   exceptions: read-data of `/`, the OpenSSL config file, and metadata on the release/slot parent folders.
@@ -93,7 +97,7 @@ Builder-local result on Studio, macOS 26.5.2 (25F84) arm64, 2026-09-24 (unprivil
 
 - M1 `scripts/fixed-native-worker-monitor.mjs`:
   - `createMonitorService` decides launch/observe from the fixed installed reader (`createProductionMonitorContext`) and a native release leaf. With either one missing, it refuses before any dispatch decision exists.
-  - A durable decision is written under an exclusive journal lock before any release. The offline lock is O_EXCL; the installed build needs M2's native lock plus F_FULLFSYNC, which is NOT built.
+  - A durable decision is written under an exclusive journal lock before any release. Exclusion is an O_EXCL lock file; a lock left by a crashed holder is not reclaimed, so it refuses. Durability comes from `OfflineJournal(path, limit, { sync: createNativeJournalSync(<enforcer>) })`, which runs M2's `journal-sync` after every append (`durability: 'native-fullfsync'`). Without it the journal reports `offline-fsync`, which is test evidence only. If the flush fails, the decision does not count and nothing is released; a later retry that finds those bytes answers `unknown`, never a release.
   - Duplicates get the retained original or `unknown`, never a second release.
   - The module also carries the `loading-worker` role, the owner-side channel IO, and the pinned-enforcer `client`.
 - S8 `src/assembly/production-launch-boundary.ts` owns the wire codec and the constructor-bound locator resolver. It stays `monitor-unavailable` unless it is given installed inputs.

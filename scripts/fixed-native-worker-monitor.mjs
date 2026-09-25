@@ -20,12 +20,17 @@ function assert(condition, message) { if (!condition) throw Error(message); }
 function id(value) { return typeof value === 'string' && value.length > 0 && Buffer.byteLength(value) <= 512; }
 function nonnegative(value) { return Number.isSafeInteger(value) && value >= 0; }
 
-// Testable journal cut. fsync is sufficient for offline crash modeling only.
-// Installed power-loss durability requires the native F_FULLFSYNC path.
+// The journal. Node's fsync alone is sufficient for offline crash modeling
+// only (`durability: 'offline-fsync'`). Installed power-loss durability comes
+// from passing `sync: createNativeJournalSync(enforcer)`, which runs M2's
+// F_FULLFSYNC primitive after every append (`durability: 'native-fullfsync'`);
+// a failed sync throws, so no decision is treated as durable.
 export class OfflineJournal {
-  constructor(path, limit = 16 * 1024 * 1024) {
-    assert(typeof path === 'string' && path.length > 0 && nonnegative(limit), 'invalid journal');
-    this.path = path; this.limit = limit; this.entries = [];
+  constructor(path, limit = 16 * 1024 * 1024, { sync = null } = {}) {
+    assert(typeof path === 'string' && path.length > 0 && nonnegative(limit)
+      && (sync === null || typeof sync === 'function'), 'invalid journal');
+    this.path = path; this.limit = limit; this.entries = []; this.sync = sync;
+    this.durability = sync ? 'native-fullfsync' : 'offline-fsync';
     if (existsSync(path)) this.reopen();
   }
   reopen() {
@@ -66,6 +71,7 @@ export class OfflineJournal {
     const fd = openSync(this.path, 'a', 0o600);
     try { assert(writeSync(fd, packet) === packet.length, 'short journal append'); fsyncSync(fd); }
     finally { closeSync(fd); }
+    if (this.sync) this.sync(this.path);  // throws 'journal-untrusted' before the entry counts
     this.entries.push(entry); return entry;
   }
   original(identity) { return this.entries.find(row => row.kind === 'dispatch-decided' && row.identity === identity) ?? null; }
@@ -202,6 +208,18 @@ export function createMonitorService(config) {
       return frame(signMonitorReply(request, receipt, keyId, privateKey));
     },
   });
+}
+
+/** M2's durable journal primitive: the pinned enforcer's `journal-sync` role
+ * (F_FULLFSYNC of the journal file, then its directory). Any refusal throws. */
+export function createNativeJournalSync(enforcerPath) {
+  assert(typeof enforcerPath === 'string' && isAbsolute(enforcerPath), 'absolute pinned enforcer path required');
+  return path => {
+    try {
+      execFileSync(enforcerPath, ['journal-sync', path], { timeout: 5_000, env: {},
+        stdio: ['ignore', 'ignore', 'ignore'], shell: false });
+    } catch { throw Error('journal-untrusted'); }
+  };
 }
 
 // ---- S8's installed synchronous client ---------------------------------------

@@ -374,10 +374,12 @@ it('installer verify checks the inert end state and rollback removes only ledger
 // temp directory. These are unprivileged builder-local OS observations on the
 // running macOS build, NOT installed-host evidence. Non-macOS hosts do not run them.
 const darwin = process.platform === 'darwin';
-function buildEnforcer(dir: string, socket?: string) {
+// A test socket is served by this (non-root) account, so a socket build also
+// pins the expected peer uid to it unless a case asks for the release default.
+function buildEnforcer(dir: string, socket?: string, peerUid: number = process.getuid!()) {
   const out = join(dir, 'rel', 'bin', 'instar-worker-enforcer');
   mkdirSync(join(dir, 'rel', 'bin'), { recursive: true });
-  const define = socket ? [`-DINSTAR_CONTROL_SOCKET="${socket}"`] : [];
+  const define = socket ? [`-DINSTAR_CONTROL_SOCKET="${socket}"`, `-DINSTAR_CONTROL_PEER_UID=${peerUid}`] : [];
   const cc = spawnSync('/usr/bin/clang', ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', ...define,
     '-o', out, join(process.cwd(), 'scripts/fixed-native-worker-enforcer.c')], { encoding: 'utf8' });
   expect(cc.stderr).toBe('');
@@ -858,7 +860,7 @@ it.runIf(darwin)('M1 synchronous client is the pinned enforcer client role with 
 // SYNTHETIC (no native release exists: see the Sprint 2 feasibility conflict).
 import { createMonitorService } from '../../scripts/fixed-native-worker-monitor.mjs';
 
-function serviceFixture(root: string, journalPath: string, options: { context?: boolean; release?: boolean } = {}) {
+function serviceFixture(root: string, journalPath: string, options: { context?: boolean; release?: boolean; sync?: any } = {}) {
   const setup = monitorContextFixture(root);
   const keys = generateKeyPairSync('ed25519');
   const digestValue = value(canonical('release')).hash;
@@ -872,7 +874,8 @@ function serviceFixture(root: string, journalPath: string, options: { context?: 
     observe: () => ({ state: 'running', reason: 'ok' }) };
   const service = createMonitorService({ installation: 'installation:test', machine: 'machine-a', bootId: 'boot:test',
     digests, clockReference: 'clock:test', now: () => 50, keyId: 'key:test', privateKey: keys.privateKey,
-    journal: new OfflineJournal(journalPath), context: options.context === false ? null : setup.context,
+    journal: new OfflineJournal(journalPath, undefined, { sync: options.sync ?? null }),
+    context: options.context === false ? null : setup.context,
     release: options.release === false ? null : release });
   const trust = { keyId: 'key:test', publicKey: keys.publicKey, ...digests, currentBootId: 'boot:test',
     clockReference: 'clock:test', now: 50, authorityValidUntil: 100, millisecondsPerUnit: 1 };
@@ -962,5 +965,103 @@ it('two processes racing the same launch against one journal release at most onc
     // if it read between decision and release record, honest uncertainty.
     expect(states.every(state => state === 'running' || state === 'unknown')).toBe(true);
     expect(states).toContain('running');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 30_000);
+
+// M2 durable journal primitive and client peer identity. Builder-local,
+// unprivileged OS observations on this macOS build, not installed-host evidence.
+import { createNativeJournalSync } from '../../scripts/fixed-native-worker-monitor.mjs';
+import { chmodSync, symlinkSync } from 'node:fs';
+
+it.runIf(darwin)('native journal-sync flushes an owner-only journal and refuses every other shape', () => {
+  const dir = tempRoot();
+  try {
+    const enforcer = buildEnforcer(dir), sync = createNativeJournalSync(enforcer);
+    const path = join(dir, 'journal');
+    const journal = new OfflineJournal(path, undefined, { sync });
+    expect(journal.durability).toBe('native-fullfsync');
+    expect(new OfflineJournal(join(dir, 'other')).durability).toBe('offline-fsync');
+    journal.append('dispatch-decided', 'id:1', { originalKey: 'k:1', value: {} });
+    journal.append('released', 'id:1', { receipt: null });
+    expect(new OfflineJournal(path).entries).toHaveLength(2);
+    const run = (target: string) => spawnSync(enforcer, ['journal-sync', target], { encoding: 'utf8' }).status;
+    expect(run(path)).toBe(0);
+    symlinkSync(path, join(dir, 'link'));
+    expect(run(join(dir, 'link'))).toBe(2);                      // no symlinked journal
+    expect(run(join(dir, 'absent'))).toBe(2);
+    expect(run('relative/journal')).toBe(2);
+    expect(run(dir)).toBe(2);                                    // a directory is not a journal
+    chmodSync(path, 0o666);
+    expect(run(path)).toBe(2);                                   // group/other-writable journal refused
+    // A failed durable sync means the entry never counts in memory.
+    expect(() => journal.append('terminal', 'id:1', {})).toThrow('journal-untrusted');
+    expect(journal.entries).toHaveLength(2);
+    expect(() => createNativeJournalSync('relative/enforcer')).toThrow('absolute pinned enforcer path required');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.runIf(darwin)('M1 service over the native durable journal releases once, and an unflushable decision never releases', () => {
+  const dir = tempRoot();
+  try {
+    const sync = createNativeJournalSync(buildEnforcer(dir));
+    for (const flushable of [false, true]) {
+      const root = diskRoot(), jdir = join(dir, `journal-${flushable}`);
+      mkdirSync(jdir, { mode: 0o700 });
+      if (!flushable) chmodSync(jdir, 0o770);                    // the directory flush refuses
+      try {
+        const x = serviceFixture(root, join(jdir, 'journal'), { sync });
+        const first = value(x.s8().launch(x.spec, x.locators.operation, x.locators.claim));
+        if (flushable) expect(first).toMatchObject({ phase: 'launched', detail: 'running:ok' });
+        else expect(first).toMatchObject({ phase: 'refused', detail: 'refused-before-release:journal-untrusted' });
+        if (!flushable) {
+          // The bytes reached the file but were never acknowledged as durable. After repair,
+          // a retry finds that decision and answers uncertainty: it never releases.
+          chmodSync(jdir, 0o700);
+          const retry = unframe(x.service.handle(frame(monitorRequest({ v: 1, method: 'launch', challenge: 'cd'.repeat(32),
+            installation: 'installation:test', machine: 'machine-a', body: x.locators }))));
+          expect(retry.receipt).toMatchObject({ state: 'unknown', reason: 'identity-unknown' });
+        }
+        expect(x.released).toHaveLength(flushable ? 1 : 0);
+        x.view.close(); x.writer.close();
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.runIf(darwin)('the enforcer client checks the kernel-attested peer before sending any request byte', async () => {
+  const dir = tempRoot();
+  try {
+    const socket = join(dir, 'control.sock'), received: Buffer[] = [];
+    const reply = frame({ v: 1, ok: true });
+    const server = createServer(connection => {
+      connection.on('error', () => { /* a refusing client closes without reading */ });
+      connection.on('data', chunk => received.push(chunk));
+      connection.on('end', () => connection.end(reply));
+    });
+    await new Promise<void>(resolve => server.listen(socket, resolve));
+    try {
+      const uid = process.getuid!();
+      // The release default is the root supervisor; a same-user socket is refused unspoken to.
+      const wrongPeer = buildEnforcer(join(dir, 'a'), socket, 0);
+      const refused = await new Promise<any>(resolve => {
+        const child = spawn(wrongPeer, ['client']);
+        let err = ''; child.stderr.on('data', d => { err += d; });
+        child.on('close', status => resolve({ status, err }));
+        child.stdin.end(frame({ v: 1 }));
+      });
+      expect(refused.status).toBe(2);
+      expect(refused.err).toContain('client peer is not the supervisor');
+      expect(Buffer.concat(received)).toHaveLength(0);
+      // A build pinned to this account's uid (test-only) exchanges one frame.
+      const rightPeer = buildEnforcer(join(dir, 'b'), socket, uid);
+      const out = await new Promise<Buffer>((resolve, reject) => {
+        const child = spawn(rightPeer, ['client']); const parts: Buffer[] = [];
+        child.stdout.on('data', d => parts.push(d));
+        child.on('close', status => status === 0 ? resolve(Buffer.concat(parts)) : reject(Error(`client ${status}`)));
+        child.stdin.end(frame({ v: 1 }));
+      });
+      expect(Buffer.from(out).equals(Buffer.from(reply))).toBe(true);
+      expect(Buffer.concat(received).equals(Buffer.from(frame({ v: 1 })))).toBe(true);
+    } finally { await new Promise(resolve => server.close(resolve)); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 30_000);
