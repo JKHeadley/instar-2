@@ -150,6 +150,7 @@ export interface ProviderResponseEvidence {
 }
 export interface ProviderObservation {
   readonly state: 'complete' | 'rejected' | 'uncertain'; readonly bytes: string | null;
+  readonly failure?: Readonly<{ failureClass: 'limit' | 'policy' | 'timeout' | 'transport' | 'unknown'; resetHint: string | null; resetAt: number | null }>;
   readonly providerOperation: string | null;
   readonly usage: { readonly inputTokens: number | null; readonly outputTokens: number | null; readonly charge: number | null; readonly source: string };
   readonly retryBlocked: boolean;
