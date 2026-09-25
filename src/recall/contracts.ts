@@ -45,7 +45,7 @@ export interface RecallRerankPort {
   readonly id: string;
   /** Declared charge of one call in the spend port's unit. */
   readonly chargePerCall: number;
-  rerank(query: string, candidates: readonly string[]): Result<readonly number[]>;
+  rerank(query: string, candidates: readonly string[]): Result<readonly number[]> | Promise<Result<readonly number[]>>;
 }
 /** Reserve-before-call spend authority (production binding: part six's reservation). */
 export interface RecallSpendPort { reserve(amount: number): boolean }
