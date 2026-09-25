@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { offlineStage2 } from './stage2-fixture.js';
@@ -128,30 +128,42 @@ it('holds complete-input overflow before model launch and retains exact selected
   } finally { c.close(); }
 }, 60000);
 
-it('enforces full outbound 4096/4097 through actual paired Telegram preparation with Unicode/HTML expansion', async () => {
-  const seed = '世界<&>\n'; let room = 0;
-  for (const delta of [null, 0, 1]) {
-    const answer = delta === null ? seed : seed + 'x'.repeat(room + delta);
-    const s = stage2CompositionFixture({ answer }); const c = await s.create();
-    try {
-      c.pollOnce(); await c.resume();
-      const rows = JSON.parse(readFileSync(join(s.root, '.preview-stage2/facts.json'), 'utf8'));
-      if (delta === null) {
-        const message = rows.find((row: any) => row.kind === 'effect-OutboundMessage').body.record;
-        room = 4096 - Buffer.byteLength(encoded(message).bytes);
-      } else if (delta === 0) {
-        const message = rows.find((row: any) => row.kind === 'effect-OutboundMessage').body.record;
-        expect(Buffer.byteLength(encoded(message).bytes)).toBe(4096);
-        expect(c.sidecar.read().phase).toBe('api-accepted');
-      } else {
-        expect(Buffer.byteLength('PREVIEW — experimental test agent; production safeguards incomplete.\n' + answer)).toBeLessThan(4096);
-        expect(c.sidecar.read().phase).toBe('held');
-        expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
-        expect(c.pollOnce()).toBeNull(); await c.resume(); expect(s.models).toHaveLength(1);
-      }
-    } finally { c.close(); }
-  }
+describe('paired outbound preparation boundary', () => {
+const outboundSeed = '世界<&>\n';
+let outboundRoom = 0;
+beforeAll(async () => {
+  const s = stage2CompositionFixture({ answer: outboundSeed }); const c = await s.create();
+  try {
+    c.pollOnce(); await c.resume();
+    const rows = JSON.parse(readFileSync(join(s.root, '.preview-stage2/facts.json'), 'utf8'));
+    const message = rows.find((row: any) => row.kind === 'effect-OutboundMessage').body.record;
+    outboundRoom = 4096 - Buffer.byteLength(encoded(message).bytes);
+  } finally { c.close(); }
 }, 120000);
+
+it('enforces full outbound 4096 through actual Telegram preparation with Unicode/HTML expansion', async () => {
+  const s = stage2CompositionFixture({ answer: outboundSeed + 'x'.repeat(outboundRoom) }); const c = await s.create();
+  try {
+    c.pollOnce(); await c.resume();
+    const rows = JSON.parse(readFileSync(join(s.root, '.preview-stage2/facts.json'), 'utf8'));
+    const message = rows.find((row: any) => row.kind === 'effect-OutboundMessage').body.record;
+    expect(Buffer.byteLength(encoded(message).bytes)).toBe(4096);
+    expect(c.sidecar.read().phase).toBe('api-accepted');
+  } finally { c.close(); }
+}, 120000);
+
+it('enforces full outbound 4097 hold with Unicode/HTML expansion and no duplicate send', async () => {
+  const answer = outboundSeed + 'x'.repeat(outboundRoom + 1);
+  const s = stage2CompositionFixture({ answer }); const c = await s.create();
+  try {
+    c.pollOnce(); await c.resume();
+    expect(Buffer.byteLength('PREVIEW — experimental test agent; production safeguards incomplete.\n' + answer)).toBeLessThan(4096);
+    expect(c.sidecar.read().phase).toBe('held');
+    expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
+    expect(c.pollOnce()).toBeNull(); await c.resume(); expect(s.models).toHaveLength(1);
+  } finally { c.close(); }
+}, 120000);
+});
 
 for (const neighbor of ['sender', 'chat', 'topic', 'cutoff', 'bot'] as const) it(`stage2 rejects wrong ${neighbor} without model or send`, async () => {
   const message: any = { message_id: 1001, from: { id: 7812716706, is_bot: false, first_name: 'Offline' },
