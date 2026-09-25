@@ -57,6 +57,15 @@ process runs as `_instar_worker`, when the monitor is installed, or when a folde
 changed type/owner; `rmdir` refuses non-empty folders. If `--apply` fails after
 creating `/Library/Instar2` but before the ledger exists, remove that empty
 folder by hand with the same administrative path (nothing else was created).
+If `--apply` stopped after a `dscl . -create` but before the record's
+UniqueID/PrimaryGroupID was set, `inspect` shows the name as
+`present-without-id` and `accounts-rollback` refuses with exit 4, removing
+nothing and keeping the ledger. It prints the bounded recovery: inspect the
+record with `dscl . -read`, delete only an ID-less record with no other use,
+then rerun `accounts-rollback`.
+
+An account or group name that exists with or without a numeric ID counts as
+present: accounts-only refuses it rather than planning to create over it.
 
 Refusals the script makes by design: an existing `_instar_worker` account or
 group (never taken over), any pre-existing fixed path, an ID outside 450–499 or

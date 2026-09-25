@@ -56,7 +56,7 @@ case "$AGENT_USER" in ''|*[!A-Za-z0-9_.-]*) die "agent user must be a plain acco
 
 # ---- inventory: live host or a synthetic key=value file (dry run only) ----
 OS_NAME= OS_VERSION= OS_BUILD= ARCH= USER_LIST= GROUP_LIST= AGENT_GROUPS= WORKER_PROCS=0
-WORKER_ATTRS= PATHS=
+WORKER_ATTRS= PATHS= USER_NAMED=no GROUP_NAMED=no
 if [ -n "$INVENTORY" ]; then
   [ "$APPLY" = 0 ] || die "--apply never accepts a synthetic inventory"
   [ -f "$INVENTORY" ] && [ ! -L "$INVENTORY" ] || die "inventory file unreadable"
@@ -80,6 +80,10 @@ else
   OS_VERSION=$(sw_vers -productVersion) OS_BUILD=$(sw_vers -buildVersion) ARCH=$(uname -m)
   USER_LIST=$(dscl . -list /Users UniqueID | awk '{printf "%s:%s,", $1, $2}')
   GROUP_LIST=$(dscl . -list /Groups PrimaryGroupID | awk '{printf "%s:%s,", $1, $2}')
+  # A record can exist before (or without) its numeric ID; name existence is
+  # read separately so an ID-less record is never mistaken for absence.
+  if dscl . -read "/Users/$WORKER" RecordName >/dev/null 2>&1; then USER_NAMED=yes; fi
+  if dscl . -read "/Groups/$WORKER" RecordName >/dev/null 2>&1; then GROUP_NAMED=yes; fi
   AGENT_GROUPS=$(id -Gn "$AGENT_USER" 2>/dev/null | tr ' ' ',' || true)
   if dscl . -read "/Users/$WORKER" >/dev/null 2>&1; then
     WORKER_ATTRS=$(printf 'uid=%s;gid=%s;shell=%s;home=%s;hidden=%s;auth=%s;password=%s;groups=%s' \
@@ -107,20 +111,29 @@ fi
 lookup() { # lookup <list name:id,...> <name> -> id
   printf '%s' "$1" | tr ',' '\n' | awk -F: -v n="$2" '$1==n{print $2; exit}'
 }
+hasname() { printf '%s' "$1" | tr ',' '\n' | awk -F: -v n="$2" '$1==n{f=1} END{exit f?0:1}'; }
 idused() { printf '%s' "$1" | tr ',' '\n' | awk -F: -v i="$2" '$2==i{f=1} END{exit f?0:1}'; }
 pathrow() { printf '%s' "$PATHS" | awk -F'|' -v p="$1" '$1==p{print; exit}'; }
 attr() { printf '%s' "$WORKER_ATTRS" | tr ';' '\n' | awk -F= -v k="$1" '$1==k{print $2; exit}'; }
 
 WORKER_UID=$(lookup "$USER_LIST" "$WORKER")
 WORKER_GID=$(lookup "$GROUP_LIST" "$WORKER")
+# Name existence, independent of any numeric ID (a synthetic `name:` row or a
+# live record without UniqueID/PrimaryGroupID is present-but-unnumbered).
+! hasname "$USER_LIST" "$WORKER" || USER_NAMED=yes
+! hasname "$GROUP_LIST" "$WORKER" || GROUP_NAMED=yes
+[ -z "$WORKER_UID" ] || USER_NAMED=yes
+[ -z "$WORKER_GID" ] || GROUP_NAMED=yes
 AGENT_ADMIN=no
 case ",$AGENT_GROUPS," in *,admin,*) AGENT_ADMIN=yes ;; esac
+
+named() { if [ "$1" = no ]; then echo absent; elif [ -z "$2" ]; then echo "present-without-id"; else echo "$2"; fi; }
 
 print_inventory() {
   note "inventory.source=$SOURCE"
   note "inventory.os=$OS_NAME $OS_VERSION ($OS_BUILD) $ARCH"
-  note "inventory.worker.user=${WORKER_UID:-absent}"
-  note "inventory.worker.group=${WORKER_GID:-absent}"
+  note "inventory.worker.user=$(named "$USER_NAMED" "$WORKER_UID")"
+  note "inventory.worker.group=$(named "$GROUP_NAMED" "$WORKER_GID")"
   note "inventory.worker.processes=$WORKER_PROCS"
   note "inventory.agent.user=$AGENT_USER"
   note "inventory.agent.groups=${AGENT_GROUPS:-unknown}"
@@ -147,8 +160,8 @@ plan_digest() { shasum -a 256 | awk '{print $1}'; }
 accounts_plan() {
   [ "$OS_NAME" = Darwin ] || die "unsupported OS: $OS_NAME"
   case "$ARCH" in arm64|x86_64) ;; *) die "unsupported architecture: $ARCH" ;; esac
-  [ -z "$WORKER_UID" ] || die "account $WORKER already exists (uid $WORKER_UID); never taken over"
-  [ -z "$WORKER_GID" ] || die "group $WORKER already exists (gid $WORKER_GID); never taken over"
+  [ "$USER_NAMED" = no ] || die "account $WORKER already exists (uid ${WORKER_UID:-none}); never taken over"
+  [ "$GROUP_NAMED" = no ] || die "group $WORKER already exists (gid ${WORKER_GID:-none}); never taken over"
   [ -z "$(pathrow "$LEDGER")" ] || die "an earlier accounts ledger exists; run accounts-rollback or verify"
   for spec in $DIRS; do
     p=${spec%%:*}
@@ -223,6 +236,11 @@ execute_plan() {
 }
 
 # ---- rollback: remove only what the ledger says this package created ----
+unresolved() {
+  echo "REFUSED: $1 exists without its ledger-recorded $2; its disposition is unresolved, so nothing is removed and the ledger is retained." >&2
+  echo "RECOVERY (administrator, bounded): inspect it with 'dscl . -read $1'. Only if it has no ID and no other use, delete it with 'dscl . -delete $1', then rerun accounts-rollback. Otherwise leave it and keep the ledger." >&2
+  exit 4
+}
 rollback_plan() {
   [ -n "$(pathrow "$LEDGER")" ] || die "no accounts ledger; nothing this package created is recorded"
   [ -z "$(pathrow "$PLIST")" ] || die "the monitor is installed; uninstall it first"
@@ -233,11 +251,16 @@ rollback_plan() {
     L_UID=${UID_ARG:-} L_GID=${GID_ARG:-}
     [ -n "$L_UID" ] || die "synthetic rollback needs --uid/--gid standing in for the ledger"
   fi
-  if [ -n "$WORKER_UID" ]; then
+  # A record present without its ledger-recorded ID is a partial (or foreign)
+  # entry: its disposition is unresolved, so nothing is planned and the ledger
+  # is retained. Recovery is an explicit, bounded administrative step.
+  if [ "$USER_NAMED" = yes ] && [ -z "$WORKER_UID" ]; then unresolved "/Users/$WORKER" "UniqueID $L_UID"; fi
+  if [ "$GROUP_NAMED" = yes ] && [ -z "$WORKER_GID" ]; then unresolved "/Groups/$WORKER" "PrimaryGroupID $L_GID"; fi
+  if [ "$USER_NAMED" = yes ]; then
     [ "$WORKER_UID" = "$L_UID" ] || die "account uid $WORKER_UID differs from ledger $L_UID; not removed"
     echo "dscl . -delete /Users/$WORKER"
   fi
-  if [ -n "$WORKER_GID" ]; then
+  if [ "$GROUP_NAMED" = yes ]; then
     [ "$WORKER_GID" = "$L_GID" ] || die "group gid $WORKER_GID differs from ledger $L_GID; not removed"
     echo "dscl . -delete /Groups/$WORKER"
   fi
@@ -255,7 +278,10 @@ rollback_plan() {
 verify_accounts() {
   bad=0
   check() { if [ "$2" = "$3" ]; then note "verify.$1=ok"; else note "verify.$1=FAIL (have '$2', want '$3')"; bad=1; fi; }
-  [ -n "$WORKER_UID" ] || { note "verify.accounts=not-provisioned"; return 1; }
+  if [ "$USER_NAMED" = no ] && [ "$GROUP_NAMED" = no ]; then note "verify.accounts=not-provisioned"; return 1; fi
+  if [ -z "$WORKER_UID" ] || [ -z "$WORKER_GID" ]; then
+    note "verify.accounts=FAIL (partial record: user=$(named "$USER_NAMED" "$WORKER_UID") group=$(named "$GROUP_NAMED" "$WORKER_GID"); run accounts-rollback)"; return 1
+  fi
   check uid-range "$([ "$WORKER_UID" -ge $ID_LOW ] && [ "$WORKER_UID" -le $ID_HIGH ] && echo in || echo out)" in
   check gid "$(attr gid)" "$WORKER_GID"
   check shell "$(attr shell)" /usr/bin/false

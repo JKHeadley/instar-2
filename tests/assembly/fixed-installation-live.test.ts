@@ -370,6 +370,37 @@ it('installer verify checks the inert end state and rollback removes only ledger
   expect(provision(cleanHost, 'accounts-rollback').err).toContain('no accounts ledger');
 });
 
+it('installer treats an ID-less or colliding account record as present, and rollback retains the ledger on a partial record', () => {
+  // Case 1: a pre-existing record whose numeric ID was never assigned is a
+  // collision, not absence (review finding 2 reproduction).
+  const idless = [...cleanHost.slice(0, 4), 'users=root:0,_instar_worker:,', 'groups=wheel:0,_instar_worker:,', 'agent_groups=staff'];
+  expect(provision(idless, 'inspect').out).toContain('inventory.worker.user=present-without-id');
+  const collide = provision(idless, 'accounts-only');
+  expect(collide.status).toBe(2);
+  expect(collide.out).not.toContain('plan.step');
+  expect(collide.err).toContain('account _instar_worker already exists (uid none); never taken over');
+  const groupless = provision([...cleanHost.slice(0, 5), 'groups=wheel:0,_instar_worker:,', 'agent_groups=staff'], 'accounts-only');
+  expect(groupless.status).toBe(2);
+  expect(groupless.err).toContain('group _instar_worker already exists (gid none)');
+  const partialVerify = provision([...idless, ...provisionedDirs], 'verify');
+  expect(partialVerify.status).toBe(1);
+  expect(partialVerify.out).toContain('verify.accounts=FAIL (partial record');
+  // Case 2: interrupted between record creation and ID assignment, with the
+  // ledger present. Rollback must neither report success nor drop the ledger.
+  for (const host of [[...idless, ...provisionedDirs],
+    [...cleanHost.slice(0, 4), 'users=root:0,', 'groups=wheel:0,_instar_worker:,', 'agent_groups=staff', ...provisionedDirs]]) {
+    const partial = provision(host, 'accounts-rollback', '--uid', '499', '--gid', '499');
+    expect(partial.status).toBe(4);
+    expect(partial.out).not.toContain('plan.step');
+    expect(partial.out).not.toContain('result=');
+    expect(partial.err).toContain('disposition is unresolved, so nothing is removed and the ledger is retained');
+    expect(partial.err).toContain('RECOVERY (administrator, bounded)');
+  }
+  // The positive neighbour: user fully numbered, group numbered -> ordinary rollback.
+  expect(provision(provisionedHost, 'accounts-rollback', '--uid', '499', '--gid', '499').out)
+    .toContain('plan.step=rm-ledger');
+});
+
 // Native enforcer (M2): compiled with the recorded clang command into the test
 // temp directory. These are unprivileged builder-local OS observations on the
 // running macOS build, NOT installed-host evidence. Non-macOS hosts do not run them.
