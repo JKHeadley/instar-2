@@ -14,8 +14,9 @@ it('R5-STRUCTURAL-SLICE all 52 governing P13 rows have an executable or exact no
   expect(rows.filter(row => row.heldArms === 'NON-EXECUTABLE-UNTIL-slice-A2')).toHaveLength(8);
 });
 
-it('P13-ADDITIVITY R5-F10 permanent scope and structural A2-removal gate checks every main-to-HEAD path', () => {
+it('P13-ADDITIVITY R5-F10 first-landing scope is inapplicable after A1 lands while structural checks remain', () => {
   const checked = checkP13Architecture();
+  expect(checked.applicable).toBe(false);
   expect(checked.sourceFiles).toEqual(['admission.ts', 'contracts.ts', 'index.ts', 'records.ts']);
   expect(checked.changed).not.toContain('package.json');
   expect(checked.changed).not.toContain('scripts/slice-p13-state-storage.mjs');

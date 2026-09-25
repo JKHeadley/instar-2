@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { firstLanding } from './first-landing.mjs';
 
 const A2 = 'NON-EXECUTABLE-UNTIL-slice-A2';
 const OUTPUT_CUSTODY = 'NON-EXECUTABLE-UNTIL-design-17-harness-adapters-seam-request-part-two-capture-read.md';
@@ -238,47 +239,41 @@ const allowedPath = path => path.startsWith('src/harness-adapters/')
 
 export const p13A2PathAllowed = path => allowedPath(path);
 
-function changedPaths() {
+function changedPaths(root = process.cwd(), mainRef = 'main') {
   // NUL-delimited output: Git never quotes or escapes pathnames under -z, so a path with non-ASCII or control
   // characters keeps its real bytes and the scope predicates below see the actual name (an escaped, quoted
   // name would start with `"` and match nothing).
   const nulSplit = out => out.split('\0').filter(Boolean);
   // --no-renames: a rename OUT of Part Thirteen must surface its deleted source path (rename detection would report
   // only the foreign destination and let the diff look as if it touched no Part Thirteen path).
-  const tracked = nulSplit(execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', 'main'], { encoding: 'utf8' }));
-  const untracked = nulSplit(execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' }));
+  const tracked = nulSplit(execFileSync('git', ['-C', root, 'diff', '--no-renames', '--name-only', '-z', mainRef], { encoding: 'utf8' }));
+  const untracked = nulSplit(execFileSync('git', ['-C', root, 'ls-files', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' }));
   return [...new Set([...tracked, ...untracked])].sort();
 }
 
-function existsOnMain(path) {
-  try { execFileSync('git', ['cat-file', '-e', `main:${path}`], { stdio: 'ignore' }); return true; }
+function existsOnMain(path, root = process.cwd(), mainRef = 'main') {
+  try { execFileSync('git', ['-C', root, 'cat-file', '-e', `${mainRef}:${path}`], { stdio: 'ignore' }); return true; }
   catch { return false; }
+}
+
+export function checkP13A1Scope(root = process.cwd(), mainRef = 'main') {
+  const failures = [];
+  const scope = firstLanding(root, ['src/harness-adapters/admission.ts'], mainRef);
+  const changed = scope.applicable ? changedPaths(root, mainRef) : [];
+  for (const path of changed) {
+    if (!allowedPath(path)) failures.push(`out-of-scope path: ${path}`);
+    if (!generated.has(path) && existsOnMain(path, root, mainRef)
+      && path !== 'src/harness-adapters/index.ts' && path !== 'scripts/check-p13-contract-map.mjs')
+      failures.push(`pre-existing main file changed: ${path}`);
+  }
+  if (failures.length) throw new Error(failures.join('\n'));
+  return { applicable: scope.applicable,
+    changed: changed.filter(path => path !== 'scripts/slice-p13-state-storage.mjs') };
 }
 
 export function checkP13Architecture() {
   const failures = [];
-  const changed = changedPaths();
-  // The feature-scope arm guards THIS part's slice. On a branch that touches no Part Thirteen path (another
-  // part's slice re-synced onto main), every changed file is by definition outside Part Thirteen's scope, so the
-  // arm has nothing to judge; the structural checks below still run unconditionally.
-  // Only the exact reviewed additivity amendments are outside this part's slice.
-  const grantedAdditivityHashes = new Map([
-    ['tests/harness-adapters/a2-governance-and-additivity.test.ts', '69296887e26d7e7fab21ba8cf728470ca32665e1fbd3b152ce4db7c3852dd72b'],
-    ['tests/harness-adapters/a2-round6-regression.test.ts', 'cf563858558e979b3f9019fdbbd821583d16429848b991a6586efa8221f886c5'],
-    ['tests/integration/harness-adapters-round7-regression.test.ts', 'c35559278c2f5a2a396de6d815834fc3f4e6542b8d54eefa63222a2c43ea2b02'],
-  ]);
-  const { createHash } = process.getBuiltinModule('node:crypto');
-  const p13SliceChanged = changed.some(path => !(grantedAdditivityHashes.has(path)
-    && existsSync(path) && createHash('sha256').update(readFileSync(path)).digest('hex') === grantedAdditivityHashes.get(path))
-    && (path.startsWith('src/harness-adapters/')
-    || path.startsWith('tests/harness-adapters/')
-    || /^tests\/(integration|e2e)\/harness-adapters(?:-[^/]*)?\.test\.ts$/.test(path)));
-  if (p13SliceChanged) for (const path of changed) {
-    if (!allowedPath(path)) failures.push(`out-of-scope path: ${path}`);
-    if (!generated.has(path) && existsOnMain(path)
-      && path !== 'src/harness-adapters/index.ts' && path !== 'scripts/check-p13-contract-map.mjs')
-      failures.push(`pre-existing main file changed: ${path}`);
-  }
+  const scope = checkP13A1Scope();
   const sourceFiles = readdirSync('src/harness-adapters').filter(name => name.endsWith('.ts'));
   const source = sourceFiles.map(name => readFileSync(`src/harness-adapters/${name}`, 'utf8')).join('\n');
   if (source.includes("owner: 'part-two'")) failures.push('local substitute Part Two custody provider remains');
@@ -291,14 +286,22 @@ export function checkP13Architecture() {
   try { checkP13DependencyCitations(p13Dispositions()); }
   catch (error) { failures.push(error instanceof Error ? error.message : 'dependency citation validation failed'); }
   if (failures.length) throw new Error(failures.join('\n'));
-  return { changed: p13SliceChanged ? changed.filter(path => path !== 'scripts/slice-p13-state-storage.mjs') : [],
+  return { ...scope,
     sourceFiles: ['admission.ts', 'contracts.ts', 'index.ts', 'records.ts'] };
+}
+
+export function checkP13A2Scope(root = process.cwd(), mainRef = 'main') {
+  const scope = firstLanding(root, ['src/harness-adapters/adapter.ts', 'src/harness-adapters/holder.ts'], mainRef);
+  const changed = scope.applicable ? changedPaths(root, mainRef) : [];
+  const outside = changed.filter(path => !allowedPath(path));
+  if (outside.length) throw new Error(`P13 A2 first-landing out-of-scope paths: ${outside.join(', ')}`);
+  return { applicable: scope.applicable, mainTip: scope.mainTip, changed };
 }
 
 export function checkP13A2Architecture() {
   checkP13Architecture();
   checkP13DependencyCitations(p13A2Dispositions());
-  const changed = changedPaths();
+  const scope = checkP13A2Scope();
   const sourceFiles = readdirSync('src/harness-adapters').filter(name => name.endsWith('.ts')).sort();
   for (const required of ['adapter.ts', 'holder.ts', 'regression-boundaries.ts'])
     if (!sourceFiles.includes(required)) throw new Error(`Slice A2 source missing: ${required}`);
@@ -310,7 +313,7 @@ export function checkP13A2Architecture() {
   for (const handRolled of ['symlinkSync', 'readlinkSync', 'recoverDeadWriter', 'randomUUID']) {
     if (stateHost.includes(handRolled)) throw new Error(`Slice A2 state host retains hand-rolled recovery: ${handRolled}`);
   }
-  return { changed, sourceFiles };
+  return { ...scope, sourceFiles };
 }
 
 export function checkP13Coverage(report, dispositions = p13Dispositions()) {
@@ -339,7 +342,7 @@ export function checkP13Coverage(report, dispositions = p13Dispositions()) {
     if (!results.some(test => test.status === 'passed' && test.title.includes(marker)))
       throw new Error(`three-tier A1 proof missing: ${marker}`);
   if (!results.some(test => test.status === 'passed' && test.title.includes('P13-ADDITIVITY R5-F10')))
-    throw new Error('permanent main-vs-HEAD scope/additivity proof missing');
+    throw new Error('first-landing main-vs-HEAD scope/additivity proof missing');
   return rows;
 }
 
@@ -369,12 +372,15 @@ export function checkP13A2Coverage(report, dispositions = p13A2Dispositions()) {
     if (!results.some(test => test.status === 'passed' && test.title.includes(marker)))
       throw new Error(`three-tier A2 proof missing: ${marker}`);
   if (!results.some(test => test.status === 'passed' && test.title.includes('P13-A2-ADDITIVITY')))
-    throw new Error('permanent A2 main-vs-HEAD owner-fixture proof missing');
+    throw new Error('first-landing A2 main-vs-HEAD owner-fixture proof missing');
   return rows;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  checkP13A2Architecture();
+  const architecture = checkP13A2Architecture();
+  console.log(architecture.applicable
+    ? `P13 A2 first-landing architecture scope: applicable against current-main baseline ${architecture.mainTip}.`
+    : `P13 A2 first-landing architecture scope inapplicable: adapter and holder units already present on current-main baseline ${architecture.mainTip}.`);
   const rows = checkP13A2Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log('| Check | Status | Test files |');
   console.log('|---|---|---|');

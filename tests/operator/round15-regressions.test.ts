@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
@@ -8,6 +9,8 @@ import { hashBytes } from '../../src/facts/index.js';
 import { operatorSeams, resolveFailureTrace, validateSeamInventory } from '../../src/operator/index.js';
 import type { FailureTraceInput, SeamRow } from '../../src/operator/index.js';
 import { operatorFixture } from './fixture.js';
+// @ts-expect-error The shared first-landing baseline checker is plain ESM.
+import { firstLanding } from '../../scripts/first-landing.mjs';
 
 type Outcome<T> = Readonly<{ accepted: true; value: T }> | Readonly<{ accepted: false; detail: string }>;
 const outcome = <T>(result: Result<T>): Outcome<T> => consumeResult<T, Outcome<T>>(result, {
@@ -77,12 +80,10 @@ it('V78 P11-NF-40 P11-NF-41 accepts the exact seam rows in a different inventory
     .toEqual({ accepted: true, value: 'complete' });
 });
 
-it('V79 the changed source paths stay inside the explicit Part Four, Part Ten and operator allowlist', () => {
-  const root = process.cwd();
-  let main = 'main';
-  try { execFileSync('git', ['rev-parse', '--verify', main], { cwd: root, stdio: 'ignore' }); }
-  catch { main = 'origin/main'; }
-  const base = execFileSync('git', ['merge-base', main, 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+function checkV79Scope(root = process.cwd()) {
+  const scope = firstLanding(root, ['src/operator/seams.ts']);
+  if (!scope.applicable) return scope;
+  const base = scope.mergeBase;
   const paths = execFileSync('git', ['diff', '--name-only', base, '--', 'src'], { cwd: root, encoding: 'utf8' })
     .trim().split('\n').filter(Boolean);
   // SEAM-LEDGER row 45 + GRANT 45-A (2026-09-16 18:25Z): exact additive Eight files.
@@ -110,4 +111,44 @@ it('V79 the changed source paths stay inside the explicit Part Four, Part Ten an
   expect(outside).toEqual([]);
   expect(readFileSync(join(root, 'src/index.ts'), 'utf8'))
     .toBe(execFileSync('git', ['show', `${base}:src/index.ts`], { cwd: root, encoding: 'utf8' }));
+  return scope;
+}
+
+it('V79 checks the operator unit first-landing source scope', () => {
+  expect(checkV79Scope()).toMatchObject({ applicable: false });
+});
+
+it('V79 fixture accepts an additive owner file, rejects foreign source, and permits later integration', () => {
+  const root = mkdtempSync(join(tmpdir(), 'v79-first-landing-'));
+  const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.email', 'v79-fixture@instar.local');
+    git('config', 'user.name', 'V79 Fixture');
+    mkdirSync(join(root, 'src', 'operator'), { recursive: true });
+    writeFileSync(join(root, 'src', 'index.ts'), 'public root\n');
+    git('add', '.'); git('commit', '-m', 'inherited root');
+    git('switch', '-c', 'unlanded');
+    writeFileSync(join(root, 'src', 'operator', 'seams.ts'), 'operator addition\n');
+    git('add', '.'); git('commit', '-m', 'permitted operator addition');
+    expect(checkV79Scope(root)).toMatchObject({ applicable: true });
+    writeFileSync(join(root, 'src', 'foreign.ts'), 'violating mutation\n');
+    git('add', '.'); git('commit', '-m', 'foreign mutation');
+    expect(() => checkV79Scope(root)).toThrow();
+    git('switch', 'main');
+    mkdirSync(join(root, 'src', 'operator'), { recursive: true });
+    writeFileSync(join(root, 'src', 'operator', 'seams.ts'), 'landed operator\n');
+    git('add', '.'); git('commit', '-m', 'land operator');
+    git('switch', '-c', 'later');
+    writeFileSync(join(root, 'src', 'operator', 'seams.ts'), 'later owner edit\n');
+    writeFileSync(join(root, 'src', 'foreign.ts'), 'later cross-owner edit\n');
+    git('add', '.'); git('commit', '-m', 'later integration');
+    expect(checkV79Scope(root)).toMatchObject({ applicable: false });
+    const f = operatorFixture();
+    const invalid = operatorSeams.map((row, index) => index === 0 ? { ...row, owner: 'wrong-owner' } : row);
+    expect(outcome(validateSeamInventory(invalid as readonly SeamRow[], f.f.c))).toMatchObject({ accepted: false });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

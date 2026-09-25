@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { build } from 'esbuild';
+import assert from 'node:assert/strict';
+import { firstLanding } from './first-landing.mjs';
 
-const baseline = 'e291ffec82cdac06dc7d8db279df926b0b8dff87';
 const workspace = process.cwd();
 
-// The row-127 brief grants a single additive Part Ten source extension: the exclusive validUntil
-// precondition on appendIfSubjectFrontier. That one baseline path is permitted to differ; every
-// other pinned-main source/test path must remain byte-identical.
+// The row-127 brief grants one Part Ten source extension during the first Part Twelve landing:
+// the exclusive validUntil precondition on appendIfSubjectFrontier.
 const grantedExtensions = new Set(['src/assembly/conditional-append.ts']);
 
 function run(command, args, options = {}) {
@@ -18,29 +18,34 @@ function run(command, args, options = {}) {
   return result.stdout;
 }
 
-// Every source and test path owned by the pinned main baseline must remain byte-identical.
-// Additive Part Twelve paths do not appear in this set and are intentionally allowed.
-const baselinePaths = new Set(run('git', ['ls-tree', '-r', '--name-only', baseline, '--', 'src', 'tests'])
-  .split('\n').filter(Boolean));
-const changed = run('git', ['diff', '--name-only', baseline, '--', 'src', 'tests'])
-  .split('\n').filter(path => baselinePaths.has(path) && !grantedExtensions.has(path));
-if (changed.length > 0) throw new Error(`P12 additivity: pinned-main source/test paths changed:\n${changed.join('\n')}`);
+const scope = firstLanding(workspace, ['src/conversation/index.ts']);
+let comparedPaths = 0;
+if (scope.applicable) {
+  const baselinePaths = new Set(run('git', ['ls-tree', '-r', '--name-only', scope.mainTip, '--', 'src', 'tests'])
+    .split('\n').filter(Boolean));
+  comparedPaths = baselinePaths.size;
+  const changed = run('git', ['diff', '--name-only', scope.mainTip, '--', 'src', 'tests'])
+    .split('\n').filter(path => baselinePaths.has(path) && !grantedExtensions.has(path));
+  if (changed.length > 0) throw new Error(`P12 additivity: current-main source/test paths changed:\n${changed.join('\n')}`);
+}
 
 const temporary = mkdtempSync(join(tmpdir(), 'instar-p12-additivity-'));
 try {
-  const archive = spawnSync('git', ['archive', baseline], {
-    cwd: workspace, encoding: null, maxBuffer: 64 * 1024 * 1024,
-  });
-  if (archive.status !== 0) throw new Error(`git archive failed: ${String(archive.stderr)}`);
-  const unpack = spawnSync('tar', ['-xf', '-', '-C', temporary], {
-    input: archive.stdout, encoding: null, maxBuffer: 64 * 1024 * 1024,
-  });
-  if (unpack.status !== 0) throw new Error(`baseline extraction failed: ${String(unpack.stderr)}`);
-  symlinkSync(join(workspace, 'node_modules'), join(temporary, 'node_modules'), 'dir');
-  const compile = spawnSync(process.execPath, [join(workspace, 'node_modules/typescript/bin/tsc'), '-p', join(temporary, 'tsconfig.build.json')], {
-    cwd: temporary, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-  });
-  if (compile.status !== 0) throw new Error(`pinned-main compile failed:\n${compile.stderr || compile.stdout}`);
+  if (scope.applicable) {
+    const archive = spawnSync('git', ['archive', scope.mainTip], {
+      cwd: workspace, encoding: null, maxBuffer: 64 * 1024 * 1024,
+    });
+    if (archive.status !== 0) throw new Error(`git archive failed: ${String(archive.stderr)}`);
+    const unpack = spawnSync('tar', ['-xf', '-', '-C', temporary], {
+      input: archive.stdout, encoding: null, maxBuffer: 64 * 1024 * 1024,
+    });
+    if (unpack.status !== 0) throw new Error(`baseline extraction failed: ${String(unpack.stderr)}`);
+    symlinkSync(join(workspace, 'node_modules'), join(temporary, 'node_modules'), 'dir');
+    const compile = spawnSync(process.execPath, [join(workspace, 'node_modules/typescript/bin/tsc'), '-p', join(temporary, 'tsconfig.build.json')], {
+      cwd: temporary, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    });
+    if (compile.status !== 0) throw new Error(`current-main compile failed:\n${compile.stderr || compile.stdout}`);
+  }
 
   const runner = root => `
 import { intakeFixture, route, message, stop } from ${JSON.stringify(join(root, 'tests/intake/fixtures.ts'))};
@@ -70,7 +75,7 @@ for (const mode of ['acquire','zero-lease','reserve','over-budget','stopped','st
 writeFileSync(process.argv[2], JSON.stringify(rows, null, 2));
 `;
 
-  const roots = { baseline: temporary, head: workspace };
+  const roots = scope.applicable ? { baseline: temporary, head: workspace } : { head: workspace };
   const results = {};
   for (const [name, root] of Object.entries(roots)) {
     const entry = join(temporary, `${name}.ts`); const bundle = join(temporary, `${name}.mjs`); const output = join(temporary, `${name}.json`);
@@ -79,12 +84,32 @@ writeFileSync(process.argv[2], JSON.stringify(rows, null, 2));
     run(process.execPath, [bundle, output]);
     results[name] = JSON.parse(readFileSync(output, 'utf8'));
   }
-  if (results.baseline.length !== 25 || results.head.length !== 25)
-    throw new Error(`P12 additivity: expected 25 complete legacy Results, got ${results.baseline.length}/${results.head.length}`);
-  if (JSON.stringify(results.baseline) !== JSON.stringify(results.head))
-    throw new Error('P12 additivity: a complete legacy intake/effects/transport Result changed from pinned main');
+  if ((scope.applicable && results.baseline.length !== 25) || results.head.length !== 25)
+    throw new Error(`P12 additivity: expected 25 complete legacy Results, got ${results.baseline?.length ?? 'inapplicable'}/${results.head.length}`);
+  const expected = [
+    ['intake:unbound', 'Success'], ['intake:bound', 'Success'], ['intake:duplicate', 'Success'],
+    ['intake:changed-bytes', 'Refused', 'integrity'], ['intake:missing-event', 'Refused', 'policy'],
+    ['intake:malformed', 'Refused', 'policy'], ['intake:held', 'Refused', 'policy'],
+    ['intake:requester-stop', 'Success'], ['intake:bound-stop', 'Success'], ['intake:expiry', 'Success'],
+    ['effects:valid', 'Success'], ['effects:extra', 'Refused', 'decode'],
+    ['effects:empty', 'Refused', 'decode'], ['effects:limit', 'Success'],
+    ['effects:oversize', 'Refused', 'decode'], ['effects:wrongPurpose', 'Refused', 'decode'],
+    ['effects:missingSpeaker', 'Refused', 'decode'], ['effects:wrongSource', 'Success'],
+    ['effects:prepare', 'Success'], ['transport:acquire', 'Success'],
+    ['transport:zero-lease', 'Refused', 'decode'], ['transport:reserve', 'Success'],
+    ['transport:over-budget', 'Refused', 'decode'], ['transport:stopped', 'Refused', 'decode'],
+    ['transport:stale-fence', 'Refused', 'decode'],
+  ];
+  assert.deepEqual(results.head.map(row => [row.name, row.result.kind,
+    ...(row.result.kind === 'Refused' ? [row.result.reason] : [])]), expected,
+  'P12 legacy intake/effects/transport contract changed');
+  if (scope.applicable && JSON.stringify(results.baseline) !== JSON.stringify(results.head))
+    throw new Error('P12 first-landing legacy Result changed from current main');
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }
 
-console.log(`${baselinePaths.size} pinned-main source/test paths; ${[...grantedExtensions].join(', ')} is the granted additive extension; ${baselinePaths.size - grantedExtensions.size} remain byte-identical; 25 complete legacy Results are identical.`);
+console.log(scope.applicable
+  ? `P12 first-landing scope: ${comparedPaths} current-main source/test paths compared.`
+  : `P12 first-landing scope inapplicable: conversation unit already present on current-main baseline ${scope.mainTip}.`);
+console.log('P12 permanent legacy contract: 25 complete intake/effects/transport Results satisfy their expected outcomes.');
