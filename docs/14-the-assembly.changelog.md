@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 19 · 2026-09-24 · draft — Bounded Slack second-channel constitutional amendment from astra-slack-closedset-ruling.md; operator approval PENDING; no merge or runtime activation.
+
+- **Select at most one additional bound Slack DM or thread in the fixed profile, and include Slack in its operation, evidence and loss-model descriptions.** — The installation must admit the second platform while retaining one machine, voter, worker, shared resource limits and the same verified operator and audience. _(astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING)_
+
 ## Revision 18 · 2026-09-23 · draft — M4-L2 unpark after operator-confirmed preview stage 2; bounded correction from Astra launch-blocked adjudication; independent review and LIVE content approval remain pending
 
 - **Specialize initial confined-launch preparation to Five’s admitted unfinished Run with Eight-derived launch identities and exact acyclic prior-allocation/prepared-fact joins in §16 §12 and M4-L-S2/S3/S9.** — Remove the pre-grounding RunStep cycle without changing Five, grounding or no-repeat semantics. _(astra-m4-launch-blocked-adjudication.md; astra-m4-l2-unpark-ruling.md)_
