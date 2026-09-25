@@ -123,6 +123,24 @@ Bounds and honesty:
 - One voter, one domain and one effective executor at a time. The historical singleton profile admits one Run. The separately versioned `provider-reply-v1` profile admits that provider Run and exactly its one Five-opened accepted-answer reply Run, sharing the original finite budget and retained exposure. A lease has no availability through
   voter loss. No quorum, membership changes, independent repair domain, fairness
   across domains, or full Threadline adapter. Breaker is an explicit closed stub.
+- The separately bound `successive-turns-v1` serving profile uses one `ServingRecord`
+  family in this same domain and signed chain. It admits an original Four input and
+  its exact Five opening into one durable local execution slot, then retires that
+  slot only after Ten proves local return or quiescence. Retirement retains every
+  claimed operation and its accounting exposure, including UNKNOWN charges. One
+  accepted-answer pair may be selected for each admitted provider turn. Its finite
+  turn, reply, attempt, error and record limits can stop admission permanently.
+  Six reserves 128 domain-record positions per remaining turn before admitting it;
+  there is no automatic renewal or budget refill. This profile does not alter old
+  singleton or fixed-pair records, and does not activate the held production route.
+- The installed offline conversation host now uses a turn-derived Ten launch and
+  Five grounding, Seven question and acceptance, and a separate Five reply Run
+  for each admitted input. Its bounded context delivery carries preceding Four
+  inputs and captured accepted replies. The fixture proves an UNKNOWN provider
+  followed by an accepted reply, two settled provider replies, and restart cuts
+  at the accepted reply claim, consumption, and lost acknowledgement. Six keeps
+  original maxima until independent settlement applications qualify release;
+  Telegram API acknowledgement remains distinct from human delivery.
 - Rebuild is bounded to 4096 domain records; P2 verifies the signed prefix. This
   slice does not claim bounded P2 replay. Its bounded due-scan port persists the
   exact scan/generation/key digest and next position, resumes missed selection

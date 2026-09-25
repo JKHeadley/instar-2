@@ -51,6 +51,19 @@ export interface RunPairAdmission extends Row, Owned {
   readonly operation: string; readonly answerDigest: string; readonly conversation: string;
   readonly budget: number; readonly replyPolicy: LoopPolicy;
 }
+/** One finite serving profile in the existing Six domain and accounting chain. */
+export interface ServingRecord extends Row, Owned {
+  readonly type: 'ServingRecord'; readonly profile: 'successive-turns-v1';
+  readonly action: 'bind' | 'admit' | 'retire' | 'start' | 'result';
+  readonly installation: string; readonly conversation: string; readonly generation: string;
+  readonly ceiling: number; readonly maxTurns: number; readonly maxReplies: number;
+  readonly expires: number; readonly providerMax: number; readonly replyMax: number;
+  readonly errorLimit: number; readonly totalErrorLimit: number;
+  readonly input: string; readonly opening: string; readonly provider: string;
+  readonly reply: string; readonly operation: string; readonly attempt: string;
+  readonly operations: readonly string[];
+  readonly outcome: 'none' | 'success' | 'error';
+}
 export interface RecoveryRecord extends Row, Owned {
   readonly type: 'RecoveryRecord'; readonly operation: string; readonly episode: string;
   readonly observation: string; readonly disposition: 'waiting' | 'stopped-at-bound';
@@ -85,7 +98,7 @@ export interface SettlementAccountingInput {
 }
 export type SettlementConsumer<S> = <T>(value: S, boundary: BoundaryContext,
   consumer: (value: SettlementAccountingInput) => T) => Result<T>;
-export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication | RunPairAdmission;
+export type TransportRecord = Lease | AdmissionReservation | LoopRecord | RecoveryRecord | ScanCursor | SettlementApplication | RunPairAdmission | ServingRecord;
 export interface TransportFact { readonly fact: FactEnvelope; readonly record: TransportRecord }
 
 // Trusted host seams. P10 supplies the monotonic clock and fresh process identity.
@@ -94,6 +107,8 @@ export interface TransportHost {
   readonly domain: string; readonly machine: string; readonly incarnation: string;
   readonly authorityIncarnation: string; readonly principal: VerifiedPrincipal;
   readonly scope: Scope; readonly maxLeaseTerm: number; readonly budget: number;
+  /** Ten's local executor/worker supervisor. Lease expiry alone never proves return. */
+  readonly executionQuiescent?: (run: string) => boolean;
   // P10 checks exact P2 facts/receipts, including after restart. Absence never
   // makes replicated accounting spendable; it does not block observation.
   readonly accountingDurability?: {
