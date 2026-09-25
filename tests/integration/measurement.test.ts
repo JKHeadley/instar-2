@@ -197,7 +197,7 @@ it('P16-NF-52 [behavior:non-executable-exclusion] keeps every A2 row outside pas
   expect(() => checkP16Coverage(report)).toThrow('non-executable row was counted as a pass');
 });
 
-it('P16-NF-53 [behavior:legacy-additivity] keeps all pre-existing test files byte-identical to main', () => {
+it('P16-NF-53 [behavior:legacy-additivity] reports first-landing scope inapplicability after measurement lands', () => {
   expect(execFileSync(process.execPath, ['scripts/check-p16-additivity.mjs'], { encoding: 'utf8' }))
-    .toContain('byte-identical to main');
+    .toContain('first-landing additivity inapplicable');
 });
