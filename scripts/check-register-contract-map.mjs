@@ -9,7 +9,18 @@ for (const file of report.testResults) for (const test of file.assertionResults)
   const rows = map.get(id) ?? []; rows.push({ file: relative(process.cwd(), file.name), name: test.title, status: test.status }); map.set(id, rows);
 }
 if (!report.success) throw new Error('test run failed');
-checkProtectedTests(JSON.parse(readFileSync('generated/register.json', 'utf8')), [...map.values()].flatMap(rows => rows.map(r => r.file)));
+const register = JSON.parse(readFileSync('generated/register.json', 'utf8'));
+checkProtectedTests(register, [...map.values()].flatMap(rows => rows.map(r => r.file)));
+const heldTests = new Set(register.entries.flatMap(entry => entry.declaration.holds ?? [])
+  .filter(hold => hold.class !== 'deferred' && ['fixture', 'probe'].includes(hold.evidence.kind))
+  .map(hold => hold.evidence.id));
+for (const id of heldTests) {
+  const matches = report.testResults.flatMap(file => file.assertionResults
+    .filter(test => test.fullName.split(/[^A-Za-z0-9-]+/u).includes(id))
+    .map(test => ({ file: relative(process.cwd(), file.name), status: test.status })));
+  if (!matches.length || matches.some(match => match.status !== 'passed'))
+    throw new Error(`held test ${id} must pass in the current run`);
+}
 console.log('| Check | Executed test file | Status |'); console.log('|---|---|---|');
 for (const id of [...expected].sort()) {
   const rows = map.get(id); if (!rows?.length) throw new Error(`missing actual test for ${id}`);

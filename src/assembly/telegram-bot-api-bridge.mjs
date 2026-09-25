@@ -230,6 +230,17 @@ function scanCredential(bytes) {
   return null;
 }
 
+// The confined child owns the actual bot token. Check the exact outbound body
+// before the irreversible network call, including representations already
+// covered by the bounded response scanner.
+if (request.method === 'sendMessage') {
+  const outgoing = JSON.stringify(request.body);
+  if (scanCredential(outgoing) !== null
+    || /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16})\b/u.test(outgoing)) {
+    uncertain('scan-policy'); process.exit(0);
+  }
+}
+
 function countJsonValues(root) {
   const pending = [root]; let visited = 0;
   while (pending.length > 0) {

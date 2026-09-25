@@ -37,7 +37,9 @@
       "cadence": 1000
     },
     "standards": [],
-    "holds": [],
+    "holds": [
+      { "rule": 43, "class": "partial", "evidence": { "kind": "probe", "id": "P5-NF-55", "stage": "build" }, "portion": "the bounded-run probe and cadence are declared and checked", "remainder": "production live-channel probe evidence is not established" }
+    ],
     "profile": {
       "type": "Profile",
       "schemaVersion": 1,
@@ -230,7 +232,10 @@
       "inspectedBy": "P5-NF-54"
     },
     "standards": [],
-    "holds": [],
+    "holds": [
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "P5-NF-54", "stage": "build" }, "portion": "the rungraph stop is an enumerated ruled-three blocking gate", "remainder": "outbound-secret and spend-cap rungs and other blocking sites" },
+      { "rule": 66, "class": "partial", "evidence": { "kind": "fixture", "id": "P5-NF-54", "stage": "build" }, "portion": "rungraph blocking gates are enumerated and their inspected decoders are checked", "remainder": "blocking decisions outside the rungraph need registration and inspection" }
+    ],
     "profile": {
       "type": "Profile",
       "schemaVersion": 1,
