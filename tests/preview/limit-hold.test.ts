@@ -60,6 +60,29 @@ it('caps the captured weekly reset at five hours across a state reopen', () => {
     maxPendingTurns: 16, maxTrialTurns: 128, create: false }).gateSpend()).toThrow('usage limit hold');
 });
 
+it('retains the captured weekly limit in the provider receipt, turn, and reopened five-hour hold', async () => {
+  const now = new Date('2026-09-24T21:01:00-07:00').getTime();
+  const terminal = readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8');
+  const s = stage2CompositionFixture({ start: now, terminal, terminalCode: 1 }); roots.push(s.root);
+  const c = await s.create();
+  try {
+    c.pollOnce(); await c.resume();
+    expect(s.models).toHaveLength(1);
+    const receiptReference = c.sidecar.read().references.receipt;
+    expect(receiptReference).toMatch(/^judgment-capture:sha256:[a-f0-9]{64}$/u);
+    const receipt = JSON.parse(readFileSync(join(s.root, '.preview-stage2/captures', receiptReference.split(':').at(-1)), 'utf8'));
+    expect(receipt.failure).toEqual({ failureClass: 'limit', resetHint: null, resetAt: 1790506800000 });
+    expect(Object.values(s.state.read().turns)).toEqual([expect.objectContaining({ failureClass: 'limit', resetHint: null })]);
+    expect(s.state.read().limitHoldUntil).toBe(now + 18000000);
+    expect(c.sidecar.read().phase).toBe('held');
+  } finally { c.close(); }
+  const reopened = openPreviewState({ root: s.root, configuration: s.configuration,
+    expiresAt: s.state.read().trial.expiresAt, now: () => now, replyLimit: 6, replyWindowMs: 60000,
+    errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128, create: false });
+  expect(reopened.read().limitHoldUntil).toBe(now + 18000000);
+  expect(() => reopened.gateSpend()).toThrow('usage limit hold');
+}, 60000);
+
 it('refuses the real Stage 2 model path while a durable limit hold is active', async () => {
   const s = stage2CompositionFixture(); roots.push(s.root);
   const c = await s.create();

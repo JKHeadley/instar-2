@@ -55,7 +55,7 @@ it('classifies the captured weekly-limit result and its stream result with the c
     expect(observed).toMatchObject({ code: 1, limited: false, stdout: captured });
     const reason = classifyProviderFailure({ ...observed, now: capturedNow,
       calendarResetAt: productionProviderIO.calendarResetAt });
-    expect(reason).toEqual({ failureClass: 'limit', resetHint: 'Sep 27 at 4:00am (America/Los_Angeles)',
+    expect(reason).toEqual({ failureClass: 'limit', resetHint: null,
       resetAt: rate.rate_limit_info.resetsAt * 1000 });
     expect(JSON.stringify(reason)).not.toContain('weekly limit');
     const invalidZone = captured.replace('America/Los_Angeles', 'America/Not_A_Zone');

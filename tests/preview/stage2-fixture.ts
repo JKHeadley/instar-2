@@ -284,7 +284,7 @@ export function offlineStage2(options: any = {}) {
 
 import { realpathSync } from 'node:fs';
 // @ts-expect-error Physical host JavaScript.
-import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { productionStorageIO, productionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { stage2GuardedProviderPath } from './composition.js';
 import { HOST_OUTAGE_TEXT, openPreviewState } from './state.js';
 import { subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
@@ -326,6 +326,7 @@ export function stage2CompositionFixture(options: any = {}) {
     return response({ message_id: 2001, chat: { id: Number(body.chat_id), type: 'private' }, text: options.displayText ?? body.text.replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&') });
   } };
   const io = { realpath: (p: string) => p, executableBytes: () => artifactBytes,
+    calendarResetAt: productionProviderIO.calendarResetAt,
     inspectSubscriptionProfile: () => ({ loginProfileIdentity: profile.loginProfileIdentity, managedConfigurationDigest: profile.managedConfigurationDigest }),
     execute: async (command: any) => {
       children.push(command);
@@ -344,7 +345,8 @@ export function stage2CompositionFixture(options: any = {}) {
         text = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(decision),
           session_id: 'offline-call', usage: { input_tokens: 1, output_tokens: 2048 }, total_cost_usd: 1.25 });
       }
-      return { code: 0, stdout: text, stdoutBytes: new Uint8Array(Buffer.from(text)), limited: false };
+      return { code: command.args[0] === '--version' || command.args[0] === 'auth' ? 0 : options.terminalCode ?? 0,
+        stdout: text, stdoutBytes: new Uint8Array(Buffer.from(text)), limited: false };
     } };
   const create = (): Promise<any> => stage2GuardedProviderPath({ configuration, state, storageKey: new Uint8Array(32).fill(19),
     storageIO: productionStorageIO, telegramIO, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',

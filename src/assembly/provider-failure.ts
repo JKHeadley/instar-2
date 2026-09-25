@@ -36,9 +36,7 @@ export function classifyProviderFailure(input: Readonly<{
         try { resetAt = input.calendarResetAt?.(month, day, hour24, minute, calendar[6]!, input.now) ?? null; }
         catch { /* Invalid or unavailable host time zone leaves a bounded default hold. */ }
         const validReset = resetAt !== null && Number.isSafeInteger(resetAt) && resetAt > input.now;
-        return result('limit', validReset
-          ? `${calendar[1]} ${day} at ${hour}:${String(minute).padStart(2, '0')}${calendar[5]!.toLowerCase()} (${calendar[6]})`
-          : null, validReset ? resetAt : null);
+        return result('limit', null, validReset ? resetAt : null);
       }
     }
     const clock = /resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(detail);
