@@ -889,7 +889,10 @@ it.runIf(darwin)('M1 synchronous client is the pinned enforcer client role with 
 
 // M1 service: decision logic over the genuine fixed reader. The release leaf is
 // SYNTHETIC (no native release exists: see the Sprint 2 feasibility conflict).
-import { createMonitorService } from '../../scripts/fixed-native-worker-monitor.mjs';
+import { createMonitorService, initializeJournal } from '../../scripts/fixed-native-worker-monitor.mjs';
+
+// Installed evidence (SYNTHETIC here): the journal genesis the reviewed manifest pins.
+const journalGenesis = { installation: 'installation:test', machine: 'machine-a', journal: 'journal:test-1' };
 
 function serviceFixture(root: string, journalPath: string, options: { context?: boolean; release?: boolean; sync?: any } = {}) {
   const setup = monitorContextFixture(root);
@@ -903,18 +906,20 @@ function serviceFixture(root: string, journalPath: string, options: { context?: 
       originalDeadline: { ownerClockReference: 'clock:test', ownerValidUntil: 100, bootId: 'boot:test',
         continuousTicks: '200', timebaseNumer: '1', timebaseDenom: '1' }, evidenceReferences: [`release:${closure.bundle}`] }; },
     observe: () => ({ state: 'running', reason: 'ok' }) };
-  const service = createMonitorService({ installation: 'installation:test', machine: 'machine-a', bootId: 'boot:test',
+  if (!existsSync(journalPath)) initializeJournal(journalPath, journalGenesis);   // the installation path, once
+  const config = { installation: 'installation:test', machine: 'machine-a', bootId: 'boot:test',
     digests, clockReference: 'clock:test', now: () => 50, keyId: 'key:test', privateKey: keys.privateKey,
-    journal: new OfflineJournal(journalPath, undefined, { sync: options.sync ?? null }),
+    journal: new OfflineJournal(journalPath, undefined, { sync: options.sync ?? null, established: true }), journalGenesis,
     context: options.context === false ? null : setup.context,
-    release: options.release === false ? null : release });
+    release: options.release === false ? null : release };
+  const service = createMonitorService(config);
   const trust = { keyId: 'key:test', publicKey: keys.publicKey, ...digests, currentBootId: 'boot:test',
     clockReference: 'clock:test', now: 50, authorityValidUntil: 100, millisecondsPerUnit: 1 };
   const s8 = () => { value(setup.view.refresh()); return createInstalledBoundary(setup.f.c, { installation: 'installation:test',
     machine: 'machine-a', store: createFactStore(setup.f.ctx, setup.view.segment),
     client: { exchange: (bytes: Uint8Array) => service.handle(bytes) }, trust: () => trust,
     generation: () => setup.f.host.current().generation }); };
-  return { ...setup, service, released, s8, trust };
+  return { ...setup, service, released, s8, trust, config };
 }
 
 it('M1 service releases once through the genuine reader and answers lost acknowledgements with the retained original', () => {
@@ -952,10 +957,51 @@ it('M1 service refuses before any decision while the installed reader or native 
       const observation = value(x.s8().launch(x.spec, x.locators.operation, x.locators.claim));
       expect(observation).toMatchObject({ phase: 'refused', detail: `refused-before-release:${reason}` });
       expect(x.released).toHaveLength(0);
-      expect(existsSync(join(dir, 'journal'))).toBe(false);     // no dispatch decision was recorded
+      expect(new OfflineJournal(join(dir, 'journal')).entries.map(row => row.kind)).toEqual(['initialized']);  // no dispatch decision
       x.view.close(); x.writer.close();
     } finally { rmSync(root, { recursive: true, force: true }); rmSync(dir, { recursive: true, force: true }); }
   }
+});
+
+// A service restart over the same installed configuration and journal path.
+function serviceFixtureRestart(x: { config: any }, path: string) {
+  return createMonitorService({ ...x.config, journal: new OfflineJournal(path, undefined, { established: true }) });
+}
+
+it('M1 journal loss, truncation or a foreign re-initialization inhibits new launches across service restart', () => {
+  const root = diskRoot(), dir = mkdtempSync(join(tmpdir(), 'instar-journal-'));
+  try {
+    const path = join(dir, 'journal');
+    const x = serviceFixture(root, path);
+    expect(value(x.s8().launch(x.spec, x.locators.operation, x.locators.claim))).toMatchObject({ phase: 'launched' });
+    expect(x.released).toHaveLength(1);
+    const kept = readFileSync(path);
+    const request = () => frame(monitorRequest({ v: 1, method: 'launch', challenge: '12'.repeat(32),
+      installation: 'installation:test', machine: 'machine-a', body: x.locators }));
+    // (1) Review reproduction: remove only the journal, reconstruct, send the identical request.
+    rmSync(path);
+    expect(() => serviceFixtureRestart(x, path)).toThrow('journal-untrusted');   // restart refuses to open
+    expect(unframe(x.service.handle(request())).receipt).toMatchObject({ state: 'unknown', reason: 'journal-untrusted' });
+    expect(x.released).toHaveLength(1);
+    // (2) An empty re-initialized replacement with another genesis refuses too.
+    initializeJournal(path, { ...journalGenesis, journal: 'journal:replacement' });
+    const foreign = serviceFixtureRestart(x, path);
+    expect(unframe(foreign.handle(request())).receipt).toMatchObject({ state: 'refused-before-release', reason: 'journal-untrusted' });
+    // (3) Within a lifetime, rollback to a shorter genuine prefix refuses.
+    writeFileSync(path, kept);
+    const restored = serviceFixtureRestart(x, path);
+    expect(unframe(restored.handle(request())).receipt).toMatchObject({ state: 'running' });   // retained original, not a release
+    writeFileSync(path, kept.subarray(0, 4 + kept.readUInt32BE(0) + 32));        // genesis only
+    expect(unframe(restored.handle(request())).receipt.reason).toBe('journal-untrusted');
+    expect(x.released).toHaveLength(1);
+    // (4) The service will not start on an unestablished journal or a genesis for another installation.
+    expect(() => createMonitorService({ ...x.config, journal: new OfflineJournal(join(dir, 'none')) }))
+      .toThrow('configuration incomplete');
+    expect(() => createMonitorService({ ...x.config, journalGenesis: { ...journalGenesis, installation: 'installation:other' } }))
+      .toThrow('configuration incomplete');
+    expect(() => initializeJournal(path, journalGenesis)).toThrow();            // never over an existing journal
+    x.view.close(); x.writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(dir, { recursive: true, force: true }); }
 });
 
 it('two processes racing the same launch against one journal release at most once', async () => {
@@ -982,9 +1028,11 @@ it('two processes racing the same launch against one journal release at most onc
       const service = createMonitorService({ installation: 'installation:test', machine: 'machine-a', bootId: 'boot:test',
         digests: { releaseDigest: d, artifactDigest: d, profileDigest: d, handlePolicyDigest: d, limitsDigest: d },
         clockReference: 'clock:test', now: () => 50, keyId: 'key:test', privateKey: createPrivateKey(${JSON.stringify(pem)}),
-        journal: new OfflineJournal(${JSON.stringify(join(dir, 'journal'))}), context, release });
+        journal: new OfflineJournal(${JSON.stringify(join(dir, 'journal'))}, undefined, { established: true }),
+        journalGenesis: ${JSON.stringify(journalGenesis)}, context, release });
       const start = ${Date.now() + 400}; while (Date.now() < start) {}
       process.stdout.write(unframe(service.handle(frame(${JSON.stringify(request)}))).receipt.state);`;
+    initializeJournal(join(dir, 'journal'), journalGenesis);
     const run = () => new Promise<string>(resolve => {
       const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'inherit'] });
       let out = ''; child.stdout.on('data', chunk => { out += chunk; }); child.on('close', () => resolve(out));

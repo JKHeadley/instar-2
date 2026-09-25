@@ -25,16 +25,27 @@ function nonnegative(value) { return Number.isSafeInteger(value) && value >= 0; 
 // from passing `sync: createNativeJournalSync(enforcer)`, which runs M2's
 // F_FULLFSYNC primitive after every append (`durability: 'native-fullfsync'`);
 // a failed sync throws, so no decision is treated as durable.
+//
+// A journal the service uses is ESTABLISHED: it was created once by
+// `initializeJournal` (the installation path) with a genesis record binding it
+// to the installation, and every runtime open/reopen requires that file. A
+// missing, truncated or rewritten journal is `journal-untrusted`, never a fresh
+// empty history: loss of history must inhibit new launches, not permit them.
 export class OfflineJournal {
-  constructor(path, limit = 16 * 1024 * 1024, { sync = null } = {}) {
+  constructor(path, limit = 16 * 1024 * 1024, { sync = null, established = false } = {}) {
     assert(typeof path === 'string' && path.length > 0 && nonnegative(limit)
-      && (sync === null || typeof sync === 'function'), 'invalid journal');
-    this.path = path; this.limit = limit; this.entries = []; this.sync = sync;
+      && (sync === null || typeof sync === 'function') && typeof established === 'boolean', 'invalid journal');
+    this.path = path; this.limit = limit; this.entries = []; this.sync = sync; this.established = established;
     this.durability = sync ? 'native-fullfsync' : 'offline-fsync';
-    if (existsSync(path)) this.reopen();
+    if (established || existsSync(path)) this.reopen();
   }
   reopen() {
-    if (!existsSync(this.path)) { this.entries = []; return this.entries; }  // no decision yet
+    // Absence is an empty history only for an unestablished offline model that
+    // has never held an entry; otherwise it is loss.
+    if (!existsSync(this.path)) {
+      assert(!this.established && this.entries.length === 0, 'journal-untrusted');
+      return this.entries;
+    }
     const bytes = readFileSync(this.path);
     assert(bytes.length <= this.limit, 'journal-full');
     const entries = []; let offset = 0; let sequence = 0;
@@ -51,6 +62,11 @@ export class OfflineJournal {
         && value.sequence === ++sequence, 'journal-untrusted');
       entries.push(value);
     }
+    // Retained history only ever extends: a shorter or rewritten prefix of what
+    // this process already read is a rollback, and refuses.
+    assert(entries.length >= this.entries.length && this.entries.every((row, index) =>
+      canonicalText(row) === canonicalText(entries[index])), 'journal-untrusted');
+    assert(!this.established || entries[0]?.kind === 'initialized', 'journal-untrusted');
     this.entries = entries; return entries;
   }
   append(kind, identity, value) {
@@ -88,16 +104,38 @@ export class OfflineJournal {
   }
 }
 
+/**
+ * The installation path's one-time journal creation (never a runtime path).
+ * The file is created exclusively with a single genesis record binding it to
+ * the installation; an existing file refuses. `genesis` comes from installed
+ * evidence (the reviewed manifest), so an empty or re-initialized replacement
+ * does not match the service's expected genesis.
+ */
+export function initializeJournal(path, genesis, { sync = null } = {}) {
+  assert(typeof path === 'string' && isAbsolute(path) && genesis && id(genesis.installation)
+    && id(genesis.machine) && id(genesis.journal) && Object.keys(genesis).length === 3, 'invalid journal genesis');
+  const entry = { sequence: 1, kind: 'initialized', identity: genesis.journal, value: genesis };
+  const payload = Buffer.from(canonicalText(entry));
+  const packet = Buffer.alloc(4 + payload.length + 32);
+  packet.writeUInt32BE(payload.length); payload.copy(packet, 4);
+  createHash('sha256').update(payload).digest().copy(packet, 4 + payload.length);
+  const fd = openSync(path, 'wx', 0o600);                    // never over an existing journal
+  try { assert(writeSync(fd, packet) === packet.length, 'short journal append'); fsyncSync(fd); }
+  finally { closeSync(fd); }
+  if (sync) sync(path);
+}
+
 // ---- launch/observe service (M1) ---------------------------------------------
 
 /**
- * Offline cross-process exclusion around a journal decision: an O_EXCL lock
- * file, re-read of the journal under the lock, decide, release the lock. A
+ * Cross-process exclusion around every journal read-decide-append: an O_EXCL
+ * lock file, re-read of the journal under the lock, run, remove the lock. A
  * lock left by a crashed holder is NOT reclaimed automatically (maintenance
- * decides), so it refuses rather than risk a second release. The installed
- * build must use M2's native exclusive lock + F_FULLFSYNC primitive.
+ * decides), so it refuses rather than risk a second release. This is the
+ * installed design too: exclusion only has to fail closed, and durability
+ * comes from M2's F_FULLFSYNC `journal-sync` role, not from a second lock.
  */
-function withJournalLock(journal, run, waitMs = 1_000) {
+function withJournalLock(journal, run, verify = null, waitMs = 1_000) {
   const lock = `${journal.path}.lock`, sleeper = new Int32Array(new SharedArrayBuffer(4));
   const end = Date.now() + waitMs;
   let fd;
@@ -109,7 +147,7 @@ function withJournalLock(journal, run, waitMs = 1_000) {
       Atomics.wait(sleeper, 0, 0, 5);
     }
   }
-  try { journal.reopen(); return run(); }
+  try { journal.reopen(); if (verify) verify(); return run(); }
   finally { closeSync(fd); unlinkSync(lock); }
 }
 
@@ -121,9 +159,14 @@ function withJournalLock(journal, run, waitMs = 1_000) {
  * retained receipt or `unknown`; recovery never releases again.
  */
 export function createMonitorService(config) {
-  const { installation, machine, bootId, digests, clockReference, now, keyId, privateKey, journal } = config;
-  assert(id(installation) && id(machine) && id(bootId) && id(keyId) && journal instanceof OfflineJournal,
-    'monitor service configuration incomplete');
+  const { installation, machine, bootId, digests, clockReference, now, keyId, privateKey, journal, journalGenesis } = config;
+  assert(id(installation) && id(machine) && id(bootId) && id(keyId) && journal instanceof OfflineJournal
+    && journal.established && journalGenesis?.installation === installation && journalGenesis?.machine === machine
+    && id(journalGenesis?.journal), 'monitor service configuration incomplete');
+  // Every locked read requires the installed genesis as the first record.
+  const genesis = () => assert(journal.entries[0]?.kind === 'initialized'
+    && canonicalText(journal.entries[0].value) === canonicalText(journalGenesis), 'journal-untrusted');
+  const locked = run => withJournalLock(journal, run, genesis);
   const base = (request, fields) => ({
     installation: request.installation, machine: request.machine, bootId: null,
     releaseDigest: digests.releaseDigest, request: request.body.request, operation: request.body.operation,
@@ -152,7 +195,7 @@ export function createMonitorService(config) {
     const key = originalKey(request);
     let decision;
     try {
-      decision = withJournalLock(journal, () => {
+      decision = locked(() => {
         const prior = retained(key);
         if (prior) {
           if (canonicalText(prior.decided.value.value.body) !== canonicalText(request.body))
@@ -182,7 +225,9 @@ export function createMonitorService(config) {
     const receipt = base(request, { state: 'running', reason: 'ok', bootId, launchIdentity: decision.identity,
       uid: evidence.uid, pid: evidence.pid, processStartIdentity: evidence.processStartIdentity,
       originalDeadline: evidence.originalDeadline, evidenceReferences: evidence.evidenceReferences });
-    try { journal.append('released', decision.identity, { receipt }); } catch { /* retained as uncertainty */ }
+    // Recorded under the same exclusion as the decision, after a fresh re-read.
+    try { locked(() => journal.append('released', decision.identity, { receipt })); }
+    catch { /* the decision is retained; a later ask answers uncertainty */ }
     return receipt;
   };
   const observe = request => {
@@ -190,7 +235,9 @@ export function createMonitorService(config) {
       return base(request, { reason: 'binding' });
     if (!config.context || !owner(config.context.resolveObservation(request.body)).ok)
       return base(request, { reason: 'authority' });                                  // no private receipt disclosed
-    const prior = retained(originalKey(request));
+    let prior;
+    try { prior = locked(() => retained(originalKey(request))); }
+    catch { return base(request, { reason: 'journal-untrusted' }); }                  // lost history: no claim either way
     if (!prior) return base(request, { reason: 'not-observed' });                     // absence is not non-occurrence
     if (request.body.launchIdentity !== null && request.body.launchIdentity !== prior.decided.identity)
       return base(request, { reason: 'binding' });
