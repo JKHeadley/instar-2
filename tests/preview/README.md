@@ -216,7 +216,7 @@ Declared provider monetary demand is 0; observed charge and finalCharge remain n
 delayedExecutionExcluded false. Original Six actualCharge is -1, unresolved 1, released 0,
 retryEligible 0, exposure 0. The provider Run's pending step and original conversation obligation
 remain. The reply cannot invoke the model. A terminal held or API-accepted outcome ends model
-work and poll-driven replies; even a second new turn cannot consume another slot.
+work and ordinary poll-driven replies; even a second new turn cannot consume another slot.
 
 Stage 2 adds these disclosed substitutions to the ledger above (Stage 1's inactive model and
 fixed source-result rows apply only to Stage 1):
@@ -237,6 +237,35 @@ lengths and references. `status` exposes these local controls; child exceptions/
 Unknown provider launch or send remains held across restart. A complete preserved response may
 finish only its original owner chain while authority is current. Durable API acceptance repairs
 outer status without a second send. Corrupt/missing state and owner/sidecar disagreement refuse.
+
+## Unanswered turns and host recovery
+
+Stage 2 persists a closed provider failure class and, for usage limits, a spend-only
+hold in `preview-state.json`. The hold never gates intake, stop, or a fixed notice.
+After three minutes, a held selected turn may send one fixed notice through the
+existing prepared Telegram reply operation. Preparation is durable before the
+physical send; an interrupted or uncertain send is never retried. The notice
+does not call the model or change the retained intake receipt.
+
+`scripts/host-watch.mjs` is the launchd supervisor. Its non-secret JSON config
+contains a canonical absolute `root`, absolute `cwd`, and an `agent` array whose
+first element is the absolute Node executable and whose remaining elements are
+the exact reviewed preview launcher arguments. The desk substitutes absolute
+paths and a label in `scripts/host-watch.launchd.plist.template`. The job uses
+`KeepAlive: {SuccessfulExit: false}`; the supervisor exits successfully on a
+normal, stopped, expired, or breaker-latched agent exit. It restarts only after
+a crash, counts failed launches against the trial's durable error ceilings,
+and uses the launcher's bounded backoff. The first failure starts a recovery
+episode. A failed restart prepares one notice bound to the trial's recorded bot,
+recipient, and fixed host-watcher message, then sends through the preview's
+prepared Telegram effect operation. A fresh cycle heartbeat closes the episode.
+The existing `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` SecretRef environment
+value remains outside the config and plist; the authorized chat comes from the
+trial, not a separate watcher environment variable. The token never belongs
+in `ProgramArguments` or a log. Tests use temporary labels and never install
+a launchd job. An existing trial that lacks the recorded host-notice authority
+cannot send this notice; the reviewed live proof must use a new trial with that
+authority recorded at creation.
 
 ## Desk cutover and retained evidence
 

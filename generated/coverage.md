@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:5f44256408c069575ee183d366483f68d4f72c91e7b943de724820dc79593ceb
-Source commit: 640c80f03e51c905415d428f3358eb648eef3a65
+Register generation: sha256:b830ad47d31a0b75def8da65b420b2a654bbd8600e625f832c738163b857a126
+Source commit: ecb47b1d11167a76406dfebcc3c2da0522e477f4
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -10,9 +10,9 @@ Authority: shape-only; entering-force verification required at consumption.
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
 | declared | 0 |
-| partial | 7 |
+| partial | 0 |
 | deferred | 0 |
-| gap | 112 |
+| gap | 116 |
 
 {
   "rules": [
@@ -2866,11 +2866,7 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": [
-        "intake.admission",
-        "intake.dedup",
-        "intake.stop"
-      ]
+      "enforcedBy": []
     },
     {
       "number": 15,
@@ -6342,10 +6338,7 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": [
-        "intake.stop",
-        "rungraph.stop"
-      ]
+      "enforcedBy": []
     },
     {
       "number": 40,
@@ -6841,9 +6834,7 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": [
-        "rungraph.bound"
-      ]
+      "enforcedBy": []
     },
     {
       "number": 44,
@@ -9943,9 +9934,7 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": [
-        "rungraph.stop"
-      ]
+      "enforcedBy": []
     },
     {
       "number": 67,
@@ -14525,6 +14514,11 @@ Authority: shape-only; entering-force verification required at consumption.
       "required": "operator-approved gap deadline and standing route before entering force"
     },
     {
+      "rule": 14,
+      "owner": "part-three-bootstrap:operator-policy-prerequisite",
+      "required": "operator-approved gap deadline and standing route before entering force"
+    },
+    {
       "rule": 15,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
@@ -14660,6 +14654,11 @@ Authority: shape-only; entering-force verification required at consumption.
       "required": "operator-approved gap deadline and standing route before entering force"
     },
     {
+      "rule": 4,
+      "owner": "part-three-bootstrap:operator-policy-prerequisite",
+      "required": "operator-approved gap deadline and standing route before entering force"
+    },
+    {
       "rule": 40,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
@@ -14671,6 +14670,11 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 42,
+      "owner": "part-three-bootstrap:operator-policy-prerequisite",
+      "required": "operator-approved gap deadline and standing route before entering force"
+    },
+    {
+      "rule": 43,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },
@@ -14791,6 +14795,11 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 65,
+      "owner": "part-three-bootstrap:operator-policy-prerequisite",
+      "required": "operator-approved gap deadline and standing route before entering force"
+    },
+    {
+      "rule": 66,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },
