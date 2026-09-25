@@ -14,8 +14,8 @@ import { canonical } from '../../src/index.js';
 import { frame, unframe, request as monitorRequest, signReply, verifyReply,
   launchIdentity, OfflineJournal } from '../../scripts/fixed-native-worker-monitor.mjs';
 
-function reservationFixture() {
-  const f = createLiveInputAssemblyFixture(undefined, { minimal: true });
+function reservationFixture(storageFactory?: (facts: any) => any) {
+  const f = createLiveInputAssemblyFixture(storageFactory, { minimal: true });
   const admission = createProductionRunAdmission({ authority: f.effects.transport, store: f.store, context: f.c });
   const graph = value(createRunGraph({ ...f.deps, admission }));
   const opened = value(graph.open(f.run));
@@ -474,3 +474,139 @@ it.runIf(darwin)('native client role relays exactly one bounded canonical frame 
     expect(absent.out.length).toBe(0);
   } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
 }, 60_000);
+
+// MUST-FIX 1: read-only installed reader + fixed monitor read composition.
+import { openProductionStorage, openProductionStorageReader } from '../../src/assembly/production-storage.js';
+import { createProductionMonitorContext } from '../../src/assembly/production-monitor-context.js';
+import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
+const storageKey = new Uint8Array(32).fill(7);
+function diskRoot() { return realpathSync(mkdtempSync(join(tmpdir(), 'instar-monitor-store-'))); }
+function onDisk(root: string) {
+  let writer: any;
+  const fixture = reservationFixture(facts => {
+    writer = value(openProductionStorage({ root, machine: 'machine-a', key: storageKey, policy: 'policy:test',
+      store: 'store:test', context: facts.c, io: productionStorageIO }));
+    return writer.segment;
+  });
+  const reader = () => value(openProductionStorageReader({ root, machine: 'machine-a', key: storageKey,
+    store: 'store:test', context: fixture.f.c, io: productionStorageIO }));
+  return { ...fixture, writer, reader };
+}
+
+it('read-only installed reader follows a live writer without taking its lease and refuses rollback or rewritten history', () => {
+  const root = diskRoot();
+  try {
+    const { f, writer, reader } = onDisk(root);
+    const view = reader();
+    const pinned = view.segment.read().length;
+    expect(pinned).toBeGreaterThan(0);
+    expect(refused(view.segment.append('{}', null))).toContain('read-only view refuses append');
+    const before = readFileSync(join(root, 'facts.encrypted'));
+    f.append('note', { identity: 'after-reader-open', amount: '1' });
+    expect(view.segment.read().length).toBe(pinned);                  // pinned until refresh
+    expect(value(view.refresh()).records).toBe(pinned + 1);           // concurrent writer change seen
+    expect(readFileSync(join(root, '.boot-lease', 'owner.json'), 'utf8')).toContain('"machine":"machine-a"');
+    f.append('note', { identity: 'writer-still-owns-lease', amount: '2' }); // writer lease intact
+    expect(refused(openProductionStorage({ root, machine: 'machine-a', key: storageKey, policy: 'policy:test',
+      store: 'store:test', context: f.c, io: productionStorageIO }))).toContain('second concurrent boot refused');
+    const restarted = reader();                                        // reader restart: fresh coherent view
+    expect(restarted.segment.read().length).toBe(pinned + 2);
+    const current = readFileSync(join(root, 'facts.encrypted'));
+    writeFileSync(join(root, 'facts.encrypted'), before);              // roll the file back
+    expect(refused(restarted.refresh())).toContain('view rolled back');
+    writeFileSync(join(root, 'facts.encrypted'), current);
+    expect(value(restarted.refresh()).records).toBe(pinned + 2);
+    expect(refused(openProductionStorageReader({ root, machine: 'machine-a', key: new Uint8Array(32).fill(8),
+      store: 'store:test', context: f.c, io: productionStorageIO }))).toBeTruthy();   // wrong custody key
+    view.close(); restarted.close();
+    expect(refused(view.refresh())).toContain('closed');
+    writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+function monitorContextFixture(root: string, withCapacity = true, divergent = false) {
+  const setup = onDisk(root);
+  const { f, prepared, row, record } = setup;
+  if (divergent) f.append('note', { identity: 'foreign-installation-history', amount: '9' });
+  // Lane A stand-in (impl-r1-m3i not landed): a SYNTHETIC capacity verdict naming
+  // an existing signed fact as A. It exercises only this adapter's join logic;
+  // it is never installed and does not stand for genuine capacity authority.
+  const standInA = f.opening.id;
+  const resources = [standInA, row.fact.id].sort();
+  const spec = record('launch-monitor-spec', row.fact.id, resources);
+  const claim = value(f.effects.transport.claim('launch-monitor-claim', f.effects.fence, prepared.operation));
+  value(f.effects.transport.consume(claim, f.effects.fence));
+  const rows = value(f.effects.transport.inspect()).filter(entry => entry.record.type === 'AdmissionReservation'
+    && entry.record.operation === prepared.operation);
+  const specFact = value(f.store.read()).filter(fact => fact.kind === 'assembly-HarnessLaunchSpec').at(-1);
+  const locators = { request: prepared.request, specification: specFact.id, claim: rows.at(-2).fact.id,
+    consumed: rows.at(-1).fact.id, operation: prepared.operation, digest: prepared.digest };
+  const capacity = { inspectCapacity: () => f.success({ sourceFrontier: value(f.effects.transport.inspect()).at(-1).fact.id,
+    heads: [{ capacity: "capacity:stand-in", fact: { id: standInA }, usable: true, blocker: null }] }) };
+  const view = setup.reader();
+  const context = value(createProductionMonitorContext({ installation: 'installation:test', machine: 'machine-a',
+    facts: f.ctx, storage: view, authority: f.effects.transport, current: () => f.host.current(),
+    capacity: withCapacity ? capacity : undefined, context: f.c }));
+  return { ...setup, spec, locators, context, view, standInA, resources };
+}
+
+it('fixed monitor reader joins the genuine same-store launch closure and refuses wrong-store, raw-row and changed locators', () => {
+  const root = diskRoot(), other = diskRoot();
+  try {
+    const { f, locators, context, writer, view, record, row, resources } = monitorContextFixture(root);
+    const closure = value(context.resolveLaunch(locators));
+    expect(closure).toMatchObject({ machine: 'machine-a', operation: locators.operation,
+      specification: locators.specification, claim: locators.claim, consumed: locators.consumed });
+    expect(value(context.recheck(closure)).bundle).toBe(closure.bundle);
+    for (const [field, replacement] of [['specification', locators.claim], ['claim', locators.consumed],
+      ['consumed', locators.claim], ['digest', digest('other')], ['request', 'request:other'], ['operation', 'operation:other']])
+      expect(refused(context.resolveLaunch({ ...locators, [field]: replacement })), field).toMatch(/monitor-context/);
+    // Wrong store: the identical locators against another installation's root.
+    const foreign = monitorContextFixture(other, true, true);
+    expect(foreign.locators.specification).not.toBe(locators.specification);
+    expect(refused(foreign.context.resolveLaunch(locators))).toMatch(/monitor-context|absent/);
+    // Stop and a changed worker placement both refuse at recheck.
+    f.stop(true);
+    expect(refused(context.recheck(closure))).toContain('installation stopped');
+    f.stop(false);
+    record('launch-monitor-replacement', row.fact.id, resources);       // placement changed after admission
+    expect(refused(context.recheck(closure))).toContain('not the current worker placement');
+    view.close(); writer.close(); foreign.view.close(); foreign.writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(other, { recursive: true, force: true }); }
+});
+
+it('fixed monitor reader refuses every launch while lane A capacity authority is unavailable', () => {
+  const root = diskRoot();
+  try {
+    const { locators, context, writer, view } = monitorContextFixture(root, false);
+    expect(refused(context.resolveLaunch(locators))).toContain('capacity reader unavailable (lane A impl-r1-m3i not landed)');
+    view.close(); writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('fixed monitor reader resolves observation only through the current admitted Six wake of the original operation', () => {
+  const root = diskRoot();
+  try {
+    const { f, locators, context, writer, view } = monitorContextFixture(root);
+    const loops = () => value(f.effects.transport.inspect()).filter(entry => entry.record.type === 'LoopRecord');
+    const scheduled = loops().at(-1);
+    const query = { request: locators.request, operation: locators.operation, digest: locators.digest,
+      observationAuthority: scheduled.fact.id };
+    expect(refused(context.resolveObservation(query))).toContain('not the current admitted wake');
+    f.time(f.host.current().clock.value + 2);
+    const recovery = f.effects.transport.recover('launch-monitor-observe', f.effects.fence, locators.operation,
+      { owner: 'part-eight', observe: () => f.success({ owner: 'part-eight', name: 'OperationObservation', id: 'obs:1' }) });
+    const wake = loops().filter(entry => entry.record.pending === locators.operation).at(-1);
+    expect(value(recovery).command).toBe('launch-monitor-observe');
+    expect(wake.record.state).toBe('running');
+    const closure = value(context.resolveObservation({ ...query, observationAuthority: wake.fact.id }));
+    expect(closure.wake).toBe(wake.fact.id);
+    expect(refused(context.resolveObservation({ ...query, observationAuthority: scheduled.fact.id })))
+      .toContain('not the current admitted wake');
+    expect(refused(context.resolveObservation({ ...query, observationAuthority: wake.fact.id, digest: digest('x') })))
+      .toContain('original operation absent or changed');
+    expect(refused(context.resolveObservation({ ...query, operation: 'operation:never-dispatched' })))
+      .toContain('original operation absent or changed');
+    view.close(); writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
