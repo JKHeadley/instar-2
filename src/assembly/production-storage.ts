@@ -183,3 +183,84 @@ export function openProductionStorage(input: Readonly<{ root: string; machine: s
     return Object.freeze({ root, segment, persistence, captures, close });
   });
 }
+
+/** The subset of Ten's host IO a read-only reader may use: no create, write,
+ * rename, remove or lease operation is reachable through it. */
+export type ProductionStorageReadIO = Pick<ProductionStorageIO,
+  'join' | 'resolve' | 'existsSync' | 'lstatSync' | 'readFileSync' | 'realpathSync'>;
+
+export interface ProductionStorageReader {
+  readonly root: string;
+  /** Owner segment view over the pinned snapshot. `append` always refuses. */
+  readonly segment: SegmentStoragePort;
+  /** Captures from the same pinned snapshot. */
+  readonly captures: Readonly<{ owner: 'part-ten'; read(reference: string): string | null }>;
+  /** Re-read coherently. The new view must extend the pinned one byte-for-byte:
+   * a shorter, rewritten or unreadable view refuses and keeps no partial pin. */
+  refresh(): Result<Readonly<{ records: number }>>;
+  close(): void;
+}
+
+/**
+ * A second process's read-only view of an installed root (MUST-FIX 1). It never
+ * touches `.boot-lease`, never writes, and never recovers: the writer keeps its
+ * exclusive lifetime lease. A view is admitted only when two consecutive reads
+ * of the fact segment agree around the capture read (the writer replaces each
+ * sealed file atomically), and every later view extends the earlier one.
+ */
+export function openProductionStorageReader(input: Readonly<{ root: string; machine: string;
+  key: Uint8Array; store: string; context: BoundaryContext; io: ProductionStorageReadIO }>): Result<ProductionStorageReader> {
+  return boundary('ProductionStorageReader', null, input.context, () => {
+    const { existsSync, lstatSync, readFileSync, realpathSync, join, resolve } = input.io;
+    ensure(input.key.byteLength === 32, 'storage-key: 32 bytes required');
+    const root = resolve(input.root);
+    ensure(root === input.root && existsSync(root), 'storage-root: existing canonical absolute directory required');
+    ensure(realpathSync(root) === root && !lstatSync(root).isSymbolicLink(), 'storage-root: symlink refused');
+    const key = Buffer.from(input.key);
+    let closed = false;
+    const unseal = (name: string, file: string): string => {
+      ensure(!lstatSync(file).isSymbolicLink(), 'storage: symlink refused');
+      const raw = JSON.parse(readFileSync(file, 'utf8')) as { nonce: string; ciphertext: string; tag: string };
+      const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(raw.nonce, 'hex'));
+      decipher.setAAD(Buffer.from(`${input.machine}:${input.store}:${name}`)); decipher.setAuthTag(Buffer.from(raw.tag, 'hex'));
+      return Buffer.concat([decipher.update(Buffer.from(raw.ciphertext, 'base64')), decipher.final()]).toString('utf8');
+    };
+    const segmentPath = join(root, 'facts.encrypted'), capturePath = join(root, 'captures.encrypted');
+    const readFacts = (): readonly string[] => existsSync(segmentPath) ? JSON.parse(unseal('facts', segmentPath)) as string[] : [];
+    const readCaptures = (): Readonly<Record<string, string>> =>
+      existsSync(capturePath) ? JSON.parse(unseal('captures', capturePath)) as Record<string, string> : {};
+    type View = Readonly<{ facts: readonly string[]; captures: Readonly<Record<string, string>> }>;
+    const coherent = (): View => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const before = readFacts(), captures = readCaptures(), after = readFacts();
+        if (before.length === after.length && before.every((bytes, i) => bytes === after[i]))
+          return freeze({ facts: after, captures: freeze({ ...captures }) });
+      }
+      throw new Error('storage-reader: view kept changing; no coherent snapshot');
+    };
+    let pinned = coherent();
+    const refresh = () => boundary('ProductionStorageReaderRefresh', null, input.context, () => {
+      ensure(!closed, 'storage-reader: closed');
+      const next = coherent();
+      ensure(next.facts.length >= pinned.facts.length, 'storage-reader: view rolled back');
+      ensure(pinned.facts.every((bytes, i) => next.facts[i] === bytes), 'storage-reader: view conflicts with pinned history');
+      for (const [reference, bytes] of Object.entries(pinned.captures))
+        ensure(next.captures[reference] === bytes, 'storage-reader: capture rolled back or changed');
+      pinned = next;
+      return freeze({ records: next.facts.length });
+    });
+    const segment: SegmentStoragePort = Object.freeze({ owner: 'part-ten' as const,
+      read: () => { ensure(!closed, 'storage-reader: closed'); return pinned.facts.map(bytes => JSON.parse(bytes) as unknown); },
+      append: () => boundary('ProductionReaderAppend', null, input.context, () => {
+        ensure(false, 'storage-reader: read-only view refuses append');
+        throw new Error('unreachable');
+      }),
+    });
+    const captures = Object.freeze({ owner: 'part-ten' as const, read: (reference: string) => {
+      ensure(!closed, 'storage-reader: closed');
+      return Object.hasOwn(pinned.captures, reference) ? pinned.captures[reference]! : null;
+    } });
+    return Object.freeze({ root, segment, captures, refresh,
+      close: () => { if (!closed) { key.fill(0); closed = true; } } });
+  });
+}
