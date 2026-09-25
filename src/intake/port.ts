@@ -88,7 +88,13 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       const g={ ...deps.governance.context,preserved };
       take(constructGoverned('blocking sites','intake.resolution',deps.governance.register,g));
       take(readEnforcedRecord('intake.resolution','intake.contract','decode:VerifiedPrincipal',deps.governance.register,g));
-      requireIntake(e.principalKind==='person','P4-NF-09: system/agent stimuli are out of this message slice; locality grants nothing','standing');
+      // The registered scheduled parser is the sole system-message exception.
+      // Its authenticate callback verifies the source credential, immutable
+      // occurrence and live authority before this decoder binds identity.
+      requireIntake(e.principalKind==='person'||(adapterId==='scheduled-intake-v1'
+        &&e.principalKind==='system'&&provenance.class==='verified'
+        &&e.sender===e.principalId&&e.channel.startsWith('scheduled:')),
+      'P4-NF-09: system/agent stimuli require the verified scheduled parser','standing');
       return take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: e.principalId,kind: e.principalKind },
         { ...context(preserved).decode,provenance }));
     }

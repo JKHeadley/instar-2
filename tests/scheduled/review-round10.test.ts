@@ -35,6 +35,6 @@ it('P15-NF-51 refuses every legacy execution-kind array before deriving learning
     }
     expect(proof.legacy[`${file}:unknown`]!.status).toBe('refused');
   }
-  expect(proof.legacy['learning:string-script']).toMatchObject({ status: 'accepted', learning: 'off', activation: 'eligible' });
+  expect(proof.legacy['learning:string-script']).toMatchObject({ status: 'accepted', learning: 'off', activation: 'inhibited' });
   expect(proof.legacy['learning:array-script']).toEqual({ status: 'refused', detail: 'legacy execute type is unknown' });
 });
