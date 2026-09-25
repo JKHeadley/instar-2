@@ -31,6 +31,8 @@ export interface PreviewTurn {
   readonly runEvidence: string;
   readonly replyOperation: string;
   readonly replyObservation: string;
+  readonly failureClass?: 'limit' | 'policy' | 'timeout' | 'transport' | 'unknown';
+  readonly resetHint?: string | null;
   readonly recordedAt: number;
 }
 
@@ -42,6 +44,8 @@ export interface PreviewStateDocument {
   readonly stop: null | Readonly<{ latchedAt: number; reason: 'operator' | 'signal' | 'expiry' | 'breaker' | 'capacity' }>;
   readonly consecutiveErrors: number;
   readonly totalErrors: number;
+  readonly limitHoldUntil: number | null;
+  readonly cycle: null | Readonly<{ at: number; pid: number }>;
   readonly replyWindow: Readonly<{ startedAt: number; count: number }>;
   readonly turns: Readonly<Record<string, PreviewTurn>>;
 }
@@ -82,8 +86,18 @@ function validate(document: PreviewStateDocument): PreviewStateDocument {
   assertInteger(document.cursor.nextOffset, 'cursor offset');
   assertInteger(document.consecutiveErrors, 'consecutiveErrors', 0, MAX_PREVIEW_ERROR_LIMIT);
   assertInteger(document.totalErrors, 'totalErrors', 0, MAX_PREVIEW_TOTAL_ERROR_LIMIT);
+  if (document.limitHoldUntil !== null && document.limitHoldUntil !== undefined) assertInteger(document.limitHoldUntil, 'limit hold');
+  if (document.cycle !== null && document.cycle !== undefined) {
+    assertInteger(document.cycle.at, 'cycle stamp'); assertInteger(document.cycle.pid, 'cycle pid', 1);
+  }
   assertInteger(document.replyWindow.startedAt, 'reply window start');
   assertInteger(document.replyWindow.count, 'reply window count');
+  for (const turn of Object.values(document.turns)) {
+    if (turn.failureClass !== undefined && !['limit', 'policy', 'timeout', 'transport', 'unknown'].includes(turn.failureClass))
+      throw new Error('preview state: invalid failure class');
+    if (turn.resetHint !== undefined && turn.resetHint !== null && !/^\d{1,2}:\d{2}(?:am|pm)$/.test(turn.resetHint))
+      throw new Error('preview state: invalid reset hint');
+  }
   return document;
 }
 
@@ -146,11 +160,11 @@ export function openPreviewState(options: PreviewStateOptions) {
   }
   const read = (): PreviewStateDocument => {
     const document = validate(JSON.parse(readFileSync(path, 'utf8')) as PreviewStateDocument);
-    if (!existsSync(stopPath)) return document;
+    if (!existsSync(stopPath)) return { ...document, limitHoldUntil: document.limitHoldUntil ?? null, cycle: document.cycle ?? null };
     const stop = JSON.parse(readFileSync(stopPath, 'utf8')) as NonNullable<PreviewStateDocument['stop']>;
     assertInteger(stop.latchedAt, 'stop latch');
     if (!['operator', 'signal', 'expiry', 'breaker', 'capacity'].includes(stop.reason)) throw new Error('preview state: corrupt stop latch');
-    return { ...document, stop };
+    return { ...document, stop, limitHoldUntil: document.limitHoldUntil ?? null, cycle: document.cycle ?? null };
   };
   if (!existsSync(path)) {
     if (options.create === false) throw new Error('preview state: trial identity is absent');
@@ -162,7 +176,7 @@ export function openPreviewState(options: PreviewStateOptions) {
       trial: { id: `preview-trial:${randomUUID()}`, configurationDigest, createdAt: instant,
         expiresAt: options.expiresAt, maxPendingTurns: options.maxPendingTurns, maxTrialTurns: options.maxTrialTurns,
         errorLimit: options.errorLimit, totalErrorLimit: options.totalErrorLimit },
-      cursor: { nextOffset: 0 }, stop: null, consecutiveErrors: 0, totalErrors: 0,
+      cursor: { nextOffset: 0 }, stop: null, consecutiveErrors: 0, totalErrors: 0, limitHoldUntil: null, cycle: null,
       replyWindow: { startedAt: instant, count: 0 }, turns: {} });
   }
   const initial = read();
@@ -237,6 +251,13 @@ export function openPreviewState(options: PreviewStateOptions) {
     if (nextOffset < current.cursor.nextOffset) throw new Error('preview state: cursor regression');
     return nextOffset === current.cursor.nextOffset ? current : { ...current, cursor: { nextOffset } };
   });
+  const markFailure = (id: string, failureClass: NonNullable<PreviewTurn['failureClass']>, resetHint: string | null) => mutate(current => {
+    const turn = current.turns[id];
+    if (!turn || !['intake-preserved', 'grounded'].includes(turn.phase)
+      || !['limit', 'policy', 'timeout', 'transport', 'unknown'].includes(failureClass)
+      || (resetHint !== null && !/^\d{1,2}:\d{2}(?:am|pm)$/.test(resetHint))) throw Error('preview: invalid turn failure');
+    return { ...current, turns: { ...current.turns, [id]: { ...turn, failureClass, resetHint } } };
+  });
   const completePoll = (nextOffset: number) => mutate(current => {
     assertInteger(nextOffset, 'cursor offset');
     if (nextOffset < current.cursor.nextOffset) throw new Error('preview state: cursor regression');
@@ -250,6 +271,22 @@ export function openPreviewState(options: PreviewStateOptions) {
     return { ...current, replyWindow: { ...window, count: window.count + 1 } };
   });
   const noteSuccess = () => mutate(current => ({ ...current, consecutiveErrors: 0 }));
+  const heartbeat = (pid: number) => mutate(current => {
+    assertInteger(pid, 'cycle pid', 1);
+    return { ...current, cycle: { at: now(), pid } };
+  });
+  const noteLimit = (resetAt: number | null): PreviewStateDocument => mutate(current => {
+    const instant = now(); assertInteger(instant, 'clock');
+    if (current.limitHoldUntil !== null && current.limitHoldUntil > instant) return current;
+    const until = resetAt !== null && Number.isSafeInteger(resetAt) && resetAt > instant
+      ? Math.min(resetAt, instant + 18000000) : instant + 1800000;
+    return { ...current, limitHoldUntil: until };
+  });
+  const gateSpend = (): PreviewStateDocument => {
+    const current = gate('dispatch');
+    if (current.limitHoldUntil !== null && now() < current.limitHoldUntil) throw new Error('preview: usage limit hold');
+    return current;
+  };
   const noteError = () => mutate(current => {
     const consecutiveErrors = current.consecutiveErrors + 1;
     const totalErrors = current.totalErrors + 1;
@@ -260,7 +297,7 @@ export function openPreviewState(options: PreviewStateOptions) {
     return { ...current, consecutiveErrors, totalErrors, ...(existsSync(stopPath) ? { stop: read().stop } : {}) };
   });
   return Object.freeze({ path, read, gate, gatePollCapacity, latchStop, recordIntake, advance, advanceCursor, completePoll,
-    reserveReply, noteSuccess, noteError,
+    reserveReply, noteSuccess, noteError, noteLimit, gateSpend, markFailure, heartbeat,
     pending: () => Object.values(read().turns).filter(turn => pendingPhase(turn.phase)) });
 }
 

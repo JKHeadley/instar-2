@@ -349,6 +349,6 @@ export function stage2CompositionFixture(options: any = {}) {
     storageIO: productionStorageIO, telegramIO, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
     stage2: { activation, profile, model, cutoff: options.cutoff ?? (options.start ?? 1790000000000) - 1000, arm: true,
       io, now: () => time, active: () => active, checkpoint: options.checkpoint } });
-  return { root, state, configuration, activation, profile, model, create, calls, models, children, now: () => time,
+  return { root, state, configuration, activation, profile, model, create, calls, models, children, telegramIO, now: () => time,
     time: (n: number) => { time = n; }, revoke: () => { active = false; } };
 }

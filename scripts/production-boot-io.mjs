@@ -18,9 +18,11 @@ export const productionProviderIO = Object.freeze({
   execute: input => new Promise(resolve => {
     if (input.stopped?.()) { resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); return; }
     const child = spawn(input.executable, input.args, { cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
-      shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
+      shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let chunks = [], size = 0, limited = false;
-    const fail = () => { limited = true; chunks = []; child.kill('SIGKILL'); };
+    const fail = () => { limited = true; chunks = [];
+      if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    };
     const timer = setTimeout(fail, input.timeout);
     const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(); }, 25) : undefined;
     child.on('error', () => { clearTimeout(timer); clearInterval(stopTimer); resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); });

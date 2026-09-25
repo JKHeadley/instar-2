@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>__TEMP_OR_DEPLOYMENT_LABEL__</string>
+  <key>ProgramArguments</key><array>
+    <string>__ABSOLUTE_NODE__</string>
+    <string>__ABSOLUTE_HOST_WATCH_SCRIPT__</string>
+    <string>__ABSOLUTE_NON_SECRET_CONFIG__</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>StandardOutPath</key><string>__ABSOLUTE_SAFE_STDOUT_LOG__</string>
+  <key>StandardErrorPath</key><string>__ABSOLUTE_SAFE_STDERR_LOG__</string>
+</dict></plist>

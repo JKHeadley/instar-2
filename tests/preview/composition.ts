@@ -86,6 +86,7 @@ export interface PreviewConfiguration {
 export interface PreviewCompositionInput {
   readonly stage?: 1 | 2;
   readonly stage2?: any;
+  readonly noticeOnly?: boolean;
   readonly configuration: PreviewConfiguration;
   readonly state: PreviewState;
   readonly storageKey: Uint8Array;
@@ -99,6 +100,7 @@ export interface PreviewCompositionInput {
     afterIntake?: (turn: PreviewTurn) => void;
     beforeDispatch?: (turn: PreviewTurn) => void;
     afterDispatch?: (turn: PreviewTurn) => void;
+    afterNoticePrepare?: (turn: PreviewTurn) => void;
   }>;
 }
 
@@ -322,7 +324,7 @@ export async function stage2GuardedProviderPath(input: PreviewCompositionInput) 
 
 export function createPreviewComposition(input: PreviewCompositionInput) {
   const configuration = input.configuration;
-  if (input.stage !== 2 && stage2SidecarExists(configuration.root)) throw Error('preview: stage2 sidecar excludes stage1');
+  if (input.stage !== 2 && !input.noticeOnly && stage2SidecarExists(configuration.root)) throw Error('preview: stage2 sidecar excludes stage1');
   if (input.stage === 2 && stage2SidecarExists(configuration.root)) {
     const historical = stage2HistoricalStatus(configuration.root, input.state.read(), configuration);
     // Optional supplied deployment bindings must still name this history. This
@@ -391,7 +393,10 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         initialOffset: input.state.read().cursor.nextOffset, maxPollSeconds: configuration.maxPollSeconds,
         maxBatchItems: configuration.maxBatchItems }) });
     const chosenTelegramIO = input.telegramIO ?? input.telegramIOFactory?.(storage);
-    const telegramIO = input.stage !== 2 ? chosenTelegramIO : { invoke(request, credential) {
+    const telegramIO = input.noticeOnly ? { invoke(request, credential) {
+      if (request.method === 'sendMessage') input.state.gate('dispatch');
+      return chosenTelegramIO.invoke(request, credential);
+    } } : input.stage !== 2 ? chosenTelegramIO : { invoke(request, credential) {
       input.state.gate(request.method === 'getUpdates' ? 'poll' : 'dispatch');
       const d = sidecar.read();
       if (request.method === 'sendMessage' && (d.terminalLatch || stage2Now() >= d.ownerDeadline
@@ -522,7 +527,7 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         contextDigest: bounded.digest, runEvidence: proof });
     };
 
-    const exactApiAcceptance = (observation, effects) => {
+    const exactApiAcceptance = (observation, effects, expectedText = FIXED_LIMITED_RESPONSE) => {
       if (observation.stage !== 'response') return false;
       const captured = effects.ctx.captures[observation.capture.reference];
       if (!captured || hashBytes(captured.bytes) !== observation.capture.hash) return false;
@@ -531,11 +536,11 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         return response.ok === true && Number.isSafeInteger(result?.message_id) && result.message_id > 0
           && String(result?.chat?.id) === target.chatId
           && (target.messageThreadId === null || result.message_thread_id === target.messageThreadId)
-          && result.text === FIXED_LIMITED_RESPONSE;
+          && result.text === expectedText;
       } catch { return false; }
     };
 
-    const dispatch = (turn: PreviewTurn) => {
+    const dispatch = (turn: PreviewTurn, noticeText?: string) => {
       input.state.gate('dispatch');
       const currentFacts = value(createFactStore(factContext(), storage.segment).read());
       const opening = openingFor(turn); if (!opening) throw new Error('preview: durable opening unavailable');
@@ -563,7 +568,8 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         admitted, target, speaker: definition.speaker, scopeDigest: definition.scopeDigest,
         durability: definition.durability, replicas: definition.replicas, lossModel: definition.lossModel,
         verificationBar: definition.verificationBar }, effects.host, effects.spine));
-      const rendered = value(renderTelegramHtml(FIXED_LIMITED_RESPONSE, declaration, effects.host.boundary));
+      const outbound = noticeText ? `${PREVIEW_LABEL}\n${noticeText}` : FIXED_LIMITED_RESPONSE;
+      const rendered = value(renderTelegramHtml(outbound, declaration, effects.host.boundary));
       if (!rendered.startsWith(PREVIEW_LABEL)) throw new Error('preview: outbound label missing before preparation');
       const message = value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
         id: `preview-reply:${turn.updateId}`, semanticMessage: `preview-semantic:${turn.updateId}`,
@@ -576,9 +582,10 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         verificationOwner: 'preview-recorded-verifier', obligation: effects.obligation, closure: [], fence: effects.fence }));
       input.state.gate('dispatch');
       input.state.advance(turn.id, 'grounded', 'dispatch-outcome-unknown', { replyOperation: request.id });
+      if (noticeText) input.hooks?.afterNoticePrepare?.(input.state.read().turns[turn.id]);
       const observation = value(doorway.dispatch(request, effects.fence));
       input.hooks?.afterDispatch?.(input.state.read().turns[turn.id]);
-      if (!exactApiAcceptance(observation, effects)) {
+      if (!exactApiAcceptance(observation, effects, outbound)) {
         input.state.advance(turn.id, 'dispatch-outcome-unknown', 'dispatch-outcome-unknown', {
           replyOperation: observation.operation, replyObservation: observation.id });
         input.state.noteError(); return false;
@@ -598,6 +605,14 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       return true;
     };
     const resume = () => { while (resumeOne()) { /* recorded/tests convenience; launcher uses resumeOne with yields */ } };
+    const dispatchNotice = (turnId: string, text: string) => {
+      const turn = input.state.read().turns[turnId];
+      if (!input.noticeOnly || !turn || turn.disposition !== 'admitted-bound'
+        || !['intake-preserved', 'grounded'].includes(turn.phase)) throw Error('preview: notice turn not eligible');
+      input.state.gate('dispatch');
+      if (turn.phase === 'intake-preserved') ground(turn);
+      return dispatch(input.state.read().turns[turnId], text);
+    };
     const pollOnce = () => {
       reconcileDurableIntake(false);
       input.state.gatePollCapacity(configuration.maxBatchItems);
@@ -637,12 +652,19 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       const lifecycle = stage2Lifecycle({ sidecar, state: input.state, now: stage2Now, configuration,
         invocationBinding: stage2InvocationBinding(input.stage2), activationActive, directory: stage2Directory, model: input.stage2.model, selectedContext, messageTime,
         reconcileIntake: reconcileDurableIntake, telegram: { api, admitted, target, declaration },
-        routeFactory: stage2RouteFactory({ ...input.stage2, now: stage2Now, active }),
+        routeFactory: stage2RouteFactory({ ...input.stage2, now: stage2Now, active,
+          io: { ...input.stage2.io, execute: command => {
+            if (command.args.includes('--print')) input.state.gateSpend();
+            return input.stage2.io.execute(command);
+          } } }),
         checkpoint: input.stage2.checkpoint });
       const advance = async () => {
         try { return await lifecycle.resumeOne(); }
         catch (error) { if (sidecar.read().phase === 'api-accepted') throw error;
           const stop = input.state.read().stop;
+          const selected = input.state.read().turns[sidecar.read().selectedTurn];
+          if (selected && ['intake-preserved', 'grounded'].includes(selected.phase) && !selected.failureClass)
+            input.state.markFailure(selected.id, 'unknown', null);
           sidecar.hold(stop?.reason === 'expiry' || stage2Now() >= stateDocument.trial.expiresAt ? 'EXPIRED'
             : stop ? 'STOPPED' : error?.previewBound ? 'BOUND' : 'REFUSED',
             error?.previewBound ?? {}, sidecar.read().contextReferences); return false; }
@@ -653,7 +675,7 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
         close: () => storage.close() });
     }
     return Object.freeze({ storage, api, admitted, intake, ingress, declaration, target,
-      standIns: PREVIEW_STAND_IN_LEDGER, reconcileDurableIntake, pollOnce, resumeOne, resume,
+      standIns: PREVIEW_STAND_IN_LEDGER, reconcileDurableIntake, pollOnce, resumeOne, resume, dispatchNotice,
       close: () => storage.close() });
   } catch (error) { storage.close(); throw error; }
 }

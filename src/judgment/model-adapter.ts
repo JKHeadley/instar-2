@@ -11,6 +11,10 @@ export interface ModelClient {
 }
 export function observationCheck(v: ProviderObservation, d: ModelDescription): void {
   ensure(['complete', 'rejected', 'uncertain'].includes(v.state), 'unknown provider observation');
+  if (v.failure) ensure(v.state === 'uncertain'
+    && ['limit', 'policy', 'timeout', 'transport', 'unknown'].includes(v.failure.failureClass)
+    && (v.failure.resetHint === null || /^\d{1,2}:\d{2}(?:am|pm)$/.test(v.failure.resetHint))
+    && (v.failure.resetAt === null || Number.isSafeInteger(v.failure.resetAt) && v.failure.resetAt >= 0), 'invalid provider failure code');
   ensure(v.bytes === null || typeof v.bytes === 'string' && new TextEncoder().encode(v.bytes).length <= d.maxOutputBytes, 'response byte bound');
   ensure(v.state !== 'complete' || v.bytes !== null, 'complete response lacks bytes');
   ensure(v.providerOperation === null || typeof v.providerOperation === 'string' && v.providerOperation.length <= 256, 'provider operation bound');
@@ -75,6 +79,7 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
   };
   const state = data(raw, 'state'), bytes = data(raw, 'bytes'), operation = data(raw, 'providerOperation'), usage = data(raw, 'usage');
   const responseEvidence = data(raw, 'responseEvidence');
+  const failure = data(raw, 'failure');
   const count = (v: unknown): number | null => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null;
   const input = data(usage, 'inputTokens'), output = data(usage, 'outputTokens'), charge = data(usage, 'charge'), source = data(usage, 'source');
   const validCount = (v: unknown) => v === null || count(v) !== null;
@@ -83,7 +88,8 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
   const observedBytesAtLeast = typeof bytes !== 'string' ? null : bytes.length > d.maxOutputBytes ? bytes.length : new TextEncoder().encode(bytes).length;
   const oversized = observedBytesAtLeast !== null && observedBytesAtLeast > d.maxOutputBytes;
   const baseFields = ['state', 'bytes', 'providerOperation', 'usage', 'retryBlocked'];
-  const valid = (plain(raw, baseFields) || plain(raw, [...baseFields, 'responseEvidence']))
+  const valid = (plain(raw, baseFields) || plain(raw, [...baseFields, 'responseEvidence'])
+    || plain(raw, [...baseFields, 'failure']) || plain(raw, [...baseFields, 'failure', 'responseEvidence']))
     && plain(usage, ['inputTokens', 'outputTokens', 'charge', 'source'])
     && typeof state === 'string' && ['complete', 'rejected', 'uncertain'].includes(state)
     && (bytes === null || typeof bytes === 'string') && (state !== 'complete' || typeof bytes === 'string')
@@ -145,6 +151,9 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
     usage: { inputTokens: count(input), outputTokens: count(output), charge: count(charge),
       source: validText(source) ? source as string : 'invalid usage source; independently valid numeric fields retained' },
     retryBlocked: false,
+    ...(failure && typeof failure === 'object' ? { failure: {
+      failureClass: data(failure, 'failureClass') as NonNullable<ProviderObservation['failure']>['failureClass'],
+      resetHint: data(failure, 'resetHint') as string | null, resetAt: data(failure, 'resetAt') as number | null } } : {}),
     ...(evidence ? { responseEvidence: evidence } : {}),
     ...(!valid || oversized ? { limitation: { kind: oversized ? 'response-byte-limit' as const : 'invalid-provider-observation' as const, observedBytesAtLeast } } : {}),
   };
