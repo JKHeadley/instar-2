@@ -1,8 +1,8 @@
 # Model-provider return-capture lifecycle flake
 
-**Status:** OPEN  
-**Opened:** 2026-09-25  
-**Owner:** R5 landing agent until explicitly handed to the model-provider test maintainer.  
+**Status:** OPEN
+**Opened:** 2026-09-25
+**Owner:** R5 landing agent until explicitly handed to the model-provider test maintainer.
 **Exact case:** `tests/e2e/model-provider-review.test.ts` — `MODEL-PROVIDER-PATH REVIEW lifecycle SIGKILL return-capture`.
 
 ## Evidence and disposition
