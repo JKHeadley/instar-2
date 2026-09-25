@@ -115,8 +115,10 @@ corrected, not the safeguard bypassed.
 owns the installation policy, Ten owns the fixed profile, Eight owns operation demands, and Two
 owns durability receipts. Predicate: when only one machine is enrolled, the installation carries
 no peer dependency and may dispatch irreversible effects `local-durable` only for the fixed
-profile's closed set: its installed paid provider call and its reply-only Telegram `ordinary-reply`
-send. These two are singled out because the agent cannot undo them alone. At install time,
+profile's closed set: its installed paid provider call, its reply-only Telegram `ordinary-reply`
+send, and its text-only, reply-only Slack `ordinary-reply` send in one workspace to the bound
+operator's pre-bound DM or thread. These operations are singled out because the agent cannot undo
+them alone. At install time,
 the profile presents that set and this loss model for one independently verified operator
 acceptance that enters force for the installation: permanent loss of the machine can destroy the
 authority, work, captures, observations and accounting evidence needed to reconstruct a paid call

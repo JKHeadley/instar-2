@@ -4,6 +4,10 @@ _Generated from `15-the-operator-surfaces.changelog.json` by `scripts/render-cha
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-24 · draft — Bounded Slack second-channel constitutional amendment from astra-slack-closedset-ruling.md; operator approval PENDING; no merge or runtime activation.
+
+- **Include the bounded Slack reply in the fixed profile’s operator-accepted operation set.** — The operator-facing dependency verdict must describe the same closed set and permanent-machine-loss model as the purpose. _(astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING)_
+
 ## Revision 4 · 2026-09-19 · draft — operator amendment requiring a supported no-peer minimal responder
 
 - **Make the minimal dependency verdict admit the policy-bound single-machine operation set without a peer and require the real peer for the peer-backed or replication-demand arm.** — Eleven must test the installed durability demand rather than hard-code a peer into every deployment shape. _(`1b5ac4c`)_
