@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonical } from '../../src/index.js';
+import { generationOf } from '../../src/register/index.js';
 import { authorAndAppend, createFactStore, hashBytes } from '../../src/facts/index.js';
 import { createIntakePort, intakeStopRegistration, intakeWorkRegistration } from '../../src/intake/index.js';
 import {
@@ -14,6 +15,7 @@ import { createEffectDoorway, decodeOutboundMessage } from '../../src/effects/in
 import { createProductionTelegramCustodian } from '../../src/assembly/production-telegram.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { createRunGraph } from '../../src/rungraph/index.js';
+import { createScheduledIntakeAdapter, createScheduledRunner, scheduledParserDeclarationId } from '../../src/scheduled/index.js';
 import { readRecordFact, validateGrounding } from '../../src/rungraph/graph.js';
 import { decodeSessionGrounding } from '../../src/rungraph/records.js';
 import { conversationFixture } from '../conversation/fixture.js';
@@ -102,6 +104,10 @@ export interface PreviewCompositionInput {
     afterDispatch?: (turn: PreviewTurn) => void;
     afterNoticePrepare?: (turn: PreviewTurn) => void;
   }>;
+  /** Owner verified installed jobs and durable Run admission, supplied by preview tests/host. */
+  readonly scheduledAuthority?: import('../../src/scheduled/index.js').ScheduledSourceAuthority;
+  readonly scheduledStartOnce?: import('../../src/scheduled/index.js').ScheduledRunnerDependencies['startOnce'];
+  readonly scheduledUsage?: () => import('../../src/scheduled/index.js').ScheduledUsageLevel;
 }
 
 const telegramSecret = Object.freeze({ type: 'SecretRef' as const, schemaVersion: 1 as const,
@@ -367,10 +373,19 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       create: config.arm === true, ownerFactsExist: () => existsSync(join(stage2Directory, 'facts.json')) };
   }
   const fixture = conversationFixture({ botId: configuration.botId, skipInitialAdmission: true });
+  const scheduledDeclaration = fixture.intake.r.declaration(scheduledParserDeclarationId, 'parsers', {
+    fixture: 'P12-TELEGRAM-REPLY-CAPTURE', authenticationClass: [{ stimulusType: 'message', class: 'verified' }],
+    eventIdAuthority: { mintedBy: 'scheduled package owner', uniquenessScope: 'job instance and system sender',
+      replayWindow: 0, fallbackFingerprint: { policy: 'none', basis: 'occurrence hash required' } }, ackPolicy: 'never',
+  }, { profile: fixture.intake.r.profile });
+  const scheduledGoverned = fixture.intake.govern([...fixture.declarations, scheduledDeclaration]);
   const authorityInstant = input.now?.() ?? fixture.intake.f.now.value;
   if (!Number.isSafeInteger(authorityInstant) || authorityInstant < 0) throw new Error('preview: invalid authority clock');
   const context = fixture.intake.context;
-  const previewRegister = { ...context.decode.register, entries: [...new Set([...context.decode.register.entries, 'preview'])] };
+  const previewRegister = { ...context.decode.register,
+    generation: { owner: 'part-three', name: 'RegisterGeneration',
+      id: value(generationOf(scheduledGoverned.governance.register, fixture.intake.r.context)).id },
+    entries: [...new Set([...context.decode.register.entries, 'preview', scheduledParserDeclarationId])] };
   Object.assign(context, { decode: { ...context.decode, register: previewRegister } });
   const decodeContext = { ...context.decode, site: fixture.intake.f.c.site, preserved: fixture.intake.f.c.preserved };
   const storage = value(openProductionStorage({ root: configuration.root, machine: configuration.machine,
@@ -430,7 +445,7 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       value(intakeStopRegistration(decodeContext, fixture.intake.deps.author.principal.id))] });
     const factContext = () => context;
     const intake = value(createIntakePort({ ...fixture.intake.deps, context: factContext,
-      governance: fixture.governed.governance, adapter: allowlistedIntakeAdapter, storage: storage.segment,
+      governance: scheduledGoverned.governance, adapter: allowlistedIntakeAdapter, storage: storage.segment,
       capture: { owner: 'part-ten', preserve: (bytes, _at) => {
         const parsed = JSON.parse(bytes), digest = hashBytes(bytes);
         const reference = `capture:telegram:update-${String(parsed.update_id)}:${digest.slice(7)}`;
@@ -441,6 +456,33 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
       dedupGeneration: () => ({ reference: context.decode.register.generation,
         kinds: context.schemas.map(schema => schema.kind), lineages: { [fixture.intake.deps.author.machine]: {
           head: storage.segment.read().at(-1)?.segment ?? null, observedAt: authorityInstant, closed: false } } }) }));
+    const scheduledAdapter = createScheduledIntakeAdapter(input.scheduledAuthority ?? {
+      context: decodeContext, sources: () => [],
+      verifySource: () => { throw Error('preview: no registered scheduled source'); },
+      authorize: () => { throw Error('preview: no scheduled authority'); },
+    });
+    const scheduledIntake = value(createIntakePort({ ...fixture.intake.deps, context: factContext,
+      governance: scheduledGoverned.governance, adapter: scheduledAdapter, storage: storage.segment,
+      capture: { owner: 'part-ten', preserve: (bytes, _at) => {
+        const digest = hashBytes(bytes), reference = `capture:scheduled:${digest.slice(7)}`;
+        if (!captures.preserve(reference, bytes) || !captures.preserve(digest, bytes))
+          throw Error('preview: scheduled intake custody failed');
+        fixture.intake.f.captures[reference] = bytes; fixture.intake.f.captures[digest] = bytes;
+        fixture.intake.syncCaptures();
+        return fixture.intake.f.success({ reference, hash: digest });
+      } },
+      clock: () => fixture.intake.f.clock(input.now?.() ?? Date.now()),
+      dedupGeneration: () => ({ reference: context.decode.register.generation,
+        kinds: context.schemas.map(schema => schema.kind), lineages: { [fixture.intake.deps.author.machine]: {
+          head: storage.segment.read().at(-1)?.segment ?? null, observedAt: input.now?.() ?? Date.now(), closed: false } } }) }));
+    const scheduled = createScheduledRunner({ intake: scheduledIntake,
+      sources: () => input.scheduledAuthority?.sources() ?? [],
+      facts: () => createFactStore(factContext(), storage.segment).read(),
+      clock: ms => fixture.intake.f.clock(ms), usage: input.scheduledUsage ?? (() => 'unknown'),
+      stopped: () => input.state.read().stop !== null,
+      capacity: () => { try { input.state.gate('admit'); return true; } catch { return false; } },
+      startOnce: input.scheduledStartOnce ?? (() => { throw Error('preview: scheduled Run owner unavailable'); }),
+      context: decodeContext });
     const facts = createFactStore(factContext(), storage.segment);
     const ingress = createTelegramIngress({ boundary: fixture.admissionDependencies.boundary,
       admitted, api, intake, facts, observer: fixture.intake.deps.author.principal.id });
@@ -708,12 +750,12 @@ export function createPreviewComposition(input: PreviewCompositionInput) {
             : stop ? 'STOPPED' : error?.previewBound ? 'BOUND' : 'REFUSED',
             error?.previewBound ?? {}, sidecar.read().contextReferences); return false; }
       };
-      return Object.freeze({ storage, api, admitted, intake, ingress, declaration, target, sidecar,
+      return Object.freeze({ storage, api, admitted, intake, scheduledIntake, scheduled, ingress, declaration, target, sidecar,
         terminal: lifecycle.terminal, resumeOne: advance, resume: async () => { while (await advance()) await new Promise(resolve => setImmediate(resolve)); },
         pollOnce: () => { if (!active()) return null; return pollOnce(); }, reconcileDurableIntake,
         close: () => storage.close() });
     }
-    return Object.freeze({ storage, api, admitted, intake, ingress, declaration, target,
+    return Object.freeze({ storage, api, admitted, intake, scheduledIntake, scheduled, ingress, declaration, target,
       standIns: PREVIEW_STAND_IN_LEDGER, reconcileDurableIntake, pollOnce, resumeOne, resume, dispatchNotice, dispatchHostNotice,
       close: () => storage.close() });
   } catch (error) { storage.close(); throw error; }

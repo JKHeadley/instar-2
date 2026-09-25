@@ -6,6 +6,7 @@ import { createPreviewComposition, stage2GuardedProviderPath } from './compositi
 import { stage2HistoricalStatus } from './stage2-owners.js';
 import { HOST_OUTAGE_TEXT, MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
 import { decideUnansweredTurn } from '../../src/sentinels/unanswered-turn.js';
+import { consumeResult } from '../../src/index.js';
 
 const MAX_PREVIEW_BACKOFF_MS = 300_000;
 const DIAGNOSTIC_REASON_CODES = Object.freeze([
@@ -290,6 +291,14 @@ async function main() {
       let phase = 'DRAIN';
       try {
         state.heartbeat(process.pid);
+        await yieldBoundary();
+        if (signalled || state.read().stop !== null || composition.terminal?.()) break;
+        state.gate('admit');
+        const acceptMaintenance = result => consumeResult(result, {
+          Success: () => undefined, Refused: refusal => { throw Error(refusal.detail); },
+        });
+        acceptMaintenance(composition.intake.expireHolds());
+        acceptMaintenance(composition.scheduled.tick(Date.now()));
         while (!signalled) {
           await yieldBoundary();
           if (signalled || !(await composition.resumeOne())) break;
