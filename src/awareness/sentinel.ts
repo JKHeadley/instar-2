@@ -122,7 +122,8 @@ export function decideContext(input: Readonly<{
   const next: SessionState[] = [];
   for (const seen of input.observations) {
     const was = prior.get(seen.session);
-    const inherited = input.state.sessions.find(old => old.topic === seen.topic && old.session !== seen.session && old.recoveries.length);
+    const inherited = input.state.sessions.filter(old => old.topic === seen.topic && old.session !== seen.session && old.recoveries.length)
+      .sort((a, b) => b.recoveries.length - a.recoveries.length)[0];
     let row: SessionState = was && was.startedAt === seen.startedAt ? was
       : { session: seen.session, topic: seen.topic, startedAt: seen.startedAt, episode: null,
         recoveries: was?.recoveries ?? inherited?.recoveries ?? [], lastSignal: null };
@@ -216,8 +217,10 @@ export function decideContext(input: Readonly<{
     }
     next.push(row);
   }
-  // Sessions no longer observed are retained only while they hold an open episode (bounded state).
+  // Keep one unresolved recovery count through observer gaps and replacement names.
   for (const row of input.state.sessions)
-    if (!next.some(n => n.session === row.session) && row.episode && open(row.episode.status)) next.push(row);
+    if (!next.some(n => n.session === row.session) && row.episode
+      && (open(row.episode.status) || row.recoveries.length > 0)
+      && !next.some(n => n.topic === row.topic && n.recoveries.length >= row.recoveries.length)) next.push(row);
   return Object.freeze({ state: Object.freeze({ sessions: next }), actions });
 }

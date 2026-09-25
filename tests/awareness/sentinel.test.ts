@@ -99,6 +99,7 @@ describe('context sentinel', () => {
     expect(kinds(first)).toEqual(['reground', 'signal:reground-requested']);
     const second = run(T + 80_000 + 180_000, first.state, [obs()]);
     expect(kinds(second)).toEqual(['reground', 'signal:reground-requested']);
+    expect(second.actions[0]).toEqual(first.actions[0]); // retry cannot create a duplicate delivery operation
     expect(second.actions[0]).toMatchObject({ operation: `awareness-reground:s1:respawn:${T}` });
     const exhausted = run(T + 80_000 + 360_000, second.state, [obs()]);
     expect(kinds(exhausted)).toEqual(['signal:reground-exhausted']);
@@ -130,7 +131,9 @@ describe('context sentinel', () => {
     expect(kinds(c)).toEqual(['signal:recovery-exhausted']);
     expect(kinds(run(T + 1_300_000, c.state, [obs({ stuck: 'context-wedge' })]))).toEqual([]);
     expect(kinds(run(T + 2_000_000, c.state, [obs({ stuck: 'context-wedge' })]))).toEqual([]);
-    const replacement = run(T + 2_100_000, c.state, [obs({ session: 's2', startedAt: T + 2_100_000, stuck: 'context-wedge' })]);
+    const gap = run(T + 2_000_000, c.state, []);
+    expect(gap.state.sessions[0]!.recoveries).toHaveLength(2);
+    const replacement = run(T + 2_100_000, gap.state, [obs({ session: 's2', startedAt: T + 2_100_000, stuck: 'context-wedge' })]);
     expect(kinds(replacement)).not.toContain('recover-context');
     const recovered = run(T + 2_100_100, replacement.state, [obs({ session: 's2', startedAt: T + 2_100_000,
       resets: [{ at: T + 2_100_050, source: 'compact', id: 'new' }],
