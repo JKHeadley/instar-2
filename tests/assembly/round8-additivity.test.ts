@@ -36,9 +36,12 @@ async function mainDecoder(): Promise<Decode> {
   return (await import(`${pathToFileURL(file).href}?base=${base}`)).decodeAssemblyRecord as Decode;
 }
 
-it('R8-F1 main-vs-HEAD mutation harness preserves byte-identical outcomes for every pre-existing Part Ten fixture input', async () => {
+it('R8-F1 compares pre-existing Part Ten fixture outcomes on P11 first landing', async () => {
   const scope = firstLanding(process.cwd(), ['src/operator/seams.ts']);
-  if (!scope.applicable) { expect(scope.applicable).toBe(false); return; }
+  if (!scope.applicable) {
+    console.log(`P11 assembly R8-F1 first-landing comparison inapplicable: operator seams unit already present on current-main baseline ${scope.mainTip}.`);
+    return;
+  }
   const legacy = await mainDecoder();
   const names = Object.keys(assemblyShapes) as (keyof typeof assemblyShapes)[];
   const base = assemblyRuntimeFixture();
@@ -52,9 +55,12 @@ it('R8-F1 main-vs-HEAD mutation harness preserves byte-identical outcomes for ev
   }
 });
 
-it('V72 main versus HEAD Part Ten decoder mutation comparison covers every original field deletion', async () => {
+it('V72 compares Part Ten decoder field deletions on P11 first landing', async () => {
   const scope = firstLanding(process.cwd(), ['src/operator/seams.ts']);
-  if (!scope.applicable) { expect(scope.applicable).toBe(false); return; }
+  if (!scope.applicable) {
+    console.log(`P11 assembly V72 first-landing comparison inapplicable: operator seams unit already present on current-main baseline ${scope.mainTip}.`);
+    return;
+  }
   const legacy = await mainDecoder();
   const base = assemblyRuntimeFixture();
   let compared = 0, accepted = 0, refused = 0;

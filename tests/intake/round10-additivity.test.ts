@@ -43,9 +43,12 @@ function outcome(result: unknown): Outcome {
   });
 }
 
-it('R10 rereview8 V95 main-versus-HEAD ordinary receive/recover/expire outcomes remain byte-identical across 20 scenarios', async () => {
+it('R10 rereview8 V95 compares 20 ordinary receive/recover/expire outcomes on P11 first landing', async () => {
   const scope = firstLanding(process.cwd(), ['src/operator/seams.ts']);
-  if (!scope.applicable) { expect(scope.applicable).toBe(false); return; }
+  if (!scope.applicable) {
+    console.log(`P11 intake round10 first-landing comparison inapplicable: operator seams unit already present on current-main baseline ${scope.mainTip}.`);
+    return;
+  }
   const legacy = await mainFactory();
   const payloads = [
     message(),

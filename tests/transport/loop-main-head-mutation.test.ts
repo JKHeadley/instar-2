@@ -150,9 +150,12 @@ function runProbe(targetRoot: string, output: string, directory: string): void {
   expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
 }
 
-it('SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 generates and compares all 1313 main-vs-HEAD signed legacy mutations', () => {
+it('SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 compares 1313 signed legacy mutations on loop A1 first landing', () => {
   const scope = firstLanding(process.cwd(), ['src/transport/loop-a1/index.ts']);
-  if (!scope.applicable) { expect(scope.applicable).toBe(false); return; }
+  if (!scope.applicable) {
+    console.log(`Transport loop A1 first-landing mutation comparison inapplicable: unit already present on current-main baseline ${scope.mainTip}.`);
+    return;
+  }
   const directory = mkdtempSync(join(tmpdir(), 'transport-full-main-differential-'));
   const mainRoot = join(directory, 'main');
   const archive = spawnSync('git', ['archive', '--format=tar', scope.mainTip, 'src', 'tests',

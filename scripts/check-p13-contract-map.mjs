@@ -295,7 +295,7 @@ export function checkP13A2Scope(root = process.cwd(), mainRef = 'main') {
   const changed = scope.applicable ? changedPaths(root, mainRef) : [];
   const outside = changed.filter(path => !allowedPath(path));
   if (outside.length) throw new Error(`P13 A2 first-landing out-of-scope paths: ${outside.join(', ')}`);
-  return { applicable: scope.applicable, changed };
+  return { applicable: scope.applicable, mainTip: scope.mainTip, changed };
 }
 
 export function checkP13A2Architecture() {
@@ -377,7 +377,10 @@ export function checkP13A2Coverage(report, dispositions = p13A2Dispositions()) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  checkP13A2Architecture();
+  const architecture = checkP13A2Architecture();
+  console.log(architecture.applicable
+    ? `P13 A2 first-landing architecture scope: applicable against current-main baseline ${architecture.mainTip}.`
+    : `P13 A2 first-landing architecture scope inapplicable: adapter and holder units already present on current-main baseline ${architecture.mainTip}.`);
   const rows = checkP13A2Coverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
   console.log('| Check | Status | Test files |');
   console.log('|---|---|---|');

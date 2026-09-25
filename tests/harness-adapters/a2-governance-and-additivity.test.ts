@@ -74,7 +74,7 @@ it('P13 A2 fixture bytes compare only before A2 lands, with boot-shard assertion
   }
 });
 
-it('P13-A2-ADDITIVITY compares inherited fixtures during A2 first landing and retains boot-shard checks', () => {
+it('P13-A2-ADDITIVITY compares inherited fixtures on A2 first landing and always checks boot shards and architecture', () => {
   // GRANT BOOT-SPLIT (astra-boot-split-fence-ruling.md): retire only this exact path.
   // These replacement assertions remain permanent after the first-landing comparison ends.
   checkBootShardReplacement(process.cwd());
@@ -82,7 +82,7 @@ it('P13-A2-ADDITIVITY compares inherited fixtures during A2 first landing and re
   if (scope.applicable) {
     checkInheritedFixtures(process.cwd(), scope.mainTip, 50);
   } else {
-    expect(scope.applicable).toBe(false); // Explicitly report inapplicability.
+    console.log(`P13 A2 inherited-fixture comparison inapplicable: adapter and holder units already present on current-main baseline ${scope.mainTip}.`);
   }
   expect(p13A2PathAllowed('src/rungraph/a2-stand-in.ts')).toBe(false);
   expect(p13A2PathAllowed('tests/verification/rewrite.test.ts')).toBe(false);
