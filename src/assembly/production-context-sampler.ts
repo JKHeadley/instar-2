@@ -6,6 +6,8 @@ import type { AssemblyDecodeContext, AssemblyRuntimePort, ContextDeliverySpecifi
 import { contextDeliveryIdFor } from './context-delivery.js';
 import type { ProductionGroundingReaderInput } from './context-delivery.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
+import { reportInstallationHolds } from './production-installation-report.js';
+import type { InstallationHoldReport } from './production-installation-report.js';
 
 /** R5 bounded grounding: a small provenance-bound source packet selected once,
  * delivered through Ten/Eight/Five, rendered into Seven's canonical request and
@@ -234,24 +236,33 @@ function resolveBriefing(rows: readonly Row[], plan: GroundingSamplerPlan, slots
 /** Accepted replies of this conversation, resolved from Seven's records: each
  * ProviderAnswerAcceptance → its ProviderJudgmentRequest → that request's Five
  * step → the context delivery for that step → the admitted input it answers.
- * `limit` freezes the set at the delivery fact that selected it. */
+ * `limit` freezes the set at the delivery fact that selected it. Candidates are
+ * joined BEFORE uncertainty is considered: a tainted or conflicted row anywhere
+ * on a relevant acceptance's join refuses by reference, never disappears. */
 function acceptedReplies(rows: readonly Row[], run: string, frontier: readonly string[], captures: Captures, limit?: FactEnvelope) {
   const visible = limit ? rows.filter(row => precedes(row.fact, limit)) : rows;
-  const answered = new Map<string, string>();
-  for (const fact of cleanRows(visible, 'assembly-ContextDeliverySpecification')) {
-    const delivery = owned(fact);
+  const of = (kind: string) => visible.filter(row => row.fact.kind === kind);
+  const uncertain = (row: Row) => row.taint.length > 0 || row.conflicts.length > 0;
+  const answered = new Map<string, Readonly<{ input: string; row: Row }>>();
+  for (const row of of('assembly-ContextDeliverySpecification')) {
+    const delivery = owned(row.fact);
     if (delivery.run !== run) continue;
     const step = String(delivery.step), input = String(delivery.input);
-    ensure(!answered.has(step) || answered.get(step) === input, `run step ${step} was delivered for more than one input`);
-    answered.set(step, input);
+    ensure(!answered.has(step) || answered.get(step)!.input === input, `run step ${step} was delivered for more than one input`);
+    if (!answered.has(step) || uncertain(row)) answered.set(step, { input, row });
   }
+  const requests = of('judgment-provider-ProviderJudgmentRequest');
   const replies = new Map<string, Readonly<{ input: string; acceptance: string; hash: string; bytes: string }>>();
-  for (const fact of cleanRows(visible, 'judgment-provider-ProviderAnswerAcceptance')) {
-    const acceptance = owned(fact), capture = record(acceptance.capture);
-    const request = cleanRows(visible, 'judgment-provider-ProviderJudgmentRequest').find(candidate => owned(candidate).id === acceptance.request);
-    ensure(request, `accepted reply ${fact.id} names no Seven request`);
-    if (owned(request).run !== run) continue;
-    const input = answered.get(String(owned(request).step));
+  for (const row of of('judgment-provider-ProviderAnswerAcceptance')) {
+    const fact = row.fact, acceptance = owned(fact), capture = record(acceptance.capture);
+    const matches = requests.filter(candidate => owned(candidate.fact).id === acceptance.request);
+    ensure(matches.length > 0, `accepted reply ${fact.id} names no Seven request`);
+    if (matches.every(candidate => owned(candidate.fact).run !== run)) continue;
+    ensure(matches.length === 1 && owned(matches[0]!.fact).run === run, `accepted reply ${fact.id} request ${String(acceptance.request)} is ambiguous`);
+    const request = matches[0]!, delivered = answered.get(String(owned(request.fact).step));
+    ensure(!uncertain(row) && !uncertain(request) && (delivered === undefined || !uncertain(delivered.row)),
+      `accepted reply ${fact.id} of this conversation is tainted or conflicted: held, not omitted`);
+    const input = delivered?.input;
     ensure(input !== undefined && frontier.slice(0, -1).includes(input),
       `accepted reply ${fact.id} does not answer an earlier delivered input of this conversation`);
     ensure(!replies.has(input), `input ${input} has more than one accepted reply`);
@@ -354,6 +365,10 @@ export interface GroundedContextInput {
    * sources must still be current, approved, in audience and fresh. */
   plan(): GroundingSamplerPlan;
   clock(): Clock;
+  /** `dispatch` (default) is permission to send now: current plan and standing
+   * must still hold. `reconstruct` rebuilds a historical packet from durable
+   * records and permits nothing. */
+  readonly purpose?: 'dispatch' | 'reconstruct';
 }
 
 interface Resolved {
@@ -414,7 +429,7 @@ function resolveDelivered(input: GroundedContextInput, purpose: 'dispatch' | 're
  * admitted system framing and no document becomes a system message. */
 export function renderGroundedContext(input: GroundedContextInput): Result<string> {
   return boundary('RenderGroundedContext', null, input.context, () => {
-    const resolved = resolveDelivered(input, 'dispatch');
+    const resolved = resolveDelivered(input, input.purpose ?? 'dispatch');
     const conversation = resolved.inputs.flatMap(entry => [
       { input: entry.fact, capture: entry.reference, hash: entry.hash, text: entry.bytes },
       ...resolved.replies.filter(reply => reply.input === entry.fact)
@@ -483,32 +498,59 @@ export function groundingEnvelopeMeasurements(input: GroundingEnvelopeInput): re
   return freeze([...diagnostic, ...enforced]);
 }
 
+/** The structured overflow hold: cause, exact turn, every exceeded measurement
+ * (subject-bound, measured vs bound) and the retained references. Null when every
+ * enforced bound holds. */
+export interface GroundingEnvelopeHold {
+  readonly cause: 'grounding-envelope-held'; readonly turn: string; readonly route: string; readonly policy: string;
+  readonly over: readonly GroundingMeasurement[]; readonly retained: readonly string[];
+}
+export function groundingEnvelopeHold(input: GroundingEnvelopeInput): GroundingEnvelopeHold | null {
+  const over = groundingEnvelopeMeasurements(input).filter(row => row.bound !== null && row.measured > row.bound);
+  return over.length === 0 ? null : freeze({ cause: 'grounding-envelope-held' as const, turn: input.turn, route: input.route,
+    policy: input.policy, over, retained: [...input.retained] });
+}
+
 /** Refuse, before any provider or reply dispatch, when any enforced bound is
  * exceeded. The refusal is visible and names bytes, bounds, turn and retained
  * references; nothing is trimmed, retried or re-identified. */
 export function checkGroundingEnvelope(input: GroundingEnvelopeInput, context: AssemblyDecodeContext):
   Result<readonly GroundingMeasurement[]> {
   return boundary('CheckGroundingEnvelope', null, context, () => {
-    const measured = groundingEnvelopeMeasurements(input);
-    const over = measured.filter(row => row.bound !== null && row.measured > row.bound);
-    ensure(over.length === 0, `grounding-envelope-held turn=${input.turn} ${over.map(row =>
+    const hold = groundingEnvelopeHold(input);
+    ensure(hold === null, `grounding-envelope-held turn=${input.turn} ${(hold?.over ?? []).map(row =>
       `${row.subject.split(':')[0]}=${row.measured}/${row.bound}`).join(' ')} retained=${input.retained.join(',')}`);
-    return measured;
+    return groundingEnvelopeMeasurements(input);
+  });
+}
+
+/** The existing installation hold report together with the overflow diagnostic
+ * reconstructed for the held turn. The report row keeps its owner's fixed reason;
+ * the measured cause, counts, turn and references travel beside it. A measured
+ * hold never reads as an open sampling capability. */
+export function reportGroundingEnvelopeHold(input: Readonly<{ envelope: GroundingEnvelopeInput;
+  report: Parameters<typeof reportInstallationHolds>[0] }>, context: AssemblyDecodeContext):
+  Result<Readonly<{ report: InstallationHoldReport; hold: GroundingEnvelopeHold }>> {
+  return boundary('ReportGroundingEnvelopeHold', null, context, () => {
+    const hold = groundingEnvelopeHold(input.envelope);
+    ensure(hold !== null, 'no grounding envelope hold to report: every enforced bound holds');
+    const report = take(reportInstallationHolds(input.report, context));
+    const row = report.rows.find(entry => entry.hold === 'production-context-sampling');
+    ensure(row && row.state !== 'admitted' && row.state !== 'fixture-admitted' && !report.live,
+      'a measured grounding hold cannot be reported beside an admitted sampling capability');
+    return freeze({ report, hold });
   });
 }
 
 export interface GroundedJoinInput extends GroundedContextInput {
   /** Seven's prepared request record, as returned by readPrepared/prepare. */
-  readonly request: Readonly<{ id: string; run: string; step: string; question: Readonly<{ reference: string; hash: string }>;
+  readonly request: Readonly<{ id: string; run: string; step: string; route: string; question: Readonly<{ reference: string; hash: string }>;
     context: Readonly<{ reference: string; hash: string }>; submitted: Readonly<{ reference: string; hash: string }>;
     inputDigest: string; evidence: readonly string[]; generation: string }>;
   /** Seven's durable request fact; its record must equal `request`. */
   readonly requestFact: string;
   /** Bytes the model adapter actually received, when checking at the adapter. */
   readonly received?: string;
-  /** `dispatch` (default) is permission to send now: current plan and standing
-   * must still hold. `reconstruct` proves a historical packet and permits nothing. */
-  readonly purpose?: 'dispatch' | 'reconstruct';
 }
 
 /** Prove Seven's captured submission contains exactly the delivered manifest's
@@ -532,7 +574,13 @@ export function verifyGroundedSubmission(input: GroundedJoinInput): Result<Reado
     };
     const submitted = read(q.submitted);
     ensure(encoded(submitted).hash === q.inputDigest, 'submitted bytes differ from the prepared operation digest');
-    const envelope = JSON.parse(submitted) as { messages?: readonly Readonly<{ role: string; content: string }>[]; evidence?: unknown };
+    const envelope = JSON.parse(submitted) as { route?: unknown; messages?: readonly Readonly<{ role: string; content: string }>[]; evidence?: unknown };
+    // Disclosure standing is judged against Seven's ACTUAL destination: the
+    // submitted route must be the prepared route, and before any dispatch it must
+    // be the route the current owner plan's audience admits.
+    ensure(envelope.route === q.route, 'submitted route differs from Seven\'s prepared route');
+    if ((input.purpose ?? 'dispatch') === 'dispatch') ensure(q.route === input.plan().audience.route,
+      'Seven\'s prepared route is not the verified model route of the current owner plan');
     ensure(Array.isArray(envelope.messages) && envelope.messages.length === 2 && envelope.messages[0]!.role === 'user'
       && envelope.messages[1]!.role === 'context' && envelope.messages[0]!.content === read(q.question)
       && envelope.messages[1]!.content === read(q.context), 'submitted messages differ from Seven question/context captures');

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createFactStore } from '../../src/facts/index.js';
 import { createProviderJudgmentPort } from '../../src/judgment/index.js';
-import { createProductionContextSampler, verifyGroundedSubmission } from '../../src/assembly/production-context-sampler.js';
+import { createProductionContextSampler, groundedSubmission, verifyGroundedSubmission } from '../../src/assembly/production-context-sampler.js';
 import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 import { SYNTHETIC_APPROVAL, acceptedSecondTurn, groundingFixture, withSeven } from '../assembly/production-context-sampler-fixture.js';
 import { json, refused, value } from '../facts/fixtures.js';
@@ -129,6 +129,20 @@ describe('R5 accepted replies are resolved from Seven records (genuine offline a
     value(r.f.render());
   }, 60000);
 
+  it('an uncertain (tainted or conflicted) required acceptance, request or delivery refuses by reference; it never disappears', () => {
+    const acceptance = r.accepted.acceptanceFact.id, request = r.accepted.acceptanceFact.body.record.request;
+    const turnOneDelivery = value(r.f.store.read()).find(row => row.kind === 'assembly-ContextDeliverySpecification'
+      && row.body.record.run === r.f.id && row.body.record.step === 'step:operation:1').id;
+    const mark = (match, field) => hostile(entries => entries.map(row => match(row) ? { ...row, [field]: ['review-uncertainty'] } : row));
+    const isAcceptance = row => row.fact.id === acceptance;
+    const isRequest = row => row.fact.kind === 'judgment-provider-ProviderJudgmentRequest' && row.fact.body.record.id === request;
+    const isDelivery = row => row.fact.id === turnOneDelivery;
+    for (const field of ['taint', 'conflicts']) for (const match of [isAcceptance, isRequest, isDelivery])
+      refused(r.f.render({ store: mark(match, field) }), `accepted reply ${acceptance} of this conversation is tainted or conflicted`);
+    // The unchanged genuine projection still renders the reply exactly once.
+    expect(JSON.parse(value(r.f.render())).conversation.filter(entry => entry.reply)).toHaveLength(1);
+  }, 60000);
+
   it('the sampler resolves the same join before delivery and refuses a misattributed reply there too', () => {
     const request = r.accepted.acceptanceFact.body.record.request, before = r.f.delivered().delivery.id;
     const sampler = (store) => createProductionContextSampler({ store, runtime: r.f.p.runtime, context: r.f.p.context,
@@ -167,6 +181,28 @@ describe('R5 dispatch permission is re-checked against current owner state', () 
     // A changed required source after delivery holds for re-preparation; bytes are never swapped under this request.
     t.f.refreshStatus();
     refused(verifyGroundedSubmission(t.joinInput(prepared)), 'hold and reprepare');
+    expect(t.calls).toHaveLength(0);
+  }, 90000);
+
+  it('Seven\'s actual prepared route, not the plan\'s, is judged: an unapproved destination refuses before adapter bytes', () => {
+    const t = turnOne();
+    // A genuine Seven preparation of the original approved packet toward a route no source audience admits.
+    t.s.host.description.route = 'route:unapproved-recipient';
+    const submission = groundedSubmission({ provider: t.s.host.description.provider, model: t.s.host.description.model,
+      route: t.s.host.description.route, question: QUESTION_ONE, context: t.rendered, settings: t.s.judgment.settings,
+      outputSchema: t.s.judgment.outputSchema, floor: t.f.floor, evidence: [], point: 'judgment', generation: t.f.run.generation.id });
+    const transition = t.f.start(t.ready, t.ground, 'operation:1');
+    value(t.f.graph.transition({ ...transition, step: { ...transition.step, operation: { ...transition.step.operation, digest: submission.digest } } }));
+    const prepared = value(t.s.seven.prepare({ id: 'r5-question:operation:1', run: { owner: 'part-five', name: 'Run', id: t.f.id },
+      step: 'step:operation:1', ordinal: 0, semanticMessage: 'operation:1', question: QUESTION_ONE, context: t.rendered, evidence: [],
+      deadline: 400 }, t.f.effects.fence));
+    expect(prepared.value.route).toBe('route:unapproved-recipient');
+    expect(prepared.value.route).not.toBe(t.f.plan.audience.route);
+    expect(() => t.invoke(prepared, submittedOf(t, prepared))).toThrow(/not the verified model route of the current owner plan/);
+    refused(verifyGroundedSubmission(t.joinInput(prepared)), 'not the verified model route of the current owner plan');
+    // The same route named by the plan still refuses: no source audience admits it.
+    refused(verifyGroundedSubmission({ ...t.joinInput(prepared), plan: () => ({ ...t.f.plan, audience: { ...t.f.plan.audience,
+      route: 'route:unapproved-recipient' } }) }), 'is outside the verified audience or model route');
     expect(t.calls).toHaveLength(0);
   }, 90000);
 

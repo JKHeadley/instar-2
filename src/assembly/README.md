@@ -34,6 +34,8 @@ boot; R6 owns that join and the `production-context-sampling` hold stays in forc
   supplied by the caller: each Seven `ProviderAnswerAcceptance` is followed to its
   request, that request's Five step, the delivery for that step and the input it
   answers; a reply to the current input, a duplicate, or one naming no request refuses.
+  A tainted or conflicted acceptance, request or delivery on that join refuses by
+  reference; it is never dropped from a successful packet.
   Over the history threshold the turn is held; no last-N, ranking or summary stands
   in. Delivery, consumption and final grounding stay with Ten's reader and Five.
 - `buildGroundingBriefingBody` / `decodeGroundingBriefingBody`: the bounded
@@ -51,17 +53,23 @@ boot; R6 owns that join and the `production-context-sampling` hold stays in forc
   quoted data. It first resolves delivery ↔ consumption ↔ Five grounding ↔
   run/step/installation and re-checks current approval, audience, freshness and
   source captures against the plan and clock read now; a changed source holds for
-  re-preparation.
+  re-preparation. `purpose: 'reconstruct'` rebuilds a historical packet from durable
+  records without that current-standing check and permits nothing.
 - `groundedSubmission` mirrors Seven's canonical request so Five's step digest can be
   fixed first; `verifyGroundedSubmission` then reads Seven's captured submission,
   resolves the delivery/consumption/manifest/owner facts independently of the
   renderer, and compares every input, reply and source body, plus the bytes the model
   adapter received. Run it at the adapter seam before any provider IO. `purpose:
   'reconstruct'` proves a historical packet after restart and grants no permission to
-  reach the adapter; the default `dispatch` requires current standing.
+  reach the adapter; the default `dispatch` requires current standing. The submitted
+  route must be Seven's prepared route, and before dispatch it must be the current
+  owner plan's verified model route, so audience is judged against the real destination.
 - `checkGroundingEnvelope` measures subject-bound UTF-8 bytes (request, combined prompt,
   Seven's capture allowance, delivery payload, complete outbound reply) and refuses
   before dispatch with bytes, bound, turn and retained references. Nothing is trimmed.
+  `groundingEnvelopeHold` returns the same cause, turn, exceeded measurements and
+  references as a structured value; `reportGroundingEnvelopeHold` returns it beside the
+  existing installation hold report, whose `production-context-sampling` row stays held.
 
 This is not recall. `src/recall` keeps its exchange-memory role; this packet reuses
 Two's facts and captures without a parallel store. Handoffs: R4 binds the real body
