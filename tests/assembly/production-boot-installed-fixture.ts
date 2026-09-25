@@ -156,13 +156,23 @@ export function installedFixtureHost(root, route, options = {}) {
           if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-after-response', state);
           return response;
         } } }));
+      if (recovery && options.sequentialPoll) {
+        // Ten's readable update set is process-local. Re-witness the first durable
+        // poll after restart so the existing Four receipt can rebuild its cursor.
+        value(api.poll({ token: declaration.token, apiVersion: declaration.apiVersion,
+          offset: 0, limit: 100, timeout: 0 }));
+      }
       const admitted = value(admitTelegramAdapter(declaration, { ...t.admissionDependencies, api }));
       const intake = { ...t.intake.deps, context: () => ({ ...context, decode: { ...dc, provenance: t.intake.deps.author.principal.provenance } }), governance: t.governed.governance,
         adapter: createTelegramIntakeAdapter(admitted, api), storage: storage.segment,
         capture: { owner: 'part-ten', preserve: (bytes, at) => {
           const captured = value(t.intake.deps.capture.preserve(bytes, at));
           if (!telegramCaptures.preserve(captured.reference, bytes)) throw Error('intake custody failed');
-          return f.success(captured);
+          const update = extractTelegramUpdate(bytes, declaration);
+          const witnessed = `capture:telegram:update-${update.updateId}:${captured.hash.slice(7)}`;
+          const readable = api.readCapture(witnessed);
+          return f.success(readable.kind === 'Success' && readable.value === bytes
+            ? { ...captured, reference: witnessed } : captured);
         } }, dedupGeneration: () => ({ reference: dc.register.generation, kinds: context.schemas.map(s => s.kind),
           lineages: { 'machine-a': { head: storage.segment.read().at(-1)?.segment ?? null, observedAt: 100, closed: false } } }) };
       const binding = productionBindingSet();
@@ -180,13 +190,15 @@ export function installedFixtureHost(root, route, options = {}) {
         const inputs = rows.filter(row => row.kind === 'intake-admitted'
           && row.segment.position <= f.opening.segment.position);
         const material = rows.filter(row => row.kind === 'rungraph-briefing-material');
-        const manifest = [...inputs.map(row => ({ class: 'message', reference: row.body.rawHash, digest: row.body.rawHash })),
+        const captureFor = row => rows.find(fact => fact.id === row.body.receipt)?.body.capture
+          ?? { reference: row.body.rawHash, hash: row.body.rawHash };
+        const manifest = [...inputs.map(row => ({ class: 'message', reference: captureFor(row).reference, digest: captureFor(row).hash })),
           ...material.map(row => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))];
         const accepted = (state?.contextHistory ?? []).filter(item => item.acceptedReply)
           .map(item => storage.captures.read(item.acceptedReply));
         const message = f.effects.message(f.id, ['actual delivered Telegram input', ...accepted].join('\n'));
         const wireMessage = value(decodeOutboundMessage({ ...message, sourceResult: f.opening.id,
-          context: { input: { fact: f.opening.id, reference: f.opening.body.rawHash, hash: f.opening.body.rawHash }, manifest } }, f.owners.host));
+          context: { input: { fact: f.opening.id, ...captureFor(f.opening) }, manifest } }, f.owners.host));
         const admitted = f.effects.prepare(wireMessage);
         const reservation = value(f.effects.transport.inspect()).find(row =>
           row.record.type === 'AdmissionReservation' && row.record.operation === admitted.operation);

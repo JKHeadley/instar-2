@@ -57,7 +57,7 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
     stimulusKinds: seed ? ['intake-admitted'] : ['stimulus', 'next-inbound'], evidenceSources: { settlement: 'probe', exit: 'probe' } };
   const assemblyHost: any = { machine: 'machine-a', principal: f.bob, scope: f.scope, boundary: { ...f.c, register: types.register },
     current: () => ({ facts: ctx, generation: types.register.generation.id, stopped, clock: now }) };
-  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native);
+  const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native, !!seed);
   const registration = value(runFactSchemas(c));
   ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas, ...assemblySchemas(assemblyHost), ...owners.schemas, ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...seed?.ownedBodies ?? [], ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
   if (options.recovery) {
@@ -224,7 +224,7 @@ function productionSchemas(f: any) {
     { ...f.schema, kind: 'assembly-measurement-reference', fields: { ...identity, measurement: { kind: 'constitutional', type: 'Measurement' } } },
   ];
 }
-function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string, native: any) {
+function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, context: any, harnessId: string, native: any, intakeMode: boolean) {
   let authority: string[] = [], versions: any[] = [], ordinal = 0;
   const events: string[] = [];
   const host: any = { machine: 'machine-a', incarnation: 'incarnation:one', principal: f.bob, scope: f.scope,
@@ -313,7 +313,8 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
       Object.assign(transportHost, { accountingDurability: composition.durability });
       let api = createEffectDoorway(composition), executor = createHarnessLiveInputExecution(api, transportHost);
       const message = (run: string, text: string) => value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
-        id: `live-input:${++ordinal}`, semanticMessage: `live-input:${ordinal}`, run, speaker: host.principal.id,
+        id: intakeMode ? `live-input:${run}` : `live-input:${++ordinal}`,
+        semanticMessage: intakeMode ? `live-input:${run}` : `live-input:${ordinal}`, run, speaker: host.principal.id,
         account: definition.account, conversation: definition.conversation, text, purpose: 'context-delivery', sourceResult: note.id }, host));
       const connected = { api, executor, composition, transport, fence, leaseFact, message,
         renew() {
@@ -414,7 +415,10 @@ function installAssemblySupport(f: any, options: any) {
         ? row.kind === 'intake-admitted' && row.segment.position <= f.opening.segment.position
         : ['stimulus', 'next-inbound'].includes(row.kind));
       const intake = options.intake ? f.opening : inputs.at(-1)!;
-      const captureFor = row => options.intake ? { reference: row.body.rawHash, hash: row.body.rawHash } : row.body.capture;
+      const captureFor = row => options.intake
+        ? snapshot.find(fact => fact.id === row.body.receipt)?.body.capture
+          ?? { reference: row.body.rawHash, hash: row.body.rawHash }
+        : row.body.capture;
       const capture = captureFor(intake);
       const manifest = [...inputs.map(row => ({ class: 'message', ...{ reference: captureFor(row).reference, digest: captureFor(row).hash } })),
         ...material.map(row => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))];
@@ -424,14 +428,15 @@ function installAssemblySupport(f: any, options: any) {
       const admitted = f.effects.prepare(wireMessage);
       const previous = value(currentRuntime.inspectCurrent()).filter((r: any) => r.record.type === 'ContextDeliverySpecification'
         && r.record.run === f.id).at(-1);
+      const identity = options.intake ? f.id : String(++serial);
       const spec: any = { type: 'ContextDeliverySpecification', schemaVersion: 1, id: contextDeliveryIdFor(launchFact.id, admitted.operation),
-        predecessors: [], dependencyFacts: [], launch: launchFact.id, run: f.id, step: `step:operation:${++serial}`, input: intake.id, inputDigest: capture.hash,
+        predecessors: [], dependencyFacts: [], launch: launchFact.id, run: f.id, step: `step:operation:${identity}`, input: intake.id, inputDigest: capture.hash,
         incarnation: launch.incarnation, harness: launch.harness, artifactDigest: launch.artifactDigest, machine: launch.machine, generation: f.run.generation.id,
         executionContext: f.effects.leaseFact.id, contextManifest: [...inputs.slice(0, 1).map((row: any) => ({ class: 'message', reference: captureFor(row).reference, digest: captureFor(row).hash })),
           ...material.map((row: any) => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))],
         reason: previous ? 'live-input' : 'initial', operation: admitted.operation, claim: admitted.claim,
         previousDelivery: previous?.fact.id ?? '', controlObservation: '' };
-      const g: any = { type: 'SessionGrounding', schemaVersion: 2, id: `ground-native:${serial}`, run: f.id, expected: request.run.head,
+      const g: any = { type: 'SessionGrounding', schemaVersion: 2, id: `ground-native:${identity}`, run: f.id, expected: request.run.head,
         worker: request.worker, harness: request.harness, reason: request.reason, step: spec.step, incarnation: spec.incarnation, contextDeliveryReason: spec.reason,
         ownership: request.execution.ownership, executionContext: request.execution.context, at, previousActivity: at,
         elapsed: { type: 'Measurement', schemaVersion: 1, subject: { kind: 'elapsed-time', instance: request.worker }, value: 0, unit: 'ms', at, by: 'probe' },

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { expect, it } from 'vitest';
 // @ts-expect-error Offline Node fixture outside the TypeScript source graph.
 import { installedServingFixture, installServingBinding } from '../fixtures/production-serving-host.mjs';
-import { extractTelegramUpdate } from '../../src/conversation/index.js';
+import { extractTelegramUpdate, createTelegramIngress } from '../../src/conversation/index.js';
 import { runIdFor } from '../../src/rungraph/index.js';
 import { turns, exactTelegramApiAcceptance } from '../../src/assembly/production-conversation-driver.js';
 import { runRecordedConversation } from '../assembly/production-boot-trace.js';
@@ -89,7 +89,9 @@ it.each([
           retryBlocked: false, responseEvidenceDraft: configured.responseDraft(bytes, answer) };
       } });
     registerProviderResponseEvidenceBounds(route, recordedResponseEvidenceContract);
-    const fixture = await installedServingFixture(root, route, { sequentialPoll: true, dynamicReplyResponse: true });
+    const pollOffsets = [];
+    const fixture = await installedServingFixture(root, route, { sequentialPoll: true, dynamicReplyResponse: true,
+      onPoll: offset => pollOffsets.push(offset) });
     built = fixture.boot(); const app = built.application;
     const batch = value(built.api.poll({ token: built.declaration.token,
       apiVersion: built.declaration.apiVersion, offset: 0, limit: 100, timeout: 0 }));
@@ -100,7 +102,10 @@ it.each([
     const target = extractTelegramUpdate(first, built.declaration).target;
     const received = value(app.owners.intake.receive(first, extractTelegramUpdate(first, built.declaration).route));
     expect(received.kind).toBe('admitted');
-    let followupAdmitted = false;
+    const ingress = createTelegramIngress({ boundary: app.owners.composition.host.boundary,
+      admitted: built.admitted, api: app.owners.telegram, intake: app.owners.intake,
+      facts: app.owners.composition.spine.store, observer: built.owners.intake.author.principal.id });
+    expect(value(ingress.currentOffset())).toBe(extractTelegramUpdate(first, built.declaration).updateId + 1);
     configured = createRecordedServingPlan(built, target);
     let clock = 100;
     const host = createProductionConversationHost({
@@ -112,27 +117,14 @@ it.each([
       capture: reference => built.storage.captures.read(reference),
       now: () => clock, stopped: () => false,
       executionQuiescent: () => true, maxContextTurns: 2, maxContextBytes: 4096,
-      maxCycles: 1, baseBackoffMs: 1, maxBackoffMs: 2,
-      yieldBoundary: async () => {
-        if (!followupAdmitted && value(app.owners.serving.inspect()).retired.length === 1) {
-          const second = value(built.api.poll({ token: built.declaration.token,
-            apiVersion: built.declaration.apiVersion,
-            offset: extractTelegramUpdate(first, built.declaration).updateId + 1,
-            limit: 100, timeout: 0 }));
-          expect(second.updates).toHaveLength(1);
-          const next = second.updates[0];
-          const admitted = value(app.owners.intake.receive(next,
-            extractTelegramUpdate(next, built.declaration).route));
-          expect(admitted.kind).toBe('admitted');
-          followupAdmitted = true;
-        }
-        await new Promise(resolve => setImmediate(resolve));
-      },
+      maxCycles: 4, baseBackoffMs: 1, maxBackoffMs: 2,
+      yieldBoundary: async () => { await new Promise(resolve => setImmediate(resolve)); },
       sleep: async ms => { clock += ms; },
     });
     await host.run(app);
-    expect(followupAdmitted).toBe(true);
+    expect(pollOffsets).toContain(extractTelegramUpdate(first, built.declaration).updateId + 1);
     const facts = value(built.f.store.read());
+    expect(facts.filter(row => row.kind === 'intake-admitted')).toHaveLength(2);
     const folded = turns(facts, (observation, request) => exactTelegramApiAcceptance(
       observation, request, facts, reference => built.storage.captures.read(reference), target), response => {
       const receipt = response.body.record.receipt;

@@ -226,7 +226,7 @@ it.each(['reply-claim-kill', 'reply-consume-kill', 'reply-kill-before', 'reply-k
 
 it.each(['accepted-reply-claim-kill', 'accepted-reply-consume-kill',
   'accepted-reply-kill-before', 'accepted-reply-kill-after'])(
-  'the real bin retains the accepted-reply profile without a second send after %s', async action => {
+  'the real bin keeps the old accepted reply single-use and completes the next turn after %s', async action => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'production-serving-accepted-')));
     try {
       const fixture = await installedServingFixture(root, { provider: 'test-provider', model: 'model', route: 'route',
@@ -257,15 +257,21 @@ it.each(['accepted-reply-claim-kill', 'accepted-reply-consume-kill',
       const proof = JSON.parse(readFileSync(join(root, 'serving-accepted-proof.json'), 'utf8'));
       expect(proof.stage).toBe(action === 'accepted-reply-kill-before' ? 'reply-before-response'
         : action === 'accepted-reply-kill-after' ? 'reply-after-response' : action);
-      expect(proof.replies).toBe(1);
-      expect(proof.serving).toMatchObject({ turns: 2, replies: 1, slot: proof.second });
+      expect(proof.replies).toBe(2);
+      expect(proof.serving).toMatchObject({ turns: 2, replies: 2, slot: null });
       expect(proof.serving.binding).toMatchObject({ ceiling: 100, maxTurns: 2, maxReplies: 2 });
       expect(proof.second).not.toBe(proof.first);
-      expect(proof.calls).not.toContain('sendMessage');
+      expect(proof.turns.map((turn: { phase: string }) => turn.phase))
+        .toEqual(['reply-dispatched-unknown', 'api-accepted']);
+      expect(proof.turns[1].providerRun).toBe(proof.second);
+      expect(proof.turns[1].replyRun).not.toBe(proof.second);
+      expect(proof.groundings).toContain(proof.second);
+      expect(proof.providerRequests).toBe(2);
+      expect(proof.replyRequests).toBe(2);
+      expect(proof.calls.filter((call: string) => call === 'sendMessage')).toHaveLength(1);
       const latest = new Map(proof.reservations.map((row: { operation: string }) => [row.operation, row]));
       const applications = new Map(proof.applications.map((row: { operation: string }) => [row.operation, row]));
-      expect([...latest.values()].reduce((total: number, row: any) => total +
-        ((applications.get(row.operation) as any)?.exposure ?? row.charge), 0)).toBe(4);
-      expect([...applications.values()].some((row: any) => row.actualCharge === 3 && row.released === 17)).toBe(true);
+      expect([...latest.values()]).toHaveLength(6);
+      expect([...applications.values()].filter((row: any) => row.actualCharge === 3 && row.released === 17)).toHaveLength(2);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 650000);

@@ -7,6 +7,7 @@ import { extractTelegramUpdate } from '../../src/conversation/index.js';
 import { runIdFor } from '../../src/rungraph/index.js';
 import { runAdmission } from '../../src/rungraph/rungraph.js';
 import { createProductionConversationHost, runConversationDriver } from '../../src/assembly/index.js';
+import { turns, exactTelegramApiAcceptance } from '../../src/assembly/production-conversation-driver.js';
 import { recordedCheckpoint } from '../assembly/production-boot-checkpoint.js';
 import { runRecordedConversation, createRecordedServingPlan,
   recordedResponseEvidenceContract } from '../assembly/production-boot-trace.js';
@@ -161,7 +162,7 @@ export async function createProductionHost() {
           headers: { Authorization: `Bearer ${http.credential}`, 'Content-Type': 'application/json' } });
         return response.json();
       }
-      if (accepted && action !== 'accepted-resume') {
+      if (accepted) {
         const answer = JSON.stringify(acceptedBuilt.f.decisionInput());
         return { state: 'complete', bytes: answer, providerOperation: 'accepted-provider-operation',
           usage: { inputTokens: 11, outputTokens: 9, charge: 3, source: 'authenticated local provider receipt' },
@@ -192,11 +193,7 @@ export async function createProductionHost() {
       const installationFact = value(built.f.store.read()).find(row => row.kind === 'assembly-ProductionInstallation');
       const target = extractTelegramUpdate(raw, built.declaration).target;
       acceptedBuilt = built;
-      acceptedPlan = action === 'accepted-resume' ? { plan: Object.fromEntries([
-        'open', 'grounding', 'pending', 'question', 'providerEffect', 'acceptance',
-        'replyOpening', 'replyPolicy', 'replyRoute', 'replyEffect'].map(key =>
-        [key, () => { throw Error(`recovered accepted reply tried ${key}`); }])) }
-        : createRecordedServingPlan(built, target);
+      acceptedPlan = createRecordedServingPlan(built, target);
       let now = 100;
       const run = createProductionConversationHost({
         binding: { installation: installationFact.id, conversation: binding.id,
@@ -206,35 +203,32 @@ export async function createProductionHost() {
         observer: built.owners.intake.author.principal.id, target, plan: acceptedPlan.plan,
         capture: reference => built.storage.captures.read(reference),
         now: () => now, stopped: () => false, executionQuiescent: () => true,
-        maxContextTurns: 2, maxContextBytes: 4096, maxCycles: action === 'accepted-resume' ? 1 : 2,
+        maxContextTurns: 2, maxContextBytes: 4096, maxCycles: action === 'accepted-resume' ? 4 : 2,
         baseBackoffMs: 1, maxBackoffMs: 2, yieldBoundary: async () => {},
         sleep: async milliseconds => { now += milliseconds; }, nextAttempt: randomUUID,
       });
       await run.run(application);
       if (action !== 'accepted-resume') throw Error('accepted reply cut was not reached');
-      const secondUpdate = JSON.parse(fs.readFileSync(
-        'tests/assembly/telegram-recorded/poll-0.json', 'utf8')).result[0].update_id + 1;
-      const batch = value(built.api.poll({ token: built.declaration.token,
-        apiVersion: built.declaration.apiVersion, offset: secondUpdate, limit: 100, timeout: 0 }));
-      const next = batch.updates[0];
-      if (!next) throw Error('Ten did not witness the distinct accepted-profile follow up');
-      const received = value(application.owners.intake.receive(next,
-        extractTelegramUpdate(next, built.declaration).route));
-      if (received.kind !== 'admitted') throw Error('witnessed accepted-profile follow up was not admitted');
-      const input = value(built.f.store.read()).find(row => row.id === received.fact.id);
-      const opening = { owner: 'part-two', name: 'FactEnvelope', id: input.id };
-      const nextRun = { ...built.f.run, id: runIdFor(opening), opening,
-        intent: { type: 'Intent', id: input.body.intent.id, fact: opening, field: 'intent' },
-        authority: { resolution: opening, grants: [] },
-        resultDestination: { ...built.f.run.resultDestination, route: opening } };
-      const preserved = value(built.f.deps.governance.capture.preserve(nextRun));
-      value(runAdmission(nextRun, { ...built.f.runContext, preserved,
-        facts: { ...built.f.runContext.facts, facts: value(built.f.store.read()) } }, built.f.deps.governance));
-      const opened = value(application.owners.run.open(nextRun));
-      value(application.owners.serving.admitTurn(`turn:${input.id}`, built.f.effects.fence, input.id, opened.run.id));
+      const serving = value(application.owners.serving.inspect());
+      const facts = value(built.f.store.read());
+      const nextTurn = facts.filter(row => row.kind === 'intake-admitted').at(-1);
+      if (!nextTurn || serving.turns !== 2) throw Error('recovered host did not drain distinct follow up');
+      const folded = turns(facts, (observation, request) => exactTelegramApiAcceptance(
+        observation, request, facts, reference => built.storage.captures.read(reference), target), response => {
+        const receipt = response.body.record.receipt;
+        return JSON.parse(built.storage.captures.read(receipt.reference)).state === 'complete';
+      }, binding.id);
       fs.writeFileSync(`${installation.storageRoot}/serving-accepted-proof.json`, JSON.stringify({
-        stage: recovery.stage, serving: value(application.owners.serving.inspect()),
-        first: built.f.id, second: opened.run.id,
+        stage: recovery.stage, serving,
+        first: recovery.run, second: runIdFor({ owner: 'part-two', name: 'FactEnvelope', id: nextTurn.id }),
+        turns: folded.map(turn => ({ phase: turn.phase, providerRun: turn.providerRun,
+          replyRun: turn.replyRun, opening: turn.opening })),
+        groundings: facts.filter(row => row.kind === 'session-grounding').map(row => row.body.record.run),
+        providerRequests: facts.filter(row => row.kind === 'effect-provider-ProviderEffectRequest').length,
+        replyRequests: facts.filter(row => row.kind === 'effect-EffectRequest'
+          && facts.some(message => message.kind === 'effect-OutboundMessage'
+            && message.body.record?.id === row.body.record?.message
+            && message.body.record?.purpose === 'ordinary-reply')).length,
         reservations: value(application.owners.transport.inspect()).filter(row =>
           row.record.type === 'AdmissionReservation').map(row => row.record),
         applications: value(application.owners.transport.inspect()).filter(row =>
