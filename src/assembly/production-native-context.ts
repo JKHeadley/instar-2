@@ -71,7 +71,9 @@ export function createProductionNativeContextAdapter(input: Readonly<{
  * buffer at end of stream. No path, reconnect or second endpoint exists. */
 export interface WorkerChannelIO {
   read(max: number): Uint8Array | null;
-  write(bytes: Uint8Array): void;
+  /** Non-blocking: bytes accepted (possibly fewer than offered), or null when
+   * the worker is not draining. The adapter owns every wait and its bound. */
+  write(bytes: Uint8Array): number | null;
   close(): void;
   now(): number;
   wait(ms: number): void;
@@ -91,6 +93,15 @@ type ChannelRequest = Readonly<{ v: 1; sequence: number; handle: string; method:
  * (> lapse) check, the original deadline, any protocol deviation or a limit
  * overrun closes the channel permanently, so a retained or queued handle can
  * never regain standing.
+ *
+ * Every wait (for a worker frame, or for a worker that stops draining replies)
+ * consumes the same immutable deadline and the same last-good-authority lapse:
+ * once `lapseMs` passes without a successful check, the wait re-checks current
+ * authority, so a revocation closes the channel within the lapse even while the
+ * worker is silent. `progress` is called only after a successful check; the
+ * installed composition forwards it as the native guard heartbeat, so an owner
+ * check that never returns stops the heartbeat and the guard (not this
+ * callback) enforces the lapse.
  */
 export function createInstalledChannelNativeContextIO(input: Readonly<{
   io: WorkerChannelIO; identity: string; artifact: Hash; handle: string;
@@ -98,10 +109,13 @@ export function createInstalledChannelNativeContextIO(input: Readonly<{
   currency(): Result<unknown>;
   /** Original immutable deadline on io.now()'s clock; never extended. */
   deadline: number;
+  /** Owner-service progress (the guard heartbeat source); called after each successful check. */
+  progress?(): void;
 }>): ProductionNativeContextIO & Readonly<{ close(): void; readonly closed: boolean }> {
   const limits = WORKER_CHANNEL_LIMITS;
   let closed = false, sequence = 0, requests = 0, bytesUsed = 0, served: string | undefined;
   let pending = new Uint8Array(0);
+  let lastGood = input.io.now();          // lapse is measured from the admission that created the channel
   const close = () => { if (!closed) { closed = true; input.io.close(); } };
   const fail = (detail: string): never => { close(); throw new Error(`worker-channel: ${detail}`); };
   const current = () => {
@@ -112,6 +126,15 @@ export function createInstalledChannelNativeContextIO(input: Readonly<{
       Refused: refusal => fail(`current authority refused: ${refusal.detail}`) });
     const finished = input.io.now();
     if (finished - started > limits.lapseMs || finished >= input.deadline) fail('current-authority check exceeded the lapse bound');
+    lastGood = finished;
+    input.progress?.();
+  };
+  // One bounded wait step, shared by frame reads and reply backpressure.
+  const waitBounded = (what: string) => {
+    const now = input.io.now();
+    if (now >= input.deadline) fail(`original deadline reached while ${what}`);
+    if (now - lastGood >= limits.lapseMs) current();   // revocation lands within the lapse while idle
+    input.io.wait(1);
   };
   const debit = (count: number) => {
     bytesUsed += count;
@@ -134,7 +157,7 @@ export function createInstalledChannelNativeContextIO(input: Readonly<{
       }
       if (input.io.now() >= input.deadline) fail('original deadline reached while waiting');
       const chunk = input.io.read(limits.frame + 4 - pending.length);
-      if (chunk === null) { input.io.wait(1); continue; }
+      if (chunk === null) { waitBounded('waiting'); continue; }
       if (chunk.length === 0) fail('worker closed the channel');
       debit(chunk.length);
       const next = new Uint8Array(pending.length + chunk.length);
@@ -147,7 +170,12 @@ export function createInstalledChannelNativeContextIO(input: Readonly<{
     debit(payload.length + 4);
     const out = Buffer.alloc(payload.length + 4);
     out.writeUInt32BE(payload.length); payload.copy(out, 4);
-    input.io.write(out);
+    let offset = 0;
+    while (offset < out.length) {
+      const accepted = input.io.write(out.subarray(offset));
+      if (accepted === null || accepted === 0) { waitBounded('the worker is not draining replies'); continue; }
+      offset += accepted;
+    }
   };
   const request = (reference: string): ChannelRequest => {
     const value = readFrame();

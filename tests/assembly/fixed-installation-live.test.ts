@@ -748,7 +748,9 @@ it('mediated channel streams one admitted delivery in bounded chunks and returns
   const received = channel.consume('native-context:op-1', bigDelivery);
   expect(received).toEqual({ identity: 'process:1', digest: hashBytes(bigDelivery) });
   const chunks = Math.ceil(Buffer.byteLength(bigDelivery) / 32_768);
-  expect(checks).toBe(chunks * 2 + 2);                 // every dispatch and again before every return, incl. the final
+  // Every dispatch and again before every return, incl. the final; an idle-lapse
+  // check may add more if the worker is slow to start (repair round 3).
+  expect(checks).toBeGreaterThanOrEqual(chunks * 2 + 2);
   expect(await exited).toBe(0);
   expect(() => channel.consume('native-context:op-1', bigDelivery)).toThrow('second initial delivery');
 });
@@ -780,9 +782,12 @@ it('mediated channel refuses hostile worker frames without dispatching on their 
     const encodedFrames = frames.map(frameValue => canonicalText(frameValue));
     const body = `const {writeSync}=require('fs');const f=${JSON.stringify(encodedFrames)};` +
       `for(const t of f){const p=Buffer.from(t);const h=Buffer.alloc(4);h.writeUInt32BE(p.length);writeSync(3,Buffer.concat([h,p]));}` +
-      `setTimeout(()=>{},2000);`;
+      `process.stderr.write('ready');setTimeout(()=>{},2000);`;
     return workerChannel(['-e', body]);
   };
+  // Every hostile frame is buffered before the channel exists, so no idle-lapse
+  // check can be counted as a dispatch (repair round 3).
+  const ready = (child: any) => new Promise<void>(resolve => child.stderr.once('data', () => resolve()));
   const base = { v: 1, sequence: 1, handle: 'handle:launch-1', method: 'loadContext',
     authorityReference: 'native-context:op-1', body: { delivery: 'native-context:op-1', offset: 0, readback: null } };
   const cases: [string, unknown[], string][] = [
@@ -797,6 +802,7 @@ it('mediated channel refuses hostile worker frames without dispatching on their 
   ];
   for (const [name, frames, detail] of cases) {
     const { io, child } = hostile(frames);
+    await ready(child);
     let dispatches = 0;
     const channel = createInstalledChannelNativeContextIO({ io, identity: 'process:1', artifact: hashBytes('artifact'),
       handle: 'handle:launch-1', deadline: io.now() + 2_000, currency: () => { dispatches++; return ok; } });
@@ -820,6 +826,110 @@ it('mediated channel refuses hostile worker frames without dispatching on their 
   expect(receipt.digest).not.toBe(hashBytes(small));
   forged.child.kill();
 });
+
+// Repair round 3 (finding 4): every wait consumes the same deadline and
+// last-good-authority lapse; the guard, not the blocked callback, bounds a hung owner.
+it('mediated channel closes within the lapse for a silent or partial-frame worker once authority is gone', async () => {
+  for (const [name, script] of [
+    ['silent', ['-e', 'setTimeout(()=>{},5000)']],
+    ['partial frame', ['-e', `const h=Buffer.alloc(4);h.writeUInt32BE(100);require('fs').writeSync(3,Buffer.concat([h,Buffer.from('{"v":1,')]));setTimeout(()=>{},5000)`]],
+  ] as const) {
+    const { io, child } = workerChannel([...script]);
+    let calls = 0;
+    const started = io.now();
+    const channel = createInstalledChannelNativeContextIO({ io, identity: 'process:1', artifact: hashBytes('artifact'),
+      handle: 'handle:launch-1', deadline: started + 1_000, currency: () => { calls++; return no('revoked'); } });
+    expect(() => channel.consume('native-context:op-1', bigDelivery), name).toThrow('current authority refused: revoked');
+    const elapsed = io.now() - started;
+    expect(calls, name).toBe(1);
+    expect(elapsed, name).toBeGreaterThanOrEqual(250);
+    expect(elapsed, name).toBeLessThan(450);                // within the lapse, far below the 1,000 ms deadline
+    expect(channel.closed, name).toBe(true);
+    child.kill();
+  }
+  // Authority valid, worker silent: the immutable deadline closes it, never later.
+  const { io, child } = workerChannel(['-e', 'setTimeout(()=>{},5000)']);
+  const started = io.now();
+  const channel = createInstalledChannelNativeContextIO({ io, identity: 'process:1', artifact: hashBytes('artifact'),
+    handle: 'handle:launch-1', deadline: started + 600, currency: () => ok });
+  expect(() => channel.consume('native-context:op-1', bigDelivery)).toThrow('original deadline reached while waiting');
+  expect(io.now() - started).toBeLessThan(750);
+  child.kill();
+});
+
+it('mediated channel bounds reply backpressure by the same lapse and deadline', () => {
+  // SYNTHETIC host IO: the local socket buffer absorbs a whole 44 KB reply, so a
+  // worker that stops draining is modelled by an IO that accepts 1,000 bytes of
+  // the first reply and then reports would-block forever (EAGAIN).
+  const request = canonicalText({ v: 1, sequence: 1, handle: 'handle:launch-1', method: 'loadContext',
+    authorityReference: 'native-context:op-1', body: { delivery: 'native-context:op-1', offset: 0, readback: null } });
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  const stalledIO = () => {
+    const payload = Buffer.from(request), head = Buffer.alloc(4); head.writeUInt32BE(payload.length);
+    let inbound: Buffer | null = Buffer.concat([head, payload]), accepted = 0, closed = false;
+    return { get closed() { return closed; }, io: {
+      read: () => { const out = inbound; inbound = null; return out; },
+      write: (bytes: Uint8Array) => { const room = Math.max(0, 1_000 - accepted); if (!room) return null;
+        const n = Math.min(room, bytes.length); accepted += n; return n; },
+      close: () => { closed = true; }, now: () => Number(process.hrtime.bigint() / 1_000_000n),
+      wait: (ms: number) => { Atomics.wait(sleeper, 0, 0, ms); } } };
+  };
+  for (const scenario of ['revoked', 'deadline'] as const) {
+    const host = stalledIO();
+    let calls = 0;
+    const started = host.io.now();
+    const channel = createInstalledChannelNativeContextIO({ io: host.io, identity: 'process:1', artifact: hashBytes('artifact'),
+      handle: 'handle:launch-1', deadline: started + (scenario === 'deadline' ? 700 : 5_000),
+      currency: () => (++calls <= 2 || scenario === 'deadline' ? ok : no('revoked')) });
+    expect(() => channel.consume('native-context:op-1', bigDelivery), scenario).toThrow(scenario === 'revoked'
+      ? 'current authority refused: revoked' : 'original deadline reached while the worker is not draining replies');
+    const elapsed = host.io.now() - started;
+    if (scenario === 'revoked') {
+      expect(calls).toBe(3);                               // dispatch, before data, then the idle-lapse check
+      expect(elapsed).toBeGreaterThanOrEqual(250);
+      expect(elapsed).toBeLessThan(450);
+    } else expect(elapsed).toBeLessThan(850);
+    expect(channel.closed, scenario).toBe(true);
+    expect(host.closed, scenario).toBe(true);              // the host fd is closed, not left retained
+  }
+});
+
+it('a non-returning owner check stops the progress heartbeat, so the guard stand-in closes it within the lapse', async () => {
+  // Guard stand-in (SYNTHETIC): the native guard's heartbeat rule (terminate on a
+  // lapse over 250 ms) applied to this process. Native termination of a released
+  // worker is held by the Sprint 2 feasibility FAIL and is not claimed here.
+  const frameText = canonicalText({ v: 1, sequence: 1, handle: 'handle:launch-1', method: 'loadContext',
+    authorityReference: 'native-context:op-1', body: { delivery: 'native-context:op-1', offset: 0, readback: null } });
+  const script = `
+    import { createInstalledChannelNativeContextIO } from ${JSON.stringify(join(process.cwd(), 'dist/assembly/production-native-context.js'))};
+    import { hashBytes } from ${JSON.stringify(join(process.cwd(), 'dist/facts/index.js'))};
+    const payload = Buffer.from(${JSON.stringify(frameText)}); const head = Buffer.alloc(4); head.writeUInt32BE(payload.length);
+    let pending = Buffer.concat([head, payload]); const sleeper = new Int32Array(new SharedArrayBuffer(4));
+    const io = { read: () => { const out = pending; pending = null; return out; }, write: bytes => bytes.length, close() {},
+      now: () => Number(process.hrtime.bigint() / 1000000n), wait: ms => Atomics.wait(sleeper, 0, 0, ms) };
+    let calls = 0;
+    const ok = { type: 'Result', schemaVersion: 1, kind: 'Success', value: true };
+    const channel = createInstalledChannelNativeContextIO({ io, identity: 'process:1', artifact: hashBytes('a'),
+      handle: 'handle:launch-1', deadline: io.now() + 10000, progress: () => process.stdout.write('P'),
+      currency: () => { if (++calls === 2) Atomics.wait(sleeper, 0, 0); return ok; } });   // the owner check never returns
+    channel.consume('native-context:op-1', 'x'.repeat(1000));
+    process.stdout.write('RETURNED');`;
+  const result = await new Promise<{ beats: number; lapse: number; signal: string | null; out: string }>(resolve => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'inherit'] });
+    let out = '', last = 0, killedAt = 0;
+    child.stdout.on('data', chunk => { out += chunk; last = Date.now(); });
+    const guard = setInterval(() => {
+      if (last && Date.now() - last > 250) { killedAt = Date.now(); child.kill('SIGKILL'); clearInterval(guard); }
+    }, 5);
+    child.on('exit', (_code, signal) => { clearInterval(guard);
+      resolve({ beats: out.split('P').length - 1, lapse: killedAt - last, signal, out }); });
+  });
+  expect(result.beats).toBe(1);                             // one successful check, then silence
+  expect(result.out).not.toContain('RETURNED');             // the blocked callback never closed anything itself
+  expect(result.signal).toBe('SIGKILL');
+  expect(result.lapse).toBeGreaterThan(250);
+  expect(result.lapse).toBeLessThan(400);
+}, 15_000);
 
 it('confined delivery driver checks current authority at dispatch and before a delayed result returns', () => {
   const f = realTenFixture();

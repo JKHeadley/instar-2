@@ -299,12 +299,11 @@ export function createChannelIO(fd) {
       try { const n = readSync(fd, buffer, 0, max, null); return buffer.subarray(0, n); }
       catch (error) { if (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK') return null; throw error; }
     },
+    // One non-blocking attempt; the adapter owns the bounded wait/retry.
     write(bytes) {
-      let offset = 0;
-      while (offset < bytes.length) {
-        try { offset += writeSync(fd, bytes, offset, bytes.length - offset); }
-        catch (error) { if (error.code !== 'EAGAIN') throw error; Atomics.wait(sleeper, 0, 0, 1); }
-      }
+      if (!open) throw Error('channel closed');
+      try { return writeSync(fd, bytes, 0, bytes.length); }
+      catch (error) { if (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK') return null; throw error; }
     },
     close() { if (open) { open = false; try { closeSync(fd); } catch { /* already closed */ } } },
     now: () => Number(process.hrtime.bigint() / 1_000_000n),
