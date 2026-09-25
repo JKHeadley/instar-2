@@ -5,7 +5,7 @@ import { createProductionRunAdmission, decodeLoopPolicy } from '../../src/transp
 import { createLiveInputAssemblyFixture, value, refused, digest } from './live-input-owner-fixture.js';
 import { assemblyInput } from './fixture.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -853,3 +853,114 @@ it.runIf(darwin)('M1 synchronous client is the pinned enforcer client role with 
     expect(() => createMonitorClient('relative/enforcer')).toThrow('absolute pinned enforcer path required');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// M1 service: decision logic over the genuine fixed reader. The release leaf is
+// SYNTHETIC (no native release exists: see the Sprint 2 feasibility conflict).
+import { createMonitorService } from '../../scripts/fixed-native-worker-monitor.mjs';
+
+function serviceFixture(root: string, journalPath: string, options: { context?: boolean; release?: boolean } = {}) {
+  const setup = monitorContextFixture(root);
+  const keys = generateKeyPairSync('ed25519');
+  const digestValue = value(canonical('release')).hash;
+  const digests = { releaseDigest: digestValue, artifactDigest: digestValue, profileDigest: digestValue,
+    handlePolicyDigest: digestValue, limitsDigest: digestValue };
+  const released: string[] = [];
+  const release = { start: (closure: any, identity: string) => { released.push(identity); return { uid: 499, pid: 4242,
+      processStartIdentity: { bootId: 'boot:test', uniqueId: '9', startTicks: '1' },
+      originalDeadline: { ownerClockReference: 'clock:test', ownerValidUntil: 100, bootId: 'boot:test',
+        continuousTicks: '200', timebaseNumer: '1', timebaseDenom: '1' }, evidenceReferences: [`release:${closure.bundle}`] }; },
+    observe: () => ({ state: 'running', reason: 'ok' }) };
+  const service = createMonitorService({ installation: 'installation:test', machine: 'machine-a', bootId: 'boot:test',
+    digests, clockReference: 'clock:test', now: () => 50, keyId: 'key:test', privateKey: keys.privateKey,
+    journal: new OfflineJournal(journalPath), context: options.context === false ? null : setup.context,
+    release: options.release === false ? null : release });
+  const trust = { keyId: 'key:test', publicKey: keys.publicKey, ...digests, currentBootId: 'boot:test',
+    clockReference: 'clock:test', now: 50, authorityValidUntil: 100, millisecondsPerUnit: 1 };
+  const s8 = () => { value(setup.view.refresh()); return createInstalledBoundary(setup.f.c, { installation: 'installation:test',
+    machine: 'machine-a', store: createFactStore(setup.f.ctx, setup.view.segment),
+    client: { exchange: (bytes: Uint8Array) => service.handle(bytes) }, trust: () => trust,
+    generation: () => setup.f.host.current().generation }); };
+  return { ...setup, service, released, s8, trust };
+}
+
+it('M1 service releases once through the genuine reader and answers lost acknowledgements with the retained original', () => {
+  const root = diskRoot(), dir = mkdtempSync(join(tmpdir(), 'instar-journal-'));
+  try {
+    const x = serviceFixture(root, join(dir, 'journal'));
+    const first = value(x.s8().launch(x.spec, x.locators.operation, x.locators.claim));
+    expect(first).toMatchObject({ phase: 'launched', detail: 'running:ok' });
+    expect(x.released).toHaveLength(1);
+    // Lost reply: a restarted S8 asks again; the service returns the retained
+    // original receipt and never releases a second worker.
+    const again = value(x.s8().launch(x.spec, x.locators.operation, x.locators.claim));
+    expect(again.observedAt).toBe(first.observedAt);
+    expect(x.released).toHaveLength(1);
+    // A conflicting duplicate (other claim bytes) never claims non-occurrence.
+    const conflicting = monitorRequest({ v: 1, method: 'launch', challenge: 'ef'.repeat(32), installation: 'installation:test',
+      machine: 'machine-a', body: { ...x.locators, claim: x.locators.consumed } });
+    const reply = unframe(x.service.handle(frame(conflicting)));
+    expect(reply.receipt).toMatchObject({ state: 'unknown', reason: 'binding' });
+    expect(x.released).toHaveLength(1);
+    // Torn journal: new launches refuse; a decided original stays uncertain.
+    const bytes = readFileSync(join(dir, 'journal'));
+    writeFileSync(join(dir, 'journal'), bytes.subarray(0, -3));
+    expect(unframe(x.service.handle(frame(conflicting))).receipt).toMatchObject({ reason: 'journal-untrusted' });
+    expect(x.released).toHaveLength(1);
+    x.view.close(); x.writer.close();
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('M1 service refuses before any decision while the installed reader or native release is unavailable', () => {
+  for (const [options, reason] of [[{ context: false }, 'authority'], [{ release: false }, 'unsupported']] as const) {
+    const root = diskRoot(), dir = mkdtempSync(join(tmpdir(), 'instar-journal-'));
+    try {
+      const x = serviceFixture(root, join(dir, 'journal'), options);
+      const observation = value(x.s8().launch(x.spec, x.locators.operation, x.locators.claim));
+      expect(observation).toMatchObject({ phase: 'refused', detail: `refused-before-release:${reason}` });
+      expect(x.released).toHaveLength(0);
+      expect(existsSync(join(dir, 'journal'))).toBe(false);     // no dispatch decision was recorded
+      x.view.close(); x.writer.close();
+    } finally { rmSync(root, { recursive: true, force: true }); rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+it('two processes racing the same launch against one journal release at most once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'instar-race-'));
+  try {
+    const keys = generateKeyPairSync('ed25519');
+    const pem = keys.privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const request = { v: 1, method: 'launch', challenge: 'ab'.repeat(32), installation: 'installation:test', machine: 'machine-a',
+      body: { request: 'request:1', specification: 'spec:1', claim: 'claim:1', consumed: 'consumed:1',
+        operation: 'operation:1', digest: digest('race') } };
+    // Owner stand-in (SYNTHETIC, labelled): this case tests only journal
+    // exclusion across processes, not owner authority.
+    const script = `
+      import { createMonitorService, OfflineJournal, frame, unframe } from ${JSON.stringify(monitorScript)};
+      import { createPrivateKey } from 'node:crypto';
+      import { appendFileSync } from 'node:fs';
+      const ok = v => ({ type: 'Result', schemaVersion: 1, kind: 'Success', value: v });
+      const context = { resolveLaunch: () => ok({ bundle: 'bundle:1' }), recheck: c => ok(c), resolveObservation: () => ok({}) };
+      const release = { start: (c, identity) => { appendFileSync(${JSON.stringify(join(dir, 'released'))}, identity + '\\n');
+        return { uid: 499, pid: process.pid, processStartIdentity: { bootId: 'boot:test', uniqueId: String(process.pid), startTicks: '1' },
+          originalDeadline: { ownerClockReference: 'clock:test', ownerValidUntil: 100, bootId: 'boot:test', continuousTicks: '2', timebaseNumer: '1', timebaseDenom: '1' },
+          evidenceReferences: ['release:race'] }; }, observe: () => null };
+      const d = ${JSON.stringify(digest('release'))};
+      const service = createMonitorService({ installation: 'installation:test', machine: 'machine-a', bootId: 'boot:test',
+        digests: { releaseDigest: d, artifactDigest: d, profileDigest: d, handlePolicyDigest: d, limitsDigest: d },
+        clockReference: 'clock:test', now: () => 50, keyId: 'key:test', privateKey: createPrivateKey(${JSON.stringify(pem)}),
+        journal: new OfflineJournal(${JSON.stringify(join(dir, 'journal'))}), context, release });
+      const start = ${Date.now() + 400}; while (Date.now() < start) {}
+      process.stdout.write(unframe(service.handle(frame(${JSON.stringify(request)}))).receipt.state);`;
+    const run = () => new Promise<string>(resolve => {
+      const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'inherit'] });
+      let out = ''; child.stdout.on('data', chunk => { out += chunk; }); child.on('close', () => resolve(out));
+    });
+    const states = await Promise.all([run(), run(), run()]);
+    const releases = existsSync(join(dir, 'released')) ? readFileSync(join(dir, 'released'), 'utf8').trim().split('\n') : [];
+    expect(releases).toHaveLength(1);
+    // The winner reports running; a loser sees the retained original (running) or,
+    // if it read between decision and release record, honest uncertainty.
+    expect(states.every(state => state === 'running' || state === 'unknown')).toBe(true);
+    expect(states).toContain('running');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 30_000);

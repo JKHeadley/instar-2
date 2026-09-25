@@ -89,6 +89,20 @@ Builder-local result on Studio, macOS 26.5.2 (25F84) arm64, 2026-09-24 (unprivil
 | task, task-runtime | FAIL: a task right taken before exec loses its binding after any exec, even a direct exec with no sandbox. |
 | guard (4 faults) | FAIL: the arm/ack/lapse logic runs, but termination depends on the lost task right. No PID-lookup kill is used. |
 
+## Owner integration (source only, refusing in production)
+
+- M1 `scripts/fixed-native-worker-monitor.mjs`:
+  - `createMonitorService` decides launch/observe from the fixed installed reader (`createProductionMonitorContext`) and a native release leaf. With either one missing, it refuses before any dispatch decision exists.
+  - A durable decision is written under an exclusive journal lock before any release. The offline lock is O_EXCL; the installed build needs M2's native lock plus F_FULLFSYNC, which is NOT built.
+  - Duplicates get the retained original or `unknown`, never a second release.
+  - The module also carries the `loading-worker` role, the owner-side channel IO, and the pinned-enforcer `client`.
+- S8 `src/assembly/production-launch-boundary.ts` owns the wire codec and the constructor-bound locator resolver. It stays `monitor-unavailable` unless it is given installed inputs.
+- Installed inputs still missing, so production has no admitted launch:
+  - lane A capacity authority (impl-r1-m3i);
+  - the R4/R6 installed store/context/authority composition for the reader;
+  - the native release, which fails its feasibility gate above;
+  - the receipt keys and trust reference.
+
 ## Stage 2 — monitor install (refusing)
 
 `install`, `uninstall` refuse until the monitor release manifest (enforcer
