@@ -1,0 +1,1 @@
+{"envelope_id":"Ev1","type":"events_api","retry_attempt":0,"retry_reason":"initial","payload":{"team_id":"T12345678","api_app_id":"A12345678","event_id":"Ev12345678","event":{"type":"message","channel":"D12345678","user":"U12345678","event_ts":"1727200000.000001","ts":"1727200000.000001","text":"hello from Slack"}}}

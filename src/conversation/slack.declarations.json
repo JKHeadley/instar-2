@@ -1,0 +1,45 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "slack-conversation-adapter",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "slack.envelope.captured",
+        "slack.intake.admitted",
+        "slack.intake.held",
+        "slack.reply.refused"
+      ],
+      "gate": {
+        "test": "P12-SLACK-PREPARATION",
+        "deadline": 1893456000000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "irreversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      14,
+      28,
+      29,
+      34,
+      42,
+      46,
+      62,
+      89,
+      105,
+      116
+    ],
+    "holds": []
+  }
+]
