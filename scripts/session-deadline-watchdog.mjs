@@ -15,7 +15,8 @@ try {
   if (!session || session.turnDeadline !== deadline || session.closedAt !== null) process.exit(0);
   const closed = readdirSync(inbox).filter(file => file.startsWith(`${name}.`) && file.endsWith('.json'))
     .some(file => { try { const event = JSON.parse(readFileSync(join(inbox, file), 'utf8'));
-      return event.kind === 'turn-closed' && event.at >= session.turnStartedAt && event.at <= deadline;
+      return event.kind === 'turn-closed' && event.at >= session.turnStartedAt && event.at <= deadline
+        && (event.receiptId ? !session.turnReceiptIds?.includes(event.receiptId) : event.at > session.turnStartedAt);
     } catch { return false; } });
   if (closed) process.exit(0);
   const env = { PATH: '/usr/bin:/bin:/opt/homebrew/bin' };

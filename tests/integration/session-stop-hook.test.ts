@@ -21,5 +21,9 @@ it('Stop receipt is durable and SessionStart(compact) returns grounding from a l
     expect(JSON.parse(compact.stdout).hookSpecificOutput.additionalContext).toBe('Retained operator context.');
     expect(readdirSync(root).filter(name => name.endsWith('.json')).map(name =>
       JSON.parse(readFileSync(join(root, name), 'utf8')).kind).sort()).toEqual(['compact', 'turn-closed']);
+    expect(readdirSync(root).filter(name => name.endsWith('.json')).map(name =>
+      JSON.parse(readFileSync(join(root, name), 'utf8')).receiptId)).toEqual([
+      expect.stringMatching(/^[0-9a-f-]{36}$/), expect.stringMatching(/^[0-9a-f-]{36}$/),
+    ]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

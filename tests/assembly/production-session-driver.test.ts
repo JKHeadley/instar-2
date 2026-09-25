@@ -14,7 +14,7 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
   let stamp = '321:1000', transcript = true;
   const dead = new Set<string>();
   const live = new Set<string>();
-  let hooks: { kind: 'turn-closed' | 'compact'; sessionId: string; at: number }[] = [];
+  let hooks: { kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId: string }[] = [];
   const io: SessionIO = {
     exclusive: run => run(),
     tmux(args) {
@@ -34,10 +34,14 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
     sleep() {}, load: () => journal, save: next => {
       if (failIdentitySave && next.sessions.length > journal.sessions.length) { failIdentitySave = false; throw Error('identity save failed'); }
       journal = structuredClone(next);
+      if (onPrepared && next.deliveries.some(row => row.state === 'prepared')) {
+        const callback = onPrepared; onPrepared = null; callback();
+      }
     }, armDeadline() { armed = true; armCount++; },
     readInbox: () => hooks, transcriptExists: () => transcript,
   };
   let onEnter: (() => void) | null = null;
+  let onPrepared: (() => void) | null = null;
   const config = { operatorOwnUse: true as const, confinement: 'unconfined' as const,
     framework, executable: '/synthetic', cwd: '/work', home: '/login', configHome: '/login',
     context: f.c, io, now: () => now, stopped: () => stopped, resolveIntake: () => 'hello',
@@ -53,7 +57,9 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
     failNextIdentitySave: () => { failIdentitySave = true; }, changeStamp: (value: string) => { stamp = value; },
     failNextSpawn: () => { failSpawn = true; },
     transcript: (value: boolean) => { transcript = value; }, onEnter: (callback: () => void) => { onEnter = callback; },
-    hook: (at: number) => { hooks = [{ kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at }]; },
+    onPrepared: (callback: () => void) => { onPrepared = callback; },
+    hook: (at: number) => { hooks = [...hooks, { kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc',
+      at, receiptId: `receipt-${hooks.length + 1}` }]; },
     markPrepared: () => { journal = { ...journal, deliveries: journal.deliveries.map(row => ({ ...row, state: 'prepared' })) }; },
     stop: () => { stopped = true; }, time: (value: number) => { now = value; }, config };
 }
@@ -86,9 +92,14 @@ it.each(['claude-code', 'codex-cli'] as const)('distinguishes busy and unchanged
   const active = `${cursor} hello\n✻ Working… (esc to interrupt)\nbypass permissions on (shift+tab to cycle)`;
   expect(classifyPaneReadiness(active)).toBe('ready');
   expect(classifyPaneIdle(active, framework)).toBe(false);
+  const echo = `${cursor} hello${framework === 'claude-code' ? '\nbypass permissions on (shift+tab to cycle)' : ''}`;
+  expect(classifyPaneIdle(echo, framework)).toBe(false);
   expect(classifyPaneIdle(`answer\n${cursor} `, framework)).toBe(true);
   const f = fixture(framework), id = f.launch();
   value(f.deliver(id));
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+  expect(f.journal.sessions[0]?.turnDeadline).not.toBeNull();
+  f.changePane(echo);
   expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
   expect(f.journal.sessions[0]?.turnDeadline).not.toBeNull();
   f.changePane(active);
@@ -101,10 +112,12 @@ it.each(['claude-code', 'codex-cli'] as const)('distinguishes busy and unchanged
 
 it('arms the deadline before Enter and accepts only a current-turn Stop receipt', () => {
   const f = fixture(), id = f.launch();
-  f.hook(999);
+  f.onPrepared(() => f.hook(1000));
   f.onEnter(() => { expect(f.armed).toBe(true); expect(f.journal.sessions[0]?.turnDeadline).toBe(2000); });
   value(f.deliver(id));
+  expect(f.journal.sessions[0]?.turnReceiptIds).toEqual(['receipt-1']);
   expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(2000);
   f.hook(1000);
   expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('output-observed');
   expect(f.journal.sessions[0]?.turnDeadline).toBeNull();
@@ -112,6 +125,7 @@ it('arms the deadline before Enter and accepts only a current-turn Stop receipt'
 
 it('accepts a current-turn Stop receipt written synchronously with Enter', () => {
   const f = fixture(), id = f.launch();
+  f.hook(1000);
   f.onEnter(() => f.hook(1000));
   value(f.deliver(id));
   expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).evidence).toContain('turn-closed:');

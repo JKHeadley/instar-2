@@ -10,7 +10,7 @@ export interface SessionRecord {
   readonly operation: string; readonly claim: string; readonly name: string; readonly identity: string;
   readonly incarnation: string; readonly startedAt: number; readonly resumeId: string | null;
   readonly recovery: 0 | 1; readonly turnDeadline: number | null; readonly turnStartedAt: number | null;
-  readonly closedAt: number | null; readonly turnBaseline?: string;
+  readonly closedAt: number | null; readonly turnBaseline?: string; readonly turnReceiptIds?: readonly string[];
 }
 export interface DeliveryRecord {
   readonly operation: string; readonly identity: string; readonly intake: string;
@@ -29,7 +29,7 @@ export interface SessionIO {
   sleep(ms: number): void;
   load(): SessionJournal;
   save(journal: SessionJournal): void;
-  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number }>[];
+  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string }>[];
   transcriptExists(framework: SessionFramework, id: string, cwd: string, configHome: string): boolean;
   armDeadline(name: string, identity: string, deadline: number): void;
 }
@@ -62,7 +62,7 @@ export function classifyPaneIdle(capture: string, framework: SessionFramework): 
   const lines = tail(capture, 8).split('\n');
   if (classifyPaneReadiness(capture) !== 'ready') return false;
   if (/(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(lines.join('\n'))) return false;
-  const prompt = framework === 'codex-cli' ? /^[❯›>]\s*(?:[^\n]*)?$/ : /^[❯›]\s*(?:[^\n]*)?$/;
+  const prompt = framework === 'codex-cli' ? /^[❯›>]\s*$/ : /^[❯›]\s*$/;
   const promptIndex = lines.map(line => prompt.test(line)).lastIndexOf(true);
   return promptIndex >= 0 && lines.slice(promptIndex + 1)
     .every(line => /^(?:bypass permissions|shift\+tab to cycle|\? for shortcuts|gpt-|tokens?\b)/i.test(line));
@@ -170,7 +170,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const started = config.now();
     const deadline = started + config.turnDeadlineMs;
     const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null,
-      turnBaseline: digestOf(capture(session.name)) };
+      turnBaseline: digestOf(capture(session.name)),
+      turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+        .flatMap(row => row.receiptId ? [row.receiptId] : []) };
     config.io.save(replaceSession(config.io.load(), armed));
     config.io.armDeadline(session.name, session.identity, deadline);
     return armed;
@@ -287,7 +289,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         if (!alive(session.name)) return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'tmux session exited' };
         verifyLive(session);
         const pane = capture(session.name);
-        const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed').at(-1);
+        const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+          && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
         if (hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
           && session.turnDeadline !== null && hook.at <= config.now()) {
           config.io.save(replaceSession(config.io.load(), { ...session, closedAt: hook.at, turnDeadline: null }));

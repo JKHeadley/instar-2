@@ -16,9 +16,10 @@ try { parsed = JSON.parse(body); } catch { process.exit(2); }
 if (typeof parsed.session_id !== 'string') process.exit(2);
 const kind = process.argv[2] === 'compact' ? 'compact' : 'turn-closed';
 mkdirSync(inbox, { recursive: true, mode: 0o700 });
-const filename = `${name}.${Date.now()}.${randomUUID()}.json`;
+const receiptId = randomUUID();
+const filename = `${name}.${Date.now()}.${receiptId}.json`;
 const temp = join(inbox, `${filename}.tmp`);
-writeFileSync(temp, JSON.stringify({ kind, sessionId: parsed.session_id, at: Date.now() }), { mode: 0o600 });
+writeFileSync(temp, JSON.stringify({ kind, sessionId: parsed.session_id, at: Date.now(), receiptId }), { mode: 0o600 });
 const fd = openSync(temp, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
 renameSync(temp, join(inbox, filename));
 const directory = openSync(inbox, 'r'); try { fsyncSync(directory); } finally { closeSync(directory); }
