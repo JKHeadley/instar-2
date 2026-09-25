@@ -724,6 +724,8 @@ comparison and independent acceptance, never an unrecorded carry-forward. Concur
 reviews produce a dispute and the conservative unreviewed/partial current rendering, not a
 clock-selected approval. New weak evidence cannot overwrite an earlier adverse record silently.
 
+**Rule — the simplest robust route is considered in the existing review.** Rule 116; **check: the existing independent design and landing review.** Its review record includes `simplestRobustRoute`, stating the simplest robust route and why the proposal differs, or that it is that route. The reviewer refuses added machinery without a named credible failure and an adequate reason the simpler route cannot handle it. Applicable start, end-state and limit guards remain explicit. An autonomous-completion claim requires evidence of a real unattended run through the shipped path; human or ad-hoc session takeover does not prove that claim. The record uses the existing change binding and review disposition. No separate classifier, checker, gate or runtime owner is introduced.
+
 **Rule — all held edges enter the review obligation.** **Checks: P9-NF-14/30/58**.
 Each generation's full held-edge set is compared with reviewed records. Review scheduling covers
 every edge within its declared window, including rarely executed gates and these verification
@@ -938,6 +940,7 @@ honesty remains separate from these design dispositions.
 | 9.7 — live canary/authentication per adapter class | **Partial:** enumerated live matrix and independent challenges P9-NF-17–21; channel-attestation compromise and opaque provider internals cannot be eliminated by sampling. Unsupported classes never claim full protection. |
 | 9.8 — semanticallyReviewed generation tracking and coverage | **Held:** exact-generation independent records, every-edge population and separated totals P9-NF-14/30/57/58; wisdom of the semantic judgment remains inference. |
 | 9.9 — proposed redacts closed-list addition | **Held/resolved:** drop the redundant proposed addition and use approved part-three amendment three; P3-NF-05 and P9-NF-48 enforce existing eligibility, no second growth value. |
+| Rule 116 — Occam's Razor / Simplest Robust Route | Held through the existing independent design and landing review; semantic adequacy is judged, not certified by a simplicity executable. Runtime register coverage remains as actually evidenced. |
 | Shared seven/eight/nine/ten — exact-response output use | **Held contract; runtime held:** P9-NF-64–66 with P10-SI-17/18/24/37. Nine owns both response verdicts; Ten/Seven must supply real source/completion captures. Occurrence never closes this duty. M4-G6-N and provider-response-source-and-completion-evidence remain open until approved owner implementation and tier-appropriate proof. |
 | Shared eight/nine — uncertainty reconciliation | **Held evidence contract, claimed here:** distinct predicates P9-NF-04–06/22–25; eight owns settled Outcome, six release and five progression. Adapter without decisive evidence stays uncertain, automatic retry ineligible. |
 | Shared nine/eleven — external protection anchor | **Held enforcement contract, claimed here:** separate administrator, mandatory write/load boundary, broker journal and probes P9-NF-15/51–56. Deployment without ten's isolation/eleven's verified surface is explicitly unprotected, never assumed complete. |

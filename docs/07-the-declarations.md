@@ -189,17 +189,18 @@ holds past the declared bound, at build, at runtime, and in review alike.
 **Output, exactly.** One register: every entry of every kind with its author-declared facts, its
 generated facts, and its full version history as a lookup. Plus the renderings — the capability
 briefing (rule 84), the glossary document, **the rule book**, and the coverage report — each a
-rendering of entries under the same regenerate-and-compare check. Before the generator exists,
-the approved markdown documents are hand-authored; **the bootstrap converts them once**: on this
-part's approval, the approved rule book, glossary, and register document become the first rules,
+rendering of entries under the same regenerate-and-compare check. For runtime bootstrap,
+the approved rule book, glossary, and register document become the first rules,
 terms, and shape entries — the glossary already mandates exactly this for itself — **together
 with the shape entries this part seeds**: the holder fields (`holds`, `semanticallyReviewed`,
 the sentinel `freshnessProbe` that supersedes the old run-record fact under this bundle's
 amendments), the enforceable-subject table, and the generation-record and check-run-record
 kinds, so the first generation's holder declarations validate against a shape that carries
-them. From then on the documents are outputs. The boundary moment is explicit: hand edits to
-those documents before the conversion are the bootstrap; after it, they fail P3-NF-01. As a
-linear sequence, once: (1) this part is approved — inputs: the approved markdown corpus; every
+them.
+
+**Rule — repository replay publication uses approved sources.** For repository design publication, the authored Markdown remains the source and the existing replay converter derives the register and its views. The anchor's document map, rule declaration hashes and checker constant are derived pins, refreshed together by the desk in the same reviewed rule-book change. Only the exact operator-approved change may enter the published register; draft regeneration is a reviewable candidate, never approval. The desk records the authentic approval and reviewed head/base in the existing PR and changelog history. Replay remains a shape-only projection with pending runtime provenance and visible prerequisites. Its publication never appends or substitutes for an entering-force record. Runtime bootstrap still requires the actual approved conversion and verified absence of a first entering-force record; after anchoring, runtime changes use the verified parent and ordinary version-chain path. **Check:** existing independent review, operator approval at landing, and deterministic regenerate-and-compare.
+
+The runtime anchoring transition follows this linear sequence, once: (1) this part is approved — inputs: the approved markdown corpus; every
 check below suspended, because nothing is generated yet. (2) The one-time conversion emits the
 first declaration set from the approved documents — shape entries (kinds, facts, holder fields,
 the enforceable-subject table, the generation-record and check-run-record kinds), rules, terms.

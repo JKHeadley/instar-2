@@ -115,7 +115,7 @@ describe('compiled register build adapter lifecycle', () => {
       expect(() => build(root, revision, { mode: 'normal', workflow, provider: { ...provider, separations: [] }, now: 100 })).toThrow('standing evidence');
       expect(result.authorityPrerequisites).toEqual([]);
       expect(result.register.entries.find(e => e.declaration.id === 'rungraph.contract')!.approvedIn).toEqual(ownerRows[0]!.approvedIn);
-      expect(result.graph.prerequisites).toEqual([]); expect(result.graph.loops).toHaveLength(115);
+      expect(result.graph.prerequisites).toEqual([]); expect(result.graph.loops).toHaveLength(116);
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
       expect(calls).toContain('extract:fixture:mirrored'); expect(calls).toContain('force'); expect(calls).toContain('current');
       await yieldToRunner();
@@ -385,7 +385,7 @@ describe('compiled register build adapter lifecycle', () => {
     try {
       const run = (...args: string[]) => execFileSync(process.execPath, ['scripts/build-register.mjs', '--replay', '--out', root, ...args], { encoding: 'utf8' });
       const first = JSON.parse(run()) as { rules: number; entries: number; generation: string; authority: string };
-      expect(first.rules).toBe(115); expect(first.entries).toBeGreaterThan(115); expect(first.authority).toBe('shape-only');
+      expect(first.rules).toBe(116); expect(first.entries).toBeGreaterThan(116); expect(first.authority).toBe('shape-only');
       const before = readFileSync(join(root, 'register.json'), 'utf8'); run('--check'); run();
       expect(readFileSync(join(root, 'register.json'), 'utf8')).toBe(before);
       expect(readFileSync(join(root, 'capabilities.md'), 'utf8')).toContain('register-tooling');

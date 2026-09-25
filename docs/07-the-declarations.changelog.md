@@ -4,6 +4,12 @@ _Generated from `07-the-declarations.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-24 · approved — Justin adopted the simplicity audit and requested a fundamental Occam standard; Astra specified the smallest replay publication fix. Exact content approved by the operator in topic 52075 at 15:58Z 2026-09-24 ('approved'); merged as PR 116.
+
+- **Clarify that approved repository replay revisions use authored Markdown and refreshed derived publication pins, while runtime bootstrap and subsequent anchored changes retain their existing authority path.** — The first offline conversion must not prohibit later reviewed rule-book publication or imply that replay grants entering-force authority. _(astra-occam-standard-ruling.md section 2)_
+
+Approved in: PR #116, merge `5df77b055`.
+
 ## Revision 6 · 2026-09-04 · approved — operator accepted all seven defaults and directed the merge; merging is the approval, bound to the reviewed content; the six-amendment bundle lands atomically with it
 
 - **Part three is approved on main; the document status line reads approved; the pending-landing approval fields across the six amended documents are completed by this landing.** — All seven operator questions accepted as recommended (defaults), 2026-09-04. _(topic 52075, operator messages 2026-09-04)_
