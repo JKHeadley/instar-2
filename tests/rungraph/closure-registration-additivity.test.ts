@@ -7,9 +7,10 @@ import { exhaustionFixture } from './closure-fixtures.js';
 import { governanceFixture } from './governance-fixture.js';
 import { setup, value, refused } from './fixtures.js';
 
-it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION keeps the original installation byte-identical and gates only additive operations', () => {
+// Baseline re-pinned to the reviewed installation (hold arrays only) per astra-enforce-contracts-ruling.md.
+it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION keeps the reviewed installation byte-identical and gates only additive operations', () => {
   const original = readFileSync('src/rungraph/rungraph.declarations.json', 'utf8');
-  expect(original).toBe(execFileSync('git', ['show', '3ded685bb0e4daa944cbe90e191d56d93ef54f70:src/rungraph/rungraph.declarations.json'], { encoding: 'utf8' }));
+  expect(original).toBe(execFileSync('git', ['show', '330097eecca10780d7109146f60732b95556fb35:src/rungraph/rungraph.declarations.json'], { encoding: 'utf8' }));
 
   const legacy = setup();
   const legacyGraph = value(createRunGraph({ ...legacy.deps, governance: governanceFixture(legacy.c) }));

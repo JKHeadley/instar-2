@@ -101,7 +101,9 @@
       95,
       103
     ],
-    "holds": []
+    "holds": [
+      { "rule": 14, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-06", "stage": "build" }, "portion": "dedup preserves captured arrival bytes instead of discarding them", "remainder": "all other inbound gates and live operator-channel proof" }
+    ]
   },
   {
     "type": "Declaration",
@@ -263,7 +265,9 @@
       95,
       103
     ],
-    "holds": []
+    "holds": [
+      { "rule": 14, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-13", "stage": "build" }, "portion": "admission preserves an uncertain arrival for later delivery", "remainder": "runtime backlog-age and all other inbound gates" }
+    ]
   },
   {
     "type": "Declaration",
@@ -298,6 +302,9 @@
       66,
       95
     ],
-    "holds": []
+    "holds": [
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-14-PARTIAL", "stage": "build" }, "portion": "authenticated operator stop at the intake brake", "remainder": "outbound-secret and spend-cap rungs and all other blocking sites" },
+      { "rule": 14, "class": "partial", "evidence": { "kind": "fixture", "id": "P4-NF-14-PARTIAL", "stage": "build" }, "portion": "uncertain intake delivery and operator stop remain reachable", "remainder": "all inbound gates and live reachability proof" }
+    ]
   }
 ]

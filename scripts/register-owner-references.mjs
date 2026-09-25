@@ -47,20 +47,22 @@ const contracts = {
     'decodeSessionGrounding']), ...closureOwned,
     ...Object.fromEntries(['decodeInstalledRunGovernanceReferenceAtOrigin', 'decodeHistoricalInstalledRunGovernanceReference']
       .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/installed-governance.ts' }])) },
-    fixture: id => id === 'P5-NF-54' || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION'
-      || ['P10-SI-01', 'P10-SI-02', 'P10-SI-10', 'P10-SI-19', 'P10-SI-20', 'P10-SI-23'].includes(id), probe: id => id === 'P5-NF-55',
+    fixture: id => ['P5-NF-54', 'P5-NF-54-PARTIAL', 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION'].includes(id)
+      || ['P10-SI-01', 'P10-SI-02', 'P10-SI-10', 'P10-SI-19', 'P10-SI-20', 'P10-SI-23'].includes(id),
+    probe: id => ['P5-NF-55', 'P5-NF-55-PARTIAL'].includes(id),
     test: (id, kind, path) => kind === 'fixture'
-      ? id === 'P5-NF-54' && path === 'tests/rungraph/governance.test.ts'
+      ? ['P5-NF-54', 'P5-NF-54-PARTIAL'].includes(id) && path === 'tests/rungraph/governance.test.ts'
         || id === 'P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION' && path === 'tests/rungraph/closure-registration-additivity.test.ts'
         || id.startsWith('P10-SI-') && path === 'tests/rungraph/installed-governance.test.ts'
-      : id === 'P5-NF-55' && path === 'tests/rungraph/scope.test.ts' },
+      : ['P5-NF-55', 'P5-NF-55-PARTIAL'].includes(id) && path === 'tests/rungraph/scope.test.ts' },
   'part-four': { decoders: { ...owned('intake', ['intakeDedupDefinition', 'intakeWorkRegistration', 'intakeStopRegistration', 'intakeVerifiedActRegistration']),
     'decode:Provenance': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     'decode:VerifiedPrincipal': { module: 'src/index.ts', artifact: 'src/decode/decode.ts', symbol: 'decode' },
     readProjection: { module: 'src/projections/index.ts', artifact: 'src/projections/fold.ts', requires: 'intakeDedupDefinition' },
     authorAndAppend: { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', requires: 'intakeWorkRegistration' },
     'createFactStore.append': { module: 'src/facts/index.ts', artifact: 'src/facts/store.ts', symbol: 'createFactStore', requires: 'intakeWorkRegistration' } },
-    fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9])$/.test(id), probe: id => id === 'P4-NF-29',
+    fixture: id => /^P4-(?:NF-(?:0[1-9]|1[0-9]|2[0-9])|VA-0[1-9])$/.test(id) || id === 'P4-NF-14-PARTIAL',
+    probe: id => id === 'P4-NF-29',
     test: (_id, _kind, path) => /^tests\/intake\/[a-z][a-z0-9-]*\.test\.ts$/.test(path) },
   'part-seven': { decoders: {
     ...Object.fromEntries(['decodeProviderAnswerAcceptanceAtOrigin', 'decodeHistoricalProviderAnswerAcceptance',
