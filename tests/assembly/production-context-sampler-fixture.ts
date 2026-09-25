@@ -35,7 +35,7 @@ export function documentExcerpt(f, path: string, from: string, through: string,
 
 export const PURPOSE = ['docs/00-the-purpose.md', '> **Make the world', '> **Make coherence something an AI cannot lose.**'] as const;
 export const CONTRACT = ['docs/14-the-assembly/16-the-fixed-single-machine-installation-contract.md',
-  '**Status: draft, awaiting operator approval.**', 'approval, clock, and observation host.'] as const;
+  '**Status: draft, awaiting operator approval.**', 'observation host.'] as const;
 
 export function groundingFixture(options: { storage?: any; purpose?: (f: any) => any; audience?: string[] } = {}) {
   const f = createLiveInputAssemblyFixture(options.storage, { minimal: true });
