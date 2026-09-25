@@ -175,11 +175,13 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
           // Copy data fields only: provider getters and unrelated metadata never
           // execute or enter the receipt's bounded canonical encoding.
           const limitation = own(returned, 'limitation'), draft = own(returned, 'responseEvidenceDraft');
+          const failure = own(returned, 'failure');
           const safeDraft = draft && typeof draft === 'object' && admitted.evidenceContract
             ? snapshotEvidenceDraft(draft, payload.maxOutputBytes, admitted.evidenceContract) : undefined;
           observation = { state: own(returned, 'state'), bytes: own(returned, 'bytes'), providerOperation: own(returned, 'providerOperation'),
             usage: { inputTokens: own(usage, 'inputTokens'), outputTokens: own(usage, 'outputTokens'), charge: own(usage, 'charge'), source: own(usage, 'source') },
             retryBlocked: own(returned, 'retryBlocked'), ...(limitation && typeof limitation === 'object' ? { limitation: { kind: own(limitation, 'kind'), observedBytesAtLeast: own(limitation, 'observedBytesAtLeast') } } : {}),
+            ...(failure && typeof failure === 'object' ? { failure: { failureClass: own(failure, 'failureClass'), resetHint: own(failure, 'resetHint'), resetAt: own(failure, 'resetAt') } } : {}),
             ...(safeDraft ? { responseEvidence: materializeEvidence(safeDraft,
               payload, claim, admitted.claimId, own(returned, 'bytes'), admitted.capacities, putReserved) } : {}) } as ProviderObservation;
         } catch {
@@ -190,6 +192,10 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
         }
         const captured = checked('CaptureProviderReturn', () => {
           ensure(['complete', 'rejected', 'uncertain'].includes(observation.state), 'invalid provider state');
+          if (observation.failure) ensure(observation.state === 'uncertain'
+            && ['limit', 'policy', 'timeout', 'transport', 'unknown'].includes(observation.failure.failureClass)
+            && (observation.failure.resetHint === null || /^\d{1,2}:\d{2}(?:am|pm)$/.test(observation.failure.resetHint))
+            && (observation.failure.resetAt === null || Number.isSafeInteger(observation.failure.resetAt) && observation.failure.resetAt >= 0), 'invalid provider failure code');
           ensure(observation.bytes === null || typeof observation.bytes === 'string'
             && observation.bytes.length <= payload.maxOutputBytes && new TextEncoder().encode(observation.bytes).length <= payload.maxOutputBytes, 'provider output bound exceeded; uncertainty retained');
           ensure(observation.state !== 'complete' || observation.bytes !== null, 'complete provider response lacks bytes');

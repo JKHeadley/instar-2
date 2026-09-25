@@ -110,6 +110,22 @@ function runRecordedLauncher(stateRoot: string, preloadSource: string,
 }
 
 describe('Stage 1 preview driver (recorded transport only)', () => {
+  it('keeps scheduled and Telegram Four adapters isolated over the same durable store', () => {
+    const path = root();
+    const transport = recordedTelegram([privateUpdate(1, 7, 'hello')]);
+    const c = setup(path, transport).composition();
+    expect(c.scheduledIntake).not.toBe(c.intake);
+    c.scheduledIntake.receive('{"schemaVersion":1}', {
+      channel: 'scheduled:forged', sender: 'principal:scheduler', identityEpoch: 'key:1', eventId: 'forged',
+    });
+    c.pollOnce();
+    const receipts = c.storage.segment.read().filter(row => row.kind === 'intake-receipt');
+    expect(receipts.map(row => row.body.adapter)).toContain('scheduled-intake-v1');
+    expect(receipts.map(row => row.body.adapter)).toContain('telegram-intake-v1');
+    expect(c.storage.segment.read().some(row => row.kind === 'intake-admitted'
+      && row.body.adapter === 'scheduled-intake-v1')).toBe(false);
+    c.close();
+  });
   it('binds a live-shaped private /start at wall time to the configured principal and replies once', () => {
     const path = root(); const wallNow = Date.now(); const expiresAt = wallNow + 60_000;
     const sender = 7812716706; const botId = 8820318295;

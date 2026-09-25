@@ -121,6 +121,7 @@ function compatibilityEnvelope(value: Record<string, unknown>, sourceBytes: stri
   'legacy expectedDurationMinutes must be positive and finite');
   const residue: string[] = [];
   let postCompletionLearning: LegacyScheduledImportPlan['postCompletionLearning'] = 'off';
+  if (value.executionMode === 'script') residue.push('script job requires worker isolation and is not ported');
   if (value.executionMode === 'model-session') {
     if (value.serverComposition === 'model-session-without-integration-gate') residue.push('explicit post-completion learning choice required');
     else if ((living as Record<string, boolean>).enabled && value.integrationGate !== false) postCompletionLearning = 'required';

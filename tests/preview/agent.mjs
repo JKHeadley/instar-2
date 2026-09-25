@@ -4,7 +4,9 @@ import { resolve } from 'node:path';
 import { createProductionTelegramIO, productionStorageIO, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { createPreviewComposition, stage2GuardedProviderPath } from './composition.js';
 import { stage2HistoricalStatus } from './stage2-owners.js';
-import { MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
+import { HOST_OUTAGE_TEXT, MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
+import { decideUnansweredTurn } from '../../src/sentinels/unanswered-turn.js';
+import { consumeResult } from '../../src/index.js';
 
 const MAX_PREVIEW_BACKOFF_MS = 300_000;
 const DIAGNOSTIC_REASON_CODES = Object.freeze([
@@ -81,7 +83,8 @@ function stateFor(config, options, create) {
   return openPreviewState({ root: config.root, configuration: stateConfiguration, expiresAt,
     replyLimit: stateConfiguration.replyLimit, replyWindowMs: stateConfiguration.replyWindowMs,
     errorLimit: stateConfiguration.errorLimit, totalErrorLimit, maxPendingTurns: stateConfiguration.maxPendingTurns,
-    maxTrialTurns: stateConfiguration.maxTrialTurns, create });
+    maxTrialTurns: stateConfiguration.maxTrialTurns, create,
+    hostNotice: { botId: config.botId, chatId: config.chatId, message: HOST_OUTAGE_TEXT } });
 }
 
 function resolveHostSecret(reference) {
@@ -166,18 +169,28 @@ async function main() {
     process.stdout.write(`${JSON.stringify(publicStatus(state.latchStop('operator'), config))}\n`);
     return 0;
   }
-  if (command !== 'run') throw new Error('preview: command must be run, status, or stop');
+  if (command === 'host-notice') {
+    const notice = createPreviewComposition({ configuration: config, state, noticeOnly: true,
+      storageKey: storageKey(), storageIO: productionStorageIO,
+      resolveSecret: resolveHostSecret,
+      telegramIOFactory: storage => createProductionTelegramIO(config.root, storage.captures) });
+    try { notice.dispatchHostNotice(resolve(config.root, 'host-watch.json')); } finally { notice.close(); }
+    return 0;
+  }
+  if (command !== 'run') throw new Error('preview: command must be run, status, stop, or host-notice');
 
-  // Historical terminal inspection/reconciliation needs no live activation,
-  // credential, poller or authority. Corrupt success throws before reporting.
+  // Historical terminal inspection stays credential-free on stopped and
+  // answered roots. Only a live held turn with a pending fixed notice proceeds.
   if (stage === 2 && existsSync(resolve(config.root, 'preview-stage2-state.json'))) {
     const historical = stage2HistoricalStatus(config.root, state.read(), config);
-    if (historical.terminalLatch) return 0;
     if (historical.phase === 'reply-dispatch-unknown') {
       const recorded = await stage2GuardedProviderPath({ configuration: config, state });
       try { await recorded.resume(); } finally { recorded.close(); }
       return 0;
     }
+    const selected = historical.selectedTurn && state.read().turns[historical.selectedTurn];
+    if (historical.terminalLatch && (state.read().stop || historical.phase !== 'held'
+      || !selected?.failureClass || !['intake-preserved', 'grounded'].includes(selected.phase))) return 0;
   }
 
   // A stopped/expired trial never resolves a credential and never admits a transport.
@@ -210,6 +223,41 @@ async function main() {
       return outcome;
     } });
   };
+  const noticeCycle = () => {
+    if (stage !== 2 || !existsSync(resolve(config.root, 'preview-stage2-state.json'))) return false;
+    const document = state.read();
+    const historical = stage2HistoricalStatus(config.root, document, config);
+    const selected = historical.selectedTurn && document.turns[historical.selectedTurn];
+    if (historical.phase !== 'held' || !selected?.failureClass) return false;
+    const decision = decideUnansweredTurn({ turns: [{ ...selected, held: true }],
+      stopped: document.stop !== null, expiresAt: document.trial.expiresAt }, Date.now());
+    if (!decision) return false;
+    const notice = createPreviewComposition({ configuration: config, state, noticeOnly: true,
+      storageKey: storageKey(), storageIO: productionStorageIO,
+      resolveSecret: resolveHostSecret, telegramIOFactory: observedTelegramIO });
+    try { notice.dispatchNotice(decision.turnId, decision.text); } finally { notice.close(); }
+    return true;
+  };
+  const waitForHeldNotice = async historical => {
+    while (!signalled && state.read().stop === null) {
+      state.heartbeat(process.pid);
+      if (noticeCycle()) break;
+      const current = state.read().turns[historical.selectedTurn];
+      if (historical.phase !== 'held' || !current?.failureClass
+        || !['intake-preserved', 'grounded'].includes(current.phase)
+        || Date.now() >= state.read().trial.expiresAt) break;
+      await interruptibleBackoff(1000, state, () => signalled);
+    }
+  };
+  // Historical recovery never invokes a second model call or reply. A held
+  // selected turn remains alive only long enough for its fixed notice.
+  if (stage === 2 && existsSync(resolve(config.root, 'preview-stage2-state.json'))) {
+    const historical = stage2HistoricalStatus(config.root, state.read(), config);
+    if (historical.terminalLatch) {
+      await waitForHeldNotice(historical);
+      return 0;
+    }
+  }
   let composition;
   try {
     let stage2;
@@ -242,13 +290,31 @@ async function main() {
     for (let cycle = 0; cycle < maximumCycles && !signalled; cycle += 1) {
       let phase = 'DRAIN';
       try {
+        state.heartbeat(process.pid);
+        await yieldBoundary();
+        if (signalled || state.read().stop !== null || composition.terminal?.()) break;
+        state.gate('admit');
+        const acceptMaintenance = result => consumeResult(result, {
+          Success: () => undefined, Refused: refusal => { throw Error(refusal.detail); },
+        });
+        acceptMaintenance(composition.intake.expireHolds());
+        acceptMaintenance(composition.scheduled.tick(Date.now()));
         while (!signalled) {
           await yieldBoundary();
           if (signalled || !(await composition.resumeOne())) break;
           await yieldBoundary();
           if (state.read().stop !== null) break;
         }
-        if (signalled || state.read().stop !== null || composition.terminal?.()) break;
+        if (signalled || state.read().stop !== null || composition.terminal?.()) {
+          const held = stage === 2 && stage2HistoricalStatus(config.root, state.read(), config);
+          const selected = held?.selectedTurn && state.read().turns[held.selectedTurn];
+          if (held?.phase === 'held' && !signalled && state.read().stop === null
+            && selected?.failureClass && ['intake-preserved', 'grounded'].includes(selected.phase)) {
+            composition.close(); composition = null;
+            try { await waitForHeldNotice(held); } catch { state.noteError(); }
+          }
+          break;
+        }
         phase = 'POLL';
         composition.pollOnce();
         await yieldBoundary();

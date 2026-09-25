@@ -505,7 +505,12 @@ export function stage2Lifecycle(input) {
     const saved = sidecar.update({ ...fields, phase, references: { ...d.references, ...references } });
     input.checkpoint?.(phase, saved); return saved;
   };
-  const hold = (code, lengths = {}, references = []) => sidecar.hold(code, lengths, references);
+  const hold = (code, lengths = {}, references = []) => {
+    const turn = state.read().turns[sidecar.read().selectedTurn];
+    if (turn && ['intake-preserved', 'grounded'].includes(turn.phase) && !turn.failureClass)
+      state.markFailure(turn.id, 'unknown', null);
+    return sidecar.hold(code, lengths, references);
+  };
   let f;
   const owners = () => {
     if (f) return f;
@@ -530,6 +535,15 @@ export function stage2Lifecycle(input) {
       state.noteSuccess();
     } else if (turn.phase !== 'api-accepted') throw Error('preview: accepted outer turn disagrees');
   };
+  const recordProviderFailure = (owner, response) => {
+    const observed = JSON.parse(value(owner.captures.read(record(response).receipt)));
+    if (observed.state === 'uncertain') {
+      const selected = sidecar.read().selectedTurn;
+      const turn = state.read().turns[selected];
+      if (turn && !turn.failureClass) state.markFailure(selected, observed.failure?.failureClass ?? 'unknown', observed.failure?.resetHint ?? null);
+      if (observed.failure?.failureClass === 'limit') state.noteLimit(observed.failure.resetAt);
+    }
+  };
   const reconcile = () => {
     const d = sidecar.read(), owner = owners(), facts = owner.all();
     const response = facts.find(row => row.kind === 'judgment-provider-ProviderJudgmentAttemptRecord' && record(row).phase === 'response-observed');
@@ -538,6 +552,7 @@ export function stage2Lifecycle(input) {
     if (claimed && d.modelAttemptUsed !== 1) throw Error('preview: sidecar attempt disagrees with owner');
     if (d.phase === 'provider-dispatch-unknown') {
       if (!response) { hold('UNKNOWN'); return false; }
+      recordProviderFailure(owner, response);
       save('response-preserved', { responseFact: response.id, receipt: record(response).receipt.reference });
     }
     return true;
@@ -584,12 +599,14 @@ export function stage2Lifecycle(input) {
     if (d.phase === 'provider-prepared') {
       const { request } = owner.prepare();
       await new Promise(resolve => setImmediate(resolve)); gate();
+      state.gateSpend();
       if (d.modelAttemptUsed) { hold('UNKNOWN'); return false; }
       save('provider-dispatch-unknown', {}, { modelAttemptUsed: 1 });
       // Six claims/consumes and Ten captures via their unchanged final edge.
       value(await owner.api.dispatch(request, owner.fence));
       const response = owner.all().find(row => row.kind === 'judgment-provider-ProviderJudgmentAttemptRecord' && record(row).phase === 'response-observed');
       if (!response) { hold('UNKNOWN'); return false; }
+      recordProviderFailure(owner, response);
       save('response-preserved', { responseFact: response.id, receipt: record(response).receipt.reference });
       gate(); return true;
     }
@@ -712,7 +729,12 @@ export function reconcileStage2History(directory, d, outer, configuration, requi
       const response = remember('responseFact', responseFact); expected.receipt = response.receipt.reference;
       check(response.attempt === q.attempt && response.submittedDigest === q.inputDigest);
       const receipt = JSON.parse(readCapture(response.receipt));
-      check(receipt.state === 'complete' && receipt.usage.charge === null);
+      check(['complete', 'uncertain'].includes(receipt.state) && receipt.usage.charge === null);
+      if (receipt.state === 'uncertain') {
+        check(!d.references.acceptanceFact && receipt.bytes === null && !receipt.responseEvidence);
+        if (d.phase === 'held') check(turn.failureClass === (receipt.failure?.failureClass ?? 'unknown')
+          && (turn.resetHint ?? null) === (receipt.failure?.resetHint ?? null));
+      }
       const providerClaim = one('transport-AdmissionReservation', r => r.operation === response.operation && r.state === 'dispatch-claimed');
       const providerConsumed = one('transport-AdmissionReservation', r => r.operation === response.operation && r.state === 'consumed');
       check(response.claim === providerClaim.id && response.reservation === providerConsumed.id);
