@@ -95,7 +95,7 @@ else
       "$(dscl . -read "/Users/$WORKER" AuthenticationAuthority 2>&1 | grep -q '^AuthenticationAuthority:' && echo present || echo none)" \
       "$(dscl . -read "/Users/$WORKER" Password 2>/dev/null | awk '{print $2}')" \
       "$(id -Gn "$WORKER" 2>/dev/null | tr ' ' '+')")
-    WORKER_PROCS=$(pgrep -U "$WORKER" 2>/dev/null | wc -l | tr -d ' ')
+    WORKER_PROCS=$( { pgrep -U "$WORKER" 2>/dev/null || true; } | wc -l | tr -d ' ')
   fi
   for spec in $DIRS "$RUNDIR:-" "$PLIST:-" "$LEDGER:-"; do
     p=${spec%%:*}
