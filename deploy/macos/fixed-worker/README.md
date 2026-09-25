@@ -10,7 +10,7 @@ Three results are reported separately per Mac, and none is claimed by this file:
 | Result | Meaning | Status |
 |---|---|---|
 | account prepared | inert hidden account + empty root-owned folders exist and `verify` passes | available (this stage) |
-| monitor installed | reviewed immutable release, keys and LaunchDaemon installed and verified | refusing: release not reviewed |
+| monitor installed | reviewed immutable release, keys and LaunchDaemon installed and verified | **held**: physical admission is held (native feasibility FAIL, installed service not wired; see "Disposition" below) |
 | confined launch verified | a genuine owner-admitted launch ran under the monitor and Nine accepted the evidence | refusing: owner bindings unavailable |
 
 ## Stage 1 — inert account (accounts-only)
@@ -102,6 +102,33 @@ Builder-local result on Studio, macOS 26.5.2 (25F84) arm64, 2026-09-24 (unprivil
 | task, task-runtime | FAIL: a task right taken before exec loses its binding after any exec, even a direct exec with no sandbox. |
 | guard (4 faults) | FAIL: the arm/ack/lapse logic runs, but termination depends on the lost task right. No PID-lookup kill is used. |
 
+### Disposition: hold physical admission
+
+On this macOS build the monitor is NOT installable, and nothing in this package is a
+functioning worker monitor that merely awaits owner data. What exists is separated as follows:
+
+- **Completed components (source + tests):** the inert-account script; the enforcer's
+  `client`, `bootstrap`, `guard`, `journal-sync` and feasibility roles as files; the deny-default
+  profile and plist as files; the M1 decision service and journal; the fixed read-only reader;
+  the mediated channel adapter; S8's locator resolver, client and receipt verification.
+- **Failed native feasibility (table above):** a finite memory ceiling, CPU termination and
+  identity-safe termination of the original worker through the shipped exec chain all FAIL, so
+  the guard fault cases FAIL. The passing T2 case that accepts `task=(PASS|FAIL)` proves that the
+  verdict is reported, not that termination works. Root-only alternatives and sleep/wake are
+  untested (no builder privilege).
+- **Missing service wiring:** `supervise` is a refusing stub (exit 78). It reads no installation
+  configuration, accepts no client connection, runs no owner service and connects no worker
+  channel. `createMonitorService` and `createInstalledChannelNativeContextIO` have no production
+  call site; the channel's `progress` hook is not yet forwarded to the guard heartbeat.
+- **Held activation:** installation, the immutable manifest, verification/rollback procedure,
+  and every owner input listed below.
+
+Before monitor installation, a reviewed native mechanism must actually enforce a measured
+finite memory/CPU policy and original-process termination through the shipped exec chain and
+the single-role faults, and the supervisor/service/channel wiring plus its staged manifest must
+exist. This package does not raise the memory ceiling to the observed ~412 GiB, add watchers,
+re-sign Node or change the termination design. Real owner absence still refuses production launch.
+
 ## Owner integration (source only, refusing in production)
 
 - M1 `scripts/fixed-native-worker-monitor.mjs`:
@@ -111,12 +138,15 @@ Builder-local result on Studio, macOS 26.5.2 (25F84) arm64, 2026-09-24 (unprivil
   - Not detected yet: after a restart, restoring an older genuine copy of the same journal. That needs an independent high-water mark from installed evidence; until it exists, root-only custody of the journal directory is the only protection, and this is recorded as an activation dependency, not claimed.
   - Duplicates get the retained original or `unknown`, never a second release.
   - The module also carries the `loading-worker` role, the owner-side channel IO, and the pinned-enforcer `client`.
-- S8 `src/assembly/production-launch-boundary.ts` owns the wire codec and the constructor-bound locator resolver. It stays `monitor-unavailable` unless it is given installed inputs.
+- S8 `src/assembly/production-launch-boundary.ts` owns the wire codec and the constructor-bound locator resolver. It stays `monitor-unavailable` unless it is given installed inputs. Installed receipt trust is validated (closed shape, Ed25519 key, digests, current horizon) before any transport; after the exchange, current trust and clock are read again and a revocation, expiry or changed binding refuses the reply.
+- The reader (`src/assembly/production-monitor-context.ts`) consumes lane A's public `CapacityInspection` head shape (`fact` is the id string). Lane A's `minimal-responder-binding` reserve is refused as worker permission; only the installation's named worker/control allocation instance (R6) qualifies. Launch and observation both require Six's current execution verdict for the operation's lease assignment and that lease's unexpired horizon on the installed owner clock, and an installed owner watermark so a view rolled back across a reader restart refuses.
+- The mediated channel (`createInstalledChannelNativeContextIO`) bounds every wait, including waiting for a worker frame and a worker that stops draining replies, by the immutable deadline and the 250 ms last-good-authority lapse. `progress` fires only after a successful authority check, so a hung owner check stops the heartbeat that the native guard enforces.
 - Installed inputs still missing, so production has no admitted launch:
-  - lane A capacity authority (impl-r1-m3i);
-  - the R4/R6 installed store/context/authority composition for the reader;
-  - the native release, which fails its feasibility gate above;
-  - the receipt keys and trust reference.
+  - lane A capacity authority (impl-r1-m3i), and R6's genuine worker/control allocation (`workerCapacityInstance`);
+  - the R4/R6 installed store/context/authority composition for the reader, and its installed owner watermark;
+  - the native release, which fails its feasibility gate above, and the `supervise` service wiring;
+  - the receipt keys and trust reference, and the journal genesis pinned by the manifest.
+- The 250 ms lapse and 1,000 ms client figures are engineering candidates, not a measured accepted host policy.
 
 ## Stage 2 — monitor install (refusing)
 
