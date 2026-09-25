@@ -131,7 +131,10 @@ export function exactTelegramApiAcceptance(observation: ConversationFact, reques
     return response.ok === true && safeInteger(result.message_id) !== null
       && Number(result.message_id) > 0 && String(obj(result.chat).id) === target.chatId
       && (target.messageThreadId === null || result.message_thread_id === target.messageThreadId)
-      && result.text === record(message).text;
+      // Replies are sent with parse_mode HTML, so the Bot API returns the decoded
+      // text. Re-escaping it must reproduce the prepared escaped text exactly.
+      && typeof result.text === 'string' && result.text.replace(/&/gu, '&amp;').replace(/</gu, '&lt;')
+        .replace(/>/gu, '&gt;') === record(message).text;
   } catch { return false; }
 }
 

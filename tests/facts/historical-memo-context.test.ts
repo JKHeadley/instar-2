@@ -54,6 +54,9 @@ it.each([
   ['schema contents', (ctx: FactContext): FactContext => ({ ...ctx, schemas: ctx.schemas.map((schema, i) => i === 0 ? { ...schema, fields: { ...schema.fields, extra: { kind: 'text' as const, maxLength: 1 } } } : schema) })],
   ['key contents', (ctx: FactContext): FactContext => ({ ...ctx, keys: ctx.keys.map((key, i) => i === 0 ? { ...key, machine: 'machine-z' } : key) })],
   ['capture bytes', (ctx: FactContext): FactContext => ({ ...ctx, captures: { 'memo:capture': { ...ctx.captures['memo:capture']!, bytes: 'memo evidenc3' } } })],
+  // Capture tables enter the fingerprint by content digest; a same-length byte change still misses.
+  ['decode capture bytes', (ctx: FactContext): FactContext => ({ ...ctx, decode: { ...ctx.decode,
+    captures: { ...ctx.decode.captures, 'memo:capture': 'memo evidenc3' } } })],
   ['decoder context base', (ctx: FactContext): FactContext => ({ ...ctx, decode: { ...ctx.decode, currentBase: 'base:other' } })],
 ])('P2-M3E-02 a warm memo misses when %s change at unchanged sizes and labels', (_name, change) => {
   const f = setup();

@@ -71,6 +71,22 @@ describe('production conversation fact fold', () => {
     expect(exactTelegramApiAcceptance(observation, request, facts, () => bytes, { ...target, chatId: '43' })).toBe(false);
     expect(exactTelegramApiAcceptance(observation, request, facts, () => bytes + ' ', target)).toBe(false);
   });
+
+  it('accepts the Bot API decoded text of an HTML reply and refuses an escaped echo', () => {
+    const escaped = 'PREVIEW\n1 &lt; 2 &amp; ok';
+    const facts = [r('messagefact', 'effect-OutboundMessage', { id: 'message', text: escaped })];
+    const request = r('requestfact', 'effect-EffectRequest', { id: 'request', message: 'message' });
+    const target = { chatId: '42', messageThreadId: null };
+    const check = (text: string) => {
+      const bytes = JSON.stringify({ ok: true, result: { message_id: 5, chat: { id: 42 }, text } });
+      const observation = r('observation', 'effect-OperationObservation',
+        { stage: 'response', request: 'request', capture: { reference: 'response', hash: hashBytes(bytes) } });
+      return exactTelegramApiAcceptance(observation, request, facts, () => bytes, target);
+    };
+    expect(check('PREVIEW\n1 < 2 & ok')).toBe(true);
+    expect(check(escaped)).toBe(false);
+    expect(check('PREVIEW\n1 < 2 & not ok')).toBe(false);
+  });
 });
 
 function harness() {

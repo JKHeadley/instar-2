@@ -611,3 +611,122 @@ export function validateStage2Successor(input: { root: string; outer: PreviewSta
       && sidecar.activationDigest === r.activationDigest && sidecar.policyDigest === r.policyDigest && sidecar.cutoff === r.cutoff);
   }
 }
+
+/** The operator authorization the desk records after the one-sentence approval
+ * of the successive-trial waiver addendum. It names the exact finite limits. */
+export interface SuccessiveTrialAuthorization {
+  readonly type: 'SuccessiveTrialAuthorization'; readonly schemaVersion: 1;
+  readonly reference: string; readonly waiverRecord: string; readonly addendumDigest: string;
+  readonly operator: string; readonly words: string; readonly approvedAt: number;
+  readonly providerAttempts: number; readonly dailyUsd: 5; readonly totalUsd: 25; readonly expiresAt: number;
+  readonly framing: 'preview-conversation-v1';
+}
+const SUCCESSIVE_MAX_ATTEMPTS = 16;
+const successiveMarker = (parent: string, trial: string) => join(parent, `.preview-successive-${rawHash(trial).slice(7)}.json`);
+
+/** Walks the retained lineage (never mutating it) for obligations a new root must carry. */
+function lineageObligations(source: string) {
+  const obligations: Record<string, unknown>[] = [];
+  let modelAttempts = 0;
+  for (let root = source, depth = 0; existsSync(join(root, 'preview-state.json')) && depth < 16;
+    root = join(root, '.preview-predecessor'), depth++) {
+    const state = validate(JSON.parse(readFileSync(join(root, 'preview-state.json'), 'utf8')));
+    const sidecarPath = join(root, 'preview-stage2-state.json');
+    if (existsSync(sidecarPath)) {
+      const d = JSON.parse(readFileSync(sidecarPath, 'utf8'));
+      if (!Number.isSafeInteger(d.modelAttemptUsed) || d.modelAttemptUsed < 0) throw Error('preview: lineage sidecar corrupt');
+      modelAttempts += d.modelAttemptUsed;
+      if (d.modelAttemptUsed > 0) obligations.push({ kind: 'provider-call', depth, activationDigest: d.activationDigest,
+        selectedTurn: d.selectedTurn, phase: d.phase, charge: 'UNKNOWN', quiescence: 'UNKNOWN' });
+    }
+    const recordPath = join(root, 'preview-predecessor.json');
+    if (existsSync(recordPath)) {
+      const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+      if (record.unresolvedObligation !== undefined) obligations.push({ kind: 'recorded-predecessor-obligation', depth,
+        obligationDigest: encoded(record.unresolvedObligation).hash });
+    }
+    for (const [id, turn] of Object.entries(state.turns)) if (turn.phase !== 'api-accepted' && depth === 0)
+      obligations.push({ kind: 'unanswered-turn', turn: id, phase: turn.phase, failureClass: turn.failureClass ?? null });
+  }
+  return { obligations, modelAttempts };
+}
+
+/** Desk-supervised one-use successor for the successive-turn trial. It archives
+ * the stopped or terminally latched predecessor unchanged, inherits trial
+ * identity, fixed expiry, error totals, cursor and exclusions, and records
+ * every retained UNKNOWN obligation. It neither arms, launches, resets a latch
+ * nor refills any budget; the exclusive marker makes a second use refuse. */
+export function initializeSuccessiveRoot(options: { predecessorRoot: string; root: string;
+  predecessorConfiguration: Record<string, unknown>; configuration: Record<string, unknown>;
+  authorization: SuccessiveTrialAuthorization; quiescenceReference: string; cutoff: number; now?: () => number }) {
+  const source = options.predecessorRoot, target = options.root, now = options.now?.() ?? Date.now();
+  if (resolve(source) !== source || resolve(target) !== target || source === target
+    || dirname(source) !== dirname(target) || realpathSync(source) !== source || !existsSync(target)
+    || realpathSync(target) !== target || !lstatSync(target).isDirectory() || readdirSync(target).length
+    || typeof options.quiescenceReference !== 'string' || !options.quiescenceReference.trim())
+    throw Error('preview: canonical empty sibling successor required');
+  const old = validate(JSON.parse(readFileSync(join(source, 'preview-state.json'), 'utf8')));
+  const a = options.authorization;
+  if (a?.type !== 'SuccessiveTrialAuthorization' || a.schemaVersion !== 1 || a.framing !== 'preview-conversation-v1'
+    || [a.reference, a.waiverRecord, a.operator, a.words].some(field => typeof field !== 'string' || !field.trim())
+    || !/^sha256:[a-f0-9]{64}$/u.test(a.addendumDigest) || !Number.isSafeInteger(a.approvedAt) || a.approvedAt > now
+    || a.providerAttempts !== SUCCESSIVE_MAX_ATTEMPTS || a.dailyUsd !== 5 || a.totalUsd !== 25
+    || a.expiresAt !== old.trial.expiresAt) throw Error('preview: successive authorization differs');
+  const stopPath = join(source, 'preview-stop.json');
+  const stop = existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : old.stop;
+  const sidecarPath = join(source, 'preview-stage2-state.json');
+  const terminal = existsSync(sidecarPath) ? JSON.parse(readFileSync(sidecarPath, 'utf8')).terminalLatch === true : false;
+  assertInteger(now, 'successor clock'); assertInteger(options.cutoff, 'successor cutoff');
+  if ((!stop && !terminal) || now + 300000 > old.trial.expiresAt || options.cutoff > now || options.cutoff < old.trial.createdAt
+    || old.trial.configurationDigest !== digest(options.predecessorConfiguration)
+    || options.predecessorConfiguration.root !== source || options.configuration.root !== target
+    || JSON.stringify({ ...options.predecessorConfiguration, root: target }) !== JSON.stringify(options.configuration))
+    throw Error('preview: successor must inherit stopped or latched trial bounds');
+  const before = treeInventory(source);
+  const lineage = lineageObligations(source);
+  // Exclusive one-use reservation before any copy; never deleted or retried here.
+  const marker = successiveMarker(dirname(source), old.trial.id);
+  const reservation = { version: 1, kind: 'successive', trial: old.trial.id, source, target,
+    authorizationDigest: encoded(a).hash, cutoff: options.cutoff, recordedAt: now };
+  const fd = openSync(marker, 'wx', 0o600);
+  try { writeFileSync(fd, JSON.stringify(reservation), 'utf8'); fsyncSync(fd); } finally { closeSync(fd); }
+  const parent = openSync(dirname(marker), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
+  const archive = join(target, '.preview-predecessor');
+  cpSync(source, archive, { recursive: true, errorOnExist: true, force: false });
+  const archived = treeInventory(archive);
+  if (encoded(archived).hash !== encoded(before).hash || encoded(treeInventory(source)).hash !== encoded(before).hash)
+    throw Error('preview: predecessor changed during successor archive');
+  const predecessor = { version: 2, kind: 'successive', root: source, trial: old.trial.id,
+    configurationDigest: old.trial.configurationDigest, snapshot: archived, stateDigest: digest(old),
+    stop: stop ?? null, terminalLatch: terminal, cursor: old.cursor, excludedTurns: Object.keys(old.turns).sort(),
+    unresolvedObligations: lineage.obligations, priorModelAttempts: lineage.modelAttempts,
+    authorization: a, authorizationDigest: encoded(a).hash, marker,
+    cumulativeLimits: { expiresAt: old.trial.expiresAt, dailyUsd: 5, totalUsd: 25, declaredAdditionalDemandUsd: 0,
+      actualCharge: 'UNKNOWN', additionalProviderAttempts: a.providerAttempts, inheritedTotalErrors: old.totalErrors,
+      totalErrorLimit: old.trial.totalErrorLimit },
+    quiescenceReference: options.quiescenceReference, cutoff: options.cutoff, recordedAt: now };
+  durablePreviewWrite(join(target, 'preview-predecessor.json'), predecessor);
+  const inherited = { ...old, trial: { ...old.trial, configurationDigest: digest(options.configuration) }, stop: null,
+    consecutiveErrors: 0 };
+  durablePreviewWrite(join(target, 'preview-state.json'), inherited);
+  durablePreviewWrite(join(target, 'successive-state.json'), { version: 1, trial: old.trial.id,
+    framing: 'preview-conversation-v1', configurationDigest: inherited.trial.configurationDigest,
+    cursor: old.cursor.nextOffset, inheritedTotalErrors: old.totalErrors, activationDigest: null, policyDigest: null,
+    excludedTurns: predecessor.excludedTurns, authorizationDigest: predecessor.authorizationDigest, hold: null, turns: {} });
+  durablePreviewWrite(marker, { ...reservation, completion: { predecessorRecordDigest: encoded(predecessor).hash,
+    archiveInventoryDigest: encoded(archived).hash } });
+  return inherited;
+}
+
+/** Startup check: a successive run requires the completed authorized successor. */
+export function validateSuccessiveRoot(root: string, outer: PreviewStateDocument) {
+  const record = JSON.parse(readFileSync(join(root, 'preview-predecessor.json'), 'utf8'));
+  const check = (ok: unknown) => { if (!ok) throw Error('preview: successive successor evidence differs'); };
+  check(record.version === 2 && record.kind === 'successive' && record.trial === outer.trial.id
+    && record.cumulativeLimits?.expiresAt === outer.trial.expiresAt && !stage2SidecarExists(root));
+  const retained = JSON.parse(readFileSync(record.marker, 'utf8'));
+  check(retained.completion?.predecessorRecordDigest === encoded(record).hash && retained.target === root
+    && retained.authorizationDigest === record.authorizationDigest
+    && encoded(treeInventory(join(root, '.preview-predecessor'))).hash === retained.completion.archiveInventoryDigest);
+  return record;
+}

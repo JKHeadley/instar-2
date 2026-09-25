@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, validateSubscriptionActivation,
-  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
+import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionPolicyFor, validateSubscriptionActivation,
+  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING } from '../../src/assembly/production-provider.js';
+import type { SubscriptionActivationRecord, SubscriptionFraming } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 
 export const OWNER_WINDOW_MS = 300000;
@@ -44,35 +44,35 @@ export function requireOutboundBound(message: unknown, maxBytes: number): string
     throw new Error('preview: complete outbound bound');
   return bytes;
 }
-export function stage2Description(model: string) {
-  const policy = subscriptionInvocationPolicy(model);
+export function stage2Description(model: string, framing?: SubscriptionFraming) {
+  const policy = subscriptionPolicyFor(model, framing).policy;
   return Object.freeze({ owner: 'part-ten' as const, provider: 'anthropic', model, route: STAGE2_ROUTE,
     automaticRetries: 0 as const, maxInputBytes: policy.maxInputBytes, maxOutputBytes: policy.maxOutputBytes,
     maxCharge: 0, measured: false, basis: 'Declared additional metered demand 0 under activation policy; actual charge and quiescence UNKNOWN' });
 }
 export function stage2Activation(input: { activation: SubscriptionActivationRecord; profile: ProviderSubscriptionProfile;
-  model: string; trial: string; configurationDigest: string; now: number }) {
-  validateSubscriptionActivation(input.activation, input.profile, input.model, input.now);
+  model: string; trial: string; configurationDigest: string; now: number; framing?: SubscriptionFraming }) {
+  validateSubscriptionActivation(input.activation, input.profile, input.model, input.now, input.framing);
   if (input.activation.trial !== input.trial || input.activation.baseConfigurationDigest !== input.configurationDigest
     || input.activation.expiresAt !== SUBSCRIPTION_PREVIEW_EXPIRY) throw new Error('preview: activation trial differs');
   return encoded(input.activation).hash;
 }
 /** Pure descriptor of already validated deployment bindings; no live authority. */
 export function stage2InvocationBinding(input: { activation: SubscriptionActivationRecord;
-  profile: ProviderSubscriptionProfile; model: string }) {
-  const invocationPolicy = subscriptionInvocationPolicy(input.model);
+  profile: ProviderSubscriptionProfile; model: string; framing?: SubscriptionFraming }) {
+  const { policy: invocationPolicy, system } = subscriptionPolicyFor(input.model, input.framing);
   return Object.freeze({ activationReference: input.activation.reference,
     activationDigest: encoded(input.activation).hash, profileDigest: encoded(input.profile).hash,
     invocationPolicyDigest: encoded(invocationPolicy).hash,
-    systemPromptDigest: `sha256:${createHash('sha256').update(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8').digest('hex')}`,
+    systemPromptDigest: `sha256:${createHash('sha256').update(system, 'utf8').digest('hex')}`,
     framing: invocationPolicy.framing, invocationPolicy });
 }
-export { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy };
+export { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionPolicyFor, SUBSCRIPTION_CONVERSATION_FRAMING };
 
 export function stage2RouteFactory(input: {
   activation: SubscriptionActivationRecord; profile: ProviderSubscriptionProfile; model: string;
   io: import('../../src/assembly/production-provider.js').SubscriptionProviderIO;
-  now: () => number; active: () => boolean;
+  now: () => number; active: () => boolean; framing?: SubscriptionFraming;
 }) {
   return ({ evidence, context, current, deadline }: any) => {
     const p = input.profile, a = input.activation;

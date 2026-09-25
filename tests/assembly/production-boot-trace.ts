@@ -25,8 +25,13 @@ export const recordedResponseEvidenceContract = Object.freeze({ parserReference:
   maxMetadataBytes: 5000, maxRawTerminalBytes: 2048, maxCaptureBytes: 65000 });
 
 /** The installed offline serving profile's turn policy. Identities derive from
- * Four's durable opening; the provider and reply still use the same owners. */
-export function createRecordedServingPlan(installed, target) {
+ * Four's durable opening; the provider and reply still use the same owners.
+ * Historical defaults are unchanged. `options.live` (the preview successive
+ * adapter) supplies each turn's question/context/evidence/deadline, the exact
+ * envelope bindings, a per-turn route and reply text; it then records no
+ * synthetic response contract, settled charge or quiescence proof. */
+export function createRecordedServingPlan(installed, target, options = {}) {
+  const live = options.live;
   const f = installed.f, application = installed.application, context = f.ctx, dc = context.decode;
   const rows = () => value(f.store.read());
   const raw = fact => fact.body.record;
@@ -47,7 +52,7 @@ export function createRecordedServingPlan(installed, target) {
     adapter: 'route', account: 'test-provider', conversation: 'recorded provider', speaker: f.bob.id,
     scopeDigest: value(canonical(f.scope)).hash, durability: 'local-durable', replicas: 0,
     lossModel: 'Recorded local bytes, no remote durability claim.', maxBytes: 4096,
-    maxCharge: 20, timeout: 100, verificationBar: 'provider-bar' };
+    maxCharge: 20, timeout: 100, verificationBar: 'provider-bar', ...live?.definition };
   const approval = f.authorize({ id: 'boot-provider-approval',
     artifact: f.capture(value(canonical(providerDefinition)).bytes), base: 'boot-provider-base' });
   const current = f.owners.host.current;
@@ -73,8 +78,9 @@ export function createRecordedServingPlan(installed, target) {
     f.evidence.push(evidence); f.append('evidence-record', json({ evidence }));
     return evidence.id;
   };
-  const sourceEvidence = authority('serving-response-source-contract', 'provider-response-source-contract', sourceBasis);
-  const terminalEvidence = authority('serving-response-terminal-contract', 'provider-response-terminal-contract', terminalBasis);
+  // A live route records its own source/terminal contract attestations.
+  const sourceEvidence = live ? '' : authority('serving-response-source-contract', 'provider-response-source-contract', sourceBasis);
+  const terminalEvidence = live ? '' : authority('serving-response-terminal-contract', 'provider-response-terminal-contract', terminalBasis);
   const evidenceContract = recordedResponseEvidenceContract;
   const responseDraft = (bytes, answer) => {
     const frame = JSON.stringify({ type: 'result', is_error: false, result: answer, session_id: 'serving-call',
@@ -100,7 +106,7 @@ export function createRecordedServingPlan(installed, target) {
       step, ordinal: 0, semanticMessage: `operation:${turn.opening}`,
       question: 'May the worker produce its bounded reply?',
       context: `Current delivered context for ${turn.opening} was consumed by the native owner path.`,
-      evidence: ['e1', 'e2'], deadline: 400 };
+      evidence: ['e1', 'e2'], deadline: 400, ...live?.question(turn) };
     questions.set(turn.opening, question); return question;
   };
   const settleContext = () => {
@@ -165,6 +171,7 @@ export function createRecordedServingPlan(installed, target) {
       const previous = providerOwners.get(turn.opening);
       if (previous) return previous;
       const owners = value(createProductionProviderOwners({ ...installed.owners.provider,
+        ...(live ? { route: live.route(turn) } : {}),
         judgment: { ...installed.owners.provider.judgment, runs: application.owners.run },
         effect: { ...installed.owners.provider.effect, plan: `boot-provider-plan:${turn.opening}` } }));
       providerOwners.set(turn.opening, owners);
@@ -188,9 +195,11 @@ export function createRecordedServingPlan(installed, target) {
     },
     pending(turn, ready, grounding) {
       const question = providerQuestion(turn);
-      const submitted = value(canonical({ provider: 'test-provider', model: 'model', route: 'route',
+      const envelope = live?.envelope ?? { provider: 'test-provider', model: 'model', route: 'route',
+        settings: { automaticRetries: 0, maxTokens: 128 } };
+      const submitted = value(canonical({ provider: envelope.provider, model: envelope.model, route: envelope.route,
         messages: [{ role: 'user', content: question.question }, { role: 'context', content: question.context }],
-        attachments: [], tools: [], settings: { automaticRetries: 0, maxTokens: 128 },
+        attachments: [], tools: [], settings: envelope.settings,
         outputSchema: { type: 'Decision' }, floor: f.floor, evidence: question.evidence,
         point: 'judgment', generation: f.run.generation.id })).bytes;
       const transition = f.start(ready, grounding, question.semanticMessage);
@@ -204,6 +213,7 @@ export function createRecordedServingPlan(installed, target) {
       const obligation = rows().filter(row => row.kind === 'transport-LoopRecord'
         && raw(row)?.run === f.id).at(-1);
       if (!obligation) throw Error('provider loop absent');
+      live?.prepared?.(turn, prepared);
       return { prepared, definition: providerDefinition.id, verificationOwner: 'independent-probe',
         resultDestination: turn.opening, obligation: obligation.id };
     },
@@ -246,6 +256,29 @@ export function createRecordedServingPlan(installed, target) {
           rawDigest: envelope.terminal.rawDigest, sourceEvidence: envelope.source.evidence },
       };
       subjects.set(turn.opening, subject);
+      if (live) {
+        // Occurrence is observed locally; charge and quiescence stay UNKNOWN.
+        live.observeOccurrence(operation, q.digest);
+        const planId = `boot-provider-plan:${turn.opening}`;
+        if (!value(installed.runtime.inspectCurrent()).some(row => row.record.id === planId)) {
+          const legacy = verificationInput('VerificationPlan');
+          value(installed.runtime.record('VerificationPlan', { ...legacy, type: 'VerificationPlan', schemaVersion: 2,
+            purpose: 'output-use', id: planId, subject: { ...legacy.subject,
+              generation: f.run.generation.id, scope: f.scope.kind === 'organization' ? 'project-a' : f.scope.members[0] },
+            bar: { ...legacy.bar, version: q.verificationBar,
+              predicates: ['occurrence', 'non-occurrence', 'quiescence', 'charge', 'response-authenticity', 'response-completeness'],
+              sources: ['probe'], minimumStrength: 'observation', subjectDigest: value(canonical(subject)).hash,
+              captureRequired: true, freshness: live.freshness },
+            responseContract: { parserReference: subject.response.parserReference,
+              parserVersion: subject.response.parserVersion,
+              evidenceContractReference: subject.response.evidenceContractReference,
+              evidenceContractVersion: subject.response.evidenceContractVersion, mode: 'single-final-reply' },
+            responseRequirements: ['response-authenticity', 'response-completeness'].map(predicate => ({
+              predicate, sources: [f.owners.host.principal.id], minimumStrength: 'observation',
+              requiredContract: subject.response.evidenceContractReference })) }));
+        }
+        return;
+      }
       for (const [predicate, amount] of [['operation-occurred', null], ['charge-settled', 3],
         ['old-executor-quiescent', null]]) evidenceFor(operation, q.digest, predicate, amount);
       const legacy = verificationInput('VerificationPlan');
@@ -306,7 +339,8 @@ export function createRecordedServingPlan(installed, target) {
       const message = value(decodeOutboundMessage({ type: 'OutboundMessage', schemaVersion: 1,
         id: `serving-telegram-reply:${turn.opening}`, semanticMessage: `reply:${turn.opening}`,
         run: prepared.reply, speaker: f.bob.id, account: installed.admitted.account,
-        conversation: definition.conversation, text: accepted.answer, purpose: 'ordinary-reply',
+        conversation: definition.conversation, text: live ? live.replyText(turn, rows(), prepared.reply) : accepted.answer,
+        purpose: 'ordinary-reply',
         sourceResult: acceptance.id }, f.owners.host));
       const loop = rows().find(row => row.kind === 'transport-LoopRecord' && raw(row)?.run === prepared.reply);
       return { definition: definition.id, message, run: { owner: 'part-five', name: 'Run', id: prepared.reply },

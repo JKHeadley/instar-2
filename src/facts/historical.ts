@@ -82,6 +82,36 @@ function amortizedText(input: unknown, seen: Set<object>, depth: number): string
   return `{${parts.join(',')}}`;
 }
 function memoFingerprint(composite: object): string { return hashBytes(amortizedText(composite, new Set(), 0)); }
+// GRANT M3-E (scaling): capture contents are content-addressed, so a capture table enters the
+// memo fingerprint through each content string's SHA-256 instead of its bytes. Re-walking every
+// retained capture for every historical body on every read made each projection read grow with
+// facts x retained capture bytes. The digest is exact (collision-resistant), memoized by value,
+// and the table's structure is still checked: anything but plain data entries falls back to the
+// full walk. Clearing the memo only costs recomputation.
+const contentDigests = new Map<string, string>();
+function contentDigest(bytes: string): string {
+  let known = contentDigests.get(bytes);
+  if (known === undefined) {
+    if (contentDigests.size >= 65536) contentDigests.clear();
+    known = hashBytes(bytes); contentDigests.set(bytes, known);
+  }
+  return known;
+}
+function captureTable(table: unknown): unknown {
+  if (!table || typeof table !== 'object' || Array.isArray(table) || Object.getPrototypeOf(table) !== Object.prototype) return table;
+  const out: Record<string, unknown> = {};
+  for (const [reference, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(table))) {
+    if (!('value' in descriptor) || !descriptor.enumerable) return table;
+    const entry = descriptor.value as unknown;
+    if (typeof entry === 'string') { out[reference] = { digest: contentDigest(entry) }; continue; }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) || Object.getPrototypeOf(entry) !== Object.prototype) return table;
+    const fieldsOf = Object.getOwnPropertyDescriptors(entry);
+    if (Object.values(fieldsOf).some(field => !('value' in field) || !field.enumerable)) return table;
+    const bytes = (entry as { bytes?: unknown }).bytes;
+    out[reference] = { ...entry, bytes: typeof bytes === 'string' ? { digest: contentDigest(bytes) } : bytes ?? null };
+  }
+  return out;
+}
 export function historicalAuthority(context: FactContext): FactContext {
   const historicalGrants = [...context.historicalGrants ?? []], historicalRevocations = [...context.historicalRevocations ?? []];
   const c = { ...context, historicalGrants, historicalRevocations };
@@ -100,7 +130,8 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
     const issued = new Map<string, readonly HistoricalRead<ConstitutionalValue>[]>();
     const read = (record: FactEnvelope, c: DecodeContext): HistoricalBody => {
       const cached = cache.get(record.id); if (cached) return cached;
-      const fingerprint = memoFingerprint({ register: c.register, captures: c.captures, captureStatuses: context.captures, schemas: context.schemas,
+      const fingerprint = memoFingerprint({ register: c.register, captures: captureTable(c.captures),
+        captureStatuses: captureTable(context.captures), schemas: context.schemas,
         now: c.now ?? null, currentBase: c.currentBase ?? null, artifact: c.artifact ?? null, subjects: c.recordSubjects ?? {},
         grants: c.grants ?? [], revocations: c.revocations ?? [], keys: context.keys,
         cone: causalCone(record, context.facts).map(f => f.contentHash).sort() });

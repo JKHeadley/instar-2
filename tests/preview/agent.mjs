@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import { createProductionTelegramIO, productionStorageIO, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { createPreviewComposition, stage2GuardedProviderPath } from './composition.js';
 import { stage2HistoricalStatus } from './stage2-owners.js';
-import { HOST_OUTAGE_TEXT, MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState } from './state.js';
+import { HOST_OUTAGE_TEXT, MAX_PREVIEW_ERROR_LIMIT, MAX_PREVIEW_TOTAL_ERROR_LIMIT, openPreviewState,
+  validateSuccessiveRoot } from './state.js';
 import { decideUnansweredTurn } from '../../src/sentinels/unanswered-turn.js';
 import { consumeResult } from '../../src/index.js';
 
@@ -120,7 +121,14 @@ function publicStatus(document, config) {
       ownerStart: d.ownerStart, ownerDeadline: d.ownerDeadline, hold: d.hold,
       selectedTurn: d.selectedTurn, references: d.references };
   }
-  return { stage2, trial: document.trial.id, createdAt: document.trial.createdAt,
+  let successive;
+  if (existsSync(resolve(root, 'successive-state.json'))) {
+    const d = JSON.parse(readFileSync(resolve(root, 'successive-state.json'), 'utf8'));
+    // Content-free: counts, hold code and byte lengths only.
+    successive = { framing: d.framing, cursor: d.cursor, preparedTurns: Object.keys(d.turns).length,
+      hold: d.hold ? { code: d.hold.code, lengths: d.hold.lengths } : null };
+  }
+  return { stage2, successive, trial: document.trial.id, createdAt: document.trial.createdAt,
     expiresAt: document.trial.expiresAt, stop: document.stop, consecutiveErrors: document.consecutiveErrors,
     totalErrors: document.totalErrors, errorLimit: document.trial.errorLimit,
     totalErrorLimit: document.trial.totalErrorLimit,
@@ -178,6 +186,7 @@ async function main() {
     return 0;
   }
   if (command !== 'run') throw new Error('preview: command must be run, status, stop, or host-notice');
+  if (options.mode === 'successive') return runSuccessive(config, options, state);
 
   // Historical terminal inspection stays credential-free on stopped and
   // answered roots. Only a live held turn with a pending fixed notice proceeds.
@@ -333,6 +342,48 @@ async function main() {
   } finally {
     if (stage === 2 && composition?.sidecar && state.read().stop)
       composition.sidecar.hold(state.read().stop.reason === 'expiry' ? 'EXPIRED' : 'STOPPED');
+    composition?.close();
+    process.removeListener('SIGINT', signal);
+    process.removeListener('SIGTERM', signal);
+  }
+}
+
+/** Successive-turn mode: one poller and one conversation loop over the accepted
+ * driver. Requires the completed, authorized successor root; never arms a
+ * stage-2 sidecar and never reuses the framing-v2 successor. */
+async function runSuccessive(config, options, state) {
+  if (options.stage !== undefined) throw new Error('preview: successive mode excludes --stage');
+  validateSuccessiveRoot(config.root, state.read());
+  state.gate('poll');
+  const { createSuccessiveComposition } = await import('./successive.js');
+  let signalled = false;
+  const signal = () => {
+    signalled = true;
+    try { state.latchStop('signal'); } catch { /* diagnostics are deliberately suppressed */ }
+  };
+  process.once('SIGINT', signal);
+  process.once('SIGTERM', signal);
+  const activationPath = required(options, 'activation-record');
+  const activationBytes = readFileSync(activationPath, 'utf8');
+  const activation = JSON.parse(activationBytes);
+  const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+  const active = () => { try { return !signalled && readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
+  const stopped = () => signalled || !active() || state.read().stop !== null || Date.now() >= state.read().trial.expiresAt;
+  let composition;
+  try {
+    composition = createSuccessiveComposition({ configuration: config, state, root: config.root,
+      storageKey: storageKey(), resolveSecret: resolveHostSecret,
+      telegramIO: storage => createProductionTelegramIO(resolve(config.root, '.successive'), storage.captures),
+      provider: { activation, profile, model: required(options, 'model'), active,
+        io: createSubscriptionProviderIO({ repository: process.cwd(), stopped }) },
+      now: Date.now, stopped, readSource: path => readFileSync(resolve(process.cwd(), path), 'utf8'),
+      heartbeat: () => state.heartbeat(process.pid),
+      diagnostic: record => emitCycleDiagnostic('UNKNOWN', record.phase, record, record.backoffMs) });
+    await composition.run({ maxCycles: integer(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000),
+      baseBackoffMs: integer(options['backoff-ms'] ?? '250', 'backoff-ms', 1, MAX_PREVIEW_BACKOFF_MS),
+      maxBackoffMs: integer(options['max-backoff-ms'] ?? '60000', 'max-backoff-ms', 1, MAX_PREVIEW_BACKOFF_MS) });
+    return 0;
+  } finally {
     composition?.close();
     process.removeListener('SIGINT', signal);
     process.removeListener('SIGTERM', signal);

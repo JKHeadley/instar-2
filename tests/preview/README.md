@@ -350,3 +350,128 @@ six-worker gate, after reviewed commits/pins/regeneration and a matching build, 
 
 Register-wiring's expected final-content pin dependency at `check-register-wiring.mjs:308` is desk-owned; the
 builder does not alter that checker, owner manifests, pins, generated artifacts or full-gate setup.
+
+## Successive-turn mode (talkable preview; proposal, not activated)
+
+`run --mode successive` is a bounded, private, multi-turn preview. It runs one poller and one
+conversation loop: the accepted successive-turn driver (`src/assembly/production-conversation-driver.ts`)
+through `createProductionConversationHost`. The installed per-turn owner plan comes from
+`tests/assembly/production-boot-trace.ts`, over the installed owner fixture, with the real Telegram
+custodian IO and the pinned subscription route. `tests/preview/successive.ts` is the only adapter:
+no new driver protocol, budget, recovery or supervisor. It is not production admission, and its
+live activation needs the separately approved waiver addendum in the desk's lane record.
+
+It requires a completed, authorized successor root, created once by the desk with
+`initializeSuccessiveRoot` from `state.ts` (same TypeScript-loader invocation as `cutoverPreviewRoot`).
+Its JSON input holds canonical `predecessorRoot`, an existing empty sibling `root`, both complete
+configurations (differing only in root), the recorded `quiescenceReference`, an epoch-ms `cutoff`,
+and the `SuccessiveTrialAuthorization` recorded from Justin's approval: `type`, `schemaVersion: 1`,
+`reference`, `waiverRecord`, `addendumDigest`, `operator`, `words`, `approvedAt`,
+`providerAttempts: 16`, `dailyUsd: 5`, `totalUsd: 25`, the inherited `expiresAt`, and
+`framing: "preview-conversation-v1"`.
+
+The predecessor must be stopped or terminally latched and quiesced (no lock or lease). The helper
+reserves an exclusive one-use marker `.preview-successive-<sha256(trial)>.json` beside the roots,
+archives the predecessor unchanged under `.preview-predecessor`, and verifies the archive. It then
+writes `preview-predecessor.json` (version 2, kind `successive`) and the inherited `preview-state.json`
+(same trial id, fixed expiry, error totals, cursor, all turns excluded), plus `successive-state.json`.
+It records every retained UNKNOWN obligation in the lineage and the cumulative limits. It never
+deletes or resets the source latch, never reuses the framing-v2 successor, refills no budget, and
+neither arms nor launches anything. A second use for the same trial refuses.
+
+Invocation: the existing preview arguments with the new root, plus
+`--mode successive --activation-record /ABSOLUTE/activation.json --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID`.
+There is no `--stage` and no `--arm`. The activation record has the Stage 2 schema, with
+`invocationPolicyDigest` over `subscriptionConversationPolicy(model)` and `baseConfigurationDigest`
+from the successor root. Changing or deleting the activation file closes the route.
+
+### What the model receives each turn
+
+The system prompt is `SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT` (framing `preview-conversation-v1`,
+1886 bytes). It is separately bound from the v2 one-shot framing, whose reconstruction is unchanged.
+Stdin is the exact canonical Seven envelope: the operator's current message as `role:user`, and as
+`role:context` the canonical `{bindings, packet}`. The packet (`successive-context-v1`) holds:
+
+- `now` — the host clock when the turn was prepared (epoch ms and UTC);
+- `audience` — the bound private conversation and the verified operator principal;
+- `sources` — three exact excerpts of `docs/00-the-purpose.md` (name, purpose, coherency root), each
+  pinned by SHA-256 with path, line range and file digest, plus the dated capability/status note.
+  A changed document refuses composition rather than shipping drift;
+- `history` — every earlier input of this trial in order, its accepted answer text and its outcome
+  (`answer accepted; Telegram accepted the reply`, `answer accepted; delivery unknown`,
+  `model outcome unknown; no answer was accepted`, …). Nothing is summarized or dropped;
+- `recalled` — the `groundTurn` render for the operator's audience (revealable exchanges only).
+  Lexical recall supplements the complete history; it proves no absence.
+
+All user and answer text is passed through the recall redactor before it enters the packet. Every
+inbound message and accepted answer is captured once with `captureExchange` (participants
+visibility, operator audience). A turn's packet is prepared only once every earlier turn has settled,
+so its history carries each earlier answer or outcome. The packet is kept in the encrypted store;
+the plaintext sidecar holds only references, digests, clock values, byte lengths and hold codes.
+
+### Measured bounds and holds
+
+The combined system plus exact stdin (JSON escaping and multibyte text included) must fit
+`SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES` = 32768. The Eight `provider-call` definition bound
+(`PROVIDER_CALL_MAX_BYTES`), Seven's description and the route all enforce the same number; every
+other operation keeps 4096. Offline measurement: the first turn with the full source packet and no
+history is 7225 bytes; each short earlier exchange adds a few hundred. Overflow never trims: the
+admitted turn and its packet stay retained, the sidecar records `INPUT_BOUND` with its byte lengths,
+and the stop latch is set (`capacity`) before any provider call.
+
+Other finite bounds:
+
+- 16 provider attempts, counted by Six serving admission when admitted, even if the call then fails
+  or is unknown;
+- 16 replies;
+- at most 20 admitted inputs. Five's stock grounding refuses more than 20 without summaries, so the
+  poll itself is refused, and the trial stops visibly, before Telegram can treat another update as
+  delivered;
+- a 64 MiB installed store ceiling;
+- provider capture capacity of 16 × (330416 + 4 × 32768 + 16384) bytes (the journal charges every judgment capture, not only the response reservation);
+- a durable 300000-ms host-clock window per turn (opened when the turn is grounded, never reset by
+  restart; the route refuses an execution that cannot finish in it);
+- the inherited absolute expiry and the error ceilings (the new root's total ceiling is the inherited
+  remainder).
+
+The adapter polls one update per cycle, because the installed grounding requires the current
+opening to be the admitted frontier. Later messages stay unconfirmed in Telegram until the current
+turn has drained.
+
+The provider call declares 0 monetary demand; its settlement keeps `finalCharge: null` and Six
+accounting `actualCharge -1, unresolved 1`, exactly as Stage 2. The Six serving ceiling is in abstract
+fixture charge units, not dollars: 21 per turn plus one, covering the fixture context delivery
+(20, settled 0 locally) and each reply (1, charge unknown). No paid route exists; the $5/day and
+$25 lineage caps are recorded in the successor record for any future paid route to reserve against.
+
+Stop: the durable latch, SIGINT/SIGTERM and activation-file revocation all close the driver, the
+provider route (checked before every child command) and the physical send/poll gates. An uncertain
+provider or send outcome is never retried.
+
+Restart: after every driver step, the adapter writes a checkpoint of the installed owner context
+(register, schemas, captures, versions) to `successive-checkpoint.json`. A restarted process
+reconstructs the owners from the retained store and continues with the next admitted turn. The
+Telegram cursor baseline is retained durably in the sidecar.
+
+### Successive stand-ins (in addition to the ledger above)
+
+| Substitution | Honest limit |
+|---|---|
+| Installed owner fixture authority, signing, grants, clock and verification host | fixture authority, waived; the owner-side causal clock is static, so the Seven deadline carries the turn's host-clock deadline and the physical route enforces it |
+| Fixture P-08 `local-durable` single-machine profile for the provider call and reply | a fixture acceptance, not a genuine operator P-08 acceptance |
+| Fixture native context delivery | an internal local operation with local settled-0 evidence; it names prior accepted answers by digest; the model's actual context is the measured provider packet |
+| Placeholder installation route | never invoked; each turn uses its own custodied subscription route |
+| Provider evidence | local observation of occurrence plus the route's source/terminal attestations; charge, quiescence and non-occurrence stay insufficient/UNKNOWN |
+
+### Known rough edges (deliberate for this trial)
+
+Replies are short plain text. History is finite (20 inputs). Recall is lexical and supplemental.
+Activation is manual by the desk. Notices are limited to the existing host-watch outage notice.
+There is no source sampler or summarization, no Slack parity, no tools or autonomous work, and the
+production confinement, peer and installation holds remain. Each turn runs the full signed owner
+chain on this machine, so a reply takes minutes rather than seconds. Measured offline on this
+machine: turn 1 about 80 s; later turns grow with the retained store.
+
+Focused offline evidence: `tests/preview/successive.test.ts` (with `successive-fixture.ts`). It
+substitutes only the Telegram Bot API and the subscription CLI, and runs restarts as fresh child
+processes.
