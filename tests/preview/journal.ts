@@ -563,16 +563,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const base = packetFor(last.update, true, [], [], [], last.thread, true);
     const bytes = Buffer.byteLength(base);
     if (!force && bytes < Math.floor(journal.view.genesis.maxBytes * .7)) return;
-    if (bytes > journal.view.genesis.maxBytes) { summaryPreflightBlocked.add(last.update); return; }
     // Open commitments the summary may close, each by its quote only; the oldest give way to the bound.
     const closable = openFor(last.update, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
-    let offered: typeof closable = [];
-    let packet = base;
-    for (let kept = closable.length; kept > 0; kept--) {
-      const subset = closable.slice(closable.length - kept);
-      const withOpen = JSON.stringify({ ...JSON.parse(base) as object, openCommitments: subset });
-      if (Buffer.byteLength(withOpen) <= journal.view.genesis.maxBytes) { packet = withOpen; offered = subset; break; }
-    }
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
@@ -585,9 +577,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + '<an exact, unaltered excerpt of a later operator message in history saying that item is done, withdrawn or no longer needed>}]}. '
       + 'Include every person other than yourself named in history, every such request and promise, and a closure only when a message '
       + 'really says so; never paraphrase or invent one. Use [] when none.';
-    let prepared: string | undefined;
-    try { prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${last.update}` }); }
-    catch { summaryPreflightBlocked.add(last.update); return; }
+    let offered: typeof closable = [], packet = base, prepared: string | undefined, fitted = false;
+    for (let kept = closable.length; kept >= 0; kept--) {
+      const subset = closable.slice(closable.length - kept);
+      const candidate = kept ? JSON.stringify({ ...JSON.parse(base) as object, openCommitments: subset }) : base;
+      if (Buffer.byteLength(candidate) > journal.view.genesis.maxBytes) continue;
+      try { prepared = ports.prepareModel?.({ question: summaryQuestion, context: candidate, id: `summary:${last.update}` }); }
+      catch { continue; }
+      packet = candidate; offered = subset; fitted = true; break;
+    }
+    if (!fitted) { summaryPreflightBlocked.add(last.update); return; }
     gate();
     journal.append({kind:'summary-reserve',through:last.update,...(prepared === undefined ? {} : { prompt: prepared }),at:ports.now()});
     let summary: Awaited<ReturnType<PreviewPorts['model']>>;

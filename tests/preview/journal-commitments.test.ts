@@ -185,6 +185,44 @@ it('refuses a closure for an open item omitted from the summary packet', async (
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('drops optional open commitments until the complete summary envelope fits and recovers the reply', async () => {
+  const root = origin();
+  const g = genesis(32768);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, g);
+  const seed = (id: number, text: string) => {
+    const turn = `telegram:12345678:update:${id}`;
+    journal.append({ kind: 'intake', id: turn, update: id, text, raw: JSON.stringify(update(id, text)),
+      accepted: true, cursor: id + 1, at: 1000 });
+    journal.append({ kind: 'reserve', id: turn, at: 1000 });
+    journal.append({ kind: 'answer', id: turn, text: 'ok', at: 1000 });
+    journal.append({ kind: 'intent', id: turn, text: 'PREVIEW — ok', chat: g.chat, update: id, grant: g.grant, at: 1000 });
+    journal.append({ kind: 'sent', id: turn, message: id, at: 1000 });
+    return turn;
+  };
+  try {
+    const quotes = Array.from({ length: 30 }, (_, i) => `Remember item ${i}: ${'detail '.repeat(125)}`);
+    const first = seed(1, quotes.join('\n'));
+    journal.append({ kind: 'summary-reserve', through: 1, at: 1000 });
+    journal.append({ kind: 'summary', through: 1, text: 'The operator gave thirty items to remember.', people: [],
+      commitments: quotes.map(quote => ({ in: 'message' as const, source: first, quote })), at: 1000 });
+    seed(2, `Recent discussion. ${'garden '.repeat(1300)}`);
+    const calls: { id: string; context: string }[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', g.grant, 1000),
+      model: async input => { calls.push({ id: input.id, context: input.context });
+        return input.id.startsWith('summary:') ? 'The thirty items remain open; later discussion covered the garden.' : 'ok'; },
+      send: async () => 3, checkOutbound: () => {} });
+    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2700)}`)]);
+    await worker.drain();
+    const summaryCall = calls.find(call => call.id === 'summary:2');
+    expect(summaryCall).toBeDefined();
+    expect((JSON.parse(summaryCall!.context) as Packet).openCommitments?.length ?? 0).toBeLessThan(30);
+    expect(journal.view.summaries.at(-1)?.through).toBe(2);
+    expect(journal.view.order[2]?.sent).toBe(3);
+    expect(calls.map(call => call.id)).toEqual(['summary:2', 'telegram:12345678:update:3']);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 it('settles an item made and closed within one summarized stretch', async () => {
   const root = origin();
   try {
