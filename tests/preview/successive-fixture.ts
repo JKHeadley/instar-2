@@ -5,7 +5,11 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realp
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { productionProviderIO } from '../../scripts/production-boot-io.mjs';
+import { productionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { canonical } from '../../src/index.js';
+import { openProductionStorage } from '../../src/assembly/production-storage.js';
+import { conversationFixture } from '../conversation/fixture.js';
+import { value } from '../facts/fixtures.js';
 import { SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { HOST_OUTAGE_TEXT, initializeSuccessiveRoot, openPreviewState } from './state.js';
 import { createSuccessiveComposition } from './successive.js';
@@ -33,7 +37,35 @@ export const offlineAuthorization = (approvedAt: number) => ({ type: 'Successive
 
 /** A shared offline world under `directory`: predecessor root, successor root and
  * append-only logs, so a restarted child process observes the same physical history. */
-export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-successive-')))) {
+export const OFFLINE_STORAGE_KEY = new Uint8Array(32).fill(19);
+
+/** A latched predecessor that had polled through `cursor`, with the durable cursor
+ * journal its Part Ten custodian leaves in its own encrypted store (the stage-1
+ * store names, same bot credential scope). The bytes are written through the
+ * real production storage; the journal row has the custodian's exact shape. */
+function writePredecessorCursor(root: string, machine: string, cursor: number) {
+  const t = conversationFixture({ botId: base.botId, skipInitialAdmission: true });
+  const context = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
+  const storage = value(openProductionStorage({ root, machine, key: OFFLINE_STORAGE_KEY,
+    policy: 'preview-stage-1-isolated-local-custody', store: 'preview-stage-1-facts', context, io: productionStorageIO }));
+  try {
+    const sha = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
+    const scope = value(canonical({ token: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: 'telegram-bot-token' },
+      apiVersion: t.declaration.apiVersion, bot: { id: base.botId, username: base.botUsername, identityEpoch: 'preview-stage-1' } })).hash;
+    const update = JSON.stringify({ update_id: cursor - 1, message: { message_id: 1, from: { id: OPERATOR, is_bot: false,
+      first_name: 'Justin' }, chat: { id: OPERATOR, type: 'private' }, date: 1790000000, text: 'A predecessor turn.' } });
+    const response = JSON.stringify({ ok: true, result: [JSON.parse(update)] });
+    const updateRef = `capture:telegram:update-${cursor - 1}:${sha(update)}`;
+    const responseRef = `capture:telegram:poll-${cursor - 1}:${sha(response)}`;
+    const entry = JSON.stringify({ scope, next: cursor, update: updateRef, updateHash: `sha256:${sha(update)}`,
+      response: responseRef, responseHash: `sha256:${sha(response)}` });
+    for (const [reference, bytes] of [[updateRef, update], [responseRef, response], [`capture:telegram:cursor:${scope}:0`, entry]])
+      if (!storage.captures.preserve(reference, bytes)) throw Error('offline predecessor capture failed');
+  } finally { storage.close(); }
+}
+
+export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-successive-'))),
+  options: { predecessorCursor?: number } = {}) {
   const source = join(directory, 'trial-a'), root = join(directory, 'trial-b');
   const worldPath = join(directory, 'world.json');
   const read = () => JSON.parse(readFileSync(worldPath, 'utf8'));
@@ -46,11 +78,16 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
     const opts = r => ({ root: r, configuration: stateConfiguration(r), expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, now: () => START,
       replyLimit: 6, replyWindowMs: 60000, errorLimit: 20, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128,
       hostNotice: { botId: base.botId, chatId: base.chatId, message: HOST_OUTAGE_TEXT } });
-    openPreviewState({ ...opts(source), create: true }).latchStop('operator');
+    const predecessor = openPreviewState({ ...opts(source), create: true });
+    if (options.predecessorCursor) {
+      predecessor.completePoll(options.predecessorCursor);
+      writePredecessorCursor(source, base.machine, options.predecessorCursor);
+    }
+    predecessor.latchStop('operator');
     initializeSuccessiveRoot({ predecessorRoot: source, root, predecessorConfiguration: stateConfiguration(source),
       configuration: stateConfiguration(root), authorization: offlineAuthorization(START + 500),
       quiescenceReference: 'offline predecessor quiesced', cutoff: START + 900, now: () => START + 1000 });
-    write({ clock: START + 2000, nextUpdate: 100, nextMessage: 2000, updates: [], answers: [] });
+    write({ clock: START + 2000, nextUpdate: options.predecessorCursor ?? 100, nextMessage: 2000, updates: [], answers: [] });
   };
   if (!existsSync(worldPath)) initialize();
   const say = (text: string, from = OPERATOR, chat = OPERATOR) => {
@@ -115,8 +152,8 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
   const compose = (options: any = {}) => {
     const outerState = state();
     return createSuccessiveComposition({ configuration: { ...base, root }, state: outerState, root,
-      storageKey: new Uint8Array(32).fill(19), resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
-      telegramIO: () => telegramIO, provider: { activation: activation(outerState.read()), profile: offlineProfile, model, io,
+      storageKey: OFFLINE_STORAGE_KEY, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
+      telegramIO: () => options.telegramIO?.(telegramIO) ?? telegramIO, provider: { activation: activation(outerState.read()), profile: offlineProfile, model, io,
         active: options.active ?? (() => true) },
       now: () => read().clock, stopped: () => outerState.read().stop !== null,
       readSource: path => readFileSync(join(process.cwd(), path), 'utf8'), limits: options.limits,

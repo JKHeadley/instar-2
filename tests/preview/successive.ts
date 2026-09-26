@@ -4,8 +4,8 @@
 // Telegram custodian IO and the pinned subscription route. No new driver,
 // budget or recovery protocol: Six serving, Four intake and the stop latch
 // remain the authorities. See README "Successive-turn mode".
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { createDecipheriv, createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
@@ -186,6 +186,62 @@ export interface SuccessiveInput {
   readonly hooks?: Readonly<{ beforeProvider?: (opening: string) => void }>;
 }
 
+/** Same bot, same credential: the successor keeps the predecessor's bot identity
+ * epoch, so its Telegram credential scope is the predecessor's and the durable
+ * cursor journal below carries over verbatim. */
+const IDENTITY_EPOCH = 'preview-stage-1';
+const PREDECESSOR_STORE = 'preview-stage-1-facts';
+
+/** The custodian only polls at an offset its own durable cursor journal backs
+ * (the durable-intake floor), and the successor's store starts empty while its
+ * declared start is the inherited cursor. The predecessor's journal rows and the
+ * exact update and poll-response captures they cite are copied byte-for-byte
+ * from the archived predecessor store (read-only; the archive is never opened
+ * as storage). The custodian re-verifies every row on read. */
+export function carryPredecessorCursor(root: string, machine: string, keyHex: string,
+  captures: { preserve(reference: string, bytes: string): boolean }, cursor: number) {
+  if (cursor === 0) return 0;
+  const file = join(root, '.preview-predecessor', 'captures.encrypted');
+  if (!existsSync(file)) throw Error('preview: predecessor cursor evidence absent');
+  const sealed = JSON.parse(readFileSync(file, 'utf8'));
+  const decipher = createDecipheriv('aes-256-gcm', Buffer.from(keyHex, 'hex'), Buffer.from(sealed.nonce, 'hex'));
+  decipher.setAAD(Buffer.from(`${machine}:${PREDECESSOR_STORE}:captures`)); decipher.setAuthTag(Buffer.from(sealed.tag, 'hex'));
+  const rows: Record<string, string> = JSON.parse(Buffer.concat([decipher.update(Buffer.from(sealed.ciphertext, 'base64')),
+    decipher.final()]).toString('utf8'));
+  let maximum = 0;
+  for (const [reference, bytes] of Object.entries(rows)) {
+    if (!reference.startsWith('capture:telegram:cursor:')) continue;
+    const row = JSON.parse(bytes);
+    for (const [cited, citedBytes] of [[row.update, rows[row.update]], [row.response, rows[row.response]], [reference, bytes]])
+      if (typeof citedBytes !== 'string' || !captures.preserve(cited, citedBytes)) throw Error('preview: predecessor cursor evidence changed');
+    maximum = Math.max(maximum, row.next);
+  }
+  if (maximum !== cursor) throw Error('preview: predecessor cursor evidence does not reach the inherited cursor');
+  return maximum;
+}
+
+/** A store with no restart checkpoint is a boot that never completed (for
+ * example a Telegram identity probe that failed mid-boot). The checkpoint is
+ * written before the first poll, so such a store never admitted an input, called
+ * the provider or sent. Its capture tables lived only in the dead process, so a
+ * fresh boot over it reads poison conflicts. It is retained beside the root,
+ * never deleted, and the boot starts clean. A live boot's lease refuses. */
+export function retainIncompleteBoot(storageRoot: string, checkpointPath: string) {
+  if (existsSync(checkpointPath) || !existsSync(storageRoot) || readdirSync(storageRoot).length === 0) return null;
+  const owner = join(storageRoot, '.boot-lease', 'owner.json');
+  if (existsSync(owner)) {
+    let alive = true;
+    try { process.kill(JSON.parse(readFileSync(owner, 'utf8')).pid, 0); }
+    catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+    if (alive) throw Error('preview: an incomplete successive boot is still held by a live process');
+  }
+  let ordinal = 1;
+  while (existsSync(`${storageRoot}-incomplete-boot-${ordinal}`)) ordinal += 1;
+  const retained = `${storageRoot}-incomplete-boot-${ordinal}`;
+  renameSync(storageRoot, retained);
+  return retained;
+}
+
 export function createSuccessiveComposition(input: SuccessiveInput) {
   const limits = Object.freeze({ ...SUCCESSIVE_LIMITS, ...input.limits });
   for (const [name, bound] of Object.entries(limits)) if (!Number.isSafeInteger(bound) || bound < 1
@@ -211,8 +267,9 @@ export function createSuccessiveComposition(input: SuccessiveInput) {
   const description = stage2Description(model, framing);
   const settings = Object.freeze({ automaticRetries: 0, maxTokens: policy.maxTokens });
   const storageRoot = join(input.root, '.successive');
-  mkdirSync(storageRoot, { recursive: true, mode: 0o700 });
   const checkpointPath = join(input.root, 'successive-checkpoint.json');
+  retainIncompleteBoot(storageRoot, checkpointPath);
+  mkdirSync(storageRoot, { recursive: true, mode: 0o700 });
   const recovery = existsSync(checkpointPath) ? JSON.parse(readFileSync(checkpointPath, 'utf8')) : undefined;
   // Boot needs one route handle; this placeholder is never invoked. Each turn
   // selects its own custodied subscription route through the plan.
@@ -221,7 +278,7 @@ export function createSuccessiveComposition(input: SuccessiveInput) {
     invoke: async () => { throw Error('preview: installation placeholder route is never invoked'); } });
   const expectedRoute = { channel: telegramConversation(configuration.botId, { chatId: configuration.chatId,
     forum: configuration.forum, messageThreadId: configuration.messageThreadId }),
-  sender: `telegram:v1:user:${configuration.operatorSenderId}`, identityEpoch: `telegram:v1:bot:${configuration.botId}:epoch:preview-successive-1` };
+  sender: `telegram:v1:user:${configuration.operatorSenderId}`, identityEpoch: `telegram:v1:bot:${configuration.botId}:epoch:${IDENTITY_EPOCH}` };
   const target = Object.freeze({ chatId: configuration.chatId, forum: configuration.forum,
     messageThreadId: configuration.messageThreadId });
   const storageKey = Buffer.from(input.storageKey).toString('hex');
@@ -254,7 +311,7 @@ export function createSuccessiveComposition(input: SuccessiveInput) {
       return input.resolveSecret(reference);
     },
     declaration: base => Object.freeze({ ...base,
-      bot: Object.freeze({ id: configuration.botId, username: configuration.botUsername, identityEpoch: 'preview-successive-1' }),
+      bot: Object.freeze({ id: configuration.botId, username: configuration.botUsername, identityEpoch: IDENTITY_EPOCH }),
       token: telegramSecret, cursor: Object.freeze({ ...base.cursor, initialOffset: sidecar.read().cursor,
         // One update per poll: the installed per-turn grounding requires the current
         // opening to be the admitted frontier (the accepted serving tests poll
@@ -269,6 +326,8 @@ export function createSuccessiveComposition(input: SuccessiveInput) {
         Object.assign(context, { schemas: [...context.schemas, recallExchangeSchema(state.f.scope)] });
     } });
   const built = fixture.boot();
+  // Only a fresh store needs the carried journal; a checkpointed store already holds it.
+  if (!recovery) carryPredecessorCursor(input.root, configuration.machine, storageKey, built.storage.captures, sidecar.read().cursor);
   const application = built.application, f = built.f;
   const rows = () => value(f.store.read());
   const principal = `telegram:v1:user:${configuration.operatorSenderId}`;

@@ -379,6 +379,15 @@ It records every retained UNKNOWN obligation in the lineage and the cumulative l
 deletes or resets the source latch, never reuses the framing-v2 successor, refills no budget, and
 neither arms nor launches anything. A second use for the same trial refuses.
 
+Start and restart: the successor's own store is `.successive/`. Its first boot copies the predecessor's
+durable Telegram cursor journal (the rows and the exact update and poll-response captures they cite)
+byte-for-byte from the archived store, so the first poll is at the inherited cursor; the successor keeps
+the predecessor's bot identity epoch (same bot, same credential), so the custodian re-verifies those rows
+under its own credential scope. A `.successive/` with no `successive-checkpoint.json` is a boot that never
+completed (the checkpoint precedes the first poll, so nothing was admitted, called or sent). The next start
+moves it aside to `.successive-incomplete-boot-N` (never deleted) and boots clean; a store still held by
+a live process refuses.
+
 Invocation: the existing preview arguments with the new root, plus
 `--mode successive --activation-record /ABSOLUTE/activation.json --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID`.
 There is no `--stage` and no `--arm`. The activation record has the Stage 2 schema, with

@@ -3,7 +3,7 @@
 // recall and the context packet are the real ones. No live network or model is contacted.
 import { afterEach, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
@@ -14,7 +14,7 @@ import { createEffectSpine, installOperationDefinition } from '../../src/effects
 import { json, privateKey, refused } from '../facts/fixtures.js';
 import { encoded } from './stage2-provider.js';
 import { HOST_OUTAGE_TEXT, initializeSuccessiveRoot, openPreviewState, validateSuccessiveRoot } from './state.js';
-import { SOURCE_PINS, measureSuccessive, sourcePacket } from './successive.js';
+import { SOURCE_PINS, carryPredecessorCursor, measureSuccessive, retainIncompleteBoot, sourcePacket } from './successive.js';
 import { OPERATOR, offlineAuthorization, offlineProfile, successiveWorld } from './successive-fixture.js';
 
 afterEach(async () => { await new Promise<void>(done => setImmediate(done)); });
@@ -241,4 +241,63 @@ it('initializes one authorized successor that inherits the latched trial, cursor
   expect(existsSync(join(source, 'preview-stop.json'))).toBe(true);
   // One use only: the exclusive marker refuses a second successor for the same trial.
   expect(() => init(again)).toThrow();
+});
+
+it('live entry shape: a successor with an inherited non-zero cursor survives a boot that failed mid-identity, then answers and restarts cleanly', async () => {
+  const cursor = 969389546;
+  const world = successiveWorld(undefined, { predecessorCursor: cursor });
+  const successive = join(world.root, '.successive'), checkpoint = join(world.root, 'successive-checkpoint.json');
+  // First start: the Telegram identity probe does not complete, as on the first live pass.
+  const failing = physical => ({ invoke: (request, credential) => request.method === 'getMe'
+    ? { kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' } : physical.invoke(request, credential) });
+  expect(() => world.compose({ telegramIO: failing })).toThrow('Telegram transport uncertainty');
+  expect(readdirSync(successive).length).toBeGreaterThan(0);
+  expect(existsSync(checkpoint)).toBe(false);
+  expect(world.telegram().filter(row => row.method !== 'getMe')).toHaveLength(0);
+
+  // Restart: the incomplete store is retained aside (never deleted), boot is clean, and the
+  // first physical poll is at the inherited cursor, backed by the carried durable journal.
+  world.say('Hello after the restart. What is 2+2?');
+  world.answer('Four.');
+  const c = world.compose({});
+  try { await c.run({ maxCycles: 4, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); } finally { c.close(); }
+  expect(existsSync(join(world.root, '.successive-incomplete-boot-1'))).toBe(true);
+  expect(existsSync(checkpoint)).toBe(true);
+  expect(world.telegram().find(row => row.method === 'getUpdates').body.offset).toBe(cursor);
+  expect(world.models()).toHaveLength(1);
+  expect(world.sends()).toHaveLength(1);
+  expect(JSON.parse(readFileSync(join(world.root, 'successive-state.json'), 'utf8')).cursor).toBe(cursor + 1);
+
+  // A later restart boots over the checkpointed store: nothing moved aside, nothing re-asked or resent.
+  const again = world.compose({});
+  try { await again.run({ maxCycles: 2, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); } finally { again.close(); }
+  expect(existsSync(join(world.root, '.successive-incomplete-boot-2'))).toBe(false);
+  expect(world.models()).toHaveLength(1);
+  expect(world.sends()).toHaveLength(1);
+}, 1_800_000);
+
+it('retains only a store that never completed boot, and never one a live process holds', () => {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-incomplete-')));
+  const store = join(directory, '.successive'), checkpoint = join(directory, 'successive-checkpoint.json');
+  expect(retainIncompleteBoot(store, checkpoint)).toBe(null);
+  mkdirSync(join(store, '.boot-lease'), { recursive: true });
+  writeFileSync(join(store, '.boot-lease', 'owner.json'), JSON.stringify({ pid: process.pid }));
+  expect(() => retainIncompleteBoot(store, checkpoint)).toThrow('still held by a live process');
+  writeFileSync(checkpoint, '{}');
+  expect(retainIncompleteBoot(store, checkpoint)).toBe(null);
+  expect(existsSync(store)).toBe(true);
+});
+
+it('carries the predecessor cursor journal only when it reaches the inherited cursor', () => {
+  const world = successiveWorld(undefined, { predecessorCursor: 500 });
+  const copied = new Map();
+  const port = { preserve: (reference, bytes) => { copied.set(reference, bytes); return true; } };
+  const key = Buffer.from(new Uint8Array(32).fill(19)).toString('hex');
+  expect(carryPredecessorCursor(world.root, 'preview-test-machine', key, port, 0)).toBe(0);
+  expect(copied.size).toBe(0);
+  expect(carryPredecessorCursor(world.root, 'preview-test-machine', key, port, 500)).toBe(500);
+  expect([...copied.keys()].map(reference => reference.split(':').slice(0, 3).join(':')).sort())
+    .toEqual(['capture:telegram:cursor', 'capture:telegram:poll-499', 'capture:telegram:update-499']);
+  expect(() => carryPredecessorCursor(world.root, 'preview-test-machine', key, port, 501)).toThrow('does not reach');
+  expect(() => carryPredecessorCursor(world.root, 'another-machine', key, port, 500)).toThrow();
 });
