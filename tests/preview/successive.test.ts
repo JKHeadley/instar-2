@@ -293,8 +293,9 @@ it('retains only a store that never completed boot, and never one a live process
   expect(existsSync(store)).toBe(true);
   expect(existsSync(join(store, '.boot-lease-guard'))).toBe(false);
   // A failed rename (read-only parent) releases the guard in place, so the next start is not blocked.
+  writeFileSync(join(store, '.boot-lease', 'owner.json'), JSON.stringify({ pid: 2 ** 22 + 12345 }));
   chmodSync(directory, 0o500);
-  try { expect(() => retainIncompleteBoot(store, checkpoint)).toThrow(); } finally { chmodSync(directory, 0o700); }
+  try { expect(() => retainIncompleteBoot(store, checkpoint)).toThrow(/EACCES|EPERM/); } finally { chmodSync(directory, 0o700); }
   expect(existsSync(store)).toBe(true);
   expect(existsSync(join(store, '.boot-lease-guard'))).toBe(false);
   // A dead owner's incomplete store is retained under the guard, which is released afterwards.
