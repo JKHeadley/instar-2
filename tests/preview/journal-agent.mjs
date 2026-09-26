@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, lstatSync, realpathSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
-  subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+  SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { redact } from '../../src/recall/redact.js';
-import { openPreviewJournal, createJournalWorker } from './journal.js';
+import { durablePreviewWrite } from './state.js';
+import { encoded } from './stage2-provider.js';
+import { SOURCE_PINS, sourcePacket } from './successive.js';
+import { openPreviewJournal, createJournalWorker, PREVIEW_LIVE_LIMITS } from './journal.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -52,40 +55,70 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (!['run', 'status', 'stop'].includes(command)) throw Error('preview: unknown command');
   const root = resolve(required(options, 'root'));
+  if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
+  const stopPath = join(root, 'preview-stop.json');
+  if (command === 'stop') {
+    if (!existsSync(join(root, 'journal.encrypted'))) throw Error('preview: journal absent');
+    if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'operator' });
+    return;
+  }
+  if (command === 'status') {
+    const view = openPreviewJournal(join(root, 'journal.encrypted'), key(), undefined, undefined, true);
+    try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+      calls: view.view.calls, replies: view.view.replies,
+      stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
+      sourceStop: view.view.sourceStop,
+      unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
+      unknownSends: view.view.order.filter(t => t.intent && !t.sent).length })}\n`); }
+    finally { view.close(); }
+    return;
+  }
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
     key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
   let journal;
   try {
+    const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
+    const maxReplies = number(options['max-replies'] ?? '16', 'max-replies');
+    const maxTurns = number(options['max-turns'] ?? '20', 'max-turns');
+    const maxBytes = number(options['max-context-bytes'] ?? '32768', 'max-context-bytes');
+    if (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
+      || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes)
+      throw Error('preview: live allowance outside approved bound');
     const initial = command !== 'run' ? undefined : {
       kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'),
       operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
-      maxCalls: number(options['max-calls'] ?? '16', 'max-calls'), maxReplies: number(options['max-replies'] ?? '16', 'max-replies'),
-      maxTurns: number(options['max-turns'] ?? '20', 'max-turns'), maxBytes: number(options['max-context-bytes'] ?? '32768', 'max-context-bytes'), cursor: 0 };
+      maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
     journal = openPreviewJournal(join(root, 'journal.encrypted'), key(), initial);
     const g = journal.view.genesis;
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
-    if (command === 'status') {
-      process.stdout.write(`${JSON.stringify({ cursor: journal.view.cursor, turns: journal.view.order.length,
-        calls: journal.view.calls, replies: journal.view.replies, stop: journal.view.stop, sourceStop: journal.view.sourceStop,
-        unknownCalls: journal.view.order.filter(t => t.reserved && !t.answer).length,
-        unknownSends: journal.view.order.filter(t => t.intent && !t.sent).length })}\n`); return;
-    }
+    const modelEnvelope = ({ question, context: packet, id }) => {
+      const policy = subscriptionConversationPolicy(required(options, 'model'));
+      const floor = { type: 'ActionFloor', schemaVersion: 1, actions: ['work'], default: 'work' };
+      const bindings = { at: Date.now(), by: { judgment: 'judgment', model: options.model, route: 'preview-subscription' },
+        floor, evidence: [id] };
+      const bytes = encoded({ provider: 'anthropic', model: options.model, route: 'preview-subscription',
+        messages: [{ role: 'user', content: question }, { role: 'context', content: encoded({ bindings, packet: JSON.parse(packet) }).bytes }],
+        attachments: [], tools: [], settings: { automaticRetries: 0, maxTokens: policy.maxTokens },
+        outputSchema: { type: 'Decision' }, floor, evidence: bindings.evidence, point: 'judgment', generation: g.grant }).bytes;
+      if (Buffer.byteLength(bytes) > policy.maxInputBytes
+        || Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > policy.maxPromptBytes)
+        throw Error('preview: complete prompt overflow');
+      return { bytes, policy };
+    };
+    const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+      { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
     const workerStop = { value: false };
-    const worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value,
+    const worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
+      sources,
+      checkInput: input => { modelEnvelope(input); },
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ question, context: packet, id }) => {
-        const route = modelRoute(), policy = subscriptionConversationPolicy(required(options, 'model'));
-        const bindings = { at: Date.now(), by: { judgment: 'judgment', model: options.model, route: 'preview-subscription' },
-          floor: { actions: ['answer'] }, evidence: [id] };
-        const bytes = JSON.stringify({ provider: 'anthropic', model: options.model, route: 'preview-subscription',
-          messages: [{ role: 'user', content: question }, { role: 'context', content: JSON.stringify({ bindings, packet: JSON.parse(packet) }) }],
-          attachments: [], tools: [], settings: { automaticRetries: 0, maxTokens: policy.maxTokens },
-          outputSchema: { type: 'Decision' }, floor: bindings.floor, evidence: bindings.evidence, point: 'judgment', generation: g.grant });
-        if (Buffer.byteLength(bytes) + 2500 > policy.maxPromptBytes) throw Error('preview: full prompt overflow');
+        const route = modelRoute(), { bytes, policy } = modelEnvelope({ question, context: packet, id });
         const result = await route.invoke(bytes, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
           timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
           maxCharge: 0, automaticRetries: 0 });
@@ -95,16 +128,17 @@ async function main() {
           || typeof decision.conclusion.value !== 'string') throw Error('preview: model answer malformed');
         return decision.conclusion.value;
       },
-      send: async ({ text, chat }) => {
-        if (workerStop.value || Date.now() >= g.expires || journal.view.stop) return null;
+      send: async ({ text, expectedText, chat }) => {
+        if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
-          body: { chat_id: chat, text: text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'), parse_mode: 'HTML' }, timeoutMs: 30000 }, token());
+          body: { chat_id: chat, text, parse_mode: 'HTML' }, timeoutMs: 30000 }, token());
         if (reply.kind !== 'response' || reply.status !== 200) return null;
         const payload = JSON.parse(reply.bytes);
-        return payload.ok === true && String(payload.result?.chat?.id) === chat && Number.isSafeInteger(payload.result?.message_id)
+        return payload.ok === true && String(payload.result?.chat?.id) === chat && payload.result?.text === expectedText
+          && Number.isSafeInteger(payload.result?.message_id)
           ? payload.result.message_id : null;
       } });
-    if (command === 'stop') { worker.stop('operator'); return; }
+    if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
@@ -120,7 +154,8 @@ async function main() {
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
     let signalled = false;
-    const signal = () => { signalled = true; workerStop.value = true; try { worker.stop('signal'); } catch {} };
+    const signal = () => { signalled = true; workerStop.value = true;
+      try { if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'signal' }); worker.stop('signal'); } catch {} };
     process.once('SIGINT', signal); process.once('SIGTERM', signal);
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles');
     let summaryJob = null;
@@ -130,6 +165,8 @@ async function main() {
     };
     for (let i = 0; i < cycles && !signalled; i++) {
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      if (existsSync(stopPath) || Date.now() >= g.expires) break;
+      try { worker.pollGate(); } catch { break; }
       const result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
         body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds') },
         timeoutMs: 12000 }, token());
@@ -140,7 +177,7 @@ async function main() {
     }
     await summaryJob;
     function modelRoute() {
-      if (!active() || workerStop.value) throw Error('preview: activation stopped');
+      if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       const policy = subscriptionConversationPolicy(options.model);
       const contract = { reference: activation.reference, version: activation.profileDigest,
         parserReference: 'claude-code-json-result', parserVersion: '1', endpoint: profile.loginProfileIdentity,
@@ -151,8 +188,8 @@ async function main() {
       return take(createClaudeCodeSubscriptionRoute({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
-        io: createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => workerStop.value || !active() }),
-        now: Date.now, active: () => !workerStop.value && active() && !journal.view.stop,
+        io: createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => workerStop.value || existsSync(stopPath) || !active() }),
+        now: Date.now, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract }));
     }
   } finally { journal?.close(); storage.close(); }

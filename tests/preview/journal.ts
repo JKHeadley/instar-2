@@ -7,12 +7,16 @@ import { dirname, resolve } from 'node:path';
 import { previewTurnId } from './state.js';
 import { redact } from '../../src/recall/redact.js';
 
+/** The launcher cannot raise these live limits. Offline harnesses instantiate
+ * the worker directly with explicit finite bounds for longer latency trials. */
+export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns: 20, contextBytes: 32768 });
+
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number }
   | { kind: 'reserve'; id: string; at: number }
   | { kind: 'answer'; id: string; text: string; at: number }
-  | { kind: 'intent'; id: string; text: string; chat: string; update: number; grant: string; at: number }
+  | { kind: 'intent'; id: string; text: string; body?: string; chat: string; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
@@ -23,7 +27,7 @@ export type JournalRecord =
   | { kind: 'summary'; through: number; text: string; at: number };
 
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; answer?: string;
-  reserved: boolean; intent?: string; sent?: number; held?: string }
+  reserved: boolean; intent?: string; intentBody?: string; sent?: number; held?: string }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; sourceStop: string | null }
@@ -59,22 +63,22 @@ function project(view: JournalView, row: JournalRecord): void {
   if (!turn) throw Error('preview journal: orphan effect');
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; view.calls++; }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined) throw Error('preview journal: answer order'); turn.answer = row.text; }
-  if (row.kind === 'intent') { if (turn.answer === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; view.replies++; }
+  if (row.kind === 'intent') { if (turn.answer === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; }
   if (row.kind === 'hold') turn.held = row.reason;
 }
 
 export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extract<JournalRecord,{kind:'genesis'}>,
-  boundary?: (stage: string) => void) {
+  boundary?: (stage: string) => void, readOnly = false) {
   if (resolve(path) !== path || key.byteLength !== 32) throw Error('preview journal: path or key refused');
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   if (realpathSync(dirname(path)) !== dirname(path) || lstatSync(dirname(path)).isSymbolicLink())
     throw Error('preview journal: substituted directory');
   const fresh = !existsSync(path);
-  if (fresh && !initial) throw Error('preview journal: identity absent');
+  if (fresh && (!initial || readOnly)) throw Error('preview journal: identity absent');
   if (!fresh && lstatSync(path).isSymbolicLink()) throw Error('preview journal: substituted file');
   const flags = fresh ? constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW
-    : constants.O_RDWR | constants.O_NOFOLLOW;
+    : (readOnly ? constants.O_RDONLY : constants.O_RDWR) | constants.O_NOFOLLOW;
   const fd = openSync(path, flags, 0o600);
   if (fresh) { const directory = openSync(dirname(path), 'r'); try { fsyncSync(directory); } finally { closeSync(directory); } }
   let size = statSync(path).size;
@@ -98,19 +102,26 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       } else project(view, row);
       offset += 4 + length;
     }
-    if (offset < sealed.length) {
+    if (offset < sealed.length && !readOnly) {
       // Retain the incomplete suffix for diagnosis before removing it from the
       // active append point. It never becomes accepted intake or an effect.
       const tail = `${path}.torn-${String(size)}`;
-      const torn = openSync(tail, 'wx', 0o600);
-      try { writeSync(torn, sealed.subarray(offset)); fsyncSync(torn); } finally { closeSync(torn); }
+      if (existsSync(tail)) {
+        if (!readFileSync(tail).equals(sealed.subarray(offset))) throw Error('preview journal: torn evidence changed');
+      } else {
+        const torn = openSync(tail, 'wx', 0o600);
+        try { const suffix = sealed.subarray(offset); let written = 0;
+          while (written < suffix.length) written += writeSync(torn, suffix, written);
+          fsyncSync(torn); } finally { closeSync(torn); }
+      }
       const dir = openSync(dirname(path), 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }
       ftruncateSync(fd, offset); fsyncSync(fd); size = offset;
     }
     // A complete frame left by a process death before its original fsync is
     // made durable before recovery is allowed to consume its causal state.
-    fsyncSync(fd);
+    if (!readOnly) fsyncSync(fd);
     const append = (row: JournalRecord) => {
+      if (readOnly) throw Error('preview journal: reader cannot append');
       boundary?.(`before:${row.kind}`);
       const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
       cipher.setAAD(Buffer.from(`preview-journal:${size}`));
@@ -149,8 +160,10 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: { update
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  sources?: unknown;
+  checkInput?(input: { question: string; context: string; id: string }): void;
   model(input: { question: string; context: string; id: string }): Promise<string>;
-  send(input: { text: string; chat: string; update: number }): Promise<number | null>;
+  send(input: { text: string; expectedText: string; chat: string; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
   boundary?(stage: string): void;
 }
@@ -159,7 +172,20 @@ export interface PreviewPorts {
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
-  const gate = () => { if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires) throw Error('preview stopped'); };
+  const gate = () => {
+    if (!journal.view.stop && ports.now() >= journal.view.genesis.expires)
+      journal.append({ kind: 'stop', reason: 'expiry', at: ports.now() });
+    if (journal.view.stop || ports.stopped()) throw Error('preview stopped');
+  };
+  const pollGate = () => {
+    gate();
+    if (journal.view.order.length >= journal.view.genesis.maxTurns
+      || journal.view.calls >= journal.view.genesis.maxCalls
+      || journal.view.replies >= journal.view.genesis.maxReplies) {
+      journal.append({ kind: 'stop', reason: 'capacity', at: ports.now() });
+      throw Error('preview poll capacity reached');
+    }
+  };
   const intake = (updates: readonly { update_id: number; message?: { chat?: { id: number; type?: string }; from?: { id: number }; text?: string } }[]) => {
     gate();
     for (const update of updates) {
@@ -180,6 +206,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending' }));
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private, capped preview; answer only, no tools or other actions.',
+      ...(ports.sources === undefined ? {} : { sources: ports.sources }),
       ...(summary ? { summary: { through: summary.through, text: redact(summary.text).text } } : {}), history });
     return packet;
   };
@@ -200,6 +227,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.genesis.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
           const context = contextFor(turn), question = redact(turn.text).text;
           if (Buffer.byteLength(context) > journal.view.genesis.maxBytes) { journal.append({kind:'hold',id:turn.id,reason:'context overflow',at:ports.now()}); continue; }
+          try { ports.checkInput?.({ question, context, id: turn.id }); }
+          catch { journal.append({kind:'hold',id:turn.id,reason:'prompt overflow',at:ports.now()}); continue; }
           journal.append({ kind: 'reserve', id: turn.id, at: ports.now() }); gate();
           let answer: string;
           try { answer = await ports.model({ question, context, id: turn.id }); }
@@ -210,12 +239,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (journal.view.replies >= journal.view.genesis.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
         const reply = `PREVIEW — ${turn.answer!}`;
         if (Buffer.byteLength(reply) > 4096 || Array.from(reply).length > 4096) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
-        try { ports.checkOutbound(reply); }
+        const body = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
+          journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
+        }
+        try { ports.checkOutbound(body); }
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
-        journal.append({ kind: 'intent', id: turn.id, text: reply, chat: journal.view.genesis.chat,
+        journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat,
           update: turn.update, grant: journal.view.genesis.grant, at: ports.now() });
         gate();
-        try { const message = await ports.send({ text: reply, chat: journal.view.genesis.chat, update: turn.update });
+        try { const message = await ports.send({ text: body, expectedText: reply, chat: journal.view.genesis.chat, update: turn.update });
           if (message !== null && Number.isSafeInteger(message) && message > 0)
             journal.append({ kind: 'sent', id: turn.id, message, at: ports.now() });
         } catch { /* exact intent stays UNKNOWN */ }
@@ -231,14 +264,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const packet = packetFor(last.update, true);
     const bytes = Buffer.byteLength(packet);
     if (bytes < Math.floor(journal.view.genesis.maxBytes * .7) || bytes > journal.view.genesis.maxBytes) return;
+    const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes.';
+    try { ports.checkInput?.({ question: summaryQuestion, context: packet, id: `summary:${last.update}` }); }
+    catch { return; }
     gate();
     journal.append({kind:'summary-reserve',through:last.update,at:ports.now()});
     let summary: string;
-    try { summary = await ports.model({ question: 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes.',
+    try { summary = await ports.model({ question: summaryQuestion,
       context: packet, id: `summary:${last.update}` }); }
     catch { return; }
     if (Buffer.byteLength(summary) > Math.min(8192, Math.floor(journal.view.genesis.maxBytes / 4))) return;
     journal.append({kind:'summary',through:last.update,text:redact(summary).text,at:ports.now()});
   };
-  return { intake, drain, summarizeIfNeeded, gate, stop: (reason: string) => journal.append({kind:'stop', reason, at:ports.now()}) };
+  return { intake, drain, summarizeIfNeeded, gate, pollGate,
+    stop: (reason: string) => journal.append({kind:'stop', reason, at:ports.now()}) };
 }
