@@ -38,6 +38,7 @@ export interface HistoricalScope {
 // a deep-frozen object graph cannot acquire, lose or replace any node afterwards.
 const verifiedFrozen = new WeakSet<object>();
 const frozenTexts = new WeakMap<object, { depth: number; text: string }>();
+const frozenEnvelopeBytes = new WeakMap<object, string>();
 function deepFrozen(value: object, seen: Set<object>): boolean {
   if (verifiedFrozen.has(value)) return true;
   if (!Object.isFrozen(value) || seen.has(value)) return false;
@@ -89,6 +90,17 @@ function amortizedText(input: unknown, seen: Set<object>, depth: number): string
   return `{${parts.join(',')}}`;
 }
 function memoFingerprint(composite: object): string { return hashBytes(amortizedText(composite, new Set(), 0)); }
+// P2's admitted envelopes are deeply frozen. Compare their full canonical bytes
+// for content-memo reuse, but encode a given immutable object only once. Caller-
+// supplied mutable copies still receive a fresh canonical check on every read.
+function envelopeBytes(record: FactEnvelope): string {
+  if (!deepFrozen(record, new Set())) return encoding(record).bytes;
+  const prior = frozenEnvelopeBytes.get(record);
+  if (prior !== undefined) return prior;
+  const bytes = encoding(record).bytes;
+  frozenEnvelopeBytes.set(record, bytes);
+  return bytes;
+}
 // GRANT M3-E (scaling): capture contents are content-addressed, so a capture table enters the
 // memo fingerprint through each content string's SHA-256 instead of its bytes. Re-walking every
 // retained capture for every historical body on every read made each projection read grow with
@@ -166,7 +178,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       const fingerprint = hashBytes(`${shared(c) ? scope.tables ??= tables(c) : tables(c)}|${standing(c)}|${
         heads ? `heads:${heads.join(',')}` : `cone:${causalCone(record, context.facts).map(f => f.contentHash).sort().join(',')}`}`);
       const byContent = decodedByContent.get(record.id);
-      const reused = byContent?.envelope === encoding(record).bytes ? byContent : undefined;
+      const reused = byContent?.envelope === envelopeBytes(record) ? byContent : undefined;
       if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) {
         cache.set(record.id, reused.body); issued.set(record.id, reused.body.records); return reused.body;
       }
@@ -175,7 +187,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         read(ancestor, causalStanding(ancestor, context, false, causal).decode);
         history.push(...issued.get(ancestor.id)!);
       }
-      const checked = take(decodeFrame(record, context)), bytes = encoding(record).bytes, reference = `origin:${record.id}`;
+      const checked = take(decodeFrame(record, context)), bytes = envelopeBytes(record), reference = `origin:${record.id}`;
       const captures = { ...c.captures, [reference]: bytes };
       const captureStatuses = Object.fromEntries(Object.entries(context.captures).map(([ref, capture]) => {
         if (capture.status !== 'available') delete captures[ref];
@@ -238,7 +250,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
       issued.set(record.id, own); cache.set(record.id, result);
       const decoded: DecodedBody = { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) };
-      decodedByContent.set(record.id, { ...decoded, envelope: encoding(record).bytes }); return result;
+      decodedByContent.set(record.id, { ...decoded, envelope: envelopeBytes(record) }); return result;
     };
     return read(fact, decoderContext);
   });

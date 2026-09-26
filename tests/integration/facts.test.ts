@@ -52,6 +52,15 @@ it('P2-NF-16 out-of-band disk mutation fails read verification', () => {
     refused(f.store.read(), 'prefix changed');
   } finally { f.cleanup(); }
 });
+it('P2 verified-prefix reuse still checks a mutable adapter frame changed in place', () => {
+  const f = factsFixture(), frame = JSON.parse(JSON.stringify(f.wire()));
+  const storage: SegmentStoragePort = { owner: 'part-ten', read: () => [frame],
+    append: () => f.success({ kind: 'local-durable' }) };
+  const store = createFactStore(f.ctx, storage);
+  value(store.read()); value(store.read());
+  frame.body.amount = '11';
+  refused(store.read(), 'prefix changed');
+});
 it('P2-NF-29 unresolved input becomes an attributed system observation, never lost or promoted', () => {
   const f = factsFixture(), observer = f.principal('observer', 'system');
   const raw = { type: 'UnresolvedInput', schemaVersion: 1, raw: f.capture('unknown sender message'), channel: 'host', at: f.now, reason: 'identity unavailable' };

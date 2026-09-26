@@ -31,7 +31,7 @@ export interface ProductionStorage {
   readonly root: string;
   readonly segment: SegmentStoragePort;
   readonly persistence: PersistenceAdapterPort;
-  readonly captures: TelegramDurableCapturePort;
+  readonly captures: TelegramDurableCapturePort & Readonly<{ references(): readonly string[] }>;
   close(): void;
 }
 
@@ -98,19 +98,32 @@ export function openProductionStorage(input: Readonly<{ root: string; machine: s
       const ciphertext = Buffer.concat([cipher.update(bytes, 'utf8'), cipher.final()]);
       return JSON.stringify({ nonce: nonce.toString('hex'), ciphertext: ciphertext.toString('base64'), tag: cipher.getAuthTag().toString('hex') });
     };
-    const unseal = (name: string, file: string) => {
-      ensure(!lstatSync(file).isSymbolicLink(), 'storage: symlink refused');
-      const raw = JSON.parse(readFileSync(file, 'utf8')) as { nonce: string; ciphertext: string; tag: string };
+    const unsealRaw = (name: string, sealed: string) => {
+      const raw = JSON.parse(sealed) as { nonce: string; ciphertext: string; tag: string };
       const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(raw.nonce, 'hex'));
       decipher.setAAD(Buffer.from(`${input.machine}:${input.store}:${name}`)); decipher.setAuthTag(Buffer.from(raw.tag, 'hex'));
       return Buffer.concat([decipher.update(Buffer.from(raw.ciphertext, 'base64')), decipher.final()]).toString('utf8');
     };
-    const segmentPath = join(root, 'facts.encrypted');
-    const readBytes = (): readonly string[] => {
-      current(); return existsSync(segmentPath) ? JSON.parse(unseal('facts', segmentPath)) as string[] : [];
+    const unseal = (name: string, file: string) => {
+      ensure(!lstatSync(file).isSymbolicLink(), 'storage: symlink refused');
+      return unsealRaw(name, readFileSync(file, 'utf8'));
     };
+    const segmentPath = join(root, 'facts.encrypted');
+    let factCache: { sealed: string | null; bytes: readonly string[]; rows: readonly unknown[] } | undefined;
+    const readFacts = () => {
+      current();
+      const sealed = existsSync(segmentPath) ? (ensure(!lstatSync(segmentPath).isSymbolicLink(), 'storage: symlink refused'),
+        readFileSync(segmentPath, 'utf8')) : null;
+      if (factCache && factCache.sealed === sealed) return factCache;
+      const bytes = sealed === null ? [] : JSON.parse(unsealRaw('facts', sealed)) as string[];
+      const prior = factCache;
+      const rows = freeze(bytes.map((row, index) => prior?.bytes[index] === row
+        ? prior.rows[index] : JSON.parse(row) as unknown));
+      factCache = { sealed, bytes, rows }; return factCache;
+    };
+    const readBytes = (): readonly string[] => readFacts().bytes;
     const segment: SegmentStoragePort = Object.freeze({ owner: 'part-ten' as const,
-      read: () => readBytes().map(bytes => JSON.parse(bytes) as unknown),
+      read: () => readFacts().rows,
       append: (bytes: string, expectedHead: string | null) => boundary('ProductionSegmentAppend', null, input.context, () => {
         const records = readBytes(), last = records.at(-1);
         ensure((last ? (JSON.parse(last) as { contentHash: string }).contentHash : null) === expectedHead,
@@ -129,7 +142,8 @@ export function openProductionStorage(input: Readonly<{ root: string; machine: s
     const captureRows = (): Record<string, string> => {
       current(); return existsSync(capturePath) ? JSON.parse(unseal('captures', capturePath)) as Record<string, string> : {};
     };
-    const captures: TelegramDurableCapturePort = Object.freeze({ owner: 'part-ten',
+    const captures: ProductionStorage['captures'] = Object.freeze({ owner: 'part-ten',
+      references: () => Object.keys(captureRows()),
       preserve: (reference: string, bytes: string) => {
         current(); ensure(reference.length > 0 && reference.length <= 4096 && Buffer.byteLength(bytes) <= 2 * 1024 * 1024,
           'capture: bounded reference and bytes required');

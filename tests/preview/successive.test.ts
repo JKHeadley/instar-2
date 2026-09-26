@@ -132,6 +132,51 @@ it('boots a recorded root after the native host file artifact changes', async ()
   expect(world.sends()).toHaveLength(0);
 }, 900_000);
 
+it('survives SIGKILL between the signed fact append and capture checkpoint, then answers with history', async () => {
+  const world = successiveWorld();
+  world.say('Remember the word juniper.'); world.answer('I will remember juniper.');
+  const worker = join(world.directory, 'cut-worker.mjs');
+  writeFileSync(worker, `import { successiveWorld } from ${JSON.stringify(join(process.cwd(), 'tests/preview/successive-fixture.ts'))};
+const w = successiveWorld(process.argv[2]);
+const c = w.compose({ hooks: { beforeCheckpoint: () => {
+  if (w.models().length === 1 && w.sends().length === 1) {
+    process.stdout.write('fact-before-checkpoint\\n'); process.kill(process.pid, 'SIGKILL');
+  }
+} } });
+await c.run({ maxCycles: 4, baseBackoffMs: 1, maxBackoffMs: 2, sleep: w.sleep });
+`);
+  const cut = await new Promise<{ signal: string | null; output: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', worker, world.directory],
+      { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = ''; child.stdout.on('data', data => { output += data; });
+    child.stderr.on('data', data => { output += data; });
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(Error(`cut worker timeout: ${output}`)); }, 120_000);
+    child.on('error', reject);
+    child.on('exit', (_code, signal) => { clearTimeout(timer); resolve({ signal, output }); });
+  });
+  expect(cut.signal).toBe('SIGKILL');
+  expect(cut.output).toContain('fact-before-checkpoint');
+  expect(world.models()).toHaveLength(1);
+  expect(world.sends()).toHaveLength(1);
+  const checkpointPath = join(world.root, 'successive-checkpoint.json');
+  const checkpoint = JSON.parse(readFileSync(checkpointPath, 'utf8'));
+  expect(checkpoint.captures.length).toBeGreaterThan(0);
+  world.say('What word did I ask you to remember?'); world.answer('Juniper.');
+  const diagnostics = [];
+  const second = world.compose({ diagnostic: record => diagnostics.push(record) });
+  let recoveredStatus, recoveredKinds;
+  try {
+    expect(second.rows().length).toBeGreaterThan(checkpoint.facts.length);
+    await second.run({ maxCycles: 8, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep });
+    recoveredStatus = second.status();
+    recoveredKinds = second.rows().slice(-12).map(row => row.kind);
+  }
+  finally { second.close(); }
+  expect(world.models(), JSON.stringify({ status: recoveredStatus, kinds: recoveredKinds, diagnostics })).toHaveLength(2);
+  expect(world.sends()).toHaveLength(2);
+  expect(packetOf(world.models()[1]).context.packet.history[0].user).toContain('juniper');
+}, 1_800_000);
+
 it('refuses the provider call when the stop latch is set after preparation, keeping the admitted turn', async () => {
   const world = successiveWorld();
   world.say('Please answer this.');

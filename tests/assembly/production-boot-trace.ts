@@ -53,13 +53,20 @@ export function createRecordedServingPlan(installed, target, options = {}) {
     scopeDigest: value(canonical(f.scope)).hash, durability: 'local-durable', replicas: 0,
     lossModel: 'Recorded local bytes, no remote durability claim.', maxBytes: 4096,
     maxCharge: 20, timeout: 100, verificationBar: 'provider-bar', ...live?.definition };
-  const approval = f.authorize({ id: 'boot-provider-approval',
-    artifact: f.capture(value(canonical(providerDefinition)).bytes), base: 'boot-provider-base' });
   const current = f.owners.host.current;
-  f.owners.host.current = () => ({ ...current(), versions: [...current().versions,
-    { id: providerDefinition.version, subject: providerDefinition.feature, content: json(providerDefinition),
-      contentHash: value(canonical(providerDefinition)).hash, since: rows().find(row => row.kind === 'intake-admitted')?.id ?? f.opening.id,
-      supersedes: [], approvedIn: approval, base: approval.base, landedIn: null }] });
+  const existingVersion = current().versions.find(version => version.id === providerDefinition.version);
+  if (existingVersion) {
+    if (existingVersion.subject !== providerDefinition.feature
+      || existingVersion.contentHash !== value(canonical(providerDefinition)).hash)
+      throw Error('recorded provider version differs from its retained definition');
+  } else {
+    const approval = f.authorize({ id: 'boot-provider-approval',
+      artifact: f.capture(value(canonical(providerDefinition)).bytes), base: 'boot-provider-base' });
+    f.owners.host.current = () => ({ ...current(), versions: [...current().versions,
+      { id: providerDefinition.version, subject: providerDefinition.feature, content: json(providerDefinition),
+        contentHash: value(canonical(providerDefinition)).hash, since: rows().find(row => row.kind === 'intake-admitted')?.id ?? f.opening.id,
+        supersedes: [], approvedIn: approval, base: approval.base, landedIn: null }] });
+  }
   if (!byRecord('effect-OperationDefinition', providerDefinition.id)) value(installOperationDefinition(
     providerDefinition, f.owners.host, createEffectSpine(f.owners.host, { context, privateKey }, f.store)));
   const questions = new Map(), subjects = new Map(), replyRuns = new Map(), providerOwners = new Map(), sourceBasis = { version: '1', parserReference: 'claude-code-json-result', parserVersion: '1',

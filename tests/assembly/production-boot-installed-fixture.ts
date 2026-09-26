@@ -57,7 +57,11 @@ export function installedFixtureHost(root, route, options = {}) {
       Object.assign(initial, { ownedBodies: [value(intakeWorkRegistration(c, t.intake.deps.author.principal.id)),
         value(intakeStopRegistration(c, t.intake.deps.author.principal.id))] });
       const recovery = options.recovery ? { ...options.recovery,
-        captureBytes: Object.fromEntries(options.recovery.captures.map(reference => {
+        // The fact append and checkpoint are separate durable writes. A stop after
+        // the append leaves the checkpoint's capture list stale, while custody has
+        // already fsynced the bytes. Rebuild metadata from custody itself.
+        captureBytes: Object.fromEntries([...new Set([...options.recovery.captures,
+          ...storage.captures.references()])].map(reference => {
           const bytes = storage.captures.read(reference); if (bytes === null) throw Error(`recovery capture absent: ${reference}`);
           return [reference, bytes];
         })) } : undefined;

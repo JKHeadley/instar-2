@@ -184,8 +184,9 @@ export interface SuccessiveInput {
   readonly limits?: Partial<typeof SUCCESSIVE_LIMITS>;
   readonly heartbeat?: () => void;
   readonly diagnostic?: (record: any) => void;
-  /** Offline evidence only: observes the turn after genuine Seven preparation, before Eight. */
-  readonly hooks?: Readonly<{ beforeProvider?: (opening: string) => void }>;
+  /** Offline evidence only: observes durable write boundaries and Seven preparation. */
+  readonly hooks?: Readonly<{ beforeProvider?: (opening: string) => void;
+    beforeCheckpoint?: (head: string) => void }>;
 }
 
 /** Same bot, same credential: the successor keeps the predecessor's bot identity
@@ -471,6 +472,7 @@ export function createSuccessiveComposition(input: SuccessiveInput) {
   const checkpoint = () => {
     const head = rows().at(-1)?.contentHash ?? null;
     if (head === lastCheckpointHead) return;
+    input.hooks?.beforeCheckpoint?.(head ?? '');
     durablePreviewWrite(checkpointPath, recordedCheckpoint(built, 'successive'));
     lastCheckpointHead = head;
   };
