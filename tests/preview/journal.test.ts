@@ -413,3 +413,94 @@ it('physical Telegram bridge fences a send accepted by a fake endpoint that drop
     second.journal.close();
   } finally { server.kill('SIGTERM'); rmSync(root, { recursive: true, force: true }); }
 });
+
+it('recalls an original turn far beyond the envelope across a restart in a 200-turn run with flat overhead', async () => {
+  const root = origin(), samples: number[] = [];
+  const fact = 'The locker combination is QUASAR-7731.';
+  const initial = { ...genesis(), maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 8192 };
+  let asked: string | undefined, early: string | undefined;
+  const open = () => {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => {
+        if (input.id.startsWith('summary:')) return 'An ordinary conversation about weather, errands and plans.';
+        if (input.question.includes('locker combination')) asked = input.context;
+        if (input.id === 'telegram:12345678:update:6') early = input.context;
+        return 'noted';
+      },
+      send: async () => 1, checkOutbound: () => {} });
+    return { journal, worker };
+  };
+  try {
+    openPreviewJournal(join(root, 'journal.encrypted'), key, initial).close();
+    let current = open();
+    for (let i = 1; i <= 200; i++) {
+      if (i === 100) { current.journal.close(); current = open(); }
+      const text = i === 5 ? fact : i === 190 ? 'What was the locker combination I gave you?'
+        : `ordinary turn ${i}: weather, errands and plans for the week ${'x'.repeat(60)}`;
+      const incoming = update(i, text); (incoming.message as { date?: number }).date = 1790000000 + i * 60;
+      const start = performance.now();
+      current.worker.intake([incoming]); await current.worker.drain(); await current.worker.summarizeIfNeeded();
+      samples.push(performance.now() - start);
+    }
+    const view = current.journal.view;
+    expect(view.order).toHaveLength(200);
+    expect(view.order.every(turn => turn.sent === 1)).toBe(true);
+    expect(view.order[4]?.text).toBe(fact);
+    expect(view.summaries.length).toBeGreaterThan(1);
+    expect(view.summaries.every(summary => !summary.text.includes('QUASAR'))).toBe(true);
+    expect(view.calls).toBe(200 + view.summaries.length);
+    expect(JSON.parse(early!)).toMatchObject({ historyMode: 'complete' });
+    expect(JSON.parse(early!).recalled).toBeUndefined();
+    expect(early).toContain('QUASAR-7731');
+    const packet = JSON.parse(asked!);
+    expect(packet.historyMode).toBe('summary-plus-recent');
+    expect(packet.summary.through).toBeGreaterThan(5);
+    expect(packet.history.some((turn: { user: string }) => turn.user.includes('QUASAR'))).toBe(false);
+    expect(packet.recalled).toContainEqual({ date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
+      outcome: 'Telegram API accepted' });
+    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
+    const p95 = (values: number[]) => values.slice().sort((a,b) => a-b)[Math.ceil(values.length * .95)-1]!;
+    const first = p95(samples.slice(0, 10)), last = p95(samples.slice(190));
+    process.stdout.write(`journal recall 200 turns: non-model p95=${p95(samples).toFixed(1)} ms, first-ten=${first.toFixed(1)} ms, final-ten=${last.toFixed(1)} ms\n`);
+    expect(p95(samples)).toBeLessThanOrEqual(5000);
+    expect(last - first).toBeLessThanOrEqual(1000);
+    current.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('recalls imported old-root turns with their original Telegram dates and drops recall before overflowing', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(), maxBytes: 4096, importSource: 'old-root', importCursor: 10 });
+    const imported = (id: number, text: string) => {
+      const raw = update(id, text); (raw.message as { date?: number }).date = 1789000000 + id;
+      journal.append({ kind: 'intake', id: `telegram:12345678:update:${id}`, update: id, text, raw: JSON.stringify(raw),
+        accepted: true, cursor: 0, at: 0 });
+      journal.append({ kind: 'reserve', id: `telegram:12345678:update:${id}`, at: 0 });
+      journal.append({ kind: 'answer', id: `telegram:12345678:update:${id}`, text: `old answer ${id}`, at: 0 });
+      journal.append({ kind: 'intent', id: `telegram:12345678:update:${id}`, text: `PREVIEW — old answer ${id}`,
+        chat: '7654321', update: id, grant: 'grant:preview', at: 0 });
+      journal.append({ kind: 'sent', id: `telegram:12345678:update:${id}`, message: id, at: 0 });
+    };
+    imported(1, 'The ferry leaves from pier NINETEEN.'); imported(2, `Unrelated old errand. ${'z'.repeat(5000)}`);
+    journal.append({ kind: 'import', source: 'old-root', remainingCalls: 98, remainingReplies: 98, oldStop: 'operator', at: 0 });
+    journal.append({ kind: 'summary-reserve', through: 2, at: 0 });
+    journal.append({ kind: 'summary', through: 2, text: 'Old errands were discussed.', at: 0 });
+    const contexts: string[] = [];
+    let limit = Infinity;
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => { if (Buffer.byteLength(input.context) > limit) throw Error('overflow'); return input.context; },
+      model: async input => { contexts.push(input.context); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(10, 'Which pier does the ferry leave from?')]); await worker.drain();
+    const packet = JSON.parse(contexts[0]!);
+    expect(packet.recalled).toEqual([{ date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
+      answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
+    limit = Buffer.byteLength(contexts[0]!) - 1;
+    worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();
+    expect(journal.view.order.at(-1)?.sent).toBe(1);
+    expect(JSON.parse(contexts[1]!).recalled).toBeUndefined();
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

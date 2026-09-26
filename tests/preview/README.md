@@ -606,6 +606,18 @@ summary covers it, the turn is visibly held; no latest-N slice is substituted.
 The full-history choice uses the complete system, packet and prepared prompt bound;
 a usable summary is selected before a turn is held for overflow.
 
+When a summary covers earlier turns, the new message is matched against those
+original journal turns with the core lexical scorer (`src/recall/lexical.ts`,
+the same BM25 the recall part uses). Up to five best matches are quoted verbatim
+beside the summary as `recalled`, each with its Telegram send date (the intake
+time as fallback, so imported old-root turns keep their original dates). They are
+marked as data, and a miss is declared as no evidence of absence. If the prompt
+bound is tight, the lowest-ranked quotes are dropped first; the summary still
+covers them. No index, store or embedding service is added: recall reads the
+in-memory journal projection, so it survives restarts with the journal itself.
+The offline 200-turn regression recalls a fact from turn 5 at turn 190, across a
+restart, with flat non-model overhead.
+
 **AFTER the reply:** a bounded rolling summary may use a separately reserved
 subscription call from the same attempt allowance. Original turns stay in the
 journal. Summary failure leaves originals and makes any later context overflow
