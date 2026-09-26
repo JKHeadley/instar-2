@@ -84,7 +84,9 @@ async function main() {
         : view.view.genesis.importSource === undefined || view.view.imported,
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
-      unknownSends: view.view.order.filter(t => t.intent && !t.sent).length })}\n`); }
+      unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
+      summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null })),
+      people: [...new Set(view.view.people.map(note => note.name))] })}\n`); }
     finally { view.close(); }
     return;
   }

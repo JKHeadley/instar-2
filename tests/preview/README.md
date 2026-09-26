@@ -594,6 +594,27 @@ Lanes:
 Not yet available: production memory, multi-machine, Slack.
 ```
 
+### Remembering people
+
+When the rolling summary runs (after a reply, sharing the same attempt cap), the
+same call also lists the people named in the operator messages it is about to
+compact: a name and an exact excerpt of that message. The runner keeps a note only
+when both occur verbatim in one accepted message the summary packet showed, and
+drops anything else, including quotes of the agent's own answers. No extra model
+call is made and no new file is written: notes ride on the summary's journal record.
+
+A later message that names a known person gets `people` in its packet: every note
+filed under that name (most recent ten), each with the verbatim quote, its date and
+`from` — the message's authenticated sender, read from the journal, never from the
+model. So "Sam thinks X" from the operator appears as the operator's report, never
+as Sam's words; only a message authenticated as Sam's own could carry `from` Sam.
+The packet says that the same name can mean different people and that absence from
+`people` is not evidence. Before a summary exists every original message is already
+in `history`, so notes are only needed and only recalled for compacted turns. Under
+the context bound, recalled turns give way first, then the oldest person notes.
+A plain-text summary keeps no notes; `status` lists each summary's note count
+(`null` = none recorded) and the known names.
+
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists current
 caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import
 completion. After pausing the runner and verifying the operator's authority, the
