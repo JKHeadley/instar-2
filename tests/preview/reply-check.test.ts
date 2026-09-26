@@ -95,6 +95,58 @@ it('durably checks before intent, sends a holding reply on violation, and replay
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('does not reserve or dispatch review when stop arrives during Jev', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-stop-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
+      chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    let stopped = false, reviewed = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => stopped,
+      model: async () => 'candidate', checkOutbound: () => {}, send: async () => { throw Error('sent after stop'); },
+      replyCheck: { elapsedMs: () => 100,
+        jev: async () => { stopped = true; return { value: scores({ raw_path: 0.91 }), latencyMs: 170 }; },
+        escalate: async () => { reviewed++; return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 500 }; } } });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'hello' } }]);
+    await expect(worker.drain()).rejects.toThrow('preview stopped');
+    expect(reviewed).toBe(0);
+    expect(journal.view.calls).toBe(1);
+    expect(journal.view.order[0]?.reviewReserved).toBeFalsy();
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('grounds history and summary in the holding reply actually sent', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-memory-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
+      chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 5, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    let summaryPacket: { history: { answer: string | null; outcome: string }[] } | undefined;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => {
+        if (input.id.startsWith('summary:')) {
+          summaryPacket = JSON.parse(input.context);
+          return JSON.stringify({ summary: 'The reply was held.', people: [] });
+        }
+        return 'candidate with /private/rejected/path';
+      }, checkOutbound: () => {}, send: async () => 5,
+      replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores({ raw_path: 0.91 }), latencyMs: 170 }),
+        escalate: async () => ({ verdict: 'violation', ruleIds: ['raw_path'], confidence: null, latencyMs: 500 }) } });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'hello' } }]);
+    await worker.drain();
+    const next = worker.probe('What did you send?');
+    if (!('context' in next)) throw Error('expected a next-turn packet');
+    expect(JSON.parse(next.context).history[0]).toMatchObject({ answer: HOLDING_REPLY, outcome: 'Telegram API accepted' });
+    await worker.summarizeIfNeeded(true);
+    expect(summaryPacket?.history[0]).toMatchObject({ answer: HOLDING_REPLY, outcome: 'Telegram API accepted' });
+    expect(journal.view.order[0]?.answer).toBe('candidate with /private/rejected/path');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('refuses a detected credential before Jev can receive it', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-secret-')));
   try {

@@ -312,8 +312,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const older = journal.view.order.filter(item => item.accepted && item.update <= summary.through);
     const previous = journal.view.order.filter(item => item.accepted && item.update < turn.update).at(-1);
     return selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
-      ...(previous ? { previous: `${previous.text} ${previous.answer ?? ''}` } : {}),
-      candidates: older.map(item => ({ text: `${item.text} ${item.answer ?? ''}`, at: sentAt(item) ?? 0 })) })
+      ...(previous ? { previous: `${previous.text} ${previous.intent ?? ''}` } : {}),
+      candidates: older.map(item => ({ text: `${item.text} ${item.intent ?? ''}`, at: sentAt(item) ?? 0 })) })
       .map(index => older[index]!);
   };
   /** Notes sharing any name term with the new message ("Sam" also finds "Sam Ruiz"), from
@@ -343,7 +343,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ ...elsewhere(item), user: redact(item.text).text,
-      answer: item.answer === undefined ? null : redact(item.answer).text, outcome: outcome(item) }));
+      answer: item.intent === undefined ? null : redact(item.intent).text, outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn; mentions: { person: string; quote: string }[] }>();
     if (summary) for (const note of named) {
@@ -357,7 +357,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const cited = new Set(sources.keys());
     const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
-      user: redact(item.text).text, answer: item.answer === undefined ? null : redact(item.answer).text,
+      user: redact(item.text).text, answer: item.intent === undefined ? null : redact(item.intent).text,
       outcome: outcome(item) })) : [];
     const crossed = [...earlier, ...(summary ? recalled : [])].some(item => item.thread !== current);
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
@@ -457,6 +457,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else {
             const checkPorts = { ...ports.replyCheck,
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
+                gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
                   ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
