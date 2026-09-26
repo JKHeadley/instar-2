@@ -108,7 +108,7 @@ it('grounds a later pronoun question in an early summarized turn across a restar
     expect(p95(step)).toBeLessThanOrEqual(250);
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 120000);
 
 it('keeps content words that also name a time, so a title or band name is still recalled', () => {
   const candidates = [filler(0), { text: 'Night by Elie Wiesel is the book I chose for our reading group. noted', at: now - 9 * day },

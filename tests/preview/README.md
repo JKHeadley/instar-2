@@ -619,6 +619,31 @@ A plain-text summary keeps no notes; `status` lists each summary's note count
 (`null` = none recorded), `summaryPending` (a summary call still in flight) and the
 known names.
 
+### Remembering commitments
+
+The same summary call also lists what the operator asked the agent to remember or do
+(`in: "message"`, quoted from their message) and what the agent said in its own reply that
+it would do or remember (`in: "reply"`). The runner keeps an item only when its quote occurs
+verbatim on that side of one accepted turn the summary packet showed; a paraphrase, an
+invention or a quote placed on the wrong side is dropped, never repaired. Who asked is the
+turn's authenticated sender; the date is that turn's date. No extra model call and no new
+file: items ride on the summary's journal record and replay with it after a restart.
+
+An item closes only when a later message the operator verifiably sent says it is done,
+withdrawn or no longer needed, quoted exactly: the summary call sees the open items as
+`openCommitments` (id and quote) and returns `closed`, or `closedBy` on an item made and
+settled within the same stretch. Another sender's message closes nothing.
+
+After compaction every reply packet carries the most recent ten open items from compacted
+turns as `commitments`, each shown inside its whole message or reply with `from`, date,
+conversation and, for the agent's own reply, its delivery outcome. The model judges by meaning
+whether the new message relates; it brings an item up only then, or when asked what it was
+asked to remember or do. The packet says the preview has no tools, so it can only remember an
+item, never do, schedule or remind; it never calls an item done unless a message says so, and
+absence is not evidence. Under the context bound, recalled turns give way first, then person
+notes, then the oldest open items. `status` reports `commitments: {total, open}` and per summary
+`commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
+
 `inspect --root ROOT` is read-only: it prints the last persisted model prompt's
 `historyMode`, summary coverage and `people` block, redacted, and never sources or
 history text. Add `--text "<message>" --model MODEL` to see what a next message
