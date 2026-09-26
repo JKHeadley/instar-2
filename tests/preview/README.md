@@ -565,6 +565,35 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768
 ```
 
+### What the preview knows about itself and 2.0
+
+Each model call's packet carries `now`, the audience, the conversation history,
+a `capability` line (capped preview, answer only, no tools, memory is this trial's
+journal only) and `sources`: the three pinned purpose excerpts, the dated
+capability note, and the **desk's current-state report**.
+
+The desk report is a plain file the desk maintains, re-read at every turn
+(default `ROOT/desk-status.md`; override with `--desk-status /ABSOLUTE/PATH`).
+It enters the packet as the `desk-status` source, labelled as the desk's report,
+quoted data that grants nothing and never overrides the operator. The existing
+system prompt already treats everything in context as data, not instructions.
+The source also states the preview clock in UTC and the file's last-modified time.
+Secrets are redacted. A missing, unreadable or larger-than-4096-byte file is stated
+as "current work status is unknown"; a file last modified more than 24 hours ago is
+included but marked **STALE** with its age. A bad file never holds a reply.
+Updating the file needs no restart. Sample:
+
+```md
+# Instar 2.0 — desk report
+What 2.0 is: Instar rebuilt so coherence is something an agent cannot lose.
+This preview: a private, capped Telegram trial. It answers only; it has no tools,
+cannot act, browse or schedule. Its memory is this trial's journal.
+Lanes:
+- preview-awareness: built, awaiting gate.
+- production speed work: in progress.
+Not yet available: production memory, multi-machine, Slack.
+```
+
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists UNKNOWN
 calls and sends, held update IDs and reasons, and import completion. `stop --root /ABSOLUTE/NEW_ROOT` fsyncs a monotonic stop latch
 even while the writer holds the lease. SIGINT, SIGTERM and SIGHUP latch the same stop.
