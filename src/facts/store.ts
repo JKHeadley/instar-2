@@ -2,13 +2,14 @@
 import { consumeResult } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { boundary, encoding, frozen, object, requireFact, take } from './boundary.js';
-import { causalCone, causalStanding, decodeBody, extendsChain, validateRepair, validateSchemas } from './admission.js';
+import { causalIndex, causalStanding, decodeBody, extendsChain, historyOf, validateRepair, validateSchemas } from './admission.js';
+import type { CausalIndex } from './admission.js';
 import { decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope } from './contracts.js';
 import { contextBoundary } from './contracts.js';
 import { decodeHistoricalBody, historicalAuthority } from './historical.js';
-import { prepareSnapshot, snapshotCurrent } from './snapshot.js';
-import type { FactSnapshot } from './snapshot.js';
+import { extendSnapshot, prepareSnapshot, snapshotCurrent } from './snapshot.js';
+import type { FactSnapshot, RunningSnapshot } from './snapshot.js';
 import { issuePrefix, prefixValid, prefixContext } from './prefix.js';
 import type { VerifiedPrefix } from './prefix.js';
 import { drainConflictFacts, validateConflictFact } from './conflicts.js';
@@ -59,6 +60,8 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
   let prefix = recovery.prefix;
   let cached: readonly FactEnvelope[] = [];
   let projectionMemo: { key: string; snapshot: FactSnapshot } | undefined;
+  // Each admitted fact's status, kept from when it was derived (Occam cuts #1/#2; see extendSnapshot).
+  const statuses: { running?: RunningSnapshot | undefined } = {};
   let checkedContext = prefixContext(context);
   const c = contextBoundary(context);
   const read = (): Result<readonly FactEnvelope[]> => boundary('FactStoreRead', null, c, () => {
@@ -78,7 +81,16 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
   });
   const store: FactStorePort = Object.freeze({ read,
     verifiedPrefix: () => boundary('FactStoreVerifiedPrefix', null, c, () => issuePrefix(take(read()), context)),
-    sweep: () => { revision++; cached = []; prefix = undefined; return read(); },
+    // The sweep re-verifies storage from genesis and holds the running statuses to the oracle: a
+    // full prepareSnapshot must equal them byte for byte. The next projection read rebuilds in full.
+    sweep: () => boundary('FactStoreSweep', null, c, () => {
+      const running = statuses.running;
+      revision++; cached = []; prefix = undefined; statuses.running = undefined; projectionMemo = undefined;
+      const facts = take(read());
+      if (running) requireFact(encoding(take(extendSnapshot({ running }, running.facts, context)).entries).bytes
+        === encoding(take(prepareSnapshot(running.facts, context)).entries).bytes, 'running fact statuses differ from a full rebuild', 'integrity');
+      return facts;
+    }),
     readForProjection: () => boundary('FactStoreProjectionRead', null, c, () => {
       // Currency key: the store's own revision, the stored tail (count + last content hash) and the
       // context tables. read() checks every retained frame; discarding that verified prefix
@@ -89,7 +101,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
       // Served only while the issued snapshot is still current under ITS OWN issuance terms (policy
       // hash, owned bodies, migrations) as well as under the key: a context change invalidates it.
       if (projectionMemo && projectionMemo.key === firstKey && snapshotCurrent(projectionMemo.snapshot)) return projectionMemo.snapshot;
-      let snapshot = take(prepareSnapshot(first, context, () => projectionKey(take(read())) === firstKey));
+      let snapshot = take(extendSnapshot(statuses, first, context, () => projectionKey(take(read())) === firstKey));
       const conflicts = [...new Map(snapshot.entries.flatMap(e => e.conflicts).map(c => [c.key, c])).values()];
       if (conflicts.length) {
         if (storage.recordConflicts) {
@@ -103,7 +115,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
       // former fingerprint was taken. Only when it moved is the snapshot prepared a second time.
       const again = take(read()), againKey = projectionKey(again);
       if (conflicts.length || againKey !== firstKey)
-        snapshot = take(prepareSnapshot(again, context, () => projectionKey(take(read())) === againKey));
+        snapshot = take(extendSnapshot(statuses, again, context, () => projectionKey(take(read())) === againKey));
       projectionMemo = { key: againKey, snapshot };
       return snapshot;
     }),
@@ -169,16 +181,21 @@ export function verifyAndAdmit(input: unknown, peer: string, context: FactContex
     validateRepair(fact, context); validateConflictFact(fact, context); take(decodeHistoricalBody(fact, context, standing.decode)); return fact;
   });
 }
-export function reconcileAuthority(fact: FactEnvelope, context: FactContext, horizon: CausalFrontier): { taint: readonly AuthorityTaint[]; conflicts: readonly ConflictClass[] } {
-  const state = causalStanding(fact, context, false);
+export function reconcileAuthority(fact: FactEnvelope, context: FactContext, horizon: CausalFrontier, index?: CausalIndex): { taint: readonly AuthorityTaint[]; conflicts: readonly ConflictClass[] } {
+  const state = causalStanding(fact, context, false, index);
   const named = [...context.grants.map(g => ({ factId: g.factId, id: g.grant.id })), ...(context.historicalGrants ?? []).map(g => ({ factId: g.factId, id: g.grant.view.id }))].filter(g => fact.predecessors.required.includes(g.factId));
   const conflicts: ConflictClass[] = [];
+  // Occam cut #3: both "is one in the other's history?" questions answer by position.
+  let within: { facts: readonly FactEnvelope[]; index: CausalIndex } | undefined;
   for (const row of [...context.revocations.map(r => ({ factId: r.factId, grantId: r.revocation.grantId })), ...(context.historicalRevocations ?? []).map(r => ({ factId: r.factId, grantId: r.revocation.view.grantId }))]) {
     if (!named.some(g => g.id === row.grantId)) continue;
     const rev = context.facts.find(f => f.id === row.factId); if (!rev || rev.id === fact.id) continue;
-    const facts = context.facts.some(f => f.id === fact.id) ? context.facts : [...context.facts, fact];
-    const after = causalCone(rev, facts).some(f => f.id === fact.id);
-    const inCone = causalCone(fact, facts).some(f => f.id === rev.id);
+    if (!within) {
+      const facts = context.facts.some(f => f.id === fact.id) ? context.facts : [...context.facts, fact];
+      within = { facts, index: facts === context.facts && index ? index : causalIndex(facts) };
+    }
+    const after = historyOf(rev, within.facts, within.index)(fact.id) !== undefined;
+    const inCone = historyOf(fact, within.facts, within.index)(rev.id) !== undefined;
     if (!inCone && !after) conflicts.push({ key: `revocation:${fact.id}:${rev.id}`, kind: 'revocation-conflict', facts: [fact.id, rev.id], detail: 'revocation concurrent or prior-but-unseen' });
   }
   const fullyObserved = Object.entries(context.folded).every(([m, p]) => horizon[m] && (horizon[m]!.epoch > p.epoch || (horizon[m]!.epoch === p.epoch && horizon[m]!.position >= p.position)));
