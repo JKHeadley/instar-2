@@ -3,7 +3,7 @@
 // recall and the context packet are the real ones. No live network or model is contacted.
 import { afterEach, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
@@ -283,6 +283,23 @@ it('retains only a store that never completed boot, and never one a live process
   mkdirSync(join(store, '.boot-lease'), { recursive: true });
   writeFileSync(join(store, '.boot-lease', 'owner.json'), JSON.stringify({ pid: process.pid }));
   expect(() => retainIncompleteBoot(store, checkpoint)).toThrow('still held by a live process');
+  // Serialized with lease acquisition: a held guard or an owner-less lease refuses, and nothing moves.
+  writeFileSync(join(store, '.boot-lease', 'owner.json'), JSON.stringify({ pid: 2 ** 22 + 12345 }));
+  mkdirSync(join(store, '.boot-lease-guard'));
+  expect(() => retainIncompleteBoot(store, checkpoint)).toThrow('being acquired or recovered');
+  rmSync(join(store, '.boot-lease-guard'), { recursive: true });
+  rmSync(join(store, '.boot-lease', 'owner.json'));
+  expect(() => retainIncompleteBoot(store, checkpoint)).toThrow('unreadable lease owner');
+  expect(existsSync(store)).toBe(true);
+  expect(existsSync(join(store, '.boot-lease-guard'))).toBe(false);
+  // A dead owner's incomplete store is retained under the guard, which is released afterwards.
+  writeFileSync(join(store, '.boot-lease', 'owner.json'), JSON.stringify({ pid: 2 ** 22 + 12345 }));
+  const retained = retainIncompleteBoot(store, checkpoint);
+  expect(retained).toBe(`${store}-incomplete-boot-1`);
+  expect(existsSync(store)).toBe(false);
+  expect(existsSync(join(retained!, '.boot-lease-guard'))).toBe(false);
+  mkdirSync(store);
+  writeFileSync(join(store, 'facts.encrypted'), 'x');
   writeFileSync(checkpoint, '{}');
   expect(retainIncompleteBoot(store, checkpoint)).toBe(null);
   expect(existsSync(store)).toBe(true);

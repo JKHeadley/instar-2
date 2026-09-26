@@ -5,7 +5,7 @@
 // budget or recovery protocol: Six serving, Four intake and the stop latch
 // remain the authorities. See README "Successive-turn mode".
 import { createDecipheriv, createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { decode } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
@@ -228,18 +228,31 @@ export function carryPredecessorCursor(root: string, machine: string, keyHex: st
  * never deleted, and the boot starts clean. A live boot's lease refuses. */
 export function retainIncompleteBoot(storageRoot: string, checkpointPath: string) {
   if (existsSync(checkpointPath) || !existsSync(storageRoot) || readdirSync(storageRoot).length === 0) return null;
-  const owner = join(storageRoot, '.boot-lease', 'owner.json');
-  if (existsSync(owner)) {
-    let alive = true;
-    try { process.kill(JSON.parse(readFileSync(owner, 'utf8')).pid, 0); }
-    catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
-    if (alive) throw Error('preview: an incomplete successive boot is still held by a live process');
-  }
-  let ordinal = 1;
-  while (existsSync(`${storageRoot}-incomplete-boot-${ordinal}`)) ordinal += 1;
-  const retained = `${storageRoot}-incomplete-boot-${ordinal}`;
-  renameSync(storageRoot, retained);
-  return retained;
+  // Serialized with lease acquisition: the same exclusive guard production storage takes
+  // (production-storage.ts), so a concurrent start can never have its live store moved.
+  const guard = join(storageRoot, '.boot-lease-guard');
+  try { mkdirSync(guard, { mode: 0o700 }); }
+  catch { throw Error('preview: an incomplete successive boot is being acquired or recovered'); }
+  let retained: string | null = null;
+  try {
+    if (existsSync(checkpointPath)) return null;
+    const lease = join(storageRoot, '.boot-lease'), owner = join(lease, 'owner.json');
+    if (existsSync(lease)) {
+      // A lease without a readable owner is mid-acquisition or unrecoverable: treat it as held.
+      let pid: number;
+      try { pid = JSON.parse(readFileSync(owner, 'utf8')).pid; }
+      catch { throw Error('preview: an incomplete successive boot has an unreadable lease owner'); }
+      let alive = true;
+      try { process.kill(pid, 0); }
+      catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+      if (alive) throw Error('preview: an incomplete successive boot is still held by a live process');
+    }
+    let ordinal = 1;
+    while (existsSync(`${storageRoot}-incomplete-boot-${ordinal}`)) ordinal += 1;
+    retained = `${storageRoot}-incomplete-boot-${ordinal}`;
+    renameSync(storageRoot, retained);
+    return retained;
+  } finally { rmdirSync(join(retained ?? storageRoot, '.boot-lease-guard')); }
 }
 
 export function createSuccessiveComposition(input: SuccessiveInput) {
