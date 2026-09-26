@@ -92,7 +92,7 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
       const fact = take(decodeEnvelope(input, at, 'replication')); extendsChain(fact, at); facts.push(fact); recovery.onVerified?.(fact);
     }
     cached = facts;
-    verifiedRaw = raw;
+    verifiedRaw = raw.slice(); // a private copy: an adapter may later reorder or replace slots in its own array
     for (const row of raw) isImmutable(row);
     return facts;
   });

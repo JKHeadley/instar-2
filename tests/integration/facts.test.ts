@@ -61,6 +61,17 @@ it('P2 verified-prefix reuse still checks a mutable adapter frame changed in pla
   frame.body.amount = '11';
   refused(store.read(), 'prefix changed');
 });
+it('P2 verified-prefix reuse refuses seen frozen frames reordered inside the adapter-owned array', () => {
+  const f = factsFixture();
+  const deepFreeze = (x: any): any => { if (x && typeof x === 'object') { Object.values(x).forEach(deepFreeze); Object.freeze(x); } return x; };
+  const a = deepFreeze(JSON.parse(JSON.stringify(f.wire())));
+  const b = deepFreeze(JSON.parse(JSON.stringify(f.wire({ machine: 'machine-b', segment: { machine: 'machine-b', epoch: 0, position: 0 }, principal: f.bob, provenance: f.bob.provenance }))));
+  const slots: unknown[] = [a, b];
+  const store = createFactStore(f.ctx, { owner: 'part-ten', read: () => slots, append: () => f.success({ kind: 'local-durable' }) });
+  value(store.read()); value(store.read());
+  slots[0] = b; slots[1] = a;
+  refused(store.read(), 'prefix changed');
+});
 it('P2-NF-29 unresolved input becomes an attributed system observation, never lost or promoted', () => {
   const f = factsFixture(), observer = f.principal('observer', 'system');
   const raw = { type: 'UnresolvedInput', schemaVersion: 1, raw: f.capture('unknown sender message'), channel: 'host', at: f.now, reason: 'identity unavailable' };
