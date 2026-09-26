@@ -356,22 +356,41 @@ export async function runConversationDriver(application: ProductionApplication,
         start?.type === 'ServingRecord' ? operationFor(start.provider) : ''));
     }
   }
+  // One open idle attempt spans consecutive idle steps and polls: its start is
+  // written ahead (a crash is still recovered as an error), but continuous idle
+  // polling costs no journal records, so it cannot exhaust Six's bounded attempt
+  // and record budget. It opens only after a clean record, before expiry, and
+  // closes before any provider-bound attempt, on any error, and at loop exit.
+  let idleAttempt: string | null = null;
+  const closeIdle = () => {
+    const id = idleAttempt!; idleAttempt = null;
+    durable(progress!.port.result(`result:${id}`, progress!.fence, id, 'success', ''));
+  };
   const attempt = async <T>(phase: 'step' | 'poll', action: () => Promise<T> | T): Promise<T> => {
     if (!progress) return action();
-    const id = options.nextAttempt!();
-    if (!id || id.length > 256) throw new Error('conversation-driver: invalid attempt identity');
     const view = durable(progress.port.inspect());
     const planned = phase === 'step' && !view.slot ? turns(facts(), undefined, undefined,
       options.conversation).find(turn => turn.phase === 'admitted' && turn.providerRun
         && !view.retired.includes(turn.providerRun))?.providerRun : null;
     const provider = view.slot ?? planned ?? '';
-    durable(progress.port.start(`start:${id}`, progress.fence, id, provider));
+    const idle = provider === '' && view.consecutiveErrors === 0 && !!view.binding
+      && options.now() < view.binding.expires;
+    if (idleAttempt && !idle) closeIdle();
+    let id = idleAttempt;
+    if (!id) {
+      id = options.nextAttempt!();
+      if (!id || id.length > 256) throw new Error('conversation-driver: invalid attempt identity');
+      durable(progress.port.start(`start:${id}`, progress.fence, id, provider));
+      if (idle) idleAttempt = id;
+    }
     try {
       const value = await action();
-      durable(progress.port.result(`result:${id}`, progress.fence, id, 'success', operationFor(provider)));
+      if (idleAttempt !== id)
+        durable(progress.port.result(`result:${id}`, progress.fence, id, 'success', operationFor(provider)));
       return value;
     } catch (error) {
       if (durabilityFailed) throw error;
+      if (idleAttempt === id) idleAttempt = null;
       durable(progress.port.result(`result:${id}`, progress.fence, id, 'error', operationFor(provider)));
       throw error;
     }
@@ -389,8 +408,8 @@ export async function runConversationDriver(application: ProductionApplication,
       await attempt('poll', () => options.pollOnce());
       if (!progress) driver.noteSuccess();
       await options.yieldBoundary();
-    } catch {
-      if (durabilityFailed) throw new Error('conversation-driver: durable progress unavailable');
+    } catch (error) {
+      if (durabilityFailed) throw new Error('conversation-driver: durable progress unavailable', { cause: error });
       if (phase === 'POLL' && !progress) driver.noteError();
       const errors = driver.errors();
       const backoffMs = stopped() ? 0 : Math.min(options.maxBackoffMs,
@@ -399,4 +418,5 @@ export async function runConversationDriver(application: ProductionApplication,
       if (backoffMs) await backoff(backoffMs, options, stopped);
     }
   }
+  if (idleAttempt) closeIdle();
 }

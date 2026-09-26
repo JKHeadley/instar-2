@@ -276,6 +276,33 @@ it('live entry shape: a successor with an inherited non-zero cursor survives a b
   expect(world.sends()).toHaveLength(1);
 }, 1_800_000);
 
+it('an idle driver outlives the per-turn attempt bound by far, then still answers exactly one real turn', async () => {
+  // The live preview stopped every ~9 minutes: each idle cycle wrote a durable start and result
+  // for both its step and its poll, so the 16-per-turn driver attempt bound (256 starts at 16
+  // turns) was spent by idle polling alone. Two turns here bound starts at 32 (16 idle cycles).
+  const world = successiveWorld();
+  let polls = 0;
+  const telegramIO = physical => ({ invoke: (request, credential) => {
+    if (request.method === 'getUpdates' && ++polls === 60) {
+      world.say('Are you still there after a long quiet spell?');
+      world.answer('Yes, still here.');
+    }
+    return physical.invoke(request, credential);
+  } });
+  const c = world.compose({ limits: { providerAttempts: 2, replies: 2 }, telegramIO });
+  let serving;
+  try {
+    await c.run({ maxCycles: 70, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep });
+    serving = c.status().serving;
+  } finally { c.close(); }
+  expect(polls).toBeGreaterThanOrEqual(69);
+  expect(world.models()).toHaveLength(1);
+  expect(world.sends()).toHaveLength(1);
+  expect(world.sends()[0].body.text).toContain('Yes, still here.');
+  // Clean exit closes the open idle attempt; no error was counted.
+  expect(serving).toMatchObject({ turns: 1, replies: 1, totalErrors: 0, consecutiveErrors: 0, pendingAttempt: null });
+}, 1_800_000);
+
 it('retains only a store that never completed boot, and never one a live process holds', () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-incomplete-')));
   const store = join(directory, '.successive'), checkpoint = join(directory, 'successive-checkpoint.json');
