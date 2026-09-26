@@ -11,6 +11,10 @@ export interface SessionRecord {
   readonly incarnation: string; readonly startedAt: number; readonly resumeId: string | null;
   readonly recovery: 0 | 1; readonly turnDeadline: number | null; readonly turnStartedAt: number | null;
   readonly closedAt: number | null; readonly turnBaseline?: string; readonly turnReceiptIds?: readonly string[];
+  readonly continuation?: SessionContinuation;
+}
+export interface SessionContinuation {
+  readonly text: string; readonly source: string; readonly state: 'prepared' | 'sending' | 'accepted' | 'completed';
 }
 export interface DeliveryRecord {
   readonly operation: string; readonly identity: string; readonly intake: string;
@@ -20,9 +24,11 @@ export interface DeliveryRecord {
 export interface SessionReservation {
   readonly name: string; readonly operation: string; readonly claim: string; readonly incarnation: string;
   readonly resumeId: string | null; readonly recovery: 0 | 1; readonly startedAt: number;
+  readonly continuation?: SessionContinuation;
 }
 export interface SessionJournal { readonly sessions: readonly SessionRecord[]; readonly deliveries: readonly DeliveryRecord[];
-  readonly resumes: Readonly<Record<string, string>>; readonly reservations?: readonly SessionReservation[]; }
+  readonly resumes: Readonly<Record<string, string>>; readonly reservations?: readonly SessionReservation[];
+  readonly continuationRefusals?: readonly Readonly<{ operation: string; claim: string; reason: string; at: number }>[]; }
 export interface SessionIO {
   exclusive<T>(run: () => T): T;
   tmux(args: readonly string[]): Readonly<{ code: number; stdout: string }>;
@@ -41,6 +47,9 @@ export interface ProductionSessionConfig {
   readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
   readonly inboxDirectory?: string; readonly compactGroundingFile?: string;
+  /** Must reconstruct complete permitted context from agent-owned records, including both sides of prior turns. */
+  readonly continuation?: ((input: Readonly<{ operation: string; claim: string; incarnation: string;
+    reason: 'cache-miss' | 'context-wall' }>) => Readonly<{ text: string; source: string }>) | undefined;
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -177,6 +186,10 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     config.io.armDeadline(session.name, session.identity, deadline);
     return armed;
   };
+  const closeTurn = (session: SessionRecord, at: number): SessionRecord => ({ ...session,
+    closedAt: at, turnDeadline: null,
+    ...(session.continuation?.state === 'accepted'
+      ? { continuation: { ...session.continuation, state: 'completed' as const } } : {}) });
   const sendText = (session: SessionRecord, text: string) => {
     verifyLive(session); checkStop();
     const target = literalTarget(session.name);
@@ -189,16 +202,18 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     run(['send-keys', '-t', target, 'Enter']);
     if (config.framework === 'codex-cli') { config.io.sleep(300); checkStop(); run(['send-keys', '-t', target, 'Enter']); }
   };
-  const spawn = (operation: string, claim: string, incarnation: string, workingScope: string, resumeId: string | null, recovery: 0 | 1): string => {
+  const spawn = (operation: string, claim: string, incarnation: string, workingScope: string,
+    resumeId: string | null, recovery: 0 | 1, continuation?: SessionContinuation): string => {
     checkStop(); ensure(workingScope === config.cwd, 'working scope differs from fixed session directory');
     reconcileReservations();
-    const existing = config.io.load().sessions.find(row => row.operation === operation && row.incarnation === incarnation);
+    const existing = config.io.load().sessions.find(row => row.operation === operation && row.incarnation === incarnation && alive(row.name));
     if (existing) { verifyLive(existing); return existing.identity; }
     const currentJournal = config.io.load();
     const active = currentJournal.sessions.filter(row => alive(row.name));
     ensure(active.length + (currentJournal.reservations ?? []).length < config.maxSessions, 'concurrent session cap reached');
     const name = `instar20-${createHash('sha256').update(`${operation}:${incarnation}:${randomUUID()}`).digest('hex').slice(0, 24)}`;
-    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId, recovery, startedAt: config.now() };
+    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId, recovery,
+      startedAt: config.now(), ...(continuation ? { continuation } : {}) };
     config.io.save({ ...currentJournal, reservations: [...(currentJournal.reservations ?? []), reservation] });
     const args = config.framework === 'claude-code'
       ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), '--dangerously-skip-permissions']
@@ -232,6 +247,58 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     }
     throw Error('session readiness deadline exceeded');
   };
+  const requireContinuation = (operation: string, claim: string, incarnation: string,
+    reason: 'cache-miss' | 'context-wall'): SessionContinuation => {
+    const refuse = (detail: string): never => {
+      const journal = config.io.load();
+      config.io.save({ ...journal, continuationRefusals: [
+        ...(journal.continuationRefusals ?? []).filter(row => row.operation !== operation),
+        { operation, claim, reason: `${reason}: ${detail}`, at: config.now() },
+      ] });
+      throw Error(`continuation refused: ${detail}`);
+    };
+    if (!config.continuation) return refuse('continuation provider unavailable');
+    let provided: Readonly<{ text: string; source: string }>;
+    try { provided = config.continuation({ operation, claim, incarnation, reason }); }
+    catch { return refuse('continuation provider failed'); }
+    if (typeof provided?.text !== 'string' || !provided.text.trim()
+      || typeof provided.source !== 'string' || !provided.source.trim())
+      return refuse('complete agent-owned continuation unavailable');
+    if (Buffer.byteLength(provided.text) > 128_000 || provided.source.length > 512)
+      return refuse('continuation exceeds bounded context');
+    return { text: provided.text, source: provided.source, state: 'prepared' };
+  };
+  const submitContinuation = (identity: string) => {
+    let session = loadSession(identity);
+    const continuation = session.continuation;
+    ensure(continuation, 'continuation missing from session reservation');
+    ensure(continuation.state === 'prepared', 'continuation delivery uncertain or already submitted');
+    ensure(classifyPaneIdle(capture(session.name), config.framework), 'pane is not at an idle prompt');
+    armTurn(session);
+    session = loadSession(identity);
+    config.io.save(replaceSession(config.io.load(), { ...session,
+      continuation: { ...continuation, state: 'sending' } }));
+    sendText(session, `Restore the following agent-owned context as prior history. Do not repeat any action or send on its behalf. `
+      + `Acknowledge that it was read, then wait for the next input.\n\n${continuation.text}`);
+    session = loadSession(identity);
+    config.io.save(replaceSession(config.io.load(), { ...session,
+      continuation: { ...continuation, state: 'accepted' } }));
+  };
+  const waitContinuation = (identity: string) => {
+    for (let elapsed = 0; elapsed < config.turnDeadlineMs; elapsed += 100) {
+      const pending = loadSession(identity).continuation;
+      if (!pending || pending.state === 'completed') return;
+      ensure(pending.state === 'accepted', 'continuation delivery uncertain or incomplete');
+      const outcome = take(api.observe({ operation: `${loadSession(identity).operation}:continuation`, processIdentity: identity }));
+      if (outcome.phase === 'output-observed') {
+        ensure(loadSession(identity).continuation?.state === 'completed', 'continuation completion not recorded');
+        return;
+      }
+      ensure(outcome.phase === 'launched', `continuation did not complete: ${outcome.detail}`);
+      config.io.sleep(100);
+    }
+    throw Error('continuation completion deadline exceeded');
+  };
   const stop = () => lockedBoundary('ProductionSessionStop', null, () => {
     reconcileReservations();
     const killed: string[] = [];
@@ -244,19 +311,50 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   const api = {
     owner: 'part-eight' as const,
     launch(input: { operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[] }) {
-      return lockedBoundary('ProductionSessionLaunch', input, () => {
-        ensure(input.operation && input.claim && input.artifact && input.incarnation, 'launch identity required');
-        ensure(input.handles.length === 0, 'session launch accepts no ambient handles');
-        const resumeId = config.io.load().resumes[input.claim] ?? null;
-        ensure(!resumeId || (uuid.test(resumeId) && config.io.transcriptExists(config.framework, resumeId, config.cwd, config.configHome)),
-          'resume transcript missing or invalid');
-        return spawn(input.operation, input.claim, input.incarnation, input.workingScope, resumeId, 0);
+      return boundary('ProductionSessionLaunch', input, config.context, () => {
+        const identity = config.io.exclusive(() => {
+          ensure(input.operation && input.claim && input.artifact && input.incarnation, 'launch identity required');
+          ensure(input.handles.length === 0, 'session launch accepts no ambient handles');
+          checkStop();
+          reconcileReservations();
+          const journal = config.io.load();
+          const existing = journal.sessions.find(row => row.operation === input.operation
+            && row.incarnation === input.incarnation && alive(row.name));
+          if (existing) {
+            verifyLive(existing);
+            if (existing.continuation?.state === 'prepared') submitContinuation(existing.identity);
+            const current = loadSession(existing.identity);
+            ensure(!current.continuation || current.continuation.state === 'completed'
+              || current.continuation.state === 'accepted',
+              'continuation delivery uncertain or incomplete');
+            return existing.identity;
+          }
+          const previous = journal.sessions.filter(row => row.operation === input.operation
+            && row.incarnation === input.incarnation).at(-1);
+          ensure(!previous?.continuation || previous.continuation.state === 'prepared'
+            || previous.continuation.state === 'completed',
+            'continuation delivery uncertain; no automatic respawn');
+          const resumeId = journal.resumes[input.claim] ?? null;
+          ensure(!resumeId || uuid.test(resumeId), 'invalid recorded resume id');
+          const hit = resumeId !== null && config.io.transcriptExists(config.framework, resumeId, config.cwd, config.configHome);
+          const needsContinuation = !hit && (resumeId !== null || journal.sessions.some(row => row.claim === input.claim));
+          const continuation = needsContinuation
+            ? requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss') : undefined;
+          const identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
+            hit ? resumeId : null, 0, continuation);
+          if (continuation) submitContinuation(identity);
+          return identity;
+        });
+        waitContinuation(identity);
+        return identity;
       });
     },
     deliver(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<string> {
       return lockedBoundary('ProductionSessionDeliver', input, () => {
         if (config.stopped()) { stop(); throw Error('session stop authority is active'); }
         const session = loadSession(input.processIdentity); verifyLive(session);
+        ensure(!session.continuation || session.continuation.state === 'completed',
+          'continuation delivery uncertain or incomplete');
         ensure(input.incarnation === session.incarnation && input.operation && input.intake, 'stale or empty delivery');
         const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
         if (prior) {
@@ -293,8 +391,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
         if (hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
           && session.turnDeadline !== null && hook.at <= config.now()) {
-          config.io.save(replaceSession(config.io.load(), { ...session, closedAt: hook.at, turnDeadline: null }));
-          if (uuid.test(hook.sessionId) && config.io.transcriptExists(config.framework, hook.sessionId, config.cwd, config.configHome)) {
+          config.io.save(replaceSession(config.io.load(), closeTurn(session, hook.at)));
+          if (uuid.test(hook.sessionId)) {
             const journal = config.io.load();
             config.io.save({ ...journal, resumes: { ...journal.resumes, [session.claim]: hook.sessionId } });
           }
@@ -313,7 +411,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         }
         if (stuck) return { phase: 'pause-observed' as const, evidence: session.identity, detail: stuck };
         if (session.turnDeadline !== null && idle) {
-          config.io.save(replaceSession(config.io.load(), { ...session, closedAt: config.now(), turnDeadline: null }));
+          config.io.save(replaceSession(config.io.load(), closeTurn(session, config.now())));
           return { phase: 'output-observed' as const, evidence: `pane-idle:${session.name}:${config.now()}`,
             detail: 'idle prompt fallback; turn close not independently verified' };
         }
@@ -373,31 +471,37 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     saveResume(identity: string, sessionId: string): Result<string> {
       return lockedBoundary('ProductionSessionResume', { identity, sessionId }, () => {
         const session = loadSession(identity);
-        ensure(uuid.test(sessionId) && config.io.transcriptExists(config.framework, sessionId, config.cwd, config.configHome),
-          'resume transcript missing or invalid');
+        ensure(uuid.test(sessionId), 'invalid resume id');
         const journal = config.io.load();
         config.io.save({ ...journal, resumes: { ...journal.resumes, [session.claim]: sessionId } });
         return sessionId;
       });
     },
     recoverContext(identity: string): Result<string> {
-      return lockedBoundary('ProductionSessionContextRecovery', identity, () => {
-        checkStop(); const session = loadSession(identity); verifyLive(session);
-        const pane = capture(session.name);
-        ensure(session.turnDeadline === null && classifyPaneIdle(pane, config.framework),
-          'context recovery requires an idle prompt');
-        const stuck = classifyStuckSignature(pane);
-        ensure(stuck === 'context-too-long' || stuck === 'context-wedge', 'no context wall evidence');
-        if (session.recovery === 0) {
-          armTurn(session, 1);
-          sendText(session, '/compact');
-          return 'compact-requested';
-        }
-        ensure(!config.protectedSessions.includes(session.name), 'protected session cannot be killed');
-        run(['kill-session', '-t', literalTarget(session.name)]);
-        const journal = config.io.load(); const resumes = { ...journal.resumes }; delete resumes[session.claim];
-        config.io.save({ ...journal, resumes });
-        return spawn(`${session.operation}:fresh:${randomUUID()}`, session.claim, session.incarnation, config.cwd, null, 0);
+      return boundary('ProductionSessionContextRecovery', identity, config.context, () => {
+        const recovered = config.io.exclusive(() => {
+          checkStop(); const session = loadSession(identity); verifyLive(session);
+          const pane = capture(session.name);
+          ensure(session.turnDeadline === null && classifyPaneIdle(pane, config.framework),
+            'context recovery requires an idle prompt');
+          const stuck = classifyStuckSignature(pane);
+          ensure(stuck === 'context-too-long' || stuck === 'context-wedge', 'no context wall evidence');
+          if (session.recovery === 0) {
+            armTurn(session, 1);
+            sendText(session, '/compact');
+            return { identity: 'compact-requested', needsWait: false };
+          }
+          const continuation = requireContinuation(session.operation, session.claim, session.incarnation, 'context-wall');
+          ensure(!config.protectedSessions.includes(session.name), 'protected session cannot be killed');
+          const journal = config.io.load(); const resumes = { ...journal.resumes }; delete resumes[session.claim];
+          config.io.save({ ...journal, resumes });
+          run(['kill-session', '-t', literalTarget(session.name)]);
+          const nextIdentity = spawn(session.operation, session.claim, session.incarnation, config.cwd, null, 0, continuation);
+          submitContinuation(nextIdentity);
+          return { identity: nextIdentity, needsWait: true };
+        });
+        if (recovered.needsWait) waitContinuation(recovered.identity);
+        return recovered.identity;
       });
     },
   };

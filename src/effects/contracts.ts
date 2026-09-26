@@ -5,6 +5,67 @@ import type { AdmissionReservation, DispatchClaim, FenceToken, TransportAuthorit
 declare const owned: unique symbol;
 interface Owned { readonly [owned]: 'part-eight' }
 interface RecordIdentity extends Owned { readonly type: string; readonly schemaVersion: 1; readonly id: string }
+interface ProcessIdentity extends Owned { readonly type: string; readonly schemaVersion: 2; readonly id: string }
+export interface NativeLaunchLimits {
+  readonly wallMilliseconds: number; readonly cpuMilliseconds: number; readonly memoryBytes: number;
+  readonly processCount: number; readonly handleCount: number; readonly inputBytes: number;
+  readonly outputBytes: number; readonly scratchBytes: number; readonly queueCount: number;
+  readonly outstandingDispatchCount: number; readonly observationCount: number;
+  readonly observationMilliseconds: number; readonly observationBytes: number;
+  readonly maximumExposure: number; readonly allocation: string;
+}
+export interface NativeLaunchTarget {
+  readonly installation: string; readonly machine: string; readonly principal: string;
+  readonly harness: string; readonly artifactDigest: string; readonly executable: string;
+  readonly executableDigest: string; readonly boundaryDigest: string;
+  readonly restrictedIdentity: string; readonly workingScope: string;
+  readonly environmentDigest: string; readonly handlePolicyDigest: string;
+}
+export interface NativeLaunchParameters extends Omit<NativeLaunchTarget, 'environmentDigest' | 'handlePolicyDigest'> {
+  readonly mode: 'context-loading'; readonly incarnation: string;
+  readonly environment: readonly Readonly<{ name: string; valueDigest: string }>[];
+  readonly environmentCapture: Readonly<{ reference: string; hash: string }>;
+  readonly portHandles: readonly string[]; readonly resourceReferences: readonly string[];
+  readonly input: string; readonly inputDigest: string;
+  readonly contextManifest: readonly Readonly<{ class: string; reference: string; digest: string }>[];
+  readonly consumptionMode: 'model-context-boundary'; readonly limits: NativeLaunchLimits;
+}
+export interface NativeLaunchDefinition extends ProcessIdentity {
+  readonly type: 'OperationDefinition'; readonly operation: 'native-confined-launch';
+  readonly feature: 'native-confined-launch'; readonly version: string; readonly generation: string;
+  readonly adapter: string; readonly mode: 'context-loading'; readonly profile: string;
+  readonly target: NativeLaunchTarget; readonly limits: NativeLaunchLimits;
+  readonly authority: Readonly<{ scope: string; grants: readonly string[]; authorization: readonly string[]; policy: readonly string[] }>;
+  readonly durability: 'local-durable' | 'replicated'; readonly replicas: number;
+  readonly lossModel: string; readonly verificationBar: string;
+  readonly observationPolicy: string; readonly expiryEvidence: string;
+}
+export interface NativeLaunchRequest extends ProcessIdentity {
+  readonly type: 'EffectRequest'; readonly operation: 'native-confined-launch';
+  readonly definition: string; readonly generation: string; readonly run: string;
+  readonly step: string; readonly pending: string; readonly expectedPredecessor: string;
+  readonly attempt: string; readonly semanticMessage: string;
+  readonly parameters: NativeLaunchParameters; readonly digest: string;
+  readonly launchSpec: string; readonly launchSpecDigest: string; readonly reservation: string;
+  readonly verificationOwner: string; readonly verificationBar: string;
+  readonly obligation: string; readonly closure: readonly string[];
+}
+export type NativeProcessIdentity = Readonly<{ state: 'unknown' }> | Readonly<{
+  state: 'known'; machine: string; incarnation: string; startIdentity: string; pid: number;
+  artifactDigest: string; boundaryDigest: string;
+}>;
+export interface NativeLaunchObservation extends ProcessIdentity {
+  readonly type: 'OperationObservation'; readonly operation: 'native-confined-launch';
+  readonly operationIdentity: string; readonly request: string; readonly claim: string;
+  readonly consumption: string; readonly digest: string; readonly launchSpec: string;
+  readonly launchSpecDigest: string; readonly machine: string; readonly incarnation: string;
+  readonly stage: 'launched' | 'uncertain' | 'exit-observed' | 'lookup';
+  readonly processIdentity: NativeProcessIdentity; readonly wake: string;
+  readonly capture: Readonly<{ reference: string; hash: string }>;
+  readonly attestation: 'local-recorder'; readonly observer: string;
+  readonly observedAt: number; readonly freshFor: number; readonly predecessors: readonly string[];
+}
+export type NativeProcessRecord = NativeLaunchDefinition | NativeLaunchRequest | NativeLaunchObservation;
 export interface OperationDefinition extends RecordIdentity {
   readonly type: 'OperationDefinition'; readonly feature: string; readonly version: string;
   readonly generation: string; readonly adapter: string; readonly account: string;
@@ -61,7 +122,7 @@ export interface EffectHost {
 }
 export interface EffectSpine {
   readonly store: FactStorePort;
-  append(record: EffectRecord, required: readonly string[]): Result<AppendReceipt>;
+  append(record: EffectRecord | NativeProcessRecord, required: readonly string[]): Result<AppendReceipt>;
 }
 // P10 authenticates its configured peer/custody endpoints; P2 owns each receipt.
 // This checks EXACT facts, not a configuration count, quorum or unrelated head.
