@@ -1,6 +1,6 @@
 // The mandatory store -> projection handoff. Status is derived, never an input annotation.
 import { compareHistoricalReads, consumeResult, decode } from '../index.js';
-import type { ConstitutionalValue, HistoricalRead, Inventory, Json, Result, Scope } from '../index.js';
+import type { ConstitutionalValue, DecodeContext, HistoricalRead, Inventory, Json, Result, Scope } from '../index.js';
 import { boundary, encoding, same, take } from './boundary.js';
 import { bodyConstitutionalFields, causalStanding, decodeBody, migrateBody, validateRepair } from './admission.js';
 import { decodeEnvelope, schemaFor } from './envelope.js';
@@ -26,17 +26,35 @@ export function snapshotPolicyHash(context: FactContext): string {
     historicalRevocations: context.historicalRevocations ?? [], folded: context.folded, genesis: context.genesis, anchors: context.timeAnchors }).hash;
 }
 export function snapshotCurrent(snapshot: FactSnapshot): boolean { return issued.get(snapshot)?.() === true; }
+// The live (origin-mode) body decode. An owned decoder receives the whole FactContext and may read
+// live host state, so its answer is never assumed immutable: a status whose live decode runs an
+// owned decoder keeps these inputs and re-runs it against the current context on every derivation.
+interface LiveDecode { readonly decode: DecodeContext; readonly subject: Scope }
+function liveConstitutional(fact: FactEnvelope, c: FactContext, live: LiveDecode): FactStatus['constitutional'] {
+  const constitutional: { field: string; value: ConstitutionalValue; subject: Scope }[] = [];
+  consumeResult(decodeBody(fact, c, live.decode), {
+    Success: decoded => constitutional.push(...bodyConstitutionalFields(decoded).map(f => ({ ...f, subject: live.subject }))),
+    Refused: () => {},
+  });
+  return constitutional;
+}
+// A kept status: its immutable part (signature, chain, standing from the signed history,
+// historical decode) plus, when an owned decoder takes part, the live decode to refresh.
+interface DerivedStatus { readonly status: FactStatus; readonly live?: LiveDecode }
+function current(derived: DerivedStatus, c: FactContext): FactStatus {
+  return derived.live ? { ...derived.status, constitutional: liveConstitutional(derived.status.fact, c, derived.live) } : derived.status;
+}
 // One fact's status under the authority context `c` (scope = historicalScope(c)). Every input
 // it reads is the fact's own history or the context tables, never a later fact, except the
-// revocations handled by extendSnapshot's rebuild trigger.
-function factStatus(input: FactEnvelope, c: FactContext, scope: HistoricalScope): FactStatus {
+// revocations handled by extendSnapshot's rebuild trigger and the live owned decode (see above).
+function factStatus(input: FactEnvelope, c: FactContext, scope: HistoricalScope): DerivedStatus {
   const index = scope.index;
   const fact = take(decodeEnvelope(input, c, 'replication'));
   const conflicts: ConflictClass[] = [], taint = new Set<AuthorityTaint>();
-  const constitutional: { field: string; value: ConstitutionalValue; subject: Scope }[] = [];
+  let constitutional: FactStatus['constitutional'] = [], live: LiveDecode | undefined;
   const historical: HistoricalRead<ConstitutionalValue>[] = [];
   let body = fact.body;
-  const status = boundary('FactSemanticStatus', null, contextBoundary(c), () => {
+  const semantic = boundary('FactSemanticStatus', null, contextBoundary(c), () => {
     const standing = causalStanding(fact, c, false, index), reconciled = reconcileAuthority(fact, c, c.folded, index);
     validateRepair(fact, c);
     const recorded = validateConflictFact(fact, c);
@@ -55,17 +73,18 @@ function factStatus(input: FactEnvelope, c: FactContext, scope: HistoricalScope)
     if (hasLiveOrigin && historicalBody.taint.length === 0) {
       // Historical validation already succeeded. Partial live context must not
       // turn an inspectable historical record into a poison fact.
-      consumeResult(decodeBody(fact, c, standing.decode), {
-        Success: decoded => constitutional.push(...bodyConstitutionalFields(decoded).map(f => ({ ...f, subject: schema.scope }))),
-        Refused: () => {},
-      });
+      // With an owned field the decode is left to current(), which runs it on every derivation.
+      const inputs: LiveDecode = { decode: standing.decode, subject: schema.scope };
+      if (Object.values(schema.fields).some(f => f.kind === 'owned')) live = inputs;
+      else constitutional = liveConstitutional(fact, c, inputs);
     }
   });
-  consumeResult(status, { Success: () => {}, Refused: refusal => {
+  consumeResult(semantic, { Success: () => {}, Refused: refusal => {
     conflicts.push({ key: `poison:status:${fact.id}`, kind: 'poison-fact', facts: [fact.id], detail: refusal.detail });
     taint.add(refusal.detail.includes('evidence-unavailable') ? 'evidence-unavailable' : 'contested');
   } });
-  return { fact, body, conflicts, taint: [...taint].sort(), constitutional, historical };
+  const status: FactStatus = { fact, body, conflicts, taint: [...taint].sort(), constitutional, historical };
+  return live ? { status, live } : { status };
 }
 // The pairwise immutable-field pass, over every entry on every call: it is the only place a later
 // fact adds to an earlier fact's status.
@@ -106,7 +125,7 @@ export function prepareSnapshot(facts: readonly FactEnvelope[], context: FactCon
     const all = [...new Map([...context.facts, ...facts].map(f => [f.id, f])).values()];
     // Discover authority from registered bodies, not optional caller status annotations.
     const c = historicalAuthority({ ...context, facts: all }), scope = historicalScope(c);
-    return issue(withDisagreements(facts.map(input => factStatus(input, c, scope)), c), context, isCurrent);
+    return issue(withDisagreements(facts.map(input => current(factStatus(input, c, scope), c)), c), context, isCurrent);
   });
 }
 // Occam cuts #1/#2: a store keeps each fact's status from when it was admitted and derives only
@@ -114,9 +133,10 @@ export function prepareSnapshot(facts: readonly FactEnvelope[], context: FactCon
 // change to any context table, owner registration or migration (the policy below, exactly what a
 // snapshot's currency already checks: captures, keys, schemas, grants, revocations, anchors), a
 // newly admitted revocation, or any prefix the running snapshot did not itself cover. Those
-// rebuild in full through prepareSnapshot's own path. prepareSnapshot stays the oracle.
+// rebuild in full through prepareSnapshot's own path. The live owned decode is never kept: it is
+// re-run on every derivation (see liveConstitutional). prepareSnapshot stays the oracle.
 export interface RunningSnapshot {
-  readonly facts: readonly FactEnvelope[]; readonly authority: FactContext; readonly statuses: readonly FactStatus[];
+  readonly facts: readonly FactEnvelope[]; readonly authority: FactContext; readonly statuses: readonly DerivedStatus[];
   readonly policy: string; readonly owners: FactContext['ownedBodies']; readonly migrations: FactContext['migrations'];
 }
 // `state.running` is replaced only on success; it holds the caller's context, so it never passes
@@ -151,7 +171,8 @@ export function extendSnapshot(state: { running?: RunningSnapshot | undefined },
       const c = historicalAuthority({ ...context, facts: all }), scope = historicalScope(c);
       running = { facts, authority: c, statuses: facts.map(input => factStatus(input, c, scope)), policy, owners, migrations };
     }
-    const snapshot = issue(withDisagreements(running.statuses, running.authority), context, isCurrent);
+    const authority = running.authority;
+    const snapshot = issue(withDisagreements(running.statuses.map(d => current(d, authority)), authority), context, isCurrent);
     state.running = running; return snapshot;
   });
 }

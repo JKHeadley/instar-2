@@ -67,7 +67,7 @@ export function causalIndex(facts: readonly FactEnvelope[]): CausalIndex {
         : f.prevInSegment !== prev.contentHash ? false
         : f.segment.epoch === prev.segment.epoch ? f.segment.position === prev.segment.position + 1 && f.predecessors.inSegment === prev.id
           : f.segment.epoch === prev.segment.epoch + 1 && f.segment.position === 0 && f.predecessors.inSegment === null
-            && f.predecessors.frontier[machine] !== undefined && comparePosition(f.predecessors.frontier[machine]!, prev.segment) === 0;
+            && Object.hasOwn(f.predecessors.frontier, machine) && comparePosition(f.predecessors.frontier[machine]!, prev.segment) === 0;
       if (!linked) broken.add(machine);
     });
   }
@@ -77,7 +77,9 @@ export function causalIndex(facts: readonly FactEnvelope[]): CausalIndex {
   const compute = (fact: FactEnvelope): CausalFrontier | null => {
     const refs = [...[fact.predecessors.inSegment, ...fact.predecessors.required].map(id => id === null ? null : byId.get(id)),
       ...Object.entries(fact.predecessors.frontier).map(([m, p]) => at.get(factId({ machine: m, ...p })))];
-    const vector: Record<string, LineagePosition> = {};
+    // Machine names are arbitrary strings ('constructor', '__proto__', ...): a null-prototype
+    // dictionary, as canonical snapshotting uses, so no inherited property reads as a position.
+    const vector: Record<string, LineagePosition> = Object.create(null) as Record<string, LineagePosition>;
     for (const ref of refs) {
       if (ref === null) continue;
       const inner = ref && member(ref);

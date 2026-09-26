@@ -4,11 +4,12 @@
 // a full rebuild byte for byte. The sweep holds the same comparison and refuses a divergence.
 import { expect, it } from 'vitest';
 import { performance } from 'node:perf_hooks';
-import { conflictFactSchema, createFactStore, hashBytes, prepareSnapshot, registerOwnedBody, signEnvelope } from '../../src/facts/index.js';
+import { causalCone, conflictFactSchema, createFactStore, decodeEnvelope, factId, hashBytes, prepareSnapshot, registerOwnedBody, signEnvelope } from '../../src/facts/index.js';
+import { causalIndex, historyOf } from '../../src/facts/admission.js';
 import type { FactContext, FactEnvelope, FactSchema, OwnedShape, SegmentStoragePort } from '../../src/facts/index.js';
 import { canonical, decode } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
-import { factsFixture, privateKey, refused, value } from './fixtures.js';
+import { factsFixture, point, privateKey, publicKey, refused, value } from './fixtures.js';
 
 const text = { kind: 'text', maxLength: 80 } as const;
 const shape: OwnedShape = { kind: 'object', fields: { type: text, schemaVersion: { kind: 'integer' }, run: text } };
@@ -16,11 +17,12 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 function setup() {
   const f = factsFixture();
-  let refuseOrigin = false, originDecodes = 0;
+  let refuseOrigin = false, originDecodes = 0, historicalDecodes = 0;
   const owned = value(registerOwnedBody({ name: 'StatusProbe', owner: 'part-five', currentVersion: 1,
     versions: { 1: { validate: input => ({ ok: true, value: input }) } }, migrations: {},
     decodeCurrent: (input, context) => {
       if (context.mode === 'origin') { originDecodes++; if (refuseOrigin) return { ok: false, detail: 'probe refuses', reason: 'decode' }; }
+      else historicalDecodes++;
       return { ok: true, value: input };
     } }, shape, f.c));
   const cap = 'cap:evidence', capBytes = 'captured evidence bytes';
@@ -77,7 +79,7 @@ function setup() {
   }
   const statusOf = (id: string) => matchesOracle().entries.find(e => e.fact.id === id)!;
   return { f, ctx, rows, store, append, revoke, matchesOracle, statusOf, bytes,
-    refuseOrigin: (on: boolean) => { refuseOrigin = on; }, originDecodes: () => originDecodes };
+    refuseOrigin: (on: boolean) => { refuseOrigin = on; }, originDecodes: () => originDecodes, historicalDecodes: () => historicalDecodes };
 }
 
 it('P2-OCC-01 every append leaves the running statuses byte-equal to a full rebuild', () => {
@@ -144,18 +146,77 @@ it('P2-OCC-05 tampered, truncated or reordered storage refuses; the restored his
   restore();
 });
 
-it('P2-OCC-06 the sweep refuses running statuses that a full rebuild contradicts (a forgotten trigger)', () => {
+it('P2-OCC-06 an owned decoder that reads live state is re-run, never retained', () => {
   const s = setup();
   s.append('grant'); const owned = s.append('owned'); s.append('note');
   expect(s.statusOf(owned.id).constitutional).toHaveLength(1);
+  // The owned decoder's live answer changes with no policy change and no revocation. An ordinary
+  // note is appended BEFORE the next read: the running snapshot must drop the old constitutional
+  // value exactly as the full rebuild does.
+  s.refuseOrigin(true);
+  s.append('note');
+  expect(s.statusOf(owned.id).constitutional).toHaveLength(0);
+  value(s.store.sweep()); s.matchesOracle();
+  // Both sides: when the decoder accepts again, the next derivation restores the value.
+  s.refuseOrigin(false);
+  s.append('note');
+  expect(s.statusOf(owned.id).constitutional).toHaveLength(1);
+  value(s.store.sweep());
+});
+
+it('P2-OCC-08 the sweep refuses running statuses that a full rebuild contradicts (a forgotten trigger)', () => {
+  const s = setup();
+  const label = (name: string) => ({ kind: 'note', from: 1, to: 2, migrate: (body: Json) => ({ ...(body as Record<string, Json>), label: name }) });
+  s.ctx.schemas = [...s.ctx.schemas, { ...s.f.schema, version: 2, optional: ['label'], fields: { ...s.f.schema.fields, label: text } }];
+  s.ctx.migrations = [label('first')];
+  s.append('grant'); const note = s.append('note'); s.append('work');
+  expect(s.statusOf(note.id).body).toEqual({ identity: 'n1', amount: '10', label: 'first' });
   value(s.store.sweep()); // positive neighbour: agreement passes
   s.matchesOracle();
-  // An input no rebuild trigger names changes: only the oracle can notice.
-  s.refuseOrigin(true);
-  expect(value(s.store.readForProjection()).entries.find(e => e.fact.id === owned.id)!.constitutional).toHaveLength(1);
+  // An input no rebuild trigger names changes: the migration list is edited in place, so its
+  // identity (the only thing the running snapshot compares) is unchanged. Only the oracle notices.
+  (s.ctx.migrations as unknown as unknown[])[0] = label('second');
+  expect(value(s.store.readForProjection()).entries.find(e => e.fact.id === note.id)!.body).toEqual({ identity: 'n1', amount: '10', label: 'first' });
   refused(s.store.sweep(), 'differ from a full rebuild');
-  // After the sweep the next read is the full rebuild.
-  expect(s.statusOf(owned.id).constitutional).toHaveLength(0);
+  // Published the supported way (a new migration list), every path re-derives and agrees.
+  s.ctx.migrations = [...s.ctx.migrations];
+  expect(s.statusOf(note.id).body).toEqual({ identity: 'n1', amount: '10', label: 'second' });
+  value(s.store.sweep());
+});
+
+it('P2-OCC-09 machines named like Object.prototype properties keep their signed history', () => {
+  const f = factsFixture();
+  const names = ['constructor', 'toString', '__proto__'];
+  const ctx: FactContext = { ...f.ctx, keys: [...f.ctx.keys, ...names.map(machine => ({ id: `${machine}-key`, machine, publicKey, from: { epoch: 0, position: 0 } }))],
+    decode: { ...f.ctx.decode, register: { ...f.ctx.decode.register, keys: { ...f.ctx.decode.register.keys,
+      ...Object.fromEntries(names.map(machine => [`${machine}-key`, { algorithm: 'ed25519' as const, owner: machine, publicKey, methods: ['fact-envelope'], adapters: ['host'] }])) } } } };
+  const make = (machine: string, position: number, prev: FactEnvelope | undefined, frontier: Record<string, unknown> = {}): FactEnvelope => {
+    const segment = { machine, epoch: 0, position };
+    return value(decodeEnvelope(signEnvelope({ type: 'FactEnvelope', envelopeVersion: 1, id: factId(segment), kind: 'note', schemaVersion: 1, at: f.now,
+      machine, principal: f.alice, provenance: f.alice.provenance, segment, prevInSegment: prev ? prev.contentHash : ctx.genesis.hash,
+      predecessors: { inSegment: prev?.id ?? null, frontier, required: [] }, body: { identity: `${machine}:${position}`, amount: '10' } }, privateKey), ctx));
+  };
+  for (const machine of names) {
+    const m0 = make(machine, 0, undefined), m1 = make(machine, 1, m0);
+    const a0 = make('machine-a', 0, undefined);
+    const frontier: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    frontier[machine] = point(m1);
+    const a1 = make('machine-a', 1, a0, frontier), facts = [m0, m1, a0, a1], index = causalIndex(facts);
+    expect(Object.keys(a1.predecessors.frontier)).toEqual([machine]);
+    // The index answers by position (no fallback) and agrees with the walk.
+    expect(index.frontierOf(a1)).toBeDefined();
+    const inHistory = historyOf(a1, facts, index);
+    expect([inHistory(m0.id), inHistory(m1.id), inHistory(a0.id), inHistory(a1.id)]).toEqual([m0, m1, a0, undefined]);
+    expect(index.coneSize(a1)).toBe(causalCone(a1, facts).length);
+    expect(index.coneSize(a1)).toBe(3);
+    // Head identity names the machine's head, so a history that stops earlier differs.
+    expect(index.coneHeads(a1)).toEqual([a0.contentHash, m1.contentHash].sort());
+    const early: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    early[machine] = point(m0);
+    const b1 = make('machine-a', 1, a0, early);
+    expect(index.coneHeads(b1)).toEqual([a0.contentHash, m0.contentHash].sort());
+    expect(index.coneSize(b1)).toBe(causalCone(b1, [m0, m1, a0, b1]).length);
+  }
 });
 
 function turns(size: number, rounds: number) {
@@ -164,20 +225,24 @@ function turns(size: number, rounds: number) {
   const kinds = ['note', 'work', 'owned', 'captured'];
   while (s.rows.length < size) s.append(kinds[s.rows.length % kinds.length]!);
   value(s.store.readForProjection());
-  const decodes: number[] = [], times: number[] = [];
+  const decodes: number[] = [], live: number[] = [], times: number[] = [];
   for (let i = 0; i < rounds; i++) {
-    const count = s.originDecodes(), started = performance.now();
+    const count = s.historicalDecodes(), origin = s.originDecodes(), started = performance.now();
     s.append('owned'); value(s.store.readForProjection()); value(s.store.readForProjection());
-    times.push(performance.now() - started); decodes.push(s.originDecodes() - count);
+    times.push(performance.now() - started); decodes.push(s.historicalDecodes() - count);
+    // The live owned decode is re-run for every owned fact on each derivation, plus the append's own.
+    live.push(s.originDecodes() - origin - value(s.store.read()).filter(f => f.kind === 'owned').length);
   }
   const median = [...times].sort((a, b) => a - b)[Math.floor(times.length / 2)]!;
-  return { decodes, median };
+  return { decodes, live, median };
 }
 
 it('P2-OCC-07 per-turn work tracks the new facts, not the history size', () => {
   const small = turns(50, 5), large = turns(200, 5);
-  // Deterministic: a turn derives the new fact's status once, whatever the history size.
+  // Deterministic: a turn derives the new fact's full status once, whatever the history size
+  // (historical decodes of earlier facts are kept); only the live owned decode is linear.
   expect(large.decodes).toEqual(small.decodes);
+  expect(large.live).toEqual(small.live);
   // Ratio bound, not seconds: 4x the history costs under 3x per turn (measured ~1.8x; the kept
   // per-read storage comparison is linear). Re-deriving every status per turn measured ~3.4x here.
   expect(large.median / small.median).toBeLessThan(3);
