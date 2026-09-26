@@ -37,6 +37,7 @@ export type JournalRecord =
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
+  | { kind: 'summary-failed'; through: number; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[]; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number };
 
 /** A conversation is the operator's private chat or one of its Telegram topics
@@ -46,7 +47,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number }; capAuthority: string | null;
-  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; sourceStop: string | null; imported: boolean;
+  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
+  summaryFailures: Map<number, number>; sourceStop: string | null; imported: boolean;
   people: PersonNote[] }
 
 const frameLimit = 2 * 1024 * 1024;
@@ -96,13 +98,22 @@ function project(view: JournalView, row: JournalRecord): void {
     view.sourceStop = row.oldStop; view.cursor = view.genesis.importCursor!; view.imported = true; return;
   }
   if (row.kind === 'summary-reserve') {
-    if (view.summaryReservations.has(row.through)) throw Error('preview journal: repeated summary reservation');
+    if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
+      || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
     view.summaryReservations.add(row.through); view.calls++; return;
+  }
+  if (row.kind === 'summary-failed') {
+    if (!view.summaryReservations.delete(row.through)) throw Error('preview journal: failed summary without reservation');
+    view.summaryFailures.set(row.through, (view.summaryFailures.get(row.through) ?? 0) + 1);
+    return;
   }
   if (row.kind === 'summary') {
     if (!view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
-    view.summaries.push(row); if (row.people) view.people.push(...row.people); return;
+    view.summaryReservations.delete(row.through);
+    view.summaries.push(row); if (row.people) view.people.push(...row.people);
+    for (const turn of view.order) if (turn.held === 'prompt overflow' || turn.held === 'context overflow') delete turn.held;
+    return;
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
@@ -143,7 +154,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false, people: [] };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [] };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -180,7 +191,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false, people: [] };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [] };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -195,7 +206,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         throw Error('preview journal: invalid genesis');
       append(initial);
     }
-    return { get view() { return view!; }, append, close: () => closeSync(fd) };
+    return { get view() { return view!; }, readOnly, append, close: () => closeSync(fd) };
   } catch (error) { closeSync(fd); throw error; }
 }
 
@@ -233,6 +244,10 @@ export interface PreviewPorts {
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
+  // Summary output is derivative. A prior process cannot still own its call under
+  // this journal's exclusive writer, so close an orphan before admitting work.
+  if (!journal.readOnly) for (const through of [...journal.view.summaryReservations])
+    journal.append({ kind: 'summary-failed', through, at: ports.now() });
   const gate = () => {
     if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires)
       throw Error('preview stopped');
@@ -360,13 +375,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     working = true;
     try {
       for (const turn of journal.view.order) {
-        if (!turn.accepted || turn.held || turn.sent || turn.intent) continue;
+        if (!turn.accepted || turn.sent || turn.intent) continue;
+        if (turn.held?.startsWith('summary unavailable:')) {
+          await summarizeIfNeeded(true);
+          if (!summaryFor(turn.update - 1)) continue;
+          delete turn.held;
+        }
+        if (turn.held) continue;
         gate();
         if (turn.answer === undefined) {
           if (turn.reserved) continue;
           if (journal.view.calls >= journal.view.limits.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
-          const selected = preparedFor(turn);
-          if ('reason' in selected) { journal.append({kind:'hold',id:turn.id,reason:selected.reason,at:ports.now()}); continue; }
+          let selected = preparedFor(turn);
+          if ('reason' in selected) {
+            await summarizeIfNeeded(true);
+            selected = preparedFor(turn);
+          }
+          if ('reason' in selected) { journal.append({kind:'hold',id:turn.id,
+            reason: journal.view.order.some(item => item.sent && item.update < turn.update)
+              ? `summary unavailable: ${selected.reason}` : selected.reason,at:ports.now()}); continue; }
+          if (journal.view.calls >= journal.view.limits.maxCalls) {
+            journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
+          }
           const { question, context, prepared } = selected;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }), at: ports.now() }); gate();
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
@@ -415,16 +445,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return notes;
   };
-  /** Derived work runs separately after replies. Reservation shares the same
-   * attempt cap. If a summary call is uncertain, originals remain and future
-   * overflow is a visible hold, never a silent slice. */
-  const summarizeIfNeeded = async () => {
+  /** Derived work shares the reply call cap. At most two attempts for one
+   * frontier; a failed result stays visible while originals remain durable. */
+  const summaryPreflightBlocked = new Set<number>();
+  const runSummary = async (force: boolean) => {
     const last = journal.view.order.filter(turn => turn.sent).at(-1);
-    if (!last || journal.view.calls >= journal.view.limits.maxCalls || journal.view.summaryReservations.has(last.update)) return;
+    if (!last || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)
+      || journal.view.summaryReservations.has(last.update)
+      || (journal.view.summaryFailures.get(last.update) ?? 0) >= 2
+      || summaryPreflightBlocked.has(last.update)
+      || journal.view.summaries.some(item => item.through === last.update)) return;
     // The summary input names every turn's conversation and date so the summary can keep them.
     const packet = packetFor(last.update, true, [], [], last.thread, true);
     const bytes = Buffer.byteLength(packet);
-    if (bytes < Math.floor(journal.view.genesis.maxBytes * .7) || bytes > journal.view.genesis.maxBytes) return;
+    if (!force && bytes < Math.floor(journal.view.genesis.maxBytes * .7)) return;
+    if (bytes > journal.view.genesis.maxBytes) { summaryPreflightBlocked.add(last.update); return; }
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
@@ -433,22 +468,33 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'what it says by or about that person>}]}. Include every person other than yourself named in history; use [] when none.';
     let prepared: string | undefined;
     try { prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${last.update}` }); }
-    catch { return; }
+    catch { summaryPreflightBlocked.add(last.update); return; }
     gate();
     journal.append({kind:'summary-reserve',through:last.update,...(prepared === undefined ? {} : { prompt: prepared }),at:ports.now()});
     let summary: Awaited<ReturnType<PreviewPorts['model']>>;
     try { summary = await ports.model({ question: summaryQuestion,
       context: packet, id: `summary:${last.update}`, ...(prepared === undefined ? {} : { prepared }) }); }
-    catch { return; }
+    catch { journal.append({kind:'summary-failed',through:last.update,at:ports.now()}); return; }
     const answered = typeof summary === 'string' ? summary : summary.text;
     let summaryText = answered, people: PersonNote[] | undefined;
     try { const parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { summary?: unknown; people?: unknown };
       if (typeof parsed?.summary === 'string' && Array.isArray(parsed.people)) {
         summaryText = parsed.summary; people = notesFrom(parsed.people, last.update);
       } } catch { /* a plain summary: no person notes, visible in status */ }
-    if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.genesis.maxBytes / 4))) return;
+    if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.genesis.maxBytes / 4))) {
+      journal.append({kind:'summary-failed',through:last.update,at:ports.now()}); return;
+    }
     journal.append({kind:'summary',through:last.update,text:redact(summaryText).text,...(people ? { people } : {}),
       ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
+  };
+  let summaryJob: Promise<void> | null = null;
+  const summarizeIfNeeded = async (force = false): Promise<void> => {
+    if (summaryJob) {
+      await summaryJob;
+      if (!force) return;
+    }
+    summaryJob = runSummary(force).finally(() => { summaryJob = null; });
+    await summaryJob;
   };
   /** Read-only: the packet a next message with this text would get now. No append, no call. */
   const probe = (text: string) => {

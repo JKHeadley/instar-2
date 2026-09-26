@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './jou
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
 // @ts-ignore no declaration for the host script
-import { createProductionTelegramIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { createProductionTelegramIO, productionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 
 const key = new Uint8Array(32).fill(7);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-journal-')));
@@ -124,6 +124,21 @@ it('refuses an oversized prepared prompt before spending a call reservation', as
     expect(journal.view.order[0]?.held).toBe('prompt overflow');
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('falls back to killing the child when process-group kill gets EPERM on timeout', async () => {
+  const original = process.kill.bind(process);
+  const group = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+    if (pid < 0) throw Object.assign(Error('group refused'), { code: 'EPERM' });
+    return original(pid, signal);
+  });
+  try {
+    const result = await productionProviderIO.execute({ executable: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'], cwd: process.cwd(), env: process.env,
+      stdin: '', timeout: 20, maxBytes: 1024 });
+    expect(result.limited).toBe(true);
+    expect(group.mock.calls.some(([pid]) => pid < 0)).toBe(true);
+  } finally { group.mockRestore(); }
 });
 
 it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'before:answer', 'after:answer',
@@ -425,6 +440,137 @@ it('uses rolling summaries only after replies, shares the attempt cap, and retai
     expect(again.view.summaries.length).toBeGreaterThan(0);
     expect(again.view.order[0]?.text).toContain('ORCHID');
     again.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('closes a lost summary after restart and spends at most one recovery attempt at that frontier', async () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, { ...genesis(4), maxBytes: 32768 });
+    const w = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    w.intake([update(1, 'remember the ORCHID')]); await w.drain();
+    first.append({ kind: 'summary-reserve', through: 1, at: 1000 }); first.close();
+    const journal = openPreviewJournal(path, key);
+    let summaries = 0;
+    const worker = createJournalWorker(journal, { now: () => 1001, stopped: () => false,
+      model: async input => { if (input.id.startsWith('summary:')) { summaries++; throw Error('timeout'); } return 'ok'; },
+      send: async () => 2, checkOutbound: () => {} });
+    expect(journal.view.summaryReservations.size).toBe(0);
+    expect(journal.view.summaryFailures.get(1)).toBe(1);
+    await worker.summarizeIfNeeded(); // under the background threshold
+    await worker.summarizeIfNeeded(true);
+    await worker.summarizeIfNeeded(true);
+    expect(summaries).toBe(1);
+    expect(journal.view.calls).toBe(3);
+    expect(journal.view.summaryFailures.get(1)).toBe(2);
+    expect(journal.view.summaryReservations.size).toBe(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('recovers a pending summary and retries an overflow-held turn automatically', async () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, { ...genesis(4), maxBytes: 32768 });
+    const id = 'telegram:12345678:update:1';
+    first.append({kind:'intake',id,update:1,text:'ORCHID '+ 'a'.repeat(29000),
+      raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
+    first.append({kind:'reserve',id,at:1000}); first.append({kind:'answer',id,text:'old answer',at:1000});
+    first.append({kind:'intent',id,text:'PREVIEW — old answer',chat:first.view.genesis.chat,
+      update:1,grant:first.view.genesis.grant,at:1000});
+    first.append({kind:'sent',id,message:1,at:1000});
+    first.append({kind:'summary-reserve',through:1,at:1000});
+    first.append({kind:'intake',id:'telegram:12345678:update:2',update:2,text:'What was the name?',
+      raw:JSON.stringify(update(2)),accepted:true,cursor:3,at:1000});
+    first.append({kind:'hold',id:'telegram:12345678:update:2',reason:'summary unavailable: prompt overflow',at:1000});
+    first.close();
+    const journal = openPreviewJournal(path, key);
+    const seen: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1001, stopped: () => false,
+      prepareModel: input => { if (Buffer.byteLength(input.context) + (input.id.startsWith('summary:') ? 500 : 3800) > 32768)
+        throw Error('prompt overflow'); return input.context; },
+      model: async input => { seen.push(input.id); return input.id.startsWith('summary:') ? 'Earlier the operator named ORCHID.' : 'answer'; },
+      send: async () => 2, checkOutbound: () => {} });
+    expect(journal.view.order[1]?.held).toBe('summary unavailable: prompt overflow');
+    await worker.summarizeIfNeeded(true);
+    await worker.drain();
+    expect(journal.view.summaries).toHaveLength(1);
+    expect(journal.view.summaryReservations.size).toBe(0);
+    expect(journal.view.order[1]?.sent).toBe(2);
+    expect(seen).toEqual(['summary:1','telegram:12345678:update:2']);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-budget history before any summary; route=%s', async route => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(route === 'last-call' ? 2 : 4), maxBytes: 32768 });
+    const id = 'telegram:12345678:update:1';
+    journal.append({kind:'intake',id,update:1,text:'ORCHID '+ 'a'.repeat(29000),
+      raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
+    journal.append({kind:'reserve',id,at:1000});
+    journal.append({kind:'answer',id,text:'old answer',at:1000});
+    journal.append({kind:'intent',id,text:'PREVIEW — old answer',chat:journal.view.genesis.chat,
+      update:1,grant:journal.view.genesis.grant,at:1000});
+    journal.append({kind:'sent',id,message:1,at:1000});
+    const seen: { id: string; context: string }[] = [];
+    let summaryAttempts = 0;
+    let summaryPrepares = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => { if (input.id.startsWith('summary:')) {
+          summaryPrepares++;
+          if (route === 'preflight') throw Error('summary prompt unavailable');
+        }
+        const extra = input.id.startsWith('summary:') ? 500 : 3800;
+        if (Buffer.byteLength(input.context) + extra > 32768) throw Error('prompt overflow');
+        return input.context; },
+      model: async input => { seen.push(input);
+        if (input.id.startsWith('summary:')) {
+          summaryAttempts++;
+          if (route === 'failed' && summaryAttempts === 1) throw Error('timeout');
+          return 'Earlier the operator named ORCHID.';
+        }
+        return 'answer'; },
+      send: async () => 2, checkOutbound: () => {} });
+    worker.intake([update(2, 'What was the name?')]); await worker.drain();
+    const turn = journal.view.order[1]!;
+    if (route !== 'summary') {
+      expect(turn.sent).toBeUndefined();
+      expect(turn.held).toBe('summary unavailable: prompt overflow');
+      expect(seen.some(item => item.id === turn.id)).toBe(false);
+      expect(journal.view.summaryReservations.size).toBe(0);
+      if (route === 'last-call') {
+        expect(summaryAttempts).toBe(0);
+        expect(journal.view.calls).toBe(1);
+      } else if (route === 'preflight') {
+        await worker.drain(); await worker.drain();
+        expect(summaryPrepares).toBe(1);
+        expect(summaryAttempts).toBe(0);
+        expect(turn.held).toBe('summary unavailable: prompt overflow');
+      } else {
+        expect(journal.view.summaryFailures.get(1)).toBe(1);
+        const status = spawnSync(process.execPath,
+          ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
+          {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
+        expect(status.status).toBe(0);
+        expect(JSON.parse(status.stdout).holds).toContainEqual({update:2,reason:'summary unavailable: prompt overflow'});
+        await worker.drain();
+        expect(summaryAttempts).toBe(2);
+      }
+    }
+    if (route === 'summary' || route === 'failed') {
+      expect(turn.sent).toBe(2);
+      expect(turn.held).toBeUndefined();
+      const packet = JSON.parse(seen.find(item => item.id === turn.id)!.context);
+      expect(packet.historyMode).toBe('summary-plus-recent');
+      expect(packet.summary.text).toContain('ORCHID');
+      expect(journal.view.calls).toBe(route === 'failed' ? 4 : 3);
+    }
+    expect(journal.view.order[0]?.text).toContain('ORCHID');
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

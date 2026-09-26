@@ -45,7 +45,8 @@ export const productionProviderIO = Object.freeze({
       shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let chunks = [], size = 0, limited = false;
     const fail = () => { limited = true; chunks = [];
-      if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* A group may be gone or unavailable. */ }
+      try { child.kill('SIGKILL'); } catch { /* Timer and stop callbacks must never throw. */ }
     };
     const timer = setTimeout(fail, input.timeout);
     const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(); }, 25) : undefined;

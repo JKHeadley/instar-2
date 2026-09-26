@@ -682,10 +682,10 @@ identity pins, checkpoint rosters, `captureExchange` and `groundTurn` as reply
 prerequisites. The preview gives up production signed-history and governance
 proof and supplemental fact-store recall. It retains the complete original
 preview conversation in the journal and grounds each model call in the full
-history within its envelope. If the full history cannot fit and no current
-summary covers it, the turn is visibly held; no latest-N slice is substituted.
-The full-history choice uses the complete system, packet and prepared prompt bound;
-a usable summary is selected before a turn is held for overflow.
+history within its envelope. When that cannot fit, it first tries a bounded
+summary synchronously. If summarization fails, the turn stays held with a
+visible reason until a covering summary succeeds. The full-history choice
+uses the complete system, packet and prepared prompt bound.
 
 When a summary covers earlier turns, a **memory sentinel**
 (`memory-sentinel.ts`) picks which of those original journal turns are quoted
