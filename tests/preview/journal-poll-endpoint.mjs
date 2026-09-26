@@ -10,11 +10,13 @@ const server = createServer((request, response) => {
   request.on('end', () => {
     const method = request.url?.split('/').at(-1), body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
     appendFileSync(log, `${method}\n`);
+    if (method === 'sendMessage') appendFileSync(`${log}.sends`, `${JSON.stringify(body)}\n`);
     response.setHeader('content-type', 'application/json');
     response.end(JSON.stringify({ ok: true, result: method === 'getMe'
       ? { id: 8820318295, is_bot: true, username: 'echo_mmtest_seam_b27x_bot' }
       : method === 'getUpdates' ? updates().filter(item => item.update_id >= body.offset).slice(0,body.limit)
         : { message_id: messageId++, chat: { id: Number(body.chat_id) },
+          ...(body.message_thread_id === undefined || process.argv[4] === 'drop-thread' ? {} : { message_thread_id: body.message_thread_id, is_topic_message: true }),
           text: String(body.text).replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&amp;','&') } }));
   });
 });

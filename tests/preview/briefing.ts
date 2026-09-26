@@ -17,8 +17,8 @@ export const SOURCE_EXCERPTS = Object.freeze([
 ]);
 export const CAPABILITY_NOTE_DATE = '2026-09-26';
 export function capabilityNote(limits: { providerAttempts: number; expiresAt: number }) {
-  return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat. `
-    + 'It keeps this trial\'s complete original message history and attempts at most one plain-text reply per admitted message '
+  return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. `
+    + 'It keeps this trial\'s complete original message history across all of them as one memory and attempts at most one plain-text reply per admitted message '
     + 'through a subscription model. It has no tools: it cannot browse, run code, schedule work, send extra messages or act outside this chat. '
     + `This trial allows at most ${limits.providerAttempts} model attempts, including any summaries, and ends at epoch millisecond ${limits.expiresAt}. `
     + 'Every reply is prefixed PREVIEW. Outcomes the system could not confirm (a model call or a delivery) are marked unknown, '
