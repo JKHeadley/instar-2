@@ -159,6 +159,7 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
         active: options.active ?? (() => true) },
       now: () => read().clock, stopped: () => outerState.read().stop !== null,
       readSource: path => readFileSync(join(process.cwd(), path), 'utf8'), limits: options.limits,
+      hostFileArtifact: options.hostFileArtifact,
       hooks: options.hooks, diagnostic: options.diagnostic });
   };
   /** Driver backoff advances the shared world clock, never real time. */

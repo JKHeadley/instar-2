@@ -486,6 +486,14 @@ Focused offline evidence: `tests/preview/successive.test.ts` (with `successive-f
 substitutes only the Telegram Bot API and the subscription CLI, and runs restarts as fresh child
 processes.
 
+The preview does not pin its own host-file bytes. The fixture native harness reuses the artifact
+already recorded in the trial's verified `AdapterConformance` fact; a new trial records the current
+host artifact. This keeps a restart or deliberate code rebuild from conflicting with the same
+durable fact. The process identity (`pid` and start time) is fresh for each launch and is not a
+trial pin. The source packet still checks its exact purpose excerpts, and the activation still
+binds the system prompt, framing, model, provider limits, CLI executable, subscription profile
+and managed settings. Their content and approval digests remain enforced.
+
 ### Profile identity re-record (one use, desk-supervised)
 
 A profile recorded before the identity dropped the device number no longer matches its unchanged

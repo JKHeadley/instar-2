@@ -3,6 +3,7 @@
 // recall and the context packet are the real ones. No live network or model is contacted.
 import { afterEach, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -107,6 +108,29 @@ it('answers two naturally polled turns with prior history and sources at provide
   expect(JSON.parse(readFileSync(join(world.root, 'successive-state.json'), 'utf8')).hold)
     .toMatchObject({ code: 'ATTEMPTS_EXHAUSTED', lengths: { attempts: 3 } });
 }, 3_600_000);
+
+it('boots a recorded root after the native host file artifact changes', async () => {
+  const world = successiveWorld();
+  const hostFile = readFileSync(join(process.cwd(), 'scripts/production-boot-io.mjs'));
+  const digest = (bytes: Buffer) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  const oldArtifact = digest(hostFile);
+  const newArtifact = digest(Buffer.concat([hostFile, Buffer.from('\n// deliberate rebuild\n')]));
+  expect(newArtifact).not.toBe(oldArtifact);
+  const first = world.compose({ hostFileArtifact: oldArtifact });
+  try {
+    expect(first.rows().find(row => row.kind === 'assembly-AdapterConformance').body.record.artifact).toBe(oldArtifact);
+    await first.run({ maxCycles: 1, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep });
+  } finally { first.close(); }
+  expect(existsSync(join(world.root, 'successive-checkpoint.json'))).toBe(true);
+
+  const second = world.compose({ hostFileArtifact: newArtifact });
+  try {
+    expect(second.built.owners.grounding.harness.describe().artifact).toBe(oldArtifact);
+    expect(second.rows().filter(row => row.kind === 'assembly-AdapterConformance')).toHaveLength(1);
+  } finally { second.close(); }
+  expect(world.models()).toHaveLength(0);
+  expect(world.sends()).toHaveLength(0);
+}, 900_000);
 
 it('refuses the provider call when the stop latch is set after preparation, keeping the admitted turn', async () => {
   const world = successiveWorld();

@@ -179,6 +179,8 @@ export interface SuccessiveInput {
   readonly provider: { activation: any; profile: any; model: string; io: any; active: () => boolean };
   readonly now: () => number; readonly stopped: () => boolean;
   readonly readSource: (path: string) => string; readonly sourcePins?: Readonly<Record<string, string>>;
+  /** Offline regression seam: simulate a changed native host file on restart. */
+  readonly hostFileArtifact?: string;
   readonly limits?: Partial<typeof SUCCESSIVE_LIMITS>;
   readonly heartbeat?: () => void;
   readonly diagnostic?: (record: any) => void;
@@ -298,6 +300,15 @@ export function createSuccessiveComposition(input: SuccessiveInput) {
   const storageKey = Buffer.from(input.storageKey).toString('hex');
   let admissionOpen = () => true;
   const fixture = installedFixtureHost(storageRoot, route, {
+    hostFileArtifact: input.hostFileArtifact,
+    nativeArtifact: (storage, current) => {
+      const recorded = storage.segment.read().filter(row => row.kind === 'assembly-AdapterConformance'
+        && row.body.record?.id === 'AdapterConformance');
+      if (recorded.length > 1) throw Error('preview: native harness artifact ambiguous');
+      const artifact = recorded[0]?.body.record.artifact ?? current;
+      if (!/^sha256:[a-f0-9]{64}$/u.test(artifact)) throw Error('preview: native harness artifact malformed');
+      return artifact;
+    },
     registerEntries: ['preview', 'provider-call', 'telegram-ordinary-reply', model, STAGE2_ROUTE],
     // The fixture native delivery names prior accepted answers by digest; the
     // model's actual complete context is the measured provider packet.

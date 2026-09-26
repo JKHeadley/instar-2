@@ -62,8 +62,10 @@ export function installedFixtureHost(root, route, options = {}) {
           return [reference, bytes];
         })) } : undefined;
       const physical = createProductionNativeContextIO(storage.captures);
+      const hostFileArtifact = options.hostFileArtifact ?? physical.current().artifact;
+      const nativeArtifact = options.nativeArtifact?.(storage, hostFileArtifact) ?? hostFileArtifact;
       let nativeOrdinal = 0;
-      const nativeIO = { ...physical, consume(reference, bytes) {
+      const nativeIO = { ...physical, current: () => ({ ...physical.current(), artifact: nativeArtifact }), consume(reference, bytes) {
         const ordinal = ++nativeOrdinal;
         options.physicalCheckpoint?.(`native-before-consume-${ordinal}`, state);
         const result = physical.consume(reference, bytes);
