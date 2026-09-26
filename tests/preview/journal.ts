@@ -9,6 +9,7 @@ import { redact } from '../../src/recall/redact.js';
 import { selectRecall } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
+import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
 import { checkReply, correctionNote, type CoherenceFinding } from './coherence-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
@@ -44,7 +45,7 @@ export type JournalRecord =
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
-  | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; authority: string; at: number }
+  | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
@@ -62,7 +63,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   checked?: CoherenceFinding[]; checkFailed?: true }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
-  limits: { maxCalls: number; maxReplies: number; maxTurns: number }; capAuthority: string | null;
+  limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
   summaryFailures: Map<number, number>; sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>;
@@ -71,17 +72,19 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
 const frameLimit = 2 * 1024 * 1024;
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
-const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns });
+const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
 function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
+  const maxBytes = row.maxBytes ?? view.limits.maxBytes; // Earlier cap frames did not carry this field.
   if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
     || !Number.isSafeInteger(row.at) || row.at <= 0 || typeof row.authority !== 'string'
     || !row.authority.trim() || Buffer.byteLength(row.authority) > 1024
-    || ![row.maxCalls, row.maxReplies, row.maxTurns].every(n => Number.isSafeInteger(n) && n > 0)
+    || ![row.maxCalls, row.maxReplies, row.maxTurns, maxBytes].every(n => Number.isSafeInteger(n) && n > 0)
     || row.maxCalls < Math.max(view.limits.maxCalls, view.calls)
     || row.maxReplies < Math.max(view.limits.maxReplies, view.replies)
     || row.maxTurns < Math.max(view.limits.maxTurns, view.order.length)
+    || maxBytes < view.limits.maxBytes || maxBytes > MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES
     || row.maxCalls === view.limits.maxCalls && row.maxReplies === view.limits.maxReplies
-      && row.maxTurns === view.limits.maxTurns)
+      && row.maxTurns === view.limits.maxTurns && maxBytes === view.limits.maxBytes)
     throw Error('preview journal: cap authority or monotonic bounds refused');
   if (view.order.some(turn => turn.reserved && turn.answer === undefined)
     || [...view.summaryReservations].some(through => !view.summaries.some(item => item.through === through)))
@@ -91,7 +94,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
   if (row.kind === 'caps') {
     checkCaps(view, row);
-    view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns };
+    view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
     view.capAuthority = row.authority;
     for (const turn of view.order) if (turn.held === 'call cap' || turn.held === 'reply cap') delete turn.held;
     return;
@@ -132,7 +135,8 @@ function project(view: JournalView, row: JournalRecord): void {
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
     if (row.commitments) view.commitments.push(...row.commitments);
     for (const closure of row.closed ?? []) if (closure.id < view.commitments.length && !view.closed.has(closure.id)) view.closed.set(closure.id, closure);
-    for (const turn of view.order) if (turn.held === 'prompt overflow' || turn.held === 'context overflow') delete turn.held;
+    for (const turn of view.order) if (turn.held === 'prompt overflow' || turn.held === 'context overflow'
+      || turn.update <= row.through && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) delete turn.held;
     return;
   }
   const turn = view.turns.get(row.id);
@@ -256,8 +260,9 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: Telegram
 export const conversationName = (thread: number | undefined) => thread === undefined ? 'main chat' : `topic ${String(thread)}`;
 
 export function raiseJournalCaps(journal: ReturnType<typeof openPreviewJournal>, input: {
-  maxCalls: number; maxReplies: number; maxTurns: number; authority: string; at: number }) {
-  journal.append({ kind: 'caps', genesisHash: genesisHash(journal.view.genesis), ...input });
+  maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }) {
+  journal.append({ kind: 'caps', genesisHash: genesisHash(journal.view.genesis), ...input,
+    maxBytes: input.maxBytes ?? journal.view.limits.maxBytes });
 }
 
 export interface PreviewPorts {
@@ -426,7 +431,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const promised = Math.min(open.length, kept), people = Math.min(named.length, kept - promised);
           const context = packetFor(turn.update - 1, compact, recalled.slice(0, kept - promised - people),
             named.slice(named.length - people), open.slice(open.length - promised), turn.thread, false, flagged);
-          if (Buffer.byteLength(context) > journal.view.genesis.maxBytes) continue;
+          if (Buffer.byteLength(context) > journal.view.limits.maxBytes) continue;
           promptFit = true;
           try {
             const prepared = ports.prepareModel?.({ question, context, id: turn.id });
@@ -443,9 +448,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try {
       for (const turn of journal.view.order) {
         if (!turn.accepted || turn.sent || turn.intent) continue;
-        if (turn.held?.startsWith('summary unavailable:')) {
-          await summarizeIfNeeded(true);
-          if (!summaryFor(turn.update - 1)) continue;
+        const priorHold = turn.held;
+        if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
+          if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
           delete turn.held;
         }
         if (turn.held) continue;
@@ -458,9 +463,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             await summarizeIfNeeded(true);
             selected = preparedFor(turn);
           }
-          if ('reason' in selected) { journal.append({kind:'hold',id:turn.id,
-            reason: journal.view.order.some(item => item.sent && item.update < turn.update)
-              ? `summary unavailable: ${selected.reason}` : selected.reason,at:ports.now()}); continue; }
+          if ('reason' in selected) {
+            const reason = journal.view.order.some(item => item.sent && item.update < turn.update)
+              ? `summary unavailable: ${selected.reason}` : selected.reason;
+            if (priorHold !== reason) journal.append({kind:'hold',id:turn.id,reason,at:ports.now()});
+            else turn.held = reason;
+            break;
+          }
           if (journal.view.calls >= journal.view.limits.maxCalls) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
@@ -551,20 +560,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** Derived work shares the reply call cap. At most two attempts for one
    * frontier; a failed result stays visible while originals remain durable. */
-  const summaryPreflightBlocked = new Set<number>();
+  const summaryPreflightBlocked = new Set<string>();
   const runSummary = async (force: boolean) => {
     const last = journal.view.order.filter(turn => turn.sent).at(-1);
-    if (!last || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)
-      || journal.view.summaryReservations.has(last.update)
-      || (journal.view.summaryFailures.get(last.update) ?? 0) >= 2
-      || summaryPreflightBlocked.has(last.update)
-      || journal.view.summaries.some(item => item.through === last.update)) return;
-    // The summary input names every turn's conversation and date so the summary can keep them.
-    const base = packetFor(last.update, true, [], [], [], last.thread, true);
-    const bytes = Buffer.byteLength(base);
-    if (!force && bytes < Math.floor(journal.view.genesis.maxBytes * .7)) return;
-    // Open commitments the summary may close, each by its quote only; the oldest give way to the bound.
-    const closable = openFor(last.update, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
+    if (!last) return;
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
@@ -577,41 +576,84 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + '<an exact, unaltered excerpt of a later operator message in history saying that item is done, withdrawn or no longer needed>}]}. '
       + 'Include every person other than yourself named in history, every such request and promise, and a closure only when a message '
       + 'really says so; never paraphrase or invent one. Use [] when none.';
-    let offered: typeof closable = [], packet = base, prepared: string | undefined, fitted = false;
-    for (let kept = closable.length; kept >= 0; kept--) {
-      const subset = closable.slice(closable.length - kept);
-      const candidate = kept ? JSON.stringify({ ...JSON.parse(base) as object, openCommitments: subset }) : base;
-      if (Buffer.byteLength(candidate) > journal.view.genesis.maxBytes) continue;
-      try { prepared = ports.prepareModel?.({ question: summaryQuestion, context: candidate, id: `summary:${last.update}` }); }
-      catch { continue; }
-      packet = candidate; offered = subset; fitted = true; break;
-    }
-    if (!fitted) { summaryPreflightBlocked.add(last.update); return; }
-    gate();
-    journal.append({kind:'summary-reserve',through:last.update,...(prepared === undefined ? {} : { prompt: prepared }),at:ports.now()});
-    let summary: Awaited<ReturnType<PreviewPorts['model']>>;
-    try { summary = await ports.model({ question: summaryQuestion,
-      context: packet, id: `summary:${last.update}`, ...(prepared === undefined ? {} : { prepared }) }); }
-    catch { journal.append({kind:'summary-failed',through:last.update,at:ports.now()}); return; }
-    const answered = typeof summary === 'string' ? summary : summary.text;
-    let summaryText = answered, people: PersonNote[] | undefined, commitments: CommitmentNote[] | undefined,
-      closed: CommitmentClosure[] | undefined;
-    try { const parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { summary?: unknown; people?: unknown;
-        commitments?: unknown; closed?: unknown };
-      if (typeof parsed?.summary === 'string' && Array.isArray(parsed.people)) {
-        summaryText = parsed.summary; people = notesFrom(parsed.people, last.update);
-        if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, last.update, new Set(offered.map(item => item.id)));
-        if (Array.isArray(parsed.commitments)) {
-          const found = commitmentsFrom(parsed.commitments, last.update);
-          commitments = found.notes; closed = [...closed ?? [], ...found.closures];
+    // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
+    // bound one pass; the next worker cycle can continue from the last summary.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const previous = summaryFor(last.update)?.through ?? -1;
+      if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;
+      const pending = journal.view.order.filter(turn => turn.accepted && turn.update > previous && turn.update <= last.update);
+      const full = packetFor(last.update, true, [], [], [], last.thread, true);
+      if (!force && Buffer.byteLength(full) < Math.floor(journal.view.limits.maxBytes * .7)) return;
+      const candidates: { turn: Turn; base: string }[] = [];
+      for (const turn of pending) {
+        const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
+        if (Buffer.byteLength(candidate) > journal.view.limits.maxBytes) break;
+        candidates.push({ turn, base: candidate });
+      }
+      if (!candidates.length) {
+        const oversized = pending[0];
+        if (oversized && oversized.held !== 'summary oversized turn')
+          journal.append({ kind: 'hold', id: oversized.id, reason: 'summary oversized turn', at: ports.now() });
+        return;
+      }
+      const blocked = `${last.update}:${previous}:${journal.view.limits.maxBytes}`;
+      if (summaryPreflightBlocked.has(blocked)) return;
+      let chosen: { through: number; packet: string; prepared?: string; offered: { id: number; in: CommitmentNote['in']; quote: string }[] } | undefined;
+      let oversizedPrompt = false;
+      // Try the largest oldest prefix first, then smaller prefixes if the provider's
+      // prepared envelope needs more room than the packet itself.
+      for (const { turn, base } of candidates.reverse()) {
+        const through = turn.update;
+        if (journal.view.summaryReservations.has(through) || (journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
+        const closable = openFor(through, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
+        for (let kept = closable.length; kept >= 0; kept--) {
+          const offered = closable.slice(closable.length - kept);
+          const packet = kept ? JSON.stringify({ ...JSON.parse(base) as object, openCommitments: offered }) : base;
+          if (Buffer.byteLength(packet) > journal.view.limits.maxBytes) continue;
+          try {
+            const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}` });
+            chosen = { through, packet, ...(prepared === undefined ? {} : { prepared }), offered }; break;
+          } catch (error) {
+            if (error instanceof Error && /overflow|too large|size/iu.test(error.message)) oversizedPrompt = true;
+          }
         }
-      } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
-    if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.genesis.maxBytes / 4))) {
-      journal.append({kind:'summary-failed',through:last.update,at:ports.now()}); return;
+        if (chosen) break;
+      }
+      if (!chosen) {
+        summaryPreflightBlocked.add(blocked);
+        const oversized = pending[0];
+        const reason = oversizedPrompt ? 'summary oversized turn' : 'summary preflight unavailable';
+        if (oversized && oversized.held !== reason)
+          journal.append({ kind: 'hold', id: oversized.id, reason, at: ports.now() });
+        return;
+      }
+      const { through, packet, prepared, offered } = chosen;
+      gate();
+      journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),at:ports.now()});
+      let summary: Awaited<ReturnType<PreviewPorts['model']>>;
+      try { summary = await ports.model({ question: summaryQuestion,
+        context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }
+      catch { journal.append({kind:'summary-failed',through,at:ports.now()}); return; }
+      const answered = typeof summary === 'string' ? summary : summary.text;
+      let summaryText = answered, people: PersonNote[] | undefined, commitments: CommitmentNote[] | undefined,
+        closed: CommitmentClosure[] | undefined;
+      try { const parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { summary?: unknown; people?: unknown;
+          commitments?: unknown; closed?: unknown };
+        if (typeof parsed?.summary === 'string' && Array.isArray(parsed.people)) {
+          summaryText = parsed.summary; people = notesFrom(parsed.people, through);
+          if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, through, new Set(offered.map(item => item.id)));
+          if (Array.isArray(parsed.commitments)) {
+            const found = commitmentsFrom(parsed.commitments, through);
+            commitments = found.notes; closed = [...closed ?? [], ...found.closures];
+          }
+        } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
+      if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.limits.maxBytes / 4))) {
+        journal.append({kind:'summary-failed',through,at:ports.now()}); return;
+      }
+      journal.append({kind:'summary',through,text:redact(summaryText).text,...(people ? { people } : {}),
+        ...(commitments ? { commitments } : {}), ...(closed?.length ? { closed } : {}),
+        ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
     }
-    journal.append({kind:'summary',through:last.update,text:redact(summaryText).text,...(people ? { people } : {}),
-      ...(commitments ? { commitments } : {}), ...(closed?.length ? { closed } : {}),
-      ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
   };
   let summaryJob: Promise<void> | null = null;
   const summarizeIfNeeded = async (force = false): Promise<void> => {

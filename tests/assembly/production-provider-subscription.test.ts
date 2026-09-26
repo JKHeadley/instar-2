@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionConversationPolicy,
+  SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
+  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -15,7 +17,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
   (canonical(value) as { kind: 'Success'; value: { hash: string } }).value.hash : '';
-function fixture(options: { status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean } = {}) {
+function fixture(options: { status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-offline-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   for (const path of [home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -35,7 +37,7 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd(),stdin})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
     else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(status))});
-    else if(process.argv.slice(2).filter(v=>v==='--system-prompt').length!==1 || process.argv[process.argv.indexOf('--system-prompt')+1]!==${JSON.stringify(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)})process.exit(42);
+    else if(process.argv.slice(2).filter(v=>v==='--system-prompt').length!==1 || process.argv[process.argv.indexOf('--system-prompt')+1]!==${JSON.stringify(options.conversation ? SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT : SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)})process.exit(42);
     else ${options.pending ? 'setInterval(()=>{},1000)' : `process.stdout.write(Buffer.from(${JSON.stringify(raw.toString('base64'))},'base64'))`};\n`;
   writeFileSync(executable, source); chmodSync(executable, 0o700);
   let active = true;
@@ -52,7 +54,7 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     reference: profile.activationReference, waiver: 'synthetic-waiver', p11: 'synthetic-p11', reviewedHead: 'synthetic-head',
     trial: 'synthetic-trial', baseConfigurationDigest: hash('synthetic-config'), profileDigest: hash(profile),
     executable, artifact: profile.artifact, version: profile.version, model,
-    invocationPolicyDigest: hash(subscriptionInvocationPolicy(model)), expectedAccount: profile.expectedAccount,
+    invocationPolicyDigest: hash(options.conversation ? subscriptionConversationPolicy(model) : subscriptionInvocationPolicy(model)), expectedAccount: profile.expectedAccount,
     observedAccount: profile.expectedAccount, authSource: 'claude.ai', operatorAssertion: 'synthetic-disabled-extra-usage-assertion',
     assertedAt: 1, observer: 'synthetic-observer', observedAt: 2, method: 'synthetic-observation', safeCaptureReference: 'capture:synthetic',
     extraUsage: 'operator-asserted/unobservable', extraUsageReason: 'Synthetic account datum unavailable; assertion is actual basis',
@@ -64,7 +66,8 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
       { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] } })),
     context: { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] },
       site: f.c.site, preserved: f.c.preserved }, profile, activation, io, now: () => 1000, active: () => active,
-    resolveProfile: () => { resolves++; return profile; }, adapterEvidenceContract: {
+    resolveProfile: () => { resolves++; return profile; },
+    ...(options.conversation ? { framing: SUBSCRIPTION_CONVERSATION_FRAMING as typeof SUBSCRIPTION_CONVERSATION_FRAMING } : {}), adapterEvidenceContract: {
       reference: activation.reference, version: activation.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       endpoint: profile.loginProfileIdentity, account: profile.expectedAccount, credentialReference: profile.reference,
       controller: 'synthetic-recorder', sourceEvidence: ['synthetic-source'], terminalEvidence: 'synthetic-terminal',
@@ -93,6 +96,19 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
   expect(Object.keys(commands[2].env).filter(key => key !== '__CF_USER_TEXT_ENCODING').sort()).toEqual(Object.keys(f.launched[2]!).sort());
   expect(commands[0].env).toEqual(commands[2].env); expect(commands[1].env).toEqual(commands[2].env);
   expect(commands[2].args).not.toContain('--max-budget-usd'); expect(commands[2].args).not.toContain('--bare');
+});
+
+it('requires recorded cap authority to dispatch a conversation prompt above 32 KB', async () => {
+  const f = fixture({ conversation: true }), bytes = 'x'.repeat(40000);
+  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke(bytes, f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(0);
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: 131072 }).kind).toBe('Refused');
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: 1048577,
+    promptAuthority: 'Justin recorded cap frame' }).kind).toBe('Refused');
+  const route = value(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: 131072,
+    promptAuthority: 'Justin recorded cap frame' }));
+  expect((await route.invoke(bytes, f.bounds)).state).toBe('complete');
+  expect(f.commands().at(-1)?.stdin).toBe(bytes);
 });
 for (const status of [{ loggedIn: false }, { authMethod: 'api_key' }, { authMethod: 'oauth_token' },
   { apiProvider: 'bedrock' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { subscriptionType: 'console' },

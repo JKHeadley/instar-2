@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
 // @ts-ignore no declaration for the host script
@@ -259,7 +260,7 @@ it('raises finite caps with recorded authority, preserves counters, and resumes 
       authority: 'same', at: 1002 })).toThrow();
     journal.close();
     const reopened = openPreviewJournal(path, key);
-    expect(reopened.view.limits).toEqual({ maxCalls: 3, maxReplies: 3, maxTurns: 4 });
+    expect(reopened.view.limits).toEqual({ maxCalls: 3, maxReplies: 3, maxTurns: 4, maxBytes: genesis().maxBytes });
     expect(reopened.view.calls).toBe(2);
     expect(reopened.view.replies).toBe(2);
     reopened.close();
@@ -306,7 +307,7 @@ it('the cap command requires the exclusive writer lease and reports the recorded
   const command = (name: string, extra: string[] = []) => spawnSync(process.execPath,
     ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs',name,
       '--root',root,...extra], {cwd:process.cwd(),env,encoding:'utf8',timeout:10000});
-  const caps = ['--max-calls','3','--max-replies','101','--max-turns','101',
+  const caps = ['--max-calls','3','--max-replies','101','--max-turns','101','--max-context-bytes','524288',
     '--authority','Justin verified operator, topic 52075, 2026-09-25 16:25 PDT'];
   try {
     expect(lease.kind).toBe('Success');
@@ -317,8 +318,10 @@ it('the cap command requires the exclusive writer lease and reports the recorded
     const report = command('status');
     expect(report.status).toBe(0);
     expect(JSON.parse(report.stdout)).toMatchObject({calls:0, replies:0,
-      limits:{maxCalls:3,maxReplies:101,maxTurns:101},capAuthority:caps.at(-1)});
+      limits:{maxCalls:3,maxReplies:101,maxTurns:101,maxBytes:524288},capAuthority:caps.at(-1)});
     expect(command('raise-caps',caps).status).not.toBe(0);
+    expect(command('raise-caps',['--max-context-bytes','1048576','--authority','Justin second recorded raise']).status).toBe(0);
+    expect(JSON.parse(command('status').stdout).limits.maxBytes).toBe(1048576);
   } finally { journal.close(); if (lease.kind === 'Success' && !leaseClosed) lease.value.close();
     rmSync(root,{recursive:true,force:true}); }
 });
@@ -440,6 +443,119 @@ it('uses rolling summaries only after replies, shares the attempt cap, and retai
     expect(again.view.summaries.length).toBeGreaterThan(0);
     expect(again.view.order[0]?.text).toContain('ORCHID');
     again.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('rolls an unsummarized live-shaped history forward and drains older overflow holds in order', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(64), maxBytes: 32768, maxTurns: 30, maxReplies: 30 });
+    for (let n = 1; n <= 20; n++) {
+      const id = `telegram:12345678:update:${n}`;
+      const text = n === 1 ? `ORCHID ${'a'.repeat(4000)}` : n <= 10 ? `turn ${n} ${'b'.repeat(4000)}` : `turn ${n}`;
+      journal.append({ kind: 'intake', id, update: n, text, raw: JSON.stringify(update(n, text)),
+        accepted: true, cursor: n + 1, at: 1000 });
+      journal.append({ kind: 'reserve', id, at: 1000 });
+      journal.append({ kind: 'answer', id, text: `answer ${n}`, at: 1000 });
+      journal.append({ kind: 'intent', id, text: `PREVIEW — answer ${n}`, chat: journal.view.genesis.chat,
+        update: n, grant: journal.view.genesis.grant, at: 1000 });
+      journal.append({ kind: 'sent', id, message: n, at: 1000 });
+    }
+    for (let n = 21; n <= 22; n++) {
+      const id = `telegram:12345678:update:${n}`, text = `held question ${n}`;
+      journal.append({ kind: 'intake', id, update: n, text, raw: JSON.stringify(update(n, text)),
+        accepted: true, cursor: n + 1, at: 1000 });
+      journal.append({ kind: 'hold', id, reason: n === 21 ? 'prompt overflow' : 'summary unavailable: context overflow', at: 1000 });
+    }
+    const seen: string[] = [], frontiers: number[] = [], sends: number[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => {
+        if (Buffer.byteLength(input.context) + 1800 > journal.view.limits.maxBytes) throw Error('prompt overflow');
+        return input.context;
+      },
+      model: async input => {
+        seen.push(input.id);
+        if (input.id.startsWith('summary:')) {
+          frontiers.push(Number(input.id.slice(8)));
+          return 'ORCHID was named at the start; later turns continued the conversation.';
+        }
+        expect(input.context).toContain('ORCHID');
+        return `reply ${input.question}`;
+      },
+      send: async input => { sends.push(input.update); return input.update; }, checkOutbound: () => {} });
+    await worker.drain();
+    expect(frontiers.length).toBeGreaterThan(1);
+    expect(frontiers).toContain(20);
+    expect(frontiers).toEqual(frontiers.slice().sort((a, b) => a - b));
+    expect(seen.filter(id => !id.startsWith('summary:'))).toEqual([
+      'telegram:12345678:update:21', 'telegram:12345678:update:22']);
+    expect(sends).toEqual([21, 22]);
+    expect(journal.view.order.slice(20).map(turn => turn.held)).toEqual([undefined, undefined]);
+    expect(journal.view.order[0]?.text).toContain('ORCHID');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('raises context bytes through the cap frame and uses the replayed limit for a held turn', async () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, { ...genesis(3), maxBytes: 1100 });
+    first.append({ kind: 'intake', id: 'telegram:12345678:update:1', update: 1,
+      text: `ORCHID ${'x'.repeat(1200)}`, raw: JSON.stringify(update(1)), accepted: true, cursor: 2, at: 1000 });
+    first.append({ kind: 'hold', id: 'telegram:12345678:update:1', reason: 'prompt overflow', at: 1000 });
+    expect(() => raiseJournalCaps(first, { maxCalls: 3, maxReplies: 100, maxTurns: 100,
+      maxBytes: 1099, authority: 'Justin recorded raise', at: 1001 })).toThrow('monotonic');
+    raiseJournalCaps(first, { maxCalls: 3, maxReplies: 100, maxTurns: 100,
+      maxBytes: 8192, authority: 'Justin recorded raise', at: 1001 });
+    first.close();
+    const journal = openPreviewJournal(path, key);
+    expect(journal.view.limits.maxBytes).toBe(8192);
+    let calls = 0;
+    const worker = createJournalWorker(journal, { now: () => 1002, stopped: () => false,
+      model: async () => { calls++; return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
+    await worker.drain();
+    expect(calls).toBe(1);
+    expect(journal.view.order[0]?.sent).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('prepares a raised subscription envelope above the former 32 KB ceiling', () => {
+  const input = { id: 'telegram:12345678:update:1', question: 'remember this?',
+    context: JSON.stringify({ history: [{ user: 'x'.repeat(40000) }] }) };
+  expect(() => prepareJournalEnvelope(input, 'claude-opus-5-5', 'grant:preview', 1000)).toThrow('overflow');
+  const prepared = prepareJournalEnvelope(input, 'claude-opus-5-5', 'grant:preview', 1000, 131072);
+  expect(Buffer.byteLength(prepared)).toBeGreaterThan(32768);
+  expect(Buffer.byteLength(prepared)).toBeLessThan(131072);
+});
+
+it('shows an oversized historical turn and clears that marker after an authorized envelope raise', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(8), maxBytes: 1100 });
+    const id = 'telegram:12345678:update:1';
+    journal.append({ kind: 'intake', id, update: 1, text: `ORCHID ${'x'.repeat(1600)}`,
+      raw: JSON.stringify(update(1)), accepted: true, cursor: 2, at: 1000 });
+    journal.append({ kind: 'reserve', id, at: 1000 });
+    journal.append({ kind: 'answer', id, text: 'old answer', at: 1000 });
+    journal.append({ kind: 'intent', id, text: 'PREVIEW — old answer', chat: journal.view.genesis.chat,
+      update: 1, grant: journal.view.genesis.grant, at: 1000 });
+    journal.append({ kind: 'sent', id, message: 1, at: 1000 });
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => input.id.startsWith('summary:') ? 'The operator named ORCHID.' : 'ok',
+      send: async () => 2, checkOutbound: () => {} });
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.summaries).toHaveLength(0);
+    expect(journal.view.order[0]?.held).toBe('summary oversized turn');
+    expect(journal.view.order[0]?.text).toContain('ORCHID');
+    raiseJournalCaps(journal, { maxCalls: 8, maxReplies: 100, maxTurns: 100,
+      maxBytes: 8192, authority: 'Justin recorded raise', at: 1001 });
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.summaries.at(-1)?.through).toBe(1);
+    expect(journal.view.order[0]?.held).toBeUndefined();
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -660,12 +660,17 @@ desk can raise all or some of the finite limits with:
 ```sh
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs raise-caps \
   --root /ABSOLUTE/NEW_ROOT --max-calls 64 --max-replies 64 --max-turns 80 \
+  --max-context-bytes 131072 \
   --authority 'Justin, topic 52075, 2026-09-25 16:25 PDT'
 ```
 
 The command takes the exclusive writer lease, refuses UNKNOWN model calls,
 permanent stop, expiry, missing import, a missing authority reference and any
-lowered or unchanged bound. It appends one authenticated record tied to genesis;
+lowered or unchanged bound. `--max-context-bytes` is optional and keeps the current
+bound when omitted; the finite physical ceiling is 1048576 bytes. The existing
+subscription activation stays pinned to its original policy, while the journal's
+recorded cap authority permits a larger prompt only for this conversation worker.
+It appends one authenticated record tied to genesis;
 replay restores the new limits without resetting usage or intake. `status` shows
 the latest reference. The subscription route still forbids paid fallback.
 
@@ -711,6 +716,11 @@ history within its envelope. When that cannot fit, it first tries a bounded
 summary synchronously. If summarization fails, the turn stays held with a
 visible reason until a covering summary succeeds. The full-history choice
 uses the complete system, packet and prepared prompt bound.
+When the whole summary input exceeds that bound, the worker summarizes the
+oldest prefix that fits, then extends from the saved summary. One pass makes at
+most eight attempts under the same call cap. An oversized single turn is shown
+as a hold in `status`, with its original still in the journal. Earlier overflow
+holds retry in order when a summary covers their preceding turns.
 
 When a summary covers earlier turns, a **memory sentinel**
 (`memory-sentinel.ts`) picks which of those original journal turns are quoted

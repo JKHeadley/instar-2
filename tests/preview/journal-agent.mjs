@@ -122,7 +122,7 @@ async function main() {
       if (options.text !== undefined) {
         const refuse = () => { throw Error('preview: inspect never calls or sends'); };
         const probe = createJournalWorker(view, { now: Date.now, stopped: () => true, sources: turnSources(root, options, view.view),
-          prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, Date.now()),
+          prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, Date.now(), view.view.limits.maxBytes),
           model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
@@ -147,9 +147,10 @@ async function main() {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       capJournal = openPreviewJournal(journalPath, key());
       if (Date.now() >= capJournal.view.genesis.expires) throw Error('preview: expired');
-      raiseJournalCaps(capJournal, { maxCalls: number(required(options, 'max-calls'), 'max-calls'),
-        maxReplies: number(required(options, 'max-replies'), 'max-replies'),
-        maxTurns: number(required(options, 'max-turns'), 'max-turns'),
+      raiseJournalCaps(capJournal, { maxCalls: number(options['max-calls'] ?? String(capJournal.view.limits.maxCalls), 'max-calls'),
+        maxReplies: number(options['max-replies'] ?? String(capJournal.view.limits.maxReplies), 'max-replies'),
+        maxTurns: number(options['max-turns'] ?? String(capJournal.view.limits.maxTurns), 'max-turns'),
+        maxBytes: number(options['max-context-bytes'] ?? String(capJournal.view.limits.maxBytes), 'max-context-bytes'),
         authority: required(options, 'authority'), at: Date.now() });
     } finally { capJournal?.close(); storage.close(); }
     return;
@@ -176,7 +177,8 @@ async function main() {
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
       ['max-replies', maxReplies, g.maxReplies, journal.view.limits.maxReplies],
-      ['max-turns', maxTurns, g.maxTurns, journal.view.limits.maxTurns]])
+      ['max-turns', maxTurns, g.maxTurns, journal.view.limits.maxTurns],
+      ['max-context-bytes', maxBytes, g.maxBytes, journal.view.limits.maxBytes]])
       if (options[name] && supplied !== original && supplied !== current)
         throw Error(`preview: ${name} differs from journal`);
     if (g.importSource !== undefined && !journal.view.imported) throw Error('preview: migration incomplete');
@@ -185,7 +187,7 @@ async function main() {
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
-    const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now());
+    const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
       sources: turnSources(root, options, journal.view),
       prepareModel: modelEnvelope,
@@ -289,7 +291,9 @@ async function main() {
         disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
         io: createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => workerStop.value || existsSync(stopPath) || !active() }),
         now: Date.now, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
-        adapterEvidenceContract: contract }));
+        adapterEvidenceContract: contract,
+        ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes
+          ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
     }
   } catch (error) { if (!signalled) throw error; }
   finally { journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
