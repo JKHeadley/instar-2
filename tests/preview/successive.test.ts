@@ -3,7 +3,7 @@
 // recall and the context packet are the real ones. No live network or model is contacted.
 import { afterEach, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
@@ -290,6 +290,11 @@ it('retains only a store that never completed boot, and never one a live process
   rmSync(join(store, '.boot-lease-guard'), { recursive: true });
   rmSync(join(store, '.boot-lease', 'owner.json'));
   expect(() => retainIncompleteBoot(store, checkpoint)).toThrow('unreadable lease owner');
+  expect(existsSync(store)).toBe(true);
+  expect(existsSync(join(store, '.boot-lease-guard'))).toBe(false);
+  // A failed rename (read-only parent) releases the guard in place, so the next start is not blocked.
+  chmodSync(directory, 0o500);
+  try { expect(() => retainIncompleteBoot(store, checkpoint)).toThrow(); } finally { chmodSync(directory, 0o700); }
   expect(existsSync(store)).toBe(true);
   expect(existsSync(join(store, '.boot-lease-guard'))).toBe(false);
   // A dead owner's incomplete store is retained under the guard, which is released afterwards.

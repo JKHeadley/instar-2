@@ -249,8 +249,9 @@ export function retainIncompleteBoot(storageRoot: string, checkpointPath: string
     }
     let ordinal = 1;
     while (existsSync(`${storageRoot}-incomplete-boot-${ordinal}`)) ordinal += 1;
-    retained = `${storageRoot}-incomplete-boot-${ordinal}`;
-    renameSync(storageRoot, retained);
+    const target = `${storageRoot}-incomplete-boot-${ordinal}`;
+    renameSync(storageRoot, target);
+    retained = target; // set only after a successful rename, so a failed rename releases the guard in place
     return retained;
   } finally { rmdirSync(join(retained ?? storageRoot, '.boot-lease-guard')); }
 }
