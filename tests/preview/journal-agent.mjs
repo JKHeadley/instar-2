@@ -12,6 +12,7 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -48,13 +49,18 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 const delay = ms => new Promise(done => setTimeout(done, ms));
-/** The exact sources every live turn carries; shared by run and the read-only inspect probe. */
-const turnSources = (root, options, view) => {
+/** The exact sources every live turn carries; shared by run and the read-only inspect probe.
+ * The self-state is recomputed at each turn from the journal and the run log; the desk's
+ * report (optional) covers only other work. */
+const turnSources = (root, options, view, runs, current) => {
   const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
-  return () => [...sources, deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
+  return () => [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current)),
+    deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
 };
+/** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
+const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0 });
@@ -69,6 +75,8 @@ async function main() {
   const stopPath = join(root, 'preview-stop.json');
   const journalPath = join(root, 'journal.encrypted');
   const importPath = join(root, 'preview-import.json');
+  const runsPath = join(root, 'runs.jsonl');
+  timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
     throw Error('preview: import marker malformed');
@@ -99,7 +107,9 @@ async function main() {
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null })),
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
-      people: [...new Set(view.view.people.map(note => note.name))] })}\n`); }
+      people: [...new Set(view.view.people.map(note => note.name))],
+      launches: readRuns(runsPath).launches.slice(-3),
+      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
     finally { view.close(); }
     return;
   }
@@ -112,7 +122,7 @@ async function main() {
       let next;
       if (options.text !== undefined) {
         const refuse = () => { throw Error('preview: inspect never calls or sends'); };
-        const probe = createJournalWorker(view, { now: Date.now, stopped: () => true, sources: turnSources(root, options, view.view),
+        const probe = createJournalWorker(view, { now: Date.now, stopped: () => true, sources: turnSources(root, options, view.view, () => readRuns(runsPath)),
           prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, Date.now()),
           model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
@@ -145,9 +155,9 @@ async function main() {
     } finally { capJournal?.close(); storage.close(); }
     return;
   }
-  let journal, worker, signalled = false;
+  let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
   const workerStop = { value: false };
-  const signal = () => { signalled = true; workerStop.value = true; };
+  const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
   try {
     const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
@@ -178,7 +188,7 @@ async function main() {
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now());
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
-      sources: turnSources(root, options, journal.view),
+      sources: turnSources(root, options, journal.view, () => runs, launchedAt ?? undefined),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
@@ -226,10 +236,14 @@ async function main() {
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
+    // The run log is durable before the first poll; the self-state reads it from memory each turn.
+    launchedAt = Date.now();
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid });
+    runs = readRuns(runsPath);
     let failedPolls = 0;
     const pollFailure = async () => {
       failedPolls++;
-      if (failedPolls >= 20) return false;
+      if (failedPolls >= 20) { endReason = 'Telegram polling failed 20 times in a row'; return false; }
       const until = Date.now() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
       while (!workerStop.value && !existsSync(stopPath) && Date.now() < until)
         await delay(Math.min(100, until - Date.now()));
@@ -245,7 +259,11 @@ async function main() {
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
-      try { worker.pollGate(); } catch { break; }
+      try { worker.pollGate(); } catch {
+        const v = journal.view;
+        endReason = `${v.order.length >= v.limits.maxTurns ? 'update' : v.calls >= v.limits.maxCalls ? 'model attempt' : 'reply'} cap reached`;
+        break;
+      }
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       let result;
       try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
@@ -262,6 +280,7 @@ async function main() {
       worker.intake(updates.result); await worker.drain(); summarizeLater();
     }
     await summaryJob;
+    endReason ??= 'cycle limit reached';
     function modelRoute() {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       const policy = subscriptionConversationPolicy(options.model);
@@ -279,7 +298,13 @@ async function main() {
         adapterEvidenceContract: contract }));
     }
   } catch (error) { if (!signalled) throw error; }
-  finally { journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
+  finally {
+    if (launchedAt !== null) {
+      const reason = signalName ? `paused by signal ${signalName}` : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched'
+        : journal && Date.now() >= journal.view.genesis.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
+      try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: Date.now(), reason }); } catch { /* the next launch reports an unrecorded end */ }
+    }
+    journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
 }
 
 try { await main(); } catch { process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }

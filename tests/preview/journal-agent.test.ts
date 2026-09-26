@@ -68,6 +68,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         encoding:'utf8',timeout:10000});
     expect(status.status).toBe(0);
     expect(JSON.parse(status.stdout).stop).toBeNull();
+    expect(JSON.parse(status.stdout).launches).toMatchObject([{ reason: `paused by signal ${signal}` }]);
     expect(existsSync(join(root,'preview-stop.json'))).toBe(false);
     writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:Number(world.configuration.chatId),type:'private'},
       from:{id:Number(world.configuration.operatorSenderId)},text:'Please answer after restart.'}}]));
