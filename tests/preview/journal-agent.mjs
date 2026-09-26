@@ -57,7 +57,7 @@ const turnSources = (root, options, view) => {
 };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
-  people: packet.people ?? [], recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0 });
+  people: packet.people ?? [], commitments: packet.commitments ?? [], recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0 });
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
 async function main() {
@@ -97,7 +97,9 @@ async function main() {
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
-      summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null })),
+      summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
+        commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0 })),
+      commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
       people: [...new Set(view.view.people.map(note => note.name))] })}\n`); }
     finally { view.close(); }
