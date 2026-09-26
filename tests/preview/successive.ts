@@ -614,4 +614,3 @@ function bindConfiguredConversation(built, route, principalId) {
     body: { ...original.body, channel: route.channel, sender: route.sender, identityEpoch: route.identityEpoch,
       principalId, grantId: grant.id } }, context, createFactStore(context, built.storage.segment), privateKey)).fact;
 }
-
