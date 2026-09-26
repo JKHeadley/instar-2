@@ -129,7 +129,8 @@ activationReference, managedConfigurationDigest
 All three directories must be canonical, private mode 0700, owned by the host user, distinct and
 outside the repository and ordinary home; workingDirectory is empty. `executable` is its canonical
 regular-file path and `artifact` is its SHA-256. The physical host's `inspectSubscriptionProfile`
-computes the directory-identity and supported managed-configuration digests. It reads no token or
+computes the directory-identity (canonical path plus inode per directory; the device number is excluded
+because macOS renumbers it across a reboot) and supported managed-configuration digests. It reads no token or
 Keychain bytes. Managed helpers/unknown settings, MDM policy and cached remote/server policy
 (including orphan signature companions) are holds. The pinned 2.1.280 auth parser requires exact
 account/organization/plan/profile and claude.ai first-party auth; unexpected status shapes refuse.
@@ -484,3 +485,27 @@ machine: turn 1 about 80 s; later turns grow with the retained store.
 Focused offline evidence: `tests/preview/successive.test.ts` (with `successive-fixture.ts`). It
 substitutes only the Telegram Bot API and the subscription CLI, and runs restarts as fresh child
 processes.
+
+### Profile identity re-record (one use, desk-supervised)
+
+A profile recorded before the identity dropped the device number no longer matches its unchanged
+directories, and every provider call refuses (`subscription profile or managed configuration changed`).
+`tests/preview/rerecord-profile.ts` re-derives `loginProfileIdentity` from the live directories and
+rewrites exactly the digests that bind it: the profile's `loginProfileIdentity`, the activation's
+`profileDigest` and the successive sidecar's `activationDigest` (`policyDigest` is re-derived and must be
+unchanged). Every other field must be byte-for-byte identical in value. It refuses while any preview
+process or storage writer is live, while Six's serving view shows a pending provider attempt or its error
+breaker, while the trial is stopped, held or expired, when the recorded profile→activation→sidecar chain is
+inconsistent, when the managed-configuration digest changed, or when the identity is already current.
+Superseded files are renamed with the suffix `.superseded-dev-identity`; an exclusive audit record
+`.preview-profile-rerecord-<trial-hash>.json` beside the root lists every changed field (from/to), the
+reason, the recorder and the serving counts, and makes a second use refuse. Input JSON:
+`{"root","profilePath","activationPath","model","reason","recordedBy"}`; the storage key comes from the
+same environment SecretRef as the launcher and is used read-only, never printed:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/rerecord-profile.mjs /ABSOLUTE/rerecord-input.json
+```
+
+Provider source/terminal contract evidence is keyed by the exact contract digest, so a re-recorded
+contract gets its own evidence row instead of reusing one that states the superseded identity.

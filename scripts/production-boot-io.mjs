@@ -120,6 +120,16 @@ export function createProductionNativeContextIO(captures) {
 }
 
 
+/** Directory identity of a subscription login profile: canonical path plus
+ * inode. The device number is deliberately excluded: macOS renumbers st_dev
+ * across a reboot for the same unchanged volume, so a dev-bound identity
+ * refused every provider call after a restart. A replaced or recreated
+ * directory still receives a new inode and changes the identity. */
+export function subscriptionProfileIdentity(bindings) {
+  const rows = bindings.map(({ path, ino }) => ({ path, ino }));
+  return `sha256:${createHash('sha256').update(JSON.stringify(rows)).digest('hex')}`;
+}
+
 /** Preview-only provider host. No secret file or Keychain contents are read here. */
 export function createSubscriptionProviderIO({ repository, stopped }) {
   const outside = (path, root) => { const suffix = relative(root, path);
@@ -133,7 +143,7 @@ export function createSubscriptionProviderIO({ repository, stopped }) {
       if (realpathSync(path) !== path || !info.isDirectory() || (info.mode & 0o777) !== 0o700
         || info.uid !== process.getuid() || !outside(path, repository) || !outside(path, homedir()))
         throw Error('subscription profile path refused');
-      bindings.push({ path, dev: info.dev, ino: info.ino });
+      bindings.push({ path, ino: info.ino });
     }
     if (new Set(bindings.map(row => row.path)).size !== 3 || readdirSync(profile.workingDirectory).length)
       throw Error('subscription working directory is not isolated and empty');
@@ -173,7 +183,7 @@ export function createSubscriptionProviderIO({ repository, stopped }) {
     if (readdirSync(profile.configDirectory).some(name =>
       name.startsWith('policy-limits.json') || name.startsWith('remote-settings')))
       throw Error('subscription server policy requires reviewed effective configuration');
-    return Object.freeze({ loginProfileIdentity: digest(bindings), managedConfigurationDigest: digest(policy) });
+    return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings), managedConfigurationDigest: digest(policy) });
   };
   return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile,
     execute: input => productionProviderIO.execute({ ...input, stopped }) });

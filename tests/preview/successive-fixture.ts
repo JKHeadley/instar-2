@@ -115,8 +115,8 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
       text: body.text.replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&') });
   } };
   const io = { ...productionProviderIO, realpath: (p: string) => p, executableBytes: () => artifactBytes,
-    inspectSubscriptionProfile: () => ({ loginProfileIdentity: offlineProfile.loginProfileIdentity,
-      managedConfigurationDigest: offlineProfile.managedConfigurationDigest }),
+    inspectSubscriptionProfile: profile => ({ loginProfileIdentity: profile.loginProfileIdentity,
+      managedConfigurationDigest: profile.managedConfigurationDigest }),
     execute: async command => {
       let text;
       if (command.args[0] === '--version') text = '2.1.280 (Claude Code)';
@@ -153,7 +153,8 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
     const outerState = state();
     return createSuccessiveComposition({ configuration: { ...base, root }, state: outerState, root,
       storageKey: OFFLINE_STORAGE_KEY, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
-      telegramIO: () => options.telegramIO?.(telegramIO) ?? telegramIO, provider: { activation: activation(outerState.read()), profile: offlineProfile, model, io,
+      telegramIO: () => options.telegramIO?.(telegramIO) ?? telegramIO, provider: {
+        activation: options.activation ?? activation(outerState.read()), profile: options.profile ?? offlineProfile, model, io,
         active: options.active ?? (() => true) },
       now: () => read().clock, stopped: () => outerState.read().stop !== null,
       readSource: path => readFileSync(join(process.cwd(), path), 'utf8'), limits: options.limits,
@@ -161,6 +162,6 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
   };
   /** Driver backoff advances the shared world clock, never real time. */
   const sleep = async (milliseconds: number) => { const world = read(); write({ ...world, clock: world.clock + milliseconds }); };
-  return { directory, source, root, say, answer, state, compose, sleep, telegram: () => rows('telegram'),
+  return { directory, source, root, model, say, answer, state, compose, sleep, activation: () => activation(state().read()), telegram: () => rows('telegram'),
     models: () => rows('model'), sends: () => rows('telegram').filter(row => row.method === 'sendMessage') };
 }

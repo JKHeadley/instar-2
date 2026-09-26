@@ -82,8 +82,11 @@ export function stage2RouteFactory(input: {
       provider: 'anthropic', model: input.model, route: STAGE2_ROUTE };
     const terminal = { version: a.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] };
+    // The id names the exact contract value, so a re-recorded profile or activation
+    // gets its own evidence row instead of reusing one that states the old contract.
     const record = (predicate: string, value: unknown) => evidence(a.reference, encoded(value).hash, predicate, undefined,
-      { strength: 'attestation', claim: { subject: a.reference, predicate, value } }).id;
+      { id: `proof:${predicate}:${a.reference}:${encoded(value).hash}`, strength: 'attestation',
+        claim: { subject: a.reference, predicate, value } }).id;
     const sourceEvidence = record('provider-response-source-contract', source);
     const terminalEvidence = record('provider-response-terminal-contract', terminal);
     const result = createClaudeCodeSubscriptionRoute({ ...input, io: { ...input.io, execute: command => {
