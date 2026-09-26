@@ -109,3 +109,11 @@ it('grounds a later pronoun question in an early summarized turn across a restar
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('keeps content words that also name a time, so a title or band name is still recalled', () => {
+  const candidates = [filler(0), { text: 'Night by Elie Wiesel is the book I chose for our reading group. noted', at: now - 9 * day },
+    { text: 'Thursday is the band playing the club on Friday. noted', at: now - 9 * day }, filler(3)];
+  expect(wordMatch('What did I say about Night?', candidates)).toContain(1);
+  expect(selectRecall({ message: 'What did I say about Night?', candidates, now, limit: 5 })).toEqual([1]);
+  expect(selectRecall({ message: 'What did I say about Thursday?', candidates, now, limit: 5 })).toEqual([2]);
+});

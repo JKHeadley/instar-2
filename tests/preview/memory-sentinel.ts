@@ -27,9 +27,6 @@ export interface SentinelInput {
 const hour = 3_600_000, day = 24 * hour;
 const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const counts: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 };
-/** Words that only name a time; they select a window and are not content terms. */
-const temporal = new Set(['today', 'tonight', 'morning', 'yesterday', 'night', 'last', 'week', 'day', 'days',
-  'this', 'ago', ...weekdays, ...Object.keys(counts)].map(word => terms(word)[0] ?? word));
 
 /** A window of send times named by the message. The operator's time zone is not
  * known, so every window is widened by at least half a day either side. */
@@ -61,7 +58,9 @@ function bridge(summary: string | undefined, query: ReadonlySet<string>): string
 /** Indices into `candidates`, best first, at most `limit`; empty when nothing relates. */
 export function selectRecall(input: SentinelInput): number[] {
   if (!input.candidates.length || input.limit <= 0) return [];
-  const message = terms(input.message).filter(word => !temporal.has(word));
+  // Every message term is kept: a word that names a time may also be content
+  // ("Night" the book, "Thursday" the band), so a named day only adds a boost.
+  const message = terms(input.message);
   const window = namedWindow(input.message, input.now);
   const documents = input.candidates.map(turn => terms(turn.text));
   const score = new Array<number>(documents.length).fill(0);
