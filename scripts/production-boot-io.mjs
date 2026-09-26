@@ -66,13 +66,14 @@ export const productionProviderIO = Object.freeze({
 
 /** Unit 3 owns scanning and sealed identity capture. Transfer its private exact
  * original into encrypted root custody before removing the temporary original. */
-export function createProductionTelegramIO(root, captures) {
+export function createProductionTelegramIO(root, captures, testEndpoint = null) {
   const directory = join(root, '.telegram-sealed');
   mkdirSync(directory, { mode: 0o700, recursive: true });
   if (realpathSync(directory) !== directory) throw Error('telegram: sealed capture path substituted');
   return Object.freeze({ invoke(input, credential) {
     const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs,
-      captureDirectory: directory, identityBinding: input.identityBinding })).toString('base64url');
+      captureDirectory: directory, identityBinding: input.identityBinding,
+      ...(testEndpoint === null ? {} : { testEndpoint }) })).toString('base64url');
     const child = spawnSync(process.execPath,
       [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
       { input: credential, encoding: 'utf8', timeout: input.timeoutMs + 2000, maxBuffer: 2 * 1024 * 1024,

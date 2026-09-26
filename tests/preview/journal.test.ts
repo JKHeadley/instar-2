@@ -1,11 +1,14 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
+// The physical host is an ESM script; this test checks its runtime contract.
+// @ts-ignore no declaration for the host script
+import { createProductionTelegramIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 
 const key = new Uint8Array(32).fill(7);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-journal-')));
@@ -45,6 +48,35 @@ it('retains intake before advancing the cursor, deduplicates redelivery, and fen
     expect(readFileSync(join(root, 'journal.encrypted'), 'utf8')).not.toContain('question 10');
     second.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('retains an interrupted final frame separately and never accepts it as work', () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  try {
+    const first = world(root); first.worker.intake([update(1)]); first.journal.close();
+    appendFileSync(path, Buffer.from([0, 0]));
+    const recovered = openPreviewJournal(path, key);
+    expect(recovered.view.order).toHaveLength(1);
+    expect(existsSync(`${path}.torn-${readFileSync(path).length + 2}`)).toBe(true);
+    recovered.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('fsyncs the exact HTML body and expected visible text before dispatch', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let sent: {text:string;expectedText:string} | undefined;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => '<&>', checkOutbound: () => {},
+      send: async input => { sent = input; return 5; } });
+    worker.intake([update(1)]); await worker.drain();
+    expect(sent?.text).toBe('PREVIEW — &lt;&amp;&gt;');
+    expect(sent?.expectedText).toBe('PREVIEW — <&>');
+    expect(journal.view.order[0]?.intentBody).toBe(sent?.text);
+    expect(journal.view.order[0]?.sent).toBe(5);
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
 it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'before:answer', 'after:answer',
@@ -150,4 +182,62 @@ it('refuses a second writer through the reused production lease', () => {
     expect(openProductionStorage(input)).toMatchObject({kind:'Refused'});
     if (first.kind === 'Success') first.value.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('latches operator stop while the exclusive writer is held', () => {
+  const root = origin();
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+  const context = { site: 'preview.journal', preserved: 'preview:test', register: {
+    generation: { owner: 'part-three' as const, name: 'RegisterGeneration' as const, id: 'preview:register' },
+    entries: ['preview.journal'], sites: { 'preview.journal': 'closed' as const } } };
+  const lease = openProductionStorage({ root: join(root, '.writer'), machine: 'preview-local-machine', key,
+    policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO });
+  try {
+    expect(lease.kind).toBe('Success');
+    const stop = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'stop', '--root', root],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 10000 });
+    expect(stop.status).toBe(0);
+    expect(JSON.parse(readFileSync(join(root, 'preview-stop.json'), 'utf8')).reason).toBe('operator');
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout).stop.reason).toBe('operator');
+  } finally {
+    journal.close(); if (lease.kind === 'Success') lease.value.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('physical Telegram bridge fences a send accepted by a fake endpoint that drops its response', async () => {
+  const root = origin(), log = join(root, 'endpoint.jsonl');
+  const server = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-fake-endpoint.mjs'), log],
+    { stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const port = await new Promise<number>((done, fail) => {
+      server.stdout.once('data', data => done(Number(String(data).trim()))); server.once('error', fail);
+    });
+    const physical = createProductionTelegramIO(root, { preserve: () => true, read: () => null }, `http://127.0.0.1:${port}`);
+    const token = '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    const secretAttempt = physical.invoke({ token: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: 'telegram-bot-token' },
+      method: 'sendMessage', body: { chat_id: '7654321', text: token, parse_mode: 'HTML' }, timeoutMs: 1000 }, token);
+    expect(secretAttempt).toMatchObject({kind:'uncertain',stage:'scan-policy'});
+    const first = world(root, { send: () => {
+      const result = physical.invoke({ token: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: 'telegram-bot-token' },
+        method: 'sendMessage', body: { chat_id: '7654321', text: 'PREVIEW — answer question 1', parse_mode: 'HTML' },
+        timeoutMs: 1000 }, token);
+      expect(result.kind).toBe('uncertain'); return null;
+    } });
+    first.worker.intake([update(1)]); await first.worker.drain(); first.journal.close();
+    const second = world(root); second.worker.intake([update(1), update(2)]); await second.worker.drain();
+    expect(second.sends).toBe(1);
+    const accepted = readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0].path).toContain('/sendMessage');
+    expect(second.journal.view.order[0]?.sent).toBeUndefined();
+    expect(second.journal.view.order[1]?.sent).toBe(1);
+    second.journal.close();
+  } finally { server.kill('SIGTERM'); rmSync(root, { recursive: true, force: true }); }
 });

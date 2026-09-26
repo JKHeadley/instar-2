@@ -26,6 +26,12 @@ let request;
 try { request = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')); }
 catch { process.exit(2); }
 const token = readFileSync(0, 'utf8');
+// Offline transport contract only. A real credential can never be redirected.
+const TEST_TOKEN = '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+const testEndpoint = request?.testEndpoint;
+const testMatch = typeof testEndpoint === 'string' ? /^http:\/\/127\.0\.0\.1:(\d{1,5})$/.exec(testEndpoint) : null;
+if (testEndpoint !== undefined && (token !== TEST_TOKEN || !testMatch
+  || Number(testMatch[1]) < 1 || Number(testMatch[1]) > 65535)) process.exit(2);
 const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage';
 const identityRequestPresent = request?.method !== 'getMe' || (
   typeof request.captureDirectory === 'string' && request.captureDirectory.length > 0
@@ -287,7 +293,7 @@ function sealIdentity(bytes, directory) {
 
 let provider;
 try {
-  provider = await fetch(`https://api.telegram.org/bot${token}/${request.method}`, {
+  provider = await fetch(`${testEndpoint ?? 'https://api.telegram.org'}/bot${token}/${request.method}`, {
     method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request.body), signal: AbortSignal.timeout(request.timeoutMs),
   });
