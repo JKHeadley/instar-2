@@ -749,3 +749,43 @@ bridge against a fake endpoint, uses the real subscription adapter with an
 immediate model substitute, builds the launcher prompt, times restarts, and checks
 early recall. Its limit is 80 model attempts and 60 replies; the live launcher
 limits remain 16/16/20. The worker-only measurement remains separately reported.
+
+### Coherence check after each reply
+
+After a reply is sent (or its send is UNKNOWN, since it may have reached the
+operator), `coherence-check.ts` reads it once against a short, explicit list of
+rules from `docs/01-the-rules.md` that a capped, tool-less preview can break in words:
+
+| Rule | What the check reads for |
+|---|---|
+| 84 Agent Awareness | a first-person claim of an action or tool the preview lacks ("I've scheduled", "I'll remind you", "I searched") |
+| 89 Truthful Provenance | direct speech given to a person the operator named ("Sam said…"), when only the operator's report of them exists |
+| 96 A Session Grounds in Its Full History | "you told me…" with no earlier message, or a quote of the operator no earlier message contains |
+| 26 Verify the State, Not Its Symbol | delivery or reading stated as certain; the preview only knows Telegram API acceptance |
+| 106 A Link Handed to a Human Works | a localhost or machine-only path |
+
+Rules 4 and 100 (a live secret leaving) stay where they were: the outbound secret
+refusal holds a reply before it is sent. The check is deterministic, makes no model
+call and decides nothing (rule 86: a signal, never authority; rule 10: the model
+judges meaning). A model check was deliberately not added: the activation binds one
+model and system prompt, the attempt allowance is small, and the desk's retrospective
+review already judges patterns with the best model.
+
+The launcher runs the check after every drain, beside the rolling summary; a failure
+there never stops or delays a reply, and an unchecked reply is simply checked after
+the next drain. Each checked reply gets one `coherence` journal record, clean or not
+(at most three findings, each with a redacted excerpt of 90 characters or fewer), so
+findings and the pending note replay from the journal after restart; no other store
+is added. The next model call's packet carries `corrections` (the newest three flagged
+replies, with dates and conversation labels) and a capability sentence telling the
+model these are pattern signals: correct itself briefly if one is real, say nothing if
+the check misread. A note is carried once: the next reserved model call clears it. A
+held turn does not. On a journal written before this change, the first run checks every
+earlier reply, so the next packet may carry notes about the newest three old flagged replies.
+
+`status` reports `coherence: { checked, unchecked, failed, pendingCorrections,
+findings: [{ update, rules }] }`; `inspect` shows the persisted prompt's `corrections`
+(dates, rule numbers and problems). Offline cost (`coherence-check.test.ts`, 120
+turns): the check itself p95 about 9 ms after the reply, mostly its one fsync; the
+reply path gains only the note's bytes in the packet (p95 drain 32 ms without, 36 ms
+with a note carried on every turn, within noise).

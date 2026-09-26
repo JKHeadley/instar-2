@@ -82,7 +82,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:1,replies:1,unknownCalls:0,unknownSends:0});
+        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:1,replies:1,unknownCalls:0,unknownSends:0,
+          coherence:{checked:1,unchecked:0,failed:0,pendingCorrections:0,findings:[]}});
     const stop = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],
       {cwd:process.cwd(),encoding:'utf8',timeout:10000});
@@ -153,6 +154,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       text:'PREVIEW — Your sister is Wren; you told me in the main chat.'});
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:2,unknownCalls:0,unknownSends:unknown});
+      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:2,unknownCalls:0,unknownSends:unknown,
+        coherence:{checked:2,unchecked:0,failed:0}});
   } finally { endpoint.kill('SIGTERM'); }
 },30000);
