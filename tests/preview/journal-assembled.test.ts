@@ -9,7 +9,7 @@ import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { openPreviewJournal, createJournalWorker } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SOURCE_PINS, sourcePacket } from './briefing.js';
+import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { offlineProfile, OFFLINE_STORAGE_KEY, successiveWorld } from './successive-fixture.js';
 
 it('measures 60 assembled journal turns with real adapters, polling, prompt construction and timed restarts', async () => {
@@ -40,7 +40,7 @@ it('measures 60 assembled journal turns with real adapters, polling, prompt cons
       sourceEvidence:[activation.reference],terminalEvidence:activation.reference,terminalReasonField:'subtype',
       successfulFinalReplyReasons:['success'],strength:'attestation',maxMetadataBytes:policy.maxMetadataBytes,
       maxRawTerminalBytes:policy.maxRawTerminalBytes,maxCaptureBytes:policy.maxCaptureBytes};
-    let substitutes = 0, substituteMs = 0, recalled = false;
+    let substitutes = 0, substituteMs = 0, recalled = false, deskSeen = 0;
     const io = {realpath:path=>path,executableBytes:()=>Buffer.from('offline executable bytes'),
       inspectSubscriptionProfile:profile=>({loginProfileIdentity:profile.loginProfileIdentity,
         managedConfigurationDigest:profile.managedConfigurationDigest}),
@@ -53,6 +53,7 @@ it('measures 60 assembled journal turns with real adapters, polling, prompt cons
           orgId:offlineProfile.organization,orgName:'Offline',subscriptionType:'max'});
         else {
           substitutes++;
+          if(command.stdin.includes('Lane preview-awareness: building.')) deskSeen++;
           if(command.stdin.includes('What was the first unique memory?')) recalled=command.stdin.includes('ORCHID');
           const binding=JSON.parse(JSON.parse(command.stdin).messages[1].content).bindings;
           const decision={type:'Decision',schemaVersion:1,id:`offline-${substitutes}`,at:binding.at,by:binding.by,
@@ -84,10 +85,12 @@ it('measures 60 assembled journal turns with real adapters, polling, prompt cons
       maxCalls:80,maxReplies:60,maxTurns:60,maxBytes:32768,cursor:0};
     const sources=sourcePacket(path=>readFileSync(join(process.cwd(),path),'utf8'),SOURCE_PINS,
       {providerAttempts:g.maxCalls,expiresAt:g.expires}).sources;
+    const deskStatus=join(root,'desk-status.md');
+    writeFileSync(deskStatus,'# Instar 2.0 desk report\nLane preview-awareness: building.\n');
     const create=()=>{
       journal=openPreviewJournal(join(root,'journal.encrypted'),OFFLINE_STORAGE_KEY,g);
       return createJournalWorker(journal,{now:()=>now,stopped:()=>false,
-        sources,
+        sources:()=>[...sources,deskStatusSource(readDeskStatus(deskStatus),now,deskStatus)],
         prepareModel:input=>prepareJournalEnvelope(input,fixture.model,g.grant,now),
         model:async({id,prepared})=>{
           const result=await route.value.invoke(prepared,{operation:id,deadline:now+180000,
@@ -119,6 +122,7 @@ it('measures 60 assembled journal turns with real adapters, polling, prompt cons
     const p95=values=>values.slice().sort((a,b)=>a-b)[Math.ceil(values.length*.95)-1];
     expect(substitutes).toBe(60);
     expect(recalled).toBe(true);
+    expect(deskSeen).toBe(substitutes); // the desk report reaches every real model prompt
     expect(journal.view.calls).toBe(60);
     expect(journal.view.replies).toBe(60);
     expect(journal.view.order.every(turn=>turn.sent)).toBe(true);

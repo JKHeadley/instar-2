@@ -165,6 +165,7 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: { update
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Static sources, or a function read at each turn (for the desk's report). */
   sources?: unknown;
   prepareModel?(input: { question: string; context: string; id: string }): string;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {text:string;
@@ -212,10 +213,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       outcome: item.sent ? 'Telegram API accepted' : item.intent ? 'delivery UNKNOWN'
         : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending' }));
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
-      capability: 'Private, capped preview; answer only, no tools or other actions. If summary is present, it covers earlier turns and history contains only turns after it.',
+      capability: 'Private, capped preview; answer only, no tools or other actions. Memory is this trial\'s journal only. If summary is present, it covers earlier turns and history contains only turns after it.',
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
         operator: journal.view.genesis.operator },
-      ...(ports.sources === undefined ? {} : { sources: ports.sources }),
+      ...(ports.sources === undefined ? {} : { sources: typeof ports.sources === 'function' ? ports.sources() : ports.sources }),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { through: summary.through, text: redact(summary.text).text } }
         : { historyMode: 'complete' }), history });
     return packet;

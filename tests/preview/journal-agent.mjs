@@ -10,7 +10,7 @@ import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SOURCE_PINS, sourcePacket } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, PREVIEW_LIVE_LIMITS } from './journal.js';
 
 const parse = values => {
@@ -107,8 +107,9 @@ async function main() {
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now());
     const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
       { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
+    const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
-      sources,
+      sources: () => [...sources, deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)],
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
