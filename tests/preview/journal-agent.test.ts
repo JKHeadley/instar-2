@@ -19,8 +19,10 @@ it.each(['SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and re
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const binding=JSON.parse(JSON.parse(prepared).messages[1].content).bindings;
+  const review=JSON.parse(prepared).messages[0].content.startsWith('Judge this proposed reply');
   const decision={type:'Decision',schemaVersion:1,id:'resumed-answer',at:binding.at,by:binding.by,
-    conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value:'Resumed answer.',evidence:binding.evidence},
+    conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value:review
+      ? JSON.stringify({verdict:'pass',ruleIds:[],reason:'The reply stays within the rules.'}) : 'Resumed answer.',evidence:binding.evidence},
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
     floor:{allowed:binding.floor,chosen:binding.floor.default}};
   return {state:'complete',bytes:JSON.stringify(decision),usage:{inputTokens:1,outputTokens:1}};
@@ -82,7 +84,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:1,replies:1,unknownCalls:0,unknownSends:0});
+        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:0,unknownSends:0});
     const stop = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],
       {cwd:process.cwd(),encoding:'utf8',timeout:10000});
@@ -114,7 +116,9 @@ it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic fr
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const context=envelope.messages[1].content, asked=envelope.messages[0].content;
-  const value=asked.includes('What is my sister') ? (context.includes('Wren') && context.includes('main chat')
+  const value=asked.startsWith('Judge this proposed reply')
+    ? JSON.stringify({verdict:'pass',ruleIds:[],reason:'The reply stays within the rules.'})
+    : asked.includes('What is my sister') ? (context.includes('Wren') && context.includes('main chat')
     ? 'Your sister is Wren; you told me in the main chat.' : 'I do not know.') : 'Noted.';
   const decision={type:'Decision',schemaVersion:1,id:'topic-answer',at:binding.at,by:binding.by,
     conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value,evidence:binding.evidence},
@@ -153,6 +157,6 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       text:'PREVIEW — Your sister is Wren; you told me in the main chat.'});
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:2,unknownCalls:0,unknownSends:unknown});
+      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:0,unknownSends:unknown});
   } finally { endpoint.kill('SIGTERM'); }
 },30000);
