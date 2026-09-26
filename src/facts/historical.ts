@@ -2,7 +2,8 @@
 import { readHistorical } from '../index.js';
 import type { ConstitutionalValue, DecodeContext, HistoricalRead, Json, Result, StandingGrant, Revocation } from '../index.js';
 import { boundary, encoding, fields, frozen, object, requireFact, same, string, take } from './boundary.js';
-import { causalCone, causalStanding, migrateBody } from './admission.js';
+import { causalCone, causalIndex, causalStanding, migrateBody } from './admission.js';
+import type { CausalIndex } from './admission.js';
 import { decodeFrame, hashBytes, schemaFor } from './envelope.js';
 import { snapshot } from '../decode/canonical.js';
 import { contextBoundary } from './contracts.js';
@@ -22,7 +23,13 @@ type DecodedBody = { fingerprint: string; owners: FactContext['ownedBodies']; mi
 // envelope's complete current canonical bytes EQUAL the bytes that were decoded — byte equality,
 // never identity or an asserted id, establishes that it is the same signed envelope.
 const decodedByContent = new Map<string, DecodedBody & { envelope: string }>();
-
+// One operation's shared, read-only view of one context: its causal index and, computed at most
+// once, the encoding of its decode tables. Built by the operation that owns the context; never
+// kept past it.
+export interface HistoricalScope {
+  readonly context: FactContext; readonly index: CausalIndex; tables?: string;
+  positions?: { readonly grants: ReadonlyMap<object, number>; readonly revocations: ReadonlyMap<object, number> };
+}
 // GRANT M3-E: the memo fingerprint keeps the exact canonical bytes of its composite input, but a
 // component object that is runtime-verified deep-frozen (and so can never change) is encoded once
 // and reused by identity. Everything mutable is still walked and encoded on every read, with the
@@ -112,29 +119,52 @@ function captureTable(table: unknown): unknown {
   }
   return out;
 }
+export function historicalScope(context: FactContext): HistoricalScope { return { context, index: causalIndex(context.facts) }; }
 export function historicalAuthority(context: FactContext): FactContext {
   const historicalGrants = [...context.historicalGrants ?? []], historicalRevocations = [...context.historicalRevocations ?? []];
   const c = { ...context, historicalGrants, historicalRevocations };
-  for (const fact of [...context.facts].sort((a, b) => causalCone(a, context.facts).length - causalCone(b, context.facts).length)) {
+  // Occam cut #4: the same stable history-size order (an ancestor always precedes its
+  // descendant), with each size read by position once instead of walking two cones per
+  // comparison. When some history can only be walked, the original comparator runs, with its refusals.
+  const scope = historicalScope(c), index = scope.index;
+  const ordered = context.facts.length < 2 || context.facts.every(f => index.frontierOf(f))
+    ? context.facts.map(f => ({ f, n: index.coneSize(f) ?? 0 })).sort((a, b) => a.n - b.n).map(r => r.f)
+    : [...context.facts].sort((a, b) => causalCone(a, context.facts).length - causalCone(b, context.facts).length);
+  for (const fact of ordered) {
     const schema = schemaFor(c, fact.kind, fact.schemaVersion);
     if (!Object.values(schema.fields).some(f => f.kind === 'constitutional' && ['StandingGrant', 'Revocation'].includes(f.type))) continue;
-    const body = take(decodeHistoricalBody(fact, c, causalStanding(fact, c, false).decode));
+    const body = take(decodeHistoricalBody(fact, c, causalStanding(fact, c, false, index).decode, scope));
     historicalGrants.push(...body.grants.map(grant => ({ factId: fact.id, grant })));
     historicalRevocations.push(...body.revocations.map(revocation => ({ factId: fact.id, revocation })));
   }
   return c;
 }
-export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, decoderContext: DecodeContext): Result<HistoricalBody> {
+export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, decoderContext: DecodeContext, operation?: HistoricalScope): Result<HistoricalBody> {
   return boundary('HistoricalFactBody', fact.body, contextBoundary(context), () => {
     const cache = new Map<string, HistoricalBody>();
     const issued = new Map<string, readonly HistoricalRead<ConstitutionalValue>[]>();
+    // Occam cut #5: the memo key is the fact (id + exact bytes below) plus the context, encoded at
+    // most once per operation, plus the history's identity: its chain-head contentHashes where the
+    // index can answer by position, else the full contentHash list the walk yields (as before).
+    const scope = operation?.context === context ? operation : historicalScope(context), causal = scope.index;
+    const shared = (c: DecodeContext) => c.register === context.decode.register && c.captures === context.decode.captures
+      && c.currentBase === context.decode.currentBase && c.artifact === context.decode.artifact && c.recordSubjects === context.decode.recordSubjects;
+    const tables = (c: DecodeContext) => memoFingerprint({ register: c.register, captures: captureTable(c.captures), captureStatuses: captureTable(context.captures), schemas: context.schemas,
+      currentBase: c.currentBase ?? null, artifact: c.artifact ?? null, subjects: c.recordSubjects ?? {}, keys: context.keys,
+      grants: context.grants, revocations: context.revocations });
+    // A decode context derived from this one carries the context's own grant/revocation objects:
+    // those are named by their position in the (encoded) tables; anything else is encoded in full.
+    const standing = (c: DecodeContext) => {
+      const at = scope.positions ??= { grants: new Map(context.grants.map((r, i) => [r.grant, i])), revocations: new Map(context.revocations.map((r, i) => [r.revocation, i])) };
+      const grants = (c.grants ?? []).map(g => at.grants.get(g)), revocations = (c.revocations ?? []).map(r => at.revocations.get(r));
+      return [...grants, ...revocations].every(i => i !== undefined) ? `at:${encoding({ now: c.now ?? null, grants, revocations }).hash}`
+        : `full:${encoding({ now: c.now ?? null, grants: c.grants ?? [], revocations: c.revocations ?? [] }).hash}`;
+    };
     const read = (record: FactEnvelope, c: DecodeContext): HistoricalBody => {
       const cached = cache.get(record.id); if (cached) return cached;
-      const fingerprint = memoFingerprint({ register: c.register, captures: captureTable(c.captures),
-        captureStatuses: captureTable(context.captures), schemas: context.schemas,
-        now: c.now ?? null, currentBase: c.currentBase ?? null, artifact: c.artifact ?? null, subjects: c.recordSubjects ?? {},
-        grants: c.grants ?? [], revocations: c.revocations ?? [], keys: context.keys,
-        cone: causalCone(record, context.facts).map(f => f.contentHash).sort() });
+      const heads = causal.coneHeads(record);
+      const fingerprint = hashBytes(`${shared(c) ? scope.tables ??= tables(c) : tables(c)}|${standing(c)}|${
+        heads ? `heads:${heads.join(',')}` : `cone:${causalCone(record, context.facts).map(f => f.contentHash).sort().join(',')}`}`);
       const byContent = decodedByContent.get(record.id);
       const reused = byContent?.envelope === encoding(record).bytes ? byContent : undefined;
       if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) {
@@ -142,7 +172,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       }
       const history: HistoricalRead<ConstitutionalValue>[] = [];
       for (const ancestor of causalCone(record, context.facts)) {
-        read(ancestor, causalStanding(ancestor, context, false).decode);
+        read(ancestor, causalStanding(ancestor, context, false, causal).decode);
         history.push(...issued.get(ancestor.id)!);
       }
       const checked = take(decodeFrame(record, context)), bytes = encoding(record).bytes, reference = `origin:${record.id}`;
