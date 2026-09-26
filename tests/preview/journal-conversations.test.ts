@@ -148,3 +148,25 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('gives the summarizer every turn\'s conversation and date, including the main chat, so the summary can keep where and when', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { initial: genesis({ maxBytes: 4096 }) });
+    for (let id = 1; id <= 40; id++) {
+      w.worker.intake([update(id, `Main chat fact number ${String(id)} about the garden plan.`, undefined, 1790000000 + id * 60)]);
+      await w.worker.drain(); await w.worker.summarizeIfNeeded();
+      if (w.seen.some(item => item.id.startsWith('summary:'))) break;
+    }
+    const input = w.seen.find(item => item.id.startsWith('summary:'));
+    expect(input).toBeDefined();
+    const packet = JSON.parse(input!.context);
+    expect(packet.history.length).toBeGreaterThan(0);
+    for (const item of packet.history) expect(item).toMatchObject({ conversation: 'main chat', date: expect.stringMatching(/^2026-09-21T/) });
+    expect(packet.capability).toContain('Every history item names the conversation');
+    // Ordinary reply packets keep their compact single-conversation form.
+    const reply = JSON.parse(w.seen.find(item => !item.id.startsWith('summary:'))!.context);
+    expect(reply.history.every((item: object) => !('conversation' in item))).toBe(true);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
