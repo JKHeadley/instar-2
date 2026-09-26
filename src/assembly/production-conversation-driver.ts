@@ -410,6 +410,13 @@ export async function runConversationDriver(application: ProductionApplication,
       await options.yieldBoundary();
     } catch (error) {
       if (durabilityFailed) throw new Error('conversation-driver: durable progress unavailable', { cause: error });
+      // A failure outside attempt() (for example a boundary callback) must not leave an
+      // open idle span to be closed later as success; attempt() already closed its own.
+      if (idleAttempt) {
+        const id = idleAttempt; idleAttempt = null;
+        try { durable(progress!.port.result(`result:${id}`, progress!.fence, id, 'error', '')); }
+        catch (closeError) { throw new Error('conversation-driver: durable progress unavailable', { cause: closeError }); }
+      }
       if (phase === 'POLL' && !progress) driver.noteError();
       const errors = driver.errors();
       const backoffMs = stopped() ? 0 : Math.min(options.maxBackoffMs,
