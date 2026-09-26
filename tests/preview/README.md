@@ -721,6 +721,29 @@ for the next reply. The journal and stop latch are deliberately machine-local.
 The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
 
+### One memory across conversations
+
+The runner serves every conversation in the operator's own private chat: the main
+chat and any Telegram topic in it (Bot API 9.3 private-chat topics,
+`message_thread_id`). Each is a conversation whose only audience is the verified
+operator, so no fact reaches anyone beyond the standing it came from. Anything
+elsewhere stays refused. That includes a group or a group forum topic, even one
+where the operator writes, and any other sender. Those updates are kept encrypted
+for diagnosis and never read.
+
+There is no second store. The one journal is the agent's memory: every intake
+records its topic (`thread`), and every packet carries the history of all
+conversations in update order. A turn from another conversation is labelled with
+its `conversation` ("main chat" or "topic N") and its Telegram date, and the
+audience names the conversation being answered. A single-conversation packet is
+byte-identical to before. Summaries and lexical recall already span the whole
+journal; a recalled turn from another conversation is labelled the same way.
+The send intent records the topic. The reply goes to that topic, and Telegram's
+result counts as a receipt only if it names that topic; otherwise the send is
+UNKNOWN and is never resent. Intake durability, update-ID deduplication, one stop,
+one attempt cap and one reply cap are shared by every conversation. Journals
+written before this change replay unchanged; their turns belong to the main chat.
+
 The offline 60-turn assembled-path regression polls through the real Telegram
 bridge against a fake endpoint, uses the real subscription adapter with an
 immediate model substitute, builds the launcher prompt, times restarts, and checks

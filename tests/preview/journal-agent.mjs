@@ -194,13 +194,15 @@ async function main() {
         return { text: decision.conclusion.value,
           usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
       },
-      send: async ({ text, expectedText, chat }) => {
+      send: async ({ text, expectedText, chat, thread }) => {
         if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
-          body: { chat_id: chat, text, parse_mode: 'HTML' }, timeoutMs: 30000 }, token());
+          body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }) },
+          timeoutMs: 30000 }, token());
         if (reply.kind !== 'response' || reply.status !== 200) return null;
         const payload = JSON.parse(reply.bytes);
         return payload.ok === true && String(payload.result?.chat?.id) === chat && payload.result?.text === expectedText
+          && (thread === undefined || payload.result?.message_thread_id === thread)
           && Number.isSafeInteger(payload.result?.message_id)
           ? payload.result.message_id : null;
       } });
