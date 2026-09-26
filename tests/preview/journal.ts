@@ -1,7 +1,7 @@
 /** The machine-local preview's only conversation and effect ledger. Records are
  * individually authenticated so replay reads the file once at boot; hot turns
  * append one frame and update only the in-memory projection. */
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { previewTurnId } from './state.js';
@@ -9,8 +9,8 @@ import { redact } from '../../src/recall/redact.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
 
-/** The launcher cannot raise these live limits. Offline harnesses instantiate
- * the worker directly with explicit finite bounds for longer latency trials. */
+/** Genesis starts with these live limits; an operator-referenced journal frame
+ * can later raise the finite counters without altering genesis or usage. */
 export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns: 20, contextBytes: 32768 });
 /** Most original turns recalled beside a summary; fewer are used when the prompt bound needs it. */
 export const PREVIEW_RECALL_LIMIT = 5;
@@ -24,6 +24,7 @@ export type JournalRecord =
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
+  | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; authority: string; at: number }
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
@@ -34,15 +35,40 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reserved: boolean; prompt?: string; intent?: string; intentBody?: string; sent?: number; held?: string }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
+  limits: { maxCalls: number; maxReplies: number; maxTurns: number }; capAuthority: string | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; sourceStop: string | null; imported: boolean }
 
 const frameLimit = 2 * 1024 * 1024;
+const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
+const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns });
+function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
+  if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
+    || !Number.isSafeInteger(row.at) || row.at <= 0 || typeof row.authority !== 'string'
+    || !row.authority.trim() || Buffer.byteLength(row.authority) > 1024
+    || ![row.maxCalls, row.maxReplies, row.maxTurns].every(n => Number.isSafeInteger(n) && n > 0)
+    || row.maxCalls < Math.max(view.limits.maxCalls, view.calls)
+    || row.maxReplies < Math.max(view.limits.maxReplies, view.replies)
+    || row.maxTurns < Math.max(view.limits.maxTurns, view.order.length)
+    || row.maxCalls === view.limits.maxCalls && row.maxReplies === view.limits.maxReplies
+      && row.maxTurns === view.limits.maxTurns)
+    throw Error('preview journal: cap authority or monotonic bounds refused');
+  if (view.order.some(turn => turn.reserved && turn.answer === undefined)
+    || [...view.summaryReservations].some(through => !view.summaries.some(item => item.through === through)))
+    throw Error('preview journal: UNKNOWN call prevents cap raise');
+}
 function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
+  if (row.kind === 'caps') {
+    checkCaps(view, row);
+    view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns };
+    view.capAuthority = row.authority;
+    for (const turn of view.order) if (turn.held === 'call cap' || turn.held === 'reply cap') delete turn.held;
+    return;
+  }
   if (row.kind === 'intake') {
     const prior = view.turns.get(row.id);
     if (prior) { if (prior.update !== row.update || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
-    if (view.order.length >= view.genesis.maxTurns) throw Error('preview journal: turn capacity');
+    if (view.order.length >= view.limits.maxTurns) throw Error('preview journal: turn capacity');
     const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false };
     view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor); return;
   }
@@ -104,7 +130,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -128,6 +154,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     if (!readOnly) fsyncSync(fd);
     const append = (row: JournalRecord) => {
       if (readOnly) throw Error('preview journal: reader cannot append');
+      if (row.kind === 'caps') checkCaps(view!, row);
       boundary?.(`before:${row.kind}`);
       const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
       cipher.setAAD(Buffer.from(`preview-journal:${size}`));
@@ -140,7 +167,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -167,6 +194,11 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: { update
   return { id: previewTurnId(genesis.bot, update.update_id), accepted, text: accepted ? message!.text! : '' };
 }
 
+export function raiseJournalCaps(journal: ReturnType<typeof openPreviewJournal>, input: {
+  maxCalls: number; maxReplies: number; maxTurns: number; authority: string; at: number }) {
+  journal.append({ kind: 'caps', genesisHash: genesisHash(journal.view.genesis), ...input });
+}
+
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
   /** Static sources, or a function read at each turn (for the desk's report). */
@@ -184,16 +216,14 @@ export interface PreviewPorts {
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
   const gate = () => {
-    if (!journal.view.stop && ports.now() >= journal.view.genesis.expires)
-      journal.append({ kind: 'stop', reason: 'expiry', at: ports.now() });
-    if (journal.view.stop || ports.stopped()) throw Error('preview stopped');
+    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires)
+      throw Error('preview stopped');
   };
   const pollGate = () => {
     gate();
-    if (journal.view.order.length >= journal.view.genesis.maxTurns
-      || journal.view.calls >= journal.view.genesis.maxCalls
-      || journal.view.replies >= journal.view.genesis.maxReplies) {
-      journal.append({ kind: 'stop', reason: 'capacity', at: ports.now() });
+    if (journal.view.order.length >= journal.view.limits.maxTurns
+      || journal.view.calls >= journal.view.limits.maxCalls
+      || journal.view.replies >= journal.view.limits.maxReplies) {
       throw Error('preview poll capacity reached');
     }
   };
@@ -274,7 +304,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         gate();
         if (turn.answer === undefined) {
           if (turn.reserved) continue;
-          if (journal.view.calls >= journal.view.genesis.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
+          if (journal.view.calls >= journal.view.limits.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
           const selected = preparedFor(turn);
           if ('reason' in selected) { journal.append({kind:'hold',id:turn.id,reason:selected.reason,at:ports.now()}); continue; }
           const { question, context, prepared } = selected;
@@ -287,7 +317,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: ports.now() });
         }
         gate();
-        if (journal.view.replies >= journal.view.genesis.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
+        if (journal.view.replies >= journal.view.limits.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
         const reply = `PREVIEW — ${turn.answer!}`;
         if (Buffer.byteLength(reply) > 4096 || Array.from(reply).length > 4096) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
         const body = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -311,7 +341,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * overflow is a visible hold, never a silent slice. */
   const summarizeIfNeeded = async () => {
     const last = journal.view.order.filter(turn => turn.sent).at(-1);
-    if (!last || journal.view.calls >= journal.view.genesis.maxCalls || journal.view.summaryReservations.has(last.update)) return;
+    if (!last || journal.view.calls >= journal.view.limits.maxCalls || journal.view.summaryReservations.has(last.update)) return;
     const packet = packetFor(last.update, true);
     const bytes = Buffer.byteLength(packet);
     if (bytes < Math.floor(journal.view.genesis.maxBytes * .7) || bytes > journal.view.genesis.maxBytes) return;
@@ -331,5 +361,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
   };
   return { intake, drain, summarizeIfNeeded, gate, pollGate,
-    stop: (reason: string) => journal.append({kind:'stop', reason, at:ports.now()}) };
+    stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
+      journal.append({kind:'stop', reason, at:ports.now()}); } };
 }

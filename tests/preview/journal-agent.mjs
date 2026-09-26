@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -51,7 +51,7 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
-  if (!['run', 'status', 'stop'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps'].includes(command)) throw Error('preview: unknown command');
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -75,7 +75,8 @@ async function main() {
       return;
     }
     try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
-      calls: view.view.calls, replies: view.view.replies,
+      calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
+      capAuthority: view.view.capAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
       sourceStop: view.view.sourceStop,
       importComplete: importMarker
@@ -97,19 +98,30 @@ async function main() {
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
     key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+  if (command === 'raise-caps') {
+    let capJournal;
+    try {
+      if (existsSync(stopPath)) throw Error('preview: stop latched');
+      capJournal = openPreviewJournal(journalPath, key());
+      if (Date.now() >= capJournal.view.genesis.expires) throw Error('preview: expired');
+      raiseJournalCaps(capJournal, { maxCalls: number(required(options, 'max-calls'), 'max-calls'),
+        maxReplies: number(required(options, 'max-replies'), 'max-replies'),
+        maxTurns: number(required(options, 'max-turns'), 'max-turns'),
+        authority: required(options, 'authority'), at: Date.now() });
+    } finally { capJournal?.close(); storage.close(); }
+    return;
+  }
   let journal, worker, signalled = false;
   const workerStop = { value: false };
-  const signal = () => { signalled = true; workerStop.value = true;
-    try { if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'signal' });
-      worker?.stop('signal'); } catch {} };
+  const signal = () => { signalled = true; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
   try {
     const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
     const maxReplies = number(options['max-replies'] ?? '16', 'max-replies');
     const maxTurns = number(options['max-turns'] ?? '20', 'max-turns');
     const maxBytes = number(options['max-context-bytes'] ?? '32768', 'max-context-bytes');
-    if (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
-      || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes)
+    if (!existsSync(journalPath) && (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
+      || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes))
       throw Error('preview: live allowance outside approved bound');
     const initial = command !== 'run' ? undefined : {
       kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'),
@@ -118,6 +130,12 @@ async function main() {
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
     journal = openPreviewJournal(journalPath, key(), initial);
     const g = journal.view.genesis;
+    for (const [name, supplied, original, current] of [
+      ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
+      ['max-replies', maxReplies, g.maxReplies, journal.view.limits.maxReplies],
+      ['max-turns', maxTurns, g.maxTurns, journal.view.limits.maxTurns]])
+      if (options[name] && supplied !== original && supplied !== current)
+        throw Error(`preview: ${name} differs from journal`);
     if (g.importSource !== undefined && !journal.view.imported) throw Error('preview: migration incomplete');
     if (String(number(g.bot, 'bot-id')) !== g.bot || String(number(g.chat, 'chat-id')) !== g.chat
       || g.chat !== g.operator) throw Error('preview: private operator binding differs');
@@ -126,7 +144,7 @@ async function main() {
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now());
     const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-      { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
+      { providerAttempts: journal.view.limits.maxCalls, expiresAt: g.expires }).sources;
     const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
       sources: () => [...sources, deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)],
@@ -170,6 +188,7 @@ async function main() {
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
     }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
+    if (signalled || existsSync(stopPath)) return;
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
@@ -177,7 +196,7 @@ async function main() {
     let failedPolls = 0;
     const pollFailure = async () => {
       failedPolls++;
-      if (failedPolls >= 20) { worker.stop('transport-breaker'); return false; }
+      if (failedPolls >= 20) return false;
       const until = Date.now() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
       while (!workerStop.value && !existsSync(stopPath) && Date.now() < until)
         await delay(Math.min(100, until - Date.now()));
@@ -226,7 +245,8 @@ async function main() {
         now: Date.now, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract }));
     }
-  } finally { journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
+  } catch (error) { if (!signalled) throw error; }
+  finally { journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
 }
 
 try { await main(); } catch { process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }

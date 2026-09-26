@@ -537,7 +537,7 @@ are prohibited:
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSOLUTE/recovery-input.json
 ```
 
-## Structural journal runner (rounds 10–11)
+## Structural journal runner (rounds 10–13)
 
 `journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
 append-only local journal and one exclusive writer. At boot it replays the journal once;
@@ -594,11 +594,30 @@ Lanes:
 Not yet available: production memory, multi-machine, Slack.
 ```
 
-`status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists UNKNOWN
-calls and sends, held update IDs and reasons, and import completion. `stop --root /ABSOLUTE/NEW_ROOT` fsyncs a monotonic stop latch
-even while the writer holds the lease. SIGINT, SIGTERM and SIGHUP latch the same stop.
-Stop blocks new physical dispatch and cancels local provider work where possible;
-it cannot recall an already dispatched request. Caps and expiry do not reset on restart.
+`status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists current
+caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import
+completion. After pausing the runner and verifying the operator's authority, the
+desk can raise all or some of the finite limits with:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs raise-caps \
+  --root /ABSOLUTE/NEW_ROOT --max-calls 64 --max-replies 64 --max-turns 80 \
+  --authority 'Justin, topic 52075, 2026-09-25 16:25 PDT'
+```
+
+The command takes the exclusive writer lease, refuses UNKNOWN model calls,
+permanent stop, expiry, missing import, a missing authority reference and any
+lowered or unchanged bound. It appends one authenticated record tied to genesis;
+replay restores the new limits without resetting usage or intake. `status` shows
+the latest reference. The subscription route still forbids paid fallback.
+
+`stop --root /ABSOLUTE/NEW_ROOT` fsyncs the permanent operator stop latch even
+while the writer holds the lease. SIGINT, SIGTERM and SIGHUP pause the process,
+release the lease and permit relaunch. A signal blocks new physical dispatch and
+cancels local provider work where possible; an uncertain in-flight call or send
+remains UNKNOWN and is never retried. Capacity and the transport breaker pause
+without latching stop. Expiry still refuses dispatch. No restart resets the
+counters or extends expiry.
 
 Before cutover, the desk stops and quiesces the old poller. The one-use migration
 tool refuses a live old lease and leaves the old root unchanged. It exports an

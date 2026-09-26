@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
 // @ts-ignore no declaration for the host script
@@ -215,9 +215,97 @@ it('holds admitted work at the exact attempt cap and refuses another poll', asyn
     expect(calls).toBe(1);
     expect(journal.view.order[1]?.held).toBe('call cap');
     expect(() => worker.pollGate()).toThrow('capacity');
-    expect(journal.view.stop).toBe('capacity');
+    expect(journal.view.stop).toBeNull();
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('raises finite caps with recorded authority, preserves counters, and resumes a cap-held turn', async () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { ...genesis(1), maxReplies: 1, maxTurns: 2 });
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1), update(2)]); await worker.drain();
+    expect(journal.view.calls).toBe(1);
+    expect(journal.view.order[1]?.held).toBe('call cap');
+    expect(() => worker.pollGate()).toThrow('capacity');
+    expect(() => journal.append({ kind:'caps', genesisHash:'wrong', maxCalls:3, maxReplies:3,
+      maxTurns:4, authority:'Justin topic 52075', at:1001 })).toThrow('authority');
+    expect(journal.view.limits.maxCalls).toBe(1);
+    raiseJournalCaps(journal, { maxCalls: 3, maxReplies: 3, maxTurns: 4,
+      authority: 'Justin topic 52075 2026-09-25 16:25 PDT', at: 1001 });
+    expect(journal.view.calls).toBe(1);
+    await worker.drain();
+    expect(journal.view.calls).toBe(2);
+    expect(journal.view.replies).toBe(2);
+    expect(journal.view.order[1]?.sent).toBe(1);
+    expect(() => raiseJournalCaps(journal, { maxCalls: 2, maxReplies: 4, maxTurns: 4,
+      authority: 'same', at: 1002 })).toThrow();
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    expect(reopened.view.limits).toEqual({ maxCalls: 3, maxReplies: 3, maxTurns: 4 });
+    expect(reopened.view.calls).toBe(2);
+    expect(reopened.view.replies).toBe(2);
+    reopened.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('refuses a cap raise while a model call is UNKNOWN', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(1));
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('lost'); }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1)]); await worker.drain();
+    expect(() => raiseJournalCaps(journal, { maxCalls: 2, maxReplies: 101, maxTurns: 101,
+      authority: 'Justin topic 52075', at: 1001 })).toThrow('UNKNOWN');
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('keeps expiry and non-operator stop from becoming permanent latches', () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), expires: 999 });
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    expect(() => worker.gate()).toThrow('stopped');
+    expect(journal.view.stop).toBeNull();
+    expect(() => worker.stop('transport-breaker')).toThrow('only operator stop');
+    expect(journal.view.stop).toBeNull();
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('the cap command requires the exclusive writer lease and reports the recorded limits', () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis(1));
+  const context = { site: 'preview.journal', preserved: 'preview:test', register: {
+    generation: { owner: 'part-three' as const, name: 'RegisterGeneration' as const, id: 'preview:register' },
+    entries: ['preview.journal'], sites: { 'preview.journal': 'closed' as const } } };
+  const lease = openProductionStorage({ root: join(root, '.writer'), machine: 'preview-local-machine', key,
+    policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO });
+  let leaseClosed = false;
+  const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') };
+  const command = (name: string, extra: string[] = []) => spawnSync(process.execPath,
+    ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs',name,
+      '--root',root,...extra], {cwd:process.cwd(),env,encoding:'utf8',timeout:10000});
+  const caps = ['--max-calls','3','--max-replies','101','--max-turns','101',
+    '--authority','Justin verified operator, topic 52075, 2026-09-25 16:25 PDT'];
+  try {
+    expect(lease.kind).toBe('Success');
+    expect(command('raise-caps',caps).status).not.toBe(0);
+    expect(journal.view.limits.maxCalls).toBe(1);
+    if (lease.kind === 'Success') { lease.value.close(); leaseClosed = true; }
+    expect(command('raise-caps',caps).status).toBe(0);
+    const report = command('status');
+    expect(report.status).toBe(0);
+    expect(JSON.parse(report.stdout)).toMatchObject({calls:0, replies:0,
+      limits:{maxCalls:3,maxReplies:101,maxTurns:101},capAuthority:caps.at(-1)});
+    expect(command('raise-caps',caps).status).not.toBe(0);
+  } finally { journal.close(); if (lease.kind === 'Success' && !leaseClosed) lease.value.close();
+    rmSync(root,{recursive:true,force:true}); }
 });
 
 it('holds a prepared answer when the reply cap is exhausted', async () => {
