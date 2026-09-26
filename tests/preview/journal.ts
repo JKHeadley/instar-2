@@ -18,7 +18,7 @@ export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns
 export const PREVIEW_RECALL_LIMIT = 5;
 /** Most person notes recalled for the people a new message names; the most recent are kept. */
 export const PREVIEW_PEOPLE_LIMIT = 10;
-/** Most flagged earlier replies whose correction notes one packet carries; the newest are kept. */
+/** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
 
 /** A person named in an earlier accepted message. The model only selects: the name
@@ -29,7 +29,7 @@ export interface PersonNote { name: string; source: string; quote: string }
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number }
-  | { kind: 'reserve'; id: string; prompt?: string; at: number }
+  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
   | { kind: 'answer'; id: string; text: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
@@ -115,8 +115,13 @@ function project(view: JournalView, row: JournalRecord): void {
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
-    // The reserved prompt was prepared from the pending notes, so they have now been carried.
-    view.corrections = []; }
+    // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
+    if (row.corrections === undefined) view.corrections = [];
+    else {
+      if (row.corrections.some(id => !view.corrections.includes(id))) throw Error('preview journal: uncarried correction');
+      const carried = new Set(row.corrections);
+      view.corrections = view.corrections.filter(id => !carried.has(id));
+    } }
   if (row.kind === 'coherence') {
     if (turn.intent === undefined || turn.checked !== undefined || !Array.isArray(row.findings)) throw Error('preview journal: coherence order');
     turn.checked = row.findings; if (row.failed) turn.checkFailed = true;
@@ -334,7 +339,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
       user: redact(item.text).text, answer: item.answer === undefined ? null : redact(item.answer).text,
       outcome: outcome(item) })) : [];
-    const corrections = flagged.map(item => ({ date: dated(item),
+    const corrections = flagged.map(item => ({ update: item.update, date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }), findings: correctionNote(item.checked ?? []) }));
     const crossed = [...earlier, ...(summary ? recalled : [])].some(item => item.thread !== current);
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
@@ -353,23 +358,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const preparedFor = (turn: Turn) => {
     const question = redact(turn.text).text;
-    const flagged = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(-PREVIEW_CORRECTION_LIMIT);
+    const pending = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(0, PREVIEW_CORRECTION_LIMIT);
     let promptFit = false;
-    for (const compact of [false, true]) {
-      const summary = compact ? summaryFor(turn.update - 1) : undefined;
-      const recalled = summary ? recallFor(turn, summary) : [];
-      const named = summary ? peopleFor(turn.text, summary.through) : [];
-      // Lowest-ranked recalled originals give way first, then the oldest person notes; the summary still covers them.
-      for (let kept = recalled.length + named.length; kept >= 0; kept--) {
-        const people = Math.min(named.length, kept);
-        const context = packetFor(turn.update - 1, compact, recalled.slice(0, kept - people),
-          named.slice(named.length - people), turn.thread, false, flagged);
-        if (Buffer.byteLength(context) > journal.view.genesis.maxBytes) continue;
-        promptFit = true;
-        try {
-          const prepared = ports.prepareModel?.({ question, context, id: turn.id });
-          return { question, context, prepared };
-        } catch { /* Try fewer recalled turns, then a usable summary, before holding the turn. */ }
+    for (let noteCount = pending.length; noteCount >= 0; noteCount--) {
+      const flagged = pending.slice(0, noteCount);
+      for (const compact of [false, true]) {
+        const summary = compact ? summaryFor(turn.update - 1) : undefined;
+        const recalled = summary ? recallFor(turn, summary) : [];
+        const named = summary ? peopleFor(turn.text, summary.through) : [];
+        // Lowest-ranked recalled originals give way first, then the oldest person notes; the summary still covers them.
+        for (let kept = recalled.length + named.length; kept >= 0; kept--) {
+          const people = Math.min(named.length, kept);
+          const context = packetFor(turn.update - 1, compact, recalled.slice(0, kept - people),
+            named.slice(named.length - people), turn.thread, false, flagged);
+          if (Buffer.byteLength(context) > journal.view.genesis.maxBytes) continue;
+          promptFit = true;
+          try {
+            const prepared = ports.prepareModel?.({ question, context, id: turn.id });
+            return { question, context, prepared, carried: flagged.map(item => item.id) };
+          } catch { /* Try fewer recalled turns or corrections before holding the turn. */ }
+        }
       }
     }
     return { reason: promptFit ? 'prompt overflow' : 'context overflow' };
@@ -386,8 +394,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.limits.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
           const selected = preparedFor(turn);
           if ('reason' in selected) { journal.append({kind:'hold',id:turn.id,reason:selected.reason,at:ports.now()}); continue; }
-          const { question, context, prepared } = selected;
-          journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }), at: ports.now() }); gate();
+          const { question, context, prepared, carried } = selected;
+          journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
+            corrections: carried, at: ports.now() }); gate();
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }

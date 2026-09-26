@@ -754,7 +754,10 @@ limits remain 16/16/20. The worker-only measurement remains separately reported.
 
 After a reply is sent (or its send is UNKNOWN, since it may have reached the
 operator), `coherence-check.ts` reads it once against a short, explicit list of
-rules from `docs/01-the-rules.md` that a capped, tool-less preview can break in words:
+rules from `docs/01-the-rules.md` that a capped, tool-less preview can break in words.
+These are related, partial signals: the Rule 84 patterns do not establish generated
+capability briefing, and the Rule 96 patterns do not establish full-history or
+clock grounding.
 
 | Rule | What the check reads for |
 |---|---|
@@ -764,28 +767,31 @@ rules from `docs/01-the-rules.md` that a capped, tool-less preview can break in 
 | 26 Verify the State, Not Its Symbol | delivery or reading stated as certain; the preview only knows Telegram API acceptance |
 | 106 A Link Handed to a Human Works | a localhost or machine-only path |
 
-Rules 4 and 100 (a live secret leaving) stay where they were: the outbound secret
-refusal holds a reply before it is sent. The check is deterministic, makes no model
+The existing outbound secret refusal holds a live secret before send. Rule 100
+instead requires secure storage before a secret is consumed and expiry handling
+for fixed-lifetime credentials. The check is deterministic, makes no model
 call and decides nothing (rule 86: a signal, never authority; rule 10: the model
 judges meaning). A model check was deliberately not added: the activation binds one
 model and system prompt, the attempt allowance is small, and the desk's retrospective
 review already judges patterns with the best model.
 
 The launcher runs the check after every drain, beside the rolling summary; a failure
-there never stops or delays a reply, and an unchecked reply is simply checked after
-the next drain. Each checked reply gets one `coherence` journal record, clean or not
+there cannot hold the reply already attempted, and an unchecked reply is checked after
+the next drain. Its synchronous check and journal write can slightly delay the next poll.
+Each checked reply gets one `coherence` journal record, clean or not
 (at most three findings, each with a redacted excerpt of 90 characters or fewer), so
 findings and the pending note replay from the journal after restart; no other store
-is added. The next model call's packet carries `corrections` (the newest three flagged
-replies, with dates and conversation labels) and a capability sentence telling the
+is added. The next model call's packet carries `corrections` (up to three oldest pending flagged
+replies, with update IDs, dates and conversation labels) and a capability sentence telling the
 model these are pattern signals: correct itself briefly if one is real, say nothing if
-the check misread. A note is carried once: the next reserved model call clears it. A
-held turn does not. On a journal written before this change, the first run checks every
-earlier reply, so the next packet may carry notes about the newest three old flagged replies.
+the check misread. Fitting retries with fewer or no corrections before holding a turn;
+only notes actually in a reserved packet are cleared. Uncarried notes remain in the
+journal projection across restart. A held turn clears none. On a journal written before
+this change, the first run checks every earlier reply, so later packets may carry old
+flagged replies in order.
 
 `status` reports `coherence: { checked, unchecked, failed, pendingCorrections,
 findings: [{ update, rules }] }`; `inspect` shows the persisted prompt's `corrections`
-(dates, rule numbers and problems). Offline cost (`coherence-check.test.ts`, 120
-turns): the check itself p95 about 9 ms after the reply, mostly its one fsync; the
-reply path gains only the note's bytes in the packet (p95 drain 32 ms without, 36 ms
-with a note carried on every turn, within noise).
+(update IDs, dates, rule numbers and problems). The 120-turn synthetic benchmark
+in `coherence-check.test.ts` prints post-check and drain p95 values; it does not
+establish real model latency or end-to-end cost.

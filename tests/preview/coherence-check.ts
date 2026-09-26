@@ -13,13 +13,15 @@
 import { redact } from '../../src/recall/redact.js';
 import { terms } from '../../src/recall/lexical.js';
 
-/** The rules this check reads for, by number in docs/01-the-rules.md. Rule 4/100
- * (a live secret leaving) is held before the send by the outbound secret refusal,
- * so it is named here and not re-checked. */
+/** Related rule numbers from docs/01-the-rules.md, not complete rule checks.
+ * The capability-claim patterns for 84 do not establish generated briefing;
+ * the quote patterns for 96 do not establish full-history or clock grounding.
+ * The live outbound secret refusal is separate from Rule 100, which governs
+ * secure storage before consumption and credential expiry. */
 export const COHERENCE_RULES = Object.freeze({
-  84: 'Agent Awareness: claims only the capabilities it has',
+  84: 'Agent Awareness (partial signal): possible unsupported capability claim',
   89: 'Truthful Provenance: who said something is never blurred',
-  96: 'A Session Grounds in Its Full History: memory comes from the journal, never invented',
+  96: 'A Session Grounds in Its Full History (partial signal): possible ungrounded memory claim',
   26: 'Verify the State, Not Its Symbol: API acceptance is not delivery or reading',
   106: 'A Link Handed to a Human Works: no localhost or machine-only paths',
 });
