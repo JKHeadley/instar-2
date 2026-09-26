@@ -562,7 +562,8 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --grant-reference TRIAL_ID --configuration-digest sha256:TRIAL_CONFIGURATION_DIGEST \
   --expires-at 2026-09-28T20:40:00Z --activation-record /ABSOLUTE/activation.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
-  --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768
+  --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768 \
+  --time-zone America/Los_Angeles
 ```
 
 ### What the preview knows about itself and 2.0
@@ -570,16 +571,39 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
 Each model call's packet carries `now`, the audience, the conversation history,
 a `capability` line (capped preview, answer only, no tools, memory is this trial's
 journal only) and `sources`: the three pinned purpose excerpts, the dated
-capability note, and the **desk's current-state report**.
+capability note, the preview's **own self-state**, and the **desk's report** on
+other work.
 
-The desk report is a plain file the desk maintains, re-read at every turn
+The self-state (`self-state.ts`) is computed by the runner at every turn from
+durable records only, never from a hand-edited file: the journal projection
+(operator messages and Telegram-accepted replies today and in total, model attempts,
+replies and admitted updates used and left, when and on whose authority caps were
+last raised, UNKNOWN calls and sends, holds by reason, refused updates, summaries,
+expiry, stop, import) and the root's run log `runs.jsonl`. The run log is one small
+append-only, fsynced sidecar: the launcher writes a launch line before its first
+poll and, when the loop ends, an end line with the reason (paused by signal NAME,
+operator stop latched, trial expired, the cap that stopped polling, repeated poll
+failure, cycle limit, or error). A launch with no end line is reported as ended
+without recording why (crash, kill or power loss); a torn line is counted, never
+guessed at. From it the self-state gives this run's start and uptime, the last
+restart, how the run before it ended, and launches today. "Today" is the local date
+in `--time-zone` (an IANA zone, default `UTC`; an unknown zone refuses start), and
+the zone is stated in the text. The counts include the message being answered; its
+own reply is not yet sent. Imported turns from an older root may have unknown
+times. Launches before this change were not recorded, and the text says so. It is
+recomputed from memory each turn (p95 about 6 ms at 2000 turns, no model call, no
+extra read), and `status` prints the same text as `self` plus the last three
+`launches`, so an answer can be checked against it (status, read after the reply,
+counts that reply too).
+
+The desk report is optional: a plain file the desk maintains about other 2.0 work, re-read at every turn
 (default `ROOT/desk-status.md`; override with `--desk-status /ABSOLUTE/PATH`).
 It enters the packet as the `desk-status` source, labelled as the desk's report,
 quoted data that grants nothing and never overrides the operator. The existing
 system prompt already treats everything in context as data, not instructions.
 The source also states the preview clock in UTC and the file's last-modified time.
 Secrets are redacted. A missing, unreadable or larger-than-4096-byte file is stated
-as "current work status is unknown"; a file last modified more than 24 hours ago is
+as "the status of other Instar 2.0 work is unknown"; a file last modified more than 24 hours ago is
 included but marked **STALE** with its age. A bad file never holds a reply.
 Updating the file needs no restart. Sample:
 

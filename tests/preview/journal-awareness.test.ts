@@ -66,7 +66,7 @@ it('labels a missing, stale or oversize report plainly and never invents status'
   const base = { now: NOW, path: '/desk/desk-status.md' };
   const missing = deskStatusSource(readDeskStatus('/nonexistent/desk-status.md'), base.now, base.path);
   expect(missing.provenance.status).toBe('missing');
-  expect(missing.text).toContain('No desk report is available. Current work status is unknown');
+  expect(missing.text).toContain('No desk report is available. The status of other Instar 2.0 work is unknown');
   const stale = deskStatusSource({ text: 'Lane A: building.', modifiedAt: NOW - DESK_STATUS_MAX_AGE_MS - 3_600_000 }, base.now, base.path);
   expect(stale.provenance.status).toBe('stale');
   expect(stale.text).toContain('STALE: last updated');

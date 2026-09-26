@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
+import { readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(11);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-commitments-')));
@@ -286,7 +287,9 @@ it('the live script reaches compaction and the question carries the open commitm
     const sources = sourcePacket(path => readFileSync(join(process.cwd(), path), 'utf8'), SOURCE_PINS,
       { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
     const worker = createJournalWorker(journal, { now: Date.now, stopped: () => false,
-      sources: () => [...sources, deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), Date.now(), join(root, 'desk-status.md'))],
+      // The same sources the launcher's turnSources gives every live turn and the inspect probe.
+      sources: () => [...sources, selfStateSource(selfState(journal.view, readRuns(join(root, 'runs.jsonl')), Date.now(), 'UTC')),
+        deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), Date.now(), join(root, 'desk-status.md'))],
       prepareModel: input => prepareJournalEnvelope(input, model, g.grant, Date.now()),
       model: async ({ id, question, context }) => id.startsWith('summary:') ? extractor(false)(context)
         : question === DENTIST ? `Noted. ${PROMISE}` : 'ok',

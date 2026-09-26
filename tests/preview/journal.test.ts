@@ -616,6 +616,15 @@ it('recovers a pending summary and retries an overflow-held turn automatically',
     expect(journal.view.order[1]?.sent).toBe(2);
     expect(seen).toEqual(['summary:1','telegram:12345678:update:2']);
     journal.close();
+    // Replayed from disk, the released hold is no longer reported: status lists only turns held now.
+    const replayed = openPreviewJournal(path, key);
+    expect(replayed.view.order[1]?.held).toBeUndefined(); replayed.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
+      {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout).holds).toEqual([]);
+    expect(JSON.parse(status.stdout).self).toContain('Held messages: none.');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -870,7 +879,9 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     expect(last - first).toBeLessThanOrEqual(1000);
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+// Harness bound for a heavy 200-turn workload (about 5 s alone, slower under machine load);
+// the product guarantee is the flat-overhead assertion above, not this timeout.
+}, 60_000);
 
 it('recalls imported old-root turns with their original Telegram dates and drops recall before overflowing', async () => {
   const root = origin();

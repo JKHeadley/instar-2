@@ -59,11 +59,11 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; intent?: string; intentBody?: string; sent?: number; held?: string;
+  reserved: boolean; prompt?: string; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string;
   checked?: CoherenceFinding[]; checkFailed?: true }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
-  limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null;
+  limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
   summaryFailures: Map<number, number>; sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>;
@@ -95,7 +95,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'caps') {
     checkCaps(view, row);
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
-    view.capAuthority = row.authority;
+    view.capAuthority = row.authority; view.capRaisedAt = row.at;
     for (const turn of view.order) if (turn.held === 'call cap' || turn.held === 'reply cap') delete turn.held;
     return;
   }
@@ -141,6 +141,9 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
+  // The worker reserves or records an intent only for a turn it has released from any hold,
+  // so either row durably ends an earlier hold: `held` names only a hold still in force.
+  if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];
@@ -156,7 +159,7 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined) throw Error('preview journal: answer order'); turn.answer = row.text; }
   if (row.kind === 'intent') { if (turn.answer === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
-  if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; }
+  if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') turn.held = row.reason;
 }
 
@@ -190,7 +193,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [] };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [] };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -227,7 +230,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [] };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [] };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
