@@ -59,8 +59,15 @@ function exportOld(root, input) {
   const source = join(old, '.successive');
   const facts = unseal(join(source, 'facts.encrypted'), input.key, 'facts').map(bytes => JSON.parse(bytes));
   const captures = unseal(join(source, 'captures.encrypted'), input.key, 'captures');
-  const byId = new Map(facts.map(fact => [fact.id, fact]));
   const body = fact => fact?.body?.record ?? fact?.body;
+  const targetBindings = facts.filter(fact => fact.kind === 'conversation-binding'
+    && body(fact).grantId === 'successive-target-grant').map(body);
+  if (targetBindings.length !== 1
+    || targetBindings[0].channel !== `telegram:v1:bot:${input.bot}:chat:${input.chat}:direct`
+    || targetBindings[0].sender !== `telegram:v1:user:${input.operator}`
+    || targetBindings[0].principalId !== `telegram:v1:user:${input.operator}`
+    || state.trial.hostNotice?.botId !== input.bot || state.trial.hostNotice?.chatId !== input.chat
+    || input.chat !== input.operator) throw Error('migration bound audience differs');
   const accepted = facts.filter(fact => fact.kind === 'intake-admitted')
     .map(fact => ({ fact, record: body(fact) }))
     .filter(row => row.record.binding !== 'none' && row.record.channel?.endsWith(':direct'));
@@ -75,11 +82,13 @@ function exportOld(root, input) {
   }).sort((a,b) => a.update - b.update);
   const byFact = new Map(turns.filter(turn => turn.admitted).map(turn => [turn.admitted, turn]));
   const attempts = new Set();
-  for (const fact of facts.filter(fact => fact.kind === 'judgment-provider-ProviderJudgmentAttemptRecord')) {
+  for (const fact of facts.filter(fact => fact.kind === 'judgment-provider-ProviderJudgmentAttemptRecord'
+    || fact.kind === 'effect-provider-ProviderEffectRequest')) {
     const record = body(fact);
-    if (record.phase !== 'prepared') continue;
+    if (fact.kind === 'judgment-provider-ProviderJudgmentAttemptRecord' && record.phase !== 'prepared') continue;
+    if (typeof record.attempt !== 'string' || !record.attempt.startsWith('attempt:boot-question:')) continue;
     attempts.add(record.attempt);
-    const turn = byFact.get(String(record.request).replace(/^boot-question:/, ''));
+    const turn = byFact.get(String(record.attempt).replace(/^attempt:boot-question:/, '').replace(/:\d+$/, ''));
     if (turn) turn.reserved = true;
   }
   for (const fact of facts.filter(fact => fact.kind === 'judgment-provider-ProviderAnswerAcceptance')) {

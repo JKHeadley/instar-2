@@ -3,7 +3,6 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { existsSync, readFileSync, lstatSync, realpathSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { createHash } from 'node:crypto';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
@@ -11,7 +10,7 @@ import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { encoded } from './stage2-provider.js';
-import { SOURCE_PINS, sourcePacket } from './successive.js';
+import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, PREVIEW_LIVE_LIMITS } from './journal.js';
 
 const parse = values => {
@@ -23,8 +22,8 @@ const parse = values => {
   return { command, options };
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
-const number = (value, name, minimum = 1) => {
-  const n = Number(value); if (!Number.isSafeInteger(n) || n < minimum) throw Error(`preview: invalid ${name}`); return n;
+const number = (value, name, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) => {
+  const n = Number(value); if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw Error(`preview: invalid ${name}`); return n;
 };
 const expiry = value => {
   const numeric = Number(value), parsed = Number.isSafeInteger(numeric) && numeric > 0 ? numeric : Date.parse(value);
@@ -48,7 +47,6 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
   conflictStanding: { ordinary: 'delegate', authority: 'operator' } }, captures: {} };
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
-const digest = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
 const delay = ms => new Promise(done => setTimeout(done, ms));
 
 async function main() {
@@ -77,7 +75,12 @@ async function main() {
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
     key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
-  let journal;
+  let journal, worker, signalled = false;
+  const workerStop = { value: false };
+  const signal = () => { signalled = true; workerStop.value = true;
+    try { if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'signal' });
+      worker?.stop('signal'); } catch {} };
+  process.once('SIGINT', signal); process.once('SIGTERM', signal);
   try {
     const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
     const maxReplies = number(options['max-replies'] ?? '16', 'max-replies');
@@ -93,6 +96,8 @@ async function main() {
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
     journal = openPreviewJournal(join(root, 'journal.encrypted'), key(), initial);
     const g = journal.view.genesis;
+    if (String(number(g.bot, 'bot-id')) !== g.bot || String(number(g.chat, 'chat-id')) !== g.chat
+      || g.chat !== g.operator) throw Error('preview: private operator binding differs');
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
@@ -112,21 +117,22 @@ async function main() {
     };
     const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
       { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
-    const workerStop = { value: false };
-    const worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
+    worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
       sources,
-      checkInput: input => { modelEnvelope(input); },
+      prepareModel: input => modelEnvelope(input).bytes,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
-      model: async ({ question, context: packet, id }) => {
-        const route = modelRoute(), { bytes, policy } = modelEnvelope({ question, context: packet, id });
-        const result = await route.invoke(bytes, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
+      model: async ({ id, prepared }) => {
+        if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
+        const route = modelRoute(), policy = subscriptionConversationPolicy(required(options, 'model'));
+        const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
           timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
           maxCharge: 0, automaticRetries: 0 });
         if (result.state !== 'complete' || !result.bytes) throw Error('preview: model UNKNOWN');
         const decision = JSON.parse(result.bytes);
         if (decision.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
           || typeof decision.conclusion.value !== 'string') throw Error('preview: model answer malformed');
-        return decision.conclusion.value;
+        return { text: decision.conclusion.value,
+          usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
       },
       send: async ({ text, expectedText, chat }) => {
         if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;
@@ -153,11 +159,7 @@ async function main() {
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
-    let signalled = false;
-    const signal = () => { signalled = true; workerStop.value = true;
-      try { if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'signal' }); worker.stop('signal'); } catch {} };
-    process.once('SIGINT', signal); process.once('SIGTERM', signal);
-    const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles');
+    const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     let summaryJob = null;
     const summarizeLater = () => {
       if (summaryJob) return;
@@ -168,7 +170,7 @@ async function main() {
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch { break; }
       const result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
-        body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds') },
+        body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5) },
         timeoutMs: 12000 }, token());
       if (result.kind !== 'response' || result.status !== 200) { await delay(500); continue; }
       const updates = JSON.parse(result.bytes);
@@ -192,7 +194,7 @@ async function main() {
         now: Date.now, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract }));
     }
-  } finally { journal?.close(); storage.close(); }
+  } finally { journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); }
 }
 
 try { await main(); } catch { process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }

@@ -14,8 +14,8 @@ export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number }
-  | { kind: 'reserve'; id: string; at: number }
-  | { kind: 'answer'; id: string; text: string; at: number }
+  | { kind: 'reserve'; id: string; prompt?: string; at: number }
+  | { kind: 'answer'; id: string; text: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
@@ -23,11 +23,11 @@ export type JournalRecord =
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
-  | { kind: 'summary-reserve'; through: number; at: number }
-  | { kind: 'summary'; through: number; text: string; at: number };
+  | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
+  | { kind: 'summary'; through: number; text: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number };
 
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; answer?: string;
-  reserved: boolean; intent?: string; intentBody?: string; sent?: number; held?: string }
+  reserved: boolean; prompt?: string; intent?: string; intentBody?: string; sent?: number; held?: string }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; sourceStop: string | null }
@@ -61,7 +61,7 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
-  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; view.calls++; }
+  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++; }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined) throw Error('preview journal: answer order'); turn.answer = row.text; }
   if (row.kind === 'intent') { if (turn.answer === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; }
@@ -161,8 +161,9 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: { update
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
   sources?: unknown;
-  checkInput?(input: { question: string; context: string; id: string }): void;
-  model(input: { question: string; context: string; id: string }): Promise<string>;
+  prepareModel?(input: { question: string; context: string; id: string }): string;
+  model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {text:string;
+    usage: {inputTokens:number|null;outputTokens:number|null;charge:null}} >;
   send(input: { text: string; expectedText: string; chat: string; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
   boundary?(stage: string): void;
@@ -199,15 +200,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const packetFor = (through: number, compact: boolean) => {
     const summary = compact ? journal.view.summaries.filter(item => item.through <= through).at(-1) : undefined;
-    const earlier = journal.view.order.filter(item => item.update <= through && (!summary || item.update > summary.through));
+    const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
+      && (!summary || item.update > summary.through));
     const history = earlier.map(item => ({ user: redact(item.text).text,
       answer: item.answer === undefined ? null : redact(item.answer).text,
       outcome: item.sent ? 'Telegram API accepted' : item.intent ? 'delivery UNKNOWN'
         : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending' }));
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
-      capability: 'Private, capped preview; answer only, no tools or other actions.',
+      capability: 'Private, capped preview; answer only, no tools or other actions. If summary is present, it covers earlier turns and history contains only turns after it.',
+      audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
+        operator: journal.view.genesis.operator },
       ...(ports.sources === undefined ? {} : { sources: ports.sources }),
-      ...(summary ? { summary: { through: summary.through, text: redact(summary.text).text } } : {}), history });
+      ...(summary ? { historyMode: 'summary-plus-recent', summary: { through: summary.through, text: redact(summary.text).text } }
+        : { historyMode: 'complete' }), history });
     return packet;
   };
   const contextFor = (turn: Turn) => {
@@ -227,13 +232,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.genesis.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
           const context = contextFor(turn), question = redact(turn.text).text;
           if (Buffer.byteLength(context) > journal.view.genesis.maxBytes) { journal.append({kind:'hold',id:turn.id,reason:'context overflow',at:ports.now()}); continue; }
-          try { ports.checkInput?.({ question, context, id: turn.id }); }
+          let prepared: string | undefined;
+          try { prepared = ports.prepareModel?.({ question, context, id: turn.id }); }
           catch { journal.append({kind:'hold',id:turn.id,reason:'prompt overflow',at:ports.now()}); continue; }
-          journal.append({ kind: 'reserve', id: turn.id, at: ports.now() }); gate();
-          let answer: string;
-          try { answer = await ports.model({ question, context, id: turn.id }); }
+          journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }), at: ports.now() }); gate();
+          let answer: Awaited<ReturnType<PreviewPorts['model']>>;
+          try { answer = await ports.model({ question, context, id: turn.id,
+            ...(prepared === undefined ? {} : { prepared }) }); }
           catch { continue; } // reservation remains UNKNOWN
-          journal.append({ kind: 'answer', id: turn.id, text: answer, at: ports.now() });
+          journal.append({ kind: 'answer', id: turn.id, text: typeof answer === 'string' ? answer : answer.text,
+            ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: ports.now() });
         }
         gate();
         if (journal.view.replies >= journal.view.genesis.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
@@ -265,16 +273,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const bytes = Buffer.byteLength(packet);
     if (bytes < Math.floor(journal.view.genesis.maxBytes * .7) || bytes > journal.view.genesis.maxBytes) return;
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes.';
-    try { ports.checkInput?.({ question: summaryQuestion, context: packet, id: `summary:${last.update}` }); }
+    let prepared: string | undefined;
+    try { prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${last.update}` }); }
     catch { return; }
     gate();
-    journal.append({kind:'summary-reserve',through:last.update,at:ports.now()});
-    let summary: string;
+    journal.append({kind:'summary-reserve',through:last.update,...(prepared === undefined ? {} : { prompt: prepared }),at:ports.now()});
+    let summary: Awaited<ReturnType<PreviewPorts['model']>>;
     try { summary = await ports.model({ question: summaryQuestion,
-      context: packet, id: `summary:${last.update}` }); }
+      context: packet, id: `summary:${last.update}`, ...(prepared === undefined ? {} : { prepared }) }); }
     catch { return; }
-    if (Buffer.byteLength(summary) > Math.min(8192, Math.floor(journal.view.genesis.maxBytes / 4))) return;
-    journal.append({kind:'summary',through:last.update,text:redact(summary).text,at:ports.now()});
+    const summaryText = typeof summary === 'string' ? summary : summary.text;
+    if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.genesis.maxBytes / 4))) return;
+    journal.append({kind:'summary',through:last.update,text:redact(summaryText).text,
+      ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
   };
   return { intake, drain, summarizeIfNeeded, gate, pollGate,
     stop: (reason: string) => journal.append({kind:'stop', reason, at:ports.now()}) };

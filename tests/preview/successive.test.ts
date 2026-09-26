@@ -272,7 +272,7 @@ it('lets only a provider-call definition carry the measured 32768-byte envelope'
 it('pins source excerpts and refuses a changed purpose document', () => {
   const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
   const packet = sourcePacket(read, SOURCE_PINS, { providerAttempts: 16, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY });
-  expect(packet.sources.at(-1).text).toContain('at most 16 model answers');
+  expect(packet.sources.at(-1).text).toContain('at most 16 model attempts');
   expect(() => sourcePacket(path => read(path).replace('sits beneath it', 'sits above it'), SOURCE_PINS,
     { providerAttempts: 16, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY })).toThrow('source excerpt purpose:purpose changed');
 });

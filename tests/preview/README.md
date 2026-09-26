@@ -536,3 +536,74 @@ are prohibited:
 ```sh
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSOLUTE/recovery-input.json
 ```
+
+## Structural journal runner (round 10)
+
+`journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
+append-only local journal and one exclusive writer. At boot it replays the journal once;
+ordinary turns append records and update an in-memory transcript. It fsyncs an update and
+its next cursor before polling at a higher offset. A call reservation precedes the
+subscription invocation. An exact send intent precedes the one physical Telegram send.
+An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
+the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
+
+The launcher uses the existing `INSTAR_SECRET_PREVIEW_STORAGE_KEY` and
+`INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` host bindings, production storage lease,
+Telegram bridge and subscription route. The desk supplies the same reviewed activation
+and frozen login profile used by the subscription preview. The grant reference is the
+activation's `trial`; the configuration digest is its `baseConfigurationDigest`.
+The expiry must equal the activation expiry. All paths must be canonical absolute paths.
+The root is new or imported; never point this launcher at the old root.
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run \
+  --root /ABSOLUTE/NEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME \
+  --operator-sender-id OPERATOR_ID --chat-id PRIVATE_CHAT_ID \
+  --grant-reference TRIAL_ID --configuration-digest sha256:TRIAL_CONFIGURATION_DIGEST \
+  --expires-at 2026-09-28T20:40:00Z --activation-record /ABSOLUTE/activation.json \
+  --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
+  --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768
+```
+
+`status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists UNKNOWN
+calls and sends. `stop --root /ABSOLUTE/NEW_ROOT` fsyncs a monotonic stop latch
+even while the writer holds the lease. SIGINT and SIGTERM latch the same stop.
+Stop blocks new physical dispatch and cancels local provider work where possible;
+it cannot recall an already dispatched request. Caps and expiry do not reset on restart.
+
+Before cutover, the desk stops and quiesces the old poller. The one-use migration
+tool refuses a live old lease and leaves the old root unchanged. It exports an
+encrypted manifest of accepted updates, transcript, cursor, expiry, remaining
+allowance and uncertain effects, then imports into an empty new root. The old
+stop reason remains visible as `sourceStop`; it describes the old poller's
+quiescence. A new root's own stop latch remains authoritative. The desk must
+keep the old poller stopped unless new outcomes have been reconciled back into
+its lineage. `export` refuses an existing export file; `import` refuses a used
+target root.
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-migrate.mjs export \
+  --old-root /ABSOLUTE/STOPPED_OLD_ROOT --export-file /ABSOLUTE/transfer.enc \
+  --bot-id BOT_ID --chat-id PRIVATE_CHAT_ID --operator-sender-id OPERATOR_ID
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-migrate.mjs import \
+  --export-file /ABSOLUTE/transfer.enc --new-root /ABSOLUTE/EMPTY_NEW_ROOT
+```
+
+**OFF for this preview:** installed owner composition, serving/settlement replay,
+conversation host/driver, fact admission and projection, RunGraph, historical
+standing reconstruction, fixture native-host reconstruction, device and host-file
+identity pins, checkpoint rosters, `captureExchange` and `groundTurn` as reply
+prerequisites. The preview gives up production signed-history and governance
+proof and supplemental fact-store recall. It retains the complete original
+preview conversation in the journal and grounds each model call in the full
+history within its envelope. If the full history cannot fit and no current
+summary covers it, the turn is visibly held; no latest-N slice is substituted.
+
+**AFTER the reply:** a bounded rolling summary may use a separately reserved
+subscription call from the same attempt allowance. Original turns stay in the
+journal. Summary failure leaves originals and makes any later context overflow
+visible. Optional fact export, indexing, outcome grading and integrity sweeps
+run outside this reply worker; none is a synchronous dual write or a prerequisite
+for the next reply. The journal and stop latch are deliberately machine-local.
+The exclusive writer prevents two processes on this machine; it is not a second
+independently failing replica.

@@ -50,6 +50,24 @@ it('retains intake before advancing the cursor, deduplicates redelivery, and fen
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('keeps a foreign sender in encrypted intake without revealing their text to the model', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const contexts: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => { contexts.push(input.context); return 'ok'; },
+      send: async () => 1, checkOutbound: () => {} });
+    const foreign = update(1, 'private foreign words'); foreign.message.from.id = 99;
+    worker.intake([foreign, update(2)]); await worker.drain();
+    expect(journal.view.order).toHaveLength(2);
+    expect(journal.view.order[0]?.accepted).toBe(false);
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]).not.toContain('private foreign words');
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
 it('retains an interrupted final frame separately and never accepts it as work', () => {
   const root = origin(), path = join(root, 'journal.encrypted');
   try {
@@ -79,6 +97,35 @@ it('fsyncs the exact HTML body and expected visible text before dispatch', async
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
+it('persists the exact prepared model input before invoking its route', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: () => 'exact model envelope',
+      model: async input => { expect(journal.view.order[0]?.prompt).toBe(input.prepared); return 'answer'; },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1)]); await worker.drain(); journal.close();
+    const recovered = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(recovered.view.order[0]?.prompt).toBe('exact model envelope');
+    recovered.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('refuses an oversized prepared prompt before spending a call reservation', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: () => { throw Error('prompt too large'); },
+      model: async () => { throw Error('must not invoke'); }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1)]); await worker.drain();
+    expect(journal.view.calls).toBe(0);
+    expect(journal.view.order[0]?.held).toBe('prompt overflow');
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
 it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'before:answer', 'after:answer',
   'before:intent', 'after:intent', 'before:sent', 'after:sent'])('restart at %s keeps exact effects and pending state', async stage => {
   const root = origin();
@@ -101,6 +148,29 @@ it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'be
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('survives actual SIGKILL before and after every turn-path durable boundary', async () => {
+  const stages = ['before:genesis', 'after:genesis', 'before:intake', 'after:intake', 'before:reserve', 'after:reserve',
+    'before:answer', 'after:answer', 'before:intent', 'after:intent', 'before:sent', 'after:sent'];
+  for (const stage of stages) {
+    const root = origin();
+    try {
+      const child = spawnSync(process.execPath,
+        ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-crash-child.mjs', root, stage],
+        { cwd: process.cwd(), encoding: 'utf8', timeout: 10000 });
+      expect(child.signal, stage).toBe('SIGKILL');
+      const modelLog = join(root, 'models.log'), sendLog = join(root, 'sends.log');
+      const resumed = world(root, { model: () => { appendFileSync(modelLog, '1\n'); return 'answer'; },
+        send: () => { appendFileSync(sendLog, '1\n'); return 2; } });
+      resumed.worker.intake([update(1, 'question')]); await resumed.worker.drain();
+      expect(resumed.journal.view.order, stage).toHaveLength(1);
+      const count = (path: string) => existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n').length : 0;
+      expect(count(modelLog), stage).toBeLessThanOrEqual(1);
+      expect(count(sendLog), stage).toBeLessThanOrEqual(1);
+      resumed.journal.close();
+    } finally { rmSync(root, {recursive:true,force:true}); }
+  }
+}, 120000);
+
 it('holds stop, call allowance and secret egress; unknown model calls are not repeated', async () => {
   const root = origin();
   try {
@@ -116,6 +186,55 @@ it('holds stop, call allowance and secret egress; unknown model calls are not re
     expect(() => next.worker.intake([update(3)])).toThrow('stopped');
     next.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('holds admitted work at the exact attempt cap and refuses another poll', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(1), maxReplies: 2, maxTurns: 5 });
+    let calls = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => { calls++; return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1), update(2)]); await worker.drain();
+    expect(calls).toBe(1);
+    expect(journal.view.order[1]?.held).toBe('call cap');
+    expect(() => worker.pollGate()).toThrow('capacity');
+    expect(journal.view.stop).toBe('capacity');
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('holds a prepared answer when the reply cap is exhausted', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(2), maxReplies: 1, maxTurns: 5 });
+    let sends = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'ok', send: async () => { sends++; return 1; }, checkOutbound: () => {} });
+    worker.intake([update(1), update(2)]); await worker.drain();
+    expect(journal.view.calls).toBe(2);
+    expect(sends).toBe(1);
+    expect(journal.view.order[1]?.answer).toBe('ok');
+    expect(journal.view.order[1]?.held).toBe('reply cap');
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('holds context overflow with originals intact when no current summary can cover it', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), maxBytes: 128 });
+    let calls = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => { calls++; return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'never drop this original')]); await worker.drain();
+    expect(calls).toBe(0);
+    expect(journal.view.order[0]?.text).toBe('never drop this original');
+    expect(journal.view.order[0]?.held).toBe('context overflow');
+    journal.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
 it('keeps early-turn recall and constant append cost through 60 bounded turns and restarts', async () => {
