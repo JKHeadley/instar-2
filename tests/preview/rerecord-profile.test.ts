@@ -194,3 +194,59 @@ it('refuses recovery when a provider dispatch claim exists', async () => {
     now: () => 1790000005000, alive: () => false }))
     .toThrow('preview recovery: provider dispatch evidence exists');
 }, 1_800_000);
+
+it('answers after recovery when the prior context delivery was consumed but not settled', async () => {
+  const world = successiveWorld(); temporary.push(world.directory);
+  const profilePath = join(world.directory, 'profile.json'), activationPath = join(world.directory, 'activation.json');
+  writeFileSync(profilePath, JSON.stringify(offlineProfile));
+  writeFileSync(activationPath, JSON.stringify(world.activation()));
+  const updateId = world.say('my test word is lighthouse');
+  const failed = world.compose({ providerIO: io => ({ ...io, inspectSubscriptionProfile: profile => ({
+    loginProfileIdentity: 'offline-profile-after-reboot',
+    managedConfigurationDigest: profile.managedConfigurationDigest }) }) });
+  try { await failed.run({ maxCycles: 2, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); }
+  finally { failed.close(); }
+  expect(world.models()).toHaveLength(0);
+  let oldOperation;
+  const before = world.compose();
+  try {
+    const facts = before.rows();
+    expect(facts.length).toBeGreaterThan(66);
+    const consumed = facts.filter(row => row.kind === 'transport-AdmissionReservation'
+      && row.body.record?.state === 'consumed');
+    expect(consumed.length).toBeGreaterThan(0);
+    oldOperation = consumed[0].body.record.operation;
+    expect(facts.filter(row => row.kind === 'transport-SettlementApplication')).toHaveLength(0);
+  } finally { before.close(); }
+  recoverPreDispatchSlot({ root: world.root, profilePath, activationPath, model: world.model,
+    configuration: world.stateConfiguration, expectedUpdateId: updateId,
+    reason: 'offline unsettled context delivery', recordedBy: 'offline-desk',
+    storageKey: OFFLINE_STORAGE_KEY, telegramToken: '8820318295:synthetic_recorded_test_only_value',
+    now: () => 1790000005000, alive: () => false });
+  const renewed = { ...offlineProfile, loginProfileIdentity: 'offline-profile-after-reboot' };
+  rerecordLoginProfileIdentity({ root: world.root, profilePath, activationPath, model: world.model,
+    reason: 'offline profile re-record', recordedBy: 'offline-desk', storageKey: OFFLINE_STORAGE_KEY,
+    now: () => 1790000005000, alive: () => false, inspect: () => ({
+      loginProfileIdentity: renewed.loginProfileIdentity,
+      managedConfigurationDigest: offlineProfile.managedConfigurationDigest }) });
+  const profile = Object.freeze(JSON.parse(readFileSync(profilePath, 'utf8')));
+  const activation = JSON.parse(readFileSync(activationPath, 'utf8'));
+  world.say('What was my test word?'); world.answer('lighthouse');
+  const next = world.compose({ profile, activation });
+  try { await next.run({ maxCycles: 2, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); }
+  finally { next.close(); }
+  expect(world.sends()).toHaveLength(1);
+  expect(world.models()[0].stdin).toContain('turn ended without an answer');
+  world.say('What did you just answer?'); world.answer('I answered lighthouse.');
+  const following = world.compose({ profile, activation });
+  let finalFacts;
+  try { await following.run({ maxCycles: 2, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); finalFacts = following.rows(); }
+  finally { following.close(); }
+  expect(world.sends()).toHaveLength(2);
+  expect(world.sends()[1].body.text).toContain('I answered lighthouse.');
+  const secondContext = JSON.parse(JSON.parse(world.models()[1].stdin).messages[1].content).packet;
+  expect(secondContext.history.find(row => row.update === updateId + 1)).toMatchObject({
+    user: 'What was my test word?', answer: 'lighthouse', outcome: 'answer accepted; Telegram accepted the reply' });
+  expect(finalFacts.some(row => row.kind === 'transport-SettlementApplication'
+    && row.body.record?.operation === oldOperation)).toBe(false);
+}, 1_800_000);

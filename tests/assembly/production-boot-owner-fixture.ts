@@ -334,18 +334,9 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
           return connected;
         },
         prepare(message: any) {
-          const facts = value(store.read());
-          const ordinary = new Set(facts.filter((row: any) => row.kind === 'effect-EffectRequest'
-            && facts.some((message: any) => message.kind === 'effect-OutboundMessage'
-              && message.body.record?.id === row.body.record?.message
-              && message.body.record?.purpose === 'context-delivery'))
-            .map((row: any) => row.body.record.id));
-          const previous = value(transport.inspect()).filter((r: any) => r.record.type === 'AdmissionReservation'
-            && r.record.state === 'consumed' && ordinary.has(r.record.request));
-          for (const row of previous) {
-            const settled = value(transport.inspect()).some((r: any) => r.record.type === 'SettlementApplication' && r.record.operation === row.record.operation);
-            if (!settled) value(transport.settle(fence, value(api.settle(row.record.operation))));
-          }
+          // A previous consumed delivery without an accounting application keeps
+          // its Six reservation. Only the serving plan can settle it from current
+          // operation evidence; grounding the next run must not invent an Outcome.
           const run = { owner: 'part-five' as const, name: 'Run' as const, id: message.run };
           if (!value(transport.inspect()).some((r: any) => r.record.type === 'LoopRecord' && r.record.run === run.id))
             value(transport.schedule(`live-input-schedule:${message.id}`, fence, run, policy));
