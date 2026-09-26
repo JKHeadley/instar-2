@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 import { redact } from '../../src/recall/redact.js';
 
 export const SUCCESSIVE_CONTEXT_VERSION = 'successive-context-v1';
@@ -59,11 +59,16 @@ export const DESK_STATUS_MAX_BYTES = 4096;
 export const DESK_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export type DeskStatusFile = { text: string | null; modifiedAt: number } | null;
 export function readDeskStatus(path: string): DeskStatusFile {
+  let fd: number | undefined;
   try {
-    const stat = statSync(path);
+    fd = openSync(path, 'r');
+    const stat = fstatSync(fd);
     if (!stat.isFile()) return null;
-    return { text: stat.size > DESK_STATUS_MAX_BYTES ? null : readFileSync(path, 'utf8'), modifiedAt: stat.mtimeMs };
-  } catch { return null; }
+    // One descriptor, one capped read: a file that grows after the stat still costs at most one extra byte.
+    const buffer = Buffer.alloc(DESK_STATUS_MAX_BYTES + 1);
+    const length = readSync(fd, buffer, 0, buffer.length, 0);
+    return { text: length > DESK_STATUS_MAX_BYTES ? null : buffer.toString('utf8', 0, length), modifiedAt: stat.mtimeMs };
+  } catch { return null; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* already reported as unavailable */ } }
 }
 export function deskStatusSource(file: DeskStatusFile, now: number, path: string) {
   const iso = (ms: number) => new Date(ms).toISOString();
@@ -72,7 +77,7 @@ export function deskStatusSource(file: DeskStatusFile, now: number, path: string
   let status: 'missing' | 'oversize' | 'stale' | 'current', body: string;
   if (!file) { status = 'missing'; body = 'No desk report is available. Current work status is unknown; say so plainly and do not guess.'; }
   else if (file.text === null || Buffer.byteLength(file.text) > DESK_STATUS_MAX_BYTES) {
-    status = 'oversize'; body = `The desk report exceeds ${DESK_STATUS_MAX_BYTES} bytes and was not read. Current work status is unknown; say so plainly and do not guess.`;
+    status = 'oversize'; body = `The desk report exceeds ${DESK_STATUS_MAX_BYTES} bytes and was not included. Current work status is unknown; say so plainly and do not guess.`;
   } else {
     const hours = Math.floor((now - file.modifiedAt) / 3_600_000);
     status = now - file.modifiedAt > DESK_STATUS_MAX_AGE_MS ? 'stale' : 'current';
