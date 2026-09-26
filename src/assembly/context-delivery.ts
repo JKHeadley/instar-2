@@ -38,6 +38,9 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
     launch: string; run: string; incarnation: string; harness: string; artifactDigest: Hash; machine: string; processIdentity: string;
   }>> }>;
   context: AssemblyDecodeContext; clock: () => number;
+  /** MUST-FIX 2 (optional; absent keeps v1): genuine current authority,
+   * checked at the actual dispatch and again before a delayed result returns. */
+  currency?: () => Result<unknown>;
 }>): ConfinedContextDeliveryDriverPort {
   const { history, runtime, execution, liveProcess, context } = input;
   ensure(history.owner === 'part-ten' && runtime.owner === 'part-ten' && liveProcess.owner === 'part-ten', 'context delivery requires Ten-owned history/runtime/process resolution');
@@ -99,9 +102,11 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
         // Historical resolution is observational. Re-recording revalidates the
         // current Six reservation and Eight payload immediately before handoff.
         take(runtime.recordContextDelivery(spec));
+        if (input.currency) take(input.currency());
         const evidence = take(execution.deliver({ specification: spec, processIdentity: live.processIdentity,
           operation: effect.operation, claim: effect.claim }));
         ensure(evidence, 'executor acceptance evidence required');
+        if (input.currency) take(input.currency());
         const accepted = observation(spec, 'input-accepted', evidence, 'admitted context delivery accepted by the live process');
         issueContextDeliveryExecution(accepted, driver, spec.id);
         return accepted;
@@ -111,7 +116,9 @@ export function createConfinedContextDeliveryDriver(input: Readonly<{
       return boundary('ConfinedContextConsumption', { specification, operation }, context, () => {
         const { spec, live } = admitted(specification);
         ensure(operation === spec.operation, 'observation operation differs from the admitted delivery');
+        if (input.currency) take(input.currency());
         const result = take(execution.observe({ specification: spec, processIdentity: live.processIdentity, operation }));
+        if (input.currency) take(input.currency());
         ensure(['context-consumed', 'refused', 'uncertain'].includes(result.phase), 'executor returned an unsupported context observation');
         ensure(result.evidence, 'context observation requires independently resolvable boundary evidence');
         return observation(spec, result.phase, result.evidence, result.detail);
