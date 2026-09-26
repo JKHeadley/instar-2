@@ -2,9 +2,9 @@
 import { decode, defineDecoder, grantLiveness, historicalGrantLiveness, rehydrateConflict, rehydrateOutcome, rehydrateResult, scopeIncludes } from '../index.js';
 import type { Clock, ConstitutionalValue, DecodeContext, Json, Result, VerifiedPrincipal, UnresolvedInput } from '../index.js';
 import { boundary, encoding, fields, integer, object, requireFact, same, string, take } from './boundary.js';
-import type { AuthorityTaint, FactContext, FactEnvelope, FactSchema } from './contracts.js';
+import type { AuthorityTaint, CausalFrontier, FactContext, FactEnvelope, FactSchema, LineagePosition } from './contracts.js';
 import { contextBoundary } from './contracts.js';
-import { comparePosition, schemaFor, hashBytes } from './envelope.js';
+import { comparePosition, factId, schemaFor, hashBytes } from './envelope.js';
 import { decodeOwnedBody } from './owned.js';
 
 export function causalCone(fact: FactEnvelope, facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
@@ -32,6 +32,86 @@ export function causalCone(fact: FactEnvelope, facts: readonly FactEnvelope[]): 
   }
   return [...found.values()];
 }
+// Occam cut #3: "is X in this fact's history?" by position, not by materializing the cone. Where
+// every machine's facts form one gapless signed chain (the shape extendsChain admits), a fact's
+// history on machine m is exactly m's chain up to the highest m-position it reaches, so a vector of
+// those positions answers membership, and each vector position's contentHash (which the chain's
+// prevInSegment links bind back to genesis) identifies the history. Any list outside that shape, or
+// any dangling reference or cycle, answers undefined and the caller walks the cone as before, so
+// refusals and answers are unchanged. One index serves one operation; nothing outlives it.
+export interface CausalIndex {
+  readonly byId: ReadonlyMap<string, FactEnvelope>;
+  /** Highest position reached per machine, or undefined when only the walk can answer. */
+  frontierOf(fact: FactEnvelope): CausalFrontier | undefined;
+  /** causalCone(fact).length, or undefined when only the walk can answer. */
+  coneSize(fact: FactEnvelope): number | undefined;
+  /** The contentHash at each reached machine's head: binds the whole history through the chain links. */
+  coneHeads(fact: FactEnvelope): readonly string[] | undefined;
+}
+export function causalIndex(facts: readonly FactEnvelope[]): CausalIndex {
+  const byId = new Map<string, FactEnvelope>(), at = new Map<string, FactEnvelope>(), chains = new Map<string, FactEnvelope[]>();
+  const broken = new Set<string>();
+  for (const f of facts) {
+    const key = factId(f.segment);
+    if (byId.has(f.id) || f.id !== key || f.machine !== f.segment.machine) broken.add(f.machine);
+    byId.set(f.id, f); if (!at.has(key)) at.set(key, f);
+    const chain = chains.get(f.machine); if (chain) chain.push(f); else chains.set(f.machine, [f]);
+  }
+  const rank = new Map<string, number>();
+  for (const [machine, chain] of chains) {
+    const sorted = [...chain].sort((a, b) => comparePosition(a.segment, b.segment));
+    sorted.forEach((f, i) => {
+      rank.set(f.id, i);
+      const prev = sorted[i - 1];
+      const linked = !prev ? f.segment.epoch === 0 && f.segment.position === 0 && f.predecessors.inSegment === null
+        : f.prevInSegment !== prev.contentHash ? false
+        : f.segment.epoch === prev.segment.epoch ? f.segment.position === prev.segment.position + 1 && f.predecessors.inSegment === prev.id
+          : f.segment.epoch === prev.segment.epoch + 1 && f.segment.position === 0 && f.predecessors.inSegment === null
+            && f.predecessors.frontier[machine] !== undefined && comparePosition(f.predecessors.frontier[machine]!, prev.segment) === 0;
+      if (!linked) broken.add(machine);
+    });
+  }
+  const vectors = new Map<string, CausalFrontier | null>(), visiting = new Set<string>();
+  // Only list members are remembered (by id); any other object, even one sharing an id, is
+  // computed from its own signed references.
+  const compute = (fact: FactEnvelope): CausalFrontier | null => {
+    const refs = [...[fact.predecessors.inSegment, ...fact.predecessors.required].map(id => id === null ? null : byId.get(id)),
+      ...Object.entries(fact.predecessors.frontier).map(([m, p]) => at.get(factId({ machine: m, ...p })))];
+    const vector: Record<string, LineagePosition> = {};
+    for (const ref of refs) {
+      if (ref === null) continue;
+      const inner = ref && member(ref);
+      if (!ref || !inner || ref.id === fact.id) return null;
+      for (const [m, p] of [...Object.entries(inner), [ref.machine, ref.segment] as const])
+        if (!vector[m] || comparePosition(p, vector[m]!) > 0) vector[m] = { epoch: p.epoch, position: p.position };
+    }
+    // Reaching a fact that carries the start's own id is the walk's "causal cycle" refusal.
+    const self = byId.get(fact.id), reached = self && vector[self.machine];
+    if (reached && comparePosition(self.segment, reached) <= 0) return null;
+    return Object.keys(vector).every(m => !broken.has(m)) ? vector : null;
+  };
+  const member = (fact: FactEnvelope): CausalFrontier | null => {
+    const known = vectors.get(fact.id); if (known !== undefined) return known;
+    if (visiting.has(fact.id)) return null;
+    visiting.add(fact.id); const vector = compute(fact); visiting.delete(fact.id);
+    vectors.set(fact.id, vector); return vector;
+  };
+  const frontierOf = (fact: FactEnvelope): CausalFrontier | undefined =>
+    (byId.get(fact.id) === fact ? member(fact) : compute(fact)) ?? undefined;
+  const head = (m: string, p: LineagePosition) => at.get(factId({ machine: m, ...p }))!;
+  return { byId, frontierOf,
+    coneSize: fact => { const v = frontierOf(fact); return v && Object.entries(v).reduce((n, [m, p]) => n + rank.get(head(m, p).id)! + 1, 0); },
+    coneHeads: fact => { const v = frontierOf(fact); return v && Object.entries(v).map(([m, p]) => head(m, p).contentHash).sort(); } };
+}
+/** The facts of `fact`'s causal history, by id: exactly causalCone(fact, facts), including its refusals. */
+export function historyOf(fact: FactEnvelope, facts: readonly FactEnvelope[], index: CausalIndex): (id: string) => FactEnvelope | undefined {
+  const vector = index.frontierOf(fact);
+  if (!vector) { const cone = new Map(causalCone(fact, facts).map(f => [f.id, f])); return id => cone.get(id); }
+  return id => {
+    const x = index.byId.get(id), head = x && vector[x.machine];
+    return x && x.id !== fact.id && head && comparePosition(x.segment, head) <= 0 ? x : undefined;
+  };
+}
 export function extendsChain(fact: FactEnvelope, context: FactContext): void {
   const sameId = context.facts.find(f => f.id === fact.id);
   requireFact(!sameId, 'id already admitted; origin may not reuse ids');
@@ -46,9 +126,9 @@ export function extendsChain(fact: FactEnvelope, context: FactContext): void {
   }
 }
 
-export function causalStanding(fact: FactEnvelope, context: FactContext, origin: boolean): { now: Clock; taint: readonly AuthorityTaint[]; decode: DecodeContext } {
-  const schema = schemaFor(context, fact.kind, fact.schemaVersion), cone = causalCone(fact, context.facts);
-  const ids = new Set(cone.map(f => f.id));
+export function causalStanding(fact: FactEnvelope, context: FactContext, origin: boolean, index: CausalIndex = causalIndex(context.facts)): { now: Clock; taint: readonly AuthorityTaint[]; decode: DecodeContext } {
+  const schema = schemaFor(context, fact.kind, fact.schemaVersion), inCone = historyOf(fact, context.facts, index);
+  const ids = { has: (id: string) => inCone(id) !== undefined };
   for (const id of schema.requiredReferences) requireFact(fact.predecessors.required.includes(id), 'missing registry-declared causal reference');
   const grants = context.grants.filter(r => ids.has(r.factId)).map(r => r.grant);
   const revocations = context.revocations.filter(r => ids.has(r.factId)).map(r => r.revocation);
@@ -59,11 +139,11 @@ export function causalStanding(fact: FactEnvelope, context: FactContext, origin:
   // The minimal-plane provider supplies anchors; this checks each against actual cone state.
   let now = context.genesis.clock;
   for (const anchor of context.timeAnchors) {
-    const f = cone.find(f => f.id === anchor.factId);
+    const f = inCone(anchor.factId);
     if (!f) continue;
     const declared = schemaFor(context, f.kind, f.schemaVersion);
     requireFact(f.kind === 'time-anchor' && declared.standing === 'operator' && f.provenance.class === 'verified', 'time anchor lacks governed operator origin', 'standing');
-    causalStanding(f, context, false);
+    causalStanding(f, context, false, index);
     const body = object(f.body);
     requireFact(same(body.clock, anchor.clock), 'time anchor differs from recorded body', 'integrity');
     if (anchor.clock.value > now.value) now = anchor.clock;
