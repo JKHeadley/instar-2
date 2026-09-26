@@ -87,7 +87,10 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
     },
     transcriptExists(framework, id, project, directory) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
-      if (framework === 'claude-code') return existsSync(join(directory, 'projects', project.replace(/[\/.]/g, '-'), `${id}.jsonl`));
+      if (framework === 'claude-code') {
+        try { return lstatSync(join(directory, 'projects', project.replace(/[\/.]/g, '-'), `${id}.jsonl`)).isFile(); }
+        catch { return false; }
+      }
       // Codex stores date-partitioned rollout files. Search only the supplied login home.
       const root = join(directory, 'sessions');
       const scan = (path, depth) => {

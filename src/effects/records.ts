@@ -1,8 +1,9 @@
 import { decode, decodeMeasurement, grantLiveness, isValid, scopeIncludes } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
-import type { FactEnvelope, FactSchema, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
-import type { EffectAuthor, EffectHost, EffectRecord, EffectSpine, OperationDefinition, OutboundMessage } from './contracts.js';
+import type { FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
+import type { EffectAuthor, EffectHost, EffectRecord, EffectRequest, EffectSpine, NativeLaunchDefinition, NativeLaunchObservation,
+  NativeLaunchRequest, NativeProcessRecord, OperationDefinition, OutboundMessage } from './contracts.js';
 import type { FactStorePort } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { requireSettlement } from './settlement-authority.js';
@@ -11,6 +12,24 @@ const text = { kind: 'text', maxLength: 512 } as const, integer = { kind: 'integ
 const refs = { kind: 'array', maxLength: 64, items: text } as const;
 const common = { type: text, schemaVersion: integer, id: text };
 const capture = { kind: 'capture' } as const;
+const environment = { kind: 'array', maxLength: 64, items: { kind: 'object', fields: { name: text, valueDigest: text } } } as const;
+const manifest = { kind: 'array', maxLength: 64, items: { kind: 'object', fields: { class: text, reference: text, digest: text } } } as const;
+const launchLimits = { kind: 'object', fields: { wallMilliseconds: integer, cpuMilliseconds: integer,
+  memoryBytes: integer, processCount: integer, handleCount: integer, inputBytes: integer,
+  outputBytes: integer, scratchBytes: integer, queueCount: integer, outstandingDispatchCount: integer,
+  observationCount: integer, observationMilliseconds: integer, observationBytes: integer,
+  maximumExposure: integer, allocation: text } } as const;
+const target = { kind: 'object', fields: { installation: text, machine: text, principal: text,
+  harness: text, artifactDigest: text, executable: text, executableDigest: text, boundaryDigest: text,
+  restrictedIdentity: text, workingScope: text, environmentDigest: text, handlePolicyDigest: text } } as const;
+const parameters = { kind: 'object', fields: { mode: text, installation: text, machine: text,
+  principal: text, incarnation: text, harness: text, artifactDigest: text, executable: text,
+  executableDigest: text, boundaryDigest: text, restrictedIdentity: text, workingScope: text,
+  environment, environmentCapture: capture, portHandles: refs, resourceReferences: refs,
+  input: text, inputDigest: text, contextManifest: manifest, consumptionMode: text, limits: launchLimits } } as const;
+const processIdentity = { kind: 'object', fields: { state: text, machine: text, incarnation: text,
+  startIdentity: text, pid: integer, artifactDigest: text, boundaryDigest: text },
+  optional: ['machine', 'incarnation', 'startIdentity', 'pid', 'artifactDigest', 'boundaryDigest'] } as const;
 const outcome: OwnedShape = { kind: 'object', fields: { type: text, schemaVersion: integer, kind: text, evidence: refs } };
 // The normalized owner settlement uses null. P2's shape supports null but no
 // arbitrary union, so record
@@ -35,6 +54,30 @@ export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
     finalCharge: text, delayedExecutionExcluded: { kind: 'boolean' }, retainedExposure: integer,
     retryEligible: { kind: 'boolean' } } },
 });
+export const nativeProcessShapes: Readonly<Record<NativeProcessRecord['type'], OwnedShape>> = freeze({
+  OperationDefinition: { kind: 'object', fields: { ...common, operation: text, feature: text,
+    version: text, generation: text, adapter: text, mode: text, profile: text, target,
+    limits: launchLimits, authority: { kind: 'object', fields: { scope: text, grants: refs,
+      authorization: refs, policy: refs } }, durability: text, replicas: integer, lossModel: text,
+    verificationBar: text, observationPolicy: text, expiryEvidence: text } },
+  EffectRequest: { kind: 'object', fields: { ...common, operation: text, definition: text,
+    generation: text, run: text, step: text, pending: text, expectedPredecessor: text,
+    attempt: text, semanticMessage: text, parameters, digest: text, launchSpec: text,
+    launchSpecDigest: text, reservation: text, verificationOwner: text,
+    verificationBar: text, obligation: text, closure: refs } },
+  OperationObservation: { kind: 'object', fields: { ...common, operation: text, operationIdentity: text,
+    request: text, claim: text, consumption: text, digest: text, launchSpec: text,
+    launchSpecDigest: text, machine: text, incarnation: text, stage: text,
+    processIdentity, wake: text, capture, attestation: text, observer: text,
+    observedAt: integer, freshFor: integer, predecessors: refs } },
+});
+function versionedShape(name: NativeProcessRecord['type']): OwnedShape {
+  const old = effectShapes[name]!, next = nativeProcessShapes[name]!;
+  ensure(old.kind === 'object' && next.kind === 'object', 'record shape must be closed');
+  const fields = { ...old.fields, ...next.fields, legacyMessage: { kind: 'boolean' } as const };
+  const required = new Set(['type', 'schemaVersion', 'id']);
+  return { kind: 'object', fields, optional: Object.keys(fields).filter(key => !required.has(key)) };
+}
 export const kindFor = (name: string) => `effect-${name}`;
 export function wire(r: EffectRecord): Json {
   return json(r.type === 'EffectSettlement' ? { ...r, finalCharge: r.finalCharge === null ? 'unknown' : String(r.finalCharge) } : r);
@@ -44,7 +87,12 @@ export function recordFrom(f: FactEnvelope): EffectRecord {
   return freeze((r.type === 'EffectSettlement' ? { ...r, finalCharge: r.finalCharge === 'unknown' ? null : Number(r.finalCharge) } : r) as unknown as EffectRecord);
 }
 export function rows(facts: readonly FactEnvelope[]) {
-  return facts.filter(f => Object.keys(effectShapes).some(n => f.kind === kindFor(n))).map(fact => ({ fact, record: recordFrom(fact) }));
+  return facts.filter(f => f.schemaVersion === 1 && Object.keys(effectShapes).some(n => f.kind === kindFor(n)))
+    .map(fact => ({ fact, record: recordFrom(fact) }));
+}
+export function nativeProcessRows(facts: readonly FactEnvelope[]) {
+  return facts.filter(f => f.schemaVersion === 2 && Object.keys(nativeProcessShapes).some(n => f.kind === kindFor(n)))
+    .map(fact => ({ fact, record: freeze((fact.body as unknown as { record: NativeProcessRecord }).record) }));
 }
 function shapeCheck(v: unknown, shape: OwnedShape): void {
   if (shape.kind === 'text') { ensure(typeof v === 'string' && v.length <= shape.maxLength, 'bounded text required'); return; }
@@ -90,6 +138,154 @@ export function definitionCheck(d: OperationDefinition, host: EffectHost): void 
  * the measured successive-turn preview envelope (system prompt plus canonical
  * stdin, `production-provider.ts`). Every other operation keeps 4096 bytes. */
 export const PROVIDER_CALL_MAX_BYTES = 32768;
+
+export function nativeDefinitionCheck(d: NativeLaunchDefinition, host: EffectHost): void {
+  live(host, d.feature);
+  const c = host.current(d.feature), versions = walkVersions(c.versions);
+  ensure(versions.conflicts.length === 0, 'native launch definition contested');
+  const approved = versions.current.find(value => value.id === d.version && value.subject === d.feature);
+  ensure(approved && encoded(approved.content).bytes === encoded(d).bytes, 'native launch definition is not current');
+  const authorization = take(decode('Authorization', approved.approvedIn,
+    { ...c.decode, provenance: approved.approvedIn.explicitYes }));
+  ensure(authorization.approver.id !== host.principal.id
+    && isValid(authorization, approved.base, encoded(approved.content).hash, c.clock, c.decode) === 'valid',
+  'native launch definition approval is not live');
+  ensure(d.operation === 'native-confined-launch' && d.feature === d.operation && d.mode === 'context-loading'
+    && d.generation === c.decode.register.generation.id
+    && c.decode.register.entries.includes(d.feature) && c.decode.register.entries.includes(d.adapter),
+  'native launch definition identity or generation changed');
+  ensure(d.target.machine === host.machine && d.target.principal === host.principal.id
+    && d.authority.scope === encoded(host.scope).hash && d.authority.grants.length > 0
+    && d.profile.length > 0 && d.observationPolicy.length > 0 && d.expiryEvidence.length > 0,
+  'native launch target or authority missing');
+  ensure(d.target.executable.startsWith('/') && d.target.restrictedIdentity.length > 0
+    && d.target.handlePolicyDigest.length > 0 && d.target.environmentDigest.length > 0,
+  'fixed native target is incomplete');
+  ensure(Object.entries(d.limits).every(([key, value]) => key === 'allocation'
+    ? typeof value === 'string' && value.length > 0 : Number.isSafeInteger(value) && (value as number) > 0)
+    && d.limits.processCount === 1, 'finite fixed launch bounds required');
+  ensure((d.durability === 'local-durable' && d.replicas === 0)
+    || (d.durability === 'replicated' && d.replicas > 0), 'native durability demand invalid');
+}
+function exactList(values: readonly string[]): boolean {
+  return values.length > 0 && values.every(value => value.length > 0)
+    && encoded([...new Set(values)].sort()).bytes === encoded(values).bytes;
+}
+function validateNative(record: NativeProcessRecord, past: readonly FactEnvelope[], host: EffectHost, origin: boolean): void {
+  ensure(record.schemaVersion === 2 && record.id.length > 0, 'native record identity/version');
+  const all = nativeProcessRows(past);
+  ensure(!all.some(row => row.record.type === record.type && row.record.id === record.id)
+    && !rows(past).some(row => row.record.type === record.type && row.record.id === record.id),
+  'native record identity already exists');
+  const find = <T extends NativeProcessRecord['type']>(id: string, type: T) => {
+    const row = all.find(item => item.record.id === id && item.record.type === type);
+    ensure(row, `native ${type} predecessor absent`);
+    return row as { fact: FactEnvelope; record: Extract<NativeProcessRecord, { type: T }> };
+  };
+  if (record.type === 'OperationDefinition') {
+    ensure(record.operation === 'native-confined-launch' && record.mode === 'context-loading', 'native definition mode');
+    if (origin) nativeDefinitionCheck(record, host);
+    return;
+  }
+  if (record.type === 'EffectRequest') {
+    const definition = find(record.definition, 'OperationDefinition').record;
+    if (origin) nativeDefinitionCheck(definition, host);
+    const p = record.parameters;
+    ensure(record.operation === 'native-confined-launch' && p.mode === 'context-loading'
+      && record.generation === definition.generation && record.verificationBar === definition.verificationBar
+      && record.verificationOwner === 'part-nine', 'native request definition/verification mismatch');
+    ensure(record.id === `request:${encoded(['native-confined-launch', p.installation, p.machine,
+      record.run, record.step, p.incarnation]).hash}` && record.digest === encoded(p).hash,
+    'native request identity or parameter digest changed');
+    ensure(encoded(p.limits).bytes === encoded(definition.limits).bytes
+      && p.installation === definition.target.installation && p.machine === definition.target.machine
+      && p.principal === definition.target.principal && p.harness === definition.target.harness
+      && p.artifactDigest === definition.target.artifactDigest
+      && p.executable === definition.target.executable
+      && p.executableDigest === definition.target.executableDigest
+      && p.boundaryDigest === definition.target.boundaryDigest
+      && p.restrictedIdentity === definition.target.restrictedIdentity
+      && p.workingScope === definition.target.workingScope,
+    'native request target or limits changed');
+    ensure(exactList(p.resourceReferences) && p.portHandles.length > 0
+      && encoded([...new Set(p.portHandles)].sort()).bytes === encoded(p.portHandles).bytes,
+    'native allocation and singleton handle references required');
+    ensure(record.closure.includes(record.pending) && record.closure.includes(record.reservation)
+      && record.closure.includes(record.launchSpec) && record.closure.includes(record.obligation)
+      && record.closure.every(id => past.some(fact => fact.id === id)), 'native causal closure incomplete');
+    const opening = past.find(fact => fact.id === record.pending);
+    const run = opening?.body as { record?: { id?: string; opening?: { id?: string } }; run?: string } | undefined;
+    const k = encoded(['native-confined-launch', record.pending]).hash;
+    ensure(opening?.kind === 'run-opening' && run?.record?.id === record.run
+      && record.step === `initial-step:${k}` && record.semanticMessage === `initial-launch:${k}`
+      && record.attempt === `initial-launch-attempt:${k}` && record.expectedPredecessor === record.run,
+    'native initial Run anchor or derived identity changed');
+    const prepared = past.find(fact => fact.id === record.reservation);
+    const reservation = (prepared?.body as { record?: { type?: string; state?: string; request?: string;
+      attempt?: string; digest?: string; run?: string } } | undefined)?.record;
+    ensure(prepared?.kind === 'transport-AdmissionReservation' && reservation?.type === 'AdmissionReservation'
+      && reservation.state === 'prepared' && reservation.request === record.id
+      && reservation.attempt === record.attempt && reservation.digest === record.digest
+      && reservation.run === record.run, 'native prepared Six mapping changed');
+    const spec = past.find(fact => fact.id === record.launchSpec);
+    const launch = (spec?.body as { record?: Record<string, unknown> } | undefined)?.record;
+    ensure(spec?.kind === 'assembly-HarnessLaunchSpec' && launch?.processOperation === record.reservation
+      && record.launchSpecDigest === encoded(launch).hash
+      && launch.run === record.run && launch.step === record.step
+      && launch.machine === p.machine && launch.incarnation === p.incarnation
+      && launch.principal === p.principal && launch.harness === p.harness
+      && launch.artifactDigest === p.artifactDigest && launch.workingScope === p.workingScope
+      && launch.input === p.input && launch.inputDigest === p.inputDigest
+      && launch.consumptionMode === p.consumptionMode
+      && encoded(launch.portHandles).bytes === encoded(p.portHandles).bytes
+      && encoded(launch.environment).bytes === encoded(p.environment).bytes
+      && encoded(launch.contextManifest).bytes === encoded(p.contextManifest).bytes
+      && encoded(launch.resourceReferences).bytes === encoded([...p.resourceReferences, record.reservation].sort()).bytes,
+    'native complete Ten specification differs');
+    ensure(p.resourceReferences.every(id => past.some(fact => fact.id === id
+      && fact.segment.position < prepared.segment.position)), 'native prior allocation not before reservation');
+    return;
+  }
+  const request = find(record.request, 'EffectRequest').record;
+  const definition = find(request.definition, 'OperationDefinition').record;
+  ensure(record.operation === 'native-confined-launch' && record.digest === request.digest
+    && record.launchSpec === request.launchSpec && record.launchSpecDigest === request.launchSpecDigest
+    && record.machine === request.parameters.machine && record.incarnation === request.parameters.incarnation
+    && record.freshFor > 0 && record.freshFor <= definition.limits.observationMilliseconds
+    && record.observedAt >= 0 && record.attestation === 'local-recorder',
+  'native observation request/subject/freshness mismatch');
+  const claim = past.find(fact => fact.id === record.claim);
+  const consumed = past.find(fact => fact.id === record.consumption);
+  const claimRow = (claim?.body as { record?: { state?: string; operation?: string } } | undefined)?.record;
+  const consumedRow = (consumed?.body as { record?: { state?: string; operation?: string } } | undefined)?.record;
+  ensure(claimRow?.state === 'dispatch-claimed' && consumedRow?.state === 'consumed'
+    && claimRow.operation === record.operationIdentity && consumedRow.operation === record.operationIdentity,
+  'native observation requires original consumed claim');
+  ensure(record.processIdentity.state === 'unknown' || record.processIdentity.state === 'known'
+    && record.processIdentity.machine === record.machine
+    && record.processIdentity.incarnation === record.incarnation
+    && record.processIdentity.pid > 0 && record.processIdentity.startIdentity.length > 0,
+  'native process identity incomplete');
+  ensure(record.processIdentity.state === 'unknown'
+    ? Object.keys(record.processIdentity).length === 1
+    : Object.keys(record.processIdentity).length === 7,
+  'native process identity has extra or missing fields');
+  ensure(record.predecessors.includes(record.claim) && record.predecessors.includes(record.consumption)
+    && record.predecessors.includes(record.launchSpec)
+    && record.predecessors.every(id => past.some(fact => fact.id === id)),
+  'native observation predecessor closure incomplete');
+  ensure(['launched', 'uncertain', 'exit-observed', 'lookup'].includes(record.stage)
+    && (record.stage === 'lookup' || record.stage === 'exit-observed' ? record.wake.length > 0 : record.wake === ''),
+  'native observation stage or wake invalid');
+  if (record.wake) {
+    const wake = past.find(fact => fact.id === record.wake);
+    const loop = (wake?.body as { record?: { type?: string; pending?: string; state?: string } } | undefined)?.record;
+    ensure(wake?.kind === 'transport-LoopRecord' && loop?.type === 'LoopRecord'
+      && loop.pending === record.operationIdentity
+      && ['running', 'restoring', 'waiting'].includes(loop.state ?? ''),
+    'native observation requires original active Six wake');
+  }
+}
 function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHost, origin: boolean): void {
   ensure(r.schemaVersion === 1 && r.id.length > 0, 'record identity/version');
   const all = rows(past);
@@ -123,10 +319,45 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(loop?.kind === 'transport-LoopRecord' && (loop.body as { record: { run: string } }).record.run === r.run, 'six-owned verification wake missing');
     if (origin) definitionCheck(d, host);
   } else if (r.type === 'EffectValidation') {
-    const q = find(r.request, 'EffectRequest'), d = find(q.definition, 'OperationDefinition');
-    ensure(r.digest === q.digest && r.definition === d.id && r.generation === d.generation
+    const legacy = all.find(row => row.record.type === 'EffectRequest' && row.record.id === r.request)?.record as EffectRequest | undefined;
+    const native = nativeProcessRows(past).find(row => row.record.type === 'EffectRequest'
+      && row.record.id === r.request)?.record as NativeLaunchRequest | undefined;
+    ensure((legacy ? 1 : 0) + (native ? 1 : 0) === 1, 'validation request variant missing or ambiguous');
+    const q = legacy ?? native!;
+    const d = legacy ? find(legacy.definition, 'OperationDefinition')
+      : nativeProcessRows(past).find(row => row.record.type === 'OperationDefinition'
+        && row.record.id === native!.definition)?.record as NativeLaunchDefinition | undefined;
+    ensure(d && r.digest === q.digest && r.definition === d.id && r.generation === d.generation
       && ['reservation', 'dispatch'].includes(r.phase) && r.authority.length > 0, 'validation binding');
-    if (origin) { definitionCheck(d, host); ensure(r.expires === host.current().clock.value + d.timeout, 'validation expiry differs from bounded current clock'); }
+    if (origin) {
+      if (legacy) definitionCheck(d as OperationDefinition, host);
+      else nativeDefinitionCheck(d as NativeLaunchDefinition, host);
+      const lifetime = legacy ? (d as OperationDefinition).timeout : (d as NativeLaunchDefinition).limits.wallMilliseconds;
+      ensure(r.expires === host.current().clock.value + lifetime, 'validation expiry differs from bounded current clock');
+    }
+  } else if (r.type === 'EffectSettlement' && nativeProcessRows(past).some(row =>
+    row.record.type === 'EffectRequest' && row.record.id === r.request)) {
+    const request = nativeProcessRows(past).find(row => row.record.type === 'EffectRequest'
+      && row.record.id === r.request)?.record as NativeLaunchRequest;
+    const operations = past.filter(fact => fact.kind === 'transport-AdmissionReservation')
+      .map(fact => ({ fact, record: (fact.body as unknown as { record: {
+        operation: string; state: string; request: string; digest: string; charge: number } }).record }))
+      .filter(row => row.record.operation === r.operation);
+    const current = operations.at(-1), claim = operations.find(row => row.fact.id === r.claim);
+    ensure(current && current.record.state !== 'prepared' && current.record.request === request.id
+      && current.record.digest === request.digest && r.digest === request.digest
+      && claim?.record.state === 'dispatch-claimed'
+      && current.fact.id === r.reservation, 'native settlement original operation mismatch');
+    const observations = nativeProcessRows(past).filter(row => row.record.type === 'OperationObservation'
+      && row.record.operationIdentity === r.operation).map(row => row.record.id);
+    ensure(r.observations.length > 0 && r.observations.every(id => observations.includes(id))
+      && r.acceptance.length > 0 && past.some(fact => fact.id === r.acceptance),
+    'native settlement assessment or observations absent');
+    ensure(r.retryEligible === false && r.retainedExposure >= 0
+      && (r.finalCharge === null || Number.isSafeInteger(r.finalCharge) && r.finalCharge >= 0)
+      && (r.finalCharge !== null || r.retainedExposure === current.record.charge),
+    'native settlement cannot erase retained exposure');
+    if (origin) requireSettlement(host, r);
   } else {
     const q = find(r.request, 'EffectRequest'), m = find(q.message, 'OutboundMessage');
     const reservations = past.filter(f => f.kind === 'transport-AdmissionReservation');
@@ -166,25 +397,54 @@ export function effectSchemas(host: EffectHost): readonly FactSchema[] {
     standing: 'requester', action: 'work', scope: host.scope, causallyBound: false,
     requiredReferences: [], authority: 'none' }));
 }
+/** Only the launch-enabled installation adds these schemas and their matching
+ * body migrations. Existing message installations retain their v1 body map. */
+export function nativeProcessSchemas(host: EffectHost): readonly FactSchema[] {
+  return Object.keys(nativeProcessShapes).map(name => ({ kind: kindFor(name), version: 2,
+    fields: { record: { kind: 'owned', owner: 'part-eight', name } }, machineScope: 'shared',
+    standing: 'requester', action: 'work', scope: host.scope, causallyBound: false,
+    requiredReferences: [], authority: 'none' }));
+}
+export const nativeProcessMigrations = Object.freeze(Object.keys(nativeProcessShapes).map(name => ({
+  kind: kindFor(name), from: 1, to: 2, migrate: (body: Json): Json => body,
+})));
 const genuineEffectRegistrations = new WeakSet<object>();
 export function isHarnessLiveInputOwnerRegistration(registration: OwnedBodyRegistration): boolean {
   return genuineEffectRegistrations.has(registration);
 }
 export function registerEffectBodies(host: EffectHost): Result<readonly OwnedBodyRegistration[]> {
-  return boundary('EffectRegistrations', null, host.boundary, () => Object.entries(effectShapes).map(([name, shape]) => { const registration = take(registerOwnedBody({
-    name, owner: 'part-eight', currentVersion: 1, versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
+  return boundary('EffectRegistrations', null, host.boundary, () => Object.entries(effectShapes).map(([name, shape]) => { const versioned = Object.hasOwn(nativeProcessShapes, name);
+    const registration = take(registerOwnedBody({
+    name, owner: 'part-eight', currentVersion: versioned ? 2 : 1,
+    versions: versioned ? { 1: { validate: v => ({ ok: true, value: v }) }, 2: { validate: v => ({ ok: true, value: v }) } }
+      : { 1: { validate: v => ({ ok: true, value: v }) } },
+    migrations: versioned ? { 1: (value: Json) => ({ ...(value as Record<string, Json>), schemaVersion: 2, legacyMessage: true }) }
+      : {},
     decodeCurrent: (input, c) => {
       try {
-        shapeCheck(input, shape);
+        const original = (c.origin.body as { record?: Json }).record;
+        ensure(original && typeof original === 'object' && !Array.isArray(original), 'original owned record missing');
+        const legacy = versioned && c.origin.schemaVersion === 1;
+        if (legacy) {
+          const migrated = input as Record<string, Json>;
+          const { legacyMessage: _marker, ...restored } = migrated;
+          ensure(migrated.legacyMessage === true && migrated.schemaVersion === 2
+            && encoded({ ...restored, schemaVersion: 1 }).bytes === encoded(original).bytes,
+          'legacy migration changed original bytes');
+          input = original;
+        } else ensure(!versioned || c.origin.schemaVersion === 2
+          && !(input as Record<string, Json>).legacyMessage, 'stored v2 legacy intermediate refused');
+        shapeCheck(input, legacy || !versioned ? shape : nativeProcessShapes[name as NativeProcessRecord['type']]!);
         ensure(c.origin.machine === host.machine && c.origin.principal.id === host.principal.id
           && c.origin.principal.kind === host.principal.kind, 'foreign effect recorder');
-        const r = recordFrom({ body: { record: input } } as unknown as FactEnvelope);
+        const r = (versioned && !legacy ? input : recordFrom({ body: { record: input } } as unknown as FactEnvelope)) as EffectRecord | NativeProcessRecord;
         ensure(r.type === name, 'owned type mismatch');
-        validate(r, causalCone(c.origin, c.facts.facts), host, c.mode === 'origin');
+        if (versioned && !legacy) validateNative(r as NativeProcessRecord, causalCone(c.origin, c.facts.facts), host, c.mode === 'origin');
+        else validate(r as EffectRecord, causalCone(c.origin, c.facts.facts), host, c.mode === 'origin');
         return { ok: true, value: freeze(input) };
       } catch (e) { return { ok: false, detail: e instanceof Error ? e.message : 'effect record refused' }; }
     },
-  }, shape, host.boundary)); genuineEffectRegistrations.add(registration); return registration; }));
+  }, versioned ? versionedShape(name as NativeProcessRecord['type']) : shape, host.boundary)); genuineEffectRegistrations.add(registration); return registration; }));
 }
 export function decodeOutboundMessage(input: unknown, host: EffectHost): Result<OutboundMessage> {
   return boundary('OutboundMessageInput', input, host.boundary, () => {
@@ -207,10 +467,10 @@ export function readHarnessLiveInputCapture(spine: EffectSpine, capture: { refer
   return stored.bytes;
 }
 export function createEffectSpine(host: EffectHost, author: EffectAuthor, store: FactStorePort): EffectSpine {
-  const spine = Object.freeze({ store, append: (record: EffectRecord, required: readonly string[]) => authorAndAppend({
-    kind: kindFor(record.type), schemaVersion: 1, machine: host.machine,
+  const spine = Object.freeze({ store, append: (record: EffectRecord | NativeProcessRecord, required: readonly string[]) => authorAndAppend({
+    kind: kindFor(record.type), schemaVersion: record.schemaVersion, machine: host.machine,
     principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
-    body: { record: wire(record) }, required,
+    body: { record: record.schemaVersion === 1 ? wire(record) : json(record) }, required,
   }, author.context, store, author.privateKey) });
   liveInputAuthors.set(spine, author); return spine;
 }
@@ -219,5 +479,89 @@ export function installOperationDefinition(input: unknown, host: EffectHost, spi
     const safe = json(input); shapeCheck(safe, effectShapes.OperationDefinition!);
     const d = safe as unknown as OperationDefinition; definitionCheck(d, host);
     take(spine.append(d, (d.feature === 'harness-live-input' ? host.current(d.feature) : host.current()).authority)); return freeze(d);
+  });
+}
+export function installNativeLaunchDefinition(input: unknown, host: EffectHost, spine: EffectSpine): Result<NativeLaunchDefinition> {
+  return boundary('NativeLaunchDefinitionInput', input, host.boundary, () => {
+    const safe = json(input); shapeCheck(safe, nativeProcessShapes.OperationDefinition);
+    const record = safe as unknown as NativeLaunchDefinition;
+    nativeDefinitionCheck(record, host);
+    take(spine.append(record, host.current(record.feature).authority));
+    return freeze(record);
+  });
+}
+function decodeNative<T extends NativeProcessRecord['type']>(type: T, input: unknown,
+  context: OwnedBodyContext, host: EffectHost): Result<Extract<NativeProcessRecord, { type: T }>> {
+  return boundary(`NativeLaunch${type}`, input, host.boundary, () => {
+    ensure(context.origin.schemaVersion === 2 && context.origin.kind === kindFor(type)
+      && context.origin.machine === host.machine && context.origin.principal.id === host.principal.id,
+    'native launch owner envelope mismatch');
+    const safe = json(input); shapeCheck(safe, nativeProcessShapes[type]);
+    ensure(encoded((context.origin.body as { record: Json }).record).bytes === encoded(safe).bytes,
+      'native launch original body differs');
+    const record = safe as unknown as Extract<NativeProcessRecord, { type: T }>;
+    ensure(record.type === type && record.operation === 'native-confined-launch', 'native launch variant mismatch');
+    validateNative(record, causalCone(context.origin, context.facts.facts), host, context.mode === 'origin');
+    return freeze(record);
+  });
+}
+export function decodeNativeConfinedLaunchDefinitionAtOrigin(input: unknown, context: OwnedBodyContext, host: EffectHost) {
+  ensure(context.mode === 'origin', 'native definition origin mode required');
+  return decodeNative('OperationDefinition', input, context, host);
+}
+export function decodeHistoricalNativeConfinedLaunchDefinition(input: unknown, context: OwnedBodyContext, host: EffectHost) {
+  ensure(context.mode === 'historical', 'native definition historical mode required');
+  return decodeNative('OperationDefinition', input, context, host);
+}
+export function decodeNativeConfinedLaunchRequestAtOrigin(input: unknown, context: OwnedBodyContext, host: EffectHost) {
+  ensure(context.mode === 'origin', 'native request origin mode required');
+  return decodeNative('EffectRequest', input, context, host);
+}
+export function decodeHistoricalNativeConfinedLaunchRequest(input: unknown, context: OwnedBodyContext, host: EffectHost) {
+  ensure(context.mode === 'historical', 'native request historical mode required');
+  return decodeNative('EffectRequest', input, context, host);
+}
+export function decodeNativeConfinedLaunchObservationAtOrigin(input: unknown, context: OwnedBodyContext, host: EffectHost) {
+  ensure(context.mode === 'origin', 'native observation origin mode required');
+  return decodeNative('OperationObservation', input, context, host);
+}
+export function decodeHistoricalNativeConfinedLaunchObservation(input: unknown, context: OwnedBodyContext, host: EffectHost) {
+  ensure(context.mode === 'historical', 'native observation historical mode required');
+  return decodeNative('OperationObservation', input, context, host);
+}
+export function recordNativeConfinedLaunchRequest(input: unknown, host: EffectHost, spine: EffectSpine): Result<NativeLaunchRequest> {
+  return boundary('RecordNativeLaunchRequest', input, host.boundary, () => {
+    const safe = json(input); shapeCheck(safe, nativeProcessShapes.EffectRequest);
+    const record = safe as unknown as NativeLaunchRequest;
+    const snapshot = take(spine.store.readForProjection());
+    ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'native launch history contested');
+    const prior = nativeProcessRows(snapshot.entries.map(entry => entry.fact))
+      .find(entry => entry.record.type === record.type && entry.record.id === record.id);
+    if (prior) {
+      ensure(encoded(prior.record).bytes === encoded(record).bytes, 'native request identity conflict');
+      return prior.record as NativeLaunchRequest;
+    }
+    const receipt = take(spine.append(record, record.closure));
+    ensure(!receipt.taint.length && encoded((receipt.fact.body as unknown as { record: NativeLaunchRequest }).record).bytes === encoded(record).bytes,
+    'native request append changed');
+    return freeze(record);
+  });
+}
+export function recordNativeConfinedLaunchObservation(input: unknown, host: EffectHost, spine: EffectSpine): Result<NativeLaunchObservation> {
+  return boundary('RecordNativeLaunchObservation', input, host.boundary, () => {
+    const safe = json(input); shapeCheck(safe, nativeProcessShapes.OperationObservation);
+    const record = safe as unknown as NativeLaunchObservation;
+    const snapshot = take(spine.store.readForProjection());
+    ensure(snapshot.entries.every(entry => !entry.taint.length && !entry.conflicts.length), 'native launch history contested');
+    const prior = nativeProcessRows(snapshot.entries.map(entry => entry.fact))
+      .find(entry => entry.record.type === record.type && entry.record.id === record.id);
+    if (prior) {
+      ensure(encoded(prior.record).bytes === encoded(record).bytes, 'native observation identity conflict');
+      return prior.record as NativeLaunchObservation;
+    }
+    const receipt = take(spine.append(record, record.predecessors));
+    ensure(!receipt.taint.length && encoded((receipt.fact.body as unknown as { record: NativeLaunchObservation }).record).bytes === encoded(record).bytes,
+    'native observation append changed');
+    return freeze(record);
   });
 }
