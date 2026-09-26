@@ -7,6 +7,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { openPreviewJournal, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { durablePreviewWrite } from './state.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 
@@ -178,6 +179,7 @@ function importNew(root, manifest, keyBytes) {
   finally { closeSync(claim); }
   const claimDir = openSync(dirname(claimPath), 'r'); try { fsyncSync(claimDir); } finally { closeSync(claimDir); }
   mkdirSync(path, { mode: 0o700, recursive: true });
+  durablePreviewWrite(join(path, 'preview-import.json'), { version: 1, source: manifest.source });
   const leaseResult = openProductionStorage({ root: join(path, '.writer'), machine: 'preview-local-machine',
     key: keyBytes, policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO });
   if (leaseResult.kind !== 'Success') throw Error('migration second writer refused');

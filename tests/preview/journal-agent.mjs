@@ -56,23 +56,43 @@ async function main() {
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
   const stopPath = join(root, 'preview-stop.json');
+  const journalPath = join(root, 'journal.encrypted');
+  const importPath = join(root, 'preview-import.json');
+  const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
+  if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
+    throw Error('preview: import marker malformed');
   if (command === 'stop') {
-    if (!existsSync(join(root, 'journal.encrypted'))) throw Error('preview: journal absent');
+    if (!existsSync(journalPath)) throw Error('preview: journal absent');
     if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'operator' });
     return;
   }
   if (command === 'status') {
-    const view = openPreviewJournal(join(root, 'journal.encrypted'), key(), undefined, undefined, true);
+    let view;
+    try { view = openPreviewJournal(journalPath, key(), undefined, undefined, true); }
+    catch (error) {
+      if (!importMarker) throw error;
+      process.stdout.write(`${JSON.stringify({ cursor: null, importComplete: false })}\n`);
+      return;
+    }
     try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       calls: view.view.calls, replies: view.view.replies,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
       sourceStop: view.view.sourceStop,
-      importComplete: view.view.genesis.importSource === undefined || view.view.imported,
+      importComplete: importMarker
+        ? view.view.genesis.importSource === importMarker.source && view.view.imported
+        : view.view.genesis.importSource === undefined || view.view.imported,
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length })}\n`); }
     finally { view.close(); }
     return;
+  }
+  if (importMarker) {
+    const check = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      if (check.view.genesis.importSource !== importMarker.source || !check.view.imported)
+        throw Error('preview: migration incomplete');
+    } finally { check.close(); }
   }
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
@@ -96,7 +116,7 @@ async function main() {
       operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
-    journal = openPreviewJournal(join(root, 'journal.encrypted'), key(), initial);
+    journal = openPreviewJournal(journalPath, key(), initial);
     const g = journal.view.genesis;
     if (g.importSource !== undefined && !journal.view.imported) throw Error('preview: migration incomplete');
     if (String(number(g.bot, 'bot-id')) !== g.bot || String(number(g.chat, 'chat-id')) !== g.chat
