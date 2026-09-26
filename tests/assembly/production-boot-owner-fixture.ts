@@ -58,6 +58,15 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   const assemblyHost: any = { machine: 'machine-a', principal: f.bob, scope: f.scope, boundary: { ...f.c, register: types.register },
     current: () => ({ facts: ctx, generation: types.register.generation.id, stopped, clock: now }) };
   const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native, !!seed);
+  if (options.captureCustody) owners.host.capture = (bytes: string) => {
+    const hash = hashBytes(bytes), reference = `live-input-capture:${hash}`;
+    if (!options.captureCustody.preserve(reference, bytes)
+      || options.captureCustody.read(reference) !== bytes) throw Error('initial capture custody unavailable');
+    options.captureCheckpoint?.(reference);
+    ctx.captures[reference] = { hash, bytes, byteLength: Buffer.byteLength(bytes), status: 'available' };
+    types.captures[reference] = bytes;
+    return f.success({ reference, hash });
+  };
   const registration = value(runFactSchemas(c));
   ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas, ...assemblySchemas(assemblyHost), ...owners.schemas, ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...seed?.ownedBodies ?? [], ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
   if (options.recovery) {

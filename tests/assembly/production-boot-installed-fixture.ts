@@ -77,6 +77,8 @@ export function installedFixtureHost(root, route, options = {}) {
         return result;
       } };
       const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true, deferred: true, recovery,
+        captureCustody: storage.captures,
+        captureCheckpoint: reference => options.physicalCheckpoint?.('initial-capture-durable', { reference }),
         prepareContext: recovery ? (context, assemblyHost, base) => {
           const dc = context.decode, boundary = { ...base.c, register: dc.register };
           const th = { ...assemblyHost, domain: 'conversation:1', incarnation: 'incarnation:one',
