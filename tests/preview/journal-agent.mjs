@@ -160,6 +160,15 @@ async function main() {
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
+    let failedPolls = 0;
+    const pollFailure = async () => {
+      failedPolls++;
+      if (failedPolls >= 20) { worker.stop('transport-breaker'); return false; }
+      const until = Date.now() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
+      while (!workerStop.value && !existsSync(stopPath) && Date.now() < until)
+        await delay(Math.min(100, until - Date.now()));
+      return true;
+    };
     let summaryJob = null;
     const summarizeLater = () => {
       if (summaryJob) return;
@@ -169,12 +178,16 @@ async function main() {
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch { break; }
-      const result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
+      let result;
+      try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
         body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5) },
-        timeoutMs: 12000 }, token());
-      if (result.kind !== 'response' || result.status !== 200) { await delay(500); continue; }
-      const updates = JSON.parse(result.bytes);
-      if (updates.ok !== true || !Array.isArray(updates.result)) throw Error('preview: poll malformed');
+        timeoutMs: 12000 }, token()); }
+      catch { if (!await pollFailure()) break; continue; }
+      if (result.kind !== 'response' || result.status !== 200) { if (!await pollFailure()) break; continue; }
+      let updates;
+      try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure()) break; continue; }
+      if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
+      failedPolls = 0;
       worker.intake(updates.result); await worker.drain(); summarizeLater();
     }
     await summaryJob;
