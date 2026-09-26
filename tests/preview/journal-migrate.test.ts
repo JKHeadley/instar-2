@@ -8,9 +8,9 @@ import { OFFLINE_STORAGE_KEY, successiveWorld } from './successive-fixture.js';
 import { openPreviewJournal } from './journal.js';
 
 const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
-const migrate = (args, key) => spawnSync(process.execPath,
+const migrate = (args, key, extraEnv = {}) => spawnSync(process.execPath,
   ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-migrate.mjs', ...args],
-  { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+  { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex'), ...extraEnv },
     encoding: 'utf8', timeout: 30000 });
 
 it('exports an old stopped root once, preserves its bytes, imports transcript and uncertain fences, and rejects a live old poller', async () => {
@@ -38,6 +38,7 @@ it('exports an old stopped root once, preserves its bytes, imports transcript an
   expect(readFileSync(output, 'utf8')).not.toContain('Remember the old first turn.');
   expect(migrate(['import', '--export-file', output, '--new-root', target], OFFLINE_STORAGE_KEY).status).toBe(0);
   expect(migrate(['import', '--export-file', output, '--new-root', target], OFFLINE_STORAGE_KEY).status).not.toBe(0);
+  expect(migrate(['import', '--export-file', output, '--new-root', join(world.directory, 'second-journal')], OFFLINE_STORAGE_KEY).status).not.toBe(0);
   const journal = openPreviewJournal(join(target, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
   try {
     expect(journal.view.cursor).toBeGreaterThan(100);
@@ -48,6 +49,41 @@ it('exports an old stopped root once, preserves its bytes, imports transcript an
     expect(journal.view.sourceStop).toBe('operator');
   } finally { journal.close(); }
   expect(files.map(hash)).toEqual(before);
+}, 120000);
+
+it('keeps an interrupted old-answer import unpublished and refuses a second root for the same lineage', async () => {
+  const world = successiveWorld();
+  world.say('Old question.'); world.answer('Old answer.');
+  const composition = world.compose();
+  try { await composition.run({ maxCycles: 3, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); }
+  finally { composition.close(); }
+  world.state().latchStop('operator');
+  const output = join(world.directory, 'cut-transfer.enc'), target = join(world.directory, 'cut-journal');
+  expect(migrate(['export', '--old-root', world.root, '--export-file', output,
+    '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+    '--operator-sender-id', world.configuration.operatorSenderId], OFFLINE_STORAGE_KEY).status).toBe(0);
+  const cut = migrate(['import', '--export-file', output, '--new-root', target], OFFLINE_STORAGE_KEY,
+    { INSTAR_PREVIEW_IMPORT_KILL_AT: 'after:answer' });
+  expect(cut.signal).toBe('SIGKILL');
+  const journal = openPreviewJournal(join(target, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
+  try {
+    expect(journal.view.cursor).toBe(0);
+    expect(journal.view.imported).toBe(false);
+    expect(journal.view.order[0]?.answer).toBe('Old answer.');
+    expect(journal.view.order[0]?.intent).toBeUndefined();
+  } finally { journal.close(); }
+  const status = spawnSync(process.execPath,
+    ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', target],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex') },
+      encoding: 'utf8', timeout: 10000 });
+  expect(status.status).toBe(0);
+  expect(JSON.parse(status.stdout).importComplete).toBe(false);
+  const launch = spawnSync(process.execPath,
+    ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'run', '--root', target],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex') },
+      encoding: 'utf8', timeout: 10000 });
+  expect(launch.status).not.toBe(0);
+  expect(migrate(['import', '--export-file', output, '--new-root', join(world.directory, 'other-journal')], OFFLINE_STORAGE_KEY).status).not.toBe(0);
 }, 120000);
 
 it('keeps a sent-but-unconfirmed old reply fenced after import', async () => {

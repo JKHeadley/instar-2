@@ -6,10 +6,10 @@ import { resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
-  SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+  subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
-import { encoded } from './stage2-provider.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, PREVIEW_LIVE_LIMITS } from './journal.js';
 
@@ -67,6 +67,8 @@ async function main() {
       calls: view.view.calls, replies: view.view.replies,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
       sourceStop: view.view.sourceStop,
+      importComplete: view.view.genesis.importSource === undefined || view.view.imported,
+      holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length })}\n`); }
     finally { view.close(); }
@@ -80,7 +82,7 @@ async function main() {
   const signal = () => { signalled = true; workerStop.value = true;
     try { if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'signal' });
       worker?.stop('signal'); } catch {} };
-  process.once('SIGINT', signal); process.once('SIGTERM', signal);
+  process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
   try {
     const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
     const maxReplies = number(options['max-replies'] ?? '16', 'max-replies');
@@ -96,30 +98,18 @@ async function main() {
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
     journal = openPreviewJournal(join(root, 'journal.encrypted'), key(), initial);
     const g = journal.view.genesis;
+    if (g.importSource !== undefined && !journal.view.imported) throw Error('preview: migration incomplete');
     if (String(number(g.bot, 'bot-id')) !== g.bot || String(number(g.chat, 'chat-id')) !== g.chat
       || g.chat !== g.operator) throw Error('preview: private operator binding differs');
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
-    const modelEnvelope = ({ question, context: packet, id }) => {
-      const policy = subscriptionConversationPolicy(required(options, 'model'));
-      const floor = { type: 'ActionFloor', schemaVersion: 1, actions: ['work'], default: 'work' };
-      const bindings = { at: Date.now(), by: { judgment: 'judgment', model: options.model, route: 'preview-subscription' },
-        floor, evidence: [id] };
-      const bytes = encoded({ provider: 'anthropic', model: options.model, route: 'preview-subscription',
-        messages: [{ role: 'user', content: question }, { role: 'context', content: encoded({ bindings, packet: JSON.parse(packet) }).bytes }],
-        attachments: [], tools: [], settings: { automaticRetries: 0, maxTokens: policy.maxTokens },
-        outputSchema: { type: 'Decision' }, floor, evidence: bindings.evidence, point: 'judgment', generation: g.grant }).bytes;
-      if (Buffer.byteLength(bytes) > policy.maxInputBytes
-        || Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > policy.maxPromptBytes)
-        throw Error('preview: complete prompt overflow');
-      return { bytes, policy };
-    };
+    const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now());
     const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
       { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
       sources,
-      prepareModel: input => modelEnvelope(input).bytes,
+      prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
@@ -153,9 +143,12 @@ async function main() {
     if (activation.trial !== g.grant || activation.baseConfigurationDigest !== g.configurationDigest || activation.expiresAt !== g.expires)
       throw Error('preview: activation differs from journal');
     const captures = new Map();
+    const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
+    if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+      || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
-    }, read: ref => captures.get(ref) ?? null });
+    }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
@@ -175,14 +168,19 @@ async function main() {
       summaryJob = worker.summarizeIfNeeded().catch(() => {}).finally(() => { summaryJob = null; });
     };
     for (let i = 0; i < cycles && !signalled; i++) {
+      if (i > 0) await new Promise(done => setImmediate(done));
+      if (signalled || workerStop.value || existsSync(stopPath)) break;
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch { break; }
+      if (signalled || workerStop.value || existsSync(stopPath)) break;
       let result;
       try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
         body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5) },
         timeoutMs: 12000 }, token()); }
       catch { if (!await pollFailure()) break; continue; }
+      await new Promise(done => setImmediate(done));
+      if (signalled || workerStop.value || existsSync(stopPath)) break;
       if (result.kind !== 'response' || result.status !== 200) { if (!await pollFailure()) break; continue; }
       let updates;
       try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure()) break; continue; }
@@ -207,7 +205,7 @@ async function main() {
         now: Date.now, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract }));
     }
-  } finally { journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); }
+  } finally { journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
 }
 
 try { await main(); } catch { process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }

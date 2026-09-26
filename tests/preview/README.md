@@ -537,7 +537,7 @@ are prohibited:
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSOLUTE/recovery-input.json
 ```
 
-## Structural journal runner (round 10)
+## Structural journal runner (rounds 10–11)
 
 `journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
 append-only local journal and one exclusive writer. At boot it replays the journal once;
@@ -566,20 +566,25 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
 ```
 
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists UNKNOWN
-calls and sends. `stop --root /ABSOLUTE/NEW_ROOT` fsyncs a monotonic stop latch
-even while the writer holds the lease. SIGINT and SIGTERM latch the same stop.
+calls and sends, held update IDs and reasons, and import completion. `stop --root /ABSOLUTE/NEW_ROOT` fsyncs a monotonic stop latch
+even while the writer holds the lease. SIGINT, SIGTERM and SIGHUP latch the same stop.
 Stop blocks new physical dispatch and cancels local provider work where possible;
 it cannot recall an already dispatched request. Caps and expiry do not reset on restart.
 
 Before cutover, the desk stops and quiesces the old poller. The one-use migration
 tool refuses a live old lease and leaves the old root unchanged. It exports an
 encrypted manifest of accepted updates, transcript, cursor, expiry, remaining
-allowance and uncertain effects, then imports into an empty new root. The old
+allowance and uncertain effects, then imports into an empty new root. The source
+lineage is durably claimed for one canonical destination in a marker beside the
+old root, independent of the export filename. The imported cursor becomes visible
+only after every intake, counter and uncertain-effect fence and the terminal import
+record are durable. An interrupted import cannot launch or import into a second root.
+The old
 stop reason remains visible as `sourceStop`; it describes the old poller's
 quiescence. A new root's own stop latch remains authoritative. The desk must
 keep the old poller stopped unless new outcomes have been reconciled back into
 its lineage. `export` refuses an existing export file; `import` refuses a used
-target root.
+target root or a lineage already claimed by another import.
 
 ```sh
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-migrate.mjs export \
@@ -598,6 +603,8 @@ proof and supplemental fact-store recall. It retains the complete original
 preview conversation in the journal and grounds each model call in the full
 history within its envelope. If the full history cannot fit and no current
 summary covers it, the turn is visibly held; no latest-N slice is substituted.
+The full-history choice uses the complete system, packet and prepared prompt bound;
+a usable summary is selected before a turn is held for overflow.
 
 **AFTER the reply:** a bounded rolling summary may use a separately reserved
 subscription call from the same attempt allowance. Original turns stay in the
@@ -607,3 +614,9 @@ run outside this reply worker; none is a synchronous dual write or a prerequisit
 for the next reply. The journal and stop latch are deliberately machine-local.
 The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
+
+The offline 60-turn assembled-path regression polls through the real Telegram
+bridge against a fake endpoint, uses the real subscription adapter with an
+immediate model substitute, builds the launcher prompt, times restarts, and checks
+early recall. Its limit is 80 model attempts and 60 replies; the live launcher
+limits remain 16/16/20. The worker-only measurement remains separately reported.

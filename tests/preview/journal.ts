@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns: 20, contextBytes: 32768 });
 
 export type JournalRecord =
-  | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number }
+  | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number }
   | { kind: 'reserve'; id: string; prompt?: string; at: number }
   | { kind: 'answer'; id: string; text: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number }
@@ -30,7 +30,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reserved: boolean; prompt?: string; intent?: string; intentBody?: string; sent?: number; held?: string }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
-  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; sourceStop: string | null }
+  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; sourceStop: string | null; imported: boolean }
 
 const frameLimit = 2 * 1024 * 1024;
 function project(view: JournalView, row: JournalRecord): void {
@@ -46,9 +46,11 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'legacy-call') { view.calls++; return; }
   if (row.kind === 'legacy-reply') { view.replies++; return; }
   if (row.kind === 'import') {
+    if (!view.genesis.importSource || view.imported || row.source !== view.genesis.importSource)
+      throw Error('preview journal: import lineage differs');
     if (view.calls + row.remainingCalls !== view.genesis.maxCalls
       || view.replies + row.remainingReplies !== view.genesis.maxReplies) throw Error('preview journal: imported counters differ');
-    view.sourceStop = row.oldStop; return;
+    view.sourceStop = row.oldStop; view.cursor = view.genesis.importCursor!; view.imported = true; return;
   }
   if (row.kind === 'summary-reserve') {
     if (view.summaryReservations.has(row.through)) throw Error('preview journal: repeated summary reservation');
@@ -98,7 +100,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, summaries: [], summaryReservations: new Set(), sourceStop: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -134,7 +136,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, summaries: [], summaryReservations: new Set(), sourceStop: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, summaries: [], summaryReservations: new Set(), sourceStop: null, imported: false };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -143,7 +145,10 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (!initial.bot || !initial.chat || !initial.operator || !initial.grant || !initial.configurationDigest
         || !Number.isSafeInteger(initial.expires) || initial.expires <= 0
         || ![initial.maxCalls, initial.maxReplies, initial.maxTurns, initial.maxBytes].every(n => Number.isSafeInteger(n) && n > 0)
-        || initial.cursor < 0 || !Number.isSafeInteger(initial.cursor)) throw Error('preview journal: invalid genesis');
+        || initial.cursor < 0 || !Number.isSafeInteger(initial.cursor)
+        || (initial.importSource !== undefined && (!initial.importSource || initial.cursor !== 0
+          || !Number.isSafeInteger(initial.importCursor) || initial.importCursor! < 0)))
+        throw Error('preview journal: invalid genesis');
       append(initial);
     }
     return { get view() { return view!; }, append, close: () => closeSync(fd) };
@@ -215,10 +220,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : { historyMode: 'complete' }), history });
     return packet;
   };
-  const contextFor = (turn: Turn) => {
-    const full = packetFor(turn.update - 1, false);
-    if (Buffer.byteLength(full) <= journal.view.genesis.maxBytes) return full;
-    return packetFor(turn.update - 1, true);
+  const preparedFor = (turn: Turn) => {
+    const question = redact(turn.text).text;
+    let promptFit = false;
+    for (const compact of [false, true]) {
+      const context = packetFor(turn.update - 1, compact);
+      if (Buffer.byteLength(context) > journal.view.genesis.maxBytes) continue;
+      promptFit = true;
+      try {
+        const prepared = ports.prepareModel?.({ question, context, id: turn.id });
+        return { question, context, prepared };
+      } catch { /* Try a usable summary before holding the turn. */ }
+    }
+    return { reason: promptFit ? 'prompt overflow' : 'context overflow' };
   };
   const drain = async () => {
     if (working) throw Error('preview journal: second worker refused');
@@ -230,11 +244,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (turn.answer === undefined) {
           if (turn.reserved) continue;
           if (journal.view.calls >= journal.view.genesis.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
-          const context = contextFor(turn), question = redact(turn.text).text;
-          if (Buffer.byteLength(context) > journal.view.genesis.maxBytes) { journal.append({kind:'hold',id:turn.id,reason:'context overflow',at:ports.now()}); continue; }
-          let prepared: string | undefined;
-          try { prepared = ports.prepareModel?.({ question, context, id: turn.id }); }
-          catch { journal.append({kind:'hold',id:turn.id,reason:'prompt overflow',at:ports.now()}); continue; }
+          const selected = preparedFor(turn);
+          if ('reason' in selected) { journal.append({kind:'hold',id:turn.id,reason:selected.reason,at:ports.now()}); continue; }
+          const { question, context, prepared } = selected;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }), at: ports.now() }); gate();
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
           try { answer = await ports.model({ question, context, id: turn.id,

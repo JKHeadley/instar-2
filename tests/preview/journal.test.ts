@@ -139,17 +139,23 @@ it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'be
     next.worker.intake([update(1)]);
     await next.worker.drain();
     expect(next.journal.view.order).toHaveLength(1);
-    expect(physicalCalls).toBeLessThanOrEqual(1);
-    expect(physicalSends).toBeLessThanOrEqual(1);
+    expect(physicalCalls).toBe(stage === 'after:reserve' ? 0 : 1);
+    expect(physicalSends).toBe(['after:reserve', 'before:answer', 'after:intent'].includes(stage) ? 0 : 1);
     const turn = next.journal.view.order[0]!;
-    if (stage === 'before:intake') expect(turn.sent).toBe(43);
-    else expect(turn.reserved || turn.sent).toBeTruthy();
+    if (['after:reserve','before:answer'].includes(stage)) {
+      expect(turn.reserved).toBe(true);
+      expect(turn.answer).toBeUndefined();
+      expect(turn.intent).toBeUndefined();
+    } else if (['after:intent','before:sent'].includes(stage)) {
+      expect(turn.intent).toBe('PREVIEW — first answer');
+      expect(turn.sent).toBeUndefined();
+    } else expect(turn.sent).toBe(stage === 'after:sent' ? 42 : 43);
     next.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it('survives actual SIGKILL before and after every turn-path durable boundary', async () => {
-  const stages = ['before:genesis', 'after:genesis', 'before:intake', 'after:intake', 'before:reserve', 'after:reserve',
+    const stages = ['before:genesis', 'after:genesis', 'before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'during:model',
     'before:answer', 'after:answer', 'before:intent', 'after:intent', 'before:sent', 'after:sent'];
   for (const stage of stages) {
     const root = origin();
@@ -164,8 +170,17 @@ it('survives actual SIGKILL before and after every turn-path durable boundary', 
       resumed.worker.intake([update(1, 'question')]); await resumed.worker.drain();
       expect(resumed.journal.view.order, stage).toHaveLength(1);
       const count = (path: string) => existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n').length : 0;
-      expect(count(modelLog), stage).toBeLessThanOrEqual(1);
-      expect(count(sendLog), stage).toBeLessThanOrEqual(1);
+      expect(count(modelLog), stage).toBe(stage === 'after:reserve' ? 0 : 1);
+      expect(count(sendLog), stage).toBe(['after:reserve', 'during:model', 'before:answer', 'after:intent'].includes(stage) ? 0 : 1);
+      const turn = resumed.journal.view.order[0]!;
+      if (['after:reserve', 'during:model', 'before:answer'].includes(stage)) {
+        expect(turn.reserved, stage).toBe(true);
+        expect(turn.answer, stage).toBeUndefined();
+        expect(turn.intent, stage).toBeUndefined();
+      } else if (stage === 'after:intent' || stage === 'before:sent') {
+        expect(turn.intent, stage).toBe('PREVIEW — answer');
+        expect(turn.sent, stage).toBeUndefined();
+      } else expect(turn.sent, stage).toBeGreaterThan(0);
       resumed.journal.close();
     } finally { rmSync(root, {recursive:true,force:true}); }
   }
@@ -235,6 +250,44 @@ it('holds context overflow with originals intact when no current summary can cov
     expect(journal.view.order[0]?.held).toBe('context overflow');
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('uses a current summary when the full packet fits but the complete prompt does not, and reports holds', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(), maxBytes: 32768 });
+    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(25800),
+      raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
+    journal.append({kind:'reserve',id:'telegram:12345678:update:1',at:1000});
+    journal.append({kind:'answer',id:'telegram:12345678:update:1',text:'old answer',at:1000});
+    journal.append({kind:'summary-reserve',through:1,at:1000});
+    journal.append({kind:'summary',through:1,text:'Earlier long turn: ORCHID.',at:1000});
+    journal.append({kind:'intake',id:'telegram:12345678:update:2',update:2,text:'b'.repeat(6000),
+      raw:JSON.stringify(update(2)),accepted:true,cursor:3,at:1000});
+    journal.append({kind:'reserve',id:'telegram:12345678:update:2',at:1000});
+    journal.append({kind:'answer',id:'telegram:12345678:update:2',text:'recent answer',at:1000});
+    let full = 0, compact = 0, invoked = 0;
+    const worker = createJournalWorker(journal, {now:()=>1000,stopped:()=>false,
+      prepareModel: input => { const size = Buffer.byteLength(input.context);
+        if (input.context.includes('"historyMode":"complete"')) full = size; else compact = size;
+        if (size + 2870 > 32768) throw Error('complete prompt overflow'); return input.context; },
+      model: async input => { invoked++; expect(input.context).toContain('ORCHID'); return 'yes'; },
+      send: async()=>1,checkOutbound:()=>{} });
+    worker.intake([update(3,'what was first?')]); await worker.drain();
+    expect(full).toBeGreaterThan(32000);
+    expect(full).toBeLessThanOrEqual(32768);
+    expect(compact).toBeLessThan(8000);
+    expect(invoked).toBe(1);
+    expect(journal.view.order[2]?.sent).toBe(1);
+    journal.append({kind:'hold',id:'telegram:12345678:update:2',reason:'review needed',at:1000});
+    journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
+      {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout).holds).toContainEqual({update:2,reason:'review needed'});
+  } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
 it('keeps early-turn recall and constant append cost through 60 bounded turns and restarts', async () => {

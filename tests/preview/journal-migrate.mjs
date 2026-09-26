@@ -130,12 +130,13 @@ function exportOld(root, input) {
   if (!Number.isSafeInteger(sidecar.cursor) || !Number.isSafeInteger(state.trial.expiresAt)
     || sidecar.cursor < Math.max(0, ...turns.map(turn => turn.update + 1))) throw Error('migration cursor or expiry malformed');
   const reserved = turns.filter(turn => turn.reserved).length;
-  return { version: 1, source: hash(JSON.stringify({ trial: state.trial.id, cursor: sidecar.cursor, turns: turns.length })),
+  return { version: 1, sourceRoot: old,
+    source: hash(JSON.stringify({ root: old, trial: state.trial.id, cursor: sidecar.cursor, turns: turns.length })),
     genesis: { kind: 'genesis', bot, chat, operator, grant: state.trial.id,
       configurationDigest: state.trial.configurationDigest, expires: state.trial.expiresAt,
       maxCalls: input.maxCalls, maxReplies: input.maxReplies,
       maxTurns: Math.max(turns.length, Math.min(PREVIEW_LIVE_LIMITS.turns, state.trial.maxTrialTurns)),
-      maxBytes: input.maxBytes, cursor: sidecar.cursor },
+      maxBytes: input.maxBytes, cursor: 0, importCursor: sidecar.cursor },
     priorCalls: Math.max(0, attempts.size - reserved),
     priorReplies: Math.max(0, state.replyWindow.count - turns.filter(turn => turn.intent).length),
     remainingCalls: Math.max(0, input.maxCalls - attempts.size),
@@ -163,8 +164,19 @@ function readExport(path, keyBytes) {
 function importNew(root, manifest, keyBytes) {
   const path = resolve(root);
   if (path !== root) throw Error('migration target not canonical');
+  if (typeof manifest.sourceRoot !== 'string' || resolve(manifest.sourceRoot) !== manifest.sourceRoot
+    || realpathSync(manifest.sourceRoot) !== manifest.sourceRoot
+    || manifest.source !== hash(JSON.stringify({ root: manifest.sourceRoot, trial: manifest.genesis.grant,
+      cursor: manifest.genesis.importCursor, turns: manifest.turns.length }))) throw Error('migration lineage malformed');
   if (existsSync(path) && realpathSync(path) !== path) throw Error('migration target substituted');
   if (existsSync(path) && readdirSync(path).length) throw Error('migration target is not empty');
+  // The claim is keyed by source lineage, outside the unchanged old root and
+  // independent of the export filename. A crash retains its destination fence.
+  const claimPath = join(dirname(manifest.sourceRoot), `.preview-lineage-${manifest.source.slice(7)}.json`);
+  const claim = openSync(claimPath, 'wx', 0o600);
+  try { writeFileSync(claim, JSON.stringify({ source: manifest.source, destination: path })); fsyncSync(claim); }
+  finally { closeSync(claim); }
+  const claimDir = openSync(dirname(claimPath), 'r'); try { fsyncSync(claimDir); } finally { closeSync(claimDir); }
   mkdirSync(path, { mode: 0o700, recursive: true });
   const leaseResult = openProductionStorage({ root: join(path, '.writer'), machine: 'preview-local-machine',
     key: keyBytes, policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO });
@@ -172,11 +184,14 @@ function importNew(root, manifest, keyBytes) {
   const lease = leaseResult.value;
   let journal;
   try {
-    journal = openPreviewJournal(join(path, 'journal.encrypted'), keyBytes, manifest.genesis);
+    journal = openPreviewJournal(join(path, 'journal.encrypted'), keyBytes,
+      { ...manifest.genesis, importSource: manifest.source }, stage => {
+        if (stage === process.env.INSTAR_PREVIEW_IMPORT_KILL_AT) process.kill(process.pid, 'SIGKILL');
+      });
     for (const turn of manifest.turns) {
       const id = `telegram:${manifest.genesis.bot}:update:${turn.update}`;
       journal.append({ kind: 'intake', id, update: turn.update, text: turn.text, raw: turn.raw,
-        accepted: turn.accepted, cursor: Math.min(manifest.genesis.cursor, turn.update + 1), at: 0 });
+        accepted: turn.accepted, cursor: 0, at: 0 });
       if (turn.reserved) journal.append({ kind: 'reserve', id, at: 0 });
       if (turn.answer !== null) journal.append({ kind: 'answer', id, text: turn.answer, at: 0 });
       if (turn.intent !== null) journal.append({ kind: 'intent', id, text: turn.intent, chat: manifest.genesis.chat,
