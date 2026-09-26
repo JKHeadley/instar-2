@@ -67,7 +67,6 @@ function exportOld(root, input) {
     || targetBindings[0].channel !== `telegram:v1:bot:${input.bot}:chat:${input.chat}:direct`
     || targetBindings[0].sender !== `telegram:v1:user:${input.operator}`
     || targetBindings[0].principalId !== `telegram:v1:user:${input.operator}`
-    || state.trial.hostNotice?.botId !== input.bot || state.trial.hostNotice?.chatId !== input.chat
     || input.chat !== input.operator) throw Error('migration bound audience differs');
   const accepted = facts.filter(fact => fact.kind === 'intake-admitted')
     .map(fact => ({ fact, record: body(fact) }))

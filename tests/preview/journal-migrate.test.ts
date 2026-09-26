@@ -89,6 +89,23 @@ it('exports an old stopped root once, preserves its bytes, imports transcript an
   expect(files.map(hash)).toEqual(before);
 }, 120000);
 
+it('exports a real successor root whose state records no host notice', async () => {
+  const world = successiveWorld();
+  world.say('Question without a host notice.'); world.answer('Answer without a host notice.');
+  const composition = world.compose();
+  try { await composition.run({ maxCycles: 3, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); }
+  finally { composition.close(); }
+  world.state().latchStop('operator');
+  // hostNotice is optional in preview state; a live successor root does not record it.
+  const statePath = join(world.root, 'preview-state.json'), state = JSON.parse(readFileSync(statePath, 'utf8'));
+  delete state.trial.hostNotice; writeFileSync(statePath, JSON.stringify(state));
+  const output = join(world.directory, 'no-notice.enc');
+  expect(migrate(['export', '--old-root', world.root, '--export-file', output,
+    '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+    '--operator-sender-id', world.configuration.operatorSenderId], OFFLINE_STORAGE_KEY).status).toBe(0);
+  expect(migrate(['import', '--export-file', output, '--new-root', join(world.directory, 'no-notice-journal')], OFFLINE_STORAGE_KEY).status).toBe(0);
+}, 120000);
+
 it.each(['before:genesis', 'after:answer'])('refuses an interrupted %s import with valid launch ports and zero dispatch', async cutAt => {
   const world = successiveWorld();
   world.say('Old question.'); world.answer('Old answer.');
