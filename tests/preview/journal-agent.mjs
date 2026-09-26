@@ -48,10 +48,21 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 const delay = ms => new Promise(done => setTimeout(done, ms));
+/** The exact sources every live turn carries; shared by run and the read-only inspect probe. */
+const turnSources = (root, options, view) => {
+  const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+    { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
+  const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
+  return () => [...sources, deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
+};
+/** Only the recall-relevant parts of a packet, never sources or history text. */
+const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
+  people: packet.people ?? [], recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0 });
+const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
-  if (!['run', 'status', 'stop', 'raise-caps'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'inspect'].includes(command)) throw Error('preview: unknown command');
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -86,8 +97,28 @@ async function main() {
       unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null })),
+      summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
       people: [...new Set(view.view.people.map(note => note.name))] })}\n`); }
     finally { view.close(); }
+    return;
+  }
+  if (command === 'inspect') {
+    // Read-only: the last persisted model prompt's recall view and, with --text, what a next
+    // message would get now. No append, no model call, no send.
+    const view = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      const last = view.view.order.filter(t => t.prompt !== undefined).at(-1);
+      let next;
+      if (options.text !== undefined) {
+        const refuse = () => { throw Error('preview: inspect never calls or sends'); };
+        const probe = createJournalWorker(view, { now: Date.now, stopped: () => true, sources: turnSources(root, options, view.view),
+          prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, Date.now()),
+          model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
+        next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
+      }
+      process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
+        ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}) })).text}\n`);
+    } finally { view.close(); }
     return;
   }
   if (importMarker) {
@@ -145,11 +176,8 @@ async function main() {
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now());
-    const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-      { providerAttempts: journal.view.limits.maxCalls, expiresAt: g.expires }).sources;
-    const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
-      sources: () => [...sources, deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)],
+      sources: turnSources(root, options, journal.view),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {

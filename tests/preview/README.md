@@ -603,17 +603,29 @@ when both occur verbatim in one accepted message the summary packet showed, and
 drops anything else, including quotes of the agent's own answers. No extra model
 call is made and no new file is written: notes ride on the summary's journal record.
 
-A later message that names a known person gets `people` in its packet: every note
-filed under that name (most recent ten), each with the verbatim quote, its date and
-`from` — the message's authenticated sender, read from the journal, never from the
-model. So "Sam thinks X" from the operator appears as the operator's report, never
-as Sam's words; only a message authenticated as Sam's own could carry `from` Sam.
-The packet says that the same name can mean different people and that absence from
-`people` is not evidence. Before a summary exists every original message is already
+A later message that shares a name word with a known person gets `people` in its
+packet ("Sam" also finds notes filed as "Sam Ruiz"; the model judges identity). The
+most recent ten notes are recalled, and each source message is shown in full, redacted,
+with its date, the quoted mentions and `from`. `from` is the message's authenticated
+sender, read from the journal, never from the model. A quote is only a pointer into
+its message, so "Priya falsely claimed that Sam supports November" can never reduce
+to "Sam supports November". "Sam thinks X" from the operator appears as the operator's
+report, never as Sam's words; only a message authenticated as Sam's own could carry
+`from` Sam. The packet says that the same or a partial name can mean different people
+and that absence from `people` is not evidence. Before a summary exists every original message is already
 in `history`, so notes are only needed and only recalled for compacted turns. Under
 the context bound, recalled turns give way first, then the oldest person notes.
 A plain-text summary keeps no notes; `status` lists each summary's note count
-(`null` = none recorded) and the known names.
+(`null` = none recorded), `summaryPending` (a summary call still in flight) and the
+known names.
+
+`inspect --root ROOT` is read-only: it prints the last persisted model prompt's
+`historyMode`, summary coverage and `people` block, redacted, and never sources or
+history text. Add `--text "<message>" --model MODEL` to see what a next message
+with that text would get now. It makes no model call, send or journal write.
+Recall is proven only when a question's own persisted prompt shows
+`summary-plus-recent` with its people. A summary alone is not enough, because
+complete history is used for as long as it still fits.
 
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists current
 caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import
