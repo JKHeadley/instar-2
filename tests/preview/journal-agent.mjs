@@ -52,11 +52,11 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
 /** The exact sources every live turn carries; shared by run and the read-only inspect probe.
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
-const turnSources = (root, options, view, runs, current) => {
+const turnSources = (root, options, view, runs, current = () => undefined) => {
   const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
-  return () => [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current)),
+  return () => [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current())),
     deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
@@ -188,7 +188,7 @@ async function main() {
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now());
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
-      sources: turnSources(root, options, journal.view, () => runs, launchedAt ?? undefined),
+      sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {

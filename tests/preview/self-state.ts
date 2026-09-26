@@ -15,7 +15,7 @@ export function appendRun(path: string, record: RunRecord): void {
   const fresh = !existsSync(path);
   const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
   try {
-    const line = Buffer.from(`${JSON.stringify(record)}\n`);
+    const line = Buffer.from(`\n${JSON.stringify(record)}\n`);
     let written = 0; while (written < line.length) written += writeSync(fd, line, written);
     fsyncSync(fd);
   } finally { closeSync(fd); }
@@ -31,7 +31,8 @@ export function readRuns(path: string): RunLog {
     if (!line) continue;
     let row: Partial<RunRecord & { exit: number; reason: string; pid: number }>;
     try { row = JSON.parse(line) as typeof row; } catch { log.unreadable++; continue; }
-    if (row.v !== 1 || !Number.isSafeInteger(row.launch)) { log.unreadable++; continue; }
+    if (row === null || typeof row !== 'object' || Array.isArray(row)
+      || row.v !== 1 || !Number.isSafeInteger(row.launch)) { log.unreadable++; continue; }
     if (row.exit === undefined) {
       if (byLaunch.has(row.launch!)) { log.unreadable++; continue; }
       const entry = { at: row.launch! }; byLaunch.set(row.launch!, entry); log.launches.push(entry);
@@ -117,9 +118,11 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
         : `Latest launch ${when(latest.at)} ended ${when(latest.exit)}: ${latest.reason!}.`);
     lines.push(previous === undefined
       ? `That is the first recorded launch (records begin ${when(launches[0]!.at)}; earlier launches, if any, were not recorded).`
-      : `Last restart: ${when(latest.at)}. The run before it started ${when(previous.at)} and `
+      : `${runs.unreadable ? 'Last recorded restart' : 'Last restart'}: ${when(latest.at)}. `
+        + `${runs.unreadable ? 'The previous recorded run' : 'The run before it'} started ${when(previous.at)} and `
         + (previous.exit === undefined ? 'ended without recording why (crash, kill or power loss).'
-          : `ended ${when(previous.exit)}: ${previous.reason!}.`));
+          : `ended ${when(previous.exit)}: ${previous.reason!}.`)
+        + (runs.unreadable ? ' The run history is incomplete; intervening launches may be missing.' : ''));
     lines.push(`Launches recorded: ${String(launches.length)} (${String(launches.filter(run => isToday(run.at)).length)} today).`);
   }
   if (runs.unreadable) lines.push(`Run log lines unreadable: ${String(runs.unreadable)}.`);

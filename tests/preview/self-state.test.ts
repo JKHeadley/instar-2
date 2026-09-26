@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -102,6 +102,29 @@ it('says uptime and restarts are unknown when no launch was recorded, and marks 
     expect(text).toContain('Run history: no launch has been recorded, so uptime and restarts are unknown.');
     expect(text).toContain('Unknown outcomes (never retried): 1 model call(s), 0 send(s).');
     expect(() => selfState(journal.view, readRuns(join(root, 'runs.jsonl')), NOON, 'Mars/Olympus')).toThrow(RangeError);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('recovers a new launch after a torn tail and counts malformed rows without hiding damage', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-self-')));
+  const path = join(root, 'runs.jsonl'), old = NOON - 3_600_000, current = NOON;
+  try {
+    appendRun(path, { v: 1, launch: old, pid: 1 });
+    appendRun(path, { v: 1, launch: old, exit: old + 60_000, reason: 'paused by signal SIGTERM' });
+    appendFileSync(path, '{"v":1,"launch":');
+    appendRun(path, { v: 1, launch: current, pid: 2 });
+    appendFileSync(path, 'null\n');
+    const raw = readFileSync(path, 'utf8');
+    expect(raw).toContain('{"v":1,"launch":\n');
+    const log = readRuns(path);
+    expect(log.launches.map(run => run.at)).toEqual([old, current]);
+    expect(log.unreadable).toBe(2);
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const text = selfState(journal.view, log, current, 'America/Los_Angeles', current);
+    expect(text).toContain('This run started 2026-09-26 12:00 PDT; uptime 0m.');
+    expect(text).toContain('Run log lines unreadable: 2.');
+    expect(text).toContain('run history is incomplete');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
