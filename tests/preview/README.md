@@ -640,8 +640,8 @@ conversation and, for the agent's own reply, its delivery outcome. The model jud
 whether the new message relates; it brings an item up only then, or when asked what it was
 asked to remember or do. The packet says the preview has no tools, so it can only remember an
 item, never do, schedule or remind; it never calls an item done unless a message says so, and
-absence is not evidence. Under the context bound, recalled turns give way first, then person
-notes, then the oldest open items. `status` reports `commitments: {total, open}` and per summary
+absence is not evidence. Under the context bound, correction notes give way first, then
+recalled turns, person notes, and the oldest open items. `status` reports `commitments: {total, open}` and per summary
 `commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
 
 `inspect --root ROOT` is read-only: it prints the last persisted model prompt's
@@ -774,3 +774,51 @@ bridge against a fake endpoint, uses the real subscription adapter with an
 immediate model substitute, builds the launcher prompt, times restarts, and checks
 early recall. Its limit is 80 model attempts and 60 replies; the live launcher
 limits remain 16/16/20. The worker-only measurement remains separately reported.
+
+### Coherence check after each reply
+
+After a reply is sent (or its send is UNKNOWN, since it may have reached the
+operator), `coherence-check.ts` reads it once against a short, explicit list of
+rules from `docs/01-the-rules.md` that a capped, tool-less preview can break in words.
+These are related, partial signals: the Rule 84 patterns do not establish generated
+capability briefing, and the Rule 96 patterns do not establish full-history or
+clock grounding.
+
+| Rule | What the check reads for |
+|---|---|
+| 84 Agent Awareness | a first-person claim of an action or tool the preview lacks ("I've scheduled", "I'll remind you", "I searched") |
+| 89 Truthful Provenance | direct speech given to a person the operator named ("Sam said…"), when only the operator's report of them exists |
+| 96 A Session Grounds in Its Full History | "you told me…" with no earlier message, or a quote of the operator no earlier message contains |
+| 26 Verify the State, Not Its Symbol | delivery or reading stated as certain; the preview only knows Telegram API acceptance |
+| 106 A Link Handed to a Human Works | a localhost or machine-only path |
+
+The existing outbound secret refusal holds a live secret before send. Rule 100
+instead requires secure storage before a secret is consumed and expiry handling
+for fixed-lifetime credentials. The check is deterministic, makes no model
+call and decides nothing (rule 86: a signal, never authority; rule 10: the model
+judges meaning). A model check was deliberately not added: the activation binds one
+model and system prompt, the attempt allowance is small, and the desk's retrospective
+review already judges patterns with the best model.
+
+The launcher runs the check after every drain, beside the rolling summary; a failure
+there cannot hold the reply already attempted, and an unchecked reply is checked after
+the next drain. Its synchronous check and journal write can slightly delay the next poll.
+Each checked reply gets one `coherence` journal record, clean or not
+(at most three findings, each with a redacted excerpt of 90 characters or fewer), so
+findings and the pending note replay from the journal after restart; no other store
+is added. The next model call's packet carries `corrections` (up to three oldest pending flagged
+replies, with update IDs, dates and conversation labels) and a capability sentence telling the
+model these are pattern signals: correct itself briefly if one is real, say nothing if
+the check misread. Fitting retries with fewer or no corrections before trimming other
+optional memory. A missing covering summary is made synchronously before an over-budget
+turn can be held;
+only notes actually in a reserved packet are cleared. Uncarried notes remain in the
+journal projection across restart. A held turn clears none. On a journal written before
+this change, the first run checks every earlier reply, so later packets may carry old
+flagged replies in order.
+
+`status` reports `coherence: { checked, unchecked, failed, pendingCorrections,
+findings: [{ update, rules }] }`; `inspect` shows the persisted prompt's `corrections`
+(update IDs, dates, rule numbers and problems). The 120-turn synthetic benchmark
+in `coherence-check.test.ts` prints post-check and drain p95 values; it does not
+establish real model latency or end-to-end cost.

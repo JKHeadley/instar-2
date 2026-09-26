@@ -57,7 +57,9 @@ const turnSources = (root, options, view) => {
 };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
-  people: packet.people ?? [], commitments: packet.commitments ?? [], recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0 });
+  people: packet.people ?? [], commitments: packet.commitments ?? [], recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
+  corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
+    problems: item.findings.map(f => f.possibleProblem) })) });
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
 async function main() {
@@ -101,6 +103,11 @@ async function main() {
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0 })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
+      coherence: { checked: view.view.order.filter(t => t.checked).length,
+        unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
+        failed: view.view.order.filter(t => t.checkFailed).length,
+        pendingCorrections: view.view.corrections.length,
+        findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       people: [...new Set(view.view.people.map(note => note.name))] })}\n`); }
     finally { view.close(); }
     return;
@@ -239,6 +246,10 @@ async function main() {
     };
     let summaryJob = null;
     const summarizeLater = () => {
+      // After the reply: the deterministic coherence check records its findings for the next
+      // packet. It makes no call and cannot hold the reply already attempted;
+      // its synchronous journal write can slightly delay the next poll.
+      try { worker.checkCoherence(); } catch { /* the unchecked reply is retried after the next drain */ }
       if (summaryJob) return;
       summaryJob = worker.summarizeIfNeeded().catch(() => {}).finally(() => { summaryJob = null; });
     };

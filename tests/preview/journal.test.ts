@@ -574,6 +574,59 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('summarizes and answers with pending corrections and a commitment before any summary exists', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), maxBytes: 32768 });
+    const request = 'Please remember that my dentist appointment is Friday.';
+    const prior = [
+      { update: 1, text: request, answer: 'Noted.' },
+      { update: 2, text: `A longer conversation about my plans: ${'a'.repeat(29000)}`,
+        answer: "I've scheduled a reminder for Friday." },
+    ];
+    for (const turn of prior) {
+      const id = `telegram:12345678:update:${turn.update}`;
+      journal.append({ kind: 'intake', id, update: turn.update, text: turn.text,
+        raw: JSON.stringify(update(turn.update, turn.text)), accepted: true, cursor: turn.update + 1, at: 1000 });
+      journal.append({ kind: 'reserve', id, at: 1000 });
+      journal.append({ kind: 'answer', id, text: turn.answer, at: 1000 });
+      journal.append({ kind: 'intent', id, text: `PREVIEW — ${turn.answer}`,
+        chat: journal.view.genesis.chat, update: turn.update, grant: journal.view.genesis.grant, at: 1000 });
+      journal.append({ kind: 'sent', id, message: turn.update, at: 1000 });
+    }
+    const seen: { id: string; context: string }[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => {
+        if (Buffer.byteLength(input.context) + (input.id.startsWith('summary:') ? 500 : 3800) > 32768)
+          throw Error('prompt overflow');
+        return input.context;
+      },
+      model: async input => { seen.push(input);
+        return input.id.startsWith('summary:')
+          ? JSON.stringify({ summary: 'The operator asked me to remember a Friday dentist appointment.', people: [],
+            commitments: [{ in: 'message', quote: request }], closed: [] })
+          : 'I can remember that, but I cannot schedule a reminder.';
+      },
+      send: async () => 3, checkOutbound: () => {} });
+    worker.checkCoherence();
+    expect(journal.view.corrections).toEqual(['telegram:12345678:update:2']);
+    expect(journal.view.summaries).toHaveLength(0);
+    worker.intake([update(3, 'What did I ask you to remember?')]);
+    await worker.drain();
+    expect(seen.map(item => item.id)).toEqual(['summary:2', 'telegram:12345678:update:3']);
+    expect(journal.view.order[2]?.sent).toBe(3);
+    expect(journal.view.order[2]?.held).toBeUndefined();
+    expect(journal.view.commitments.map(item => item.quote)).toEqual([request]);
+    const packet = JSON.parse(seen[1]!.context);
+    expect(packet.historyMode).toBe('summary-plus-recent');
+    expect(packet.summary.text).toContain('Friday dentist');
+    expect(packet.commitments[0].items[0].quote).toBe(request);
+    expect(packet.corrections).toBeUndefined();
+    expect(journal.view.corrections).toEqual(['telegram:12345678:update:2']);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('refuses a second writer through the reused production lease', () => {
   const root = origin();
   const context = { site: 'preview.journal', preserved: 'preview:test', register: {
