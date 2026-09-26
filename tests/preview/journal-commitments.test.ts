@@ -155,6 +155,36 @@ it('closes an item only on a later message the operator verifiably sent, and nev
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('refuses a closure for an open item omitted from the summary packet', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const packets: Packet[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => input.context,
+      model: async input => {
+        if (!input.id.startsWith('summary:')) return 'Noted.';
+        const packet = JSON.parse(input.context) as Packet;
+        packets.push(packet);
+        return JSON.stringify({ summary: 'The earlier request remains open.', people: [],
+          commitments: packet.history.filter(turn => turn.user.includes('Please remember')).map(turn => ({ in: 'message', quote: turn.user })),
+          closed: [{ id: 0, quote: 'I already called the dentist' }] });
+      },
+      send: async () => 1, checkOutbound: () => {} });
+    let id = 1;
+    const say = async (text: string) => { worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded(); };
+    await say(`Please remember the dentist request: ${'details '.repeat(100)}`.trim());
+    for (; !journal.view.summaries.length && id < 60;) await say(filler(id));
+    expect(journal.view.commitments).toHaveLength(1);
+    await say(DONE);
+    for (; journal.view.summaries.length < 2 && id < 100;) await say(filler(id));
+    expect(journal.view.summaries.length).toBeGreaterThanOrEqual(2);
+    expect(packets[1]?.openCommitments ?? []).toEqual([]);
+    expect(journal.view.closed.size).toBe(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('settles an item made and closed within one summarized stretch', async () => {
   const root = origin();
   try {

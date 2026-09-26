@@ -502,10 +502,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (bytes < Math.floor(journal.view.genesis.maxBytes * .7) || bytes > journal.view.genesis.maxBytes) return;
     // Open commitments the summary may close, each by its quote only; the oldest give way to the bound.
     const closable = openFor(last.update, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
+    let offered: typeof closable = [];
     let packet = base;
     for (let kept = closable.length; kept > 0; kept--) {
-      const withOpen = JSON.stringify({ ...JSON.parse(base) as object, openCommitments: closable.slice(closable.length - kept) });
-      if (Buffer.byteLength(withOpen) <= journal.view.genesis.maxBytes) { packet = withOpen; break; }
+      const subset = closable.slice(closable.length - kept);
+      const withOpen = JSON.stringify({ ...JSON.parse(base) as object, openCommitments: subset });
+      if (Buffer.byteLength(withOpen) <= journal.view.genesis.maxBytes) { packet = withOpen; offered = subset; break; }
     }
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
@@ -535,7 +537,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         commitments?: unknown; closed?: unknown };
       if (typeof parsed?.summary === 'string' && Array.isArray(parsed.people)) {
         summaryText = parsed.summary; people = notesFrom(parsed.people, last.update);
-        if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, last.update, new Set(closable.map(item => item.id)));
+        if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, last.update, new Set(offered.map(item => item.id)));
         if (Array.isArray(parsed.commitments)) {
           const found = commitmentsFrom(parsed.commitments, last.update);
           commitments = found.notes; closed = [...closed ?? [], ...found.closures];
