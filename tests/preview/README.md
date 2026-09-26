@@ -494,7 +494,7 @@ directories, and every provider call refuses (`subscription profile or managed c
 rewrites exactly the digests that bind it: the profile's `loginProfileIdentity`, the activation's
 `profileDigest` and the successive sidecar's `activationDigest` (`policyDigest` is re-derived and must be
 unchanged). Every other field must be byte-for-byte identical in value. It refuses while any preview
-process or storage writer is live, while Six's serving view shows a pending provider attempt or its error
+process or storage writer is live, while Six's serving view shows an occupied slot, a pending provider attempt or its error
 breaker, while the trial is stopped, held or expired, when the recorded profile→activation→sidecar chain is
 inconsistent, when the managed-configuration digest changed, or when the identity is already current.
 Superseded files are renamed with the suffix `.superseded-dev-identity`; an exclusive audit record
@@ -509,3 +509,22 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/rerecord-profile.mjs /
 
 Provider source/terminal contract evidence is keyed by the exact contract digest, so a re-recorded
 contract gets its own evidence row instead of reusing one that states the superseded identity.
+
+### Pre-dispatch slot recovery (one use, desk-supervised)
+
+When an admitted self-test has failed before provider dispatch, `recover-slot.mjs` checks the
+quiesced trial, encrypted Six history, absence of a dispatch claim and send observation, and the
+unchanged trial configuration. It closes any orphan attempt with Six's error result and retires
+the occupied slot with Six's fenced retirement port. The admitted input, failed attempts,
+breakers and history remain in place. It writes one JSON audit beside the root; a repeat refuses.
+It refuses a live holder, a stop/hold/expiry, a dispatch claim or a prepared reply. The input JSON
+names `root`, `profilePath`, `activationPath`, `model`, `expectedUpdateId`, `reason`, `recordedBy`, and the exact
+`configuration` object the launcher hashed at trial creation. The storage key uses the same
+environment binding as the launcher; its Telegram credential binding is resolved only to satisfy
+the installed boot. Boot reuses the trial's sealed, hash-checked historical `getMe` capture;
+this is not a fresh live identity check. Physical Telegram poll and send, and provider execution,
+are prohibited:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSOLUTE/recovery-input.json
+```

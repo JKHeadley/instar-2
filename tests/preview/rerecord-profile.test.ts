@@ -5,8 +5,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createSubscriptionProviderIO, subscriptionProfileIdentity } from '../../scripts/production-boot-io.mjs';
+import { value } from '../facts/fixtures.js';
 import { encoded } from './stage2-provider.js';
 import { RERECORD_SUFFIX, rerecordLoginProfileIdentity } from './rerecord-profile.js';
+import { recoverPreDispatchSlot } from './recover-slot.js';
 import { OFFLINE_STORAGE_KEY, offlineProfile, successiveWorld } from './successive-fixture.js';
 
 const temporary: string[] = [];
@@ -57,7 +59,7 @@ it('re-records only the identity digests once, refusing a pending attempt, a liv
     try { rerecordLoginProfileIdentity(request()); } catch (error) { pendingRefusal = error.message; }
   } } });
   try { await c.run({ maxCycles: 4, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); } finally { c.close(); }
-  expect(pendingRefusal).toBe('preview: provider attempt in flight or serving latched');
+  expect(pendingRefusal).toBe('preview: serving slot occupied, provider attempt in flight or serving latched');
   expect(world.sends()).toHaveLength(1);
 
   // A live preview process (its heartbeat pid is alive) refuses.
@@ -108,4 +110,87 @@ it('re-records only the identity digests once, refusing a pending attempt, a liv
   world.state().latchStop('operator');
   expect(() => rerecordLoginProfileIdentity(request())).toThrow('preview: trial is stopped, held or expired');
   expect(existsSync(join(world.root, 'preview-stop.json')) || world.state().read().stop !== null).toBe(true);
+}, 1_800_000);
+
+it('refuses an occupied settled slot, then retires only pre-dispatch failures through Six before re-record and the next answer', async () => {
+  const world = successiveWorld(); temporary.push(world.directory);
+  const profilePath = join(world.directory, 'profile.json'), activationPath = join(world.directory, 'activation.json');
+  writeFileSync(profilePath, JSON.stringify(offlineProfile));
+  writeFileSync(activationPath, JSON.stringify(world.activation()));
+  const updateId = world.say('my test word is lighthouse');
+  const failed = world.compose({ hooks: { beforeProvider: () => { throw Error('subscription profile or managed configuration changed'); } } });
+  try {
+    await failed.run({ maxCycles: 2, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep });
+    expect(failed.status().serving).toMatchObject({ pendingAttempt: null, turns: 1 });
+    expect(failed.status().serving.slot).not.toBeNull();
+  } finally { failed.close(); }
+  expect(world.models()).toHaveLength(0);
+  expect(world.sends()).toHaveLength(0);
+  const renewed = { ...offlineProfile, loginProfileIdentity: 'offline-profile-after-reboot' };
+  const common = { root: world.root, profilePath, activationPath, model: world.model,
+    reason: 'offline pre-dispatch failure', recordedBy: 'offline-desk', storageKey: OFFLINE_STORAGE_KEY,
+    telegramToken: '8820318295:synthetic_recorded_test_only_value',
+    now: () => 1790000005000, alive: () => false };
+  const rerecord = () => rerecordLoginProfileIdentity({ ...common, inspect: () => ({
+    loginProfileIdentity: renewed.loginProfileIdentity, managedConfigurationDigest: offlineProfile.managedConfigurationDigest }) });
+  expect(() => rerecord()).toThrow('preview: serving slot occupied, provider attempt in flight or serving latched');
+  const recover = (overrides = {}) => recoverPreDispatchSlot({ ...common, configuration: world.stateConfiguration,
+    expectedUpdateId: updateId,
+    ...overrides });
+  expect(() => recover({ expectedUpdateId: updateId + 1 })).toThrow('preview recovery: admitted update differs');
+  expect(() => recover({ now: () => world.state().read().trial.expiresAt }))
+    .toThrow('preview recovery: trial stopped, held or expired');
+  world.state().heartbeat(process.pid);
+  expect(() => recover({ alive: pid => pid === process.pid })).toThrow('preview recovery: live preview process');
+  world.state().heartbeat(999999);
+  const orphan = world.compose();
+  try {
+    expect(() => recover({ alive: pid => pid === process.pid })).toThrow('preview recovery: live or unverifiable store holder');
+    const slot = orphan.status().serving.slot;
+    expect(slot).not.toBeNull();
+    value(orphan.application.owners.serving.start('offline-orphan-start', orphan.built.f.effects.fence,
+      'offline-orphan-attempt', slot));
+  } finally { orphan.close(); }
+  const result = recover();
+  expect(result.noDispatchClaim).toBe(true);
+  expect(result.noSend).toBe(true);
+  expect(result.before.turns).toBe(1);
+  expect(result.after.turns).toBe(1);
+  expect(result.orphanAttempt).toBe('offline-orphan-attempt');
+  expect(result.after.totalErrors).toBe(result.before.totalErrors + 1);
+  expect(readFileSync(result.audit, 'utf8')).toContain('pre-dispatch-slot-recovery');
+  expect(() => recover()).toThrow('preview recovery: already used');
+  rerecord();
+  const nextProfile = Object.freeze(JSON.parse(readFileSync(profilePath, 'utf8')));
+  const nextActivation = JSON.parse(readFileSync(activationPath, 'utf8'));
+  world.say('What was my test word?'); world.answer('lighthouse');
+  const next = world.compose({ profile: nextProfile, activation: nextActivation });
+  try { await next.run({ maxCycles: 4, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); }
+  finally { next.close(); }
+  expect(world.models()).toHaveLength(1);
+  expect(world.models()[0].stdin).toContain('my test word is lighthouse');
+  expect(world.models()[0].stdin).toContain('turn ended without an answer');
+  expect(world.sends()).toHaveLength(1);
+  expect(world.sends()[0].body.text).toContain('lighthouse');
+}, 1_800_000);
+
+it('refuses recovery when a provider dispatch claim exists', async () => {
+  const world = successiveWorld(); temporary.push(world.directory);
+  const profilePath = join(world.directory, 'profile.json'), activationPath = join(world.directory, 'activation.json');
+  writeFileSync(profilePath, JSON.stringify(offlineProfile));
+  writeFileSync(activationPath, JSON.stringify(world.activation()));
+  const updateId = world.say('my test word is lighthouse');
+  const failed = world.compose({ providerIO: io => ({ ...io, execute: async command => {
+    if (command.args[0] === '--version' || command.args[0] === 'auth') return io.execute(command);
+    throw Error('offline provider failed after dispatch claim');
+  } }) });
+  try { await failed.run({ maxCycles: 2, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); }
+  finally { failed.close(); }
+  expect(world.sends()).toHaveLength(0);
+  expect(() => recoverPreDispatchSlot({ root: world.root, profilePath, activationPath, model: world.model,
+    configuration: world.stateConfiguration, expectedUpdateId: updateId,
+    reason: 'offline test', recordedBy: 'offline-desk',
+    storageKey: OFFLINE_STORAGE_KEY, telegramToken: '8820318295:synthetic_recorded_test_only_value',
+    now: () => 1790000005000, alive: () => false }))
+    .toThrow('preview recovery: provider dispatch evidence exists');
 }, 1_800_000);

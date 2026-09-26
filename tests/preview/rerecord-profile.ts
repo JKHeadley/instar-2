@@ -96,7 +96,8 @@ export function rerecordLoginProfileIdentity(input: ProfileRerecordInput) {
     || sidecar.framing !== SUBSCRIPTION_CONVERSATION_FRAMING || typeof sidecar.activationDigest !== 'string')
     throw Error('preview: successive sidecar differs from the trial');
   const serving = readServing(root, input.storageKey);
-  if (serving.pendingAttempt !== null || serving.stopped) throw Error('preview: provider attempt in flight or serving latched');
+  if (serving.slot !== null || serving.pendingAttempt !== null || serving.stopped)
+    throw Error('preview: serving slot occupied, provider attempt in flight or serving latched');
 
   const profile = JSON.parse(readFileSync(input.profilePath, 'utf8')) as ProviderSubscriptionProfile;
   const activation = JSON.parse(readFileSync(input.activationPath, 'utf8')) as SubscriptionActivationRecord;

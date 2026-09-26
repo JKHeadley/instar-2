@@ -499,17 +499,20 @@ export function createSuccessiveComposition(input: SuccessiveInput) {
   };
   const preparePackets = async () => {
     const all = fold();
+    const retired = new Set(value(application.owners.serving.inspect()).retired);
+    const retiredGrounded = turn => turn.phase === 'grounded' && retired.has(turn.providerRun);
     captureExchanges(all);
     for (const turn of all) {
       if (turn.phase !== 'admitted' || sidecar.read().turns[turn.opening]?.packet || sidecar.read().hold) continue;
       const earlier = all.filter(candidate => candidate.updateId < turn.updateId);
       // Only the next turn is prepared, and only once every earlier turn has
       // settled, so its history carries each earlier accepted answer or outcome.
-      if (earlier.some(candidate => !SETTLED.has(candidate.phase))) break;
+      if (earlier.some(candidate => !SETTLED.has(candidate.phase) && !retiredGrounded(candidate))) break;
       const history = earlier.map(candidate => ({ update: candidate.updateId,
         user: redact(inboundText(capture(candidate.inboundCapture))).text,
         answer: candidate.acceptedReply ? redact(answerText(capture(candidate.acceptedReply)) ?? '').text || null : null,
-        outcome: OUTCOME[candidate.phase] ?? 'unknown' }));
+        outcome: retiredGrounded(candidate) ? 'turn ended without an answer'
+          : OUTCOME[candidate.phase] ?? 'unknown' }));
       const current = redact(inboundText(capture(turn.inboundCapture))).text;
       const update = JSON.parse(capture(turn.inboundCapture)).update_id;
       const grounded = await groundTurn({ text: current.slice(0, 4000), exclude: [{ conversation: expectedRoute.channel,

@@ -154,7 +154,8 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
     return createSuccessiveComposition({ configuration: { ...base, root }, state: outerState, root,
       storageKey: OFFLINE_STORAGE_KEY, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
       telegramIO: () => options.telegramIO?.(telegramIO) ?? telegramIO, provider: {
-        activation: options.activation ?? activation(outerState.read()), profile: options.profile ?? offlineProfile, model, io,
+        activation: options.activation ?? activation(outerState.read()), profile: options.profile ?? offlineProfile, model,
+        io: options.providerIO?.(io) ?? io,
         active: options.active ?? (() => true) },
       now: () => read().clock, stopped: () => outerState.read().stop !== null,
       readSource: path => readFileSync(join(process.cwd(), path), 'utf8'), limits: options.limits,
@@ -162,6 +163,7 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
   };
   /** Driver backoff advances the shared world clock, never real time. */
   const sleep = async (milliseconds: number) => { const world = read(); write({ ...world, clock: world.clock + milliseconds }); };
-  return { directory, source, root, model, say, answer, state, compose, sleep, activation: () => activation(state().read()), telegram: () => rows('telegram'),
+  return { directory, source, root, model, configuration: { ...base, root }, stateConfiguration: stateConfiguration(root),
+    say, answer, state, compose, sleep, activation: () => activation(state().read()), telegram: () => rows('telegram'),
     models: () => rows('model'), sends: () => rows('telegram').filter(row => row.method === 'sendMessage') };
 }
