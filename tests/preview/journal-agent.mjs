@@ -82,6 +82,7 @@ async function main() {
       importComplete: importMarker
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
+      summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length })}\n`); }

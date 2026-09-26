@@ -654,15 +654,28 @@ summary covers it, the turn is visibly held; no latest-N slice is substituted.
 The full-history choice uses the complete system, packet and prepared prompt bound;
 a usable summary is selected before a turn is held for overflow.
 
-When a summary covers earlier turns, the new message is matched against those
-original journal turns with the core lexical scorer (`src/recall/lexical.ts`,
-the same BM25 the recall part uses). Up to five best matches are quoted verbatim
-beside the summary as `recalled`, each with its Telegram send date (the intake
-time as fallback, so imported old-root turns keep their original dates). They are
-marked as data, and a miss is declared as no evidence of absence. If the prompt
-bound is tight, the lowest-ranked quotes are dropped first; the summary still
-covers them. No index, store or embedding service is added: recall reads the
-in-memory journal projection, so it survives restarts with the journal itself.
+When a summary covers earlier turns, a **memory sentinel**
+(`memory-sentinel.ts`) picks which of those original journal turns are quoted
+verbatim beside the summary as `recalled`, before the model call. It is one
+deterministic step using the core BM25 scorer (`src/recall/lexical.ts`). Its query
+is the new message, plus at half weight the accepted turn it continues (so "what
+would she want?" finds the earlier turn about the person named just before) and
+the summary sentences that share a word with it (so "the code for my gym cabinet"
+reaches a turn about a "locker combination" the summary still names). A day the
+message names ("yesterday", "3 days ago", "last week", "on Tuesday") selects turns
+sent then, each window widened by half a day because the operator's time zone is
+unknown. Up to five best matches are quoted, each with its Telegram send date (the
+intake time as fallback, so imported old-root turns keep their original dates).
+They are marked as data, and a miss is declared as no evidence of absence. If the
+prompt bound is tight, the lowest-ranked quotes are dropped first; the summary still
+covers them. No index, store, cache or embedding service is added: the sentinel reads
+the in-memory journal projection, so it survives restarts with the journal itself.
+It costs about 5 ms at 2000 turns and makes no model call. A model-based selector
+is deliberately not added: the preview activation binds exactly one model and one
+system prompt, so a cheap selector would need a new reviewed activation, and every
+selector call would spend the same small attempt allowance and add a CLI start
+before each reply. `status` reports `summaryThrough`, the last update a summary
+covers (`null` until the first summary, when every turn is still in full history).
 The offline 200-turn regression recalls a fact from turn 5 at turn 190, across a
 restart, with flat non-model overhead.
 
