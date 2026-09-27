@@ -140,6 +140,36 @@ it('uses the bounded decision to remove an affected summary passage while keepin
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
+it.each([
+  { name: 'unoffered reply', extra: { replies: ['telegram:12345678:update:99'] } },
+  { name: 'unoffered summary passage', extra: { summaryPassages: ['The operator owns a red bicycle.'] } },
+])('refuses an $name while retaining the original fact', async ({ extra }) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-unoffered-derived-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => {
+        if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Unresolved request.', people: [],
+          memory: [], memoryDisposition: 'unresolved' });
+        if (input.question === 'Please stop remembering my gym locker code.') {
+          const packet = JSON.parse(input.context);
+          const source = packet.memoryCandidates.find((item: { message: string }) => item.message.includes('My gym locker code is 3310'));
+          return JSON.stringify({ reply: 'I forgot it.', memory: [{ mode: 'forget', source: source.id,
+            quote: 'My gym locker code is 3310', ...extra }] });
+        }
+        return 'Understood.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'My gym locker code is 3310.')]); await worker.drain();
+    journal.append({ kind: 'summary-reserve', through: 1, at: 1790000000000 });
+    journal.append({ kind: 'summary', through: 1, text: "The operator's locker code is 3310.", at: 1790000000000 });
+    worker.intake([update(2, 'Please stop remembering my gym locker code.')]); await worker.drain();
+    expect(journal.view.memory).toEqual([]);
+    expect(journal.view.order[1]?.memoryPending).toBe(true);
+    expect(journal.view.order[1]?.sent).toBeUndefined();
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
 it('keeps an uncued unresolved ordinary summary pending', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-ordinary-unresolved-')));
   try {
