@@ -10,8 +10,11 @@ in an argument or captured log. Do not run these cases against the live root.
 For each case below, use a fresh isolated root and the bounds shown. Use a
 new operator message as Justin, wait for the runner to exit, then run `status`.
 Start the same root once more without changing its bounds; it must make no
-new call or send and must not print the cap line again. `status.capReports`
-must retain the cap fence. The fixed line has no message text or credential.
+new call or send and must not print the final cap line again. `status.capReports`
+must retain the cap fence. Calls and replies also have a separately fenced 80%
+line; exercise both stages with the
+[cap-exhaustion-graceful live test](cap-exhaustion-graceful-live-test.md). The
+fixed lines have no message text or credential.
 
 1. **Calls:** set `--max-calls 2 --max-replies 3 --max-turns 4`. Send two
    ordinary questions. The first answer can use one subscription call and

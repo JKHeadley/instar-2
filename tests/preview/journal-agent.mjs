@@ -745,6 +745,8 @@ async function main() {
     await summaryJob;
     await stepJob;
     if (stepCheckEnabled) await worker.checkSteps();
+    const finalCap = reportCap();
+    endReason ??= finalCap;
     endReason ??= 'cycle limit reached';
     function modelRoute(operation) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
