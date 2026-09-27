@@ -16,7 +16,6 @@ import { openPreviewJournal as openJournal, createJournalWorker, importChannelFi
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { greetingContinuity } from './greeting-continuity.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { failureShapeOf, parseModelJson } from './model-json.js';
@@ -122,17 +121,15 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const sources = view.reminderGrant === null ? ordinarySources : (reminderSources ??= readSources(true));
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
-    const continuity = turn && greetingContinuity(view, log, now, turn, current());
     const note = handoff();
     return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, operatorDigest(view, log, desk),
-      ...(digest ? [awayDigestSource(digest)] : []), ...(continuity ? [continuity] : []), ...(note ? [note] : [])];
+      ...(digest ? [awayDigestSource(digest)] : []), ...(note ? [note] : [])];
   };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
-  greetingContinuity: packet.sources?.some(source => source?.id === 'greeting-continuity') ?? false,
   replyTo: packet.replyTo ?? null,
   ...(packet.period ? { period: packet.period, periodGuide: packet.periodGuide } : {}),
   people: packet.people ?? [], personAttributes: packet.personAttributes ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
@@ -161,11 +158,6 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
 const budgetView = view => { const budget = projectMemoryBudget(view); return {
   budgetBytes: budget.budgetBytes, pinnedBytes: budget.pinnedBytes, activeBytes: budget.activeBytes,
   activeInferred: budget.active.length, archivedInferred: budget.archived.length }; };
-const preferenceAppliedView = view => ({
-  checked: view.order.reduce((count, turn) => count + (turn.preferenceChecks?.length ?? 0), 0),
-  findings: view.order.flatMap(turn => (turn.preferenceChecks ?? []).filter(check => check.violated).map(check => ({
-    update: turn.update, sourceUpdate: view.turns.get(check.source)?.update ?? null,
-    words: check.words, maxWords: check.maxWords, delivery: turn.sent ? 'api-accepted' : 'unknown' }))) });
 const withheldView = view => {
   const preferenceKeys = new Set();
   for (const change of view.memory) {
@@ -296,7 +288,6 @@ async function main() {
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
-      preferenceApplied: preferenceAppliedView(view.view),
       lastSummaryFaithfulness: view.view.lastSummaryFailure?.faithfulness
         && view.view.lastSummaryFailure.at >= (view.view.summaries.at(-1)?.at ?? -1)
         ? { through: view.view.lastSummaryFailure.through, ...view.view.lastSummaryFailure.faithfulness,
@@ -418,7 +409,6 @@ async function main() {
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
           outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
         ...(next ? { next } : {}), withheld: withheldView(view.view), memoryBudget: budgetView(view.view),
-        preferenceApplied: preferenceAppliedView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,

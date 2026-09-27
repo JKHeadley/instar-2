@@ -916,10 +916,6 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --agent-state-dir /ABSOLUTE/AGENT/.instar
 ```
 
-For a supervised sequence of the existing private-chat live procedures on one
-runner root, follow [live-test-suite-live-test.md](live-test-suite-live-test.md).
-The coordinator reads status and sends nothing; Justin performs the steps.
-
 `--agent-state-dir` enables read-only live channel memory from this agent's
 `telegram-messages.jsonl` and, when present, `slack-messages.jsonl`. The path must
 be the canonical absolute path of the agent's own `.instar` directory. The preview
@@ -1106,19 +1102,6 @@ deploy claims come only from the desk report. It carries event kinds and update 
 never the text of a corrected or forgotten fact. The local `status` command prints
 the same digest. It adds no model call or store. See
 [operator-digest-live-test.md](operator-digest-live-test.md) for Justin's live check.
-
-### Greeting continuity
-
-After a recorded restart or a gap over six hours, the runner may offer the
-newest still-open verified operator request as a greeting-continuity source.
-Closed, corrected, forgotten, missing or oversized quotes produce no hint.
-The model opts in with `continuity:true`; the runner constructs at most one
-“Last time we were on …” line from the exact validated quote. A model opt-in
-without that source produces no line. An exact six-hour gap produces none.
-Intent, including UNKNOWN delivery, consumes the restart opportunity. The
-optional hint yields when it would exhaust the packet limit and causes no
-extra call or initiated send. Inspect reports whether it was offered. See
-the [supervised greeting-continuity script](greeting-continuity-live-test.md).
 
 ### Remembering people
 
@@ -1689,27 +1672,6 @@ be stored as reply preferences without relaxing factual correction validation.
 Changing this bound prompt requires a matching preview activation before the runner
 can start. The supervised check is
 [reply-length-preference-live-test.md](reply-length-preference-live-test.md).
-
-### Checking whether a length preference reached the reply
-
-The journal's exact send intent is also the source for an observe-only preference
-check. When an active, verified operator preference unambiguously requests short,
-brief or concise replies, a reply of more than 80 visible words is a finding.
-`Keep replies under N words` and `Make answers to at most N words` use the stated
-bound (with `under` exclusive). Only direct, whole-clause forms are recognized;
-relative requests such as `Shorter please.` and other styles remain for the model
-and human review. Word counts include the visible `PREVIEW` marker. A holding
-reply or lost-answer notice is not scored as the model's answer. The check never
-holds, rewrites, or sends a reply.
-
-`status.preferenceApplied` and `inspect.preferenceApplied` show the number of
-checked preference/reply pairs and any findings, with reply update, preference
-source update, measured words, bound, and Bot API acceptance or unknown delivery.
-The existing encrypted intent and memory actions reconstruct the same result on
-replay, including the preference active when that intent was recorded; a later
-forget does not erase the historical observation. No new store, provider call,
-daemon, or journal frame is added. For Justin's private-chat procedure, see
-[preference-applied-live-test.md](preference-applied-live-test.md).
 
 Live script for Justin in the existing private preview chat, after the desk lands this
 revision and resumes the one runner on its existing root:

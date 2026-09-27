@@ -119,32 +119,6 @@ export interface MemoryChange { mode: 'correct' | 'forget' | 'prefer'; source: s
   /** Absent for an operator/source message; reply means the agent's actual send intent. */
   in?: 'reply';
   replies?: string[]; summaryPassages?: string[] }
-export interface PreferenceAppliedCheck { source: string; words: number; maxWords: number; violated: boolean }
-/** A deterministic signal for unambiguous length preferences; it never changes a send. */
-function replyWordLimit(quote: string): number | undefined {
-  const clause = quote.trim().toLowerCase().replace(/[.!]+$/u, '').replace(/\s+/gu, ' ');
-  if (/^(?:please )?(?:always )?(?:use|keep|give|make) (?:your )?(?:short|brief|concise) (?:answers|replies)$/u.test(clause)
-    || /^(?:please )?(?:always )?(?:use|keep|give|make) (?:your )?(?:answers|replies) (?:short|brief|concise)$/u.test(clause)
-    || /^(?:i prefer|i'd prefer|i would prefer) (?:short|brief|concise) (?:answers|replies)$/u.test(clause)) return 80;
-  const explicit = /^(?:please )?(?:always )?(?:keep|make) (?:your )?(?:replies|answers) (under|below|to at most|to no more than) (\d{1,3}) words$/u.exec(clause);
-  if (!explicit) return undefined;
-  const bound = Number(explicit[2]);
-  return bound >= 1 && bound <= 500 ? bound - (explicit[1] === 'under' || explicit[1] === 'below' ? 1 : 0) : undefined;
-}
-function appliedPreferenceChecks(memory: readonly MemoryChange[], reply: string): PreferenceAppliedCheck[] {
-  const active = new Map<string, { source: string; quote: string }>();
-  for (const change of memory) {
-    const key = JSON.stringify([change.source, change.quote]);
-    if (change.mode === 'prefer') active.set(key, { source: change.source, quote: change.quote });
-    else if (active.delete(key) && change.mode === 'correct')
-      active.set(JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement! });
-  }
-  const words = reply.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)?.length ?? 0;
-  return [...active.values()].flatMap(item => {
-    const maxWords = replyWordLimit(item.quote);
-    return maxWords === undefined ? [] : [{ source: item.source, words, maxWords, violated: words > maxWords }];
-  });
-}
 interface UndoTarget { change: number; replies?: string[]; summaryPassages?: string[] }
 interface RecordedChange { kind: 'memory' | 'dated'; at: number; value: MemoryChange | DatedItem; undone: boolean }
 export interface OpenQuestion { source: string; quote: string; reason: 'held' | 'lost-answer' | 'definite-failure' | 'unanswered-reply' }
@@ -232,7 +206,6 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  preferenceChecks?: PreferenceAppliedCheck[];
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[] }
@@ -1257,8 +1230,6 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
     const conflict = view.conflicts.find(item => item.askedBy === (turn.askConflict ?? turn.id));
     if (conflict && row.text === `PREVIEW — ${conflictQuestion(conflict)}`) conflict.asked = true;
-    turn.preferenceChecks = row.text === HOLDING_REPLY || turn.noticeClass || turn.modelState === 'rejected'
-      ? [] : appliedPreferenceChecks(view.memory, row.text);
     if (row.promises?.some(promise => !row.text.includes(promise.quote) || promise.owner !== 'agent'
       || promise.waitsOn !== 'next-relevant-reply')) throw Error('preview journal: invalid agent promise');
     for (const promise of row.promises ?? []) view.commitments.push({ in: 'reply', source: turn.id, quote: promise.quote, agentPromise: promise });
@@ -2389,7 +2360,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn,
     inventory?: { total: number; items: { kind: string; source: string; date: string; text?: string; from?: string; status?: string }[] }, search?: ReturnType<typeof searchFor>,
     contradictions: ReturnType<typeof contradictionFor> = [], questions: readonly OpenQuestion[] = [], question?: Turn, includeRecorded = true,
-    saidRange?: { from: string; to: string; matched: number }, allowGreeting = true,
+    saidRange?: { from: string; to: string; matched: number },
     selectedAttributes: readonly PersonAttribute[] = []) => {
     const summary = compact ? summaryFor(through) : undefined;
     const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
@@ -2537,8 +2508,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const localDay = `${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
     const suppliedSources = ports.sources === undefined ? undefined
       : typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources;
-    const sourceList = allowGreeting ? suppliedSources : suppliedSources?.filter(source =>
-      typeof source !== 'object' || source === null || !('id' in source) || source.id !== 'greeting-continuity');
     const shownTurns = [...earlier, ...recall.flatMap(item => journal.view.turns.get(item.id) ?? [])];
     const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
@@ -2552,9 +2521,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || journal.view.awayEvents.some(event => event.kind === 'hold' && now - event.at < 26 * 3_600_000) ? ' History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it.' : '')
         + (/[$€£¥]\s?\p{Nd}|\p{Nd}\s?(?:%|°|\p{L})/u.test([question?.text ?? '', summary?.text ?? '', ...shownTurns.map(item => item.text), ...channels.map(item => `${item.subject ?? ''} ${item.text}`)].join(' '))
           ? ' When recalling a measured fact, copy its exact number and unit from an original history, recalled, or channelMemory quote. Do not round, convert, omit, or invent the unit. If only a summary gives an approximate value, say the exact value is unknown.' : '')
-        + (sourceList?.some(source => typeof source === 'object' && source !== null
-          && 'id' in source && source.id === 'greeting-continuity')
-          ? ' A greeting-continuity source quotes one earlier open operator request. Set continuity:true only if a brief reminder is useful and still true; otherwise false. Do not write that line yourself; the runner uses the exact quoted topic. Never invent a topic.' : '')
         + (journal.view.people.length ? ' Inferred person notes use an active memory budget. Search memory NAME reads archived notes. A missing match does not prove absence.' : '')
         + (ports.sources === undefined ? '' : ' For questions about your work or status, use the operator-digest source when present; distinguish desk-reported work from your own journal and run log, and never infer a deploy from a launch.')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
@@ -2584,7 +2550,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
         operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current) }) },
-      ...(sourceList === undefined ? {} : { sources: sourceList }),
+      ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
         ...(summary.memoryItems?.length ? { memoryItems: summary.memoryItems.filter(item => !journal.view.memory.some(change =>
@@ -2740,7 +2706,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const memoryBudgetFirst = journal.view.people.length > 0 && latestSummary !== undefined
       && (completeTooLarge || Buffer.byteLength(packetFor(turn.update - 1, false, [], peopleFor(turn.text, latestSummary.through), [], turn.thread))
         > journal.view.limits.maxBytes);
-    for (const allowGreeting of ports.sources ? [true, false] : [true])
     for (const compact of memoryBudgetFirst ? [true, false] : [false, true]) {
       if (!compact && latestSummary && !preferComplete) continue;
       if (!compact && /\b(?:promise|promised|commitment|commitments|anything open|what(?:'s| is) open)\b/iu.test(turn.text)
@@ -2835,7 +2800,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               named.filter((_, index) => has('person', index)), open.filter((_, index) => has('commitment', index)),
               turn.thread, false, flagged, selectedChannels, fromOperator(turn), turn, selectedInventory, selectedSearch,
               contradictions.slice(0, contradictionCount), questions.slice(0, questionCount), turn, includeRecorded,
-              said ? { from: said.from, to: said.to, matched: said.matched } : undefined, allowGreeting,
+              said ? { from: said.from, to: said.to, matched: said.matched } : undefined,
               attributes.filter((_, index) => has('attribute', index)));
         const offered = [...preferenceCandidates, ...candidates.filter((_, index) => has('candidate', index)), ...candidateChannels.filter((_, index) =>
           has('candidate', candidates.length + index)).map(item => ({
@@ -3039,22 +3004,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             let text = output, memory: MemoryChange[] | undefined, dated: DatedItem[] | undefined, lastNamedPerson: string | undefined, personAttributes: PersonAttribute[] | undefined,
               personMerges: PersonMerge[] | undefined, separatedAnswer: string | undefined, invalidMemory = false, invalidDate = false,
               invalidUndo = false, undo: UndoTarget | undefined, closedQuestions: string[] | undefined,
-              groundedTopic: string | undefined, includeContinuity = false,
               conflict: Pick<MemoryConflict, 'first' | 'second'> | undefined,
               askConflict: string | undefined,
               resolveConflict: { askedBy: string; winner: string } | undefined;
             if (output.trim()) try {
-              const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; continuity?: unknown; lastNamedPerson?: unknown;
+              const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string;
-                const decisionSources = (JSON.parse(context) as { sources?: { id?: unknown; topic?: unknown }[] }).sources;
-                const topic = decisionSources?.find(source => source.id === 'greeting-continuity')?.topic;
-                groundedTopic = typeof topic === 'string' && topic.trim() && Array.from(topic).length <= 140 ? topic : undefined;
-                includeContinuity = parsed.continuity === true;
                 if (fromOperator(turn) && typeof parsed.lastNamedPerson === 'string'
                   && parsed.lastNamedPerson.trim() === parsed.lastNamedPerson && parsed.lastNamedPerson.length > 0
                   && Buffer.byteLength(parsed.lastNamedPerson) <= 100 && turn.text.includes(parsed.lastNamedPerson))
@@ -3155,10 +3115,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
-            if (groundedTopic || includeContinuity)
-              text = text.replace(/^\s*Last time we were on[^\n]*(?:\n|$)/iu, '').trimStart();
-            if (groundedTopic && includeContinuity && !invalidMemory && !invalidDate && !invalidUndo && text.trim())
-              text = `Last time we were on: ${groundedTopic}\n${text.trim()}`;
             journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
