@@ -10,6 +10,8 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 const scores = (overrides: Record<string, number> = {}) => ({ model: 'jev-1.13.0', answers: Object.fromEntries(
   Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: overrides[id] ?? 0.01 }])) });
 const key = new Uint8Array(32).fill(3);
+// Memory holds the sent text without the PREVIEW surface marker.
+const HOLDING_TEXT = HOLDING_REPLY.replace(/^PREVIEW — /u, '');
 
 it.each([
   ['pass', scores(), 'pass', true, false],
@@ -139,9 +141,9 @@ it('grounds history and summary in the holding reply actually sent', async () =>
     await worker.drain();
     const next = worker.probe('What did you send?');
     if (!('context' in next)) throw Error('expected a next-turn packet');
-    expect(JSON.parse(next.context).history[0]).toMatchObject({ answer: HOLDING_REPLY, outcome: 'Telegram API accepted' });
+    expect(JSON.parse(next.context).history[0]).toMatchObject({ answer: HOLDING_TEXT, outcome: 'Telegram API accepted' });
     await worker.summarizeIfNeeded(true);
-    expect(summaryPacket?.history[0]).toMatchObject({ answer: HOLDING_REPLY, outcome: 'Telegram API accepted' });
+    expect(summaryPacket?.history[0]).toMatchObject({ answer: HOLDING_TEXT, outcome: 'Telegram API accepted' });
     expect(journal.view.order[0]?.answer).toBe('candidate with /private/rejected/path');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -233,5 +235,68 @@ it('does not repeat an interrupted paid review and sends the non-secret candidat
     expect(second.view.lastReplyCheck?.path).toBe('subscription');
     expect(second.view.lastReplyCheck?.verdict).toBe('unavailable');
     second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('answers a long, summarized conversation when Jev is unsure: the full-context review decides, never a hold', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-summary-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 1100, cursor: 0 });
+    const reviewed: { historyMode: string; summary?: { text: string }; operatorMessage: string; candidateReply: string }[] = [];
+    const sent: string[] = [];
+    let jevMemoryChecks = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      // A minimal envelope in the launcher's shape, so review reads the exact grounding packet.
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'The first unique memory was ORCHID.', people: [] })
+        : input.context.includes('ORCHID') && input.question.includes('first unique memory') ? 'It was ORCHID.' : 'ok',
+      checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); return input.update; },
+      replyCheck: { elapsedMs: () => 100,
+        jev: async text => ({ value: text.includes('ORCHID') && ++jevMemoryChecks === 1
+          ? scores({ claims_blocked: 0.5 }) : scores(), latencyMs: 150 }),
+        escalate: async (text, _id, originalPrompt) => {
+          reviewed.push(JSON.parse(replyReviewContext(originalPrompt!, text)));
+          return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 };
+        } } });
+    for (let i = 0; i < 12; i++) {
+      worker.intake([{ update_id: i + 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+        text: i === 0 ? 'ORCHID is the first unique memory.' : `turn ${i} ${'a'.repeat(45)}` } }]);
+      await worker.drain(); await worker.summarizeIfNeeded();
+    }
+    expect(journal.view.summaries.length).toBeGreaterThan(0);
+    worker.intake([{ update_id: 13, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+      text: 'What was the first unique memory?' } }]);
+    await worker.drain();
+    const last = journal.view.order.at(-1)!;
+    expect(sent.at(-1)).toBe('PREVIEW — It was ORCHID.');
+    expect(last.sent).toBe(13);
+    expect(last.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'unsure'], ['subscription', 'pass']]);
+    // The deciding review saw the summarized grounding, not a message in isolation.
+    expect(reviewed).toHaveLength(1);
+    expect(reviewed[0]).toMatchObject({ historyMode: 'summary-plus-recent', operatorMessage: 'What was the first unique memory?',
+      candidateReply: 'PREVIEW — It was ORCHID.' });
+    expect(reviewed[0]!.summary?.text).toContain('ORCHID');
+    worker.intake([{ update_id: 14, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+      text: 'Please repeat the first unique memory.' } }]);
+    await worker.drain();
+    const pass = journal.view.order.at(-1)!;
+    expect(sent.at(-1)).toBe('PREVIEW — It was ORCHID.');
+    expect(pass.sent).toBe(14);
+    expect(pass.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'pass']]);
+    expect(reviewed).toHaveLength(1);
+    expect(jevMemoryChecks).toBe(2);
+    expect(journal.view.order.every(turn => turn.held === undefined && turn.sent !== undefined)).toBe(true);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(replay.view.replyCheckPaths.subscription).toBe(1);
+    expect(replay.view.replyCheckPaths.jev).toBe(14);
+    expect(replay.view.replyCheckCounts.unsure).toBe(1);
+    expect(replay.view.lastReplyCheck).toMatchObject({ path: 'jev', verdict: 'pass' });
+    replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

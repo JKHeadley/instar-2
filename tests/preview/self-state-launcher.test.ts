@@ -18,6 +18,13 @@ it('the real launcher puts its journal-derived self-state in every prompt, corre
   const chat = Number(world.configuration.chatId), operator = Number(world.configuration.operatorSenderId);
   const message = (update_id, text) => ({ update_id, message: { chat: { id: chat, type: 'private' }, from: { id: operator }, text } });
   writeFileSync(provider, `import { appendFileSync } from 'node:fs';
+// This launcher test measures self-state; give its reply check the same clear-pass
+// Jev answer as the worker tests, without spending a subscription review call.
+globalThis.fetch = async (url, init) => {
+  if (url !== 'https://api.typesafe.ai/v1/systemone') throw Error('unexpected fetch');
+  return { ok: true, json: async () => ({ model: 'jev-1.13.0', answers: Object.fromEntries(
+    Object.keys(JSON.parse(init.body).questions).map(id => [id, { type: 'noul', noul: 0.01 }])) }) };
+};
 export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
@@ -44,6 +51,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const trial = world.state().read().trial;
     const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-test-key',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };
     const agent = (...rest) => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       '--loader', loader, 'tests/preview/journal-agent.mjs', ...rest], { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
@@ -54,28 +62,30 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
         '--activation-record', activation, '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles', String(cycles), '--max-poll-seconds', '1',
-        '--max-calls', '2', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles');
+        '--max-calls', '3', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles');
       expect(result.status, result.stderr).toBe(0);
       return performance.now() - start;
     };
     const status = () => JSON.parse(agent('status', '--root', root, '--time-zone', 'America/Los_Angeles').stdout);
     const selfOf = line => JSON.parse(JSON.parse(JSON.parse(line)).messages.find(m => m.role === 'context').content)
       .packet.sources.find(source => source.id === 'self-state').text;
-    // Run 1: two messages fill the two-attempt cap; the loop ends at the model-attempt cap.
+    // Run 1: two messages fill the reply cap; one call slot stays available for review.
     writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second')]));
     const firstLaunch = run(4);
     let s = status();
-    expect(s).toMatchObject({ calls: 2, replies: 2, unknownCalls: 0, unknownSends: 0 });
+    expect(s, JSON.stringify({ calls: s.calls, replies: s.replies, holds: s.holds,
+      replyChecks: s.replyChecks, launches: s.launches, turns: s.turns, summaries: s.summaries }))
+      .toMatchObject({ calls: 2, replies: 2, unknownCalls: 0, unknownSends: 0 });
     expect(s.launches).toHaveLength(1);
-    expect(s.launches[0].reason).toBe('model attempt cap reached');
+    expect(s.launches[0].reason).toBe('reply cap reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt[0]).toContain('That is the first recorded launch');
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     expect(prompt[0]).toContain('Operator messages received: 1 today, 1 in this trial');
     expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 in this trial');
-    expect(prompt[1]).toContain('Model attempts: 1 of 2 used, 1 left');
+    expect(prompt[1]).toContain('Model attempts: 1 of 3 used, 2 left');
     // The operator raises caps; run 2 answers a third message and knows its own restart and why.
-    const raised = agent('raise-caps', '--root', root, '--max-calls', '4', '--max-replies', '4', '--max-turns', '6',
+    const raised = agent('raise-caps', '--root', root, '--max-calls', '5', '--max-replies', '4', '--max-turns', '6',
       '--authority', 'Justin, offline test');
     expect(raised.status, raised.stderr).toBe(0);
     writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second'),
@@ -88,10 +98,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(now).toContain('Operator messages received: 3 today, 3 in this trial (including the one being answered now)');
     expect(now).toContain('My replies Telegram accepted: 2 today, 2 in this trial');
     expect(now).toContain('Messages exchanged today: 5');
-    expect(now).toContain('Model attempts: 2 of 4 used, 2 left');
+    expect(now).toContain('Model attempts: 2 of 5 used, 3 left');
     expect(now).toContain('on the authority "Justin, offline test"');
     expect(now).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
-    expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: model attempt cap reached\./u);
+    expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: reply cap reached\./u);
     expect(now).toContain('Launches recorded: 2');
     expect(s.launches).toHaveLength(2);
     expect(s.launches[1].reason).toBe('cycle limit reached');

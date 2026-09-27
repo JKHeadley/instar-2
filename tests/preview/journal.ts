@@ -345,6 +345,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (typeof sent === 'number' && Number.isSafeInteger(sent) && sent > 0) return sent * 1000; } catch { /* raw kept verbatim */ }
     return turn.at > 0 ? turn.at : null;
   };
+  /** What memory holds as the reply: the exact send intent (the checked reply or the
+   * holding reply), without the surface marker; never an unsent candidate. */
+  const sentText = (turn: Turn) => turn.intent?.replace(/^PREVIEW — /u, '');
   const dated = (turn: Turn) => { const at = sentAt(turn); return at === null ? 'date unknown' : isoMinute(at); };
   /** Original turns the summary already covers, chosen by the memory sentinel
    * for the new message: its words, the turn it continues, the summary
@@ -353,8 +356,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const older = journal.view.order.filter(item => item.accepted && item.update <= summary.through);
     const previous = journal.view.order.filter(item => item.accepted && item.update < turn.update).at(-1);
     return selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
-      ...(previous ? { previous: `${previous.text} ${previous.intent ?? ''}` } : {}),
-      candidates: older.map(item => ({ text: `${item.text} ${item.intent ?? ''}`, at: sentAt(item) ?? 0 })) })
+      ...(previous ? { previous: `${previous.text} ${sentText(previous) ?? ''}` } : {}),
+      candidates: older.map(item => ({ text: `${item.text} ${sentText(item) ?? ''}`, at: sentAt(item) ?? 0 })) })
       .map(index => older[index]!);
   };
   /** Notes sharing any name term with the new message ("Sam" also finds "Sam Ruiz"), from
@@ -395,7 +398,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ ...elsewhere(item), user: redact(item.text).text,
-      answer: item.intent === undefined ? null : redact(item.intent).text, outcome: outcome(item) }));
+      answer: item.intent === undefined ? null : redact(sentText(item)!).text, outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn; mentions: { person: string; quote: string }[] }>();
     if (summary) for (const note of named) {
@@ -416,12 +419,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(({ turn, side, items }) => ({ from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn),
         ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
         ...(side === 'message' ? { message: redact(turn.text).text }
-          : { reply: redact(turn.intent ?? '').text, answering: redact(turn.text).text, delivery: outcome(turn) }),
+          : { reply: redact(sentText(turn) ?? '').text, answering: redact(turn.text).text, delivery: outcome(turn) }),
         items }));
     const cited = new Set([...sources.keys(), ...[...promised.values()].map(entry => entry.turn.id)]);
     const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
-      user: redact(item.text).text, answer: item.intent === undefined ? null : redact(item.intent).text,
+      user: redact(item.text).text, answer: item.intent === undefined ? null : redact(sentText(item)!).text,
       outcome: outcome(item) })) : [];
     const corrections = flagged.map(item => ({ update: item.update, date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }), findings: correctionNote(item.checked ?? []) }));
@@ -605,7 +608,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const { in: side, quote, closedBy } = (item ?? {}) as { in?: unknown; quote?: unknown; closedBy?: unknown };
       if (side !== 'message' && side !== 'reply' || typeof quote !== 'string' || Buffer.byteLength(quote) > 1000 || !terms(quote).length) continue;
       const source = shown.find(turn => side === 'message' ? redact(turn.text).text.includes(quote)
-        : turn.intent !== undefined && redact(turn.intent).text.includes(quote));
+        : turn.intent !== undefined && redact(sentText(turn)!).text.includes(quote));
       const key = JSON.stringify([side, source?.id, quote]);
       if (!source || seen.has(key)) continue;
       seen.add(key); notes.push({ in: side, source: source.id, quote });
@@ -745,7 +748,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (turn.intent === undefined || turn.checked !== undefined || turn.answer === undefined) continue;
       const earlier = journal.view.order.filter(item => item.accepted && item.update < turn.update).map(item => item.text);
       let findings: CoherenceFinding[], failed = false;
-      try { findings = checkCoherenceOf({ reply: turn.intent.replace(/^PREVIEW — /u, ''), earlier }); } catch { findings = []; failed = true; }
+      try { findings = checkCoherenceOf({ reply: sentText(turn)!, earlier }); } catch { findings = []; failed = true; }
       journal.append({ kind: 'coherence', id: turn.id, findings, ...(failed ? { failed: true as const } : {}), at: ports.now() });
     }
   };
