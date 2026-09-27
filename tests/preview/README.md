@@ -713,7 +713,12 @@ Telegram message timestamp, falling back to the durable intake timestamp. It sto
 store, service or scheduler is added. Every verified operator reply packet asks the model for a
 dated decision, including `dated:[]` when there is no event or deadline. Up to three items can be
 recorded from one turn. A malformed proposed item is not recorded; the runner retains a pending
-date decision and sends a checked, truthful clarification while retaining unrelated answer text.
+date decision and sends a checked, truthful clarification. The structured reply separates
+`reply.answer` (substantive answer or clarification) from an optional
+`reply.dateAcknowledgement`. The runner ignores the latter and renders save status from the
+validated date result, retaining `reply.answer` even when selection fails. For an invalid
+selection in the old mixed string form, it sends only the date rejection because the answer
+cannot be separated from an unchecked save claim.
 If the model omits the structured date decision, the original turn stays durable and
 `datedPending` names it in `status` and the next packet. That is an unconfirmed missing decision,
 never a due item; the preview must not claim it saved a deadline from that evidence alone.
@@ -735,7 +740,7 @@ shows the next packet's dated block. Corrections and forgetting use the existing
 memory change: an affected old item is withheld, and a corrected date is recorded only when
 the operator's replacement clause is selected and validated in its own turn.
 
-For a validated dated item, the immediate reply keeps the model's answer and adds its absolute
+For a validated dated item, the immediate reply keeps the substantive answer and adds its absolute
 `YYYY-MM-DD` day and zone; an unresolved time remains explicit beside any model clarification.
 An unresolved date gets a clarification. Later answer packets carry those absolute
 dates and ask the model to state them when relevant. The exact reply still passes the existing

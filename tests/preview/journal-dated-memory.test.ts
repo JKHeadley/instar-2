@@ -114,8 +114,9 @@ it('keeps the answer and an ambiguous-hour question beside the verified date', a
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     const sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
-      model: async input => JSON.stringify({ reply: input.question.includes('invoice')
-        ? '2 + 2 = 4. Your invoice is due tomorrow.' : 'Do you mean 3:30 AM or PM?', memory: [],
+      model: async input => JSON.stringify({ reply: { answer: input.question.includes('invoice')
+        ? '2 + 2 = 4. Your invoice is due tomorrow.' : 'Do you mean 3:30 AM or PM?',
+      dateAcknowledgement: 'The deadline is now in memory.' }, memory: [],
         dated: [{ quote: input.question.includes('invoice') ? 'The invoice is due tomorrow.' : input.question,
           when: input.question.includes('invoice') ? 'tomorrow' : 'tomorrow at 3:30' }] }),
       send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
@@ -124,6 +125,7 @@ it('keeps the answer and an ambiguous-hour question beside the verified date', a
     await worker.drain();
     expect(sent[0]).toContain('2 + 2 = 4.');
     expect(sent[0]).toContain('2026-09-27 (America/Los_Angeles)');
+    expect(sent[0]).not.toContain('The deadline is now in memory.');
     expect(sent[1]).toContain('Do you mean 3:30 AM or PM?');
     expect(sent[1]).toContain('2026-09-27 (America/Los_Angeles); AM or PM unspecified');
     expect(journal.view.dated[1]).toMatchObject({ day: '2026-09-27', ambiguity: 'AM or PM unspecified' });
@@ -229,20 +231,38 @@ it('replies truthfully once to a malformed dated proposal across restart, retain
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps an unrelated answer when the model proposes an invalid saved date', async () => {
+it('keeps separated answers and rejects every unverified date acknowledgement', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-invalid-answer-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    let sent = '';
+    const sent: string[] = [];
+    const replies = [
+      { answer: 'Use Save As to make a copy.', dateAcknowledgement: 'I saved it.' },
+      { answer: '2 + 2 = 4', dateAcknowledgement: 'and I saved it.' },
+      { answer: '2 + 2 = 4.', dateAcknowledgement: 'Your deadline is now in memory.' },
+    ];
     const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
-      model: async () => JSON.stringify({ reply: '2 + 2 = 4. I saved it.', memory: [],
-        dated: [{ quote: 'The invoice is due tomorrow.', when: 'October 5' }] }),
-      send: async input => { sent = input.text; return 1; }, checkOutbound: () => {} });
-    worker.intake([update(1, 'The invoice is due tomorrow. Also, what is 2 + 2?')]); await worker.drain();
-    expect(sent).toContain('2 + 2 = 4.');
-    expect(sent).not.toContain('I saved it.');
-    expect(sent).toContain('I have not saved a dated item.');
+      model: async input => {
+        expect(JSON.parse(input.context).datedDecision).toContain('reply.answer');
+        return JSON.stringify({ reply: replies[Number(input.id.split(':').at(-1)) - 1], memory: [],
+          dated: [{ quote: 'The invoice is due tomorrow.', when: 'October 5' }] });
+      },
+      send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
+    worker.intake([update(1, 'The invoice is due tomorrow. How do I make a copy?'),
+      update(2, 'The invoice is due tomorrow. What is 2 + 2?'),
+      update(3, 'The invoice is due tomorrow. Also, what is 2 + 2?')]);
+    await worker.drain();
+    expect(sent).toHaveLength(3);
+    expect(sent[0]).toContain('Use Save As to make a copy.');
+    expect(sent[1]).toContain('2 + 2 = 4');
+    expect(sent[2]).toContain('2 + 2 = 4.');
+    for (const reply of sent) {
+      expect(reply).not.toContain('I saved it.');
+      expect(reply).not.toContain('Your deadline is now in memory.');
+      expect(reply).toContain('I have not saved a dated item.');
+    }
     expect(journal.view.dated).toHaveLength(0);
+    expect(journal.view.order.every(turn => turn.datedPending)).toBe(true);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
