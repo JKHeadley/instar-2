@@ -19,17 +19,17 @@ const slack = (messageId: string, channelId: string, text: string, extra = {}) =
   platformUserId: 'U123ABC', platform: 'slack', ...extra });
 const lines = (rows: object[]) => rows.map(row => `${JSON.stringify(row)}\n`).join('');
 
-function world() {
+function world(maxBytes = genesis.maxBytes) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'preview-store-')));
   const statePath = join(base, 'agents', 'echo', '.instar');
   mkdirSync(statePath, { recursive: true });
   const path = join(base, 'journal.encrypted');
-  const journal = openPreviewJournal(path, key, genesis);
+  const journal = openPreviewJournal(path, key, { ...genesis, maxBytes });
   return { base, statePath, path, journal, state: agentState(statePath) };
 }
 
 it('imports only agent-participating Telegram user rows with the stored authenticated sender ID', () => {
-  const w = world();
+  const w = world(4000);
   try {
     const path = join(w.statePath, 'telegram-messages.jsonl');
     const original = lines([
