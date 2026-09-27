@@ -539,6 +539,17 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSO
 
 ## Structural journal runner (rounds 10–13)
 
+The offline memory continuity soak is `journal-memory-restart-soak.test.ts`.
+It records 2,000 accepted turns, reopens the encrypted journal every 20 turns,
+and compacts it every 100. A no-restart journal receives the same frames. At
+each restart the complete memory projection must match; after every summary,
+the read-only recall packet and deterministic answer must match. The final
+recorded answer's audit output must match byte for byte, with no findings.
+The first divergent frame is named in the failed assertion. This uses an
+offline answer stub and fixture intake; it does not call a model or send a
+Telegram reply. Justin's supervised channel procedure is in
+[journal-memory-restart-soak-live-test.md](journal-memory-restart-soak-live-test.md).
+
 ### Offline recall benchmark
 
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
