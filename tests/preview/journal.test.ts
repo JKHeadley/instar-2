@@ -578,6 +578,7 @@ it('keeps expiry and non-operator stop from becoming permanent latches', () => {
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
+// Six CLI processes keep their individual 10-second limits; allow their combined startup time.
 it('the cap command requires the exclusive writer lease and reports the recorded limits', () => {
   const root = origin(), path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(1));
@@ -608,7 +609,7 @@ it('the cap command requires the exclusive writer lease and reports the recorded
     expect(JSON.parse(command('status').stdout).limits.maxBytes).toBe(1048576);
   } finally { journal.close(); if (lease.kind === 'Success' && !leaseClosed) lease.value.close();
     rmSync(root,{recursive:true,force:true}); }
-});
+}, 30_000);
 
 it('holds a prepared answer when the reply cap is exhausted', async () => {
   const root = origin();
