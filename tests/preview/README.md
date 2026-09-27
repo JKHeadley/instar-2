@@ -808,8 +808,23 @@ uses the complete system, packet and prepared prompt bound.
 When the whole summary input exceeds that bound, the worker summarizes the
 oldest prefix that fits, then extends from the saved summary. One pass makes at
 most eight attempts under the same call cap. An oversized single turn is shown
-as a hold in `status`, with its original still in the journal. Earlier overflow
-holds retry in order when a summary covers their preceding turns.
+as a content-free too-long notice in the operator chat, with its original still
+in the encrypted journal. A context that still cannot fit after summary recovery
+gets the same notice. `status.tooLong` shows its update and Telegram acceptance
+or UNKNOWN delivery; UNKNOWN is never resent. A prompt preparation failure stays
+held for recovery. Earlier overflow holds from old journals still retry in order
+when a summary covers their preceding turns. A too-long message is represented
+in later model history by an explicit omission marker, never a silently clipped
+quote; its original remains in the journal. Telegram may split a pasted message
+into distinct updates. Each part is retained with its own update ID and receives
+its own answer or too-long notice; the runner cannot prove that separate Telegram
+updates are one original message, so labelled parts are clearest.
+
+An answer whose UTF-8 or HTML-escaped Telegram body exceeds 4096 bytes or
+characters is retained as the model answer, but one short notice is checked and
+sent through the existing intent fence. No prefix of that answer is sent, and
+`status.tooLong` labels the reply outcome. See
+[long-message-live-test.md](long-message-live-test.md) for Justin's live trial.
 
 When a summary covers earlier turns, a **memory sentinel**
 (`memory-sentinel.ts`) picks which of those original journal turns are quoted

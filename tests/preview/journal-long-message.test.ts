@@ -1,0 +1,159 @@
+import { expect, it } from 'vitest';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { createJournalWorker, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { replyReviewContext } from './reply-check.js';
+
+const key = new Uint8Array(32).fill(19);
+const update = (id: number, text: string) => ({ update_id: id,
+  message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
+const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
+  grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+  maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 4096, cursor: 0 });
+const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-long-message-')));
+const status = (dir: string) => {
+  const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'status', '--root', dir], { cwd: process.cwd(),
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8' });
+  expect(result.status).toBe(0);
+  return JSON.parse(result.stdout) as { tooLong: { update: number; kind: string; delivery: string }[]; unknownSends: number };
+};
+
+it('records an over-maxBytes operator turn and sends one checked too-long notice across replay', async () => {
+  const dir = root();
+  try {
+    const original = 'é'.repeat(2049); // 4098 UTF-8 bytes, though only 2049 characters.
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
+    let modelCalls = 0, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => { modelCalls++; return 'should never run'; },
+      replyCheck: { elapsedMs: () => 1, jev: async text => { expect(text).toBe(TOO_LONG_INPUT_NOTICE);
+        return { value: { results: [] }, latencyMs: 1 }; },
+        escalate: async (text, _id, prompt) => {
+          const context = JSON.parse(replyReviewContext(prompt!, text));
+          expect(context).toMatchObject({ candidateReply: TOO_LONG_INPUT_NOTICE,
+            operatorMessage: expect.stringContaining('saved verbatim'), audience: { chat: '7654321' }, history: [] });
+          return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 1, reason: 'fixed notice' };
+        } },
+      send: async ({ text }) => { expect(text).toBe(TOO_LONG_INPUT_NOTICE); sends++; return null; },
+      checkOutbound: () => {} });
+    expect(worker.intake([update(1, original)])).toBe(2);
+    await worker.drain();
+    expect(modelCalls).toBe(0);
+    expect(sends).toBe(1);
+    expect(journal.view.order[0]).toMatchObject({ text: original, noticeClass: 'too-long-input', intent: TOO_LONG_INPUT_NOTICE });
+    journal.close();
+    const replay = openPreviewJournal(join(dir, 'journal.encrypted'), key);
+    const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
+      model: async () => { throw Error('duplicate model call'); }, send: async () => { throw Error('duplicate send'); },
+      checkOutbound: () => {} });
+    expect(resumed.intake([update(1, original)])).toBe(2);
+    await resumed.drain();
+    expect(replay.view.order).toHaveLength(1);
+    expect(replay.view.order[0]?.text).toBe(original);
+    expect(replay.view.replies).toBe(1);
+    replay.close();
+    expect(status(dir)).toMatchObject({ unknownSends: 1,
+      tooLong: [{ update: 1, kind: 'input', delivery: 'UNKNOWN' }] });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('retains Telegram split parts as distinct updates and answers or explains each part', async () => {
+  const dir = root();
+  try {
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
+    const sent: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'I can read this part.',
+      send: async ({ text }) => { sent.push(text); return sent.length; }, checkOutbound: () => {} });
+    const first = 'A'.repeat(3000), second = 'B'.repeat(3000);
+    worker.intake([update(1, first), update(2, second)]);
+    await worker.drain();
+    expect(journal.view.order.map(turn => turn.text)).toEqual([first, second]);
+    expect(journal.view.cursor).toBe(3);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toContain('I can read this part.');
+    expect(sent[1] === TOO_LONG_INPUT_NOTICE || sent[1]?.includes('I can read this part.')).toBe(true);
+    journal.close();
+    const replay = openPreviewJournal(join(dir, 'journal.encrypted'), key);
+    const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
+      model: async () => { throw Error('duplicate model call'); }, send: async () => { throw Error('duplicate send'); },
+      checkOutbound: () => {} });
+    resumed.intake([update(1, first), update(2, second)]);
+    await resumed.drain();
+    expect(replay.view.order).toHaveLength(2);
+    expect(replay.view.replies).toBe(2);
+    replay.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each(['before:intent', 'after:intent'])('recovers a too-long notice at %s without duplicate delivery', async boundary => {
+  const dir = root();
+  try {
+    const path = join(dir, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, genesis(), stage => {
+      if (stage === boundary) throw Error('simulated crash');
+    });
+    let sends = 0;
+    const first = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('model must not run'); },
+      send: async () => { sends++; return 7; }, checkOutbound: () => {} });
+    first.intake([update(1, 'x'.repeat(4097))]);
+    await expect(first.drain()).rejects.toThrow('simulated crash');
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
+      model: async () => { throw Error('model must not run'); },
+      send: async ({ text }) => { expect(text).toBe(TOO_LONG_INPUT_NOTICE); sends++; return 8; }, checkOutbound: () => {} });
+    await resumed.drain();
+    expect(sends).toBe(boundary === 'before:intent' ? 1 : 0);
+    expect(replay.view.replies).toBe(1);
+    expect(replay.view.order[0]?.sent).toBe(boundary === 'before:intent' ? 8 : undefined);
+    replay.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('does not prepare a too-long notice after stop, then sends it once when resumed', async () => {
+  const dir = root();
+  try {
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
+    let stopped = false, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => stopped,
+      model: async () => { throw Error('model must not run'); }, send: async () => { sends++; return 7; },
+      checkOutbound: () => {} });
+    worker.intake([update(1, 'x'.repeat(4097))]);
+    stopped = true;
+    await expect(worker.drain()).rejects.toThrow('preview stopped');
+    expect(journal.view.order[0]?.noticeClass).toBeUndefined();
+    expect(sends).toBe(0);
+    stopped = false;
+    await worker.drain();
+    expect(journal.view.order[0]?.sent).toBe(7);
+    expect(sends).toBe(1);
+    journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('sends a full reply at the Telegram boundary and a truthful notice for longer or HTML-expanded answers', async () => {
+  for (const answer of ['a'.repeat(4084), 'a'.repeat(4085), '<'.repeat(1200)]) {
+    const dir = root();
+    try {
+      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
+      const sent: string[] = [];
+      const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+        model: async () => answer, send: async ({ text }) => { sent.push(text); return 7; }, checkOutbound: () => {} });
+      worker.intake([update(1, 'Short question')]); await worker.drain();
+      expect(journal.view.order[0]?.answer).toBe(answer);
+      expect(sent).toHaveLength(1);
+      if (Buffer.byteLength(`PREVIEW — ${answer}`) <= 4096 && answer[0] !== '<')
+        expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${answer}`);
+      else {
+        expect(journal.view.order[0]?.intent).toBe(TOO_LONG_REPLY_NOTICE);
+        expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'reply', delivery: 'Telegram API accepted' }]);
+      }
+      journal.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
