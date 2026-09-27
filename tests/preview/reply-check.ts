@@ -4,7 +4,7 @@ export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
   cli_command: 'The message asks the reader to run a command in a terminal.',
   config_key: 'The message names a configuration setting by its literal dotted key path, in the form section.subsection.name. Describing a setting in plain words does not count.',
-  credential: 'The message contains a live credential: an API key, token, password, or secret value.',
+  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key. A short personal code or fact is not a credential merely because it is called a code: when the verified operator supplied a non-authentication fact in this same private chat, repeating it to that operator is allowed. Use the conversation and audience to distinguish those cases. A real authentication secret remains a violation even if the operator supplied it.',
   api_endpoint: 'The message shows the reader an internal HTTP endpoint or URL path of our own system.',
   quits_on_self: 'The writer says they are stopping work for a reason about themselves, such as running low on context, memory, or capacity.',
   claims_blocked: 'The writer declares something is impossible or blocked without giving evidence that they actually tried it.',
