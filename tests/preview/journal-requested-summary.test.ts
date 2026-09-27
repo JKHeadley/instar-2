@@ -351,3 +351,79 @@ it('refuses a forged, premature or repeated summary slot frame and accepts the e
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('never sends an already-created slot whose request a later operator message cancels, and sends it after an unrelated one', async () => {
+  for (const [later, expected] of [['stop the 6 pm summary', 0], ['how was lunch?', 1]] as const) {
+    const root = tmp('slot-cancel');
+    try {
+      const { state, open, summaries } = harness(root);
+      let { journal, worker } = open(true);
+      worker.intake([update(1, daily)]); await worker.drain();
+      state.now = sixPm(); state.crash = 'after:summary-due';
+      await expect(worker.drain()).rejects.toThrow('crash');
+      journal.close(); ({ journal, worker } = open());
+      expect(journal.view.order.filter(turn => turn.requestedSummary)).toHaveLength(1);
+      worker.intake([update(2, later)]);
+      await worker.drain();
+      expect(journal.view.summaryCancels).toHaveLength(expected === 0 ? 1 : 0);
+      expect(summaries()).toHaveLength(expected);
+      await worker.drain(); state.now = sixPm() + 3600_000; await worker.drain();
+      expect(summaries()).toHaveLength(expected);
+      journal.close();
+      expect(status(root).requestedSummaries.slots.map(slot => slot.state)).toEqual([expected === 0 ? 'withdrawn, not sent' : 'accepted']);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('sends summaries due in the same slot and topic as one message with its reminders, once, across replay', async () => {
+  for (const crash of [null, 'after:intent'] as const) {
+    const root = tmp('slot-group');
+    try {
+      const { state, open, summaries } = harness(root);
+      let { journal, worker } = open(true);
+      const yesterday = 'send me a summary of yesterday every day at 6 pm';
+      worker.intake([update(1, daily, 17), update(2, yesterday, 17), update(3, 'remind me today at 6 pm to water the plants', 17),
+        update(4, 'send me a summary of this week every day at 6 pm', 23)]);
+      await worker.drain();
+      const before = state.sent.length;
+      state.now = sixPm(); state.crash = crash;
+      if (crash) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
+      journal.close(); ({ journal, worker } = open());
+      await worker.drain(); await worker.sendReminders();
+      const topic17 = state.sent.slice(before).filter(item => item.thread === 17);
+      // A crash after the one intent leaves that single message UNKNOWN: it is never sent or repeated.
+      expect(topic17).toHaveLength(crash ? 0 : 1);
+      const turns = journal.view.order.filter(turn => turn.requestedSummary && turn.thread === 17);
+      const text = turns[0]!.intent!;
+      expect(turns.map(turn => turn.intent === text)).toEqual([true, true]);
+      if (!crash) expect(topic17[0]!.text).toBe(text);
+      expect(text.startsWith(`${header('2026-09-26 18:00')})\n`)).toBe(true);
+      expect(text).toContain(`\n\n${header('2026-09-26 18:00', '2026-09-26 10:02', yesterday)})\n`);
+      expect(text.endsWith('\nPREVIEW reminder you asked for on 2026-09-26 10:03: "remind me today at 6 pm to water the plants" (due 2026-09-26 18:00 America/Los_Angeles)')).toBe(true);
+      expect(turns.map(turn => turn.sent !== undefined)).toEqual(crash ? [false, false] : [true, true]);
+      expect(state.sent.slice(before).filter(item => item.text.includes('water the plants'))).toHaveLength(crash ? 0 : 1);
+      // The other topic's summary is its own message.
+      expect(state.sent.slice(before).filter(item => item.thread === 23)).toHaveLength(1);
+      await worker.drain(); await worker.sendReminders();
+      expect(state.sent.slice(before).filter(item => item.thread === 17)).toHaveLength(crash ? 0 : 1);
+      journal.close();
+      expect(status(root).requestedSummaries.slots.filter(slot => slot.state === (crash ? 'UNKNOWN send' : 'accepted')))
+        .toHaveLength(crash ? 2 : 3);
+      if (!crash) expect(summaries()).toHaveLength(2);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('binds an explicit start day of a repeating summary, and refuses one it cannot settle', () => {
+  const at = start; // Saturday 2026-09-26 10:00
+  expect(settleSummarySchedule('every day at 6 pm', 'daily', at, zone)).toEqual({ time: '18:00', first: '2026-09-26' });
+  expect(settleSummarySchedule('every day at 6 pm from now on', 'daily', at, zone)).toEqual({ time: '18:00', first: '2026-09-26' });
+  expect(settleSummarySchedule('every day at 6 pm starting tomorrow', 'daily', at, zone)).toEqual({ time: '18:00', first: '2026-09-27' });
+  expect(settleSummarySchedule('every day at 6 pm starting 2026-10-01', 'daily', at, zone)).toEqual({ time: '18:00', first: '2026-10-01' });
+  expect(settleSummarySchedule('every day at 6 pm starting Monday', 'daily', at, zone)).toEqual({ time: '18:00', first: '2026-09-28' });
+  expect(settleSummarySchedule('every Friday at 5 pm starting 2026-10-05', 'weekly', at, zone)).toEqual({ time: '17:00', first: '2026-10-09' });
+  expect(settleSummarySchedule('every Friday at 5 pm', 'weekly', at, zone)).toEqual({ time: '17:00', first: '2026-10-02' });
+  for (const when of ['every day at 6 pm starting next week', 'every day at 6 pm until Friday', 'every day at 6 pm starting Oct 3',
+    'every Monday at 6 pm', 'every day at 6 pm starting 2026-09-20'])
+    expect(settleSummarySchedule(when, 'daily', at, zone)).toHaveProperty('refusal');
+});

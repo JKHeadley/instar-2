@@ -344,6 +344,7 @@ async function main() {
           quote: redact(grant.quote).text, covers: grant.period, repeat: grant.repeat, time: grant.time, first: grant.first, zone: grant.zone })),
         slots: view.view.order.filter(t => t.requestedSummary).map(t => ({ grant: t.requestedSummary.grant, slot: t.requestedSummary.slot,
           late: t.requestedSummary.late ?? null, state: t.sent !== undefined ? 'accepted' : t.intent !== undefined ? 'UNKNOWN send'
+            : !activeSummaryGrants(view.view).some(grant => grant.id === t.requestedSummary.grant) ? 'withdrawn, not sent'
             : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) },
       dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,

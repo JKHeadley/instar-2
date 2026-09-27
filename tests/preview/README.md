@@ -1245,7 +1245,9 @@ send it on its own when due; pull surfaces remain only for status never asked fo
 decides by meaning that a verified operator message is such a request and returns
 `summaries:[{quote, when, period, repeat}]` (`repeat` is `once`, `daily` or `weekly`; `period` is
 today, yesterday, this or last week or month, or the past N days). The runner settles the time
-and first due day from the exact `when` phrase and never guesses an unstated AM or PM. It stores
+and first due day from the exact `when` phrase and never guesses an unstated AM or PM. A stated
+start day of a repeating request (tomorrow, a weekday after “starting”, or YYYY-MM-DD) binds the
+first slot; a start or end qualification it cannot settle is refused, never dropped. It stores
 the grant (who, what, the covered period, time, zone, recurrence and conversation) in the same
 fsynced answer frame as the decision. The reply states the schedule, or why none was set: the time
 is unsettled, the period is unsupported, a one-off time has passed, or the preview ends first.
@@ -1260,8 +1262,10 @@ The message's first line states why it was sent:
 `PREVIEW summary you asked for on <asked local time>: "<request>" (due <day time zone>)`.
 A held summary gets the existing one-shot held notice (`I'm holding the summary you asked for
 (due …)`). An UNKNOWN or failed model result gets a truthful line under the same header, never a
-made-up summary. Requested reminders due at that poll in the same conversation are appended to the
-same message as their fixed lines (Rule 52). Replay checks each slot frame: the grant must be
+made-up summary. Summaries due at the same slot in the same conversation go out as one message
+(in fitting parts if they exceed 4096 bytes), and requested reminders due at that poll in that
+conversation are appended as their fixed lines (Rule 52); the one intent records every summary it
+carries, so replay and the UNKNOWN fence cover all of them. Replay checks each slot frame: the grant must be
 active, the slot must be the latest due slot after the last one created, and no earlier slot may be
 waiting to send. It also checks the order position, window and late marker.
 
@@ -1269,7 +1273,10 @@ Exactly once per due slot: a created slot is never created again; an UNKNOWN cal
 retried; and an earlier slot not yet sent holds the next one, so there is no backlog. After
 downtime, only the latest missed slot is created. Its reason line says `sent late at …` and how many
 earlier due summaries were skipped, not sent. Stop, expiry, the call and reply caps, an unsettled
-later operator message and unresolved memory requests all hold creation. A later verified-operator
+later operator message and unresolved memory requests all hold creation. An already-created slot is
+rechecked before generation, before its send intent and before its held notice: it waits while a
+later operator message is unsettled, and is never sent once its request is cancelled or retired
+(`withdrawn, not sent` in status). A later verified-operator
 message changes or cancels a request (`cancelSummaries`, with the active requests listed as
 `summaryRequests`). Forgetting or correcting the request clause retires it. `status.requestedSummaries`
 reports requests, cancellations, active schedules and each slot's state; self-state counts summary

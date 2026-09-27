@@ -178,7 +178,9 @@ export type JournalRecord =
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
     /** Requested reminders due in the same topic, grouped into a requested summary's one message (Rule 52). */
-    reminderBatch?: number; reminders?: ReminderRef[]; at: number }
+    reminderBatch?: number; reminders?: ReminderRef[];
+    /** Other requested summaries due in the same topic and slot, sent inside this one message (Rule 52). */
+    summaries?: string[]; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'send-timing'; id: string; latencyMs: number; at: number }
   | { kind: 'reminder-intent'; items: ReminderRef[]; day: string; text: string; body: string; chat: string; thread?: number; grant: string; reminderGrant: string; at: number }
@@ -234,6 +236,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reviewCandidate?: string; reviewMentionedDates?: string[];
   /** Set only on a runner-authored turn created from a due slot of a requested summary. */
   requestedSummary?: { grant: string; slot: string; window: SummaryWindow; late?: { minutes: number; skipped: number } };
+  /** A requested summary sent inside another summary turn's one message, and that turn's grouped ids. */
+  groupedInto?: string; summaryBatch?: string[];
   reminderBatch?: number }
 
 
@@ -445,8 +449,9 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
       ...(turn.modelState === 'uncertain' ? ['model-uncertain'] : []),
       ...(turn.jevReserved ? ['reply-jev-reserve'] : []),
       ...(turn.reviewReserved ? ['reply-review-reserve'] : []),
-      ...(turn.intent !== undefined ? ['intent'] : []), ...(turn.held !== undefined ? ['hold'] : [])];
+      ...(turn.intent !== undefined && turn.groupedInto === undefined ? ['intent'] : []), ...(turn.held !== undefined ? ['hold'] : [])];
     for (const kind of required) if (!found?.has(kind)) throw Error(`preview journal: pending ${kind} evidence absent`);
+    if (turn.groupedInto !== undefined && !kinds.get(turn.groupedInto)?.has('intent')) throw Error('preview journal: pending intent evidence absent');
   }
   if ([...view.summaryReservations].some(([through]) => !summaries.has(through)))
     throw Error('preview journal: summary reservation evidence absent');
@@ -580,13 +585,31 @@ export function settleSummarySchedule(when: string, repeat: SummaryGrant['repeat
   const now = localStamp(at, zone), today = now.slice(0, 10);
   const ahead = (day: string) => `${day} ${time}` > now;
   const weekday = WEEKDAY_NAMES.findIndex(name => new RegExp(`\\b${name}s?\\b`, 'u').test(phrase));
-  const offsetTo = (target: number) => (target - new Date(`${today}T00:00:00Z`).getUTCDay() + 7) % 7;
+  const offsetTo = (target: number, from = today) => (target - new Date(`${from}T00:00:00Z`).getUTCDay() + 7) % 7;
   let first: string;
-  if (repeat === 'daily') first = ahead(today) ? today : addDays(today, 1);
-  else if (repeat === 'weekly') {
-    if (weekday < 0) return { refusal: 'a weekly summary needs a weekday, such as every Friday at 5 pm' };
-    first = addDays(today, offsetTo(weekday));
-    if (!ahead(first)) first = addDays(first, 7);
+  if (repeat !== 'once') {
+    // A stated start day binds the first slot; a date qualification the runner cannot settle is
+    // refused, never widened to an earlier start or dropped (Rule 57).
+    const iso = /\b(\d{4}-\d{2}-\d{2})\b/u.exec(phrase), rest = phrase.replace(/\bfrom now on\b/gu, ' ');
+    let start = today;
+    if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d/u.test(phrase))
+      return { refusal: 'give the start day as tomorrow, a weekday or YYYY-MM-DD' };
+    if (/\btomorrow\b/u.test(phrase)) start = addDays(today, 1);
+    else if (iso) {
+      start = iso[1]!;
+      if (Number.isNaN(Date.parse(`${start}T00:00:00Z`)) || addDays(start, 0) !== start) return { refusal: 'the date is not a valid calendar date' };
+      if (start < today) return { refusal: 'that start day has already passed' };
+    } else if (repeat === 'daily' && weekday >= 0) {
+      if (!/\b(?:starting|beginning|from)\b/u.test(rest)) return { refusal: 'a daily summary names no single weekday; say every Friday for weekly' };
+      if (offsetTo(weekday) === 0) return { refusal: 'that weekday could mean today or next week' };
+      start = addDays(today, offsetTo(weekday));
+    } else if (/\b(?:starting|start|beginning|from|after|next|until|till|through|ending|for)\b/u.test(rest))
+      return { refusal: 'I can only settle a start day given as tomorrow, a weekday or YYYY-MM-DD, with no end date' };
+    if (repeat === 'weekly') {
+      if (weekday < 0) return { refusal: 'a weekly summary needs a weekday, such as every Friday at 5 pm' };
+      first = addDays(start, offsetTo(weekday, start));
+      if (!ahead(first)) first = addDays(first, 7);
+    } else first = ahead(start) ? start : addDays(start, 1);
   } else {
     const iso = /\b(\d{4}-\d{2}-\d{2})\b/u.exec(phrase);
     if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d/u.test(phrase))
@@ -623,6 +646,11 @@ export const summarySlotsDue = (view: JournalView, grant: SummaryGrant, at: numb
  * outcome outside a running call is an orphaned UNKNOWN: never repeated, and it holds nothing. */
 const summaryAwaitingSend = (turn: Turn) => turn.requestedSummary !== undefined && turn.intent === undefined
   && !(turn.reserved && turn.answer === undefined && turn.modelState === undefined);
+/** Requested summaries due at the same instant in the same topic share one message (Rule 52). */
+const summaryGroup = (view: JournalView, turn: Turn) => {
+  const due = turn.requestedSummary!, grant = view.summaryGrants.find(item => item.id === due.grant)!;
+  return JSON.stringify([turn.thread ?? null, wallEpoch(due.slot, grant.time, grant.zone)]);
+};
 /** A runner-authored turn sorts after every earlier turn and before the next Telegram update. */
 const SYNTHETIC_UPDATE_STEP = 1 / 1024;
 /** "Everything before this turn": integer Telegram updates keep their old meaning. */
@@ -1305,10 +1333,20 @@ function project(view: JournalView, row: JournalRecord): void {
       view.reminders.set(requestedBatchKey(batches), { items: row.reminders, text: requestedReminderLines(view, items as DatedItem[]),
         day: items[0]!.day!, at: row.at, requested: true });
       turn.reminderBatch = batches;
+    }
+    if (row.summaries !== undefined) {
+      const group = turn.requestedSummary ? summaryGroup(view, turn) : undefined;
+      const items = Array.isArray(row.summaries) ? row.summaries.map(id => view.turns.get(id)) : [];
+      if (group === undefined || !items.length || new Set(items).size !== items.length || items.some(item => !item || item === turn
+        || !item.accepted || !item.requestedSummary || item.intent !== undefined || summaryGroup(view, item) !== group
+        || !row.text.includes(requestedSummaryHeader(view, item)))) throw Error('preview journal: grouped summary refused');
+      for (const item of items as Turn[]) { item.intent = row.text; item.intentBody = row.body ?? row.text; item.groupedInto = turn.id; }
+      turn.summaryBatch = row.summaries;
     } }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at;
     const grouped = turn.reminderBatch === undefined ? undefined : view.reminders.get(requestedBatchKey(turn.reminderBatch));
     if (grouped) { grouped.sent = row.message; grouped.sentAt = row.at; }
+    for (const id of turn.summaryBatch ?? []) { const item = view.turns.get(id)!; item.sent = row.message; item.sentAt = row.at; }
     for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id)
       && note.source !== turn.id && view.turns.get(note.source)!.update < turn.update
       && (!note.agentPromise.due || dueState(note.agentPromise.due, row.at) === 'due'
@@ -2770,6 +2808,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(skipped > 0 || minutes > SUMMARY_LATE_MINUTES ? { late: { minutes, skipped } } : {}), at: now });
     }
   };
+  /** A created, unsent summary slot is not generated or sent while its grant is withdrawn, or while a
+   * later verified-operator turn that may withdraw it is unsettled (Rules 57, 93). */
+  const summaryBlocked = (turn: Turn) => {
+    const due = turn.requestedSummary;
+    if (!due) return false;
+    const grant = activeSummaryGrants(journal.view).find(item => item.id === due.grant);
+    return !grant || clean(grant.quote) !== grant.quote
+      || reminderUnsettled({ source: grant.source, quote: grant.quote, when: grant.when, zone: grant.zone });
+  };
   /** Requested reminders due now in one conversation whose own line may be sent. */
   const dueRequestedReminders = (thread?: number) => pendingRequestedReminders(journal.view).filter(item =>
     clean(item.quote) === item.quote && reminderDue(item) <= localStamp(ports.now(), item.zone) && !reminderUnsettled(item)
@@ -2779,8 +2826,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     working = true;
     try {
       scheduleSummaries();
-      for (const turn of journal.view.order) {
+      // A second pass revisits only summary turns deferred behind a later operator turn or a
+      // same-slot sibling, so one poll can still settle them into one message.
+      const deferred = new Set<string>(), ready = new Map<string, { reply: string; mentionedKeys: string[] }>();
+      for (const pass of [0, 1]) for (const turn of journal.view.order) {
+        if (pass === 1 && !deferred.has(turn.id)) continue;
         if (!turn.accepted || turn.sent || turn.intent) continue;
+        if (summaryBlocked(turn)) { deferred.add(turn.id); continue; }
         gate();
         // Keep the full operator update in the journal, then give an honest bounded
         // reply without spending a model call on input that cannot fit the envelope.
@@ -3132,6 +3184,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
         }
         gate();
+        // Rule 52: requested summaries due at this slot in this topic go out as one message, in fitting parts.
+        const batch: Turn[] = [];
+        if (summaryHeader !== undefined) {
+          if (summaryBlocked(turn)) { deferred.add(turn.id); continue; }
+          ready.set(turn.id, { reply, mentionedKeys: heldBack ? [] : mentionedKeys });
+          const group = summaryGroup(journal.view, turn);
+          const siblings = journal.view.order.filter(item => item !== turn && item.requestedSummary !== undefined && item.accepted
+            && item.intent === undefined && !summaryBlocked(item) && summaryGroup(journal.view, item) === group);
+          if (pass === 0 && siblings.some(item => item.update > turn.update && !item.held)) { deferred.add(turn.id); continue; }
+          const join = (items: Turn[]) => [...items].sort((a, b) => a.update - b.update).map(item => ready.get(item.id)!.reply).join('\n\n');
+          for (const item of siblings) {
+            if (!ready.has(item.id)) continue;
+            const candidate = encodeReply(join([turn, ...batch, item]));
+            if (Buffer.byteLength(candidate) <= 4096 && Array.from(candidate).length <= 4096) batch.push(item);
+          }
+          if (batch.length) {
+            reply = join([turn, ...batch]);
+            mentionedKeys = [...new Set([...mentionedKeys, ...batch.flatMap(item => ready.get(item.id)!.mentionedKeys)])];
+          }
+        }
         // Rule 52: requested reminders due now in this conversation join the requested summary's one message.
         const grouped: DatedItem[] = [];
         if (summaryHeader !== undefined && !heldBack && !unresolvedReminderMemory()) {
@@ -3155,6 +3227,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           ...(grouped.length ? { reminderBatch: [...journal.view.reminders.values()].filter(batch => batch.requested).length,
             reminders: grouped.map(item => ({ source: item.source, quote: item.quote, when: item.when })) } : {}),
+          ...(batch.length ? { summaries: batch.map(item => item.id) } : {}),
           promises: explicitAgentPromises(reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
@@ -3170,7 +3243,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // the answer, so a later cap raise can still release that answer normally.
       for (const turn of journal.view.order) {
         if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldNoticeIntent !== undefined
-          || turn.intent !== undefined || turn.heldSince === undefined
+          || turn.intent !== undefined || turn.heldSince === undefined || summaryBlocked(turn)
           || ports.now() <= turn.heldSince + HELD_NOTICE_AFTER_MS
           || journal.view.replies >= journal.view.limits.maxReplies) continue;
         gate();
