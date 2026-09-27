@@ -244,6 +244,23 @@ it('sends one fixed checked reply for a definite failure and counts the spent ca
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('sends the fixed reply when the provider state is uncertain but the CLI ended with no usable answer', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let sends = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => ({ state: 'uncertain', failureClass: 'terminal' }), checkOutbound: () => {},
+      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); return 8; } });
+    worker.intake([update(1)]); await worker.drain(); await worker.drain();
+    expect(sends).toBe(1);
+    expect(Object.fromEntries(journal.view.failureClasses)).toEqual({ terminal: 1 });
+    expect(Object.fromEntries(journal.view.providerStates)).toEqual({ uncertain: 1 });
+    expect(journal.view.calls).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('never repeats an UNKNOWN call or sends a reply after restart', async () => {
   const root = origin();
   try {
