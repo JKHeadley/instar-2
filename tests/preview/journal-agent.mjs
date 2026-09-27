@@ -88,7 +88,7 @@ const askJev = async (state, questions, timeoutMs) => {
     headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ state, model: JEV_MODEL, questions }) });
   if (!response.ok) throw Error('preview: Jev unavailable');
-  return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
+  return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
 };
 const context = { site: 'preview.journal', preserved: 'preview:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
@@ -656,7 +656,7 @@ async function main() {
     };
     const stopAtCap = async () => {
       const cap = reportCap();
-      if (!cap) return false;
+      if (!cap || cap === 'model attempt cap reached') return false;
       endReason = cap;
       await waitHeldNotices();
       return true;

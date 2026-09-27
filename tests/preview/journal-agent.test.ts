@@ -5,6 +5,68 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { openPreviewJournal } from './journal.js';
+
+it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding) => {
+  const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');
+  const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
+  const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
+  const preload = join(world.directory, 'jev.mjs');
+  writeFileSync(activation, JSON.stringify(world.activation()));
+  writeFileSync(profile, JSON.stringify(offlineProfile));
+  writeFileSync(updates, JSON.stringify([{ update_id: 1, message: { chat: {
+    id: Number(world.configuration.chatId), type: 'private' },
+    from: { id: Number(world.configuration.operatorSenderId) }, text: 'status' } }]));
+  writeFileSync(preload, `globalThis.fetch = async () => new Response(JSON.stringify({
+    model: 'jev-1.13.0', padding: 'x'.repeat(${padding}),
+    answers: Object.fromEntries(['raw_path','cli_command','config_key','credential','api_endpoint',
+      'quits_on_self','claims_blocked','parks_on_user'].map(rule => [rule,{type:'noul',noul:0.01}])) }));\n`);
+  let journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, {
+    kind: 'genesis', bot: world.configuration.botId, chat: world.configuration.chatId,
+    operator: world.configuration.operatorSenderId, grant: world.state().read().trial.id,
+    configurationDigest: world.state().read().trial.configurationDigest,
+    expires: world.state().read().trial.expiresAt, maxCalls: 16, maxReplies: 16,
+    maxTurns: 20, maxBytes: 32768, cursor: 0 });
+  for (let index = 0; index < 16; index++) journal.append({ kind: 'legacy-call', at: 1000 });
+  journal.close();
+  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates],
+    { stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    const port = await new Promise((resolve, reject) => {
+      endpoint.stdout.once('data', data => resolve(Number(String(data).trim())));
+      endpoint.once('error', reject);
+      endpoint.once('exit', code => reject(Error(`endpoint exited before listening: ${String(code)}`)));
+    });
+    const env = { ...process.env,
+      INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+      INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
+      INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };
+    const trial = world.state().read().trial;
+    const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      '--import', preload, 'tests/preview/journal-agent.mjs', 'run', '--root', root,
+      '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+      '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
+      '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
+      '--activation-record', activation, '--login-profile', profile, '--model', world.model,
+      '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1'],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
+    expect(run.status, run.stderr).toBe(0);
+    expect(readFileSync(log, 'utf8')).toContain('getUpdates');
+    journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
+    expect(journal.view.order).toHaveLength(1);
+    expect(journal.view.calls).toBe(16);
+    if (padding === 0) {
+      expect(journal.view.order[0]?.replyChecks?.[0]?.verdict).toBe('pass');
+      expect(journal.view.replies).toBe(1);
+    } else {
+      expect(journal.view.order[0]?.replyChecks?.[0]?.verdict).toBe('unavailable');
+      expect(journal.view.order[0]?.held).toBe('call cap');
+      expect(journal.view.replies).toBe(0);
+    }
+    journal.close();
+  } finally { endpoint.kill('SIGTERM'); }
+}, 30000);
 
 it.each(['SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and resumes on launch', async signal => {
   const world = successiveWorld(), root = join(world.directory, 'idle-journal');

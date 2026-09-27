@@ -6,7 +6,7 @@ export const SUMMARY_QUESTION = {
 export type SummaryVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export interface SummaryCheckResult { verdict: SummaryVerdict; path: 'jev' | 'subscription'; latencyMs: number;
   score?: number; reason?: string; retryable?: true;
-  usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }
+  usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 
 export function interpretSummaryJev(value: unknown, latencyMs: number): SummaryCheckResult {
   const response = value as { model?: unknown; answers?: { summary_integrity?: { type?: unknown; noul?: unknown } };
@@ -22,7 +22,7 @@ export function interpretSummaryJev(value: unknown, latencyMs: number): SummaryC
 
 /** Preserve a completed review's metering even when its outcome cannot authorize a summary. */
 export function interpretSummaryReview(result: { state: string; value?: string; failureClass?: string;
-  usage?: { inputTokens: number | null; outputTokens: number | null } }, latencyMs: number): SummaryCheckResult {
+  usage?: { inputTokens: number | null; outputTokens: number | null; inputComplete?: true } }, latencyMs: number): SummaryCheckResult {
   const usage = result.usage && { ...result.usage, charge: null as null };
   if (result.state === 'uncertain')
     return { verdict: 'unavailable', path: 'subscription', latencyMs, ...(usage ? { usage } : {}) };

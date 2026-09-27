@@ -746,13 +746,16 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary-candidate') {
     if (!view.summaryReservations.has(row.through) || view.summaryCandidates.has(row.through))
       throw Error('preview journal: summary candidate order');
-    view.summaryCandidates.set(row.through, row.state); return;
+    view.summaryCandidates.set(row.through, row.state);
+    settleTokens(view, `summary:${String(row.through)}`, row.usage); return;
   }
   if (row.kind === 'summary-faithfulness') {
     if (!view.summaryReservations.has(row.through) || view.summaryFaithfulness.has(row.through)
       || row.result.path !== 'jev'
       || !['pass', 'lost', 'undecided'].includes(row.result.verdict))
       throw Error('preview journal: summary faithfulness without candidate');
+    reserveTokens(view, `summary-faithfulness:${String(row.through)}`, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
+    settleTokens(view, `summary-faithfulness:${String(row.through)}`, row.result.usage, true);
     view.summaryFaithfulness.set(row.through, row.result); return;
   }
   if (row.kind === 'summary-review-reserve') {
@@ -760,6 +763,7 @@ function project(view: JournalView, row: JournalRecord): void {
       || !view.summaryChecks.get(row.through)?.some(check => check.path === 'jev'
         && (check.verdict === 'violation' || check.verdict === 'unsure'))
       || view.calls >= view.limits.maxCalls) throw Error('preview journal: summary review reservation order or cap');
+    reserveTokens(view, `summary-review:${String(row.through)}`, 'replyCheck', view.limits.maxBytes, subscriptionOutputMaximum);
     view.summaryReviews.add(row.through); view.calls++; return;
   }
   if (row.kind === 'summary-check') {
@@ -770,6 +774,12 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.result.path === 'jev' && checks.some(check => check.path === 'jev')
       || row.result.path === 'subscription' && checks.some(check => check.path === 'subscription'))
       throw Error('preview journal: duplicate summary check');
+    if (row.result.path === 'jev') {
+      reserveTokens(view, `summary-check:${String(row.through)}`, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
+      settleTokens(view, `summary-check:${String(row.through)}`, row.result.usage, true);
+    } else {
+      settleTokens(view, `summary-review:${String(row.through)}`, row.result.usage);
+    }
     checks.push(row.result); view.summaryChecks.set(row.through, checks);
     view.summaryCheckCounts[row.result.verdict]++; view.lastSummaryCheck = row.result; return;
 
