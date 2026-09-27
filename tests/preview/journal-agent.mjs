@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
@@ -109,7 +109,7 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
-  people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],
@@ -249,6 +249,10 @@ async function main() {
         path: view.view.lastSummaryCheck.path, latencyMs: view.view.lastSummaryCheck.latencyMs,
         usage: view.view.lastSummaryCheck.usage ?? null },
 
+      openQuestions: openQuestionCandidates(view.view).map(item => ({ update: view.view.turns.get(item.source)?.update,
+        question: projectMemoryText(view.view, redact(item.quote).text), reason: item.reason })),
+      pendingQuestionReviews: view.view.order.filter(t => t.accepted && t.intent && !view.view.questionsReviewed.has(t.id)
+        && unansweredCue(t.intent)).length,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
         failed: view.view.order.filter(t => t.checkFailed).length,
