@@ -16,7 +16,7 @@ import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJou
 import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { greetingContinuity } from './greeting-continuity.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -594,18 +594,16 @@ async function main() {
             context: replyReviewContext(originalPrompt, text, reviewRules), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
-          const extracted = parseModelJson(result.value), parsed = extracted.ok ? extracted.value : null;
-          if (!parsed || !['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
-            || parsed.ruleIds.some(rule => typeof rule !== 'string' || !Object.hasOwn(selectedRules, rule))
-            || new Set(parsed.ruleIds).size !== parsed.ruleIds.length
-            || (parsed.verdict === 'pass' && parsed.ruleIds.length !== 0)
-            || (parsed.verdict === 'violation' && parsed.ruleIds.length === 0)
-            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 160
-            || /[\r\n]/u.test(parsed.reason)) {
-            recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', failureShapeOf(extracted));
+          // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
+          // the whole-line pattern admits no surrounding text, so a written rejection
+          // can never be discarded around it.
+          let parsed;
+          try { parsed = parseReplyReviewVerdict(result.value); }
+          catch (error) { recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json'); throw error; }
+          if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))) {
+            recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json');
             throw Error('preview: review malformed');
           }
-          if (extracted.shape !== 'bare') recordShape(shapesPath, 'reply-review', 'verdict', 'tolerated', extracted.shape);
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             usage: recordedUsage(result.usage) };

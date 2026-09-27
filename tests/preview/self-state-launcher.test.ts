@@ -22,8 +22,8 @@ it('the real launcher puts its journal-derived self-state in every prompt, corre
 // Jev answer as the worker tests, without spending a subscription review call.
 globalThis.fetch = async (url, init) => {
   if (url !== 'https://api.typesafe.ai/v1/systemone') throw Error('unexpected fetch');
-  return { ok: true, json: async () => ({ model: 'jev-1.13.0', answers: Object.fromEntries(
-    Object.keys(JSON.parse(init.body).questions).map(id => [id, { type: 'noul', noul: 0.01 }])) }) };
+  return new Response(JSON.stringify({ model: 'jev-1.13.0', answers: Object.fromEntries(
+    Object.keys(JSON.parse(init.body).questions).map(id => [id, { type: 'noul', noul: 0.01 }])) }));
 };
 export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};

@@ -235,17 +235,16 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
 },30000);
 
 it.each([
-  ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1,
-    'reply-review/verdict/tolerated/fenced': 1 }, null, {}],
-  ['verdict-contradicted', { 'reply-review/verdict/malformed/prose-wrapped': 1 },
-    { role: 'reply-review', layer: 'verdict', shape: 'prose-wrapped' }, {}],
+  ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1 }, null, {}],
+  ['verdict-contradicted', { 'reply-review/verdict/malformed/not-json': 1 },
+    { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
   ['decision-contradicted', { 'reply-review/decision/malformed/prose-wrapped': 1 },
     { role: 'reply-review', layer: 'decision', shape: 'prose-wrapped' }, {}],
   ['answer-two-objects', { 'answer/decision/malformed/multiple-objects': 1 },
     { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 1 }],
-  ['verdict-trailing-object', { 'reply-review/verdict/malformed/multiple-objects': 1 },
-    { role: 'reply-review', layer: 'verdict', shape: 'multiple-objects' }, {}],
-])('the real launcher accepts a whole-response fence, holds on contradicting prose, and says why it refused others (%s)', async (mode, counts, last, failures) => {
+  ['verdict-second-line', { 'reply-review/verdict/malformed/not-json': 1 },
+    { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
+])('the real launcher accepts a whole-response Decision fence, holds on contradicting text at either review layer, and says why (%s)', async (mode, counts, last, failures) => {
   const world = successiveWorld(), root = join(world.directory, 'shape-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -260,10 +259,10 @@ const mode = ${JSON.stringify(mode)};
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const review=envelope.messages[0].content.startsWith('Judge this proposed reply');
-  const verdict=JSON.stringify({verdict:'pass',ruleIds:[],reason:'The reply stays within the rules.'});
-  const value=!review ? 'Noted.' : mode === 'wrapped' ? '\\u0060\\u0060\\u0060json\\n'+verdict+'\\n\\u0060\\u0060\\u0060'
+  const verdict='PASS | The reply stays within the rules.';
+  const value=!review ? 'Noted.'
     : mode === 'verdict-contradicted' ? 'VIOLATION: the proposed reply exposes a credential. Do not send it. '+verdict
-    : mode === 'verdict-trailing-object' ? verdict+' {"verdict":"violation"}' : verdict;
+    : mode === 'verdict-second-line' ? verdict+'\\nVIOLATION:credential | Do not send this reply.' : verdict;
   const decision=JSON.stringify({type:'Decision',schemaVersion:1,id:'shape-answer',at:binding.at,by:binding.by,
     conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value,evidence:binding.evidence},
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
