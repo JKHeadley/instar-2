@@ -86,6 +86,8 @@ export function statedFacts(text: string): { subject: string; value: string; quo
   const direct = text.replace(/```[\s\S]*?```/gu, '').replace(/^\s*>.*$/gmu, '');
   for (const match of direct.matchAll(/(?:^|[.!?]\s+|\n)\s*((?:my|the)\s+[\p{L}\p{N}'-]+(?:\s+[\p{L}\p{N}'-]+){0,5}\s+is\s+[^.!?\n]{1,100})/giu)) {
     const quote = match[1]!.trim().replace(/,\s+not\s+[^,]+$/iu, '').trim();
+    // Removing a fenced example can join unrelated spans into a false quote.
+    if (!text.includes(quote)) continue;
     const parts = /^(my|the)\s+(.+?)\s+is\s+(.+)$/iu.exec(quote);
     if (!parts) continue;
     const subject = `${parts[1]!.toLowerCase()} ${parts[2]!.toLowerCase().replace(/\s+/gu, ' ')}`;

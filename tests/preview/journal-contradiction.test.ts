@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { statedFacts } from './memory-sentinel.js';
 
 const key = new Uint8Array(32).fill(37);
 const now = 1790000000000;
@@ -11,6 +12,14 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
   maxCalls: 40, maxReplies: 40, maxTurns: 40, maxBytes: 8000, cursor: 0 };
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: from }, text, date: 1790000000 + id * 60 } });
+
+it('only emits quotes present verbatim in the projected source', () => {
+  expect(statedFacts('My notebook cover is blue.')).toEqual([
+    { subject: 'my notebook cover', value: 'blue', quote: 'My notebook cover is blue' }
+  ]);
+  expect(statedFacts('My notebook cover ```example``` is blue.')).toEqual([]);
+  expect(statedFacts('My notebook cover ```\nexample\n``` is blue.')).toEqual([]);
+});
 
 it('flags two sourced values after compaction and replay without changing memory', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-contradiction-')));

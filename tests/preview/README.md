@@ -677,8 +677,11 @@ differs, the reply packet carries `contradictions` with the two redacted quotes,
 source IDs, dates and provenance. A channel import is labelled as export metadata,
 not an authenticated operator assertion. This is a bounded candidate signal: the
 model judges whether the statements really conflict and can ask whether to update
-memory. A matching value, different subject, quotation, or nonoperator turn raises
-no signal. The signal never writes a memory change; the authenticated correction
+memory. Matching values, different subjects and nonoperator turns raise no
+signal. The extractor skips double-quoted clauses, whole-line blockquotes and
+fenced spans, and emits a quote only when it occurs verbatim in the redacted
+source; other quotation forms can still produce a candidate. The signal never
+writes a memory change; the authenticated correction
 path below still decides and validates any change. If the prompt bound cannot hold
 the signal, it yields before accepted intake or reply can be blocked. `inspect`
 shows any signal in the persisted reply packet. The [live test for Justin](contradiction-notice-live-test.md)
