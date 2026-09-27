@@ -971,16 +971,17 @@ settled time. Day-only and ambiguous-hour items become
 due on their local date and overdue the next local day. A precise time becomes overdue after
 that local time. Weekly items become due on each matching weekday and return to upcoming
 between occurrences. Items without a resolved day are shown as ambiguous. For questions
-containing `today`, `tomorrow`, or `next week`, the packet selects matching calendar days
-in the current `--time-zone` and labels that window as `datedScope`; next week means the
+containing `today`, `tomorrow`, or `next week`, the packet prioritizes matching calendar days
+in the current `--time-zone` and labels that hint as `datedScope`; next week means the
 following Monday through Sunday. Each item retains the zone in which its date was recorded.
 An item with an exact time is converted into the query zone for window selection; its
 packet keeps the source day and shows `queryDay` when travel moves it to another day.
 Day-only items remain civil dates in their recorded zone, with no invented instant.
-Unresolved dates remain visible after matching dated entries in a scoped packet so
-the model cannot infer certainty from their absence.
+When packet slots and bytes allow, up to four nearby or unresolved fallback occurrences
+remain visible after matching dates, so a literal phrase match need not hide another intended day.
+The model interprets the question; `datedScope` is not an authoritative answer filter.
 Other questions select the nearest dated items. Up to 32 occurrences fit before the existing
-byte cap; `moreDated` counts matching items omitted by either bound. The model is told not to
+byte cap; `moreDated` counts candidate occurrences omitted by either bound. The model is told not to
 claim a complete list when that count is positive. The packet likewise fits up to
 three pending date decisions. Full records remain in the journal. `status` reports all active items
 and their current states; `inspect --text`

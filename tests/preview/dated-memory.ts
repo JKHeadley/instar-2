@@ -141,24 +141,43 @@ export function selectDatedItems(items: readonly DatedItem[], question: string, 
       for (let day = addDay(item.day, elapsed * 7); day <= end; day = addDay(day, 7)) {
         const { repeat: _repeat, ...once } = item;
         const occurrence = { ...once, day }, shownDay = queryDay(occurrence, zone);
-        if (day >= first && (!window || shownDay && shownDay >= window.start && shownDay <= window.end))
+        if (day >= first)
           candidates.push({ ...item, day, ...(shownDay && shownDay !== day ? { queryDay: shownDay } : {}),
             state: dueState(occurrence, now) });
       }
     } else {
       const shownDay = queryDay(item, zone);
-      if (!window || shownDay && shownDay >= window.start && shownDay <= window.end)
-        candidates.push({ ...item, ...(shownDay && shownDay !== item.day ? { queryDay: shownDay } : {}),
-          state: dueState(item, now) });
+      candidates.push({ ...item, ...(shownDay && shownDay !== item.day ? { queryDay: shownDay } : {}),
+        state: dueState(item, now) });
     }
   }
   candidates.sort((a, b) => {
-    if (window) return Number(a.day === undefined) - Number(b.day === undefined)
-      || (a.queryDay ?? a.day ?? '').localeCompare(b.queryDay ?? b.day ?? '') || (a.time ?? '').localeCompare(b.time ?? '')
-      || a.source.localeCompare(b.source);
+    if (window) {
+      const rank = (item: typeof a) => {
+        const day = item.queryDay ?? item.day;
+        if (!day) return [2, Number.MAX_SAFE_INTEGER, 0] as const;
+        if (day >= window.start && day <= window.end) return [0, 0, 0] as const;
+        const after = day > window.end;
+        const edge = after ? window.end : window.start;
+        return [1, Math.abs(Date.parse(`${day}T00:00:00Z`) - Date.parse(`${edge}T00:00:00Z`)), after ? 0 : 1] as const;
+      };
+      const left = rank(a), right = rank(b);
+      return left[0] - right[0] || left[1] - right[1] || left[2] - right[2]
+        || (a.queryDay ?? a.day ?? '').localeCompare(b.queryDay ?? b.day ?? '')
+        || (a.time ?? '').localeCompare(b.time ?? '') || a.source.localeCompare(b.source);
+    }
     const distance = (item: typeof a) => item.day
       ? Math.abs(Date.parse(`${item.queryDay ?? item.day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) : Number.MAX_SAFE_INTEGER;
     return distance(a) - distance(b) || (a.day ?? '').localeCompare(b.day ?? '') || a.source.localeCompare(b.source);
   });
-  return { items: candidates.slice(0, limit), omitted: Math.max(0, candidates.length - limit), window };
+  if (!window) return { items: candidates.slice(0, limit), omitted: Math.max(0, candidates.length - limit), window };
+  const inWindow = (item: (typeof candidates)[number]) => {
+    const day = item.queryDay ?? item.day;
+    return day !== undefined && day >= window.start && day <= window.end;
+  };
+  const matched = candidates.filter(inWindow), fallback = candidates.filter(item => !inWindow(item));
+  const shown = matched.slice(0, Math.max(0, limit));
+  const fallbackLimit = Math.min(4, fallback.length, Math.max(0, limit - shown.length));
+  const selected = [...shown, ...fallback.slice(0, fallbackLimit)];
+  return { items: selected, omitted: Math.max(0, candidates.length - selected.length), window };
 }

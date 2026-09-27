@@ -73,7 +73,7 @@ it('offers every active matching date across 200 items and 60 simulated days', (
     expect((JSON.parse(status.stdout) as { dated: { repeat: string | null }[] }).dated
       .filter(item => item.repeat === 'weekly')).toHaveLength(4);
     let now = first, zone = 'America/Los_Angeles';
-    const counts = { questions: 0, expected: 0, baselineMisses: 0, misses: 0, falsePositives: 0, truncated: 0 };
+    const counts = { questions: 0, expected: 0, baselineMisses: 0, misses: 0, falsePositives: 0, fallback: 0 };
     for (let offset = 0; offset < 60; offset++) {
       zone = offset < 30 ? 'America/Los_Angeles' : 'Asia/Tokyo';
       now = Date.parse(`${day(offset)}T${offset < 30 ? '18' : '03'}:00:00Z`);
@@ -100,7 +100,10 @@ it('offers every active matching date across 200 items and 60 simulated days', (
           if (travelDay === occurrence || item.repeat === 'weekly' && item.day! <= occurrence
             && weekday(item.day!) === weekday(occurrence)) expected.add(`${item.source}|${occurrence}`);
         }
-        const actual = new Set((packet.dated ?? []).map(item => `${item.source}|${(item as DatedItem & { queryDay?: string }).queryDay ?? item.day}`));
+        const selected = (packet.dated ?? []).map(item => ({ source: item.source,
+          day: (item as DatedItem & { queryDay?: string }).queryDay ?? item.day }));
+        const actual = new Set(selected.filter(item => item.day && item.day >= packet.datedScope!.start
+          && item.day <= packet.datedScope!.end).map(item => `${item.source}|${item.day}`));
         const answerFromPacket = [...actual].sort().join('\n');
         const expectedAnswer = [...expected].sort().join('\n');
         counts.questions++; counts.expected += expected.size;
@@ -108,25 +111,28 @@ it('offers every active matching date across 200 items and 60 simulated days', (
           .map(item => `${item.source}|${item.day}`)).has(value)).length;
         counts.misses += [...expected].filter(value => !actual.has(value)).length;
         counts.falsePositives += [...actual].filter(value => !expected.has(value)).length;
-        counts.truncated += Number((packet.moreDated ?? 0) > 0);
+        counts.fallback += selected.length - actual.size;
+        expect(selected.length).toBeLessThanOrEqual(32);
+        expect(selected.length - actual.size).toBeLessThanOrEqual(4);
         expect(answerFromPacket).toBe(expectedAnswer);
       }
     }
     console.log(`dated-soak ${JSON.stringify(counts)}`);
     expect(counts.baselineMisses).toBeGreaterThan(0);
-    expect(counts).toMatchObject({ questions: 180, misses: 0, falsePositives: 0, truncated: 0 });
+    expect(counts).toMatchObject({ questions: 180, misses: 0, falsePositives: 0 });
+    expect(counts.fallback).toBeGreaterThan(0);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120_000);
 
-it('discloses a crowded day, excludes other days, and repeats only after its first occurrence', () => {
+it('discloses a crowded day, keeps matched dates first, and repeats only after its first occurrence', () => {
   const today = Date.parse('2026-10-05T18:00:00Z');
   const items = Array.from({ length: 40 }, (_, index) => parseDatedItem(`source:${index}`,
     `Item ${index} on 2026-10-05.`, '2026-10-05', today, 'America/Los_Angeles'));
   items.push(parseDatedItem('tomorrow', 'An item on 2026-10-06.', '2026-10-06', today, 'America/Los_Angeles'));
   const selection = selectDatedItems(items, 'What is today?', today, 'America/Los_Angeles');
   expect(selection.items).toHaveLength(32);
-  expect(selection.omitted).toBe(8);
+  expect(selection.omitted).toBe(9);
   expect(selection.items.every(item => item.day === '2026-10-05')).toBe(true);
   const unresolved = parseDatedItem('unresolved', 'Maybe October or November.', 'October or November',
     today, 'America/Los_Angeles');
@@ -138,6 +144,47 @@ it('discloses a crowded day, excludes other days, and repeats only after its fir
   expect(dueState(weekly, Date.parse('2026-10-05T18:00:00Z'))).toBe('due');
   expect(dueState(weekly, Date.parse('2026-10-06T18:00:00Z'))).toBe('upcoming');
   expect(dueState(weekly, Date.parse('2026-10-12T18:00:00Z'))).toBe('due');
-  expect(selectDatedItems([weekly], 'What is next week?', today, 'America/Los_Angeles').items)
-    .toMatchObject([{ day: '2026-10-12', repeat: 'weekly' }]);
+  expect(selectDatedItems([weekly], 'What is next week?', today, 'America/Los_Angeles').items[0])
+    .toMatchObject({ day: '2026-10-12', repeat: 'weekly' });
+});
+
+it('keeps the day-after-tomorrow evidence in a summarized journal packet beside tomorrow', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-fallback-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, {
+      kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:dated-fallback', configurationDigest: 'sha256:dated-fallback',
+      expires: 9999999999999, maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 32768, cursor: 0 });
+    const at = Date.parse('2026-10-05T18:00:00Z');
+    for (let number = 1; number <= 60; number++) {
+      const source = id(number);
+      const target = number === 1 ? '2026-10-07' : number === 60 ? '2026-10-06' : day(10 + number);
+      const quote = number === 1 ? 'ORCHID appointment is on 2026-10-07.' : `Task ${number} is on ${target}.`;
+      const text = `${quote} ${'Context for this recorded task. '.repeat(25)}`;
+      const raw = JSON.stringify({ update_id: number, message: { chat: { id: 7654321, type: 'private' },
+        from: { id: 7654321 }, text, date: Math.floor(at / 1000) } });
+      journal.append({ kind: 'intake', id: source, update: number, text, raw, accepted: true,
+        cursor: number + 1, at });
+      journal.append({ kind: 'reserve', id: source, at });
+      journal.append({ kind: 'answer', id: source, text: 'Recorded.',
+        dated: [parseDatedItem(source, quote, target, at, 'America/Los_Angeles')], memory: [], at });
+    }
+    journal.append({ kind: 'summary-reserve', through: 60, at });
+    journal.append({ kind: 'summary', through: 60, text: 'The operator recorded appointments and tasks.', at });
+    const worker = createJournalWorker(journal, { now: () => at, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    for (const question of ['What is on tomorrow?', 'What is on the day after tomorrow?']) {
+      const probe = worker.probe(question);
+      if ('reason' in probe) throw Error(probe.reason);
+      const packet = JSON.parse(probe.context) as { historyMode: string; dated: DatedItem[];
+        datedScope: { start: string; end: string }; moreDated: number; capability: string };
+      expect(packet.historyMode).toBe('summary-plus-recent');
+      expect(packet.datedScope).toMatchObject({ start: '2026-10-06', end: '2026-10-06' });
+      expect(packet.dated[0]).toMatchObject({ day: '2026-10-06', quote: 'Task 60 is on 2026-10-06.' });
+      expect(packet.dated).toContainEqual(expect.objectContaining({ day: '2026-10-07', quote: 'ORCHID appointment is on 2026-10-07.' }));
+      expect(packet.moreDated).toBeGreaterThan(0);
+      expect(packet.capability).toContain('datedScope is a calendar priority hint');
+    }
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -11,10 +11,11 @@ synthetic identities or dates into the live journal.
 1. Note the local day and IANA zone from `status.self`. Send: `My package pickup is
    today.` Then ask: `What is on today?` The reply should name the pickup and its
    absolute local date. Inspect that question's saved packet: `datedScope` should
-   be that one day, `dated` should contain the pickup, and `moreDated` should be zero.
+   be that one day, and `dated` should contain the pickup. Check `moreDated` for omitted candidates.
 2. Send: `My permit review is tomorrow.` Ask: `What is on tomorrow?` Check the
-   following local calendar date in the reply and packet. The pickup should not
-   appear in the scoped `dated` list.
+   following local calendar date in the reply and packet. The permit review should
+   be first in `dated`; the pickup may remain as a nearby fallback, but the reply
+   should answer the tomorrow question.
 3. Send: `My weekly planning call is every Monday.` Ask: `What is on next week?`
    Check `datedScope` is the following Monday through Sunday, and the call appears
    on that Monday with `repeat: weekly`. Check the reply names the date and does

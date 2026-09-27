@@ -82,7 +82,7 @@ it('keeps weekly dates in their source zone and scopes next week by the current 
   const lateLA = parseDatedItem('late', 'Call on 2026-10-05 at 23:30.', '2026-10-05 at 23:30',
     instant, 'America/Los_Angeles');
   expect(selectDatedItems([lateLA], 'What is today?', Date.UTC(2026, 9, 4, 18), 'Asia/Tokyo').items)
-    .toHaveLength(0);
+    .toMatchObject([{ day: '2026-10-05', queryDay: '2026-10-06', zone: 'America/Los_Angeles' }]);
   expect(selectDatedItems([lateLA], 'What is tomorrow?', Date.UTC(2026, 9, 4, 18), 'Asia/Tokyo').items)
     .toMatchObject([{ day: '2026-10-05', queryDay: '2026-10-06', zone: 'America/Los_Angeles' }]);
   const earlyTokyo = parseDatedItem('early', 'Call on 2026-10-06 at 00:30.', '2026-10-06 at 00:30',
