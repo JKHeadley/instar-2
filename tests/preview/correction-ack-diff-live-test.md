@@ -15,7 +15,8 @@ send each message as Justin; wait for each reply before the next step.
    start?` The answer should use West Pier only; the persisted `inspect` packet
    for that question should not contain the old clause.
 3. Send `My gym locker code is 3310.` Then send `Forget my gym locker code.`
-   The forget reply should name the gym locker code and must not repeat `3310`.
+   The forget reply should say `PREVIEW — Forgot the requested information.`
+   and must not repeat `3310`.
    Check `status.withheld` reports verified operator forgetting. Ask
    `What is my gym locker code?` The answer should not supply the value; its
    persisted `inspect` packet should carry the forgotten marker without the

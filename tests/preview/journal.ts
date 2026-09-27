@@ -579,18 +579,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const memoryAcknowledgement = (turn: Turn) => {
     const changes = journal.view.memory.filter(change => change.trigger === turn.id && change.mode !== 'prefer');
     if (!changes.length) return undefined;
-    const subject = (quote: string) => {
-      const statement = quote.match(/^(.{3,100}?)\s+(?:is|are|was|were|equals)\s+.+$/iu);
-      if (statement) return statement[1]!.trim().replace(/\s+/gu, ' ');
-      const credential = /\b(?:(?:access|recovery) phrase|code|password|passphrase|token|secret|pin|key|credential)\b/iu.exec(quote);
-      if (!credential) return quote.trim().replace(/\s+/gu, ' ');
-      const prefix = quote.slice(0, credential.index + credential[0].length);
-      return /^(?:my|the|your|our)\s+[\p{L}\s-]{0,80}$/iu.test(prefix)
-        ? prefix.trim().replace(/\s+/gu, ' ') : `your ${credential[0].toLowerCase()}`;
-    };
+    // A forgotten quote has no trusted boundary between subject and value.
     const detail = changes.map(change => change.mode === 'correct'
       ? `Changed ${change.quote.trim().replace(/\s+/gu, ' ')} → ${change.replacement!.trim().replace(/\s+/gu, ' ')}`
-      : `Forgot ${subject(change.quote)}`).join('; ');
+      : 'Forgot the requested information').join('; ');
     return `PREVIEW — ${detail}${/[.!?]$/u.test(detail) ? '' : '.'}`;
   };
   const affectedNote = (note: { source: string; quote: string; in?: 'message' | 'reply' }) => journal.view.memory.some(change =>

@@ -405,7 +405,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     if (!('reason' in sam)) expect(JSON.parse(sam.context).people).toBeUndefined();
     await w.say(id++, 'Forget my gym locker code.');
     expect(w.journal.view.memory).toHaveLength(2);
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Forgot my gym locker code.');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Forgot the requested information.');
     w.journal.append({ kind: 'coherence', id: w.journal.view.order.at(-1)!.id,
       findings: [{ rule: 96, check: 'possible stale quote', excerpt: 'My gym locker code is 3310' }],
       at: 1790000000000 });

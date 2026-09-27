@@ -43,7 +43,7 @@ it('names a validated correction old to new once, and withholds its old clause f
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('names the forgotten subject without repeating a code value, while a no-change turn keeps its ordinary reply', async () => {
+it('acknowledges accepted forgetting without repeating the old quote, while a no-change turn keeps its ordinary reply', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-ack-forget-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
@@ -54,8 +54,13 @@ it('names the forgotten subject without repeating a code value, while a no-chang
         if (input.id.startsWith('summary:')) {
           const phrase = packet.memoryRequest?.message === 'Forget the archive access phrase.';
           const combination = packet.memoryRequest?.message === 'Forget my locker combination.';
+          const valueFirst = packet.memoryRequest?.message === 'Forget my archive access phrase.';
+          const colon = combination && packet.memoryCandidates?.some((item: { message: string }) =>
+            item.message.includes('My locker combination: 7744.'));
           const quote = phrase ? 'The archive access phrase is silver crane.'
-            : combination ? 'My locker combination is 7744.' : 'My gym locker code is 3310.';
+            : colon ? 'My locker combination: 7744.'
+              : combination ? 'My locker combination is 7744.'
+                : valueFirst ? 'silver crane is my archive access phrase.' : 'My gym locker code is 3310.';
           const source = packet.memoryCandidates?.find((item: { message: string }) => item.message.includes(quote));
           return JSON.stringify({ summary: 'The requested secret was forgotten.', people: [], memory: source
             ? [{ mode: 'forget', source: source.id, quote }] : [] });
@@ -64,18 +69,27 @@ it('names the forgotten subject without repeating a code value, while a no-chang
       }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
     worker.intake([update(1, 'My gym locker code is 3310.')]); await worker.drain();
     worker.intake([update(2, 'Forget my gym locker code.')]); await worker.drain();
-    expect(sends[1]).toBe('PREVIEW — Forgot My gym locker code.');
+    expect(sends[1]).toBe('PREVIEW — Forgot the requested information.');
     expect(sends[1]).not.toContain('3310');
     worker.intake([update(3, 'How is the weather?')]); await worker.drain();
     expect(sends[2]).toBe('PREVIEW — Okay.');
     worker.intake([update(4, 'The archive access phrase is silver crane.')]); await worker.drain();
     worker.intake([update(5, 'Forget the archive access phrase.')]); await worker.drain();
-    expect(sends[4]).toBe('PREVIEW — Forgot The archive access phrase.');
+    expect(sends[4]).toBe('PREVIEW — Forgot the requested information.');
     expect(sends[4]).not.toContain('silver crane');
     worker.intake([update(6, 'My locker combination is 7744.')]); await worker.drain();
     worker.intake([update(7, 'Forget my locker combination.')]); await worker.drain();
-    expect(sends[6]).toBe('PREVIEW — Forgot My locker combination.');
+    expect(sends[6]).toBe('PREVIEW — Forgot the requested information.');
     expect(sends[6]).not.toContain('7744');
+    worker.intake([update(8, 'silver crane is my archive access phrase.')]); await worker.drain();
+    worker.intake([update(9, 'Forget my archive access phrase.')]); await worker.drain();
+    expect(sends[8]).toBe('PREVIEW — Forgot the requested information.');
+    expect(sends[8]).not.toContain('silver crane');
+    worker.intake([update(10, 'My locker combination: 7744.')]); await worker.drain();
+    worker.intake([update(11, 'Forget my locker combination.')]); await worker.drain();
+    expect(sends[10]).toBe('PREVIEW — Forgot the requested information.');
+    expect(sends[10]).not.toContain('7744');
+    expect(journal.view.memory).toHaveLength(5);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -746,9 +746,10 @@ old clause, the source update or channel ID, the operator update ID, and why it 
 receive the forgotten clause. If the shared attempt cap or summary route prevents a decision,
 `status.holds` shows `memory correction pending` and the intake remains durable.
 When a validated correction is present before its reply, that reply states the old
-clause and its replacement on one line. A validated forget reply names the
-forgotten subject; for a code, password, token or similar credential-like item,
-it omits the value. Both use the accepted journal change rather than an
+clause and its replacement on one line. A validated forget reply confirms the
+request without quoting any part of the forgotten clause, because the clause
+does not identify a safe boundary between subject and value. Both use the
+accepted journal change rather than an
 unverified model acknowledgement and follow the existing reply check and send
 fences. The correction acknowledgement's old clause is withheld from later
 model packets. See [correction-ack-diff-live-test.md](correction-ack-diff-live-test.md)
