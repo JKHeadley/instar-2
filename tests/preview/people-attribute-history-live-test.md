@@ -5,15 +5,15 @@ preview. Use the existing runner and journal. Record the Telegram replies and
 read-only `status` and `inspect` results; this script does not authorize a new
 runner, a cap change or a send outside Justin's private chat.
 
-1. As Justin, check `status --root ROOT` for room for at least eight turns,
-   replies and their capped answer, summary and review calls. Send:
+1. As Justin, check `status --root ROOT` for room for at least thirteen turns,
+   replies and the needed capped answer, summary and review calls. Send:
    `My friend Nora Vale works at Cedar Studio and lives in Portland.`
    Check `inspect --root ROOT --text "Where does Nora Vale work and live?" --model MODEL`.
    Its `next.personAttributes` should show Cedar Studio and Portland as current,
    each dated to Justin's source message and attributed to the verified operator.
    Ask that question in Telegram and record the answer.
 
-2. On a later day, send:
+2. In a later turn, send:
    `Nora Vale left Cedar Studio and now works at Harbor Lab. Nora Vale moved from Portland to Seattle.`
    Ask `Where does Nora Vale work and live now, and when did I tell you?`.
    The answer should give Harbor Lab and Seattle with the report date. The
