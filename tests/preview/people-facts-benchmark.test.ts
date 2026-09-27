@@ -69,8 +69,7 @@ it('scores source attribution for 48 people across 160 turns, repeated summaries
     const worker = createJournalWorker(replay, run.ports);
     let correct = 0, contaminated = 0;
     for (const person of people) {
-      // int11's memory budget archives older person notes; the explicit search form reads them.
-      const probe = worker.probe(`Search memory ${person.name}: what is their role and recent news?`);
+      const probe = worker.probe(`Tell me about ${person.name}: what is their role and recent news?`);
       if ('reason' in probe) throw Error(probe.reason);
       const packet = JSON.parse(probe.context) as { historyMode: string;
         people?: { source: string; message: string; mentions: { person: string }[] }[] };
