@@ -80,7 +80,7 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
     }
     expect(summaryButComplete).toBe(true);
     worker.intake([{ update_id: update, message: { chat: { id: operator, type: 'private' }, from: { id: operator },
-      text: question, date: 1790000000 + update * 60 } }]);
+      text: question } }]);
     update++;
     await worker.drain();
     const last = inspect().last;

@@ -264,7 +264,7 @@ it.each(['Are Sam and Sam Ortiz the same person?', 'Actually, Sam and Sam Ortiz 
   ('rejects a model-proposed merge from %s and does not admit another sender as operator', async question => {
   const root = origin();
   try {
-    const w = world(root, { bad: false,
+    const w = world(root, { bad: false, maxBytes: 10000,
       summarize: context => JSON.stringify({ summary: 'Sam and Sam Ortiz were mentioned.', memory: [],
         people: (JSON.parse(context) as { history: { user: string }[] }).history.flatMap(({ user }) =>
           user.startsWith('My cofounder Sam') ? [{ name: 'Sam', quote: user }]

@@ -187,3 +187,36 @@ it.each([
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each([['lost', 0.99], ['supervisor outage', 0.01]] as const)(
+  'records each completed summary and faithfulness call once on %s', async (_case, score) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-composition-')));
+    const path = join(root, 'journal.encrypted');
+    const usage = { inputTokens: 1234, outputTokens: 67, charge: null };
+    try {
+      const journal = openPreviewJournal(path, key, genesis);
+      const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+        model: async input => input.id.startsWith('summary:')
+          ? { state: 'complete', text: JSON.stringify({ summary: 'A paraphrase.', people: [] }), usage }
+          : 'Understood.',
+        summaryCheck: async () => ({ ...jev(score), usage: { input_tokens: 777, output_tokens: 7 } }),
+        replyCheck: { elapsedMs: () => 100, jev: async (_state, questions) => {
+          if (questions) throw Error('supervisor unavailable');
+          return { value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+            ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user']
+              .map(id => [id, { type: 'noul', noul: 0 }])) }, latencyMs: 1 };
+        }, escalate: async () => { throw Error('unexpected review'); } },
+        send: async () => 1, checkOutbound: () => {} });
+      worker.intake([update(1, 'My workshop code is 7319.')]); await worker.drain();
+      await worker.summarizeIfNeeded(true);
+      const failure = journal.view.lastSummaryFailure;
+      expect(failure?.faithfulness).toMatchObject({ path: 'jev', verdict: score > 0.85 ? 'lost' : 'pass',
+        usage: { inputTokens: 777, outputTokens: 7 } });
+      expect(failure?.usage).toBeUndefined();
+      expect(journal.view.summaries).toHaveLength(0);
+      journal.close();
+      const replay = openPreviewJournal(path, key);
+      expect(replay.view.lastSummaryFailure?.faithfulness).toEqual(failure?.faithfulness);
+      replay.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });

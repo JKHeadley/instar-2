@@ -1,6 +1,7 @@
 import { redact } from '../../src/recall/redact.js';
 import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
+import { statedFacts } from './memory-sentinel.js';
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
@@ -56,16 +57,24 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     .filter(change => (view.turns.get(change.trigger)?.update ?? Infinity) < turn.update);
   const recordedSummaries = view.summaries.slice(0, summaryCount);
   const closedAtReservation = new Set([...view.closed.keys()].slice(0, closedCount));
-  const clean = value => activeChanges.reduce((text, change) => {
+  const preferenceKeys = new Set(activeChanges.filter(change => change.mode === 'prefer')
+    .map(change => JSON.stringify([change.source, change.quote])));
+  const clean = value => activeChanges.filter(change => change.mode !== 'prefer'
+    && !preferenceKeys.has(JSON.stringify([change.source, change.quote]))).reduce((text, change) => {
     let next = text.replaceAll(change.quote, '[withheld: operator correction or forgetting]');
     for (const passage of change.summaryPassages ?? [])
       next = next.replaceAll(passage, '[withheld: operator correction or forgetting]');
     return next;
   }, redact(value).text);
+  const metadata = value => activeChanges.filter(change => change.mode !== 'prefer')
+    .flatMap(change => statedFacts(change.quote).map(fact => fact.value))
+    .filter(value => value.length >= 4)
+    .reduce((text, term) => text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'giu'),
+      '[withheld: operator correction or forgetting]'), clean(value));
   const replyFor = found => {
     const sent = found.intent?.replace(/^PREVIEW — /u, '');
     if (found.noticeClass) return clean(sent ?? '');
-    if (activeChanges.some(change => change.source === found.id || change.replies?.includes(found.id)))
+    if (activeChanges.some(change => change.mode !== 'prefer' && (change.source === found.id || change.replies?.includes(found.id))))
       return '[withheld: operator correction or forgetting]';
     return clean(sent ?? '');
   };
@@ -128,7 +137,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         return `channel-ref:${createHash('sha256').update(id).digest('hex')}` === item.sourceId;
       });
       if (!imported || item.source !== imported.source || item.date !== isoMinute(imported.at)
-        || item.from !== `${redact(imported.from).text} (export sender metadata, unverified)`
+        || item.from !== `${metadata(imported.from)} (export sender metadata, unverified)`
         || item.message !== clean(`${imported.subject ?? ''} ${imported.text}`.trim())) fault('people-import-source', at);
       for (const [m, mention] of list(item?.mentions, `${at}.mentions`).entries()) {
         if (!imported || mention?.quote !== clean(`${imported.subject ?? ''} ${imported.text}`.trim()))
@@ -169,15 +178,23 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     }
   }
   for (const [n, item] of list(packet.channelMemory, 'channelMemory').entries()) {
-    const at = `channelMemory[${n}]`, id = `channel:${JSON.stringify([item?.source, item?.account, item?.sourceId])}`;
-    const found = channel(id, at);
-    if (found && (redact(found.from).text !== item.from || found.at === undefined)) fault('channel-attribution', at);
-    if (found && item.quote !== clean(found.text)) fault('channel-text-source', at);
-    if (found && (item.date !== isoMinute(found.at)
-      || item.subject !== (found.subject === undefined ? undefined : clean(found.subject))
-      || item.conversation !== (found.conversation === undefined ? undefined : clean(found.conversation))))
-      fault('channel-metadata-source', at);
-    if (found) add('channel-import', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(id) }]);
+    const at = `channelMemory[${n}]`;
+    const displayedId = `channel:${JSON.stringify([item?.source, item?.account, item?.sourceId])}`;
+    const found = channel(item?.sourceRef ?? displayedId, at);
+    if (found) {
+      const rawId = `channel:${JSON.stringify([found.source, found.account, found.id])}`;
+      const needsRef = metadata(found.account) !== found.account
+        || metadata(found.id) !== found.id;
+      if (item.sourceRef !== (needsRef ? publicSource(rawId) : undefined)) fault('channel-reference-source', at);
+      if (metadata(found.account) !== item.account || metadata(found.id) !== item.sourceId
+        || metadata(found.from) !== item.from || found.at === undefined) fault('channel-attribution', at);
+      if (item.quote !== clean(found.text)) fault('channel-text-source', at);
+      if (item.date !== isoMinute(found.at)
+        || item.subject !== (found.subject === undefined ? undefined : metadata(found.subject))
+        || item.conversation !== (found.conversation === undefined ? undefined : metadata(found.conversation)))
+        fault('channel-metadata-source', at);
+      add('channel-import', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(rawId) }]);
+    }
   }
   for (const [n, item] of list(packet.memoryCandidates, 'memoryCandidates').entries()) {
     const at = `memoryCandidates[${n}]`;
@@ -192,8 +209,10 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       const found = source(item?.id, at);
       if (found && item.message !== clean(found.text).slice(0, 1000) && item.message !== clean(found.text))
         fault('candidate-text-source', at);
-      if (found && item.reply !== replyFor(found).slice(0, 1000) && item.reply !== replyFor(found))
-        fault('candidate-reply-source', at);
+      const preference = found && activeChanges.some(change => change.mode === 'prefer'
+        && change.source === found.id && change.quote === item.message);
+      if (found && item.reply !== (preference ? '' : replyFor(found).slice(0, 1000))
+        && item.reply !== (preference ? '' : replyFor(found))) fault('candidate-reply-source', at);
       if (found) add('memory-candidate', at, [{ kind: 'source-turn', id: found.id, update: found.update }]);
     }
   }
@@ -211,7 +230,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   }
   for (const [n, item] of list(packet.memory, 'memory').entries()) {
     const at = `memory[${n}]`, change = activeChanges.find(row => publicSource(row.source) === item?.source && row.trigger === item?.trigger);
-    if (!change) fault('memory-change-source', at);
+    if (!change || change.mode === 'prefer') fault('memory-change-source', at);
     else {
       const trigger = view.turns.get(change.trigger);
       if (!trigger?.accepted) fault('memory-trigger-absent', at);
@@ -229,13 +248,26 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `corrections[${n}]`, found = source(item?.source, at);
     if (found) add('reply-check-note', at, [{ kind: 'source-turn', id: found.id, update: found.update }]);
   }
+  const activePreferences = new Map();
+  for (const change of activeChanges) {
+    const key = JSON.stringify([change.source, change.quote]);
+    if (change.mode === 'prefer') activePreferences.set(key, { source: change.source, quote: change.quote });
+    else if (activePreferences.delete(key) && change.mode === 'correct') activePreferences.set(
+      JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement });
+  }
+  const expectedPreferences = [...activePreferences.values()].map(item => ({ text: clean(item.quote), source: item.source }));
+  if (body(packet.preferences ?? []) !== body(expectedPreferences)) fault('preference-source', 'preferences');
+  for (const [n, item] of list(packet.preferences, 'preferences').entries()) {
+    if (expectedPreferences.some(expected => expected.source === item?.source && expected.text === item?.text))
+      add('preference', `preferences[${n}]`, [{ kind: 'operator-turn', id: item.source }]);
+  }
   // Exact clauses are the only claim identity the preview records. Scan the
   // whole memory packet, including candidates and notes, without emitting text.
   const offered = strings(packet);
   const packetMemory = list(packet.memory, 'memory');
   for (const [n, change] of activeChanges.entries()) {
     const trigger = view.turns.get(change.trigger);
-    if (!trigger || trigger.update >= turn.update) continue;
+    if (!trigger || trigger.update >= turn.update || change.mode === 'prefer') continue;
     const superseded = change.mode === 'correct' && activeChanges.slice(n + 1)
       .some(next => next.quote.includes(change.replacement));
     if (!superseded && !packetMemory.some(item => item?.source === publicSource(change.source) && item?.trigger === change.trigger))

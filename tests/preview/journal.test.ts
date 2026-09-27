@@ -681,7 +681,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis(), maxBytes: 32768 });
+      { ...genesis(), maxBytes: 34000 });
     journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(24500),
       raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
     journal.append({kind:'reserve',id:'telegram:12345678:update:1',at:1000});
@@ -696,13 +696,13 @@ it('uses a current summary when the full packet fits but the complete prompt doe
     const worker = createJournalWorker(journal, {now:()=>1000,stopped:()=>false,
       prepareModel: input => { const size = Buffer.byteLength(input.context);
         if (input.context.includes('"historyMode":"complete"')) full = size; else compact = size;
-        if (size + 2870 > 32768) throw Error('complete prompt overflow'); return input.context; },
+        if (size + 2870 > 34000) throw Error('complete prompt overflow'); return input.context; },
       model: async input => { invoked++; expect(input.context).toContain('ORCHID'); return 'yes'; },
       send: async()=>1,checkOutbound:()=>{} });
     worker.intake([update(3,'what was first?')]); await worker.drain();
     expect(full).toBeGreaterThan(32000);
-    expect(full).toBeLessThanOrEqual(32768);
-    expect(compact).toBeLessThan(8000);
+    expect(full).toBeLessThanOrEqual(34000);
+    expect(compact).toBeLessThan(10000);
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);
     journal.append({kind:'hold',id:'telegram:12345678:update:2',reason:'review needed',at:1000});

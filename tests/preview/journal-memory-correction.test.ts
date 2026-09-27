@@ -18,14 +18,15 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-channel-forget-')));
   const path = join(root, 'journal.encrypted');
   try {
-    let journal = openPreviewJournal(path, key, genesis);
+    let journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
     const account = 'agent@example.test';
-    importChannelFixture(journal, [{ source: 'email', account, id: 'archive-1', from: 'operator@example.test',
+    importChannelFixture(journal, [{ source: 'email', account, id: 'archive-1 Silver Crane', from: 'SILVER CRANE operator@example.test',
       at: 1789999000000, subject: 'Archive access', conversation: 'The archive access phrase is silver crane.',
-      text: 'The archive access phrase is silver crane.' },
+      text: 'The archive access phrase is silver crane.\nThe studio opening day is Friday.' },
     { source: 'email', account, id: 'archive-2', from: 'operator@example.test',
       at: 1789999000000, subject: 'Archive access', conversation: 'Other archive',
       text: 'The archive access phrase for the other account is cedar brook.' }], account, 1790000000000);
+    const contexts: string[] = [];
     const ports = { now: () => 1790000000000, stopped: () => false,
       model: async (input: { id: string; question: string; context: string }) => {
         if (input.id.startsWith('summary:')) {
@@ -35,7 +36,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
           return JSON.stringify({ summary: 'The operator asked to forget an imported archive phrase.', people: [],
             memory: [{ mode: 'forget', source: source.id, quote: 'The archive access phrase is silver crane.' }] });
         }
-        return 'Understood.';
+        contexts.push(input.context); return 'Understood.';
       }, send: async () => 1, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Actually, forget this fact: The archive access phrase is silver crane.')]);
@@ -54,11 +55,18 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
       at: 1790000000000, reserved: false }, packet).findings).toEqual([]);
     expect(next.context).not.toContain('silver crane');
     expect(packet.channelMemory?.[0]?.quote).toContain('[withheld: operator correction or forgetting]');
+    expect(packet.channelMemory?.[0]?.sourceRef).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
     expect(packet.channelMemory?.[0]?.sourceLabel).toMatch(/^import:email\/\[withheld: operator correction or forget\/.+\/[a-f0-9]{12}$/u);
     expect(packet.channelMemory?.[1]).toMatchObject({ conversation: 'Other archive',
       quote: 'The archive access phrase for the other account is cedar brook.' });
     expect(packet.channelMemory?.[1]?.sourceLabel).toMatch(/^import:email\/Other archive\/.+\/[a-f0-9]{12}$/u);
     expect(journal.view.channelItems.size).toBe(2);
+    worker.intake([update(2, 'The studio opening day is Saturday.')]); await worker.drain();
+    const contradictionPacket = JSON.parse(contexts.at(-1)!);
+    expect(contradictionPacket.contradictions).toMatchObject([{ subject: 'the studio opening day',
+      earlier: { quote: 'The studio opening day is Friday' } }]);
+    expect(contradictionPacket.contradictions[0].earlier.id).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
+    expect(contexts.at(-1)).not.toContain('silver crane');
     journal.close();
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
@@ -66,7 +74,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
         encoding: 'utf8', timeout: 10000 });
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).withheld).toMatchObject([{
-      channelSource: 'email', channelSourceId: 'archive-1', reason: 'verified operator requested forgetting' }]);
+      channelSource: 'email', channelSourceId: 'archive-1 Silver Crane', reason: 'verified operator requested forgetting' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 

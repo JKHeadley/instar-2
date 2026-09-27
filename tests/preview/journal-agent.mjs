@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
@@ -41,6 +41,7 @@ import { auditJournal } from './journal-audit.mjs';
 import { memoryReport } from './memory-export.js';
 
 import { operatorDigest } from './operator-digest.js';
+import { stepQuestions } from './step-check.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -108,9 +109,9 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
-const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
+const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
-const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
+const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
   people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
@@ -121,7 +122,12 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   contradictions: packet.contradictions ?? [],
   crossTopicDigest: packet.crossTopicDigest ?? null,
   restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
-  recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
+  recalled: packet.recalled?.length ?? 0, recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
+  replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
+    recorded: packet.replyProvenance.recorded !== null,
+    history: packet.replyProvenance.recorded?.history?.length ?? 0,
+    recalled: packet.replyProvenance.recorded?.recalled?.length ?? 0,
+    channelSourceIds: (packet.replyProvenance.recorded?.channelMemory ?? []).map(item => item.sourceId) } : null,
   sourceLabels: Object.fromEntries(['summary', 'memorySummary', 'history', 'recalled', 'people', 'commitments',
     'channelMemory', 'memory', 'memoryCandidates'].map(part => [part, (Array.isArray(packet[part]) ? packet[part]
       : packet[part] ? [packet[part]] : []).map(item => item.sourceLabel ?? null)])),
@@ -155,8 +161,15 @@ const packetStatus = view => {
     dropped: last.packetDropped ?? 'unavailable in earlier reservation' };
 };
 
+const stepCheckView = view => ({ total: view.stepChecks.size,
+  unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
+  verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
+    reserved: item.reserved === true, result: item.result ?? null })) });
+
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
+  if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
+  const stepCheckEnabled = options['step-check'] === 'true';
   if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
 
   const root = resolve(required(options, 'root'));
@@ -176,7 +189,7 @@ async function main() {
     return;
   }
   if (command === 'audit') {
-    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true, true);
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true, undefined, true);
     try {
       const report = auditJournal(journal.view);
       process.stdout.write(`${JSON.stringify(report)}\n`);
@@ -230,12 +243,18 @@ async function main() {
 
       withheld: withheldView(view.view),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
-      unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
+      heldNotices: view.view.order.filter(t => t.heldNoticeIntent !== undefined).map(t => ({ update: t.update,
+        state: t.heldNoticeSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
+      unknownCalls: unknownCallCounts(view.view).total,
+      unknownCallBreakdown: unknownCallCounts(view.view),
+      capReports: [...view.view.capReports],
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
-      unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
+      unknownSends: view.view.order.reduce((count, t) => count + Number(t.intent !== undefined && t.sent === undefined) + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined), 0),
+      replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
+        unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
         && t.answer !== undefined && t.intent === `PREVIEW — ${t.answer}`).length },
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
@@ -269,6 +288,7 @@ async function main() {
       lastReplyTiming: lastSent ? { update: lastSent.update,
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
+      ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
       people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
         note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
@@ -288,6 +308,8 @@ async function main() {
     const view = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try {
       const last = view.view.order.filter(t => t.prompt !== undefined).at(-1);
+      const reply = options.update === undefined ? view.view.order.filter(t => t.intent).at(-1)
+        : view.view.order.find(t => t.update === number(options.update, 'update', 0));
       let next;
       if (options.text !== undefined) {
         const refuse = () => { throw Error('preview: inspect never calls or sends'); };
@@ -297,9 +319,13 @@ async function main() {
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
-        ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
+        ...recallView(contextOf(last.prompt)) } : null,
+        reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
+          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
+        ...(next ? { next } : {}), withheld: withheldView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-        lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
+        lastReplyCheck: view.view.lastReplyCheck,
+        ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);
     } finally { view.close(); }
     return;
   }
@@ -420,6 +446,15 @@ async function main() {
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
+    const invokeJev = async (text, questions) => {
+      const start = performance.now();
+      const response = await fetch('https://api.typesafe.ai/v1/systemone', {
+        method: 'POST', signal: AbortSignal.timeout(2000),
+        headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
+      if (!response.ok) throw Error('preview: Jev unavailable');
+      return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
+    };
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
@@ -469,6 +504,7 @@ async function main() {
           return interpretSummaryReview(result, Math.round(performance.now() - start));
         }
       },
+      ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
       send: async ({ text, expectedText, chat, thread }) => {
         if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
@@ -500,6 +536,7 @@ async function main() {
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
+    worker.startStepChecks();
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = Date.now();
@@ -516,15 +553,38 @@ async function main() {
         await delay(Math.min(100, until - Date.now()));
       return true;
     };
-    let summaryJob = null;
+        let summaryJob = null, stepJob = null;
+    const checkStepsLater = () => {
+      if (!stepCheckEnabled || stepJob) return;
+      stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
+    };
+
     const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
     const summarizeLater = () => {
       // After the reply: the deterministic coherence check records its findings for the next
       // packet. It makes no call and cannot hold the reply already attempted;
       // its synchronous journal write can slightly delay the next poll.
       try { worker.checkCoherence(); } catch { /* the unchecked reply is retried after the next drain */ }
+      checkStepsLater();
       if (summaryJob) return;
-      summaryJob = worker.summarizeIfNeeded().catch(() => {}).finally(() => { summaryJob = null; });
+      summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
+    };
+    const reportCap = () => reportJournalCap(journal, Date.now(), line => process.stderr.write(line));
+    const waitHeldNotices = async () => {
+      let due;
+      while ((due = worker.nextHeldNoticeAt()) !== null) {
+        while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, g.expires))
+          await delay(Math.min(1000, due - Date.now(), g.expires - Date.now()));
+        if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= g.expires) break;
+        await worker.drain(); summarizeLater();
+      }
+    };
+    const stopAtCap = async () => {
+      const cap = reportCap();
+      if (!cap) return false;
+      endReason = cap;
+      await waitHeldNotices();
+      return true;
     };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
@@ -537,10 +597,10 @@ async function main() {
         }
       }
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      if (await stopAtCap()) break;
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch {
-        const v = journal.view;
-        endReason = `${v.order.length >= v.limits.maxTurns ? 'update' : v.calls >= v.limits.maxCalls ? 'model attempt' : 'reply'} cap reached`;
+        if (!await stopAtCap()) endReason = 'cap reached';
         break;
       }
       if (signalled || workerStop.value || existsSync(stopPath)) break;
@@ -557,8 +617,11 @@ async function main() {
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
       failedPolls = 0;
       worker.intake(updates.result); await worker.drain(); summarizeLater();
+      if (await stopAtCap()) break;
     }
     await summaryJob;
+    await stepJob;
+    if (stepCheckEnabled) await worker.checkSteps();
     endReason ??= 'cycle limit reached';
     function modelRoute(operation) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');

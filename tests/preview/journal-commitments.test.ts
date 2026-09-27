@@ -134,7 +134,7 @@ it('brings open items back after compaction with who said them and when, says it
 it('surfaces only BM25-related open items with age, while an unrelated turn gets none', async () => {
   const root = origin();
   try {
-    const w = world(root);
+    const w = world(root, { maxBytes: 10000 });
     await w.say(1, LOCKER);
     await w.say(2, DENTIST);
     await w.fillUntilCompacted(3, 'What did I ask you to remember?');
@@ -199,7 +199,10 @@ it('refuses a closure for an open item omitted from the summary packet', async (
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(3000));
     const packets: Packet[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
-      prepareModel: input => input.context,
+      prepareModel: input => { const packet = JSON.parse(input.context) as Packet;
+        if (input.id.startsWith('summary:') && packets.length > 0 && packet.openCommitments?.length)
+          throw Error('prepared prompt overflow');
+        return input.context; },
       model: async input => {
         if (!input.id.startsWith('summary:')) return 'Noted.';
         const packet = JSON.parse(input.context) as Packet;

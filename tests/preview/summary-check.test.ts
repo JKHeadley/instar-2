@@ -303,3 +303,34 @@ it.each([
     replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('keeps a completed faithfulness verdict in the journal before a supervisor interruption', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-faithfulness-outage-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis());
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => input.id.startsWith('summary:')
+        ? { state: 'complete', text: JSON.stringify({ summary: 'A short paraphrase.', people: [] }), usage }
+        : 'Okay.',
+      summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } },
+        usage: { input_tokens: 777, output_tokens: 7 } }),
+      replyCheck: { elapsedMs: () => 100, jev: async (_state, questions) => {
+        if (questions) throw Error('supervisor interrupted');
+        return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
+      }, escalate: async () => { throw Error('unexpected review'); } },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'Remember this.' } }]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(records(path).filter(row => row.kind === 'summary-check')).toMatchObject([{
+      faithfulness: { path: 'jev', verdict: 'pass', usage: { inputTokens: 777, outputTokens: 7 } },
+      result: { verdict: 'unavailable' } }]);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(replay.view.lastSummaryFailure?.faithfulness).toMatchObject({ verdict: 'pass',
+      usage: { inputTokens: 777, outputTokens: 7 } });
+    expect(records(path).filter(row => row.kind === 'summary-check')).toHaveLength(1);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -116,3 +116,34 @@ it('keeps only the last ten outcomes in the status projection while counting all
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('observes a paid summary review and reopens; rejects malformed diagnostics before append', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-review-outcome-')));
+  const key = new Uint8Array(32).fill(7), path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 });
+    journal.append({ kind: 'intake', id: 'turn-1', update: 1, text: 'Remember this.', raw: 'remember',
+      accepted: true, cursor: 2, at: 1000 });
+    journal.append({ kind: 'summary-reserve', through: 1, at: 1001 });
+    journal.append({ kind: 'summary-candidate', through: 1, state: '{}', at: 1002 });
+    journal.append({ kind: 'summary-check', through: 1,
+      result: { path: 'jev', verdict: 'unsure', latencyMs: 1 }, at: 1003 });
+    journal.append({ kind: 'summary-review-reserve', through: 1, at: 1004 });
+    const policy = { args: ['--safe-mode', '--print'], maxTokens: 2048, maxOutputBytes: 16384 };
+    const io = observedSubscriptionIO({ execute: async () => physical(frame(2)) }, policy, 'summary:1:review',
+      row => journal.append(row), { elapsed: () => 10, at: () => 1005 });
+    await io.execute({ args: policy.args, stdin: 'review prompt', timeout: 120000 });
+    const before = journal.size;
+    expect(() => journal.append({ kind: 'call-outcome', id: 'summary:1:review', role: 'summary',
+      outcome: { ...subscriptionCallOutcome(physical(frame(2)), 10, 10, 2048, 16384), elapsedMs: -1 }, at: 1006 }))
+      .toThrow('call outcome malformed');
+    expect(journal.size).toBe(before);
+    journal.close();
+    const replay = openPreviewJournal(path, key, undefined, undefined, true);
+    expect(replay.view.order[0]?.text).toBe('Remember this.');
+    expect(replay.view.callOutcomeCounts.get('role:summary')).toBe(1);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

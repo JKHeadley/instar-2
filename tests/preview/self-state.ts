@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import type { JournalView, Turn } from './journal.js';
+import { unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`). */
 export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string };
@@ -83,17 +83,19 @@ export function memoryHealthLine(view: JournalView): string {
   const unresolved = view.order.filter(turn => turn.memoryPending
     && !resolved.has(turn.id)).length;
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
-  const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined).length;
+  const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
+  const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0);
   const sum = (field: 'recallHits' | 'channelRecallHits') => measured.reduce((total, turn) => total + (turn[field] ?? 0), 0);
   return `Memory health: ${String(view.order.filter(turn => turn.held).length)} journal turns currently held; `
     + `${String(view.summaries.length)} summaries, ${String(covered)} accepted operator turns covered by latest summary`
     + ` (through Telegram update ${latest === undefined ? 'none' : String(latest.through)}); `
     + `${String(sum('recallHits'))} original-turn recall-sentinel hits and ${String(sum('channelRecallHits'))} channel-item recall-sentinel hits`
     + ` in ${String(measured.length)} recorded model prompts (${String(unmeasured)} unmeasured legacy prompts); `
-    + `${String(view.memory.length)} old-claim items withheld; ${String(unresolved)} unresolved operator memory corrections; `
-    + `0 channel-import cursors recorded (${String(view.channelItems.size)} imported channel items; fixture import has no source cursor); `
+    + `${String(view.memory.filter(change => change.mode !== 'prefer').length)} old-claim items withheld; ${String(unresolved)} unresolved operator memory corrections; `
+    + `${String(view.channelSources.size)} channel-import cursors recorded (${String(view.channelItems.size)} imported channel items); `
     + `${String(unknownCalls)} turn-model calls and ${String(view.summaryReservations.size)} summary-model calls without a durable result (in flight or UNKNOWN); `
-    + `${String(unknownSends)} Telegram sends without a durable result (in flight or UNKNOWN).`;
+    + `${String(unknownSends)} send(s) without a durable result (in flight or UNKNOWN).`;
 }
 
 /** Plain facts about this preview, computed from the journal and run log at `now`.
@@ -112,7 +114,9 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   for (const turn of view.order) if (turn.held) holds.set(turn.held, (holds.get(turn.held) ?? 0) + 1);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = view.summaryReservations.size;
-  const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined).length;
+  const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
+  const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0);
 
   const refused = view.order.length - accepted.length;
   const when = (ms: number) => parts(format, ms).text;
@@ -122,12 +126,13 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
-    `Model attempts: ${left(view.limits.maxCalls, view.calls)} (replies and summaries share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
+    `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     view.capAuthority === null ? 'Caps have not been raised since the trial began.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
     memoryHealthLine(view),
     `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
     holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
+    `Held-answer notices attempted: ${String(heldNotices)} (one per held turn; Telegram acceptance is not human receipt).`,
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
     `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.genesis.expires)}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',
@@ -173,6 +178,7 @@ export function restartHandoff(view: JournalView, runs: RunLog, launch: number) 
   const held = pending.filter(turn => turn.held !== undefined);
   const unknownCalls = view.order.filter(turn => turn.accepted && turn.reserved
     && (turn.modelState === 'uncertain' || turn.answer === undefined));
+  const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined && turn.sent === undefined);
   const noticesDue = pending.filter(turn => turn.modelState === 'uncertain' && turn.noticeDueAt !== undefined
     && turn.noticeDueAt <= launch);

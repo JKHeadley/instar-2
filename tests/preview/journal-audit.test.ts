@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { memoryHealthLine } from './self-state.js';
 
 const key = new Uint8Array(32).fill(41);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -220,6 +221,42 @@ it('checks open commitments at reservation, including a closure by that summary 
     expect(auditPacket(journal.view, { ...journal.view.order[1]!, update: 3 }, packet,
       latest.memoryCount, latest.summaryCount, 1)
       .findings.map((item: { code: string }) => item.code)).toContain('open-commitment-source');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('audits a recorded preference beside an imported source after replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-preference-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    importChannelFixture(journal, [{ source: 'email', account: 'agent@example.test', id: 'mail-1',
+      from: 'sam@example.test', at: 1789999000000, subject: 'Studio', text: 'The studio opens Friday.' }],
+    'agent@example.test', 1790000000000);
+    const ports = { now: () => 1790000000000, stopped: () => false,
+      prepareModel: (input: { question: string; context: string }) => JSON.stringify({ messages: [
+        { role: 'user', content: input.question }, { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async (input: { id: string; question: string; context: string }) => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'The operator prefers brief replies.', people: [],
+          memory: [{ mode: 'prefer', source: JSON.parse(input.context).memoryRequest.id,
+            quote: 'Please keep your replies brief.' }] })
+        : input.question === 'Please keep your replies brief.' ? 'Okay.' : 'The studio opens Friday.',
+      send: async () => 1, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'Please keep your replies brief.')]); await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'prefer' }]);
+    expect(memoryHealthLine(journal.view)).toContain('0 old-claim items withheld');
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    worker.intake([update(2, 'When does the studio open?')]); await worker.drain();
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    const turn = journal.view.order.at(-1)!;
+    const packet = JSON.parse(JSON.parse(turn.prompt!).messages[1].content).packet;
+    const tampered = structuredClone(packet);
+    tampered.preferences[0].text = 'invented preference';
+    expect(auditPacket(journal.view, turn, tampered).findings.map((item: { code: string }) => item.code))
+      .toContain('preference-source');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -49,6 +49,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
     child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+      INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     let stderr=''; child.stderr.on('data',data=>{stderr+=String(data);});
@@ -77,6 +78,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const resumed = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','3','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+        INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     expect(resumed.status,resumed.stderr).toBe(0);
@@ -85,7 +87,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:0,unknownSends:0,
+        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:1,
+          unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:1,total:1},
+          replyChecks:{unavailable:1},unknownSends:0,
           coherence:{checked:1,unchecked:0,failed:0,pendingCorrections:0,findings:[]}});
     const stop = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],
@@ -95,6 +99,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const refused = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','1','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+        INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     expect(refused.status).not.toBe(0);
@@ -142,6 +147,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     });
     const trial = world.state().read().trial;
     const env = {...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+      INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`};
     const run = spawnSync(process.execPath,['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','--loader',loader,
@@ -159,7 +165,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       text:'PREVIEW — Your sister is Wren; you told me in the main chat.'});
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:0,unknownSends:unknown,
+      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:2,unknownCallBreakdown:{ jev:2,total:2 },unknownSends:unknown,
         lastReplyTiming: { update: mode === 'echo' ? 2 : 1,
           intakeToApiAcceptedMs: expect.any(Number), checkMs: expect.any(Number) },
         coherence:{checked:2,unchecked:0,failed:0}});

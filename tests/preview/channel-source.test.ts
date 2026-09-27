@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { memoryHealthLine } from './self-state.js';
 
 const key = new Uint8Array(32).fill(19);
 const now = 1790000000000;
@@ -43,6 +44,7 @@ it('imports only agent-participating Telegram user rows with the stored authenti
     writeFileSync(path, original);
     expect(importStorePass(w.journal, w.state, 'telegram', now, () => false)).toMatchObject({ scanned: 6, imported: 1 });
     expect(w.journal.view.channelSources.get('telegram')).toMatchObject({ scanned: 6, imported: 1, skipped: 5 });
+    expect(memoryHealthLine(w.journal.view)).toContain('1 channel-import cursors recorded (1 imported channel items)');
     const item = [...w.journal.view.channelItems.values()][0]!;
     expect(item).toMatchObject({ id: 'telegram:99:1', from: 'telegram:101', origin: 'stored-log', text: 'Justin says the code is JADE-52.' });
     const worker = createJournalWorker(w.journal, { now: () => now, stopped: () => false,
@@ -60,6 +62,7 @@ it('imports only agent-participating Telegram user rows with the stored authenti
     expect(importStorePass(replay, w.state, 'telegram', now, () => false)).toMatchObject({ scanned: 0, imported: 0 });
     expect(replay.view.channelItems.size).toBe(1);
     expect(replay.view.channelSources.get('telegram')?.offset).toBe(Buffer.byteLength(original));
+    expect(memoryHealthLine(replay.view)).toContain('1 channel-import cursors recorded (1 imported channel items)');
     expect(replay.view.cursor).toBe(0);
     replay.close();
   } finally { rmSync(w.base, { recursive: true, force: true }); }

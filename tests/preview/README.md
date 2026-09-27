@@ -580,6 +580,26 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+Each accepted update consumes one `maxTurns` slot, each subscription answer,
+summary or reply review reservation consumes one `maxCalls` slot, and each exact
+Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
+durable count bounded by `maxReplies`. UNKNOWN outcomes keep their reservations
+after restart; `status.unknownCalls` includes uncertain answers, summaries,
+reviews and Jev checks, with `unknownCallBreakdown` showing each kind. The
+`max-context-bytes` limit applies to the complete prepared model prompt; an
+oversized turn stays held with its original intake. A Telegram poll batch that
+fills the last turn slot leaves any further updates unrecorded and the cursor
+before them, so an authorized cap raise can fetch them again.
+
+When a cap stops this runner, it writes one fixed line to the local terminal:
+`PREVIEW — calls|replies|turns|bytes cap reached; work paused. Check status for held work.`
+The encrypted journal fences one line per cap kind and limit across restarts;
+`status.capReports` shows those fences. It is a local operator notice, not a
+Telegram send, so reaching `maxReplies` cannot spend an extra reply. A crash
+between the durable fence and terminal output may leave the line absent; the
+durable `status` and run-end reason remain available. The supervised procedure
+is [spend-cap-live-test.md](spend-cap-live-test.md).
+
 The launcher uses the existing `INSTAR_SECRET_PREVIEW_STORAGE_KEY` and
 `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` host bindings, production storage lease,
 Telegram bridge and subscription route. The desk supplies the same reviewed activation
@@ -658,7 +678,7 @@ failure, cycle limit, or error). A launch with no end line is reported as ended
 without recording why (crash, kill or power loss); a torn line is counted, never
 guessed at. From it the self-state gives this run's start and uptime, the last
 restart, how the run before it ended, and launches today. "Today" is the local date
-in `--time-zone` (an IANA zone, default `UTC`; an unknown zone refuses start), and
+in `--time-zone` (an IANA zone, default `America/Los_Angeles`; an unknown zone refuses start), and
 the zone is stated in the text. The counts include the message being answered; its
 own reply is not yet sent. Imported turns from an older root may have unknown
 times. Launches before this change were not recorded, and the text says so. It is
@@ -924,28 +944,44 @@ but no clause for forgotten items; the model packet also receives no forgotten c
 The private journal runner records dated events and deadlines from the verified operator in the
 same encrypted append-only journal. The ordinary capped reply call selects an exact clause and
 date phrase from the operator's message; the runner checks both against that message and parses
-the phrase deterministically in `--time-zone`. It stores the interpreted local day, optional
+the phrase deterministically in `--time-zone` (default `America/Los_Angeles`) at the
+Telegram message timestamp, falling back to the durable intake timestamp. It stores the interpreted local day, optional
 24-hour time, original phrase, zone and any ambiguity in the answer frame. No extra model call,
 store, service or scheduler is added. Every verified operator reply packet asks the model for a
 dated decision, including `dated:[]` when there is no event or deadline. Up to three items can be
 recorded from one turn. A malformed proposed item is not recorded; the runner retains a pending
-date decision and sends a checked, truthful clarification instead of the model's false save claim.
+date decision and sends a checked, truthful clarification. The structured reply separates
+`reply.answer` (substantive answer or clarification) from an optional
+`reply.dateAcknowledgement`. The runner ignores the latter and renders save status from the
+validated date result, retaining `reply.answer` even when selection fails. For an invalid
+selection in the old mixed string form, it sends only the date rejection because the answer
+cannot be separated from an unchecked save claim.
 If the model omits the structured date decision, the original turn stays durable and
 `datedPending` names it in `status` and the next packet. That is an unconfirmed missing decision,
 never a due item; the preview must not claim it saved a deadline from that evidence alone.
 
-An unqualified weekday means its next occurrence (the same weekday today is ambiguous). A
+`tomorrow` means the following local calendar day, including across DST changes. `next Friday`
+means Friday in the following Monday–Sunday calendar week; the same rule applies to other
+`next` weekdays. An unqualified weekday means its next occurrence (the same weekday today is ambiguous). A
 month and day without a year means the next occurrence on or after the message's local day.
-`this` or `next` weekday, multiple dates, invalid dates, unsupported modifiers, numeric dates and
-relative phrases retain their ambiguity. A bare hour such as “at 3:30” has a known day but no
+`this` weekday, multiple dates, invalid dates, unsupported modifiers, numeric dates and
+other relative phrases retain their ambiguity. A bare hour such as “at 3:30” has a known day but no
 settled time. Day-only and ambiguous-hour items become
 due on their local date and overdue the next local day. A precise time becomes overdue after
 that local time. Items without a resolved day are shown as ambiguous. The packet of the next
-operator message includes up to ten due, overdue or ambiguous active items, with a count of
-additional ones. `status` reports all active items and their current states; `inspect --text`
+operator message includes up to ten upcoming, due, overdue or ambiguous active items. The existing
+byte fitting can show fewer, including zero, and reports the omitted count. It likewise fits up to
+three pending date decisions. Full records remain in the journal. `status` reports all active items
+and their current states; `inspect --text`
 shows the next packet's dated block. Corrections and forgetting use the existing validated
 memory change: an affected old item is withheld, and a corrected date is recorded only when
 the operator's replacement clause is selected and validated in its own turn.
+
+For a validated dated item, the immediate reply keeps the substantive answer and adds its absolute
+`YYYY-MM-DD` day and zone; an unresolved time remains explicit beside any model clarification.
+An unresolved date gets a clarification. Later answer packets carry those absolute
+dates and ask the model to state them when relevant. The exact reply still passes the existing
+reply check and send intent.
 
 The capability line says plainly: this preview **answers only and never sends unprompted
 reminders**. An item in memory is not a scheduled notification; the runner has no scheduler or
@@ -1385,6 +1421,26 @@ source record and recall path can then be used without another store or model ca
 For the supervised end-to-end procedure, see
 [channel-memory-live-test.md](channel-memory-live-test.md).
 
+### Memory source trust
+
+The journal already distinguishes authenticated operator turns, channel imports and
+model summaries. Reply packets carry `sourceKind` on each memory item:
+`operator-stated` for the verified operator's text and exact excerpts from it,
+`channel-import` for imported messages, and `inferred-by-summary` for rolling
+summary text and notes derived from the agent's own earlier replies. A verified
+operator correction carries `operator-stated`. The label is computed from the
+source record at projection time, including after restart; model prose cannot
+upgrade its own summary or an import. Prior agent answers remain labelled as
+answers, not as operator statements.
+
+When a summary is present, the answer packet instructs the model to state
+operator-stated facts plainly, hedge summary inferences with “I think”, and
+resolve a conflict in favor of the operator-stated item. The original messages
+remain in the encrypted journal; bounded recall may omit one from a particular
+packet, so an absent quote is not proof of absence. This adds no model call,
+store, send path or authority. The supervised end-to-end procedure is
+[memory-source-trust-live-test.md](memory-source-trust-live-test.md).
+
 ### Coherence check after each reply
 
 After a reply is sent (or its send is UNKNOWN, since it may have reached the
@@ -1623,3 +1679,138 @@ may appear in status; the packet says to judge it in context.
 For the supervised operator procedure, use
 [question-tracker-live-test.md](question-tracker-live-test.md). It does not grant a
 trial or change any running root.
+
+### Held-answer notice (journal runner)
+
+When an accepted operator turn remains held for `reply check unavailable`, `call cap`,
+or `memory correction pending` for more than ten minutes, the runner sends this
+fixed notice once: `PREVIEW — I'm holding my answer to your message from HH:MM; it will follow or I'll tell you why`.
+`HH:MM` is the Telegram message time in the configured `--time-zone`, or the
+durable intake time when Telegram supplied no date. The notice uses the same
+bound private chat, topic, stop, expiry, outbound-secret and reply-cap checks as
+an ordinary send. It uses no model call. At a model-call cap, the existing
+launcher waits, checking stop and expiry, until pending held notices are due.
+
+The encrypted journal records the original hold time and one separate exact
+notice intent before dispatch. An API-accepted result gets its own receipt;
+an interrupted or uncertain notice stays UNKNOWN and is never sent again.
+The notice consumes one reply-cap slot but does not settle the held answer.
+A later authorized cap raise or recovered check can still send that answer
+through its own one-shot intent. `status.heldNotices` reports each attempt and
+whether Telegram accepted it; model history also labels the notice as separate
+from the answer. This remains a deliberately machine-local preview under its
+existing exclusive writer, with no new store, service, or multi-machine claim.
+See [held-reply-notice-live-test.md](held-reply-notice-live-test.md) for the
+supervised private-chat proof as Justin.
+
+### Dark Jev step check
+
+The journal launcher accepts `--step-check true`; omission or `false` leaves it off.
+Off mode adds no step-check frames or observation-only fields to other frames,
+including after a previously enabled run, and leaves model packets and send bytes unchanged.
+When enabled, a durable start marker makes only subsequent model answers eligible.
+After a disabled interval, re-enabling also checks eligible work recorded since that
+first start marker; it does not recheck steps that already have a verdict.
+After the ordinary reply path, Jev compares each completed answer and committed
+summary with its journal projection. A completed summary answer rejected by the
+existing summary validation is checked against the recorded failure too. The
+request contains the redacted model output and a bounded snapshot of recorded
+memory changes, reply intent and Telegram API result, or summary effects. It
+asks whether a claimed completed effect lacks journal support. Jev's result is
+`pass`, `violation`, `unsure`, or `unavailable`; the conclusion, score, reason,
+usage when returned, and redacted evidence reservation are encrypted in the
+same journal. `status.stepChecks` and `inspect.stepChecks` expose verdicts without
+the underlying text. An interrupted reservation replays as unavailable without
+repeating Jev. The number of checks is bounded by the existing model-call cap;
+an answer containing a detected secret, or an oversized answer or evidence, is
+recorded as unavailable without Jev disclosure. A stop prevents a
+new Jev dispatch. Verdicts never change a reply, memory decision, summary,
+hold, send, or future model packet. No extra service or store is involved.
+
+The live private-chat procedure is in
+[jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark
+observation's evaluation target is 2026-09-30: the desk can decide whether to
+keep it on after Justin's script produces a recorded trace. While off, it is
+not a live safety guard.
+
+### Bounded encrypted journal compaction
+
+After an append takes the journal past 8 MiB, the same exclusive writer folds its
+authenticated records into a snapshot of the full in-memory projection. Original
+turns, imported channel items, summaries, memory corrections, counters, stop,
+cursor and exact send state remain in that projection. The snapshot retains the
+original non-hold records too, including completed call usage, failure details,
+review and summary prompts, and all UNKNOWN call and send evidence. A delivered
+lost-answer notice does not close its UNKNOWN model call. Repeated holds retain
+only the latest still-active record. The journal remains the single encrypted store.
+
+Snapshot data uses bounded encrypted frames. The writer fsyncs a temporary file,
+reopens it through the normal journal reader, compares its projection, atomically
+replaces the journal and fsyncs the directory. A killed process therefore leaves
+the old or the new file readable. An abandoned `.compacting` file is never read
+as journal state and is replaced on the next compaction. After a snapshot, the
+next automatic compaction waits until the journal exceeds twice that snapshot's
+size (or 8 MiB, whichever is larger), so an irreducible large projection cannot
+cause compaction after every append. No send, provider call or second writer is
+started by compaction.
+
+The offline crash matrix is `journal-compaction.test.ts`. Justin's supervised
+test on an isolated copy of the actual preview journal is
+[journal-compaction-live-test.md](journal-compaction-live-test.md).
+
+### Reply grounding audit
+
+Each answer-call reservation now includes a bounded index of the exact packet it
+sent to the model: its SHA-256, summary frontier, original journal turns in
+`history` and `recalled`, source turns in `people`, commitment indexes, imported
+source IDs, correction-note turns, memory-change indexes and memory-candidate
+IDs. The index is computed from the final fitted packet, before the model call,
+and fsynced in the existing encrypted journal. A send intent links that
+reservation to the exact visible reply, including a fixed holding reply or a
+send whose Telegram outcome is UNKNOWN. A candidate that was never sent has no
+reply audit. No model judgment or new store is involved. The index says what
+the packet contained; it does not assert which item caused the model's wording.
+
+`status` reports how many send intents have an audit and how many older intents
+predate it. `inspect --root ROOT --update TELEGRAM_UPDATE_ID` returns the exact
+sent text, API message ID or UNKNOWN outcome, and its grounding index. Without
+`--update`, `inspect` shows the latest intent. Its existing `last` field still
+shows the latest model prompt, which may belong to a different turn. Old journal
+reservations replay unchanged and show `grounding: null`; missing historical
+evidence is not filled in from today's memory projection. Audit IDs and text
+remain in the encrypted local journal and the operator-only local inspect
+surface. This preview remains deliberately machine-local under one writer.
+
+For the supervised operator check, see
+[reply-grounding-live-test.md](reply-grounding-live-test.md).
+
+### Why did you say that? (journal runner)
+
+When the verified operator asks about an earlier reply, the normal model packet
+may carry `replyProvenance`: one candidate reply and the packet saved with that
+reply's model reservation. A Telegram reply to a bot message selects that exact
+sent message; otherwise the memory sentinel ranks reply text against the new
+question, with the latest reply as the fallback. This is candidate selection,
+not a decision about what the operator meant. The model checks whether the
+candidate is the reply being asked about. If it is not, or its packet is absent,
+it says so instead of inventing a reason.
+
+The recorded view names the earlier turns and imported channel items that were
+available, plus any summary, recalled turns, people, commitments, corrections,
+memory changes and pinned sources in that packet. The reply says these were
+**available inputs**, not proven causes inside the model. Current secret redaction
+applies to the view. If a verified memory correction or forgetting came after
+the saved packet, the whole historical view is withheld with an explicit reason:
+legacy packet fields cannot reliably tie a paraphrased reply to its source turn.
+Packets saved after the current memory changes remain available. If the full
+record cannot fit the bounded prompt, the packet explicitly says that the
+recorded view was omitted; the turn can still receive an honest answer.
+
+The saved Seven envelope is the provenance record: this adds no store, model
+call, service or send route. The explanation uses the same capped answer call,
+Jev check, full-context escalation when needed, stop gate, exact send intent
+and no-resend rule as every other reply. `inspect` exposes the selected reply
+update, whether its packet was available, and source counts and imported source
+IDs without dumping the old packet. Earlier journal turns without a saved prompt are reported as
+missing. For the private operator procedure, see
+[why-did-you-say-live-test.md](why-did-you-say-live-test.md).
