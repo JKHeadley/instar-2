@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, pendingRequestedReminders, reminderDue, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { greetingContinuity } from './greeting-continuity.js';
@@ -56,6 +56,9 @@ const parse = values => {
     if (!values[i]?.startsWith('--') || values[i + 1] === undefined) throw Error('preview: malformed arguments');
     options[values[i].slice(2)] = values[i + 1];
   }
+  // A trial-wide grant would push unrequested dated items; each reminder is granted by its own operator request.
+  if (options['reminder-grant-reference'] !== undefined)
+    throw Error('preview: --reminder-grant-reference is retired; the operator grants each reminder by asking for it');
   return { command, options };
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
@@ -103,14 +106,12 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
-  const readSources = reminders => sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, reminders }).sources;
-  const ordinarySources = readSources(false);
-  let reminderSources;
+  const ordinarySources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = Date.now(), log = runs();
-    const sources = view.reminderGrant === null ? ordinarySources : (reminderSources ??= readSources(true));
+    const sources = ordinarySources;
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
     const continuity = turn && greetingContinuity(view, log, now, turn, current());
@@ -333,7 +334,11 @@ async function main() {
       reminders: { intents: view.view.reminders.size,
         accepted: [...view.view.reminders.values()].filter(item => item.sent !== undefined).length,
         unknown: [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
-        grant: view.view.reminderGrant },
+        grant: view.view.reminderGrant,
+        requested: view.view.dated.filter(item => item.remind).length,
+        pending: pendingRequestedReminders(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
+          quote: redact(item.quote).text, due: `${reminderDue(item)} ${item.zone}` })),
+        cancelled: view.view.reminderCancels.length },
       dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
 
@@ -640,13 +645,6 @@ async function main() {
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), Date.now(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
-    if (options['reminder-grant-reference']) {
-      if (journal.view.reminderGrant === null) journal.append({ kind: 'reminder-grant',
-        reference: options['reminder-grant-reference'], trial: g.grant, surface: 'telegram-private-chat',
-        scope: 'initiated-dated-reminders', custodian: g.operator, recovery: 'unknown-never-retry', at: Date.now() });
-      else if (journal.view.reminderGrant !== options['reminder-grant-reference'])
-        throw Error('preview: reminder grant differs from journal');
-    }
     const captures = new Map();
     const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
     if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
