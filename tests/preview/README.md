@@ -580,6 +580,13 @@ with a platform user ID in a channel bound to this agent by
 preview-chat rows are skipped. Imported text is redacted and fsynced as a
 `channel-item`; only then does a source offset advance in the same encrypted
 journal. Replaying after a crash dedupes by platform, conversation and message ID.
+
+| Preview source | Stored sender | Participation evidence | Status field |
+|---|---|---|---|
+| Telegram | `telegramUserId` | Row session or topic registry | `channelSources.telegram` |
+| Slack | `platformUserId` | Slack channel registry | `channelSources.slack` |
+| Mail | None | None | Dark |
+
 An incomplete JSONL line waits for the server to finish it. A malformed complete
 line, missing required Slack registry, capacity refusal or source read error leaves
 the cursor at its last durable point and appears as `channelSources.SOURCE.error`
