@@ -69,7 +69,8 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
-  people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [],
+  commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -139,6 +140,9 @@ async function main() {
       lastReplyCheck: view.view.lastReplyCheck,
       people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
         note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
+      personMerges: view.view.personMerges.map(link => ({ left: view.view.people[link.left]?.name,
+        leftSource: view.view.people[link.left]?.source, right: view.view.people[link.right]?.name,
+        rightSource: view.view.people[link.right]?.source, triggerUpdate: view.view.turns.get(link.trigger)?.update })),
       launches: readRuns(runsPath).launches.slice(-3),
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
     finally { view.close(); }
