@@ -43,7 +43,7 @@ it('replays held turns through a snapshot and clears only eligible holds after a
 
 it('opens 10k compacted turns below the declared time and heap bounds', async () => {
   const { stdout } = await execFileAsync(process.execPath, ['--expose-gc', '--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
-    'tests/preview/journal-reopen-benchmark.mjs', '10000'], { cwd: process.cwd(), encoding: 'utf8', timeout: 120000 });
+    'tests/preview/journal-reopen-benchmark.mjs', '10000'], { cwd: process.cwd(), encoding: 'utf8', timeout: 300000 });
   const metric = JSON.parse(stdout) as { turns: number; rawMs: number; openMs: number;
     rawHeapDeltaMb: number; heapDeltaMb: number };
   expect(metric.turns).toBe(10000);
@@ -51,4 +51,4 @@ it('opens 10k compacted turns below the declared time and heap bounds', async ()
   expect(metric.openMs).toBeLessThan(2000);
   expect(metric.rawHeapDeltaMb).toBeLessThan(128);
   expect(metric.heapDeltaMb).toBeLessThan(128);
-}, 120000);
+}, 300000); // rawMs/openMs/heap above are the bounds; generating 10k turns took 86-120 s under suite load.

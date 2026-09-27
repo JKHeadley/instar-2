@@ -12,4 +12,4 @@ it('recalls 10,000 saved facts across 300 people and topics within offline bound
   expect(result.probeP95Ms).toBeLessThan(500);
   expect(result.turnP95Ms).toBeLessThan(250);
   expect(result.replayMs).toBeLessThan(5000);
-}, 180_000);
+}, 360_000); // The asserted latency bounds above are the contract; seeding 2000 turns took 159-176 s under suite load.

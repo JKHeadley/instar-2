@@ -111,7 +111,7 @@ it('keeps two months of job, city, partner and pet changes dated across summarie
       ['Acme', 'historical'], ['Beta', 'historical'], ['Gamma', 'current']]);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 60000); // Two months of turns with two restarts took 8.6 s alone, so the 10 s default fails under suite load.
 
 it('rejects invented and unverified attribute proposals while keeping intake durable', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-attributes-')));

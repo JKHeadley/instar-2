@@ -431,7 +431,7 @@ it('refuses an existing signed fact in the wrong nonterminal sidecar role before
   d.references.preparedFact = d.references.requestFact; writeFileSync(path, JSON.stringify(d));
   c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('held'); c.close();
   expect(s.models).toHaveLength(0); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
-});
+}, 60000); // Two composition launches took 4-8 s; the 10 s default fails under suite load, like its siblings here.
 
 
 it('replays the synthetic launcher preload clock independently of the runner calendar with real elapsed timers', () => {
