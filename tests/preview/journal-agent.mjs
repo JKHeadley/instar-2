@@ -69,10 +69,17 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
-  people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [],
+  people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
+const withheldView = view => view.memory.map(change => ({
+  ...(change.source.startsWith('channel:')
+    ? { channelSource: view.channelItems.get(change.source.slice('channel:'.length))?.source,
+      channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
+    : { sourceUpdate: view.turns.get(change.source)?.update }),
+  operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
+  reason: change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
 async function main() {
@@ -112,13 +119,15 @@ async function main() {
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
+      withheld: withheldView(view.view),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
-        commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0 })),
+        commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
+        memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
@@ -128,7 +137,8 @@ async function main() {
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
       lastReplyCheck: view.view.lastReplyCheck,
-      people: [...new Set(view.view.people.map(note => note.name))],
+      people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
+        note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
       launches: readRuns(runsPath).launches.slice(-3),
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
     finally { view.close(); }
@@ -149,7 +159,7 @@ async function main() {
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
-        ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}),
+        ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
         lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
     } finally { view.close(); }

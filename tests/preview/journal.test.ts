@@ -1198,7 +1198,9 @@ it('recalls imported old-root turns with their original Telegram dates and drops
     limit = Buffer.byteLength(contexts[0]!) - 1;
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();
     expect(journal.view.order.at(-1)?.sent).toBe(1);
-    expect(JSON.parse(contexts[1]!).recalled).toBeUndefined();
+    // The optional memory-decision candidates now yield before useful recalled history.
+    expect(JSON.parse(contexts[1]!).recalled).toEqual(packet.recalled);
+    expect(JSON.parse(contexts[1]!).memoryCandidates).toBeUndefined();
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

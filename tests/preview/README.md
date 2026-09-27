@@ -668,6 +668,58 @@ absence is not evidence. Under the context bound, correction notes give way firs
 recalled turns, person notes, and the oldest open items. `status` reports `commitments: {total, open}` and per summary
 `commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
 
+### Correcting and forgetting memory
+
+A direct correction or forget request from the bound Telegram operator can be judged in the existing
+rolling summary before its reply. A small text cue schedules that call early;
+it cannot itself supersede anything. The ordinary capped reply call can also return a memory
+decision when the cue misses, using optional older candidates that yield before recall or
+commitment context under the prompt bound. An ordinary later summary may also record a direct
+request its model identifies without a cue. Both paths return `memory` entries with the exact old
+factual clause and its source turn ID or namespaced channel-import ID. The same bounded model decision can name additional
+candidate reply IDs and exact passages from the current summary that express that fact. The
+source turn's own reply is withheld by its recorded source relationship. A correction
+also quotes the replacement from the operator's own message. The runner keeps an entry only if
+the old clause occurs verbatim in an earlier accepted operator turn or an earlier imported channel item,
+the trigger is an accepted authenticated operator turn, and the replacement occurs verbatim in that turn. Claimed instructions inside quotes, forwards or
+imports have no authority. An invalid proposed entry or an explicitly unresolved target never
+becomes an empty successful decision. An invalid reply decision records pending status in its
+answer frame, so replay cannot send an unaccepted acknowledgement after an interruption. An
+ordinary summary that explicitly says `unresolved` records a failed attempt. The request stays
+visible as pending under the existing bounded summary retry path. New summary
+frames name the request they decided; old frames without that field keep their historical frontier
+settled, so an upgrade can continue draining later turns.
+
+The original turns and previous summaries stay in the encrypted append-only journal. Replay
+rebuilds the superseding records from summary or answer frames. Every later packet filters
+superseded claims from history, summary text, recalled originals, channel imports, earlier answers, commitments and person
+notes. Source-linked replies are withheld without a phrase test; the model identifies other
+affected replies and summary passages by meaning. Exact old clauses and overlapping note excerpts are withheld;
+an unrelated person's similarly numbered fact remains. A person or commitment note whose quoted claim was superseded is omitted; a correction's
+new fact is carried as `memory`. A forget carries only a withholding reason. Similar facts with
+different wording and sources remain. `status.withheld` and `inspect.withheld` show the redacted
+old clause, the source update or channel ID, the operator update ID, and why it was withheld; the model packet does not
+receive the forgotten clause. If the shared attempt cap or summary route prevents a decision,
+`status.holds` shows `memory correction pending` and the intake remains durable.
+
+Live script for Justin in the existing private preview chat, after the desk lands this revision
+and resumes the one runner on its existing root:
+
+1. Check `status` for at least six calls, five replies and five turns of room; use the recorded
+   `raise-caps` authority if needed. Send `My gym locker code is 3310. Test marker Cedar.`
+2. Send unrelated filler turns until `status.summaryThrough` covers the fact and `inspect
+   --text "What is my gym locker code?" --model MODEL` reports `next.historyMode` as
+   `summary-plus-recent`. Wait for each reply and for `summaryPending: 0` before checking.
+3. Send `Actually my gym locker code is 4412, not 3310.` Wait for its reply and summary. Check
+   `status.withheld` names the source update and `verified operator corrected this fact`. Ask
+   `What is my gym locker code?` The reply must give **4412 only**. Check the persisted `inspect`
+   view has a corrected `memory` entry; `status` still retains the original turn count.
+4. Send `Forget my gym locker code.` Wait for its reply and summary. Check `status.withheld`
+   adds `verified operator requested forgetting`. Ask `What is my gym locker code?` The reply
+   must decline to recall either code. `inspect` must show a forgotten marker and no corrected
+   value in its `memory` block. Record the actual replies, status and inspect outputs as the
+   live trace; a missing summary decision or exhausted cap is a visible incomplete result.
+
 `inspect --root ROOT` is read-only: it prints the last persisted model prompt's
 `historyMode`, summary coverage and `people` block, redacted, and never sources or
 history text. Add `--text "<message>" --model MODEL` to see what a next message
@@ -859,6 +911,9 @@ at most five relevant items, including after Telegram summarization; prompt
 fitting can omit lower ranked items. The originals remain in the encrypted journal.
 The packet labels them as untrusted data, never instructions. A missing quote is
 not evidence the item was never sent.
+An authenticated operator correction or forget request may supersede an exact clause in an
+imported item. Its original stays in the journal, while later selected `channelMemory` quotes
+withhold that clause. The imported message itself cannot request a memory change.
 
 To turn on live mail intake, the desk must supply a non-interactive **read-only**
 programmatic credential for the agent's own mailbox, a verified agent-owned
