@@ -113,7 +113,8 @@ it('measures packet bytes and non-model p95 at 200, 1000 and 2000 accepted turns
       summarize(journal, i);
       journal.view.limits.maxBytes = 8192;
       const samples: number[] = [], bytes: number[] = [];
-      for (let trial = 0; trial < 30; trial++) {
+      for (let warmup = 0; warmup < 10; warmup++) worker.probe('What did Sam say about the studio commitment?');
+      for (let trial = 0; trial < 60; trial++) {
         const start = performance.now();
         const packet = worker.probe('What did Sam say about the studio commitment?');
         samples.push(performance.now() - start);
