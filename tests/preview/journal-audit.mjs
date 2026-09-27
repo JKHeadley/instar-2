@@ -22,9 +22,15 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     if (String(sender) !== view.genesis.operator) fault('source-sender-unverified', at);
     return found;
   };
+  const publicSource = id => typeof id === 'string' && id.startsWith('channel:')
+    ? `channel-ref:${createHash('sha256').update(id).digest('hex')}` : id;
   const channel = (id, at) => {
-    if (typeof id !== 'string' || !id.startsWith('channel:')) { fault('channel-id-absent', at); return null; }
-    const found = view.channelItems.get(id.slice(8));
+    if (typeof id !== 'string' || !(id.startsWith('channel:') || id.startsWith('channel-ref:'))) {
+      fault('channel-id-absent', at); return null;
+    }
+    const found = id.startsWith('channel-ref:')
+      ? [...view.channelItems.entries()].find(([key]) => publicSource(`channel:${key}`) === id)?.[1]
+      : view.channelItems.get(id.slice(8));
     if (!found) fault('channel-source-absent', at);
     return found ?? null;
   };
@@ -158,7 +164,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   }
   for (const [n, item] of list(packet.memoryCandidates, 'memoryCandidates').entries()) {
     const at = `memoryCandidates[${n}]`;
-    if (item?.id?.startsWith?.('channel:')) {
+    if ((item?.id?.startsWith?.('channel:') || item?.id?.startsWith?.('channel-ref:'))) {
       const found = channel(item.id, at);
       if (found && item.message !== clean(`${found.subject ?? ''} ${found.text}`).slice(0, 1000)
         && item.message !== clean(`${found.subject ?? ''} ${found.text}`))
@@ -187,7 +193,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     else add('open-commitment', at, [{ kind: 'source-turn', id: note.source }, { kind: 'commitment-note', id: item.id }]);
   }
   for (const [n, item] of list(packet.memory, 'memory').entries()) {
-    const at = `memory[${n}]`, change = activeChanges.find(row => row.source === item?.source && row.trigger === item?.trigger);
+    const at = `memory[${n}]`, change = activeChanges.find(row => publicSource(row.source) === item?.source && row.trigger === item?.trigger);
     if (!change) fault('memory-change-source', at);
     else {
       const trigger = view.turns.get(change.trigger);
@@ -215,7 +221,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     if (!trigger || trigger.update >= turn.update) continue;
     const superseded = change.mode === 'correct' && activeChanges.slice(n + 1)
       .some(next => next.quote.includes(change.replacement));
-    if (!superseded && !packetMemory.some(item => item?.source === change.source && item?.trigger === change.trigger))
+    if (!superseded && !packetMemory.some(item => item?.source === publicSource(change.source) && item?.trigger === change.trigger))
       fault('memory-change-unrepresented', `memory-change[${n}]`);
     if (offered.some(value => value.includes(change.quote)))
       fault(change.mode === 'forget' ? 'forgotten-reachable' : 'superseded-current', `memory-change[${n}]`);

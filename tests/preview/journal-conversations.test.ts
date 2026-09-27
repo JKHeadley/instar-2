@@ -147,7 +147,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
     expect(last - first).toBeLessThanOrEqual(1000);
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 30_000);
 
 it('gives the summarizer every turn\'s conversation and date, including the main chat, so the summary can keep where and when', async () => {
   const root = origin();

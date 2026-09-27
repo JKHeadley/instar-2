@@ -57,13 +57,13 @@ it('audits the recorded packet without emitting bodies and refuses lost provenan
     wrongReply.history[1].answer = 'invented reply';
     expect(auditPacket(journal.view, last, wrongReply).findings.map((item: { code: string }) => item.code)).toContain('reply-text-source');
     const wrongCandidateReply = structuredClone(packet);
-    const turnCandidate = wrongCandidateReply.memoryCandidates.find((item: { id: string }) => !item.id.startsWith('channel:'));
+    const turnCandidate = wrongCandidateReply.memoryCandidates.find((item: { id: string }) => !item.id.startsWith('channel:') && !item.id.startsWith('channel-ref:'));
     expect(turnCandidate).toBeDefined();
     turnCandidate.reply = 'invented earlier reply';
     expect(auditPacket(journal.view, last, wrongCandidateReply).findings.map((item: { code: string }) => item.code))
       .toContain('candidate-reply-source');
     const wrongChannelReply = structuredClone(packet);
-    const channelCandidate = wrongChannelReply.memoryCandidates.find((item: { id: string }) => item.id.startsWith('channel:'));
+    const channelCandidate = wrongChannelReply.memoryCandidates.find((item: { id: string }) => (item.id.startsWith('channel:') || item.id.startsWith('channel-ref:')));
     expect(channelCandidate).toBeDefined();
     channelCandidate.reply = 'invented imported reply';
     expect(auditPacket(journal.view, last, wrongChannelReply).findings.map((item: { code: string }) => item.code))

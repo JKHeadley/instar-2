@@ -881,6 +881,25 @@ revision and resumes the one runner on its existing root:
    summary decision is pending or a cap is exhausted, record the visible hold as an
    incomplete result.
 
+### Inventory of remembered records
+
+When the verified operator's turn has a memory-question cue, the existing reply packet
+offers `inventory` from the replayed journal. It contains person notes, corrections,
+content-free forgotten markers, commitments, imported channel items and dated operator
+turns. Each entry has a source and date; imported sender metadata remains labelled as
+export metadata. A question about a named subject selects related records, while a
+broad question offers recent records across categories. This deterministic selection
+does not decide what the operator meant; the model judges the question. The inventory
+is at most 20 entries and yields to the existing prompt bound. Its `total`, `shown`
+and `truncated` fields make omissions visible. A lexical miss or a bounded selection
+is never evidence that the journal holds nothing else. Forgotten content is withheld
+in every displayed entry, and the marker says only that the verified operator asked
+to forget it. `inspect --text` shows the same proposed inventory without a call or
+send. No new store, index or model call is used.
+
+The supervised operator procedure is [memory-inventory-live-test.md](memory-inventory-live-test.md).
+
+
 Live script for Justin in the existing private preview chat, after the desk lands this revision
 and resumes the one runner on its existing root:
 
