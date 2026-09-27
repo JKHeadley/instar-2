@@ -2303,3 +2303,20 @@ the rolling summary. The calendar window is a candidate for the model to judge;
 ambiguous or conflicting periods use ordinary recall. `inspect` exposes the
 same bounded period evidence. Existing prompt, review, secret, cap, stop and
 send-intent gates apply. See [week-summary-request-live-test.md](week-summary-request-live-test.md).
+
+### Summary and reply-review restart continuity
+
+`journal-summary-crash.test.ts` kills a real child process at each durable and
+in-flight boundary of a supervised summary, journal compaction, and a reply
+review. It reopens the same encrypted journal, advances to a later summary
+frontier after an interrupted reservation, and compares the resulting memory
+projection with a no-crash run. It also checks one accepted answer to the
+operator's later question and no duplicate physical sends. An interrupted paid
+reply review leaves its original turn visibly held. Run only this focused file:
+
+```sh
+npx vitest run tests/preview/journal-summary-crash.test.ts --configLoader=runner --maxWorkers=1
+```
+
+Justin's supervised private-chat procedure is
+[crash-during-summary-live-test.md](crash-during-summary-live-test.md).
