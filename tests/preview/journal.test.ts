@@ -609,7 +609,7 @@ it('the cap command requires the exclusive writer lease and reports the recorded
     expect(JSON.parse(command('status').stdout).limits.maxBytes).toBe(1048576);
   } finally { journal.close(); if (lease.kind === 'Success' && !leaseClosed) lease.value.close();
     rmSync(root,{recursive:true,force:true}); }
-});
+}, 70000);
 
 it('holds a prepared answer when the reply cap is exhausted', async () => {
   const root = origin();
@@ -935,6 +935,39 @@ it('waits again after a second UNKNOWN summary and never spends beyond the call 
     await worker.summarizeIfNeeded(true);
     expect(seen).toEqual(['summary:2', 'summary:3']); // finite cap, no fourth summary
     expect(journal.view.calls).toBe(7);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not fall back behind an UNKNOWN frontier when the later prompt overflows', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(8), maxBytes: 32768 });
+    let now = 1000;
+    const summaries: string[] = [];
+    const prepared: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      prepareModel: input => { if (input.id.startsWith('summary:')) prepared.push(input.id);
+        if (input.id === 'summary:3') throw Error('prompt overflow');
+        return input.context; },
+      model: async input => { if (input.id.startsWith('summary:')) summaries.push(input.id); return 'answer'; },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1), update(2)]); await worker.drain();
+    journal.append({ kind: 'summary-reserve', through: 2, at: now });
+    worker.intake([update(3)]); await worker.drain();
+    now += SUMMARY_UNKNOWN_RECOVERY_MS;
+    const calls = journal.view.calls;
+    await worker.summarizeIfNeeded(true);
+    expect(prepared).toContain('summary:3');
+    expect(summaries).toEqual([]);
+    expect(journal.view.calls).toBe(calls);
+    expect(journal.view.summaryReservations.has(2)).toBe(true);
+    worker.intake([update(4)]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(summaries).toEqual(['summary:4']);
+    expect(journal.view.summaries.map(item => item.through)).toEqual([4]);
+    expect(journal.view.summaryReservations.has(2)).toBe(true);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

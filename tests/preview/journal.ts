@@ -987,7 +987,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // prepared envelope needs more room than the packet itself.
       for (const { turn, base } of candidates.reverse()) {
         const through = turn.update;
-        if (journal.view.summaryReservations.has(through)) continue; // never repeat this charged frontier
+        // Recovery may only dispatch a frontier later than every UNKNOWN charge,
+        // including when prompt overflow sends selection to a smaller prefix.
+        if ([...unknown.keys()].some(frontier => through <= frontier)) continue;
         if ((journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
         const closable = openFor(through, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
         const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item) && !item.memoryUndecided

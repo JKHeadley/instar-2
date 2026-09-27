@@ -591,9 +591,10 @@ in `--time-zone` (an IANA zone, default `UTC`; an unknown zone refuses start), a
 the zone is stated in the text. The counts include the message being answered; its
 own reply is not yet sent. Imported turns from an older root may have unknown
 times. Launches before this change were not recorded, and the text says so. It is
-recomputed from memory each turn (p95 about 6 ms at 2000 turns, no model call, no
-extra read), and `status` prints the same text as `self` plus the last three
-`launches`, so an answer can be checked against it (status, read after the reply,
+recomputed from memory each turn (no model call or extra read). The 2000-turn
+timing check is quarantined under Rule 37 while its wall-clock flake is diagnosed;
+functional self-state checks remain active. `status` prints the same text as `self`
+plus the last three `launches`, so an answer can be checked against it (status, read after the reply,
 counts that reply too).
 
 The desk report is optional: a plain file the desk maintains about other 2.0 work, re-read at every turn

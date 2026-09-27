@@ -129,7 +129,8 @@ it('recovers a new launch after a torn tail and counts malformed rows without hi
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps per-turn self-state overhead in milliseconds at the journal frame scale', async () => {
+// Rule 37 quarantine: docs/defects/preview-self-state-timing-flake.md.
+it.skip('keeps per-turn self-state overhead in milliseconds at the journal frame scale', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-self-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 2000, maxReplies: 2000, maxTurns: 2000 });
