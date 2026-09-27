@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -737,7 +737,8 @@ async function main() {
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       let result;
       try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
-        body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
+        body: { offset: journal.view.cursor, limit: journalPollLimit(journal.view),
+          timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
           allowed_updates: ['message', 'edited_message'] },
         timeoutMs: 12000 }, token()); }
       catch { if (!await pollFailure()) break; continue; }

@@ -568,6 +568,8 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
     || turn.held === 'summary unavailable: prompt overflow')) return { reason: 'bytes', limit: view.limits.maxBytes };
   return null;
 }
+/** Telegram may return 100 updates. Never request past the remaining durable turn slots. */
+export const journalPollLimit = (view: JournalView) => Math.min(100, Math.max(0, view.limits.maxTurns - view.order.length));
 /** Local operator lines are durably fenced before output. They consume no
  * reply slot and never send a message after the reply allowance is spent. */
 export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>, at: number, writeLine: (line: string) => void): string | null {
@@ -1728,7 +1730,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const settleExhaustedEdit = () => {
     const request = pendingMemory();
-    if (request?.editOf && [...journal.view.summaryFailures].some(([through, failures]) => through >= request.update && failures >= 2))
+    const previous = request ? summaryFor(request.update)?.through ?? -1 : -1;
+    // A failed prefix before the edit also prevents its judgment from being reached.
+    if (request?.editOf && [...journal.view.summaryFailures].some(([through, failures]) => through > previous && failures >= 2))
       journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-failed', at: ports.now() });
   };
   const datedFrom = (proposed: unknown, turn: Turn): DatedItem[] | undefined => {
@@ -2551,11 +2555,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (working) throw Error('preview journal: second worker refused');
     working = true;
     try {
+      let blockedEarlier = false;
       for (const turn of journal.view.order) {
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
         if (journal.view.order.some(item => item.accepted && item.editOf === turn.id)) {
           if (turn.held !== 'superseded by edit')
             journal.append({ kind: 'hold', id: turn.id, reason: 'superseded by edit', at: ports.now() });
+          continue;
+        }
+        // int11 answers a status command and a too-long-input notice even while a
+        // correction holds ordinary answers; the burst ordering hold keeps that exemption.
+        if (blockedEarlier && turn.modelState !== 'uncertain' && !isStatusCommand(turn.text)
+          && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes) {
+          if (turn.held !== 'earlier turn pending')
+            journal.append({ kind: 'hold', id: turn.id, reason: 'earlier turn pending', at: ports.now() });
           continue;
         }
         gate();
@@ -2571,14 +2584,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // even if a later correction still holds ordinary answers.
         if (pendingMemory() && turn.modelState !== 'uncertain' && turn.noticeClass !== 'too-long-input'
           && !isStatusCommand(turn.text)) {
-          await summarizeIfNeeded(true);
-          settleExhaustedEdit();
+          // A batch can need more than one summary frontier before the edit is
+          // reached. Finish each durable prefix before considering later replies.
+          for (let attempt = 0; pendingMemory() && attempt < journal.view.order.length; attempt++) {
+            const before = journal.view.summaries.length;
+            await summarizeIfNeeded(true);
+            settleExhaustedEdit();
+            if (journal.view.summaries.length === before) break;
+          }
           // An UNKNOWN summary cannot decide this request. Settle it as undecided
           // so the recovery pause does not hold every later answer.
           for (let request = pendingMemory(); request && journal.view.summaryReservations.size > 0; request = pendingMemory())
             journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-uncertain', at: ports.now() });
           if (pendingMemory()) {
             if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
+            blockedEarlier = true;
             continue; // later eligible loss notices must still be reached
           }
           if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; }
@@ -2589,6 +2609,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && Buffer.byteLength(item.text) > journal.view.limits.maxBytes)))
           delete turn.held;
         if (!pendingMemory() && turn.held === 'memory correction pending') delete turn.held;
+        if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
           if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
