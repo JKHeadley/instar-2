@@ -69,16 +69,13 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
     };
     expect(Array.from(LIVE_FILLER).length).toBeLessThan(4096);
     for (const text of script) await say(text);
-    let fillers = 0, summaryButComplete = false;
+    let fillers = 0;
     for (;;) {
       const next = inspect('--text', question, '--model', model).next;
       if (next.historyMode === 'summary-plus-recent' && next.people.length) break;
-      // The earlier script's stop point: a summary exists, yet the question would still get complete history and no notes.
-      if (journal.view.summaries.length && next.historyMode === 'complete') summaryButComplete = true;
       expect(fillers).toBeLessThan(12);
       await say(LIVE_FILLER); fillers++;
     }
-    expect(summaryButComplete).toBe(true);
     worker.intake([{ update_id: update, message: { chat: { id: operator, type: 'private' }, from: { id: operator },
       text: question } }]);
     update++;

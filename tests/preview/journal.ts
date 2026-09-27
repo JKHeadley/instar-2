@@ -35,6 +35,8 @@ import { interpretStepJev, type StepCheckResult } from './step-check.js';
 export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns: 20, contextBytes: 32768 });
 /** Most original turns recalled beside a summary; fewer are used when the prompt bound needs it. */
 export const PREVIEW_RECALL_LIMIT = 5;
+/** Full original history grounds short conversations even when a summary exists. */
+export const PREVIEW_FULL_HISTORY_BYTES = 64 * 1024;
 /** Most dated source entries recalled for each named person; the packet also has a total bound. */
 export const PREVIEW_PEOPLE_LIMIT = 10;
 /** Most related open commitments shown with a new message after compaction. */
@@ -2630,6 +2632,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
     };
     let promptFit = false;
+    // Rule 96: a short history remains the grounding source even if a summary
+    // was accepted early. The fixed bound prevents a raised packet cap from
+    // making long conversations grow without limit.
+    const completePacket = completeTooLarge ? undefined : packetFor(turn.update - 1, false, [], [], [], turn.thread);
+    const completeHistoryBytes = completePacket === undefined ? Infinity
+      : Buffer.byteLength(JSON.stringify((JSON.parse(completePacket) as { history: unknown[] }).history));
+    const preferComplete = completeHistoryBytes <= PREVIEW_FULL_HISTORY_BYTES;
     let measuredPromptOverflow = false;
     let preparationUnavailable = false;
     const memoryBudgetFirst = journal.view.people.length > 0 && latestSummary !== undefined
@@ -2637,13 +2646,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         > journal.view.limits.maxBytes);
     for (const allowGreeting of ports.sources ? [true, false] : [true])
     for (const compact of memoryBudgetFirst ? [true, false] : [false, true]) {
+      if (!compact && latestSummary && !preferComplete) continue;
       if (!compact && /\b(?:promise|promised|commitment|commitments|anything open|what(?:'s| is) open)\b/iu.test(turn.text)
         && summaryFor(turn.update - 1)) continue;
       if (!compact && completeTooLarge) continue;
       const summary = compact ? summaryFor(turn.update - 1) : undefined;
       if (compact && !summary) continue;
       // Optional evidence cannot make the complete unsummarized history smaller.
-      if (!compact && Buffer.byteLength(packetFor(turn.update - 1, false, [], [], [], turn.thread))
+      if (!compact && Buffer.byteLength(completePacket!)
         > journal.view.limits.maxBytes) continue;
       const recalled = said ? said.indices.map(index => older[index]!).filter(item => !summary || item.update <= summary.through)
         : summary ? recallFor(turn, summary) : [];
