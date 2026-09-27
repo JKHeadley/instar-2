@@ -85,6 +85,51 @@ it('replays a durably appended item when the cursor append fails, then dedupes b
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
 
+it('recovers durable items after an interrupted pass and source rewrite without poisoning journal replay', () => {
+  const w = world();
+  try {
+    const path = join(w.statePath, 'telegram-messages.jsonl');
+    w.journal.append({ kind: 'intake', id: 'ordinary', update: 1, text: 'Earlier turn.', raw: '{}',
+      accepted: true, cursor: 2, at: now });
+    writeFileSync(path, lines([telegram(20, 99, 'First fact.'), telegram(21, 99, 'Second fact.')]) + '{bad json}\n');
+    expect(() => importStorePass(w.journal, w.state, 'telegram', now, () => false)).toThrow();
+    expect(w.journal.view.channelItems.size).toBe(2);
+    expect(w.journal.view.channelSources.has('telegram')).toBe(false);
+    w.journal.close();
+
+    writeFileSync(path, lines([telegram(21, 99, 'Second fact.')]));
+    const recovered = openPreviewJournal(w.path, key);
+    expect(importStorePass(recovered, w.state, 'telegram', now, () => false)).toMatchObject({ scanned: 1, imported: 0 });
+    expect(recovered.view.channelSources.get('telegram')).toMatchObject({ scanned: 2, imported: 2, skipped: 0 });
+    recovered.close();
+
+    writeFileSync(path, lines([telegram(21, 99, 'Second fact.'), telegram(22, 99, 'Third fact.')]));
+    const replay = openPreviewJournal(w.path, key);
+    expect(replay.view.order.map(turn => turn.id)).toEqual(['ordinary']);
+    expect(replay.view.channelItems.size).toBe(2);
+    expect(importStorePass(replay, w.state, 'telegram', now, () => false)).toMatchObject({ scanned: 1, imported: 1 });
+    expect(replay.view.channelSources.get('telegram')).toMatchObject({ scanned: 3, imported: 3, skipped: 0 });
+    replay.close();
+    const finalReplay = openPreviewJournal(w.path, key);
+    expect(finalReplay.view.order.map(turn => turn.id)).toEqual(['ordinary']);
+    expect(finalReplay.view.channelItems.size).toBe(3);
+    finalReplay.close();
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
+});
+
+it('rejects an invalid source cursor before writing a journal frame', () => {
+  const w = world();
+  try {
+    expect(() => w.journal.append({ kind: 'channel-source-cursor', source: 'telegram',
+      cursor: { offset: 1, file: 'file', anchor: '0'.repeat(64), scanned: 1, imported: 2, skipped: -1 }, at: now }))
+      .toThrow('invalid channel source cursor');
+    w.journal.close();
+    const replay = openPreviewJournal(w.path, key);
+    expect(replay.view.channelSources.has('telegram')).toBe(false);
+    replay.close();
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
+});
+
 it('stops at a partial line and resumes it after the server finishes writing', () => {
   const w = world();
   try {
@@ -168,18 +213,26 @@ it('CLI imports the real store format and status exposes durable per-source curs
     rmSync(w.path);
     const fresh = openPreviewJournal(w.path, key, { ...genesis, expires: Date.now() + 60_000 });
     fresh.close();
-    writeFileSync(join(w.statePath, 'telegram-messages.jsonl'), lines([telegram(80, 99, 'The studio code is JADE-52.') ]));
+    const sourcePath = join(w.statePath, 'telegram-messages.jsonl');
+    const valid = lines([telegram(80, 99, 'The studio code is JADE-52.')]);
+    writeFileSync(sourcePath, valid + '{bad json}\n');
     const invoke = (command: string, extra: string[] = []) => spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', command,
         '--root', w.base, ...extra], { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000,
         env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    const failed = invoke('import-store', ['--agent-state-dir', w.statePath]);
+    expect(failed.status, failed.stderr).toBe(1);
+    const failedStatus = invoke('status');
+    expect(failedStatus.status, failedStatus.stderr).toBe(0);
+    expect(JSON.parse(failedStatus.stdout).channelSources.telegram).toMatchObject({ offset: 0, error: 'import refused' });
+    writeFileSync(sourcePath, valid);
     const imported = invoke('import-store', ['--agent-state-dir', w.statePath]);
     expect(imported.status, imported.stderr).toBe(0);
-    expect(JSON.parse(imported.stdout)).toMatchObject({ results: [{ source: 'telegram', scanned: 1, imported: 1 }, { source: 'slack', absent: true }] });
+    expect(JSON.parse(imported.stdout)).toMatchObject({ results: [{ source: 'telegram', scanned: 1, imported: 0 }, { source: 'slack', absent: true }] });
     const status = invoke('status');
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).channelSources).toMatchObject({ telegram: { scanned: 1, imported: 1, skipped: 0, error: null },
       slack: { scanned: 0, imported: 0, skipped: 0, error: null } });
     expect(invoke('import-store', ['--agent-state-dir', w.statePath, '--live-mail', 'true']).status).not.toBe(0);
   } finally { rmSync(w.base, { recursive: true, force: true }); }
-});
+}, 30_000);

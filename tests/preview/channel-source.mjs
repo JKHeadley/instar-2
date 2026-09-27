@@ -109,7 +109,10 @@ export function importStorePass(journal, state, source, now, stopped) {
       // frame. Replaying that line must not undercount the source after dedupe.
       const totalImported = [...journal.view.channelItems.values()].filter(item =>
         item.origin === 'stored-log' && item.id.startsWith(`${source}:`)).length;
-      const scanned = (prior?.scanned ?? 0) + lines;
+      const priorImported = prior?.imported ?? 0;
+      // A failed pass may have durably appended items whose source lines were
+      // later removed. Count those recovered items as scanned once.
+      const scanned = (prior?.scanned ?? 0) + Math.max(lines, totalImported - priorImported);
       journal.append({ kind: 'channel-source-cursor', source, ...(prior && !same ? { reset: true } : {}),
         cursor: { offset: offset + start, file, anchor: anchorAt(offset + start),
           scanned, imported: totalImported, skipped: scanned - totalImported }, at: now });

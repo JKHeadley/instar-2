@@ -16,6 +16,20 @@ import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from '
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 import { agentState, importStorePass } from './channel-source.mjs';
 
+const importSource = (journal, state, source, stopped) => {
+  try {
+    const result = importStorePass(journal, state, source, Date.now(), stopped);
+    if (journal.view.channelSourceErrors.has(source))
+      journal.append({ kind: 'channel-source-error', source, error: null, at: Date.now() });
+    return result;
+  } catch (error) {
+    if (!stopped() && !journal.view.stop && Date.now() < journal.view.genesis.expires
+      && journal.view.channelSourceErrors.get(source) !== 'import refused')
+      journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: Date.now() });
+    throw error;
+  }
+};
+
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
   for (let i = 1; i < values.length; i += 2) {
@@ -185,7 +199,7 @@ async function main() {
       if (options['live-mail'] !== undefined && options['live-mail'] !== 'false') throw Error('preview: live mail source is disabled');
       const state = agentState(required(options, 'agent-state-dir'));
       storeJournal = openPreviewJournal(journalPath, key());
-      const results = ['telegram', 'slack'].map(source => importStorePass(storeJournal, state, source, Date.now(), () => existsSync(stopPath)));
+      const results = ['telegram', 'slack'].map(source => importSource(storeJournal, state, source, () => existsSync(stopPath)));
       process.stdout.write(`${JSON.stringify({ results, channelItems: storeJournal.view.channelItems.size })}\n`);
     } finally { storeJournal?.close(); storage.close(); }
     return;
@@ -389,12 +403,9 @@ async function main() {
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
-          importStorePass(journal, sourceState, source, Date.now(), () => workerStop.value || existsSync(stopPath));
-          if (journal.view.channelSourceErrors.has(source)) journal.append({ kind: 'channel-source-error', source, error: null, at: Date.now() });
+          importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
         } catch {
           if (workerStop.value || existsSync(stopPath)) break;
-          if (journal.view.channelSourceErrors.get(source) !== 'import refused')
-            journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: Date.now() });
         }
       }
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();

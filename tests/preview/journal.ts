@@ -123,6 +123,15 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     || [...view.summaryReservations].some(through => !view.summaries.some(item => item.through === through)))
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
+function checkChannelSourceCursor(view: JournalView, row: Extract<JournalRecord, {kind:'channel-source-cursor'}>): void {
+  const c = row.cursor, prior = view.channelSources.get(row.source);
+  if (!['telegram', 'slack'].includes(row.source) || !c || !Number.isSafeInteger(c.offset) || c.offset < 0
+    || typeof c.file !== 'string' || !c.file || !/^[a-f0-9]{64}$/u.test(c.anchor)
+    || ![c.scanned, c.imported, c.skipped].every(n => Number.isSafeInteger(n) && n >= 0)
+    || c.scanned !== c.imported + c.skipped || prior && (c.scanned < prior.scanned || c.imported < prior.imported
+    || c.skipped < prior.skipped || c.file === prior.file && c.offset < prior.offset && row.reset !== true))
+    throw Error('preview journal: invalid channel source cursor');
+}
 function project(view: JournalView, row: JournalRecord): void {
   if ('state' in row && row.state) view.providerStates.set(row.state, (view.providerStates.get(row.state) ?? 0) + 1);
   if ('failureClass' in row && row.failureClass)
@@ -152,14 +161,8 @@ function project(view: JournalView, row: JournalRecord): void {
     view.channelItems.set(key, item); return;
   }
   if (row.kind === 'channel-source-cursor') {
-    const c = row.cursor, prior = view.channelSources.get(row.source);
-    if (!['telegram', 'slack'].includes(row.source) || !c || !Number.isSafeInteger(c.offset) || c.offset < 0
-      || typeof c.file !== 'string' || !c.file || !/^[a-f0-9]{64}$/u.test(c.anchor)
-      || ![c.scanned, c.imported, c.skipped].every(n => Number.isSafeInteger(n) && n >= 0)
-      || c.scanned !== c.imported + c.skipped || prior && (c.scanned < prior.scanned || c.imported < prior.imported
-      || c.skipped < prior.skipped || c.file === prior.file && c.offset < prior.offset && row.reset !== true))
-      throw Error('preview journal: invalid channel source cursor');
-    view.channelSources.set(row.source, c); return;
+    checkChannelSourceCursor(view, row);
+    view.channelSources.set(row.source, row.cursor); return;
   }
   if (row.kind === 'channel-source-error') {
     if (!['telegram', 'slack'].includes(row.source) || row.error !== null
@@ -330,6 +333,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const append = (row: JournalRecord) => {
       if (readOnly) throw Error('preview journal: reader cannot append');
       if (row.kind === 'caps') checkCaps(view!, row);
+      if (row.kind === 'channel-source-cursor') checkChannelSourceCursor(view!, row);
       boundary?.(`before:${row.kind}`);
       const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
       cipher.setAAD(Buffer.from(`preview-journal:${size}`));
