@@ -1032,3 +1032,33 @@ durable check order, and the holding reply without network access.
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),
 never an unsent candidate.
+
+### Read-only memory export
+
+The operator can review the preview journal's memory without a model call, send,
+poll, lease, or journal write:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs export-memory \
+  --root /ABSOLUTE/EXISTING_ROOT
+```
+
+The desk supplies the existing storage-key host binding. The Markdown goes to
+stdout; redirect it only to an operator-controlled location if a file is needed.
+The command reads the encrypted journal in read-only mode and lists people notes,
+active correction replacements, forgotten markers, dated items, active
+preferences, and channel imports with source update or source ID, sender and date
+where available. Dated items and preferences show zero on a runner that has not
+installed those projections. Imported sender identity is export metadata, not an
+identity the fixture route independently authenticated. This is a review of
+recorded memory, not a claim that a bounded selection is complete.
+
+The report never prints a forgotten clause. It also withholds old corrected
+clauses and matching terms from every displayed field, and applies the existing
+credential redactor again on output. A source message over 700 bytes is omitted
+as a whole instead of showing a potentially misleading fragment. Each category
+shows at most 20 newest entries; the complete output is at most 16 KiB and names
+omitted counts. Originals remain in the encrypted journal. The command does not
+make a new root or advance any cursor. Follow
+[memory-export-live-test.md](memory-export-live-test.md) for Justin's supervised
+private-chat check.
