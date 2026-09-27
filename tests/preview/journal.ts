@@ -176,8 +176,12 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
 function heldNoticeDueAt(view: JournalView, turn: Turn): number {
-  const lastNotice = view.awayEvents.filter(event => event.kind === 'held-notice-intent').at(-1)?.at ?? -Infinity;
+  const lastNotice = lastHeldNoticeAt(view);
   return Math.max(turn.heldSince! + HELD_NOTICE_AFTER_MS + 1, lastNotice + HELD_NOTICE_WINDOW_MS);
+}
+function lastHeldNoticeAt(view: JournalView, exceptId?: string): number {
+  return view.awayEvents.reduce((last, event) => event.kind === 'held-notice-intent' && event.id !== exceptId
+    ? Math.max(last, event.at) : last, -Infinity);
 }
 
 /** Keep the append-only confirmation, but stop using it once its source claim is corrected or forgotten. */
@@ -226,6 +230,16 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
     callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []) };
   verifyPendingEvidence(snapshot.retained, view);
+  // Older snapshots retained the exact notice intents but did not project them
+  // into awayEvents. Recover their times so the first upgraded send keeps its fence.
+  const projected = new Set(view.awayEvents.filter(event => event.kind === 'held-notice-intent').map(event => event.id));
+  for (const row of snapshot.retained) {
+    if (row.kind !== 'held-notice-intent' || projected.has(row.id)) continue;
+    const index = view.awayEvents.findIndex(event => event.at > row.at);
+    view.awayEvents.splice(index < 0 ? view.awayEvents.length : index, 0,
+      { kind: 'held-notice-intent', at: row.at, id: row.id });
+    projected.add(row.id);
+  }
   return view;
 }
 function frame(row: JournalRecord | SnapshotStart | SnapshotChunk, key: Uint8Array, offset: number): Buffer {
@@ -611,14 +625,14 @@ function project(view: JournalView, row: JournalRecord): void {
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
   if (row.kind === 'held-notice-intent') {
-    const lastNotice = view.awayEvents.filter(event => event.kind === 'held-notice-intent' && event.id !== row.id).at(-1)?.at ?? -Infinity;
+    const lastNotice = lastHeldNoticeAt(view, row.id);
     const heldCount = view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
     const legacyText = /^PREVIEW — I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
     const countedText = new RegExp(`^PREVIEW — I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
     if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldSince === undefined
       || row.at <= turn.heldSince + HELD_NOTICE_AFTER_MS || turn.intent !== undefined
       || turn.heldNoticeIntent !== undefined || view.replies >= view.limits.maxReplies
-      || row.at < lastNotice + HELD_NOTICE_WINDOW_MS
+      || !legacyText && row.at < lastNotice + HELD_NOTICE_WINDOW_MS
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || !(legacyText || countedText))
       throw Error('preview journal: held notice intent order');

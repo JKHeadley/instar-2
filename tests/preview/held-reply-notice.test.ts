@@ -94,6 +94,92 @@ for (const receipt of [12, null] as const) {
   });
 }
 
+it('replays a parent-format burst, keeps both intents fenced, and applies the hour to the next counted notice', async () => {
+  const dir = root(), path = join(dir, 'journal.encrypted');
+  try {
+    let now = 1_000, sends = 0;
+    const first = openPreviewJournal(path, key, genesis(1, 4));
+    const worker = createJournalWorker(first, { now: () => now, stopped: () => false,
+      model: async () => { throw Error('model ran'); }, checkOutbound: () => {},
+      send: async () => { sends++; return 13; } });
+    worker.intake([update(1), update(2)]);
+    for (const turn of first.view.order) first.append({ kind: 'hold', id: turn.id, reason: 'call cap', at: now });
+    now += HELD_NOTICE_AFTER_MS + 1;
+    for (const turn of first.view.order) {
+      first.append({ kind: 'held-notice-intent', id: turn.id,
+        text: "PREVIEW — I'm holding my answer to your message from 12:26; it will follow or I'll tell you why",
+        chat: first.view.genesis.chat, update: turn.update, grant: first.view.genesis.grant, at: now });
+    }
+    first.append({ kind: 'held-notice-sent', id: first.view.order[0]!.id, message: 12, at: now });
+    first.close();
+
+    const reopened = openPreviewJournal(path, key);
+    const resumed = createJournalWorker(reopened, { now: () => now, stopped: () => false,
+      model: async () => { throw Error('model ran'); }, checkOutbound: () => {},
+      send: async () => { sends++; return 13; } });
+    expect(reopened.view.order.map(turn => turn.heldNoticeSent)).toEqual([12, undefined]);
+    await resumed.drain();
+    expect(sends).toBe(0);
+    resumed.intake([update(3)]);
+    reopened.append({ kind: 'hold', id: reopened.view.order[2]!.id, reason: 'call cap', at: now });
+    now += HELD_NOTICE_AFTER_MS + 1;
+    expect(resumed.nextHeldNoticeAt()).toBe(1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS);
+    await resumed.drain(); expect(sends).toBe(0);
+    now = resumed.nextHeldNoticeAt()!;
+    await resumed.drain(); expect(sends).toBe(1);
+    reopened.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+for (const receipt of [12, null] as const) {
+  it(`recovers the hour fence from an older snapshot with notice receipt ${String(receipt)}`, async () => {
+    const dir = root(), path = join(dir, 'journal.encrypted');
+    try {
+      let now = 1_000, sends = 0;
+      let oldProjection: typeof first.view.awayEvents = [];
+      const first = openPreviewJournal(path, key, genesis(1, 3), stage => {
+        if (stage === 'compact:after-fsync') first.view.awayEvents = oldProjection;
+      });
+      const worker = createJournalWorker(first, { now: () => now, stopped: () => false,
+        model: async () => { throw Error('model ran'); }, checkOutbound: () => {},
+        send: async () => { sends++; return receipt; } });
+      worker.intake([update(1)]);
+      const turn = first.view.order[0]!;
+      first.append({ kind: 'hold', id: turn.id, reason: 'call cap', at: now });
+      now += HELD_NOTICE_AFTER_MS + 1;
+      first.append({ kind: 'held-notice-intent', id: turn.id,
+        text: "PREVIEW — I'm holding my answer to your message from 12:26; it will follow or I'll tell you why",
+        chat: first.view.genesis.chat, update: turn.update, grant: first.view.genesis.grant, at: now });
+      if (receipt !== null) first.append({ kind: 'held-notice-sent', id: turn.id, message: receipt, at: now });
+      // Emulate the parent's saved view: it retained the intent but omitted its away event.
+      oldProjection = first.view.awayEvents;
+      first.view.awayEvents = oldProjection.filter(event => event.kind !== 'held-notice-intent');
+      first.compact();
+      first.close();
+
+      const reopened = openPreviewJournal(path, key);
+      expect(reopened.view.awayEvents.filter(event => event.kind === 'held-notice-intent')).toEqual([
+        { kind: 'held-notice-intent', at: 1_000 + HELD_NOTICE_AFTER_MS + 1, id: turn.id }]);
+      const resumed = createJournalWorker(reopened, { now: () => now, stopped: () => false,
+        model: async () => { throw Error('model ran'); }, checkOutbound: () => {},
+        send: async () => { sends++; return 13; } });
+      resumed.intake([update(2)]);
+      reopened.append({ kind: 'hold', id: reopened.view.order[1]!.id, reason: 'call cap', at: now });
+      now += HELD_NOTICE_AFTER_MS + 1;
+      const due = 1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS;
+      expect(resumed.nextHeldNoticeAt()).toBe(due);
+      await resumed.drain(); expect(sends).toBe(0);
+      now = due;
+      await resumed.drain(); expect(sends).toBe(1);
+      reopened.compact();
+      reopened.close();
+      const again = openPreviewJournal(path, key);
+      expect(again.view.awayEvents.filter(event => event.kind === 'held-notice-intent')).toHaveLength(2);
+      again.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
+
 it('waits for each turn to age ten minutes before selecting its notice', async () => {
   const dir = root();
   try {
