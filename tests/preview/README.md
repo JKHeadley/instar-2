@@ -1021,6 +1021,23 @@ preview trial with spare call and turn slots provisioned **before** the fault:
    limits. It must refuse with `UNKNOWN`. Restart and confirm the original
    and later summary records still replay. Retain the status, inspect, call
    trace, and trial root as evidence under the desk's trial handling rules.
+Each live rolling-summary candidate receives one Jev 1.13.0 integrity check
+using the same TypeSafe binding and two-second timeout as the reply check.
+The check sees the summary packet and proposed summary, people, commitments,
+closures and memory decisions. It asks about dropped commitments, people,
+corrections or dates and invented facts. A Jev pass accepts the candidate.
+A violation or unsure signal reserves one full-context subscription review
+under the same call cap; only that review decides whether to accept or retry.
+Jev unavailable or a confirmed violation keeps the prior summary frontier
+and uses the existing bounded summary retry path. An uncertain reserved
+subscription review stays pending across restart and is never repeated.
+`status.summaryChecks` and `lastSummaryCheck` report content-free verdicts.
+The complete candidate stays only in its encrypted journal record; provider
+status and the agent's self-state count only provider outcomes. The candidate
+record also retains the completed summary call's usage, whether supervision
+accepts, rejects or remains unknown, without counting it again on acceptance.
+The live procedure is [summary-supervisor-live-test.md](summary-supervisor-live-test.md).
+
 
 ### One memory across conversations
 

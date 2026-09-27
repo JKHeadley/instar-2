@@ -15,6 +15,7 @@ import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJou
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
+import { interpretSummaryReview } from './summary-check.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 
@@ -161,6 +162,12 @@ async function main() {
       datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,
+
+      summaryChecks: view.view.summaryCheckCounts,
+      lastSummaryCheck: view.view.lastSummaryCheck && { verdict: view.view.lastSummaryCheck.verdict,
+        path: view.view.lastSummaryCheck.path, latencyMs: view.view.lastSummaryCheck.latencyMs,
+        usage: view.view.lastSummaryCheck.usage ?? null },
+
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
         failed: view.view.order.filter(t => t.checkFailed).length,
@@ -320,12 +327,12 @@ async function main() {
       },
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: async text => {
+        jev: async (text, questions = jevQuestions) => {
           const start = performance.now();
           const response = await fetch('https://api.typesafe.ai/v1/systemone', {
             method: 'POST', signal: AbortSignal.timeout(2000),
             headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions }) });
+            body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
           if (!response.ok) throw Error('preview: Jev unavailable');
           return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
         },
@@ -348,6 +355,16 @@ async function main() {
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+        },
+        summaryReview: async (state, through) => {
+          const start = performance.now();
+          const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
+          const id = `summary:${through}:review`;
+          let prepared;
+          try { prepared = modelEnvelope({ question, context: state, id }); }
+          catch { return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start) }; }
+          const result = await invokeSubscription(prepared, id);
+          return interpretSummaryReview(result, Math.round(performance.now() - start));
         }
       },
       send: async ({ text, expectedText, chat, thread }) => {

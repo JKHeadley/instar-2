@@ -71,7 +71,7 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 }
 
 export interface ReplyCheckPorts {
-  jev(text: string): Promise<{ value: unknown; latencyMs: number }>;
+  jev(text: string, questions?: Record<string, { type: string; instructions: string }>): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[]): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }>;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
