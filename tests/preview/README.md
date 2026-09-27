@@ -725,10 +725,14 @@ journal reopen/replay and all later question runs. Each `probePreparationMs`
 times only the read-only `worker.probe` for a later question; it excludes that
 question's intake, actual model packet construction and drain. The 200-turn
 Vitest baseline is the measured 100% recall and 100% exclusion on this fixed
-fixture. It does not measure semantic retrieval, answer quality from a real
+fixture. Its overlapping-name set plants two distinct Sams and separate Jon/John
+sources, then checks that ambiguous questions expose both sources and detailed
+questions expose the intended source after compaction. The answer stub asks one
+clarifying question for ambiguous cases and copies only visible clauses for
+detailed cases. It does not measure semantic retrieval, answer quality from a real
 model, provider latency or a live Telegram path. For the supervised human
-check, use
-[recall-benchmark-live-test.md](recall-benchmark-live-test.md).
+check, use [recall-benchmark-live-test.md](recall-benchmark-live-test.md) and
+[overlapping-names-recall-live-test.md](overlapping-names-recall-live-test.md).
 
 `journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
 append-only local journal and one exclusive writer. At boot it replays the journal once;

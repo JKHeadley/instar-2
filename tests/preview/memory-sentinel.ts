@@ -31,6 +31,26 @@ const counts: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five
 const measuredNumber = /\b\d[\d,]*(?:\.\d+)?\s*[\p{L}µμ°%]{1,20}(?![\p{L}\p{N}])/iu;
 const quantityQuestion = /\b(?:how\s+(?:much|many|far|long|heavy)|amount|dose|dosage|distance|weight|measurement|quantity)\b/iu;
 
+/** Candidate matching only. A nearby spelling never establishes identity. */
+export function similarName(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.min(a.length, b.length) < 3 || Math.max(a.length, b.length) > 24 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length >= b.length) i++;
+    if (b.length >= a.length) j++;
+  }
+  return edits + Number(i < a.length || j < b.length) <= 1;
+}
+
+/** Bound fuzzy selection to capitalized name-shaped query words. */
+export function namedTerms(message: string): string[] {
+  return [...new Set([...message.matchAll(/\b\p{Lu}[\p{L}]{2,23}\b/gu)]
+    .flatMap(match => terms(match[0]!)).filter(word => word.length >= 3 && word.length <= 24))].slice(0, 8);
+}
+
 /** A window of send times named by the message. The operator's time zone is not
  * known, so every window is widened by at least half a day either side. */
 export function namedWindow(message: string, now: number): { from: number; to: number } | null {
@@ -177,6 +197,11 @@ export function selectRecall(input: SentinelInput): number[] {
   // authority to surface an unrelated measurement.
   if (quantityQuestion.test(input.message)) input.candidates.forEach((turn, index) => {
     if (score[index]! > 0 && measuredNumber.test(turn.measurementText ?? turn.text)) score[index]! += 3;
+  });
+  const names = namedTerms(input.message);
+  if (names.length) documents.forEach((words, index) => {
+    if (names.some(name => words.includes(name))) score[index]! += 2;
+    else if (names.some(name => words.some(word => similarName(name, word)))) score[index]! += 1;
   });
   // A named day counts like one strong matching term, so it ranks alongside content.
   if (window) input.candidates.forEach((turn, index) => {

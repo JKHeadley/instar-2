@@ -105,6 +105,15 @@ it('ranks an exact measured source above topical chatter for a quantity question
   expect(selectRecall({ message: 'How much was the supplement dose?', candidates: modelGuess, now, limit: 1 })).toEqual([1]);
 });
 
+it('offers a nearby capitalized name as a separate candidate without widening ordinary words', () => {
+  const candidates = [{ text: 'Jon Moss chose an amber cover.', at: now - day },
+    { text: 'John Vale chose a green contract.', at: now - day },
+    { text: 'Oliver chose a paper folder.', at: now - day }];
+  expect(selectRecall({ message: 'What did John choose?', candidates, now, limit: 5 })).toEqual([1, 0]);
+  expect(selectRecall({ message: 'What did Oliver choose?', candidates, now, limit: 5 })).toEqual([2]);
+  expect(selectRecall({ message: 'what did the olive note say?', candidates, now, limit: 5 })).toEqual([]);
+});
+
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-sentinel-')));
   const key = new Uint8Array(32).fill(9), samples: number[] = [];

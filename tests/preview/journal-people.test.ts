@@ -164,6 +164,27 @@ it('keeps same-name people apart for the model and gives an unknown person nothi
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('offers John and Jon as separate sourced people after compaction and keeps their details available', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { names: ['Jon Moss', 'John Vale'], bad: false });
+    await w.say(1, 'Jon Moss from design chose the amber cover.');
+    await w.say(2, 'John Vale from legal chose the green contract.');
+    const n = await w.fillUntilRecall(3, 'What did John choose?');
+    await w.say(n, 'What did John choose?');
+    const ambiguous = JSON.parse(w.asked.get('What did John choose?')!);
+    expect(ambiguous.people.map((item: { mentions: { person: string }[] }) => item.mentions[0]!.person))
+      .toEqual(['Jon Moss', 'John Vale']);
+    expect(ambiguous.personMerges).toBeUndefined();
+    expect(ambiguous.capability).toContain('ask one clarifying question');
+    await w.say(n + 1, 'What did John from legal choose?');
+    const specific = JSON.parse(w.asked.get('What did John from legal choose?')!);
+    expect(specific.people.some((item: { message: string }) => item.message.includes('green contract'))).toBe(true);
+    expect(specific.capability).toContain('answer about that person only');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it.each(['forget', 'correct'] as const)('links only the confirmed pair across replay, then withdraws it on %s', async mode => {
   const root = origin();
   const summarize = (context: string) => {
