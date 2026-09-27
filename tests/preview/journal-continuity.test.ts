@@ -58,6 +58,7 @@ it.each(boundaries)('restarts after %s without duplicate sends or lost memory', 
         expect(journal.view.replies, cut).toBe(sends.length + journal.view.order.filter(turn => turn.intent && !sends.some(send => send.update === turn.update)).length);
         expect(journal.view.summaryReservations.size, cut).toBeLessThanOrEqual(1);
         expect(journal.view.order[3]?.answer, cut).toBe('Silver otter 731');
+        expect(journal.view.order[3]?.sent, cut).toBeDefined();
       } finally { journal.close(); }
     } finally { rmSync(root, { recursive: true, force: true }); }
 }, 20000);

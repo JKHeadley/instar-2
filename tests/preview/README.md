@@ -580,6 +580,36 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSO
 
 ## Structural journal runner (rounds 10–13)
 
+### Restart and handoff matrix
+
+`restart-handoff-program.test.ts` exercises graceful close, the permanent
+operator stop, reserved-call and send-intent crash cuts, a held-notice intent
+with UNKNOWN delivery, activation renewal, and a
+frozen14-to-candidate journal reader switch. Each case uses a disposable encrypted
+journal. Its shared fixture contains a Telegram-accepted fact, one held notice,
+one UNKNOWN call and one UNKNOWN send. It compares the same recall probe before
+and after reopening, verifies accepted intake and cursor, and checks that the
+held notice and uncertain effects are never dispatched twice. The older
+append-boundary harness in `journal-continuity.test.ts` kills a child with
+SIGKILL before and after every
+record in its multi-turn fixture; a later unrelated turn still recalls its code.
+These are offline proofs with stubbed provider and Telegram effects. The actual
+launcher signal path for SIGINT, SIGTERM and SIGHUP is covered by
+`journal-agent.test.ts`; the private-chat procedure is in
+[restart-handoff-program-live-test.md](restart-handoff-program-live-test.md).
+The preview remains machine-local under one writer; a build switch must retain
+the old journal's readable schema and its UNKNOWN fences.
+
+| Stop class | Offline harness | Recovery result |
+|---|---|---|
+| Graceful cycle end | `restart-handoff-program.test.ts` | Reopen and drain the same root. |
+| Operator stop | `restart-handoff-program.test.ts` | Reopen for status and recall; dispatch stays refused. |
+| SIGINT, SIGTERM, SIGHUP | `journal-agent.test.ts` | Launcher records the signal and resumes the same root. |
+| Crash before or after a frame | `journal-continuity.test.ts` | Replay durable prefix; uncertain call or send stays fenced. |
+| Crash during held notice | `restart-handoff-program.test.ts` | UNKNOWN notice intent stays one-shot. |
+| Activation renewal | `restart-handoff-program.test.ts` | New reviewed expiry admits the same journal; old expiry is refused. |
+| Build switch | `restart-handoff-program.test.ts` | Frozen14 and candidate readers agree on recall and send state. |
+
 ### Offline recall benchmark
 
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and

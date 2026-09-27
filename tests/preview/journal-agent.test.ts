@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 
-it.each(['SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and resumes on launch', async signal => {
+it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and resumes on launch', async signal => {
   const world = successiveWorld(), root = join(world.directory, 'idle-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log');
