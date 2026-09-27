@@ -1093,14 +1093,18 @@ launcher resolves vault entry `typesafe_api_key` into
 `INSTAR_SECRET_PREVIEW_TYPESAFE_KEY` for the runner process. Treat it like the
 existing storage and Telegram host bindings; never place it in command arguments,
 the journal, or logs. The key is required only for the Jev route. A missing key,
-timeout (2 seconds), or provider error invokes one full-context subscription
+timeout (2 seconds), or provider error invokes one contextual subscription
 review under the same journal call cap. Jev's pinned model is `jev-1.13.0`.
 
 Jev checks the eight measured message questions in one batch. A clear pass sends
 the candidate. A violation, uncertain score, or unavailable Jev invokes one
-subscription review with the original operator message, audience, sources,
-memory and history. Only that full-context review can suppress a non-secret
-candidate. Only a completed PASS (Jev or the full-context review) releases the
+subscription review with the candidate, original operator message, flagged
+rule definitions and at most four recent history entries within 4096 bytes.
+If Jev is unavailable, the review includes all eight rules. The original
+grounding packet stays in the encrypted journal; the reviewer receives only
+this bounded context and returns one short PASS or VIOLATION line inside the
+existing Decision envelope. Only that contextual review can suppress a non-secret
+candidate. Only a completed PASS (Jev or the contextual review) releases the
 candidate. If no check can decide (review budget exhausted, reviewer outage,
 malformed output), nothing is sent: the turn stays held with its message,
 candidate and reservations. A refused review reservation is a `call cap` hold
@@ -1113,6 +1117,12 @@ The check result is encrypted and fsynced before the send intent; `status` and
 subscription review is not retried or charged again from this runner; the turn
 is held as `reply check unavailable` rather than sent unchecked.
 An interrupted Jev check escalates without repeating Jev.
+The fixed subscription route keeps its 2048 output-token ceiling and reviewed
+invocation policy digest. Its Claude CLI process gets that ceiling through
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS`; the fixed arguments have no per-call thinking
+control. Changing the CLI effort arguments would need a new activation.
+
+Desk live check for this compact path: [reviewer-compact-call-live-test.md](reviewer-compact-call-live-test.md).
 
 Desk one-call connectivity check, after setting the host binding from the vault:
 

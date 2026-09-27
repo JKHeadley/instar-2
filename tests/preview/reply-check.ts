@@ -24,15 +24,38 @@ const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0
   claims_blocked: 0.85, parks_on_user: 0.85 };
 export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: REPLY_RULES[id] }]));
 
-/** Reuse the exact packet that grounded the proposed answer, including its
- * audience, sources, memory and conversation history. */
-export function replyReviewContext(originalPrompt: string, candidateReply: string): string {
+/** Review the proposed send with the operator's request and a small recent slice.
+ * A Jev transport failure supplies no rule IDs, so review all eight rules. */
+export function replyReviewContext(originalPrompt: string, candidateReply: string, flagged: ReplyRule[] = []): string {
   const messages = JSON.parse(originalPrompt).messages as { role: string; content: string }[];
   const packet = JSON.parse(messages.find(message => message.role === 'context')?.content ?? '').packet;
   const operatorMessage = messages.find(message => message.role === 'user')?.content;
-  if (typeof operatorMessage !== 'string' || !packet?.audience || !Array.isArray(packet.history))
+  if (typeof operatorMessage !== 'string' || !Array.isArray(packet?.history) || typeof candidateReply !== 'string')
     throw Error('preview: full reply-review context malformed');
-  return JSON.stringify({ ...packet, operatorMessage, candidateReply });
+  if (Buffer.byteLength(operatorMessage) > 8192 || Buffer.byteLength(candidateReply) > 8192)
+    throw Error('preview: reply-review text exceeds bound');
+  const selected = flagged.length ? flagged : rules;
+  if (selected.some(id => !Object.hasOwn(REPLY_RULES, id))) throw Error('preview: reply-review rule absent');
+  const recentHistory: unknown[] = [];
+  let bytes = 2; // JSON array brackets
+  for (const entry of packet.history.slice(-4).reverse()) {
+    const size = Buffer.byteLength(JSON.stringify(entry)) + (recentHistory.length ? 1 : 0);
+    if (bytes + size > 4096) break;
+    recentHistory.unshift(entry); bytes += size;
+  }
+  return JSON.stringify({ candidateReply, operatorMessage,
+    rules: Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])), recentHistory });
+}
+
+/** The short line lives inside the route's required Decision envelope. */
+export function parseReplyReviewVerdict(value: string): { verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; reason: string } {
+  const match = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,160})$/u.exec(value.trim());
+  if (!match || !match[3]?.trim()) throw Error('preview: review malformed');
+  const ruleIds = match[2] ? match[2].split(',') as ReplyRule[] : [];
+  if ((match[1] === 'PASS' && ruleIds.length) || (match[1] === 'VIOLATION' && !ruleIds.length)
+    || new Set(ruleIds).size !== ruleIds.length || ruleIds.some(id => !Object.hasOwn(REPLY_RULES, id)))
+    throw Error('preview: review malformed');
+  return { verdict: match[1] === 'PASS' ? 'pass' : 'violation', ruleIds, reason: match[3]! };
 }
 
 /** `noul` is Jev's probability that the statement applies. Mid-band answers
@@ -61,7 +84,7 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 
 export interface ReplyCheckPorts {
   jev(text: string): Promise<{ value: unknown; latencyMs: number }>;
-  escalate(text: string, id: string, originalPrompt?: string): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
+  escalate(text: string, id: string, originalPrompt?: string, ruleIds?: ReplyRule[]): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }>;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   record(result: ReplyCheckResult): void;
@@ -80,12 +103,12 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
 }
 
 /** Supervision outcome. Only a completed check may release the original candidate:
- * a Jev PASS or a full-context PASS. When no judgment was obtained (review budget
+ * a Jev PASS or a contextual review PASS. When no judgment was obtained (review budget
  * exhausted, reviewer outage, malformed output) the outcome is `unavailable` and the
  * caller must keep the turn pending, never send it unchecked (Rules 38, 67). */
 export type ReplyDecision = { outcome: 'pass' | 'violation' | 'unavailable'; path: ReplyPath; capRefused?: boolean };
 
-/** Only a full-context verdict may suppress a non-secret reply (Rules 4, 86). */
+/** Only a contextual reviewer verdict may suppress a non-secret reply (Rules 4, 86). */
 export async function reviewReply(text: string, id: string, ports: ReplyCheckPorts, ruleIds: ReplyRule[],
   originalPrompt?: string): Promise<ReplyDecision> {
   if (!ports.reserveEscalation(text, originalPrompt)) {
@@ -94,7 +117,7 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   }
   const fallbackStarted = ports.elapsedMs();
   try {
-    const result = await ports.escalate(text, id, originalPrompt);
+    const result = await ports.escalate(text, id, originalPrompt, ruleIds);
     ports.record({ ...result, path: 'subscription' });
     return { outcome: result.verdict === 'pass' ? 'pass' : 'violation', path: 'subscription' };
   } catch {

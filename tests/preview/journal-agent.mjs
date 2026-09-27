@@ -14,7 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, parseReplyReviewVerdict } from './reply-check.js';
 import { dueState } from './dated-memory.js';
 
 const parse = values => {
@@ -320,21 +320,15 @@ async function main() {
           if (!response.ok) throw Error('preview: Jev unavailable');
           return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
         },
-        escalate: async (text, id, originalPrompt) => {
+        escalate: async (text, id, originalPrompt, ruleIds) => {
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
-          const question = `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(REPLY_RULES)}. Return ONLY compact JSON {"verdict":"pass"|"violation","ruleIds":string[],"reason":string}. A violation requires an actual breach; uncertainty is a pass under the reachability fail direction. Give a short reason for either verdict.`;
+          const question = 'Judge the candidate reply against the listed rules using the operator message and recent history. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach; uncertainty is PASS. Use only listed rule IDs. No other text.';
           const prepared = modelEnvelope({ question,
-            context: replyReviewContext(originalPrompt, text), id: `${id}:reply-review` });
+            context: replyReviewContext(originalPrompt, text, ruleIds), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
-          const parsed = JSON.parse(result.value);
-          if (!['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
-            || parsed.ruleIds.some(rule => !Object.hasOwn(REPLY_RULES, rule))
-            || (parsed.verdict === 'pass' && parsed.ruleIds.length !== 0)
-            || (parsed.verdict === 'violation' && parsed.ruleIds.length === 0)
-            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
-            throw Error('preview: review malformed');
+          const parsed = parseReplyReviewVerdict(result.value);
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
