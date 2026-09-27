@@ -62,7 +62,8 @@ it('sends a durable fixed reply through the reply check and cap without a genera
 it('reports holds, pending decisions and the next unforgotten dated item from the durable projection', () => {
   const root = path(), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 3 });
   try {
-    journal.append({ kind: 'intake', id: 'one', update: 1, text: 'Dentist on 2026-09-29', raw: JSON.stringify(update(1, 'Dentist on 2026-09-29')),
+    const dates = 'Dentist on 2026-09-29; Dentist on 2026-10-01';
+    journal.append({ kind: 'intake', id: 'one', update: 1, text: dates, raw: JSON.stringify(update(1, dates)),
       accepted: true, cursor: 2, at });
     journal.append({ kind: 'reserve', id: 'one', at });
     journal.append({ kind: 'answer', id: 'one', text: 'saved', state: 'complete', at,
