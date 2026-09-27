@@ -79,7 +79,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
-  preferences: packet.preferences ?? [],
+  preferences: packet.preferences ?? [], undoCandidate: packet.undoCandidate ?? null,
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -140,6 +140,8 @@ async function main() {
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       withheld: withheldView(view.view),
+      undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
+        change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
@@ -186,6 +188,8 @@ async function main() {
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
         ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
+        undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
+          change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
         lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
     } finally { view.close(); }

@@ -746,6 +746,26 @@ old clause, the source update or channel ID, the operator update ID, and why it 
 receive the forgotten clause. If the shared attempt cap or summary route prevents a decision,
 `status.holds` shows `memory correction pending` and the intake remains durable.
 
+### Undo the last memory change
+
+The verified operator can ask the private journal runner to undo its latest recorded
+memory action. The ordinary capped reply model decides whether the operator asked
+for an undo; it receives only the latest action's kind, source ID and journal index,
+never a forgotten clause. An undo proposal is accepted only for that exact latest
+action, within ten minutes of its durable answer or summary frame. A different
+sender, an expired action, a stale index or a second undo cannot change memory.
+
+The undo decision is stored in the existing encrypted answer frame before the
+reply. Replay keeps the original action and the undo record, removes the target
+from the active correction, forget, preference or dated projection, and withholds
+a claim introduced by the undone action. It never deletes original journal
+evidence or reaches back to an earlier action after an undo. `status.undos` and
+`inspect.undos` show the operator update, action index and kind; `inspect --text`
+shows the next packet without a forgotten clause. An ineligible proposal gets a
+truthful checked reply through the usual send path. The existing call, reply,
+stop, secret and UNKNOWN-send bounds remain in force. For Justin's supervised
+private-channel procedure, see [undo-memory-live-test.md](undo-memory-live-test.md).
+
 ### Dated memory (preview)
 
 The private journal runner records dated events and deadlines from the verified operator in the
