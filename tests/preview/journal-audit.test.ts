@@ -53,6 +53,12 @@ it('audits the recorded packet without emitting bodies and refuses lost provenan
     const leaked = structuredClone(packet);
     leaked.history[0].user = 'The itinerary word is blue raven.';
     expect(auditPacket(journal.view, last, leaked).findings.map((item: { code: string }) => item.code)).toContain('superseded-current');
+    const wrongReply = structuredClone(packet);
+    wrongReply.history[1].answer = 'invented reply';
+    expect(auditPacket(journal.view, last, wrongReply).findings.map((item: { code: string }) => item.code)).toContain('reply-text-source');
+    const wrongImport = structuredClone(packet);
+    wrongImport.channelMemory[0].from = 'invented sender';
+    expect(auditPacket(journal.view, last, wrongImport).findings.map((item: { code: string }) => item.code)).toContain('channel-attribution');
     journal.close();
     const before = statSync(join(root, 'journal.encrypted')).size;
     const cli = spawnSync(process.execPath,

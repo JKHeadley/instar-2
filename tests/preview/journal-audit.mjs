@@ -1,5 +1,6 @@
 import { redact } from '../../src/recall/redact.js';
 import { createHash } from 'node:crypto';
+import { isoMinute } from '../../src/recall/ground.js';
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
@@ -32,6 +33,13 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     return String(sender) === view.genesis.operator ? 'the operator (verified sender)'
       : `Telegram user ${String(sender)} (authenticated sender, not the operator)`;
   };
+  const dated = found => {
+    let sent;
+    try { sent = JSON.parse(found.raw)?.message?.date; } catch { /* journal retains raw */ }
+    const at = typeof sent === 'number' && Number.isSafeInteger(sent) && sent > 0 ? sent * 1000
+      : found.at > 0 ? found.at : null;
+    return at === null ? 'date unknown' : isoMinute(at);
+  };
   const body = value => JSON.stringify(value ?? {});
   const channelRef = id => `sha256:${createHash('sha256').update(id).digest('hex')}`;
   const strings = value => typeof value === 'string' ? [value]
@@ -45,6 +53,19 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       next = next.replaceAll(passage, '[withheld: operator correction or forgetting]');
     return next;
   }, redact(value).text);
+  const replyFor = found => {
+    const sent = found.intent?.replace(/^PREVIEW — /u, '');
+    if (found.noticeClass) return clean(sent ?? '');
+    if (activeChanges.some(change => change.source === found.id || change.replies?.includes(found.id)))
+      return '[withheld: operator correction or forgetting]';
+    return clean(sent ?? '');
+  };
+  const checkReply = (item, found, at) => {
+    const expected = found.noticeClass || found.intent === undefined ? null : replyFor(found);
+    if (item.answer !== expected) fault('reply-text-source', at);
+    const notice = found.noticeClass && found.intent ? replyFor(found) : undefined;
+    if (item.notice !== notice) fault('notice-text-source', at);
+  };
   if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
     return { update: turn.update, items, findings: [{ code: 'packet-malformed', at: 'packet' }] };
   }
@@ -72,6 +93,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `history[${n}]`, found = source(item?.id, at);
     if (found) {
       if (item.user !== clean(found.text)) fault('history-text-source', at);
+      checkReply(item, found, at);
+      if (item.date !== undefined && item.date !== dated(found)) fault('history-date-source', at);
       if (item.from !== undefined && item.from !== speaker(found)
         || item.from === undefined && speaker(found) !== 'the operator (verified sender)') fault('history-attribution', at);
       add('history-turn', at, [{ kind: 'source-turn', id: found.id, update: found.update }]);
@@ -81,6 +104,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `recalled[${n}]`, found = source(item?.id, at);
     if (found) {
       if (item.user !== clean(found.text)) fault('recalled-text-source', at);
+      checkReply(item, found, at);
+      if (item.date !== dated(found)) fault('recalled-date-source', at);
       add('recalled-turn', at, [{ kind: 'source-turn', id: found.id, update: found.update },
         ...(summary ? [{ kind: 'selected-beside-summary', through: summary.through }] : [])]);
     }
@@ -89,6 +114,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `people[${n}]`, found = source(item?.source, at);
     if (found && item.from !== speaker(found)) fault('people-attribution', at);
     if (found && item.message !== clean(found.text)) fault('people-message-source', at);
+    if (found && item.date !== dated(found)) fault('people-date-source', at);
     const mentions = list(item?.mentions, `${at}.mentions`);
     if (!mentions.length) fault('people-note-absent', at);
     for (const [m, mention] of mentions.entries()) {
@@ -103,9 +129,14 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `commitments[${n}]`, found = source(item?.source, at);
     if (found && item.from !== (item.reply === undefined ? speaker(found) : 'you, in your own earlier reply'))
       fault('commitment-attribution', at);
+    if (found && item.date !== dated(found)) fault('commitment-date-source', at);
+    if (found && item.message !== undefined && item.message !== clean(found.text)) fault('commitment-message-source', at);
+    if (found && item.reply !== undefined && (item.reply !== replyFor(found) || item.answering !== clean(found.text)))
+      fault('commitment-reply-source', at);
     for (const [m, note] of list(item?.items, `${at}.items`).entries()) {
       const place = `${at}.items[${m}]`, stored = view.commitments[note?.id];
-      if (!found || !stored || stored.source !== found.id || view.closed.has(note.id)) fault('commitment-source', place);
+      if (!found || !stored || stored.source !== found.id || view.closed.has(note.id)
+        || note.quote !== clean(stored.quote)) fault('commitment-source', place);
       if (found) add('commitment', place, [{ kind: 'source-turn', id: found.id, update: found.update },
         { kind: 'commitment-note', id: note?.id }]);
     }
@@ -115,6 +146,10 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const found = channel(id, at);
     if (found && (redact(found.from).text !== item.from || found.at === undefined)) fault('channel-attribution', at);
     if (found && item.quote !== clean(found.text)) fault('channel-text-source', at);
+    if (found && (item.date !== isoMinute(found.at)
+      || item.subject !== (found.subject === undefined ? undefined : clean(found.subject))
+      || item.conversation !== (found.conversation === undefined ? undefined : clean(found.conversation))))
+      fault('channel-metadata-source', at);
     if (found) add('channel-import', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(id) }]);
   }
   for (const [n, item] of list(packet.memoryCandidates, 'memoryCandidates').entries()) {
