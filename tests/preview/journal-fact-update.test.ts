@@ -96,7 +96,75 @@ it('keeps the newest fact current and dated old values retrievable through succe
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('does not supersede an unrelated subject even if the model proposes an update', async () => {
+it('lets the model update from an offered source when the sentence matcher has no hint', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-fact-update-paraphrase-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    let sawCandidate = false, sawContradiction = false;
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async input => {
+        const packet = JSON.parse(input.context) as { memoryCandidates?: { id: string; message: string }[];
+          contradictions?: unknown[] };
+        if (journal.view.order.length === 1) return JSON.stringify({ reply: 'Noted.', memory: [], dated: [] });
+        sawCandidate = packet.memoryCandidates?.some(item => item.id === journal.view.order[0]?.id
+          && item.message.includes('The launch is in October')) ?? false;
+        sawContradiction = Boolean(packet.contradictions?.length);
+        return JSON.stringify({ reply: 'Noted.', memory: [{ mode: 'update', source: journal.view.order[0]!.id,
+          quote: 'The launch is in October', replacement: 'The launch has moved to November' }], dated: [] });
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'The launch is in October.')]); await worker.drain();
+    worker.intake([update(2, 'The launch has moved to November.')]); await worker.drain();
+    expect(sawCandidate).toBe(true);
+    expect(sawContradiction).toBe(false);
+    expect(journal.view.memory).toMatchObject([{ historical: true, quote: 'The launch is in October',
+      replacement: 'The launch has moved to November' }]);
+    expect(journal.view.order[1]?.sent).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an explicitly forgotten repeated value out of dated search after reopen', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-fact-update-forget-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const ports = { now: () => now, stopped: () => false,
+      summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
+      model: async (input: { id: string; context: string }) => {
+        const packet = JSON.parse(input.context) as { contradictions?: {
+          earlier: { id: string; quote: string }; operator: { quote: string } }[] };
+        const conflict = packet.contradictions?.[0];
+        const memory = journal.view.order.length === 4
+          ? [{ mode: 'forget', source: journal.view.order[2]!.id, quote: 'The launch is in October' }]
+          : conflict ? [{ mode: 'update', source: conflict.earlier.id,
+            quote: conflict.earlier.quote, replacement: conflict.operator.quote }] : [];
+        return JSON.stringify(input.id.startsWith('summary:')
+          ? { summary: 'Forget the launch date I just told you.', people: [], memory }
+          : { reply: 'Noted.', memory, dated: [] });
+      }, send: async () => 1, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    for (const [index, message] of [
+      'The launch is in October.', 'The launch is in November.',
+      'The launch is in October.', 'Forget the launch date I just told you.'
+    ].entries()) { worker.intake([update(index + 1, message)]); await worker.drain(); }
+    expect(journal.view.memory.some(change => change.mode === 'forget')).toBe(true);
+    journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    const probe = worker.probe('What do you remember about the launch in October?');
+    expect('context' in probe).toBe(true);
+    if ('context' in probe) {
+      const packet = JSON.parse(probe.context) as { memorySearch: { forgotten: number;
+        items: { quote: string; status: string }[] }; history: { user: string }[] };
+      expect(packet.memorySearch.forgotten).toBeGreaterThan(0);
+      expect(packet.memorySearch.items.some(item => item.quote.includes('The launch is in October'))).toBe(false);
+      expect(packet.history.some(item => item.user.includes('The launch is in October'))).toBe(false);
+      expect(packet.memorySearch.items.some(item => item.status === 'superseded'
+        && item.quote.includes('The launch is in November'))).toBe(true);
+    }
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('leaves unrelated subjects current when the model declines an update', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-fact-update-negative-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
@@ -106,16 +174,13 @@ it('does not supersede an unrelated subject even if the model proposes an update
         const packet = JSON.parse(input.context) as Record<string, unknown>;
         packets.push(packet);
         if (packets.length === 1) return JSON.stringify({ reply: 'Noted.', memory: [], dated: [] });
-        return JSON.stringify({ reply: 'I updated it.', memory: [{ mode: 'update',
-          source: journal.view.order[0]!.id, quote: 'The launch is in October',
-          replacement: 'The studio launch is in November' }], dated: [] });
+        return JSON.stringify({ reply: 'Noted.', memory: [], dated: [] });
       }, send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(1, 'The launch is in October.')]); await worker.drain();
     worker.intake([update(2, 'The studio launch is in November.')]); await worker.drain();
     expect(packets[1]?.contradictions).toBeUndefined();
     expect(journal.view.memory).toEqual([]);
-    expect(journal.view.order[1]?.held).toBe('memory correction pending');
-    expect(journal.view.order[1]?.sent).toBeUndefined();
+    expect(journal.view.order[1]?.sent).toBe(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
