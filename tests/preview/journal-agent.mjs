@@ -14,7 +14,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
-import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { greetingContinuity } from './greeting-continuity.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
@@ -264,6 +264,7 @@ async function main() {
     return;
   }
   if (command === 'status') {
+    const statusNow = wallNow(), statusZone = timeZoneOf(options);
     let view;
     try { view = openPreviewJournal(journalPath, key(), undefined, undefined, true); }
     catch (error) {
@@ -308,6 +309,7 @@ async function main() {
       memoryHealth: memoryHealthLine(view.view),
 
       withheld: withheldView(view.view),
+      heldRepliesToday: heldRepliesToday(view.view, statusNow, statusZone),
       conflicts: activeMemoryConflicts(view.view).map(item => ({ askedByUpdate: view.view.turns.get(item.askedBy)?.update,
         asked: item.asked, answeredByUpdate: item.answeredBy ? view.view.turns.get(item.answeredBy)?.update : null,
         first: { source: item.first.source, quote: redact(item.first.quote).text },

@@ -121,6 +121,48 @@ export function memoryHealthLine(view: JournalView): string {
     + `${String(unknownSends)} send(s) without a durable result (in flight or UNKNOWN).`;
 }
 
+const summaryHold = (reason: string) => reason === 'summary oversized turn' || reason === 'summary preflight unavailable';
+
+/** Distinct replies with a durable hold recorded on the operator's local day.
+ * A later release does not erase the fact that the reply was held today. */
+export function heldRepliesToday(view: JournalView, now: number, timeZone: string) {
+  const format = zoneFormatter(timeZone), today = parts(format, now).day;
+  const replies = new Map<string, { update: number; reasons: string[]; stillHeld: boolean }>();
+  for (const event of view.awayEvents) {
+    if (event.kind !== 'hold' || !event.id || !event.reason || summaryHold(event.reason) || !Number.isFinite(event.at) || event.at <= 0
+      || now - event.at >= 26 * 3_600_000 || event.at > now + 60_000
+      || parts(format, event.at).day !== today) continue;
+    const turn = view.turns.get(event.id);
+    if (!turn?.accepted) continue;
+    let reply = replies.get(event.id);
+    if (!reply) {
+      reply = { update: turn.update, reasons: [], stillHeld: turn.held !== undefined && !summaryHold(turn.held) };
+      replies.set(event.id, reply);
+    }
+    const reason = redact(event.reason).text;
+    if (!reply.reasons.includes(reason)) reply.reasons.push(reason);
+  }
+  return { count: replies.size, replies: [...replies.values()] };
+}
+
+/** Keep historical diagnostics from consuming the mandatory reply packet. Full reasons stay in status. */
+function heldReplyBrief(held: ReturnType<typeof heldRepliesToday>): string {
+  if (!held.count) return 'Replies held today: 0.';
+  const groups = new Map<string, number>();
+  for (const reply of held.replies) for (const reason of reply.reasons)
+    groups.set(reason, (groups.get(reason) ?? 0) + 1);
+  const label = (reason: string) => reason.length > 80 ? `${reason.slice(0, 80)}…` : reason;
+  const aggregates = [...groups].slice(0, 8).map(([reason, count]) => `${String(count)} (${label(reason)})`).join(', ');
+  const details = held.replies.slice(0, 5).map(reply => {
+    const reasons = reply.reasons.slice(0, 3).map(label).join('; ');
+    return `Update ${String(reply.update)}: ${reasons}${reply.reasons.length > 3 ? '; more reasons' : ''} `
+      + `(${reply.stillHeld ? 'still held' : 'released'})`;
+  }).join('. ');
+  return `Replies held today: ${String(held.count)}. Reasons: ${aggregates}`
+    + `${groups.size > 8 ? ', more reason types' : ''}. ${details}.`
+    + (held.count > 5 ? ` ${String(held.count - 5)} more reply details omitted; full reasons are in read-only status.` : '');
+}
+
 /** Plain facts about this preview, computed from the journal and run log at `now`.
  * `current` is the launch this process recorded; absent for a read-only status view. */
 export function selfState(view: JournalView, runs: RunLog, now: number, timeZone: string, current?: number, stopped = false) {
@@ -139,6 +181,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const holds = new Map<string, number>();
   for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.expires))
     holds.set(notice, (holds.get(notice) ?? 0) + 1);
+  const heldToday = heldRepliesToday(view, now, timeZone);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = view.summaryReservations.size;
   const heldNoticeCount = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
@@ -168,6 +211,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     memoryHealthLine(view),
     `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
     holds.size ? `Held messages: ${[...holds].map(([notice, n]) => `${String(n)} — ${notice}`).join(' ')}` : 'Held messages: none.',
+    heldReplyBrief(heldToday),
     `Held-answer notices attempted: ${String(heldNoticeCount)} (one per held turn; Telegram acceptance is not human receipt).`,
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
     `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.expires)}.`,

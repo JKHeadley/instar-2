@@ -846,6 +846,16 @@ timing check is quarantined under Rule 37 while its wall-clock flake is diagnose
 functional self-state checks remain active. `status` prints the same text as `self`
 plus the last three `launches`, so an answer can be checked against it (status, read after the reply,
 counts that reply too).
+recomputed from memory each turn (p95 about 6 ms at 2000 turns, no model call, no
+extra read), and `status` prints the same text as `self` plus the last three
+`launches`, so an answer can be checked against it (status, read after the reply,
+counts that reply too). `status.heldRepliesToday` and the self-state text count
+distinct operator replies with a reply hold recorded on today's local date;
+summary-work holds are excluded. Status lists every update, reply-hold reason,
+and current held state. The model-facing self-state gives the exact total,
+reason totals, up to five reply details, and an omitted-details count so history
+cannot fill the reply packet. A later release does not erase the day's hold. `status.holds`
+continues to show only holds still in force, regardless of date.
 
 The `Memory health:` line in that self-state is computed from the journal projection
 alone and is also `status.memoryHealth`. It gives current held-turn count, summary
