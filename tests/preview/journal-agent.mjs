@@ -259,8 +259,9 @@ async function main() {
       lastReplyTiming: lastSent ? { update: lastSent.update,
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
-      people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
-        note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
+      people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
+        note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
+        ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
       launches: readRuns(runsPath).launches.slice(-3),
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`);
     }

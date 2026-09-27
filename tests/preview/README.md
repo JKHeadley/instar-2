@@ -743,6 +743,21 @@ A plain-text summary keeps no notes; `status` lists each summary's note count
 (`null` = none recorded), `summaryPending` (unresolved reservations, including UNKNOWN) and the
 known names.
 
+When the operator asks about a known person, `people` is also the short dated
+timeline for that person. Each entry carries its journal `sourceId`, whole source
+message, date, actual sender and the matched mention. Entries are ordered by source
+time, with at most ten source messages per person and twenty in one packet; older
+entries stay in the encrypted journal. Imported channel items join the timeline
+when their asserted sender matches the person or their text mentions that person.
+An imported entry names its source and account and labels its sender as unverified
+export metadata. Name matching only offers evidence; the model judges identity and
+meaning, especially when people share a name. Imported items can appear before a
+Telegram summary, while Telegram messages before compaction already appear in
+`history`. The normal prompt bound may omit timeline entries; absence is never
+proof that nothing was said. `inspect --text` shows the selected entries without
+making a call or changing the journal. See
+[people-timeline-live-test.md](people-timeline-live-test.md) for Justin's live check.
+
 ### Remembering commitments
 
 The same summary call also lists what the operator asked the agent to remember or do
