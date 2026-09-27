@@ -94,3 +94,39 @@ it('does not carry an unsupported, absent, or foreign person cue or reuse an old
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('omits a selected name when accepted forgetting removes it from the source, including after replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-follow-up-forget-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const ports = { now: () => 1790000000000, stopped: () => false,
+      model: async ({ id, question, context }: { id: string; question: string; context: string }) => {
+        if (id.startsWith('summary:')) {
+          const packet = JSON.parse(context);
+          const source = packet.memoryCandidates.find((item: { message: string }) => item.message.includes('Priya Shah'));
+          return JSON.stringify({ summary: 'The operator asked to forget a name.', people: [],
+            memory: [{ mode: 'forget', source: source.id, quote: 'Priya Shah' }] });
+        }
+        return JSON.stringify({ reply: 'Understood.', memory: [], dated: [],
+          lastNamedPerson: question.includes('Priya Shah') ? 'Priya Shah' : null });
+      }, send: async () => 1, checkOutbound: () => {} };
+    let journal = openPreviewJournal(path, key, genesis);
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'I met Priya Shah yesterday.')]); await worker.drain();
+    worker.intake([update(2, 'Forget the name Priya Shah.')]); await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'forget', source: journal.view.order[0]!.id, quote: 'Priya Shah' }]);
+    expect(journal.view.order[1]?.lastNamedPerson).toBe('Priya Shah');
+    journal.close();
+
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    const probe = worker.probe('And her birthday?');
+    if ('reason' in probe) throw Error(probe.reason);
+    const packet = JSON.parse(probe.context);
+    expect(packet.memory).toMatchObject([{ mode: 'forgotten' }]);
+    expect(packet.lastNamedPerson).toBeUndefined();
+    expect(probe.context).not.toContain('Priya Shah');
+    expect(packet.history.at(-1)?.user).toContain('[withheld: operator correction or forgetting]');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

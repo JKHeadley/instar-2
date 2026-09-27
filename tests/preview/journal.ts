@@ -661,10 +661,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const datedPending = pendingDates.slice(0, 3)
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
     const previous = awayFor && journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < awayFor.update).at(-1);
-    const lastNamedPerson = previous?.lastNamedPerson
-      ? { name: redact(previous.lastNamedPerson).text, from: speakerOf(previous), date: dated(previous),
+    const previousMessage = previous ? clean(redact(previous.text).text, true, previous.id) : undefined;
+    const selectedName = previous?.lastNamedPerson;
+    const lastNamedPerson = selectedName && previousMessage?.includes(selectedName)
+      && clean(redact(selectedName).text, true, previous.id) === selectedName
+      ? { name: selectedName, from: speakerOf(previous), date: dated(previous),
         ...(previous.thread === current ? {} : { conversation: conversationName(previous.thread) }),
-        message: clean(redact(previous.text).text, true, previous.id) } : undefined;
+        message: previousMessage } : undefined;
     const preferences = preferenceState();
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns.'
