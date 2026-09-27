@@ -580,6 +580,14 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+`status.holds` and self-state show one fixed plain notice per held reply. A
+safety-check outage says a new message may work after recovery; the original
+still remains held with durable intake. Stop and unchanged spend caps say
+resending will not help. Reply size, conversation overflow, pending memory
+corrections and summary failures have separate wording. The precise cause
+stays in the journal. This read-only view makes no send. See the
+[supervised hold-reason script](hold-reason-plain-live-test.md).
+
 When the operator uses Telegram Reply, `replyTo` identifies the referenced
 message from an earlier accepted turn in the same private topic. It carries
 that turn's redacted operator text and actual sent reply, each limited to
@@ -1242,7 +1250,7 @@ operator proof, follow [memory-search-live-test.md](memory-search-live-test.md).
 
 
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists current
-caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import
+caps, counters, UNKNOWN calls and sends, held update IDs and plain notices, and import
 completion. After pausing the runner and verifying the operator's authority, the
 desk can raise all or some of the finite limits with:
 
@@ -1693,8 +1701,8 @@ review) releases the candidate. If no check can decide (review budget exhausted,
 reviewer outage, malformed output), nothing is sent: the turn stays held with its message,
 candidate and reservations. A refused review reservation is a `call cap` hold
 that `raise-caps` retries; any other failure is a `reply check unavailable`
-hold shown in `status`. New answers leave one shared call-budget
-slot available for a possible review. The deterministic credential wall runs
+hold. `status` presents their plain spend-limit or safety-check notice. New answers
+leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
 The `credential` reviewer question distinguishes a live authentication secret
 from a short non-authentication personal fact the verified operator supplied in

@@ -12,7 +12,7 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
-import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
@@ -277,7 +277,7 @@ async function main() {
       withheld: withheldView(view.view),
       undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
         change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
-      holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
+      holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null || Date.now() >= view.view.genesis.expires),
       tooLong: view.view.order.filter(t => t.noticeClass === 'too-long-input' || t.intent === TOO_LONG_REPLY_NOTICE)
         .map(t => ({ update: t.update, kind: t.noticeClass === 'too-long-input' ? 'input' : 'reply',
           delivery: t.sent ? (t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE
@@ -351,7 +351,8 @@ async function main() {
 
       launches: readRuns(runsPath).launches.slice(-3),
       digest: operatorDigest(view.view, log, desk).text,
-      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`);
+      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options), undefined,
+        existsSync(stopPath) || view.view.stop !== null) })}\n`);
     }
     finally { view.close(); }
     return;

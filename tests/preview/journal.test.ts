@@ -714,7 +714,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
     expect(status.status).toBe(0);
-    expect(JSON.parse(status.stdout).holds).toContainEqual({update:2,reason:'review needed'});
+    expect(JSON.parse(status.stdout).holds).toEqual([]); // update 2 already has send custody
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
@@ -1203,7 +1203,8 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-
           ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
           {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
         expect(status.status).toBe(0);
-        expect(JSON.parse(status.stdout).holds).toContainEqual({update:2,reason:'summary unavailable: prompt overflow'});
+        expect(JSON.parse(status.stdout).holds).toContainEqual({ update: 2,
+          notice: 'This reply is held because the conversation is too large to process right now; a summary may let it resume.' });
         await worker.drain();
         expect(summaryAttempts).toBe(2);
       }
