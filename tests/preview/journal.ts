@@ -2622,9 +2622,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               } else if (parsed && (parsed.memory !== undefined || parsed.memoryDisposition !== undefined || parsed.dated !== undefined || parsed.personMerges !== undefined || parsed.undo !== undefined)) invalidMemory = true;
             } catch { /* Legacy plain reply. */ }
             if (invalidMemory) { memory = undefined; dated = undefined; personMerges = undefined; undo = undefined; }
-            // A desk probe's decision is answered, but it never writes operator memory or dates.
+            // A desk probe's decision is answered, but it never writes operator memory, dates or question closures.
             const probe = probeTurn(journal.view, turn);
-            if (probe) { invalidMemory = false; invalidDate = false; memory = []; dated = []; personMerges = undefined; undo = undefined; }
+            if (probe) { invalidMemory = false; invalidDate = false; memory = []; dated = []; personMerges = undefined; undo = undefined;
+              closedQuestions = undefined; }
             if (invalidDate) undo = undefined;
             if (invalidDate && !invalidMemory) {
               // Legacy reply strings can mix an answer with an unchecked save claim.
@@ -2779,7 +2780,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const intentAt = ports.now();
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread,
           ...(reply === HOLDING_REPLY || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
-          promises: explicitAgentPromises(reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
+          // A desk probe's reply stays auditable, but its promises never become operator commitments.
+          promises: probeTurn(journal.view, turn) ? [] : explicitAgentPromises(reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
         const sendStarted = elapsedMs();
@@ -2818,7 +2820,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * the summary packet showed verbatim; anything else is dropped, never repaired. */
   const notesFrom = (proposed: unknown[], through: number): PersonNote[] => {
     const after = summaryFor(through)?.through ?? -1;
-    const shown = journal.view.order.filter(item => item.accepted && item.update > after && item.update <= through)
+    const shown = journal.view.order.filter(item => remembered(item) && item.update > after && item.update <= through)
       .map(item => ({ id: item.id, text: redact(item.text).text }));
     const notes: PersonNote[] = [], seen = new Set<string>();
     for (const item of proposed.slice(0, 50)) {
@@ -2836,7 +2838,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * the agent's own answer) of one accepted turn the summary packet showed; anything else is dropped. */
   const commitmentsFrom = (proposed: unknown[], through: number, closing: ReadonlySet<number>) => {
     const after = summaryFor(through)?.through ?? -1;
-    const shown = journal.view.order.filter(item => item.accepted && item.update > after && item.update <= through);
+    const shown = journal.view.order.filter(item => remembered(item) && item.update > after && item.update <= through);
     const notes: CommitmentNote[] = [], links: CommitmentSource[] = [], closures: CommitmentClosure[] = [], seen = new Set<string>();
     for (const item of proposed.slice(0, 50)) {
       const { in: side, quote, closedBy } = (item ?? {}) as { in?: unknown; quote?: unknown; closedBy?: unknown };
@@ -2881,7 +2883,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Keeps only closures of a listed open commitment quoting a later message the operator verifiably sent. */
   const closuresFrom = (proposed: unknown[], through: number, listed: ReadonlySet<number>): CommitmentClosure[] => {
     const after = summaryFor(through)?.through ?? -1;
-    const shown = journal.view.order.filter(item => item.accepted && item.update > after && item.update <= through && fromOperator(item));
+    const shown = journal.view.order.filter(item => remembered(item) && item.update > after && item.update <= through && fromOperator(item));
     const closures: CommitmentClosure[] = [];
     for (const item of proposed.slice(0, 50)) {
       const { id, quote } = (item ?? {}) as { id?: unknown; quote?: unknown };

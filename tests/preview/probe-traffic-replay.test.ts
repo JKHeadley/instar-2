@@ -94,3 +94,58 @@ it('answers a probe from its own message and keeps its reply, while dropping its
     expect(sends).toBe(2);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it('keeps a probe reply out of commitments, question closures and summary source attribution, while ordinary turns keep them', async () => {
+  const { REPLY_RULES } = await import('./reply-check.js');
+  const { SUMMARY_QUESTION } = await import('./summary-check.js');
+  const probeText = 'Build check 3695117d: my test marker is Juniper. What is my test marker?';
+  const run = async (mode: 'promise' | 'person' | 'closure', probe: boolean) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-probe-paths-')));
+    const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(74);
+    let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9_999_999_999_999,
+      maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 12000, cursor: 0 });
+    let clock = Date.parse('2026-09-27T17:00:00Z'), update = 0;
+    const trigger = mode === 'person' ? 'My niece Juniper visits on Saturday October 3.' : probe ? probeText : 'What is my test marker? It is Juniper.';
+    const ports = { now: () => clock, stopped: () => false, timeZone: 'America/Los_Angeles', checkOutbound: () => {},
+      send: async () => update,
+      model: async (input: { id: string; question: string; context: string }) => {
+        const packet = JSON.parse(input.context) as { history?: { user: string }[]; openQuestions?: { id: string }[] };
+        if (input.id.startsWith('summary:')) return JSON.stringify({ summary: (packet.history ?? []).map(item => item.user).join(' '),
+          people: mode === 'person' ? [{ name: 'Juniper', quote: 'Juniper' }] : [], commitments: [], closed: [], questions: [], memory: [] });
+        if (mode === 'closure' && input.question !== trigger) return ''; // leaves the dentist question unanswered
+        return JSON.stringify({ reply: { answer: mode === 'promise' ? "Your marker is Juniper. I'll keep your test marker in mind." : 'Your marker is Juniper.' },
+          memory: [], dated: [], ...(mode === 'closure' ? { closedQuestions: (packet.openQuestions ?? []).map(item => item.id) } : {}) });
+      },
+      summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
+      replyCheck: { elapsedMs: () => 100, escalate: async () => { throw new Error('unexpected escalation'); },
+        jev: async () => ({ latencyMs: 1, value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+          [...Object.keys(REPLY_RULES), ...Object.keys(SUMMARY_QUESTION)].map(id => [id, { type: 'noul', noul: 0.01 }])) } }) } };
+    let worker = createJournalWorker(journal, ports as unknown as Parameters<typeof createJournalWorker>[1]);
+    const say = async (text: string) => { clock += 60_000; worker.intake([{ update_id: ++update, message: {
+      chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(clock / 1000) } }]); await worker.drain(); };
+    try {
+      if (mode === 'closure') await say('When is the dentist appointment?');
+      if (mode === 'person' && probe) await say(probeText);
+      await say(trigger);
+      if (mode !== 'closure') await worker.summarizeIfNeeded(true);
+      journal.close(); journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, ports as unknown as Parameters<typeof createJournalWorker>[1]);
+      const next = worker.probe(mode === 'person' ? 'What do you remember about Juniper?' : mode === 'closure' ? 'What unanswered questions remain?' : 'What did you promise?');
+      const context = 'reason' in next ? '' : next.context;
+      return { journal: { commitments: journal.view.commitments.length,
+        people: journal.view.people.map(item => ({ source: item.source, probe: probeTurn(journal.view, journal.view.turns.get(item.source)!) })),
+        dentistOpen: (JSON.parse(context || '{}') as { openQuestions?: { question: string }[] }).openQuestions
+          ?.some(item => item.question === 'When is the dentist appointment?') ?? false },
+        probeText: context.includes('Build check'), sent: journal.view.order.every(turn => turn.sent !== undefined) };
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  };
+  // A probe's promise is answered and sent, but never becomes a commitment; an ordinary reply's still does.
+  expect(await run('promise', true)).toMatchObject({ journal: { commitments: 0 }, probeText: false, sent: true });
+  expect(await run('promise', false)).toMatchObject({ journal: { commitments: 1 }, sent: true });
+  // A probe cannot close a genuine open question; an ordinary reply that answers it still can.
+  expect(await run('closure', true)).toMatchObject({ journal: { dentistOpen: true }, sent: true });
+  expect(await run('closure', false)).toMatchObject({ journal: { dentistOpen: false } });
+  // A shared short quote attributes the person note to the operator's own message, never to the probe.
+  expect(await run('person', true)).toMatchObject({ journal: { people: [{ source: 'telegram:12345678:update:2', probe: false }] }, probeText: false });
+}, 120_000);
