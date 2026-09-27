@@ -1032,3 +1032,28 @@ durable check order, and the holding reply without network access.
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),
 never an unsent candidate.
+
+### Bounded encrypted journal compaction
+
+After an append takes the journal past 8 MiB, the same exclusive writer folds its
+authenticated records into a snapshot of the full in-memory projection. Original
+turns, imported channel items, summaries, memory corrections, counters, stop,
+cursor and exact send state remain in that projection. The snapshot also retains
+the causal records for open turns, including UNKNOWN calls and sends, holds,
+reply-check reservations and pending summary reservations. Repeated holds retain
+their latest record. A completed effect's older frames are folded into projection
+state; the journal is still the single encrypted store.
+
+Snapshot data uses bounded encrypted frames. The writer fsyncs a temporary file,
+reopens it through the normal journal reader, compares its projection, atomically
+replaces the journal and fsyncs the directory. A killed process therefore leaves
+the old or the new file readable. An abandoned `.compacting` file is never read
+as journal state and is replaced on the next compaction. After a snapshot, the
+next automatic compaction waits until the journal exceeds twice that snapshot's
+size (or 8 MiB, whichever is larger), so an irreducible large projection cannot
+cause compaction after every append. No send, provider call or second writer is
+started by compaction.
+
+The offline crash matrix is `journal-compaction.test.ts`. Justin's supervised
+test on an isolated copy of the actual preview journal is
+[journal-compaction-live-test.md](journal-compaction-live-test.md).
