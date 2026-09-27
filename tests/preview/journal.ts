@@ -1710,6 +1710,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const unresolvedReminderMemory = () => pendingMemory() !== undefined || journal.view.order.some(turn =>
     turn.accepted && fromOperator(turn) && turn.memoryUndecided
     && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)));
+  // A later verified-operator turn may withdraw a reminder. Until its meaning is
+  // settled by a recorded decision, a cap, an UNKNOWN or failed call, or a
+  // content-free notice keeps that reminder unsent (Rules 57, 93).
+  const reminderUnsettled = (item: DatedItem) => {
+    const source = journal.view.turns.get(item.source);
+    return source === undefined || journal.view.order.some(turn => turn.update > source.update
+      && turn.accepted && fromOperator(turn) && (turn.answer === undefined || turn.failureClass !== undefined
+        || turn.modelState === 'uncertain' || turn.modelState === 'rejected' || turn.memoryPending === true));
+  };
   const undoCandidate = (turn: Turn, now = ports.now()) => {
     const change = journal.view.changeHistory.at(-1);
     if (!fromOperator(turn) || !change || change.undone || now < change.at || now - change.at > 600_000) return undefined;
@@ -3448,7 +3457,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (unresolvedReminderMemory()) return;
       const groups = new Map<string, { thread?: number; items: DatedItem[] }>();
       for (const item of pendingRequestedReminders(journal.view)) {
-        if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(ports.now(), item.zone)) continue;
+        if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(ports.now(), item.zone)
+          || reminderUnsettled(item)) continue;
         const thread = journal.view.turns.get(item.source)!.thread, key = JSON.stringify(thread ?? null);
         let group = groups.get(key);
         if (!group) { group = { ...(thread === undefined ? {} : { thread }), items: [] }; groups.set(key, group); }
@@ -3457,11 +3467,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       for (const group of groups.values()) {
         gate();
         if (journal.view.replies >= journal.view.limits.maxReplies) return;
+        // One fitting message per topic per poll; overflow stays pending for the next poll.
+        const fits = (body: string) => Buffer.byteLength(body) <= 4096 && Array.from(body).length <= 4096;
+        const items: DatedItem[] = [];
+        for (const item of group.items)
+          if (fits(reminderBody(requestedReminderLines(journal.view, [...items, item])))) items.push(item);
+        if (!items.length) continue;
+        group.items = items;
         const text = requestedReminderLines(journal.view, group.items), body = reminderBody(text);
-        if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) continue;
         try { ports.checkOutbound(body); } catch { continue; }
         gate();
-        if (unresolvedReminderMemory()) return;
+        if (unresolvedReminderMemory() || group.items.some(reminderUnsettled)) return;
         const thread = group.thread === undefined ? {} : { thread: group.thread };
         const batch = [...journal.view.reminders.values()].filter(item => item.requested).length;
         journal.append({ kind: 'requested-reminder-intent', batch, items: group.items.map(item => ({ source: item.source, quote: item.quote, when: item.when })),

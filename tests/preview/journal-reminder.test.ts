@@ -30,16 +30,17 @@ const decide = (input: Input) => {
   const dated = /(Friday at \d+ am|Oct \d+)/u.exec(input.question);
   return JSON.stringify({ reply: 'Recorded.', memory: [], dated: dated ? [{ quote: input.question, when: dated[1] }] : [] });
 };
-const harness = (root: string, maxReplies = genesis.maxReplies) => {
-  const state = { now: start, stopped: false, stopAfterModel: false, fail: false, sent: [] as { text: string; thread?: number }[] };
+const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
+  const state = { now: start, stopped: false, stopAfterModel: false, fail: false, uncertain: false, sent: [] as { text: string; thread?: number }[] };
   const ports = { now: () => state.now, stopped: () => state.stopped, timeZone: 'America/Los_Angeles',
-    model: async (input: Input) => { if (state.stopAfterModel) state.stopped = true; return decide(input); }, checkOutbound: () => {},
+    model: async (input: Input) => { if (state.stopAfterModel) state.stopped = true;
+      return state.uncertain ? { state: 'uncertain' as const } : decide(input); }, checkOutbound: () => {},
     send: async (value: { expectedText: string; thread?: number }) => {
       state.sent.push({ text: value.expectedText, ...(value.thread === undefined ? {} : { thread: value.thread }) });
       return state.fail && value.expectedText.startsWith('PREVIEW reminder') ? null : state.sent.length;
     } };
   const path = join(root, 'journal.encrypted');
-  const open = (first = false) => { const journal = first ? openPreviewJournal(path, key, { ...genesis, maxReplies }) : openPreviewJournal(path, key);
+  const open = (first = false) => { const journal = first ? openPreviewJournal(path, key, { ...genesis, maxReplies, ...limits }) : openPreviewJournal(path, key);
     return { journal, worker: createJournalWorker(journal, ports) }; };
   const pushes = () => state.sent.filter(item => item.text.startsWith('PREVIEW reminder')).map(item => item.text);
   return { state, open, pushes };
@@ -259,6 +260,67 @@ it('refuses a reminder intent frame for an unrequested, not-yet-due or repeated 
     expect(() => journal.append({ ...frame(requested, friday9), batch: 1 })).toThrow('requested reminder intent refused');
     state.now = friday9; await worker.sendReminders();
     expect(state.sent.filter(item => item.text.startsWith('PREVIEW reminder'))).toEqual([]); // the durable intent is UNKNOWN; never sent twice.
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('holds a reminder while a later operator cancellation is unsettled by a call cap or an UNKNOWN model result', async () => {
+  for (const unsettled of ['cap', 'uncertain'] as const) {
+    const root = tmp(`unsettled-${unsettled}`);
+    try {
+      const { state, open, pushes } = harness(root, genesis.maxReplies, unsettled === 'cap' ? { maxCalls: 1 } : {});
+      let { journal, worker } = open(true);
+      worker.intake([update(1, priya)]); await worker.drain();
+      expect(journal.view.dated).toMatchObject([{ remind: true }]);
+      state.uncertain = unsettled === 'uncertain';
+      worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
+      if (unsettled === 'cap') expect(journal.view.order[1]?.held).toBe('call cap');
+      else expect(journal.view.order[1]?.modelState).toBe('uncertain');
+      journal.close(); ({ journal, worker } = open()); // reopen keeps the hold.
+      state.now = friday9 + 3600_000;
+      await worker.drain(); // an UNKNOWN answer's content-free notice does not settle it either.
+      await worker.sendReminders();
+      expect(pushes()).toEqual([]);
+      expect(journal.view.replies).toBeLessThanOrEqual(2);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('releases the reminder once a later operator message is interpreted and cancels nothing', async () => {
+  const root = tmp('settled');
+  try {
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya), update(2, 'My dentist is Oct 9.')]); await worker.drain();
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9;
+    await worker.sendReminders();
+    expect(pushes()).toEqual([priyaLine]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('sends an oversized same-topic group across polls, one fitting message each, never repeating an item across restart', async () => {
+  const root = tmp('overflow');
+  try {
+    const { state, open, pushes } = harness(root, 40, { maxCalls: 40, maxTurns: 30, maxBytes: 32768 });
+    let { journal, worker } = open(true);
+    const tasks = Array.from({ length: 8 }, (_, n) => `remind me Friday at 9 am to do task ${n} ${'detailed description '.repeat(21)}`.trim());
+    worker.intake(tasks.map((text, n) => update(n + 1, text))); await worker.drain();
+    expect(journal.view.dated.filter(item => item.remind)).toHaveLength(8);
+    state.now = friday9;
+    for (let poll = 0; poll < 8 && pushes().join('\n').split('\n').length < 8; poll++) {
+      await worker.sendReminders();
+      journal.close(); ({ journal, worker } = open());
+    }
+    const lines = pushes().flatMap(text => text.split('\n'));
+    expect(pushes().length).toBeGreaterThan(1);
+    expect(pushes().every(text => Buffer.byteLength(text) <= 4096)).toBe(true);
+    expect(lines).toHaveLength(8);
+    expect(new Set(lines).size).toBe(8);
+    await worker.sendReminders();
+    expect(pushes().flatMap(text => text.split('\n'))).toHaveLength(8);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
