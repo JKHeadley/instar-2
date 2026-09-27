@@ -17,6 +17,9 @@ it('resolves exact calendar days and ranges, refusing invalid or unrelated dates
     .toEqual({ from: '2026-09-21', to: '2026-09-23' });
   expect(saidDateRange('What did I say on 9/22/2026?', now, zone)).toEqual({ from: '2026-09-22', to: '2026-09-22' });
   expect(saidDateRange('What did I say yesterday?', now, zone)).toEqual({ from: '2026-09-26', to: '2026-09-26' });
+  expect(saidDateRange('What did I tell you yesterday about the deadline on 2026-10-01?', now, zone)).toBeNull();
+  expect(saidDateRange('What did I say between September 21 and 2026-09-23?', now, zone)).toBeNull();
+  expect(saidDateRange('What did I say between September 21 and tomorrow?', now, zone)).toBeNull();
   expect(saidDateRange('What did I say on 2026-02-30?', now, zone)).toBeNull();
   expect(saidDateRange('What did I say from 2026-09-23 to 2026-09-21?', now, zone)).toBeNull();
   expect(saidDateRange('What happens on Tuesday?', now, zone)).toBeNull();
@@ -63,6 +66,52 @@ it('quotes bounded dated originals when a summary covers the requested range', (
     expect(packet.recalled[0].user).toContain('The orchard gate is green.');
     expect(packet.recalled.every((item: { date: string }) => item.date.startsWith('2026-09-22'))).toBe(true);
     expect(packet.saidRange).toMatchObject({ matched: 8 });
+    for (const question of ['What did I tell you yesterday about the deadline on 2026-10-01?',
+      'What did I say between September 21 and 2026-09-23?']) {
+      const ambiguous = worker.probe(question);
+      expect('reason' in ambiguous).toBe(false);
+      if ('reason' in ambiguous) throw Error(ambiguous.reason);
+      const ordinary = JSON.parse(ambiguous.context);
+      expect(ordinary.saidRange).toBeUndefined();
+      expect(ordinary.historyMode).toBe('summary-plus-recent');
+    }
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([false, true])('anchors yesterday to Telegram send time across midnight (replayed: %s)', async replayed => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-recall-midnight-')));
+  const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(44);
+  const sent = at('2026-09-27T06:59:50Z'); // September 26, 23:59:50 in Los Angeles
+  const clock = replayed ? at('2026-09-27T07:00:10Z') : at('2026-09-27T06:59:55Z');
+  const update = (id: number, text: string, when: number) => ({ update_id: id,
+    message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
+      date: Math.floor(when / 1000) } });
+  let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+    operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+    expires: 9999999999999, maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+  try {
+    const source = update(1, 'The orchard gate is green.', at('2026-09-25T19:00:00Z'));
+    const query = update(2, 'What did I tell you yesterday?', sent);
+    let packet: { saidRange?: { from: string; to: string; matched: number } } | undefined;
+    const ports = { now: () => clock, stopped: () => false, timeZone: zone,
+      model: async (input: { question: string; context: string }) => {
+        if (input.question === query.message.text) packet = JSON.parse(input.context);
+        return 'Understood.';
+      },
+      replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: { model: 'jev-1.13.0',
+        answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 1 }),
+        escalate: async () => { throw Error('unexpected escalation'); } },
+      checkOutbound: () => {}, send: async () => 1 };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([source, query]);
+    if (replayed) {
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, ports);
+    }
+    await worker.drain();
+    expect(packet?.saidRange).toEqual({ from: '2026-09-25', to: '2026-09-25', matched: 1 });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -59,37 +59,49 @@ export function saidDateRange(message: string, now: number, timeZone = 'UTC'): {
   const valid = (value: string) => /^\d{4}-\d{2}-\d{2}$/u.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
     && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
   const explicit = [...message.matchAll(/\b\d{4}-\d{2}-\d{2}\b/gu)].map(match => match[0]!);
+  const lower = message.toLowerCase();
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const today = dayOf(now);
+  const namedDates = [...lower.matchAll(/\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gu)]
+    .map(match => `${match[3] ?? today.slice(0, 4)}-${String(months.indexOf(match[1]!.slice(0, 3)) + 1).padStart(2, '0')}-${match[2]!.padStart(2, '0')}`);
+  const numericDates = [...lower.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/gu)]
+    .map(match => `${match[3]}-${match[1]!.padStart(2, '0')}-${match[2]!.padStart(2, '0')}`);
+  const ago = /\b(\d{1,2}|one|two|three|four|five|six|seven) days? ago\b/u.exec(lower);
+  const yesterday = /\b(yesterday|last night)\b/u.test(lower);
+  const todayWord = /\b(today|tonight|this morning|this afternoon|this evening)\b/u.test(lower);
+  const lastWeek = /\blast week\b/u.test(lower);
+  const namedWeekdays = weekdays.filter(name => new RegExp(`\\b(?:on |last )?${name}\\b`, 'u').test(lower));
+  // A date in the subject can compete with the date of speech. Never turn a
+  // mixed or partially parsed question into a restrictive evidence filter.
+  if ([explicit.length > 0, namedDates.length > 0, numericDates.length > 0, !!ago,
+    yesterday, todayWord, lastWeek, namedWeekdays.length > 0].filter(Boolean).length > 1
+    || namedWeekdays.length > 1) return null;
+  if (/\b(?:between|from)\b/iu.test(message)
+    && explicit.length + namedDates.length + numericDates.length + namedWeekdays.length < 2) return null;
   if (explicit.length) {
     if (explicit.length > 2 || explicit.some(day => !valid(day))) return null;
     const [from, to = from] = explicit;
     return from! <= to! ? { from: from!, to: to! } : null;
   }
-  const today = dayOf(now), lower = message.toLowerCase();
-  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-  const namedDates = [...lower.matchAll(/\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gu)]
-    .map(match => `${match[3] ?? today.slice(0, 4)}-${String(months.indexOf(match[1]!.slice(0, 3)) + 1).padStart(2, '0')}-${match[2]!.padStart(2, '0')}`);
   if (namedDates.length) {
     if (namedDates.length > 2 || namedDates.some(day => !valid(day))) return null;
     const [from, to = from] = namedDates;
     return from! <= to! ? { from: from!, to: to! } : null;
   }
-  const numericDates = [...lower.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/gu)]
-    .map(match => `${match[3]}-${match[1]!.padStart(2, '0')}-${match[2]!.padStart(2, '0')}`);
   if (numericDates.length) {
     if (numericDates.length > 2 || numericDates.some(day => !valid(day))) return null;
     const [from, to = from] = numericDates;
     return from! <= to! ? { from: from!, to: to! } : null;
   }
-  const ago = /\b(\d{1,2}|one|two|three|four|five|six|seven) days? ago\b/u.exec(lower);
   if (ago) { const n = counts[ago[1]!] ?? Number(ago[1]); const day = shifted(today, -n); return { from: day, to: day }; }
-  if (/\b(yesterday|last night)\b/u.test(lower)) { const day = shifted(today, -1); return { from: day, to: day }; }
-  if (/\b(today|tonight|this morning|this afternoon|this evening)\b/u.test(lower)) return { from: today, to: today };
-  if (/\blast week\b/u.test(lower)) {
+  if (yesterday) { const day = shifted(today, -1); return { from: day, to: day }; }
+  if (todayWord) return { from: today, to: today };
+  if (lastWeek) {
     const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
     const from = shifted(today, -(weekday === 0 ? 6 : weekday - 1) - 7);
     return { from, to: shifted(from, 6) };
   }
-  const named = weekdays.findIndex(name => new RegExp(`\\b(?:on |last )?${name}\\b`, 'u').test(lower));
+  const named = weekdays.indexOf(namedWeekdays[0] ?? '');
   if (named < 0) return null;
   const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
   const back = (weekday - named + 7) % 7 || 7, day = shifted(today, -back);
