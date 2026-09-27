@@ -677,7 +677,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           await summarizeIfNeeded(true);
           if (pendingMemory()) {
             if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
-            break;
+            continue; // later eligible loss notices must still be reached
           }
           if (turn.held === 'memory correction pending') delete turn.held;
         }
