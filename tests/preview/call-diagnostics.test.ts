@@ -4,12 +4,20 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { subscriptionCallOutcome, observedSubscriptionIO } from './call-diagnostics.mjs';
 import { openPreviewJournal, MODEL_FAILURE_REPLY } from './journal.js';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const frame = (outputTokens, subtype = 'success') => JSON.stringify({ type: 'result', subtype,
   is_error: false, result: 'provider text must not be stored', usage: { output_tokens: outputTokens } });
 const physical = (stdout, extra = {}) => ({ code: 0, limited: false, localLimit: null, stdout, ...extra });
+
+it('extracts only metadata from a genuine redacted Claude Code result capture', () => {
+  const stdout = readFileSync(join(process.cwd(), 'tests/fixtures/provider-failure/claude-limit-result.json'), 'utf8');
+  const outcome = subscriptionCallOutcome(physical(stdout, { code: 1 }), 100, 50, 2048, 16384);
+  expect(outcome).toMatchObject({ exitCode: 1, localLimit: null, type: 'result', subtype: 'success',
+    isError: true, outputTokens: 0, promptBytes: 100 });
+  expect(JSON.stringify(outcome)).not.toContain(JSON.parse(stdout).result);
+});
 
 it('distinguishes a parsed 2048-token over-cap result from a 120-second local timeout without retaining prose', () => {
   const over = subscriptionCallOutcome(physical(frame(2049)), 4096, 25, 2048, 16384);
