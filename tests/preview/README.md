@@ -590,6 +590,11 @@ kind, then compacts and reopens the snapshot; run only
 `npx vitest run tests/preview/journal-growth.test.ts --configLoader=runner`.
 The supervised check is [journal-growth-live-test.md](journal-growth-live-test.md).
 
+Rollback after compact frames have been written must retain the latest journal and
+the new decoder. Revert only the writer. The active journal must keep all later
+intake, reservations, intents, receipts, corrections and stop records; a sealed
+pre-upgrade copy is forensic evidence, not a replacement for that history.
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
