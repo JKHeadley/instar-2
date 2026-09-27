@@ -676,19 +676,25 @@ it cannot itself supersede anything. The ordinary capped reply call can also ret
 decision when the cue misses, using optional older candidates that yield before recall or
 commitment context under the prompt bound. An ordinary later summary may also record a direct
 request its model identifies without a cue. Both paths return `memory` entries with the exact old
-factual clause and its source turn ID. A correction
+factual clause and its source turn ID. The same bounded model decision can name additional
+candidate reply IDs and exact passages from the current summary that express that fact. The
+source turn's own reply is withheld by its recorded source relationship. A correction
 also quotes the replacement from the operator's own message. The runner keeps an entry only if
-the old clause occurs verbatim in an earlier accepted operator turn and the replacement occurs
-verbatim in the authenticated correcting turn. Claimed instructions inside quotes, forwards or
+the old clause occurs verbatim in an earlier accepted operator turn, the trigger is an accepted
+authenticated operator turn, and the replacement occurs verbatim in that turn. Claimed instructions inside quotes, forwards or
 imports have no authority. An invalid proposed entry or an explicitly unresolved target never
-becomes an empty successful decision. The request stays visible as pending under the existing bounded summary retry path. New summary
+becomes an empty successful decision. An invalid reply decision records pending status in its
+answer frame, so replay cannot send an unaccepted acknowledgement after an interruption. An
+ordinary summary that explicitly says `unresolved` records a failed attempt. The request stays
+visible as pending under the existing bounded summary retry path. New summary
 frames name the request they decided; old frames without that field keep their historical frontier
 settled, so an upgrade can continue draining later turns.
 
 The original turns and previous summaries stay in the encrypted append-only journal. Replay
 rebuilds the superseding records from summary or answer frames. Every later packet filters
 superseded claims from history, summary text, recalled originals, earlier answers, commitments and person
-notes. It also withholds ordinary phrasing changes in derived answers and overlapping note excerpts;
+notes. Source-linked replies are withheld without a phrase test; the model identifies other
+affected replies and summary passages by meaning. Exact old clauses and overlapping note excerpts are withheld;
 an unrelated person's similarly numbered fact remains. A person or commitment note whose quoted claim was superseded is omitted; a correction's
 new fact is carried as `memory`. A forget carries only a withholding reason. Similar facts with
 different wording and sources remain. `status.withheld` and `inspect.withheld` show the redacted
