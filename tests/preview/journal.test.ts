@@ -677,7 +677,7 @@ it('holds context overflow with originals intact when no current summary can cov
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
-it('uses a current summary when the full packet fits but the complete prompt does not, and reports holds', async () => {
+it('uses a current summary before preparing the prompt, and reports holds', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
@@ -700,8 +700,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
       model: async input => { invoked++; expect(input.context).toContain('ORCHID'); return 'yes'; },
       send: async()=>1,checkOutbound:()=>{} });
     worker.intake([update(3,'what was first?')]); await worker.drain();
-    expect(full).toBeGreaterThan(32000);
-    expect(full).toBeLessThanOrEqual(34000);
+    expect(full).toBe(0);
     expect(compact).toBeLessThan(10000);
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);

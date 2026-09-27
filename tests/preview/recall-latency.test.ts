@@ -47,8 +47,8 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
         ].map(id => [id, { type: 'noul', noul: 0 }])) } }),
       escalate: async () => { throw Error('Jev should pass'); } } });
     view.limits.maxBytes = 1_000_000;
-    const complete = worker.probe('What did Sam say about the cedar project?');
-    expect('context' in complete && JSON.parse(complete.context).historyMode).toBe('complete');
+    const compact = worker.probe('What did Sam say about the cedar project?');
+    expect('context' in compact && JSON.parse(compact.context).historyMode).toBe('summary-plus-recent');
     view.limits.maxBytes = 32768;
     const summary = view.summaries.pop()!;
     expect(worker.probe('What did Sam say about the cedar project?')).toEqual({ reason: 'context overflow' });

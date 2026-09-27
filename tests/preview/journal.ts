@@ -1726,7 +1726,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const questions = [...new Set([...related, ...unresolved.slice(-2).map(item => unresolved.indexOf(item))])]
       .slice(0, PREVIEW_QUESTION_LIMIT).map(index => unresolved[index]!);
     let promptFit = false;
-    for (const compact of [false, true]) {
+    // Once a summary has been accepted, it owns the covered prefix. Sending the
+    // complete journal again makes every later packet grow with every turn and
+    // hides the question-selected recall behind unrelated old messages.
+    for (const compact of latestSummary ? [true] : [false]) {
       if (!compact && completeTooLarge) continue;
       const summary = compact ? summaryFor(turn.update - 1) : undefined;
       if (compact && !summary) continue;

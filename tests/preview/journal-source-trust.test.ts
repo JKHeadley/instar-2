@@ -46,14 +46,15 @@ it('labels direct, imported and summary memory after replay; direct facts outran
     worker = createJournalWorker(journal, ports);
     worker.intake([update(2, 'What day is my studio launch?')]);
     await worker.drain();
-    const complete = JSON.parse(contexts.at(-1)!);
-    expect(complete.historyMode).toBe('complete');
-    expect(complete.summary).toBeUndefined();
-    expect(complete.memorySummary).toEqual({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
-    expect(complete.history).toMatchObject([
+    const covered = JSON.parse(contexts.at(-1)!);
+    expect(covered.historyMode).toBe('summary-plus-recent');
+    expect(covered.summary).toMatchObject({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
+    expect(covered.memorySummary).toEqual({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
+    expect(covered.history).toEqual([]);
+    expect(covered.recalled).toMatchObject([
       { sourceKind: 'operator-stated', user: 'My studio launch day is Tuesday.' }]);
-    expect(complete.capability).toContain('operator-stated wins over inferred-by-summary');
-    expect(complete.capability).toContain('hedge summary inference with "I think"');
+    expect(covered.capability).toContain('operator-stated wins over inferred-by-summary');
+    expect(covered.capability).toContain('hedge summary inference with "I think"');
     compact = true;
     const inferenceOnly = worker.probe('What did the summary infer about the launch day?');
     if ('reason' in inferenceOnly) throw Error(inferenceOnly.reason);

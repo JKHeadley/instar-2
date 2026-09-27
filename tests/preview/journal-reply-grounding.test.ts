@@ -55,7 +55,7 @@ it.each([1, null])('records exact full-history IDs before an accepted or UNKNOWN
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('records a memory summary in complete history and omits one removed by fitting, including after replay', async () => {
+it('records a compact summary and omits a duplicate memory summary under fitting, including after replay', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'reply-grounding-'))), path = join(root, 'journal.encrypted');
   try {
     const journal = openPreviewJournal(path, key, genesis);
@@ -77,18 +77,19 @@ it('records a memory summary in complete history and omits one removed by fittin
     await worker.drain();
     const included = JSON.parse(contexts.get(id(2))!) as { historyMode: string; memorySummary?: { text: string } };
     const includedAudit = journal.view.turns.get(id(2))!.grounding!;
-    expect(included.historyMode).toBe('complete');
+    expect(included.historyMode).toBe('summary-plus-recent');
     expect(included.memorySummary?.text).toBe('Dock seven marker is blue.');
     expect(includedAudit.summaryThrough).toBe(1);
-    expect(includedAudit.history).toEqual([id(1)]);
+    expect(includedAudit.history).toEqual([]);
+    expect(includedAudit.recalled).toEqual([id(1)]);
     expect(includedAudit.packetSha256).toBe(createHash('sha256').update(contexts.get(id(2))!).digest('hex'));
     worker.intake([update(3, 'What color is the dock seven marker?')]);
     await worker.drain();
     const omitted = JSON.parse(contexts.get(id(3))!) as { historyMode: string; memorySummary?: unknown };
     const omittedAudit = journal.view.turns.get(id(3))!.grounding!;
-    expect(omitted.historyMode).toBe('complete');
+    expect(omitted.historyMode).toBe('summary-plus-recent');
     expect(omitted.memorySummary).toBeUndefined();
-    expect(omittedAudit.summaryThrough).toBeNull();
+    expect(omittedAudit.summaryThrough).toBe(1);
     journal.close();
     const replay = openPreviewJournal(path, key);
     expect(replay.view.turns.get(id(2))?.grounding).toEqual(includedAudit);
