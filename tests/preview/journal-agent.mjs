@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -80,10 +80,10 @@ const typesafeKey = () => {
   if (!value || !value.trim()) throw Error('preview: TypeSafe SecretRef unavailable');
   return value;
 };
-const askJev = async (state, questions) => {
+const askJev = async (state, questions, timeoutMs) => {
   const start = performance.now();
   const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-    method: 'POST', signal: AbortSignal.timeout(2000),
+    method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs ?? 2000)),
     headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ state, model: JEV_MODEL, questions }) });
   if (!response.ok) throw Error('preview: Jev unavailable');
@@ -322,6 +322,7 @@ async function main() {
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
+      replyTimings: replyTimings(view.view),
       lastReplyCheck: view.view.lastReplyCheck,
       lastReplyReview: lastReplyReview(view.view),
       lastReplyTiming: lastSent ? { update: lastSent.update,
@@ -474,9 +475,11 @@ async function main() {
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
     const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
-    const invokeSubscription = async (prepared, id, reviewTurnId) => {
+    const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt) => {
       const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
-      const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
+      const deadline = Math.min(g.expires, deadlineAt ?? Date.now() + 180000);
+      if (deadline - Date.now() <= 100) throw Error('preview: reply check budget exceeded');
+      const result = await route.invoke(prepared, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
@@ -519,8 +522,8 @@ async function main() {
       summaryCheck: async evidence => (await askJev(evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: (text, questions = jevQuestions) => askJev(text, questions),
-        escalate: async (text, id, originalPrompt, reviewRules) => {
+        jev: (text, questions = jevQuestions, timeoutMs) => askJev(text, questions, timeoutMs),
+        escalate: async (text, id, originalPrompt, reviewRules, deadlineAt) => {
 
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
@@ -529,7 +532,7 @@ async function main() {
 
           const prepared = modelEnvelope({ question,
             context: replyReviewContext(originalPrompt, text, reviewRules), id: `${id}:reply-review` });
-          const result = await invokeSubscription(prepared, `${id}:reply-review`, id);
+          const result = await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           const parsed = parseReplyReviewVerdict(result.value);
           if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule)))

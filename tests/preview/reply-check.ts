@@ -14,9 +14,12 @@ export type ReplyRule = keyof typeof REPLY_RULES;
 export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export type ReplyPath = 'jev' | 'subscription' | 'holding';
 export const JEV_MODEL = 'jev-1.13.0';
+export const REPLY_CHECK_BUDGET_MS = 30_000;
+export const REPLY_CHECK_BUDGET_REASON = 'reply check budget exceeded';
 export const JEV_RESPONSE_MAX_BYTES = 4096;
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
   path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string; candidateDigest?: string;
+  durationMeasured?: true;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 /** The pinned JSON-result route reports total output usage, but no thinking blocks. */
 export interface ReplyReviewDiagnostics { outputTokens: number | null; thinkingPresent: 'unobservable' }
@@ -101,23 +104,38 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 }
 
 export interface ReplyCheckPorts {
-  jev(text: string, questions?: Record<string, { type: string; instructions: string }>): Promise<{ value: unknown; latencyMs: number }>;
-  escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[]): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
+  jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number): Promise<{ value: unknown; latencyMs: number }>;
+  escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
 
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   record(result: ReplyCheckResult): void;
   elapsedMs(): number;
+  now?(): number;
+  deadlineAt?: number;
 }
+const expired = (ports: ReplyCheckPorts) => ports.deadlineAt !== undefined && ports.now !== undefined
+  && ports.now() >= ports.deadlineAt;
+const budgetResult = (path: ReplyPath, ruleIds: ReplyRule[], latencyMs: number): ReplyCheckResult =>
+  ({ verdict: 'unavailable', ruleIds, confidence: null, path, latencyMs, reason: REPLY_CHECK_BUDGET_REASON });
 export async function checkReply(text: string, id: string, ports: ReplyCheckPorts,
   originalPrompt?: string): Promise<ReplyDecision> {
   let first: ReplyCheckResult;
   const started = ports.elapsedMs();
-  try { const answer = await ports.jev(text); first = interpretJev(answer.value, answer.latencyMs); }
+  if (expired(ports)) {
+    ports.record(budgetResult('holding', [], 0));
+    return { outcome: 'unavailable', path: 'holding' };
+  }
+  try { const answer = await ports.jev(text, undefined, ports.deadlineAt === undefined || !ports.now
+    ? undefined : Math.max(1, ports.deadlineAt - ports.now()));
+    first = expired(ports) ? budgetResult('jev', [], Math.max(0, ports.elapsedMs() - started))
+      : interpretJev(answer.value, answer.latencyMs); }
   catch { first = { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
-    latencyMs: Math.max(0, ports.elapsedMs() - started) }; }
+    latencyMs: Math.max(0, ports.elapsedMs() - started),
+    ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) }; }
   ports.record(first);
+  if (expired(ports)) return { outcome: 'unavailable', path: 'jev' };
   if (first.verdict === 'pass') return { outcome: 'pass', path: 'jev' };
   return reviewReply(text, id, ports, first.ruleIds, originalPrompt);
 }
@@ -131,19 +149,28 @@ export type ReplyDecision = { outcome: 'pass' | 'violation' | 'unavailable'; pat
 /** Only a contextual reviewer verdict may suppress a non-secret reply (Rules 4, 86). */
 export async function reviewReply(text: string, id: string, ports: ReplyCheckPorts, ruleIds: ReplyRule[],
   originalPrompt?: string): Promise<ReplyDecision> {
+  if (expired(ports)) {
+    ports.record(budgetResult('holding', ruleIds, 0));
+    return { outcome: 'unavailable', path: 'holding' };
+  }
   if (!ports.reserveEscalation(text, originalPrompt)) {
     ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'holding', latencyMs: 0 });
     return { outcome: 'unavailable', path: 'holding', capRefused: true };
   }
   const fallbackStarted = ports.elapsedMs();
   try {
-    const result = await ports.escalate(text, id, originalPrompt, ruleIds.length ? ruleIds : rules);
+    const result = await ports.escalate(text, id, originalPrompt, ruleIds.length ? ruleIds : rules, ports.deadlineAt);
+    if (expired(ports)) {
+      ports.record(budgetResult('subscription', ruleIds, Math.max(0, ports.elapsedMs() - fallbackStarted)));
+      return { outcome: 'unavailable', path: 'subscription' };
+    }
 
     ports.record({ ...result, path: 'subscription' });
     return { outcome: result.verdict === 'pass' ? 'pass' : 'violation', path: 'subscription' };
   } catch {
     ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'subscription',
-      latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted) });
+      latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted),
+      ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) });
     return { outcome: 'unavailable', path: 'subscription' };
   }
 }

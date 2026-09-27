@@ -1657,6 +1657,14 @@ The output-token cap remains 2048. See
 [reviewer-thinking-bound-live-test.md](reviewer-thinking-bound-live-test.md)
 for Justin's bounded live check of the next review hold.
 
+`status.replyTimings` reports per-update answer, Jev, fallback and send times
+in milliseconds, plus each stage's sample count, p50 and p95 (nearest-rank).
+Missing stages are `null` and do not enter a percentile. Answer, check and send
+measurements come from the existing encrypted journal; old turns have nulls.
+An attempted send is timed even when its Telegram outcome is UNKNOWN. These are
+runner wall times, not Telegram delivery times. For Justin's supervised check,
+see [reply-check-timing-live-test.md](reply-check-timing-live-test.md).
+
 Desk one-call connectivity check, after setting the host binding from the vault:
 
 ```sh

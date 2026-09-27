@@ -11,7 +11,7 @@ import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES } from './reply-check.js';
+import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS } from './reply-check.js';
 import { parseDatedItem, dueState, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { requestedPeriod, inRequestedPeriod } from './period-summary.js';
 import { messageTime, zoneFormatter } from './self-state.js';
@@ -122,8 +122,8 @@ export type JournalRecord =
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; maxInputTokens?: number; maxOutputTokens?: number; at: number }
 
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
-    memory?: MemoryChange[]; personMerges?: PersonMerge[]; memoryPending?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; undo?: UndoTarget; unlabeledRecall?: boolean; usage?: ModelUsage; at: number }
-  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
+    memory?: MemoryChange[]; personMerges?: PersonMerge[]; memoryPending?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; undo?: UndoTarget; unlabeledRecall?: boolean; usage?: ModelUsage; latencyMs?: number; at: number }
+  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
@@ -138,6 +138,7 @@ export type JournalRecord =
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
+  | { kind: 'send-timing'; id: string; latencyMs: number; at: number }
   | { kind: 'reminder-intent'; items: ReminderRef[]; day: string; text: string; body: string; chat: string; thread?: number; grant: string; reminderGrant: string; at: number }
   | { kind: 'reminder-sent'; day: string; thread?: number; message: number; at: number }
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
@@ -176,7 +177,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
+  answerMs?: number; sendMs?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[] }
 
 
@@ -247,6 +249,32 @@ export const activePersonMerges = (view: JournalView): PersonMerge[] => view.per
   !view.memory.some(change => change.source === link.trigger
     && (link.confirmation.includes(change.quote) || change.quote.includes(link.confirmation))));
 
+
+/** Read-only timing projection from the same durable frames as the reply state. */
+export function replyTimings(view: JournalView) {
+  const duration = (check: ReplyCheckResult | undefined): number | null => {
+    if (check?.latencyMs === undefined) return null;
+    // Older crash-recovery frames used zero for an unknown duration. A new
+    // measured zero carries an explicit marker when its shape is ambiguous.
+    if (check.latencyMs === 0 && check.verdict === 'unavailable' && !check.durationMeasured
+      && check.reason === undefined && check.usage === undefined && check.scores === undefined) return null;
+    return check.latencyMs;
+  };
+  const perReply = view.order.filter(turn => turn.accepted).map(turn => ({ update: turn.update,
+    answerMs: turn.answerMs ?? null,
+    jevMs: duration(turn.replyChecks?.find(check => check.path === 'jev')),
+    fallbackMs: duration(turn.replyChecks?.find(check => check.path === 'subscription')),
+    sendMs: turn.sendMs ?? null }));
+  const distribution = (field: 'answerMs' | 'jevMs' | 'fallbackMs' | 'sendMs') => {
+    const values = perReply.map(reply => reply[field]).filter((value): value is number => value !== null)
+      .sort((a, b) => a - b);
+    const percentile = (part: number) => values.length ? values[Math.ceil(values.length * part) - 1] : null;
+    return { count: values.length, p50Ms: percentile(0.5), p95Ms: percentile(0.95) };
+  };
+  return { budgetMs: REPLY_CHECK_BUDGET_MS, perReply,
+    answer: distribution('answerMs'), jev: distribution('jevMs'),
+    fallback: distribution('fallbackMs'), send: distribution('sendMs') };
+}
 
 const frameLimit = 2 * 1024 * 1024;
 export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
@@ -758,7 +786,7 @@ function project(view: JournalView, row: JournalRecord): void {
       throw Error('preview journal: Jev reservation order or cap');
     reserveTokens(view, `jev:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? jevOutputMaximum);
-    turn.jevReserved = true; view.jevChecks++; return;
+    turn.jevReserved = true; turn.jevReservedAt = row.at; view.jevChecks++; return;
   }
   if (row.kind === 'reply-review-reserve') {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
@@ -819,6 +847,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'model-uncertain') {
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: uncertain model order');
     turn.modelState = row.state;
+    if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     // This durable observation of the local invocation ending is also the notice due time.
     turn.noticeDueAt = row.at;
   }
@@ -837,6 +866,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
     settleTokens(view, `answer:${row.id}`, row.usage);
     turn.answer = row.text;
+    if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     if (row.unlabeledRecall) turn.unlabeledRecall = true;
     if (view.stepCheckStarted && !row.failureClass) view.stepChecks.set(`answer:${row.id}`, {});
 
@@ -885,6 +915,11 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
     for (const key of row.mentionedDates ?? []) view.mentionedDates.add(key); }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
+  if (row.kind === 'send-timing') {
+    if (turn.intent === undefined || turn.sendMs !== undefined || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0)
+      throw Error('preview journal: send timing order');
+    turn.sendMs = row.latencyMs;
+  }
   if (row.kind === 'hold') {
     if (heldNoticeReason(row.reason)) {
       const holds = view.awayEvents.filter(event => event.kind === 'hold' && event.id === turn.id);
@@ -1172,6 +1207,8 @@ export interface PreviewPorts {
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
+  const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
+  const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
   let checkingSteps = false;
   // An orphaned reservation may have completed at the provider. Never repeat it.
   const gate = () => {
@@ -2197,16 +2234,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
 
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
+          const answerStarted = elapsedMs();
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
           catch { continue; } // reservation remains UNKNOWN
+          const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
-              ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), at: ports.now() });
+              ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), latencyMs: answerMs, at: ports.now() });
           } else if (typeof answer !== 'string' && 'failureClass' in answer) {
             journal.append({ kind: 'answer', id: turn.id, text: MODEL_FAILURE_REPLY,
               state: answer.state, failureClass: answer.failureClass,
-              ...(answer.usage ? { usage: answer.usage } : {}), at: ports.now() });
+              ...(answer.usage ? { usage: answer.usage } : {}), latencyMs: answerMs, at: ports.now() });
           } else {
             const decisionAt = ports.now();
             const output = typeof answer === 'string' ? answer : answer.text;
@@ -2280,7 +2319,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(fromOperator(turn) && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
-              ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: decisionAt });
+              ...(typeof answer === 'string' ? {} : { usage: answer.usage }), latencyMs: answerMs, at: decisionAt });
             if (invalidMemory && !turn.memoryUndecided) {
               journal.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: ports.now() });
               continue;
@@ -2358,7 +2397,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'unavailable';
           } else {
-            const checkPorts = { ...ports.replyCheck,
+            const checkPorts = { ...ports.replyCheck, now: ports.now,
+              deadlineAt: (turn.jevReservedAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS,
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
@@ -2391,7 +2431,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (decision === 'violation') reply = HOLDING_REPLY;
           else if (decision === 'unavailable') {
             // A refused review reservation waits on `raise-caps` like any call-cap hold.
-            journal.append({ kind: 'hold', id: turn.id, reason: capRefused ? 'call cap' : 'reply check unavailable', at: ports.now() });
+            journal.append({ kind: 'hold', id: turn.id, reason: capRefused ? 'call cap'
+              : turn.replyChecks?.at(-1)?.reason === 'reply check budget exceeded' ? 'reply check budget exceeded'
+                : 'reply check unavailable', at: ports.now() });
             continue;
           }
         }
@@ -2408,10 +2450,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(reply === HOLDING_REPLY || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           update: turn.update, grant: journal.view.genesis.grant, at: ports.now() });
         gate();
+        const sendStarted = elapsedMs();
         try { const message = await ports.send({ text: body, expectedText: reply, chat: journal.view.genesis.chat, ...thread, update: turn.update });
+          journal.append({ kind: 'send-timing', id: turn.id, latencyMs: duration(sendStarted), at: ports.now() });
           if (message !== null && Number.isSafeInteger(message) && message > 0)
             journal.append({ kind: 'sent', id: turn.id, message, at: ports.now() });
-        } catch { /* exact intent stays UNKNOWN */ }
+        } catch { if (turn.sendMs === undefined) journal.append({ kind: 'send-timing', id: turn.id,
+          latencyMs: duration(sendStarted), at: ports.now() }); /* exact intent stays UNKNOWN */ }
       }
       // A held notice has its own one-shot intent. It never settles or redispatches
       // the answer, so a later cap raise can still release that answer normally.
