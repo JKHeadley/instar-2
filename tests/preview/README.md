@@ -539,6 +539,39 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSO
 
 ## Structural journal runner (rounds 10–13)
 
+### Offline recall benchmark
+
+`recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
+2000-turn private-chat histories. It uses the real encrypted preview journal,
+summary scheduling, replay, channel fixture import, memory correction/forget
+projection and packet builder. Mundane exchanges are fixture-written as valid
+journal frames; the correction, forget and later question turns use the worker.
+The deterministic summarizer keeps planted clauses verbatim, and the answer
+stub extracts only a clause visible in the packet it receives. It makes no
+network request, model call, Telegram send or live journal change.
+
+Run from the repository root, naming an absolute JSON output path:
+
+```sh
+node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/recall-benchmark.mjs /ABSOLUTE/OFFLINE_RESULT.json
+npx vitest run tests/preview/recall-benchmark.test.ts --configLoader=runner --testTimeout=120000
+```
+
+Recall is the share of active planted facts present in each later question's
+actual model packet. Precision is the share of superseded or forgotten clauses
+absent from those packets. Packet bytes are measured on the actual model packets.
+`historyBuildNonModelMs` covers per-turn fixture append, memory worker work and
+forced summaries inside the history loop, including local journal fsync, with
+stub execution subtracted. It excludes channel import, the final summary,
+journal reopen/replay and all later question runs. Each `probePreparationMs`
+times only the read-only `worker.probe` for a later question; it excludes that
+question's intake, actual model packet construction and drain. The 200-turn
+Vitest baseline is the measured 100% recall and 100% exclusion on this fixed
+fixture. It does not measure semantic retrieval, answer quality from a real
+model, provider latency or a live Telegram path. For the supervised human
+check, use
+[recall-benchmark-live-test.md](recall-benchmark-live-test.md).
+
 `journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
 append-only local journal and one exclusive writer. At boot it replays the journal once;
 ordinary turns append records and update an in-memory transcript. It fsyncs an update and
