@@ -67,9 +67,10 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
-/** Only the recall-relevant parts of a packet, never sources or history text. */
+/** Bounded recall and digest evidence from a packet, never raw sources or full history. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  crossTopicDigest: packet.crossTopicDigest ?? null,
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });

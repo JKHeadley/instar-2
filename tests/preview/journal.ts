@@ -25,6 +25,8 @@ export const PREVIEW_PEOPLE_LIMIT = 10;
 export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
+/** A small, deterministic overview beside the ordinary cross-conversation history. */
+export const PREVIEW_DIGEST_LIMIT = 8;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
@@ -535,6 +537,39 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
       : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
     : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending';
+  const crossTopicDigest = (through: number) => {
+    const groups = new Map<string, Turn[]>();
+    for (const turn of journal.view.order) {
+      if (!turn.accepted || turn.update > through) continue;
+      const name = conversationName(turn.thread);
+      const group = groups.get(name) ?? [];
+      group.push(turn); groups.set(name, group);
+    }
+    if (groups.size < 2) return undefined;
+    const all = [...groups].sort((a, b) => b[1].at(-1)!.update - a[1].at(-1)!.update
+      || a[0].localeCompare(b[0]));
+    const excerpt = (value: string) => { const text = clean(redact(value).text, true);
+      return text.length > 96 ? `${text.slice(0, 96)}…` : text; };
+    const conversations = all.slice(0, PREVIEW_DIGEST_LIMIT).map(([conversation, turns]) => {
+      const latest = turns.at(-1)!;
+      const open = journal.view.commitments.map((note, id) => ({ note, id, source: journal.view.turns.get(note.source) }))
+        .filter(item => item.source !== undefined && item.source.thread === latest.thread && item.source.update <= through
+          && !journal.view.closed.has(item.id) && !affectedNote(item.note))
+        .slice(-2).map(item => ({ id: item.id, date: dated(item.source!), quote: excerpt(item.note.quote), in: item.note.in }));
+      const unanswered = turns.filter(item => item.text.includes('?') &&
+        (item.sent === undefined || item.noticeClass !== undefined)).slice(-2)
+        .map(item => ({ date: dated(item), question: excerpt(item.text), outcome: outcome(item) }));
+      const held = turns.filter(item => item.held !== undefined || item.modelState === 'uncertain'
+        || item.intent !== undefined && item.sent === undefined).slice(-2)
+        .map(item => ({ date: dated(item), message: excerpt(item.text), status: item.held ?? outcome(item) }));
+      return { conversation, lastActivity: dated(latest), openCommitments: open,
+        unansweredQuestions: unanswered, heldItems: held };
+    });
+    const digest = () => ({ conversations, omittedConversations: all.length - conversations.length,
+      note: 'Exact journal evidence only. Commitments come from completed summaries; questions require a question mark. Empty lists do not prove none exist.' });
+    while (Buffer.byteLength(JSON.stringify(digest())) > 4096) conversations.pop();
+    return digest();
+  };
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
@@ -587,6 +622,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(item.conversation === undefined ? {} : { conversation: clean(redact(item.conversation).text, true) }),
       quote: clean(redact(item.text).text, true) }));
     const crossed = [...earlier, ...(summary ? recalled : [])].some(item => item.thread !== current);
+    const digest = labelAll ? undefined : crossTopicDigest(through);
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private, capped preview; answer only, no tools or other actions. Memory is this trial\'s journal only. If summary is present, it covers earlier turns and history contains only turns after it.'
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
@@ -609,7 +645,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const later = journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!));
         return later ? [] : [{ mode: 'corrected', replacement: clean(redact(change.replacement!).text) }];
       }) } : {}),
-      ...(corrections.length ? { corrections } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), history });
+      ...(digest ? { crossTopicDigest: digest } : {}), ...(corrections.length ? { corrections } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), history });
     return packet;
   };
   const preparedFor = (turn: Turn) => {
