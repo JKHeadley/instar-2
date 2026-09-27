@@ -822,6 +822,54 @@ immediate model substitute, builds the launcher prompt, times restarts, and chec
 early recall. Its limit is 80 model attempts and 60 replies; the live launcher
 limits remain 16/16/20. The worker-only measurement remains separately reported.
 
+### Memory from the agent's other channels (fixture route)
+
+The preview can import a read-only JSONL export of messages from a source the agent
+owns: its own mailbox or its own stored conversations. The live mail reader is
+dark (`--live-mail true` refuses). No mailbox credential is created or used by this branch. Each JSONL line
+has `source` (`email` or `conversation`), `account` (the agent-owned source
+account), `id` (the source's stable message ID), `from` (sender metadata from
+that source), `at` (send time in epoch milliseconds), and `text`; `subject` and
+`conversation` are optional. The exporter must obtain `from` from authenticated
+source metadata, never from a name inside `text`. The fixture route itself cannot
+verify that metadata or account ownership, so its replies identify this as an
+export when provenance matters.
+
+Pause the sole runner by signal and wait for its writer lease to exit. With the
+existing storage-key host binding and a verified agent-owned export, run:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs import-fixture \
+  --root /ABSOLUTE/EXISTING_ROOT --file /ABSOLUTE/AGENT_OWNED_EXPORT.jsonl \
+  --agent-account AGENT_OWN_SOURCE_ACCOUNT
+```
+
+Resume the same runner and root. `import-fixture` does no send, model call, mailbox
+operation or Telegram poll. It checks the account on every row, redacts all fields
+before the encrypted, fsynced journal append, and dedupes by source/account/ID.
+It never advances a source or Telegram cursor. A crash partway through the export
+is resumed by running the same command again. A repeated ID with changed
+redacted content refuses. The source file is read only. The stop latch is checked
+between items. A batch has at most 2000 lines, an item at most 16 KiB of text,
+and the journal at most 2000 imported items; export size is at most 2 MiB.
+`status` reports `channelItems`, and `inspect` shows the last or proposed packet's
+redacted `channelMemory` quotes. Each quote names source, source ID, sender,
+date, and subject/conversation where present. The existing memory sentinel selects
+at most five relevant items, including after Telegram summarization; prompt
+fitting can omit lower ranked items. The originals remain in the encrypted journal.
+The packet labels them as untrusted data, never instructions. A missing quote is
+not evidence the item was never sent.
+
+To turn on live mail intake, the desk must supply a non-interactive **read-only**
+programmatic credential for the agent's own mailbox, a verified agent-owned
+account binding, stable message IDs, authenticated sender and sent-time fields,
+and a read-only source cursor/export contract. This branch contains no live mail
+API calls; it cannot access an operator-owned mailbox. A live source
+adapter must journal each redacted item before advancing its cursor. The same
+source record and recall path can then be used without another store or model call.
+For the supervised end-to-end procedure, see
+[channel-memory-live-test.md](channel-memory-live-test.md).
+
 ### Coherence check after each reply
 
 After a reply is sent (or its send is UNKNOWN, since it may have reached the

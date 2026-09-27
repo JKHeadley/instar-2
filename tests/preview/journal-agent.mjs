@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
-import { existsSync, readFileSync, lstatSync, realpathSync, mkdirSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 
@@ -69,14 +69,15 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
-  people: packet.people ?? [], commitments: packet.commitments ?? [], recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
+  people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [],
+  recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
-  if (!['run', 'status', 'stop', 'raise-caps', 'inspect'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture'].includes(command)) throw Error('preview: unknown command');
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -102,6 +103,7 @@ async function main() {
       return;
     }
     try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+      channelItems: view.view.channelItems.size,
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       capAuthority: view.view.capAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
@@ -163,6 +165,37 @@ async function main() {
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
     key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+  if (command === 'import-fixture') {
+    let fixtureJournal;
+    try {
+      if (options['live-mail'] !== undefined && options['live-mail'] !== 'false')
+        throw Error('preview: live mail source is disabled');
+      if (existsSync(stopPath)) throw Error('preview: stop latched');
+      const file = resolve(required(options, 'file'));
+      if (realpathSync(file) !== file || !lstatSync(file).isFile()) throw Error('preview: substituted fixture');
+      const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+      let bytes;
+      try {
+        if (!fstatSync(fd).isFile()) throw Error('preview: substituted fixture');
+        const buffer = Buffer.alloc(2 * 1024 * 1024 + 1);
+        let length = 0;
+        while (length < buffer.length) {
+          const count = readSync(fd, buffer, length, buffer.length - length, length);
+          if (count === 0) break;
+          length += count;
+        }
+        if (length > 2 * 1024 * 1024) throw Error('preview: fixture capacity');
+        bytes = buffer.subarray(0, length);
+      } finally { closeSync(fd); }
+      const rows = bytes.toString('utf8').split(/\r?\n/u).filter(Boolean).map(line => JSON.parse(line));
+      fixtureJournal = openPreviewJournal(journalPath, key());
+      if (fixtureJournal.view.genesis.importSource !== undefined && !fixtureJournal.view.imported)
+        throw Error('preview: migration incomplete');
+      const added = importChannelFixture(fixtureJournal, rows, required(options, 'agent-account'), Date.now(), () => existsSync(stopPath));
+      process.stdout.write(`${JSON.stringify({ added, total: fixtureJournal.view.channelItems.size })}\n`);
+    } finally { fixtureJournal?.close(); storage.close(); }
+    return;
+  }
   if (command === 'raise-caps') {
     let capJournal;
     try {
