@@ -56,6 +56,22 @@ it('audits the recorded packet without emitting bodies and refuses lost provenan
     const wrongReply = structuredClone(packet);
     wrongReply.history[1].answer = 'invented reply';
     expect(auditPacket(journal.view, last, wrongReply).findings.map((item: { code: string }) => item.code)).toContain('reply-text-source');
+    const wrongCandidateReply = structuredClone(packet);
+    const turnCandidate = wrongCandidateReply.memoryCandidates.find((item: { id: string }) => !item.id.startsWith('channel:'));
+    expect(turnCandidate).toBeDefined();
+    turnCandidate.reply = 'invented earlier reply';
+    expect(auditPacket(journal.view, last, wrongCandidateReply).findings.map((item: { code: string }) => item.code))
+      .toContain('candidate-reply-source');
+    const wrongChannelReply = structuredClone(packet);
+    const channelCandidate = wrongChannelReply.memoryCandidates.find((item: { id: string }) => item.id.startsWith('channel:'));
+    expect(channelCandidate).toBeDefined();
+    channelCandidate.reply = 'invented imported reply';
+    expect(auditPacket(journal.view, last, wrongChannelReply).findings.map((item: { code: string }) => item.code))
+      .toContain('candidate-reply-source');
+    const wrongReplacement = structuredClone(packet);
+    wrongReplacement.memory[0].replacement = 'The itinerary word is invented magpie.';
+    expect(auditPacket(journal.view, last, wrongReplacement).findings.map((item: { code: string }) => item.code))
+      .toContain('memory-replacement-source');
     const wrongImport = structuredClone(packet);
     wrongImport.channelMemory[0].from = 'invented sender';
     expect(auditPacket(journal.view, last, wrongImport).findings.map((item: { code: string }) => item.code)).toContain('channel-attribution');
@@ -137,6 +153,73 @@ it('audits a rolling summary when it is the latest model call', async () => {
     expect(report.modelCall).toBe('summary');
     expect(report.findings).toEqual([]);
     expect(report.items.some((item: { kind: string }) => item.kind === 'history-turn')).toBe(true);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('verifies memorySummary from the prior summary in complete history and after replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-memory-summary-')));
+  try {
+    const path = join(root, 'journal.encrypted');
+    let journal = openPreviewJournal(path, key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'Sam likes tea.', people: [], commitments: [], closed: [] }) : 'Noted.',
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Sam likes tea.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    worker.intake([update(2, 'What does Sam like?')]); await worker.drain();
+    const packet = JSON.parse(JSON.parse(journal.view.lastPrompt!.prompt!).messages[1].content).packet;
+    expect(packet.historyMode).toBe('complete');
+    expect(packet.summary).toBeUndefined();
+    expect(packet.memorySummary).toBeDefined();
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    expect(auditJournal(journal.view).items).toContainEqual(expect.objectContaining({ kind: 'memory-summary',
+      chain: [{ kind: 'summary', through: 1 }] }));
+    const altered = structuredClone(packet);
+    altered.memorySummary.text = 'Sam likes coffee.';
+    expect(auditPacket(journal.view, journal.view.order[1]!, altered).findings.map((item: { code: string }) => item.code))
+      .toContain('memory-summary-source');
+    journal.close(); journal = openPreviewJournal(path, key);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('checks open commitments at reservation, including a closure by that summary and replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-closure-')));
+  try {
+    const path = join(root, 'journal.encrypted');
+    let journal = openPreviewJournal(path, key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => {
+        if (!input.id.startsWith('summary:')) return 'Noted.';
+        const packet = JSON.parse(input.context);
+        return JSON.stringify({ summary: 'A dentist task.', people: [],
+          commitments: packet.history.some((item: { user: string }) => item.user === 'Remind me to call the dentist.')
+            ? [{ in: 'message', quote: 'Remind me to call the dentist.' }] : [],
+          closed: packet.history.some((item: { user: string }) => item.user === 'I already called the dentist.')
+            ? [{ id: 0, quote: 'I already called the dentist.' }] : [] });
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Remind me to call the dentist.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    worker.intake([update(2, 'I already called the dentist.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    const latest = journal.view.lastPrompt!;
+    const packet = JSON.parse(JSON.parse(latest.prompt!).messages[1].content).packet;
+    expect(packet.openCommitments).toHaveLength(1);
+    expect(journal.view.closed.has(0)).toBe(true);
+    expect(latest.closedCount).toBe(0);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    journal.close(); journal = openPreviewJournal(path, key);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    expect(auditPacket(journal.view, { ...journal.view.order[1]!, update: 3 }, packet,
+      latest.memoryCount, latest.summaryCount, 1)
+      .findings.map((item: { code: string }) => item.code)).toContain('open-commitment-source');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

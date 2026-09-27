@@ -4,7 +4,8 @@ import { isoMinute } from '../../src/recall/ground.js';
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
-export function auditPacket(view, turn, packet, memoryCount = view.memory.length) {
+export function auditPacket(view, turn, packet, memoryCount = view.memory.length,
+  summaryCount = view.summaries.length, closedCount = view.closed.size) {
   const items = [], findings = [];
   const fault = (code, at) => findings.push({ code, at });
   const add = (kind, at, chain) => items.push({ kind, at, chain });
@@ -47,6 +48,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
   const activeChanges = view.memory.slice(0, memoryCount)
     .filter(change => (view.turns.get(change.trigger)?.update ?? Infinity) < turn.update);
+  const recordedSummaries = view.summaries.slice(0, summaryCount);
+  const closedAtReservation = new Set([...view.closed.keys()].slice(0, closedCount));
   const clean = value => activeChanges.reduce((text, change) => {
     let next = text.replaceAll(change.quote, '[withheld: operator correction or forgetting]');
     for (const passage of change.summaryPassages ?? [])
@@ -71,7 +74,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   }
   const summary = packet.summary;
   if (packet.historyMode === 'summary-plus-recent') {
-    const record = view.summaries.find(row => row.through === summary?.through);
+    const record = recordedSummaries.find(row => row.through === summary?.through);
     if (!record || record.through >= turn.update) fault('summary-source-absent', 'summary');
     else {
       if (summary.text !== clean(record.text)) fault('summary-text-source', 'summary');
@@ -82,8 +85,9 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     }
   } else if (packet.historyMode !== 'complete' || summary !== undefined) fault('history-mode-invalid', 'summary');
   if (packet.memorySummary !== undefined) {
-    if (summary === undefined || packet.memorySummary?.text !== summary.text) fault('memory-summary-source', 'memorySummary');
-    else add('memory-summary', 'memorySummary', [{ kind: 'summary', through: summary.through }]);
+    const record = recordedSummaries.at(-1);
+    if (!record || packet.memorySummary?.text !== clean(record.text)) fault('memory-summary-source', 'memorySummary');
+    else add('memory-summary', 'memorySummary', [{ kind: 'summary', through: record.through }]);
   }
   const expected = view.order.filter(item => item.accepted && item.update < turn.update
     && (summary === undefined || item.update > summary.through)).map(item => item.id);
@@ -159,11 +163,14 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       if (found && item.message !== clean(`${found.subject ?? ''} ${found.text}`).slice(0, 1000)
         && item.message !== clean(`${found.subject ?? ''} ${found.text}`))
         fault('candidate-text-source', at);
+      if (found && item.reply !== '') fault('candidate-reply-source', at);
       if (found) add('memory-candidate', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(item.id) }]);
     } else {
       const found = source(item?.id, at);
       if (found && item.message !== clean(found.text).slice(0, 1000) && item.message !== clean(found.text))
         fault('candidate-text-source', at);
+      if (found && item.reply !== replyFor(found).slice(0, 1000) && item.reply !== replyFor(found))
+        fault('candidate-reply-source', at);
       if (found) add('memory-candidate', at, [{ kind: 'source-turn', id: found.id, update: found.update }]);
     }
   }
@@ -175,12 +182,12 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   }
   for (const [n, item] of list(packet.openCommitments, 'openCommitments').entries()) {
     const at = `openCommitments[${n}]`, note = view.commitments[item?.id];
-    if (!note || view.closed.has(item.id) || note.in !== item.in || clean(note.quote) !== item.quote)
+    if (!note || closedAtReservation.has(item.id) || note.in !== item.in || clean(note.quote) !== item.quote)
       fault('open-commitment-source', at);
     else add('open-commitment', at, [{ kind: 'source-turn', id: note.source }, { kind: 'commitment-note', id: item.id }]);
   }
   for (const [n, item] of list(packet.memory, 'memory').entries()) {
-    const at = `memory[${n}]`, change = view.memory.find(row => row.source === item?.source && row.trigger === item?.trigger);
+    const at = `memory[${n}]`, change = activeChanges.find(row => row.source === item?.source && row.trigger === item?.trigger);
     if (!change) fault('memory-change-source', at);
     else {
       const trigger = view.turns.get(change.trigger);
@@ -188,6 +195,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       if (change.source.startsWith('channel:')) channel(change.source, at);
       else source(change.source, at);
       if (item.mode !== (change.mode === 'forget' ? 'forgotten' : 'corrected')) fault('memory-mode', at);
+      if (item.replacement !== (change.mode === 'correct' ? clean(change.replacement ?? '') : undefined))
+        fault('memory-replacement-source', at);
       add(item.mode, at, [{ kind: change.source.startsWith('channel:') ? 'channel-import' : 'source-turn',
         ...(change.source.startsWith('channel:') ? { ref: channelRef(change.source) } : { id: change.source }) },
         { kind: 'operator-correction', id: change.trigger, update: trigger?.update ?? null }]);
@@ -238,7 +247,7 @@ export function auditJournal(view) {
   }
   catch { return { update: latest.kind === 'summary' ? latest.through : turn.update, modelCall: latest.kind,
     items: [], findings: [{ code: 'recorded-prompt-unreadable', at: 'prompt' }] }; }
-  const report = auditPacket(view, turn, packet, latest.memoryCount);
+  const report = auditPacket(view, turn, packet, latest.memoryCount, latest.summaryCount, latest.closedCount);
   if (latest.kind === 'answer') {
     if (question !== redact(turn.text).text) report.findings.push({ code: 'current-turn-source', at: 'question' });
     report.items.unshift({ kind: 'current-turn', at: 'question',

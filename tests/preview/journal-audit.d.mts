@@ -7,5 +7,6 @@ export interface AuditReport {
   findings: { code: string; at: string }[];
 }
 
-export function auditPacket(view: JournalView, turn: Turn, packet: unknown, memoryCount?: number): AuditReport;
+export function auditPacket(view: JournalView, turn: Turn, packet: unknown, memoryCount?: number,
+  summaryCount?: number, closedCount?: number): AuditReport;
 export function auditJournal(view: JournalView): AuditReport;

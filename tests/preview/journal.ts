@@ -88,8 +88,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
-  lastPrompt: { kind: 'answer'; id: string; prompt: string | null; memoryCount: number }
-    | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number } | null;
+  lastPrompt: { kind: 'answer'; id: string; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number }
+    | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number } | null;
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[];
@@ -162,7 +162,8 @@ function project(view: JournalView, row: JournalRecord): void {
     if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
       || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
     view.summaryReservations.add(row.through); view.calls++;
-    view.lastPrompt = { kind: 'summary', through: row.through, prompt: row.prompt ?? null, memoryCount: view.memory.length };
+    view.lastPrompt = { kind: 'summary', through: row.through, prompt: row.prompt ?? null, memoryCount: view.memory.length,
+      summaryCount: view.summaries.length, closedCount: view.closed.size };
     return;
   }
   if (row.kind === 'summary-failed') {
@@ -220,7 +221,8 @@ function project(view: JournalView, row: JournalRecord): void {
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
-    view.lastPrompt = { kind: 'answer', id: turn.id, prompt: row.prompt ?? null, memoryCount: view.memory.length };
+    view.lastPrompt = { kind: 'answer', id: turn.id, prompt: row.prompt ?? null, memoryCount: view.memory.length,
+      summaryCount: view.summaries.length, closedCount: view.closed.size };
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];
     else {
