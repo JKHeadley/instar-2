@@ -308,6 +308,11 @@ it('keeps a completed faithfulness verdict in the journal before a supervisor in
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-faithfulness-outage-')));
   const path = join(root, 'journal.encrypted');
   try {
+    let entered!: () => void, release!: () => void;
+    const supervisorEntered = new Promise<void>(resolve => { entered = resolve; });
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      release = () => reject(Error('supervisor interrupted'));
+    });
     const journal = openPreviewJournal(path, key, genesis());
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:')
@@ -316,21 +321,30 @@ it('keeps a completed faithfulness verdict in the journal before a supervisor in
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } },
         usage: { input_tokens: 777, output_tokens: 7 } }),
       replyCheck: { elapsedMs: () => 100, jev: async (_state, questions) => {
-        if (questions) throw Error('supervisor interrupted');
+        if (questions) { entered(); return interrupted; }
         return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
       }, escalate: async () => { throw Error('unexpected review'); } },
       send: async () => 1, checkOutbound: () => {} });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: 'Remember this.' } }]);
-    await worker.drain(); await worker.summarizeIfNeeded(true);
+    await worker.drain();
+    const summary = worker.summarizeIfNeeded(true);
+    await supervisorEntered;
     expect(records(path).filter(row => row.kind === 'summary-check')).toMatchObject([{
       faithfulness: { path: 'jev', verdict: 'pass', usage: { inputTokens: 777, outputTokens: 7 } },
+    }]);
+    expect(records(path).filter(row => row.kind === 'summary-check' && row.result)).toHaveLength(0);
+    const inFlight = openPreviewJournal(path, key);
+    expect(inFlight.view.summaryReservations.has(1)).toBe(true);
+    expect(inFlight.view.summaryChecks.get(1)).toBeUndefined();
+    inFlight.close();
+    release(); await summary;
+    expect(records(path).filter(row => row.kind === 'summary-check' && row.result)).toMatchObject([{
       result: { verdict: 'unavailable' } }]);
     journal.close();
     const replay = openPreviewJournal(path, key);
-    expect(replay.view.lastSummaryFailure?.faithfulness).toMatchObject({ verdict: 'pass',
-      usage: { inputTokens: 777, outputTokens: 7 } });
-    expect(records(path).filter(row => row.kind === 'summary-check')).toHaveLength(1);
+    expect(replay.view.lastSummaryFailure?.faithfulness).toMatchObject({ verdict: 'pass' });
+    expect(records(path).filter(row => row.kind === 'summary-check' && row.faithfulness?.usage)).toHaveLength(1);
     replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

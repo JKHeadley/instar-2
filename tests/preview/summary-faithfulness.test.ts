@@ -210,8 +210,9 @@ it.each([['lost', 0.99], ['supervisor outage', 0.01]] as const)(
       worker.intake([update(1, 'My workshop code is 7319.')]); await worker.drain();
       await worker.summarizeIfNeeded(true);
       const failure = journal.view.lastSummaryFailure;
-      expect(failure?.faithfulness).toMatchObject({ path: 'jev', verdict: score > 0.85 ? 'lost' : 'pass',
-        usage: { inputTokens: 777, outputTokens: 7 } });
+      expect(failure?.faithfulness).toMatchObject({ path: 'jev', verdict: score > 0.85 ? 'lost' : 'pass' });
+      if (score > 0.85) expect(failure?.faithfulness?.usage).toMatchObject({ inputTokens: 777, outputTokens: 7 });
+      else expect(failure?.faithfulness?.usage).toBeUndefined();
       expect(failure?.usage).toBeUndefined();
       expect(journal.view.summaries).toHaveLength(0);
       journal.close();

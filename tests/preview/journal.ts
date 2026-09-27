@@ -121,7 +121,7 @@ export type JournalRecord =
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; at: number }
   | { kind: 'summary-candidate'; through: number; state: string; usage?: ModelUsage; at: number }
-  | { kind: 'summary-check'; through: number; result: SummaryCheckResult; faithfulness?: SummaryFaithfulness; at: number }
+  | { kind: 'summary-check'; through: number; result?: SummaryCheckResult; faithfulness?: SummaryFaithfulness; at: number }
   | { kind: 'summary-review-reserve'; through: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; reason?: string; output?: string; evidence?: string; faithfulness?: SummaryFaithfulness; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
 
@@ -528,8 +528,10 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'summary-check') {
     if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
-      || row.result.path === 'subscription' && !view.summaryReviews.has(row.through))
+      || !row.result && !row.faithfulness
+      || row.result?.path === 'subscription' && !view.summaryReviews.has(row.through))
       throw Error('preview journal: summary check without reservation');
+    if (!row.result) return; // Completed faithfulness evidence precedes the next supervisor call.
     const checks = view.summaryChecks.get(row.through) ?? [];
     if (row.result.path === 'jev' && checks.some(check => check.path === 'jev')
       || row.result.path === 'subscription' && checks.some(check => check.path === 'subscription'))
@@ -2447,6 +2449,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
       }
       if (ports.replyCheck) {
+        if (faithfulness.path === 'jev')
+          journal.append({ kind: 'summary-check', through, faithfulness, at: ports.now() });
+        const recordedFaithfulness: SummaryFaithfulness = { path: faithfulness.path,
+          verdict: faithfulness.verdict, score: faithfulness.score };
         const state = supervisedState!;
         const started = ports.replyCheck.elapsedMs();
         let jev: SummaryCheckResult;
@@ -2456,14 +2462,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         } catch {
           jev = { verdict: 'unavailable', path: 'jev', latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - started) };
         }
-        journal.append({ kind: 'summary-check', through, result: jev, faithfulness, at: ports.now() });
+        journal.append({ kind: 'summary-check', through, result: jev, faithfulness: recordedFaithfulness, at: ports.now() });
         if (jev.verdict === 'unavailable') {
-          journal.append({ kind: 'summary-failed', through, faithfulness,
+          journal.append({ kind: 'summary-failed', through, faithfulness: recordedFaithfulness,
             ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
         }
         if (jev.verdict !== 'pass') {
           if (journal.view.calls >= journal.view.limits.maxCalls || !ports.replyCheck.summaryReview) {
-            journal.append({ kind: 'summary-failed', through, faithfulness,
+            journal.append({ kind: 'summary-failed', through, faithfulness: recordedFaithfulness,
               ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
           }
           gate();
@@ -2480,13 +2486,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'summary-check', through, result: review, at: ports.now() });
           if (review.verdict === 'unavailable' && !review.retryable) return; // paid outcome may be UNKNOWN
           if (review.verdict !== 'pass') {
-            journal.append({ kind: 'summary-failed', through, faithfulness,
+            journal.append({ kind: 'summary-failed', through, faithfulness: recordedFaithfulness,
               ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
           }
         }
         gate();
       }
-      journal.append({kind:'summary',through,text:candidate,faithfulness,
+      journal.append({kind:'summary',through,text:candidate,faithfulness: ports.replyCheck
+        ? { path: faithfulness.path, verdict: faithfulness.verdict, score: faithfulness.score } : faithfulness,
 
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
         ...(memory ? { memory } : {}),

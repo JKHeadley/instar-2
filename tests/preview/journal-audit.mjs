@@ -256,8 +256,11 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement });
   }
   const expectedPreferences = [...activePreferences.values()].map(item => ({ text: clean(item.quote), source: item.source }));
-  if (body(packet.preferences ?? []) !== body(expectedPreferences)) fault('preference-source', 'preferences');
-  for (const [n, item] of list(packet.preferences, 'preferences').entries()) {
+  const packetPreferences = list(packet.preferences, 'preferences');
+  if (packetPreferences.length !== expectedPreferences.length || packetPreferences.some((item, n) =>
+    item?.source !== expectedPreferences[n].source || item?.text !== expectedPreferences[n].text))
+    fault('preference-source', 'preferences');
+  for (const [n, item] of packetPreferences.entries()) {
     if (expectedPreferences.some(expected => expected.source === item?.source && expected.text === item?.text))
       add('preference', `preferences[${n}]`, [{ kind: 'operator-turn', id: item.source }]);
   }
