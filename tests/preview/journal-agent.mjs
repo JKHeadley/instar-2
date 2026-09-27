@@ -70,6 +70,7 @@ const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zone
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -78,7 +79,8 @@ const withheldView = view => view.memory.map(change => ({
     ? { channelSource: view.channelItems.get(change.source.slice('channel:'.length))?.source,
       channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
     : { sourceUpdate: view.turns.get(change.source)?.update }),
-  operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
+  operatorUpdate: view.turns.get(change.trigger)?.update,
+  ...(change.mode === 'correct' ? { quote: redact(change.quote).text } : {}),
   reason: change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
