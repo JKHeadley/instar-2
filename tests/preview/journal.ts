@@ -26,7 +26,7 @@ export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns
 export const PREVIEW_RECALL_LIMIT = 5;
 /** Most person notes recalled for the people a new message names; the most recent are kept. */
 export const PREVIEW_PEOPLE_LIMIT = 10;
-/** Most open commitments shown with a new message after compaction; the most recent are kept. */
+/** Most related open commitments shown with a new message after compaction. */
 export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
@@ -641,6 +641,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const trigger = journal.view.turns.get(change.trigger)!;
     return `correction:operator/${conversationName(trigger.thread)}/${dated(trigger)}/#${trigger.update}`;
   };
+  const age = (turn: Turn) => {
+    const at = sentAt(turn), elapsed = at === null ? -1 : ports.now() - at;
+    if (elapsed < 0) return 'age unknown';
+    if (elapsed < 60_000) return 'less than 1 minute';
+    const minutes = Math.floor(elapsed / 60_000);
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? '' : 's'}`;
+  };
   /** Original turns the summary already covers, chosen by the memory sentinel
    * for the new message: its words, the turn it continues, the summary
    * sentences it touches and any day it names. Best first; empty when nothing relates. */
@@ -686,6 +697,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** Keep dated near-term commitments within the ten-item window before recency.
    * The model still judges whether each item relates to the new message. */
+  /** Open commitments from compacted turns, before relevance selection. */
   const openFor = (through: number, limit: number) => journal.view.commitments
     .map((note, id) => ({ id, note, turn: journal.view.turns.get(note.source), due: dueSoon(note.quote) }))
     .filter(item => !journal.view.closed.has(item.id) && item.turn !== undefined && item.turn.update <= through
@@ -702,6 +714,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const at = Date.parse(`${date}T00:00:00Z`);
       return Number.isFinite(at) && at >= start && at <= end;
     });
+  };
+  const relatedOpenFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>) => {
+    const open = openFor(summary.through, journal.view.commitments.length);
+    if (/\b(?:anything open|what(?:'s| is) (?:still )?(?:open|pending)|what open commitments|what did i ask you to (?:remember|do)|what (?:did you|have you) (?:promise|commit)|list (?:my|your|our|the) (?:open )?(?:commitments|promises|reminders))\b/iu.test(turn.text))
+      return open.slice(-PREVIEW_COMMITMENT_LIMIT);
+    const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_COMMITMENT_LIMIT,
+      candidates: open.map(({ note, turn: source }) => ({ text: clean(note.quote, true), at: sentAt(source!) ?? 0 })) });
+    return ranked.map(index => open[index]!).sort((a, b) => a.turn!.update - b.turn!.update || a.id - b.id);
   };
   const fromOperator = (turn: Turn) => {
     try { return String((JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id) === journal.view.genesis.operator; }
@@ -962,7 +982,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       entry.items.push({ id, quote: note.quote }); promised.set(slot, entry);
     }
     const commitments = [...promised.values()].sort((a, b) => a.turn.update - b.turn.update || (a.side === 'message' ? -1 : 1))
-      .map(({ turn, side, items }) => ({ source: turn.id, sourceLabel: turnLabel(turn), from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn),
+      .map(({ turn, side, items }) => ({ source: turn.id, sourceLabel: turnLabel(turn), from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn), age: age(turn),
         ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
         ...(side === 'message' ? { message: clean(redact(turn.text).text, true, turn.id) }
           : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true, turn.id), delivery: outcome(turn) }),
@@ -1084,7 +1104,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const channels = channelFor(turn, summary?.text);
       const candidateChannels = channelFor(turn, summary?.text, false);
       const named = summary ? peopleFor(turn.text, summary.through) : [];
-      const open = summary ? openFor(summary.through, PREVIEW_COMMITMENT_LIMIT) : [];
+      const open = summary ? relatedOpenFor(turn, summary) : [];
       type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'recent' | 'candidate';
         key: string; rank: number; match: number; recent: number; index: number };
       const optional: Optional[] = [];

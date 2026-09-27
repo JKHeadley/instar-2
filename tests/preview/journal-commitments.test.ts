@@ -54,7 +54,8 @@ const extractor = (bad = true) => (context: string) => {
 function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes?: number } = {}) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(options.maxBytes));
   const asked = new Map<string, string>();
-  const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+  const clock = { now: 1790172860000 };
+  const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
     prepareModel: input => input.context,
     model: async input => {
       if (input.id.startsWith('summary:')) return options.plain ? 'A plain summary.' : extractor(options.bad ?? true)(input.context);
@@ -74,7 +75,7 @@ function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes
     }
     throw Error('compaction never reached');
   };
-  return { journal, worker, asked, say, fillUntilCompacted };
+  return { journal, worker, asked, say, fillUntilCompacted, clock };
 }
 
 it('records requests and its own promises verbatim after replies, drops everything else, inside the shared attempt cap', async () => {
@@ -129,6 +130,38 @@ it('brings open items back after compaction with who said them and when, says it
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('surfaces only BM25-related open items with age, while an unrelated turn gets none', async () => {
+  const root = origin();
+  try {
+    const w = world(root);
+    await w.say(1, LOCKER);
+    await w.say(2, DENTIST);
+    await w.fillUntilCompacted(3, 'What did I ask you to remember?');
+    const packet = (question: string) => {
+      const probe = w.worker.probe(question);
+      expect('context' in probe).toBe(true);
+      return JSON.parse('context' in probe ? probe.context : '{}');
+    };
+    expect(packet('What about my gym locker code?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
+      .toEqual([0]);
+    expect(packet('What about the dentist crown?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
+      .toEqual([1, 2]);
+    expect(packet('How are the garden tomatoes?').commitments).toBeUndefined();
+    expect(packet('What about my gym locker code?').commitments[0].age).toBe('2 days');
+    expect(packet('What open commitments do you have?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
+      .toEqual([0, 1, 2]);
+    w.clock.now = 1790000060000 + 2 * 60 * 60 * 1000;
+    expect(packet('What about my gym locker code?').commitments[0].age).toBe('2 hours');
+    w.clock.now = 1790000060000 + 2 * 60 * 1000;
+    expect(packet('What about my gym locker code?').commitments[0].age).toBe('2 minutes');
+    w.clock.now = 1790000060000 + 30 * 1000;
+    expect(packet('What about my gym locker code?').commitments[0].age).toBe('less than 1 minute');
+    w.clock.now = 1790000060000 - 1000;
+    expect(packet('What about my gym locker code?').commitments[0].age).toBe('age unknown');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('closes an item only on a later message the operator verifiably sent, and never shows it again', async () => {
   const root = origin();
   try {
@@ -151,6 +184,8 @@ it('closes an item only on a later message the operator verifiably sent, and nev
     await w.say(n, 'Anything open?');
     const packet = JSON.parse(w.asked.get('Anything open?')!);
     expect(packet.commitments.map((entry: { items: { id: number }[] }) => entry.items.map(item => item.id))).toEqual([[0]]);
+    const related = w.worker.probe('What about the dentist crown?');
+    expect('context' in related && JSON.parse(related.context).commitments).toBeUndefined();
     w.journal.close();
     expect(run(root, 'status').commitments).toEqual({ total: 3, open: 1 });
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -758,15 +758,17 @@ withdrawn or no longer needed, quoted exactly: the summary call sees the open it
 `openCommitments` (id and quote) and returns `closed`, or `closedBy` on an item made and
 settled within the same stretch. Another sender's message closes nothing.
 
-After compaction every reply packet carries the most recent ten open items from compacted
-turns as `commitments`, each shown inside its whole message or reply with `from`, date,
-conversation and, for the agent's own reply, its delivery outcome. The model judges by meaning
-whether the new message relates; it brings an item up only then, or when asked what it was
-asked to remember or do. The packet says the preview has no tools, so it can only remember an
-item, never do, schedule or remind; it never calls an item done unless a message says so, and
-absence is not evidence. Under the context bound, optional evidence follows the packet priority described below.
-`status` reports `commitments: {total, open}` and per summary
+After compaction the existing memory sentinel ranks open commitment quotes against the new
+message with BM25. The packet carries up to ten related items; an explicit request for the
+open list carries the ten most recent. Each is shown inside its whole message or reply with
+`from`, date, elapsed age, conversation and, for the agent's own reply, its delivery outcome.
+Closed and superseded items are excluded before ranking. The model addresses a related open
+item and its age; the packet says the preview has no tools, so it can only remember an item,
+never do, schedule or remind. It never calls an item done unless a message says so, and
+absence is not evidence. Under the context bound, optional evidence follows the current packet priority. `status` reports `commitments: {total, open}` and per summary
 `commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
+This reuses the journal projection and recall function, with no new store, call or classifier.
+For a supervised private-chat probe, follow [commitment-surfacing-live-test.md](commitment-surfacing-live-test.md).
 
 ### Packet priority near the byte envelope
 
