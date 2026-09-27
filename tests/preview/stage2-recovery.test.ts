@@ -293,7 +293,8 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
     const spawned=JSON.parse(readFileSync(log,'utf8').trim());
     expect(spawned.args).toEqual(subscriptionInvocationPolicy(model).args);
     expect(Object.keys(spawned.env).filter(key=>key!=='__CF_USER_TEXT_ENCODING').sort()).toEqual(
-      ['PATH','HOME','CLAUDE_CONFIG_DIR','CLAUDE_CODE_MAX_RETRIES','CLAUDE_CODE_MAX_OUTPUT_TOKENS','CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'].sort());
+      ['PATH','HOME','CLAUDE_CONFIG_DIR','CLAUDE_CODE_MAX_RETRIES','CLAUDE_CODE_MAX_OUTPUT_TOKENS','CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC','MAX_THINKING_TOKENS'].sort());
+    expect(spawned.env.MAX_THINKING_TOKENS).toBe('0');
     const facts=JSON.parse(readFileSync(join(root,'.preview-stage2/facts.json'),'utf8'));
     const q=facts.find((f:any)=>f.kind==='judgment-provider-ProviderJudgmentRequest').body.record;
     expect(readFileSync(join(root,'.preview-stage2/captures',q.submitted.hash.slice(7)),'utf8')).toBe(spawned.stdin);

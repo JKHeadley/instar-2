@@ -195,6 +195,11 @@ export function subscriptionConversationPolicy(model: string) {
   maxInputBytes: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES, maxOutputBytes: 16384, maxRawTerminalBytes: 65536,
   maxMetadataBytes: 8192, maxCaptureBytes: 1048576 });
 }
+/** Extended thinking off for every subscription call. Claude Code 2.1.280 maps
+ * MAX_THINKING_TOKENS=0 to thinking {type:"disabled"} (claude-sonnet-5 accepts it);
+ * for that adaptive model a positive budget is ignored, so off is the only bound.
+ * Env-only by design: it is not part of the activation-bound policy digest. */
+export const SUBSCRIPTION_THINKING_ENV = Object.freeze({ MAX_THINKING_TOKENS: '0' });
 export type SubscriptionFraming = 'preview-decision-system-v2' | typeof SUBSCRIPTION_CONVERSATION_FRAMING;
 /** Exact policy and system prompt for a framing; the historical v2 default is unchanged. */
 export function subscriptionPolicyFor(model: string, framing: SubscriptionFraming = 'preview-decision-system-v2') {
@@ -299,7 +304,7 @@ export function createClaudeCodeSubscriptionRoute(input:
         'subscription invocation bounds differ');
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
           CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' });
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV });
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
           allowFailureFrame = false) => {
           await new Promise<void>(resolve => setImmediate(resolve));
