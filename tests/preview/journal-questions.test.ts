@@ -26,11 +26,36 @@ it('keeps a cap-held operator question in the journal, then closes it only after
     const reopened = openPreviewJournal(join(path, 'journal.encrypted'), key);
     expect(openQuestionCandidates(reopened.view)).toHaveLength(1);
     raiseJournalCaps(reopened, { maxCalls: 3, maxReplies: 12, maxTurns: 12, authority: 'Justin test cap raise', at: 1001 });
+    expect(openQuestionCandidates(reopened.view)).toHaveLength(1);
     const resumed = createJournalWorker(reopened, { now: () => 1002, stopped: () => false,
-      model: async () => 'The project code is 71.', send: async () => 2, checkOutbound: () => {} });
+      model: async () => "The project code is 71. I don't know who set it.", send: async () => 2, checkOutbound: () => {} });
     await resumed.drain();
     expect(reopened.view.order[1]?.sent).toBe(2);
     expect(openQuestionCandidates(reopened.view)).toEqual([]);
+    reopened.close();
+  } finally { rmSync(path, { recursive: true, force: true }); }
+});
+
+it('keeps a cap-held question open across an UNKNOWN resumed send and replay', async () => {
+  const path = root();
+  try {
+    const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, genesis(1));
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'First answer.', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'First question?'), update(2, 'Where is the project code?')]);
+    await worker.drain();
+    expect(openQuestionCandidates(journal.view)).toHaveLength(1);
+    raiseJournalCaps(journal, { maxCalls: 3, maxReplies: 12, maxTurns: 12, authority: 'Justin test cap raise', at: 1001 });
+    expect(openQuestionCandidates(journal.view)).toHaveLength(1);
+    const resumed = createJournalWorker(journal, { now: () => 1002, stopped: () => false,
+      model: async () => 'The project code is 71.', send: async () => null, checkOutbound: () => {} });
+    await resumed.drain();
+    expect(journal.view.order[1]?.intent).toBe('PREVIEW — The project code is 71.');
+    expect(journal.view.order[1]?.sent).toBeUndefined();
+    expect(openQuestionCandidates(journal.view)).toHaveLength(1);
+    journal.close();
+    const reopened = openPreviewJournal(join(path, 'journal.encrypted'), key);
+    expect(openQuestionCandidates(reopened.view)).toHaveLength(1);
     reopened.close();
   } finally { rmSync(path, { recursive: true, force: true }); }
 });
@@ -159,6 +184,27 @@ it('does not close a lost question when the later answering send is UNKNOWN', as
     journal.close();
     const reopened = openPreviewJournal(join(path, 'journal.encrypted'), key);
     expect(openQuestionCandidates(reopened.view)).toHaveLength(1);
+    reopened.close();
+  } finally { rmSync(path, { recursive: true, force: true }); }
+});
+
+it('accepts model closure of an offered question in a mixed-certainty reply', async () => {
+  const path = root();
+  try {
+    const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, genesis());
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => input.question === 'Where is the plan?' ? { state: 'uncertain' as const }
+        : JSON.stringify({ reply: "The plan is in the cedar drawer. I don't know who put it there.", memory: [],
+          closedQuestions: [JSON.parse(input.context).openQuestions[0].id] }),
+      send: async input => input.update, checkOutbound: () => {} });
+    worker.intake([update(1, 'Where is the plan?'), update(2, 'Tell me where the plan is now.')]);
+    await worker.drain();
+    expect(journal.view.order[1]?.sent).toBe(2);
+    expect(journal.view.order[1]?.closedQuestions).toEqual(['telegram:12345678:update:1']);
+    expect(openQuestionCandidates(journal.view)).toEqual([]);
+    journal.close();
+    const reopened = openPreviewJournal(join(path, 'journal.encrypted'), key);
+    expect(openQuestionCandidates(reopened.view)).toEqual([]);
     reopened.close();
   } finally { rmSync(path, { recursive: true, force: true }); }
 });

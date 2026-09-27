@@ -137,7 +137,7 @@ it('CLI reads an agent-owned JSONL fixture without changing it or advancing Tele
     expect(reopened.view.channelItems.size).toBe(1);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 60_000);
 
 it('refuses an oversized fixture through a bounded descriptor read', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-size-')));

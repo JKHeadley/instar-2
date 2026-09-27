@@ -85,6 +85,7 @@ export type JournalRecord =
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
   reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true;
+  wasHeld?: true;
   closedQuestions?: string[];
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
@@ -111,7 +112,6 @@ const operatorTurn = (view: JournalView, turn: Turn) => {
 };
 /** This phrase match only requests a capped model judgment; it never opens or closes a question. */
 export const unansweredCue = (reply: string) => /\b(?:I (?:don['’]t|do not) know|I(?:['’]m| am) not sure|I (?:can['’]t|cannot) answer)\b/iu.test(reply);
-const actualReply = (turn: Turn) => turn.intent?.replace(/^PREVIEW — /u, '');
 export const projectMemoryText = (view: JournalView, value: string) => view.memory.reduce((text, change) => {
   let projected = text.replaceAll(change.quote, '[withheld: operator correction or forgetting]');
   for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, '[withheld: operator correction or forgetting]');
@@ -122,17 +122,18 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
     .flatMap(turn => turn.closedQuestions ?? []));
   const open = new Map<string, OpenQuestion>();
   for (const turn of view.order) {
-    if (!turn.accepted || !((turn.held && !turn.intent) || turn.noticeClass && turn.intent
+    if (!turn.accepted || !(turn.wasHeld || turn.noticeClass && turn.intent
       || turn.answer === MODEL_FAILURE_REPLY && turn.intent)) continue;
     if (operatorTurn(view, turn)) open.set(turn.id, { source: turn.id, quote: turn.text,
-      reason: turn.held && !turn.intent ? 'held' : turn.noticeClass ? 'lost-answer' : 'definite-failure' });
+      reason: turn.wasHeld ? 'held' : turn.noticeClass ? 'lost-answer' : 'definite-failure' });
   }
   for (const note of view.questions) open.set(note.source, note);
   for (const [id] of open) {
     const turn = view.turns.get(id);
     if (closed.has(id) || view.memory.some(change => change.mode === 'forget' && change.source === id)
-      || turn?.sent && turn.noticeClass === undefined && turn.intent === `PREVIEW — ${turn.answer}`
-        && turn.answer !== MODEL_FAILURE_REPLY && !unansweredCue(actualReply(turn) ?? '')) open.delete(id);
+      || !view.questions.some(note => note.source === id)
+        && turn?.sent && turn.noticeClass === undefined && turn.intent === `PREVIEW — ${turn.answer}`
+        && turn.answer !== MODEL_FAILURE_REPLY) open.delete(id);
   }
   return [...open.values()];
 }
@@ -289,7 +290,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.memory) view.memory.push(...row.memory); }
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
-  if (row.kind === 'hold') turn.held = row.reason;
+  if (row.kind === 'hold') { turn.held = row.reason; turn.wasHeld = true; }
 }
 
 export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extract<JournalRecord,{kind:'genesis'}>,
@@ -781,7 +782,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 const offered = new Set(decision.memoryCandidates?.map(item => item.id) ?? []);
                 const listedQuestions = new Set(decision.openQuestions?.map(item => item.id) ?? []);
                 if (Array.isArray(parsed.closedQuestions) && parsed.closedQuestions.length <= PREVIEW_QUESTION_LIMIT
-                  && !unansweredCue(text) && parsed.closedQuestions.every(id => typeof id === 'string' && listedQuestions.has(id)))
+                  && parsed.closedQuestions.every(id => typeof id === 'string' && listedQuestions.has(id)))
                   closedQuestions = [...new Set(parsed.closedQuestions as string[])];
                 if (Array.isArray(parsed.memory)) memory = journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
                   ? [] : memoryFrom(parsed.memory, turn, offered, decision.memorySummary?.text ?? decision.summary?.text);
