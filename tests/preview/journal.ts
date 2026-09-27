@@ -102,6 +102,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
 const frameLimit = 2 * 1024 * 1024;
+const encodeReply = (reply: string) => reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
@@ -556,10 +557,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, withheld);
     return projected;
   }, value);
-  const preferenceState = () => {
+  const preferenceState = (changes: readonly MemoryChange[] = journal.view.memory) => {
     const active = new Map<string, { source: string; quote: string }>();
     const lineage = new Set<string>();
-    for (const change of journal.view.memory) {
+    for (const change of changes) {
       const key = JSON.stringify([change.source, change.quote]);
       if (change.mode === 'prefer') { active.set(key, { source: change.source, quote: change.quote }); lineage.add(key); }
       else if (active.delete(key) && change.mode === 'correct') {
@@ -570,14 +571,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return { active, lineage };
   };
-  const activePreferences = () => [...preferenceState().active.values()];
-  const memoryList = () => {
+  const activePreferences = (changes: readonly MemoryChange[] = journal.view.memory) => [...preferenceState(changes).active.values()];
+  const memoryList = (pending: readonly MemoryChange[] = [], pendingDated: readonly DatedItem[] = []) => {
+    const changes = [...journal.view.memory, ...pending];
     const entries: { source: string; text: string; update: number }[] = [];
     const add = (source: string, text: string, update: number) => {
       if (!text.trim() || entries.some(item => item.source === source && item.text === text)) return;
       entries.push({ source, text, update });
     };
-    const retired = (source: string, text: string) => journal.view.memory.some(change =>
+    const retired = (source: string, text: string) => changes.some(change =>
       change.mode !== 'prefer' && change.source === source
         && (text.includes(change.quote) || change.quote.includes(text)));
     for (const [id, note] of journal.view.commitments.entries()) {
@@ -585,31 +587,36 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (note.in === 'message' && turn && !journal.view.closed.has(id)
         && !retired(note.source, note.quote)) add(note.source, note.quote, turn.update);
     }
-    for (const item of journal.view.dated) {
+    for (const item of [...journal.view.dated, ...pendingDated]) {
       const turn = journal.view.turns.get(item.source);
       if (turn && !retired(item.source, item.quote)) add(item.source, item.quote, turn.update);
     }
-    const preferenceLineage = preferenceState().lineage;
-    for (const change of journal.view.memory) {
+    const preferenceLineage = preferenceState(changes).lineage;
+    for (const change of changes) {
       if (change.mode !== 'correct' || preferenceLineage.has(JSON.stringify([change.source, change.quote]))) continue;
       const trigger = journal.view.turns.get(change.trigger);
       if (trigger && !retired(change.trigger, change.replacement!)) add(change.trigger, change.replacement!, trigger.update);
     }
-    for (const item of activePreferences()) {
+    for (const item of activePreferences(changes)) {
       const turn = journal.view.turns.get(item.source);
       if (turn) add(item.source, item.quote, turn.update);
     }
     entries.sort((a, b) => b.update - a.update);
     if (!entries.length) return 'I have no active saved memory items about you in this preview journal.';
     const lines: string[] = [];
+    const render = (shown: readonly string[]) => `Here are ${shown.length} active memory items I have about you (newest first):\n`
+      + shown.join('\n')
+      + (entries.length > shown.length ? `\nThere are ${entries.length - shown.length} older active items not shown.` : '');
+    const fits = (body: string) => {
+      const encoded = encodeReply(`PREVIEW — ${body}`);
+      return Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096;
+    };
     for (const item of entries.slice(0, 20)) {
       const line = `${lines.length + 1}. ${redact(item.text).text.slice(0, 120)}\n   To correct or forget this, quote the item and tell me what to change or forget.`;
-      if (Buffer.byteLength(lines.join('\n')) + Buffer.byteLength(line) > 3500) break;
+      if (!fits(render([...lines, line]))) break;
       lines.push(line);
     }
-    return `Here are ${lines.length} active memory items I have about you (newest first):\n`
-      + lines.join('\n')
-      + (entries.length > lines.length ? `\nThere are ${entries.length - lines.length} older active items not shown.` : '');
+    return render(lines);
   };
   const replyFor = (turn: Turn) => turn.noticeClass ? clean(redact(sentText(turn) ?? '').text, true, turn.id)
     : journal.view.memory.some(change => change.mode !== 'prefer' && (change.source === turn.id || change.replies?.includes(turn.id)))
@@ -866,7 +873,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (Array.isArray(parsed.memory)) memory = journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
                   ? [] : memoryFrom(parsed.memory, turn, offered, decision.memorySummary?.text ?? decision.summary?.text);
                 if (memory === undefined || parsed.memoryDisposition === 'unresolved') invalidMemory = true;
-                if (parsed.memoryList === true && fromOperator(turn)) text = memoryList();
+                if (parsed.memoryList === true && fromOperator(turn) && !invalidMemory && !invalidDate)
+                  text = memoryList(memory, dated);
               } else if (parsed && (parsed.memory !== undefined || parsed.memoryDisposition !== undefined || parsed.dated !== undefined)) invalidMemory = true;
             } catch { /* Legacy plain reply. */ }
             if (invalidMemory) { memory = undefined; dated = undefined; }
@@ -941,7 +949,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
         gate();
         if (Buffer.byteLength(reply) > 4096 || Array.from(reply).length > 4096) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
-        const body = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        const body = encodeReply(reply);
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
         }

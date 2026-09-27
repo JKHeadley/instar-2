@@ -143,3 +143,84 @@ it('includes active dated items and reply preferences from answer frames', async
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each([
+  { mode: 'forget' as const, request: 'What do you remember about me? Also remove my saved favorite color amber.',
+    replacement: undefined, expected: 'I have no active saved memory items' },
+  { mode: 'correct' as const, request: 'What do you remember about me? Also change my saved favorite color: my favorite color is blue.',
+    replacement: 'my favorite color is blue', expected: 'my favorite color is blue' }
+])('lists the state after a same-turn $mode decision and keeps it on replay', async ({ mode, request, replacement, expected }) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-list-same-turn-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    const saved = 'Remember my favorite color is amber.';
+    journal.append({ kind: 'intake', id: 'turn-1', update: 1, text: saved, raw: raw(1, saved),
+      accepted: true, cursor: 2, at: 1790000060000 });
+    journal.append({ kind: 'reserve', id: 'turn-1', at: 1790000060000 });
+    journal.append({ kind: 'answer', id: 'turn-1', text: 'Saved.', at: 1790000060000 });
+    journal.append({ kind: 'intent', id: 'turn-1', text: 'PREVIEW — Saved.', chat: genesis.chat,
+      update: 1, grant: genesis.grant, at: 1790000060000 });
+    journal.append({ kind: 'sent', id: 'turn-1', message: 1, at: 1790000060000 });
+    journal.append({ kind: 'summary-reserve', through: 1, at: 1790000060000 });
+    journal.append({ kind: 'summary', through: 1, text: saved, memoryFor: ['turn-1'],
+      commitments: [{ in: 'message', source: 'turn-1', quote: saved }], state: 'complete', at: 1790000060000 });
+    const sent: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1790000120000, stopped: () => false,
+      model: async input => {
+        expect(input.context).toContain('turn-1');
+        return JSON.stringify({ reply: 'Stale model text.', memoryList: true, dated: [],
+          memory: [{ mode, source: 'turn-1', quote: saved, ...(replacement ? { replacement } : {}) }] });
+      }, send: async input => { sent.push(input.expectedText); return sent.length + 1; }, checkOutbound: () => {} });
+    worker.intake([JSON.parse(raw(2, request))]);
+    await worker.drain();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain(expected);
+    expect(sent[0]).not.toContain(saved);
+    expect(journal.view.memory.at(-1)).toMatchObject({ mode, source: 'turn-1', quote: saved });
+    journal.close();
+    const again = openPreviewJournal(path, key);
+    expect(again.view.order.at(-1)?.intent).toBe(sent[0]);
+    const replay = createJournalWorker(again, { now: () => 1790000120000, stopped: () => false,
+      model: async () => { throw Error('answered turn must not call again'); },
+      send: async input => { sent.push(input.expectedText); return 3; }, checkOutbound: () => {} });
+    await replay.drain();
+    expect(sent).toHaveLength(1);
+    again.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('fits the full escaped reply when active items contain HTML entities', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-list-escaped-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const commitments: { in: 'message'; source: string; quote: string }[] = [];
+    for (let update = 1; update <= 15; update++) {
+      const quote = `Remember item ${update} uses ${'&'.repeat(85)}`;
+      const id = `turn-${update}`;
+      journal.append({ kind: 'intake', id, update, text: quote, raw: raw(update, quote),
+        accepted: true, cursor: update + 1, at: 1790000000000 + update * 60000 });
+      journal.append({ kind: 'reserve', id, at: 1790000000000 + update * 60000 });
+      journal.append({ kind: 'answer', id, text: 'Saved.', at: 1790000000000 + update * 60000 });
+      journal.append({ kind: 'intent', id, text: 'PREVIEW — Saved.', chat: genesis.chat,
+        update, grant: genesis.grant, at: 1790000000000 + update * 60000 });
+      journal.append({ kind: 'sent', id, message: update, at: 1790000000000 + update * 60000 });
+      commitments.push({ in: 'message', source: id, quote });
+    }
+    journal.append({ kind: 'summary-reserve', through: 15, at: 1790001000000 });
+    journal.append({ kind: 'summary', through: 15, text: 'The operator saved fifteen items.',
+      commitments, state: 'complete', at: 1790001000000 });
+    const sent: { text: string; expectedText: string }[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1790001200000, stopped: () => false,
+      model: async () => JSON.stringify({ reply: 'Untrusted list.', memory: [], dated: [], memoryList: true }),
+      send: async input => { sent.push(input); return 16; }, checkOutbound: () => {} });
+    worker.intake([JSON.parse(raw(16, 'What do you remember about me?'))]);
+    await worker.drain();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain('&amp;');
+    expect(sent[0]!.expectedText).toContain('older active items not shown');
+    expect(Buffer.byteLength(sent[0]!.text)).toBeLessThanOrEqual(4096);
+    expect(journal.view.order.at(-1)?.held).toBeUndefined();
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

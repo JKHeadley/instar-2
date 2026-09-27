@@ -733,7 +733,7 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();
   try {
-    const initial = { ...genesis(), maxBytes: 1100 };
+    const initial = { ...genesis(), maxBytes: 1300 };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
