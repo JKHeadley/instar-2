@@ -38,6 +38,8 @@ const importSource = (journal, state, source, stopped) => {
 import { auditJournal } from './journal-audit.mjs';
 
 
+import { memoryReport } from './memory-export.js';
+
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -144,7 +146,8 @@ const packetStatus = view => {
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
-  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store', 'audit'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
+
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -168,6 +171,13 @@ async function main() {
       process.stdout.write(`${JSON.stringify(report)}\n`);
       if (report.findings.length) process.exitCode = 1;
     } finally { journal.close(); }
+    return;
+  }
+  if (command === 'export-memory') {
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try { process.stdout.write(memoryReport(journal.view)); }
+    finally { journal.close(); }
+
     return;
   }
   if (command === 'status') {

@@ -10,7 +10,7 @@ const now = 1790000000000;
 const account = 'echo-agent@example.test';
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: now + 1_000_000,
-  maxCalls: 100, maxReplies: 80, maxTurns: 80, maxBytes: 3200, cursor: 0 };
+  maxCalls: 100, maxReplies: 80, maxTurns: 80, maxBytes: 6000, cursor: 0 };
 const row = (id: string, text: string, from = 'justin@example.test') => ({ source: 'email', account, id, from,
   at: now - 3600000, subject: 'Studio launch', text });
 const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
@@ -109,7 +109,8 @@ it('recalls an imported email after Telegram summary, with source sender and dat
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it.skip('CLI reads an agent-owned JSONL fixture without changing it or advancing Telegram intake — SKIPPED: Rule 37 timing flake; docs/defects/journal-channel-memory-cli-timing-flake.md', () => {
+// Four bounded child processes can take over 10 seconds together under parallel test load.
+it('CLI reads an agent-owned JSONL fixture without changing it or advancing Telegram intake', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-cli-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: Date.now() + 60_000 });
@@ -137,7 +138,7 @@ it.skip('CLI reads an agent-owned JSONL fixture without changing it or advancing
     expect(reopened.view.channelItems.size).toBe(1);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 45_000);
 
 it('refuses an oversized fixture through a bounded descriptor read', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-size-')));
