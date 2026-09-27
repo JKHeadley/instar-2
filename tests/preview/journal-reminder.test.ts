@@ -31,11 +31,17 @@ const decide = (input: Input) => {
   return JSON.stringify({ reply: 'Recorded.', memory: [], dated: dated ? [{ quote: input.question, when: dated[1] }] : [] });
 };
 const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
-  const state = { now: start, stopped: false, stopAfterModel: false, fail: false, uncertain: false, plain: false, sent: [] as { text: string; thread?: number }[] };
+  const state = { now: start, stopped: false, stopAfterModel: false, fail: false, uncertain: false, plain: false,
+    plainText: 'Okay, I cancelled the Priya reminder.', summaryCancel: undefined as undefined | 'keep' | 'cancel' | 'omit', sent: [] as { text: string; thread?: number }[] };
   const ports = { now: () => state.now, stopped: () => state.stopped, timeZone: 'America/Los_Angeles',
     model: async (input: Input) => { if (state.stopAfterModel) state.stopped = true;
+      if (input.id.startsWith('summary:') && state.summaryCancel) {
+        const listed = (JSON.parse(input.context) as { reminders?: { id: string }[] }).reminders ?? [];
+        return JSON.stringify({ summary: `The operator asked: ${priya}.`, people: [], memory: [], commitments: [], questions: [],
+          ...(state.summaryCancel === 'omit' ? {} : { cancelReminders: state.summaryCancel === 'cancel' ? listed.map(item => item.id) : [] }) });
+      }
       return state.uncertain ? { state: 'uncertain' as const }
-        : state.plain ? 'Okay, I cancelled the Priya reminder.' : decide(input); }, checkOutbound: () => {},
+        : state.plain ? state.plainText : decide(input); }, checkOutbound: () => {},
     send: async (value: { expectedText: string; thread?: number }) => {
       state.sent.push({ text: value.expectedText, ...(value.thread === undefined ? {} : { thread: value.thread }) });
       return state.fail && value.expectedText.startsWith('PREVIEW reminder') ? null : state.sent.length;
@@ -305,6 +311,53 @@ it('holds a reminder when a later operator message gets a plain reply with no re
     expect(pushes()).toEqual([]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('releases a reminder held by a plain reply once recovery records that the turn cancels nothing, sending it exactly once', async () => {
+  const root = tmp('recovered');
+  try {
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya)]); await worker.drain();
+    state.plain = true; state.plainText = 'You are welcome.'; state.summaryCancel = 'keep';
+    worker.intake([update(2, 'Thanks, that is helpful.')]); await worker.drain();
+    await worker.summarizeIfNeeded(); // the launcher's per-cycle recovery call
+    const thanks = journal.view.order[1]!;
+    expect(thanks.memoryPending).toBe(true); // still rendered safely
+    expect(journal.view.summaries.some(item => item.memoryFor?.includes(thanks.id) && item.reminderCancels?.length === 0)).toBe(true);
+    state.plain = false;
+    worker.intake([update(3, 'Please keep the Priya reminder as requested.')]); await worker.drain();
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9;
+    await worker.drain(); await worker.sendReminders();
+    expect(pushes()).toEqual([priyaLine]);
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9 + 3600_000;
+    await worker.drain(); await worker.sendReminders();
+    expect(pushes()).toEqual([priyaLine]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a plain-reply cancellation: recovery that cancels, or records no reminder decision, never releases the reminder', async () => {
+  for (const summaryCancel of ['cancel', 'omit'] as const) {
+    const root = tmp(`recovered-${summaryCancel}`);
+    try {
+      const { state, open, pushes } = harness(root);
+      let { journal, worker } = open(true);
+      worker.intake([update(1, priya)]); await worker.drain();
+      state.plain = true; state.summaryCancel = summaryCancel;
+      worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
+      await worker.summarizeIfNeeded(); // the launcher's per-cycle recovery call
+      expect(journal.view.reminderCancels).toHaveLength(summaryCancel === 'cancel' ? 1 : 0);
+      expect(journal.view.summaries.some(item => item.memoryFor?.includes(journal.view.order[1]!.id))).toBe(summaryCancel === 'cancel');
+      journal.close(); ({ journal, worker } = open());
+      state.now = friday9 + 3600_000;
+      await worker.drain(); await worker.sendReminders();
+      expect(pushes()).toEqual([]);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 it('releases the reminder once a later operator message is interpreted and cancels nothing', async () => {

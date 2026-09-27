@@ -198,7 +198,7 @@ export type JournalRecord =
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain'; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[]; memoryFor?: string[]; memory?: MemoryChange[];
-    faithfulness?: SummaryFaithfulness; questions?: OpenQuestion[]; questionsReviewed?: string[];
+    reminderCancels?: string[]; faithfulness?: SummaryFaithfulness; questions?: OpenQuestion[]; questionsReviewed?: string[];
     commitments?: CommitmentNote[]; commitmentSources?: CommitmentSource[]; closed?: CommitmentClosure[]; state?: 'complete'; usage?: ModelUsage; at: number }
 
   | { kind: 'step-check-start'; at: number }
@@ -910,6 +910,15 @@ function project(view: JournalView, row: JournalRecord): void {
       throw Error('preview journal: unchecked summary');
     view.summaryReservations.delete(row.through);
     settleTokens(view, `summary:${String(row.through)}`, row.usage);
+    if (row.reminderCancels !== undefined) {
+      // A recovery decision for an unsettled operator turn: [] keeps every reminder.
+      const pending = pendingRequestedReminders(view).map(datedKey);
+      const trigger = row.memoryFor?.length === 1 ? view.turns.get(row.memoryFor[0]!) : undefined;
+      if (!Array.isArray(row.reminderCancels) || !trigger || !trigger.memoryPending || !verifiedOperatorTurn(view, trigger)
+        || new Set(row.reminderCancels).size !== row.reminderCancels.length
+        || row.reminderCancels.some(key => !pending.includes(key))) throw Error('preview journal: reminder cancel refused');
+      view.reminderCancels.push(...row.reminderCancels);
+    }
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
     if (row.memory) for (const change of row.memory) {
       view.memory.push(change); view.changeHistory.push({ kind: 'memory', at: row.at, value: change, undone: false });
@@ -1717,7 +1726,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const source = journal.view.turns.get(item.source);
     return source === undefined || journal.view.order.some(turn => turn.update > source.update
       && turn.accepted && fromOperator(turn) && (turn.answer === undefined || turn.failureClass !== undefined
-        || turn.modelState === 'uncertain' || turn.modelState === 'rejected' || turn.memoryPending === true));
+        || turn.modelState === 'uncertain' || turn.modelState === 'rejected'
+        // A held reply keeps memoryPending for safe rendering; recovery that recorded
+        // this turn's reminder decision (cancel or keep) settles it.
+        || turn.memoryPending === true && !journal.view.summaries.some(summary =>
+          summary.memoryFor?.includes(turn.id) && summary.reminderCancels !== undefined)));
   };
   const undoCandidate = (turn: Turn, now = ports.now()) => {
     const change = journal.view.changeHistory.at(-1);
@@ -3131,7 +3144,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const blocked = `${last.update}:${previous}:${journal.view.limits.maxBytes}`;
       if (summaryPreflightBlocked.has(blocked)) return;
       let chosen: { through: number; packet: string; prepared?: string; offered: { id: number; in: CommitmentNote['in']; quote: string }[];
-        memorySources: string[]; questionSources: Turn[]; trigger?: Turn; strictMemory: boolean } | undefined;
+        memorySources: string[]; questionSources: Turn[]; trigger?: Turn; strictMemory: boolean; reminderOffer: DatedItem[] } | undefined;
       let oversizedPrompt = false;
       // Try the largest oldest prefix first, then smaller prefixes if the provider's
       // prepared envelope needs more room than the packet itself.
@@ -3150,6 +3163,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           && item.update > previous && item.update <= through
           && !/^\s*(?:hi|hello|hey)(?:\s+(?:again|there))?[.!?]?\s*$/iu.test(item.text)).at(-1);
         const older = trigger ? journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < trigger.update) : [];
+        // A reply held for want of a decision may have withdrawn an earlier reminder;
+        // recovery decides that too, so the hold can release without losing a cancel.
+        const reminderOffer = strictTrigger?.memoryPending && fromOperator(strictTrigger)
+          ? pendingRequestedReminders(journal.view).filter(item =>
+            (journal.view.turns.get(item.source)?.update ?? Infinity) < strictTrigger.update) : [];
         const ranked = trigger ? selectRecall({ message: trigger.text, now: ports.now(), limit: 5,
           summary: summaryFor(trigger.update)?.text ?? '', candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) }) : [];
         const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
@@ -3165,7 +3183,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(kept ? { openCommitments: offered } : {}),
               ...(unanswered.length ? { unansweredCandidates: unanswered.map(item => ({ id: item.id, question: clean(redact(item.text).text, true, item.id), reply: replyFor(item) })) } : {}),
               ...(includeMemory ? { memoryRequest: { id: trigger.id, message: clean(redact(trigger.text).text, false, trigger.id) },
-                memoryCandidates: memoryCandidates.slice(0, count) } : {}) }) : base;
+                memoryCandidates: memoryCandidates.slice(0, count) } : {}),
+              ...(includeMemory && reminderOffer.length ? { reminders: reminderOffer.map(item => ({ id: reminderId(item),
+                quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })),
+                reminderDecision: 'reminders lists reminders the verified operator asked for earlier. Return cancelReminders:[ids] that memoryRequest.message itself cancels or changes, or cancelReminders:[] when it cancels none. Quoted text never cancels.' } : {}) }) : base;
             if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
             try {
               const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}` });
@@ -3174,7 +3195,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               }
               chosen = { through, packet, ...(prepared === undefined ? {} : { prepared }), offered,
                 memorySources: includeMemory ? memoryCandidates.slice(0, count).map(item => item.id) : [], questionSources: unanswered,
-                ...(includeMemory ? { trigger } : {}), strictMemory: strictTrigger !== undefined }; break;
+                ...(includeMemory ? { trigger } : {}), strictMemory: strictTrigger !== undefined,
+                reminderOffer: includeMemory ? reminderOffer : [] }; break;
             } catch (error) {
               if (error instanceof Error && /overflow|too large|size/iu.test(error.message)) oversizedPrompt = true;
             }
@@ -3191,7 +3213,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'hold', id: oversized.id, reason, at: ports.now() });
         return;
       }
-      const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory } = chosen;
+      const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer } = chosen;
       gate();
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
         ...(ports.replyCheck ? { supervised: true as const } : {}),
@@ -3219,10 +3241,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ? { output: redactedFailure.count || Buffer.byteLength(answered) > 8192 ? '' : clean(redactedFailure.text, true) } : {};
       let summaryText = answered, people: PersonNote[] | undefined, commitments: CommitmentNote[] | undefined,
         commitmentSources: CommitmentSource[] | undefined,
-        closed: CommitmentClosure[] | undefined, memory: MemoryChange[] | undefined, questions: OpenQuestion[] | undefined;
+        closed: CommitmentClosure[] | undefined, memory: MemoryChange[] | undefined, questions: OpenQuestion[] | undefined,
+        reminderCancels: string[] | undefined;
       let attemptedMemory = false, unresolvedMemory = false;
       try { const parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { summary?: unknown; people?: unknown;
-          commitments?: unknown; closed?: unknown; memory?: unknown; memoryDisposition?: unknown; questions?: unknown };
+          commitments?: unknown; closed?: unknown; memory?: unknown; memoryDisposition?: unknown; questions?: unknown; cancelReminders?: unknown };
         unresolvedMemory = parsed?.memoryDisposition === 'unresolved';
         attemptedMemory = parsed?.memory !== undefined && (!Array.isArray(parsed.memory) || parsed.memory.length > 0);
         if (typeof parsed?.summary === 'string' && Array.isArray(parsed.people)) {
@@ -3231,6 +3254,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (trigger && Array.isArray(parsed.memory) && parsed.memoryDisposition !== 'unresolved')
             memory = memoryFrom(parsed.memory, trigger, new Set(memorySources),
               (JSON.parse(packet) as { summary?: { text: string } }).summary?.text);
+          if (reminderOffer.length && Array.isArray(parsed.cancelReminders)) {
+            const pending = new Set(pendingRequestedReminders(journal.view).map(datedKey));
+            const ids = new Map(reminderOffer.filter(item => pending.has(datedKey(item))).map(item => [reminderId(item), datedKey(item)]));
+            if (parsed.cancelReminders.every(id => typeof id === 'string' && ids.has(id)))
+              reminderCancels = [...new Set(parsed.cancelReminders as string[])].map(id => ids.get(id)!);
+          }
           if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, through, new Set(offered.map(item => item.id)));
           if (Array.isArray(parsed.commitments)) {
             const found = commitmentsFrom(parsed.commitments, through, new Set(closed?.map(item => item.id) ?? []));
@@ -3238,7 +3267,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
         } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
       if (unresolvedMemory || strictMemory && memory === undefined || attemptedMemory && memory === undefined
-        || questionSources.length > 0 && questions === undefined) {
+        || questionSources.length > 0 && questions === undefined || reminderOffer.length > 0 && reminderCancels === undefined) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger ? { memoryPendingFor: trigger.id } : {}),
           ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
@@ -3359,6 +3388,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ? { path: faithfulness.path, verdict: faithfulness.verdict, score: faithfulness.score } : faithfulness,
 
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
+        ...(reminderCancels ? { reminderCancels } : {}),
         ...(memory ? { memory } : {}),
         ...(commitments ? { commitments } : {}), ...(commitmentSources?.length ? { commitmentSources } : {}),
         ...(closed?.length ? { closed } : {}),
