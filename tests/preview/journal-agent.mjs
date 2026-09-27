@@ -96,9 +96,11 @@ const withheldView = view => {
         channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
       : { sourceUpdate: view.turns.get(change.source)?.update }),
     operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
+    ...(change.in === 'reply' ? { in: 'reply' } : {}),
     reason: preferenceKeys.has(JSON.stringify([change.source, change.quote]))
       ? change.mode === 'forget' ? 'verified operator removed this reply preference' : 'verified operator changed this reply preference'
-      : change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
+      : change.mode === 'forget' ? 'verified operator requested forgetting'
+        : change.in === 'reply' ? 'verified operator corrected this answer' : 'verified operator corrected this fact' }));
 };
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
@@ -149,11 +151,11 @@ async function main() {
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
-      dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+      dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
         time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
-      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.id))
+      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
@@ -164,7 +166,7 @@ async function main() {
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
       lastReplyCheck: view.view.lastReplyCheck,
       people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
-        note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
+        change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
       launches: readRuns(runsPath).launches.slice(-3),
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
     finally { view.close(); }

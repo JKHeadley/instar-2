@@ -714,6 +714,17 @@ recalled turns, person notes, and the oldest open items. `status` reports `commi
 
 ### Correcting and forgetting memory
 
+A direct operator correction of the agent's answer uses the same encrypted journal memory
+decision. A recent actual send intent is offered even when a short correction has no words in
+common with the earlier question. The model marks an answer correction with `in:"reply"`, the
+earlier turn ID, an exact clause from the text actually sent, and a replacement quoted from the
+operator's correction. Validation rejects a clause found only in the operator's question or in
+an unsent answer candidate. Later packets withhold that answer, keep the original question,
+and carry the corrected clause. A missing or invalid decision stays pending under the existing
+bounded path. Source-fact corrections continue to omit `in` and retain their existing behavior.
+The [supervised answer-correction script](answer-correction-live-test.md) is for Justin on the
+approved private runner; offline tests do not claim a live Telegram result.
+
 A direct correction or forget request from the bound Telegram operator can be judged in the existing
 rolling summary before its reply. A small text cue schedules that call early;
 it cannot itself supersede anything. The ordinary capped reply call can also return a memory
