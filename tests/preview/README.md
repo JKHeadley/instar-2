@@ -1032,3 +1032,29 @@ durable check order, and the holding reply without network access.
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),
 never an unsent candidate.
+
+### Reply grounding audit
+
+Each answer-call reservation now includes a bounded index of the exact packet it
+sent to the model: its SHA-256, summary frontier, original journal turns in
+`history` and `recalled`, source turns in `people`, commitment indexes, imported
+source IDs, correction-note turns, memory-change indexes and memory-candidate
+IDs. The index is computed from the final fitted packet, before the model call,
+and fsynced in the existing encrypted journal. A send intent links that
+reservation to the exact visible reply, including a fixed holding reply or a
+send whose Telegram outcome is UNKNOWN. A candidate that was never sent has no
+reply audit. No model judgment or new store is involved. The index says what
+the packet contained; it does not assert which item caused the model's wording.
+
+`status` reports how many send intents have an audit and how many older intents
+predate it. `inspect --root ROOT --update TELEGRAM_UPDATE_ID` returns the exact
+sent text, API message ID or UNKNOWN outcome, and its grounding index. Without
+`--update`, `inspect` shows the latest intent. Its existing `last` field still
+shows the latest model prompt, which may belong to a different turn. Old journal
+reservations replay unchanged and show `grounding: null`; missing historical
+evidence is not filled in from today's memory projection. Audit IDs and text
+remain in the encrypted local journal and the operator-only local inspect
+surface. This preview remains deliberately machine-local under one writer.
+
+For the supervised operator check, see
+[reply-grounding-live-test.md](reply-grounding-live-test.md).
