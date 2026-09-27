@@ -1439,7 +1439,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
     expect(packet.recalled).toMatchObject([{ id: 'telegram:12345678:update:1', date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
     // A narrower provider envelope still fits recall, after optional candidates yield.
-    limit = 2900; // int12: the reply packet also carries the conflict-decision instruction.
+    limit = 3300; // int12: the reply packet also carries the conflict and follow-up instructions.
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();
     expect(journal.view.order.at(-1)?.sent).toBe(1);
     // The new unsummarized turn is mandatory. At this bound even a candidate-free

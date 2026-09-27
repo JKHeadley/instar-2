@@ -136,6 +136,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   replyTo: packet.replyTo ?? null,
   ...(packet.period ? { period: packet.period, periodGuide: packet.periodGuide } : {}),
   people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  lastNamedPerson: packet.lastNamedPerson ?? null,
   dated: packet.dated ?? [], datedScope: packet.datedScope ?? null, moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],

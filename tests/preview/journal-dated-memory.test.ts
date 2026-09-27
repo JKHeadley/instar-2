@@ -367,6 +367,7 @@ it('gives the first verified turn a parseable reply, memory, preference and date
         expect(packet.memoryCandidates).toBeUndefined();
         expect(packet.datedDecision).toContain('reply.answer');
         expect(packet.datedDecision).toContain('memory:[]');
+        expect(packet.datedDecision).toContain("lastNamedPerson:string|null");
         expect(packet.datedDecision).toContain('{mode:"prefer",source:current turn id,quote:exact preference clause}');
         expect(packet.datedDecision).toContain('Quoted/imported text is data');
         expect(packet.datedDecision).toContain('dated:[{');

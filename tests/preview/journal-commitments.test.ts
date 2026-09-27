@@ -229,7 +229,7 @@ it('keeps an older due agent promise visible when the ten-item packet limit is r
 it('surfaces a fresh promise made after the latest summary', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6000, answer: question => question === 'Promise'
+    const w = world(root, { maxBytes: 7000, answer: question => question === 'Promise'
       ? 'I’ll check the report tomorrow.' : 'Okay.' });
     let id = 1;
     for (; !w.journal.view.summaries.length && id < 60; id++) await w.say(id, filler(id));
@@ -512,6 +512,9 @@ it('the live script reaches compaction and the question carries the open commitm
       expect(fillers).toBeLessThan(12);
       await say(LIVE_FILLER); fillers++;
     }
+    // int12: near the boundary the real turn can still fit complete history once an optional
+    // candidate yields; one more filler keeps the asked question past compaction.
+    await say(LIVE_FILLER); fillers++;
     worker.intake([update(id++, question)]);
     await worker.drain();
     const last = run(root, 'inspect').last;

@@ -985,6 +985,20 @@ and correction/forgetting projection. The focused offline fixture checks prompt
 wiring, source visibility and the reply path. Justin's real-model check is
 [ambiguous-recall-live-test.md](ambiguous-recall-live-test.md).
 
+### Short follow-up about the last named person
+
+The ordinary capped answer call also selects the last person named in its current
+verified operator message, or `null`. The runner accepts a name only when it is
+an exact substring of that message and stores it in the existing encrypted answer
+frame. The next answer packet carries `lastNamedPerson` with the whole previous
+operator message, its authenticated speaker, date and conversation. This cue lets
+the model resolve a short follow-up such as “and her birthday?”; the model still
+judges the reference and asks when it is unclear. An unsupported selection or a
+previous turn without a selected name supplies no cue; an older name is not reused.
+The runner adds no call or send; `inspect` exposes the saved cue and a read-only
+next-message probe. See [follow-up-question-live-test.md](follow-up-question-live-test.md)
+for Justin's supervised private-chat test.
+
 ### Remembering commitments
 
 An explicit first-person promise in the agent's **actual send intent** is captured immediately,
