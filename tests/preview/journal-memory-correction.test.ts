@@ -673,3 +673,42 @@ it('still holds later answers while a correction can be decided by a summary tha
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 20000);
+
+// Astra hotfix-mu MUST-FIX 1: an already-sent request that an ordinary summary later
+// found unresolved must replay when marked undecided, and later work must resume.
+it('replays an undecided mark on an already-sent pending request and resumes later answers', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-undecided-sent-')));
+  const path = join(root, 'journal.encrypted');
+  let journal: ReturnType<typeof openPreviewJournal> | undefined;
+  try {
+    let summaries = 0;
+    const sends: { update: number; text: string }[] = [];
+    const ports = { now: () => 1790000000000, stopped: () => false, checkOutbound: () => {},
+      send: async (input: { update: number; text: string }) => { sends.push(input); return sends.length; },
+      model: async (input: { id: string; question: string; context: string }) => {
+        if (input.id.startsWith('summary:')) {
+          summaries++;
+          return summaries === 1
+            ? JSON.stringify({ summary: 'Unresolved memory request.', people: [], memory: [], memoryDisposition: 'unresolved' })
+            : { state: 'uncertain' as const };
+        }
+        return 'Acknowledged.';
+      } };
+    journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
+    let worker = createJournalWorker(journal, ports as never);
+    worker.intake([update(1, 'My gym locker code is 3310.')]); await worker.drain();
+    worker.intake([update(2, 'Please stop remembering my gym locker code.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.order[1]?.memoryPending).toBe(true);
+    expect(journal.view.order[1]?.sent).toBe(2);
+    journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports as never);
+    worker.intake([update(3, 'What is my gym locker code?')]);
+    await worker.drain();
+    expect(journal.view.order[1]?.memoryUndecided).toBe(true);
+    expect(sends.map(item => item.update)).toEqual([1, 2, 3]); // later work resumed; turn 2 not repeated
+    journal.close(); journal = openPreviewJournal(path, key); // replay succeeds
+    expect(journal.view.order[1]?.memoryUndecided).toBe(true);
+    worker = createJournalWorker(journal, ports as never); await worker.drain();
+    expect(sends).toHaveLength(3);
+  } finally { journal?.close(); rmSync(root, { recursive: true, force: true }); }
+}, 20000);

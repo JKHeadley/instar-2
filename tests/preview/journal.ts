@@ -253,7 +253,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') turn.held = row.reason;
   if (row.kind === 'memory-undecided') {
-    if (!turn.accepted || turn.memoryUndecided || turn.intent !== undefined) throw Error('preview journal: memory undecided order');
+    if (!turn.accepted || turn.memoryUndecided) throw Error('preview journal: memory undecided order');
     turn.memoryUndecided = true;
     if (turn.held === 'memory correction pending') delete turn.held;
   }
