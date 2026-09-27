@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS, projectMemoryBudget } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
@@ -83,6 +83,9 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
+const budgetView = view => { const budget = projectMemoryBudget(view); return {
+  budgetBytes: budget.budgetBytes, pinnedBytes: budget.pinnedBytes, activeBytes: budget.activeBytes,
+  activeInferred: budget.active.length, archivedInferred: budget.archived.length }; };
 const withheldView = view => {
   const preferenceKeys = new Set();
   for (const change of view.memory) {
@@ -131,6 +134,7 @@ async function main() {
     }
     try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
+      memoryBudget: budgetView(view.view),
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       capAuthority: view.view.capAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
@@ -186,6 +190,7 @@ async function main() {
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
         ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
+        memoryBudget: budgetView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
         lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
     } finally { view.close(); }

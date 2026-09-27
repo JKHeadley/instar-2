@@ -26,6 +26,8 @@ export const PREVIEW_PEOPLE_LIMIT = 10;
 export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
+/** Byte budget for active extracted memory. Operator-stated items remain pinned even if they alone exceed it. */
+export const PREVIEW_MEMORY_BUDGET_BYTES = 8192;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
@@ -54,7 +56,7 @@ export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
-  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
+  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; peopleUsed?: number[]; at: number }
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     memory?: MemoryChange[]; memoryPending?: true; dated?: DatedItem[]; datedPending?: true; usage?: ModelUsage; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
@@ -96,6 +98,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[];
+  peopleUse: Map<number, number>;
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
@@ -106,6 +109,35 @@ const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.acco
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
+/** Replay-stable active/archive partition. The journal retains every original and use receipt. */
+export function projectMemoryBudget(view: JournalView) {
+  const activePreferences = new Map<string, string>();
+  for (const change of view.memory) {
+    const key = JSON.stringify([change.source, change.quote]);
+    if (change.mode === 'prefer') activePreferences.set(key, change.quote);
+    else if (activePreferences.delete(key) && change.mode === 'correct')
+      activePreferences.set(JSON.stringify([change.trigger, change.replacement]), change.replacement!);
+  }
+  const pinned = [...activePreferences.values(),
+    ...view.dated.filter(item => !view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+      && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => item.quote),
+    ...view.commitments.flatMap((item, index) => view.closed.has(index) ? [] : [item.quote]),
+    ...view.memory.flatMap(change => change.mode === 'correct' && change.replacement ? [change.replacement] : [])];
+  const pinnedBytes = pinned.reduce((bytes, value) => bytes + Buffer.byteLength(value), 0);
+  let remaining = Math.max(0, PREVIEW_MEMORY_BUDGET_BYTES - pinnedBytes);
+  const ranked = view.people.flatMap((note, index) => view.memory.some(change => change.mode !== 'prefer'
+    && (note.source === change.source && (change.quote.includes(note.quote) || note.quote.includes(change.quote))
+      || change.mode === 'correct' && note.source === change.trigger
+        && (change.replacement!.includes(note.quote) || note.quote.includes(change.replacement!)))) ? []
+    : [{ index, bytes: Buffer.byteLength(JSON.stringify(note)), used: view.peopleUse.get(index) ?? -1 }])
+    .sort((a, b) => b.used - a.used || b.index - a.index);
+  const active = new Set<number>();
+  for (const note of ranked) if (note.bytes <= remaining) { active.add(note.index); remaining -= note.bytes; }
+  return { budgetBytes: PREVIEW_MEMORY_BUDGET_BYTES, pinnedBytes,
+    active: [...active].sort((a, b) => a - b),
+    archived: ranked.map(item => item.index).filter(index => !active.has(index)).sort((a, b) => a - b),
+    activeBytes: PREVIEW_MEMORY_BUDGET_BYTES - remaining + Math.max(0, pinnedBytes - PREVIEW_MEMORY_BUDGET_BYTES) };
+}
 function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
   const maxBytes = row.maxBytes ?? view.limits.maxBytes; // Earlier cap frames did not carry this field.
   if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
@@ -226,6 +258,11 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
+    if (row.peopleUsed) for (const index of row.peopleUsed) {
+      if (!Number.isSafeInteger(index) || index < 0 || index >= view.people.length)
+        throw Error('preview journal: invalid person use');
+      view.peopleUse.set(index, view.calls); // Journal call order, immune to a backward wall clock.
+    }
     if (row.corrections === undefined) view.corrections = [];
     else {
       if (row.corrections.some(id => !view.corrections.includes(id))) throw Error('preview journal: uncarried correction');
@@ -298,7 +335,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], peopleUse: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -335,7 +372,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], peopleUse: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -490,12 +527,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * turns a summary already covers. Candidate selection only: identity is the model's judgment. */
   const peopleFor = (question: string, through: number) => {
     const asked = new Set(terms(question));
-    return journal.view.people.filter(note => {
-      const turn = journal.view.turns.get(note.source);
-      return turn !== undefined && turn.update <= through
-        && !affectedNote(note)
-        && terms(note.name).some(term => asked.has(term));
-    }).slice(-PREVIEW_PEOPLE_LIMIT);
+    const budget = projectMemoryBudget(journal.view);
+    const eligible = (index: number) => {
+      const note = journal.view.people[index]!, turn = journal.view.turns.get(note.source);
+      return turn !== undefined && turn.update <= through && !affectedNote(note);
+    };
+    const active = budget.active.filter(eligible).map(index => journal.view.people[index]!).filter(note =>
+      terms(note.name).some(term => asked.has(term))).slice(-PREVIEW_PEOPLE_LIMIT);
+    // An explicit archive search reads the retained notes; a normal name mention does not.
+    if (!/^\s*(?:search|find|look up)\s+(?:my\s+)?(?:archived\s+)?memor(?:y|ies)\b/iu.test(question)) return active;
+    const archived = budget.archived.filter(eligible);
+    const matches = selectRecall({ message: question, now: ports.now(), limit: PREVIEW_PEOPLE_LIMIT,
+      candidates: archived.map(index => { const note = journal.view.people[index]!;
+        return { text: `${note.name} ${clean(note.quote, true, note.source)}`, at: sentAt(journal.view.turns.get(note.source)!) ?? 0 }; }) });
+    return [...active, ...matches.map(index => journal.view.people[archived[index]!]!)].slice(-PREVIEW_PEOPLE_LIMIT);
   };
   /** Open commitments from turns a summary already covers, most recent last. Every open one is a
    * candidate; the model judges by meaning whether the new message relates to it. */
@@ -736,7 +781,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               promptFit = true;
               try {
                 const prepared = ports.prepareModel?.({ question, context, id: turn.id });
-                return { question, context, prepared, carried: flagged.map(item => item.id) };
+                return { question, context, prepared, carried: flagged.map(item => item.id),
+                  peopleUsed: named.slice(named.length - people).map(note => journal.view.people.indexOf(note)) };
               } catch { /* Try fewer candidates or optional notes before summary recovery. */ }
             }
           }
@@ -796,9 +842,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
-          const { question, context, prepared, carried } = selected;
+          const { question, context, prepared, carried, peopleUsed } = selected;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
-            corrections: carried, at: ports.now() }); gate();
+            corrections: carried, peopleUsed, at: ports.now() }); gate();
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }

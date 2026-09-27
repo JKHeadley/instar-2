@@ -687,6 +687,29 @@ A plain-text summary keeps no notes; `status` lists each summary's note count
 (`null` = none recorded), `summaryPending` (a summary call still in flight) and the
 known names.
 
+### Bounded active memory
+
+The journal retains every original turn and extracted note. The active extracted-memory
+projection has an 8,192-byte budget. Verified operator reply preferences, dated items,
+open commitments and corrections are pinned; if those alone exceed the budget, `status`
+reports the overage instead of silently dropping one. Inferred person notes use the
+remaining bytes. The most recently used notes stay active, with newer notes winning a
+tie. A use means a note actually fitted in a reserved model packet, recorded in that
+packet's durable journal reservation and ordered by its monotonic call count rather
+than wall time. Replay computes the same active and archived sets.
+
+Ordinary name matching draws person notes from the active set. A direct request such as
+`Search memory Aster` also searches archived notes by the existing bounded lexical
+recall scorer. A matching archived note is shown with its original whole message,
+sender and date, subject to the same prompt fitting and correction withholding as an
+active note. A lexical miss does not establish absence. The next successful model
+reservation makes a shown archived note recently used; it may replace an older active
+note. `status.memoryBudget` and `inspect.memoryBudget` show the budget, pinned and
+active bytes, and active and archived inferred counts. Archiving is a successful
+capacity outcome; it does not remove encrypted journal evidence or advance intake.
+This remains machine-local under the existing one-writer lease. See
+[memory-budget-live-test.md](memory-budget-live-test.md) for Justin's supervised check.
+
 ### Remembering commitments
 
 The same summary call also lists what the operator asked the agent to remember or do
