@@ -128,7 +128,8 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   // Only a time within the last 26 hours can fall on today's local date; older ones are never formatted.
   const isToday = (ms: number | null | undefined) => ms !== null && ms !== undefined && ms > 0
     && now - ms < 26 * 3_600_000 && ms <= now + 60_000 && parts(format, ms).day === today;
-  const accepted = view.order.filter(turn => turn.accepted);
+  const accepted = view.order.filter(turn => turn.accepted && !turn.editOf);
+  const edits = view.order.filter(turn => turn.accepted && turn.editOf).length;
   const count = (turns: readonly Turn[], when: (turn: Turn) => number | null | undefined) =>
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
@@ -146,12 +147,13 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     + [...view.reminders.values()].filter(item => item.sent === undefined).length;
 
 
-  const refused = view.order.length - accepted.length;
+  const refused = view.order.filter(turn => !turn.accepted).length;
   const when = (ms: number) => parts(format, ms).text;
   const left = (limit: number, used: number) => `${String(used)} of ${String(limit)} used, ${String(Math.max(0, limit - used))} left`;
   const lines = [
     `As of ${when(now)} (time zone ${timeZone}; "today" means ${today} there).`,
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
+    edits ? `Telegram edits recorded: ${String(edits)}; each revises an earlier message and opens no reply.` : '',
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
     `Morning reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; separate grant ${view.reminderGrant === null ? 'absent' : 'recorded'}.`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
