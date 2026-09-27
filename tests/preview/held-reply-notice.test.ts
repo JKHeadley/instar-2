@@ -225,9 +225,9 @@ it('waits for an eligible held notice even when the update cap wins the reported
     expect(due).toBe(now + HELD_NOTICE_AFTER_MS + 1);
     const launcher = readFileSync(join(process.cwd(), 'tests/preview/journal-agent.mjs'), 'utf8');
     const source = launcher.slice(launcher.indexOf('    const waitHeldNotices ='), launcher.indexOf('    for (let i = 0; i < cycles'));
-    const stopAtCap = new Function('reportCap', 'worker', 'summarizeLater', 'signalled', 'workerStop', 'existsSync', 'stopPath', 'Date', 'g', 'delay',
+    const stopAtCap = new Function('reportCap', 'worker', 'summarizeLater', 'signalled', 'workerStop', 'existsSync', 'stopPath', 'Date', 'journal', 'delay',
       `let endReason; ${source}; return stopAtCap;`)(() => cap, worker, () => {}, false, { value: false }, () => false, 'offline',
-      { now: () => now }, journal.view.genesis, async (ms: number) => { now += ms; }) as () => Promise<boolean>;
+      { now: () => now }, journal, async (ms: number) => { now += ms; }) as () => Promise<boolean>;
     expect(await stopAtCap()).toBe(true);
     expect(now).toBeGreaterThanOrEqual(due!);
     expect(sends).toHaveLength(1);
