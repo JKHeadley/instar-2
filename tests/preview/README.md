@@ -1036,8 +1036,11 @@ never an unsent candidate.
 ### Dark Jev step check
 
 The journal launcher accepts `--step-check true`; omission or `false` leaves it off.
-Off mode adds no journal frames and leaves model packets and send bytes unchanged.
+Off mode adds no step-check frames or observation-only fields to other frames,
+including after a previously enabled run, and leaves model packets and send bytes unchanged.
 When enabled, a durable start marker makes only subsequent model answers eligible.
+After a disabled interval, re-enabling also checks eligible work recorded since that
+first start marker; it does not recheck steps that already have a verdict.
 After the ordinary reply path, Jev compares each completed answer and committed
 summary with its journal projection. A completed summary answer rejected by the
 existing summary validation is checked against the recorded failure too. The

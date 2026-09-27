@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { interpretStepJev } from './step-check.js';
+import { redact } from '../../src/recall/redact.js';
 
 const key = new Uint8Array(32).fill(13);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -139,6 +140,72 @@ it('redacts a credential from Jev evidence and preserves the existing outbound s
     expect(journal.view.order[0]?.held).toBe('outbound secret refused');
     expect(journal.view.order[0]?.sent).toBeUndefined();
     journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([
+  'Here it is:\n' + 'sk-' + 'A'.repeat(24),
+  'password = "CorrectHorseBattery"',
+  'Bearer\n' + 'B'.repeat(24),
+])('refuses raw secret evidence before JSON escaping: %s', async answer => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-escaped-secret-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    let jevCalls = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => answer,
+      send: async () => { throw Error('secret sent'); },
+      checkOutbound: text => { if (redact(text).count) throw Error('secret'); },
+      stepCheck: { jev: async () => { jevCalls++; return { value: jev(0.01), latencyMs: 1 }; } } });
+    worker.startStepChecks(); worker.intake([update(1, 'What happened?')]); await worker.drain(); await worker.checkSteps();
+    expect(jevCalls).toBe(0);
+    expect(journal.view.order[0]?.held).toBe('outbound secret refused');
+    expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result).toMatchObject({
+      verdict: 'unavailable', reason: 'secret detected in step evidence' });
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('dispatches clean raw evidence to Jev after the secret check', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-clean-evidence-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const states: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'Here is the answer:\nSeven.',
+      send: async () => 5, checkOutbound: () => {},
+      stepCheck: { jev: async state => { states.push(state); return { value: jev(0.01), latencyMs: 1 }; } } });
+    worker.startStepChecks(); worker.intake([update(1, 'What is seven?')]); await worker.drain(); await worker.checkSteps();
+    expect(states).toHaveLength(1);
+    expect(JSON.parse(states[0]!).modelOutput).toBe('Here is the answer:\nSeven.');
+    expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('pass');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps failed-summary frames in the original shape after disabling a previously enabled observer', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-off-restart-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, genesis);
+    createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => 'unused', send: async () => 5, checkOutbound: () => {},
+      stepCheck: { jev: async () => ({ value: jev(0.01), latencyMs: 1 }) } }).startStepChecks();
+    first.close();
+
+    const second = openPreviewJournal(path, key);
+    const frames: string[] = [];
+    const append = second.append;
+    second.append = row => { frames.push(JSON.stringify(row)); append(row); };
+    const worker = createJournalWorker(second, { now: () => 2000, stopped: () => false,
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'I changed memory.', people: [], memory: [{ invalid: true }] }) : 'Seven.',
+      send: async () => 5, checkOutbound: () => {} });
+    worker.intake([update(1, 'What is seven?')]); await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(frames.filter(frame => JSON.parse(frame).kind === 'summary-failed')).toEqual([
+      JSON.stringify({ kind: 'summary-failed', through: 1, state: 'complete', failureClass: 'malformed', at: 2000 })]);
+    expect(frames.some(frame => JSON.parse(frame).kind === 'step-check-reserve')).toBe(false);
+    second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

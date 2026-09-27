@@ -1071,7 +1071,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'empty',
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
-      const redactedFailure = journal.view.stepCheckStarted ? redact(answered) : null;
+      const redactedFailure = ports.stepCheck ? redact(answered) : null;
       const failedOutput = redactedFailure
         ? { output: redactedFailure.count || Buffer.byteLength(answered) > 8192 ? '' : clean(redactedFailure.text, true) } : {};
       let summaryText = answered, people: PersonNote[] | undefined, commitments: CommitmentNote[] | undefined,
@@ -1168,9 +1168,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             through: summary.through, memoryChanges: summary.memory ?? [], people: summary.people ?? [],
             commitments: summary.commitments ?? [], closed: summary.closed ?? [] } };
         })();
-        const redacted = redact(JSON.stringify(evidence));
+        let detectedSecrets = 0;
+        const serialized = JSON.stringify(evidence, (_key, value: unknown) => {
+          if (typeof value !== 'string') return value;
+          const checked = redact(value);
+          detectedSecrets += checked.count;
+          return checked.text;
+        });
+        const redacted = redact(serialized);
         const state = redacted.text;
-        const unavailableReason = redacted.count ? 'secret detected in step evidence'
+        const unavailableReason = detectedSecrets || redacted.count ? 'secret detected in step evidence'
           : stepId.startsWith('summary-failed:') && !step.output ? 'model answer unavailable for safe checking'
             : Buffer.byteLength(state) > 32768 ? 'evidence exceeds bound' : null;
         journal.append({ kind: 'step-check-reserve', step: stepId,
