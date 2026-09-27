@@ -17,8 +17,8 @@ messages in the bound private Telegram chat. The desk performs their stated
 read-only checks and any required supervised preparation. After each procedure,
 enter `PASS` only when its actual Telegram replies, `status` and `inspect`
 evidence meet that procedure's pass conditions; otherwise enter `FAIL: reason`.
-The coordinator watches the encrypted journal while a procedure is open and
-reads it again when Justin finishes. Its table counts newly answered turns with Telegram API acceptance, shows
+The coordinator watches the encrypted journal and stop latch while a procedure
+is open, then reads both again when Justin finishes. Its table counts newly answered turns with Telegram API acceptance, shows
 whether a hold appeared, and prints the first hold reason. A hold stops the
 sequence immediately. A pending or UNKNOWN send cannot pass. Exit code is zero
 only when every listed procedure passes. No prompt, Telegram send, cap raise,

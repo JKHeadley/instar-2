@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Supervised coordinator for the existing private-chat live procedures.
 // It reads the journal; only Justin and the already approved runner can send.
-import { existsSync, lstatSync, readFileSync, realpathSync, watch } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, watch, watchFile, unwatchFile } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
@@ -28,10 +28,19 @@ const storageKey = () => {
 const snapshot = (root, key) => {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
   try {
+    const holdingReason = turn => {
+      const review = turn.replyChecks?.at(-1);
+      if (review?.verdict !== 'violation') return 'holding reply sent';
+      return `reply check violation: ${review.ruleIds.join(', ') || 'unspecified rule'}${review.reason ? ` — ${review.reason}` : ''}`;
+    };
+    const turns = journal.view.turns;
     return {
       order: journal.view.order.map(turn => ({ update: turn.update, intake: turn.accepted,
         answered: turn.answer !== undefined && turn.noticeClass === undefined && turn.intent !== HOLDING_REPLY,
-        sent: turn.sent !== undefined, held: turn.held ?? null })),
+        sent: turn.sent !== undefined, held: turn.held ?? (turn.intent === HOLDING_REPLY ? holdingReason(turn) : null) })),
+      holdEvents: journal.view.awayEvents.filter(event => event.kind === 'hold'
+        || event.kind === 'intent' && turns.get(event.id)?.intent === HOLDING_REPLY)
+        .map(event => event.kind === 'hold' ? event.reason : holdingReason(turns.get(event.id))),
       limits: journal.view.limits, calls: journal.view.calls, replies: journal.view.replies,
       stop: existsSync(join(root, 'preview-stop.json')) || journal.view.stop !== null,
       expires: journal.view.genesis.expires,
@@ -43,8 +52,9 @@ export const resultSince = (before, after) => {
   const known = new Set(before.order.map(turn => turn.update));
   const fresh = after.order.filter(turn => !known.has(turn.update));
   const held = after.order.find(turn => turn.held !== null);
+  const firstHold = after.holdEvents?.slice(before.holdEvents?.length ?? 0)[0] ?? held?.held;
   return { answered: fresh.filter(turn => turn.answered && turn.sent && turn.held === null).length,
-    held: held ? 1 : 0, reason: held?.held ?? '',
+    held: firstHold ? 1 : 0, reason: firstHold ?? '',
     unresolved: fresh.filter(turn => turn.intake && !turn.sent && turn.held === null).length };
 };
 
@@ -94,25 +104,34 @@ async function main() {
       const checkChange = () => {
         if (!pending) return;
         try {
-          const result = resultSince(before, snapshot(root, key));
-          if (result.held) end(`HELD: ${result.reason}`);
+          const after = snapshot(root, key);
+          if (after.stop) end('runner stopped');
+          else {
+            const result = resultSince(before, after);
+            if (result.held) end(`HELD: ${result.reason}`);
+          }
         } catch { end('journal read failed'); }
       };
       const watcher = watch(join(root, 'journal.encrypted'), () => {
         if (!changeTimer) changeTimer = setTimeout(() => { changeTimer = undefined; checkChange(); }, 1000);
       });
       watcher.on('error', () => { if (pending) end('journal watch failed'); });
+      const stopFile = join(root, 'preview-stop.json');
+      const checkStopFile = () => { if (pending && existsSync(stopFile)) checkChange(); };
+      watchFile(stopFile, { interval: 500 }, checkStopFile);
       const expiryTimer = setTimeout(() => { if (pending) end('trial expired'); },
         Math.min(Math.max(0, before.expires - Date.now()), 2_147_483_647));
       let verdict = '';
       try { verdict = (await input.question('After checking the actual reply and inspect evidence, enter PASS or FAIL with a reason: ')).trim(); }
       catch { /* A detected hold closes the prompt. */ }
-      finally { pending = false; watcher.close(); clearTimeout(changeTimer); clearTimeout(expiryTimer); }
+      finally { pending = false; watcher.close(); unwatchFile(stopFile, checkStopFile);
+        clearTimeout(changeTimer); clearTimeout(expiryTimer); }
       let after;
       try { after = snapshot(root, key); }
       catch { after = before; holdReason ||= 'journal read failed'; }
       const result = resultSince(before, after);
-      const reason = holdReason.replace(/^HELD: /u, '') || result.reason;
+      const reason = holdReason.replace(/^HELD: /u, '') || (after.stop ? 'runner stopped' : '')
+        || (after.expires <= Date.now() ? 'trial expired' : '') || result.reason;
       const passed = !reason && result.answered >= minimumAnswers && result.unresolved === 0 && /^PASS$/iu.test(verdict);
       rows.push({ name, result: passed ? 'PASS' : 'FAIL', answered: result.answered,
         held: result.held, reason: reason || (passed ? '' : result.unresolved ? 'reply pending or UNKNOWN'
