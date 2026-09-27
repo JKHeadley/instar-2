@@ -248,7 +248,7 @@ it('answers a long, summarized conversation when Jev is unsure: the full-context
   try {
     const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
       grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-      maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 1500, cursor: 0 });
+      maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 1752, cursor: 0 });
     const reviewed: { historyMode: string; summary?: { text: string }; operatorMessage: string; candidateReply: string }[] = [];
     const sent: string[] = [];
     let jevMemoryChecks = 0;

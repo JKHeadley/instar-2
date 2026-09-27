@@ -670,7 +670,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
       { ...genesis(), maxBytes: 32768 });
-    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(25500),
+    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(25248),
       raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
     journal.append({kind:'reserve',id:'telegram:12345678:update:1',at:1000});
     journal.append({kind:'answer',id:'telegram:12345678:update:1',text:'old answer',at:1000});
@@ -733,7 +733,7 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();
   try {
-    const initial = { ...genesis(), maxBytes: 1100 };
+    const initial = { ...genesis(), maxBytes: 1352 };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
