@@ -40,6 +40,7 @@ import { auditJournal } from './journal-audit.mjs';
 
 import { memoryReport } from './memory-export.js';
 
+import { operatorDigest } from './operator-digest.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -102,7 +103,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
     const note = handoff();
-    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk,
+    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, operatorDigest(view, log, desk),
       ...(digest ? [awayDigestSource(digest)] : []), ...(note ? [note] : [])];
   };
 };
@@ -199,6 +200,9 @@ async function main() {
       return;
     }
     try {
+      const now = Date.now(), log = readRuns(runsPath);
+      const deskPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
+      const desk = deskStatusSource(readDeskStatus(deskPath), now, deskPath);
       const lastSent = view.view.order.filter(turn => turn.sentAt !== undefined).at(-1);
       process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
@@ -272,6 +276,7 @@ async function main() {
         leftSource: view.view.people[link.left]?.source, right: view.view.people[link.right]?.name,
         rightSource: view.view.people[link.right]?.source, triggerUpdate: view.view.turns.get(link.trigger)?.update })),
       launches: readRuns(runsPath).launches.slice(-3),
+      digest: operatorDigest(view.view, log, desk).text,
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`);
     }
     finally { view.close(); }

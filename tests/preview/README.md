@@ -729,6 +729,15 @@ unreadable report data is never invented. The digest is rebuilt on each attempt
 from existing records, capped at 640 characters, and uses no model call, daemon,
 or additional store. See `away-digest-live-test.md` for the operator-channel proof.
 
+Every reply packet also carries `operator-digest`: the first 700 characters of the
+redacted desk source, its freshness label, the last three recorded runner launches,
+and up to eight recent hold, lost-answer and memory-change events reconstructed
+from the encrypted journal. The digest says that a launch is not proof of a deploy;
+deploy claims come only from the desk report. It carries event kinds and update IDs,
+never the text of a corrected or forgotten fact. The local `status` command prints
+the same digest. It adds no model call or store. See
+[operator-digest-live-test.md](operator-digest-live-test.md) for Justin's live check.
+
 ### Remembering people
 
 When the rolling summary runs (after a reply, sharing the same attempt cap), the

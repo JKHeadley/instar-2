@@ -148,7 +148,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
     | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number } | null;
 
   sourceStop: string | null; imported: boolean;
-  people: PersonNote[]; personMerges: PersonMerge[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[]; questions: OpenQuestion[]; questionsReviewed: Set<string>;
+  operatorEvents: { at: number; update: number; detail: string }[]; people: PersonNote[]; personMerges: PersonMerge[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[]; questions: OpenQuestion[]; questionsReviewed: Set<string>;
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
@@ -212,6 +212,10 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
 }
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
+const operatorEvent = (view: JournalView, at: number, update: number, detail: string) => {
+  view.operatorEvents.push({ at, update, detail });
+  if (view.operatorEvents.length > 8) view.operatorEvents.shift();
+};
 function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
   const maxBytes = row.maxBytes ?? view.limits.maxBytes; // Earlier cap frames did not carry this field.
   if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
@@ -370,7 +374,9 @@ function project(view: JournalView, row: JournalRecord): void {
       throw Error('preview journal: unchecked summary');
     view.summaryReservations.delete(row.through);
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
-    if (row.memory) view.memory.push(...row.memory);
+    if (row.memory) { view.memory.push(...row.memory);
+      for (const change of row.memory) operatorEvent(view, row.at, view.turns.get(change.trigger)?.update ?? 0,
+        change.mode === 'forget' ? 'forgot a recorded fact' : 'corrected a recorded fact'); }
     if (row.questions) view.questions.push(...row.questions);
     if (row.questionsReviewed) for (const id of row.questionsReviewed) view.questionsReviewed.add(id);
     if (row.commitments) view.commitments.push(...row.commitments);
@@ -445,6 +451,7 @@ function project(view: JournalView, row: JournalRecord): void {
       || turn.intent !== undefined || turn.noticeDueAt === undefined || row.at < turn.noticeDueAt)
       throw Error('preview journal: notice order');
     turn.noticeClass = row.noticeClass;
+    operatorEvent(view, row.at, turn.update, 'lost answer notice prepared');
   }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
@@ -455,12 +462,14 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.memoryPending) turn.memoryPending = true;
     if (row.datedPending) turn.datedPending = true;
     if (row.closedQuestions) turn.closedQuestions = row.closedQuestions;
-    if (row.memory) view.memory.push(...row.memory);
+    if (row.memory) { view.memory.push(...row.memory);
+      for (const change of row.memory) operatorEvent(view, row.at, view.turns.get(change.trigger)?.update ?? 0,
+        change.mode === 'forget' ? 'forgot a recorded fact' : 'corrected a recorded fact'); }
     if (row.personMerges) view.personMerges.push(...row.personMerges);
     if (row.dated) view.dated.push(...row.dated); }
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
-  if (row.kind === 'hold') { turn.held = row.reason; turn.wasHeld = true; }
+  if (row.kind === 'hold') { turn.held = row.reason; turn.wasHeld = true; operatorEvent(view, row.at, turn.update, `held (${row.reason})`); }
   if (row.kind === 'memory-undecided') {
     if (!turn.accepted || turn.memoryUndecided) throw Error('preview journal: memory undecided order');
     turn.memoryUndecided = true;
@@ -498,7 +507,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
 
 
 
@@ -543,7 +552,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
 
 
 
@@ -1216,6 +1225,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const digest = labelAll ? undefined : crossTopicDigest(through);
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown.'
+        + (ports.sources === undefined ? '' : ' For questions about your work or status, use the operator-digest source when present; distinguish desk-reported work from your own journal and run log, and never infer a deploy from a launch.')
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
