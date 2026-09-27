@@ -2638,14 +2638,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               personMerges: PersonMerge[] | undefined, separatedAnswer: string | undefined, invalidMemory = false, invalidDate = false,
               invalidUndo = false, undo: UndoTarget | undefined, closedQuestions: string[] | undefined,
               groundedTopic: string | undefined, includeContinuity = false, requested: boolean[] = [],
-              reminderCancels: string[] | undefined, invalidCancel = false;
+              reminderCancels: string[] | undefined, invalidCancel = false, decided = false;
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; closedQuestions?: unknown; memoryList?: unknown; continuity?: unknown; cancelReminders?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
-                separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string;
+                separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
                 const decisionSources = (JSON.parse(context) as { sources?: { id?: unknown; topic?: unknown }[] }).sources;
                 const topic = decisionSources?.find(source => source.id === 'greeting-continuity')?.topic;
                 groundedTopic = typeof topic === 'string' && topic.trim() && Array.from(topic).length <= 140 ? topic : undefined;
@@ -2700,6 +2700,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   text = memoryList(memory, dated);
               } else if (parsed && (parsed.memory !== undefined || parsed.memoryDisposition !== undefined || parsed.dated !== undefined || parsed.personMerges !== undefined || parsed.undo !== undefined)) invalidMemory = true;
             } catch { /* Legacy plain reply. */ }
+            // A reply without a recorded decision cannot have withdrawn a pending
+            // reminder, nor confirmed it stands. Route it through the existing
+            // unresolved-decision hold so the reminder stays unsent (Rules 57, 93).
+            if (!decided && fromOperator(turn) && pendingRequestedReminders(journal.view).length) invalidMemory = true;
             if (invalidMemory) { memory = undefined; dated = undefined; personMerges = undefined; undo = undefined; reminderCancels = undefined; }
             if (undo !== undefined || invalidUndo) { reminderCancels = undefined; invalidCancel = false; }
             if (invalidDate) undo = undefined;

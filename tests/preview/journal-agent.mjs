@@ -716,7 +716,7 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      worker.gate(); await worker.drain(); await worker.sendReminders(); summarizeLater(); worker.gate();
+      worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
       if (await stopAtCap()) break;
       if (existsSync(stopPath) || Date.now() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {
@@ -736,7 +736,12 @@ async function main() {
       try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure()) break; continue; }
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
       failedPolls = 0;
-      worker.intake(updates.result); await worker.drain(); await worker.sendReminders(); summarizeLater();
+      worker.intake(updates.result); await worker.drain();
+      // Reminders go out only after a successful poll returned nothing new: every
+      // operator message already waiting (a cancellation included) has been read
+      // and settled first. A failed poll, a backlog or a cap leaves them pending.
+      if (updates.result.length === 0) await worker.sendReminders();
+      summarizeLater();
       if (await stopAtCap()) break;
 
     }

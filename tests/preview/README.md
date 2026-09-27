@@ -1029,8 +1029,9 @@ the byte count is `null` if no prepared prompt was stored, and older reservation
 say the omission record is unavailable. Original intake and summaries remain in
 the journal even when a packet omits them. Packet omission is never evidence that
 the fact is absent. The offline 200/1000/2000-turn benchmark is in
-`journal-packet-priority.test.ts`; Justin's live script is in
-`packet-priority-live-test.md`.
+`journal-packet-priority.test.ts`; its byte-boundary drop-order case is quarantined
+under Rule 37 (`docs/defects/preview-packet-priority-timing-flake.md`) while its
+timeout is diagnosed. Justin's live script is in `packet-priority-live-test.md`.
 
 When a later complete quoted request or promise repeats an active one, the summary
 projection keeps one open item and attaches the later source message to it. The
@@ -1227,7 +1228,10 @@ states its reason (Rule 54). A later reminder in the same topic gets its own mes
 falls due. The runner fsyncs a `requested-reminder-intent` (consuming one reply slot) before
 dispatch and records Bot API acceptance only for the exact chat, topic and text. A crash or
 UNKNOWN result is never retried. Stop, expiry, the reply cap, the outbound secret check and
-unsettled memory requests hold it. A dated item the operator did not ask to be reminded of is
+unsettled memory requests hold it. So does any later verified-operator message whose meaning is
+not yet settled by a recorded decision (a call cap, an UNKNOWN or failed call, or a reply with no
+recorded decision). The launcher sends reminders only after a successful poll returned nothing
+new, so a cancellation already waiting in Telegram is read first. A dated item the operator did not ask to be reminded of is
 never pushed; nor is any summary, digest or nudge.
 
 A later verified-operator message cancels a pending reminder: the packet lists pending requests as
