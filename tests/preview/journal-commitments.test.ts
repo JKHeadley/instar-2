@@ -360,7 +360,7 @@ it('closes an item only on a later message the operator verifiably sent, and nev
 it('refuses a closure for an open item omitted from the summary packet', async () => {
   const root = origin();
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(3500));
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(5000));
     const packets: Packet[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => { const packet = JSON.parse(input.context) as Packet;

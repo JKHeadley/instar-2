@@ -10,7 +10,7 @@ import { auditJournal, auditPacket } from './journal-audit.mjs';
 const key = new Uint8Array(32).fill(17);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 100, maxReplies: 60, maxTurns: 60, maxBytes: 8000, cursor: 0 };
+  maxCalls: 100, maxReplies: 60, maxTurns: 60, maxBytes: 10000, cursor: 0 };
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: from }, text, date: 1790000000 + id * 60 } });
 
@@ -54,12 +54,15 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     expect(auditPacket(journal.view, { id: 'probe', update: 2, text: '', raw: '', accepted: true,
       at: 1790000000000, reserved: false }, packet).findings).toEqual([]);
     expect(next.context).not.toContain('silver crane');
-    expect(packet.channelMemory?.[0]?.quote).toContain('[withheld: operator correction or forgetting]');
-    expect(packet.channelMemory?.[0]?.sourceRef).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
-    expect(packet.channelMemory?.[0]?.sourceLabel).toMatch(/^import:email\/\[withheld: operator correction or forget\/.+\/[a-f0-9]{12}$/u);
-    expect(packet.channelMemory?.[1]).toMatchObject({ conversation: 'Other archive',
+    // Recall ranking decides the order of the two imports; identify each by its content.
+    const withheldItem = packet.channelMemory?.find((item: { quote: string }) => item.quote.includes('[withheld: operator correction or forgetting]'));
+    const otherItem = packet.channelMemory?.find((item: { conversation?: string }) => item.conversation === 'Other archive');
+    expect(packet.channelMemory).toHaveLength(2);
+    expect(withheldItem?.sourceRef).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
+    expect(withheldItem?.sourceLabel).toMatch(/^import:email\/\[withheld: operator correction or forget\/.+\/[a-f0-9]{12}$/u);
+    expect(otherItem).toMatchObject({ conversation: 'Other archive',
       quote: 'The archive access phrase for the other account is cedar brook.' });
-    expect(packet.channelMemory?.[1]?.sourceLabel).toMatch(/^import:email\/Other archive\/.+\/[a-f0-9]{12}$/u);
+    expect(otherItem?.sourceLabel).toMatch(/^import:email\/Other archive\/.+\/[a-f0-9]{12}$/u);
     expect(journal.view.channelItems.size).toBe(2);
     worker.intake([update(2, 'The studio opening day is Saturday.')]); await worker.drain();
     const contradictionPacket = JSON.parse(contexts.at(-1)!);
