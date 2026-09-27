@@ -1,9 +1,14 @@
 # Terse answer to a clarifying question: supervised private-chat script for Justin
 
-Run this only after the desk lands this revision and resumes the existing
-reply-only preview under its current activation. The change is in the packet
-builder, not the provider policy, so the activation's policy digest is
-unchanged. Use the bound private operator chat. Do not start a second runner or
+Run this only after the desk lands this revision onto `runner-integrate11`
+at `3695117d` (live runner-frozen15, int11 r3 VERDICT YES) or a descendant that
+carries int11's activation. Only then resume the existing reply-only preview
+under that activation. Relative to `3695117d` the change is in the packet
+builder, not the provider policy: `git diff 3695117d -- src/` is empty, so
+int11's policy digest and fixed expiry still apply. This does not hold on
+the older `56fe0b7c` base. `56fe0b7c..3695117d` changes the conversation
+policy and expiry, so an activation issued for that base is refused and must
+not be reused. Use the bound private operator chat. Do not start a second runner or
 use the frozen live root from this builder worktree. Record the actual
 messages, `status`, and `inspect` output; the offline harness is not a live
 proof.
