@@ -794,6 +794,19 @@ never the text of a corrected or forgotten fact. The local `status` command prin
 the same digest. It adds no model call or store. See
 [operator-digest-live-test.md](operator-digest-live-test.md) for Justin's live check.
 
+### Greeting continuity
+
+After a recorded restart or a gap over six hours, the runner may offer the
+newest still-open verified operator request as a greeting-continuity source.
+Closed, corrected, forgotten, missing or oversized quotes produce no hint.
+The model opts in with `continuity:true`; the runner constructs at most one
+“Last time we were on …” line from the exact validated quote. A model opt-in
+without that source produces no line. An exact six-hour gap produces none.
+Intent, including UNKNOWN delivery, consumes the restart opportunity. The
+optional hint yields when it would exhaust the packet limit and causes no
+extra call or initiated send. Inspect reports whether it was offered. See
+the [supervised greeting-continuity script](greeting-continuity-live-test.md).
+
 ### Remembering people
 
 When the rolling summary runs (after a reply, sharing the same attempt cap), the

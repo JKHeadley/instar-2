@@ -15,6 +15,7 @@ import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJou
 import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 
 import { awayDigest, awayDigestSource } from './away-digest.js';
+import { greetingContinuity } from './greeting-continuity.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -112,15 +113,17 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const sources = view.reminderGrant === null ? ordinarySources : (reminderSources ??= readSources(true));
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
+    const continuity = turn && greetingContinuity(view, log, now, turn, current());
     const note = handoff();
     return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, operatorDigest(view, log, desk),
-      ...(digest ? [awayDigestSource(digest)] : []), ...(note ? [note] : [])];
+      ...(digest ? [awayDigestSource(digest)] : []), ...(continuity ? [continuity] : []), ...(note ? [note] : [])];
   };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
+  greetingContinuity: packet.sources?.some(source => source?.id === 'greeting-continuity') ?? false,
   replyTo: packet.replyTo ?? null,
   ...(packet.period ? { period: packet.period, periodGuide: packet.periodGuide } : {}),
   people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],

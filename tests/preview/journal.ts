@@ -1972,7 +1972,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn,
     inventory?: { total: number; items: { kind: string; source: string; date: string; text?: string; from?: string; status?: string }[] }, search?: ReturnType<typeof searchFor>,
     contradictions: ReturnType<typeof contradictionFor> = [], questions: readonly OpenQuestion[] = [], question?: Turn, includeRecorded = true,
-    saidRange?: { from: string; to: string; matched: number }) => {
+    saidRange?: { from: string; to: string; matched: number }, allowGreeting = true) => {
     const summary = compact ? summaryFor(through) : undefined;
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
       && (!summary || item.update > summary.through));
@@ -2083,8 +2083,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const preferences = preferenceState();
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
     const digest = labelAll ? undefined : crossTopicDigest(through);
+    const suppliedSources = ports.sources === undefined ? undefined
+      : typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources;
+    const sourceList = allowGreeting ? suppliedSources : suppliedSources?.filter(source =>
+      typeof source !== 'object' || source === null || !('id' in source) || source.id !== 'greeting-continuity');
     const packet = JSON.stringify({ now: ports.now(), memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. Memory is this trial's journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
+        + (sourceList?.some(source => typeof source === 'object' && source !== null
+          && 'id' in source && source.id === 'greeting-continuity')
+          ? ' A greeting-continuity source quotes one earlier open operator request. Set continuity:true only if a brief reminder is useful and still true; otherwise false. Do not write that line yourself; the runner uses the exact quoted topic. Never invent a topic.' : '')
         + (journal.view.people.length ? ' Inferred person notes use an active memory budget. Search memory NAME reads archived notes. A missing match does not prove absence.' : '')
         + (ports.sources === undefined ? '' : ' For questions about your work or status, use the operator-digest source when present; distinguish desk-reported work from your own journal and run log, and never infer a deploy from a launch.')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
@@ -2113,7 +2120,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
         operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current) }) },
-      ...(ports.sources === undefined ? {} : { sources: typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources }),
+      ...(sourceList === undefined ? {} : { sources: sourceList }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through) } }
         : { historyMode: 'complete' }),
@@ -2225,6 +2232,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     let measuredPromptOverflow = false;
     let preparationUnavailable = false;
     const memoryBudgetFirst = journal.view.people.length > 0 && summaryFor(turn.update - 1) !== undefined;
+    for (const allowGreeting of ports.sources ? [true, false] : [true])
     for (const compact of memoryBudgetFirst ? [true, false] : [false, true]) {
       if (!compact && /\b(?:promise|promised|commitment|commitments|anything open|what(?:'s| is) open)\b/iu.test(turn.text)
         && summaryFor(turn.update - 1)) continue;
@@ -2303,7 +2311,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               named.filter((_, index) => has('person', index)), open.filter((_, index) => has('commitment', index)),
               turn.thread, false, flagged, selectedChannels, fromOperator(turn), turn, selectedInventory, selectedSearch,
               contradictions.slice(0, contradictionCount), questions.slice(0, questionCount), turn, includeRecorded,
-              said ? { from: said.from, to: said.to, matched: said.matched } : undefined);
+              said ? { from: said.from, to: said.to, matched: said.matched } : undefined, allowGreeting);
         const offered = [...preferenceCandidates, ...candidates.filter((_, index) => has('candidate', index)), ...candidateChannels.filter((_, index) =>
           has('candidate', candidates.length + index)).map(item => ({
           id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as MemorySourceKind, source: 'channel-import',
@@ -2467,14 +2475,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const output = typeof answer === 'string' ? answer : answer.text;
             let text = output, memory: MemoryChange[] | undefined, dated: DatedItem[] | undefined,
               personMerges: PersonMerge[] | undefined, separatedAnswer: string | undefined, invalidMemory = false, invalidDate = false,
-              invalidUndo = false, undo: UndoTarget | undefined, closedQuestions: string[] | undefined;
+              invalidUndo = false, undo: UndoTarget | undefined, closedQuestions: string[] | undefined,
+              groundedTopic: string | undefined, includeContinuity = false;
             if (output.trim()) try {
-              const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; closedQuestions?: unknown; memoryList?: unknown };
+              const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; closedQuestions?: unknown; memoryList?: unknown; continuity?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string;
+                const decisionSources = (JSON.parse(context) as { sources?: { id?: unknown; topic?: unknown }[] }).sources;
+                const topic = decisionSources?.find(source => source.id === 'greeting-continuity')?.topic;
+                groundedTopic = typeof topic === 'string' && topic.trim() && Array.from(topic).length <= 140 ? topic : undefined;
+                includeContinuity = parsed.continuity === true;
                 if (parsed.undo !== undefined) {
                   const candidate = undoCandidate(turn, decisionAt), proposed = parsed.undo as UndoTarget;
                   const summaryText = summaryFor(turn.update - 1)?.text;
@@ -2530,6 +2543,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
+            if (groundedTopic || includeContinuity)
+              text = text.replace(/^\s*Last time we were on[^\n]*(?:\n|$)/iu, '').trimStart();
+            if (groundedTopic && includeContinuity && !invalidMemory && !invalidDate && !invalidUndo && text.trim())
+              text = `Last time we were on: ${groundedTopic}\n${text.trim()}`;
             journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(dated === undefined ? {} : { dated }),
