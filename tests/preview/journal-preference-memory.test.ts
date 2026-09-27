@@ -113,3 +113,118 @@ it('captures an uncued preference through the ordinary capped reply decision', a
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('keeps a faithful preference summary and its source reply while still withholding forgotten facts', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-preference-summary-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => {
+        const packet = JSON.parse(input.context);
+        if (input.id.startsWith('summary:')) {
+          if (packet.memoryRequest?.message === 'Shorter please.') return JSON.stringify({
+            summary: 'The operator requested: Shorter please.', people: [],
+            memory: [{ mode: 'prefer', source: packet.memoryRequest.id, quote: 'Shorter please.' }] });
+          const old = packet.memoryCandidates.find((item: { message: string }) => item.message.includes('locker code is 3310'));
+          return JSON.stringify({ summary: 'The operator requested forgetting a locker code.', people: [],
+            memory: [{ mode: 'forget', source: old.id, quote: 'My locker code is 3310.' }] });
+        }
+        return input.question === 'Shorter please.' ? 'I will keep your answer and commitment.' : 'Understood.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Shorter please.')]); await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote: 'Shorter please.' }]);
+    expect(journal.view.order[0]?.sent).toBe(1);
+    let next = worker.probe('What did I ask?');
+    if ('reason' in next) throw Error(next.reason);
+    let packet = JSON.parse(next.context);
+    expect(journal.view.summaries.at(-1)?.text).toContain('Shorter please.');
+    expect(packet.preferences).toEqual([{ text: 'Shorter please.', source: journal.view.order[0]!.id }]);
+    expect(JSON.stringify(packet)).toContain('I will keep your answer and commitment.');
+
+    worker.intake([update(2, 'My locker code is 3310.')]); await worker.drain();
+    worker.intake([update(3, 'Forget my locker code.')]); await worker.drain();
+    next = worker.probe('What is my locker code?');
+    if ('reason' in next) throw Error(next.reason);
+    packet = JSON.parse(next.context);
+    expect(next.context).not.toContain('3310');
+    expect(packet.memory).toContainEqual({ mode: 'forgotten', reason: 'verified operator requested forgetting' });
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('retires one of two same-source preferences and rejects a stale target', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-preference-clauses-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => {
+        const packet = JSON.parse(input.context);
+        if (input.id.startsWith('summary:')) {
+          const request = packet.memoryRequest?.message;
+          if (request?.includes('Always use short answers.')) return JSON.stringify({ summary: 'Two answer preferences and a room color.',
+            people: [], memory: ['Always use short answers.', 'Never use bullet lists.'].map(quote =>
+              ({ mode: 'prefer', source: packet.memoryRequest.id, quote })) });
+          if (request === 'Forget my short-answer preference.') return JSON.stringify({ summary: 'One preference was removed.',
+            people: [], memory: [{ mode: 'forget', source: journal.view.order[0]!.id, quote: 'Always use short answers.' }] });
+          if (request === 'Actually, the room is green.') return JSON.stringify({ summary: 'The room is green.',
+            people: [], memory: [{ mode: 'correct', source: journal.view.order[0]!.id, quote: 'The room is blue.',
+              replacement: 'the room is green.' }] });
+          return JSON.stringify({ summary: 'A stale preference target was offered.', people: [],
+            memory: [{ mode: 'correct', source: journal.view.order[0]!.id, quote: 'Always use short answers.',
+              replacement: 'Use detailed answers.' }] });
+        }
+        return 'Understood.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Always use short answers. Never use bullet lists. The room is blue.')]); await worker.drain();
+    expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'prefer']);
+    worker.intake([update(2, 'Forget my short-answer preference.')]); await worker.drain();
+    expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'prefer', 'forget']);
+    let next = worker.probe('How should you answer?');
+    if ('reason' in next) throw Error(next.reason);
+    expect(JSON.parse(next.context).preferences).toEqual([{ text: 'Never use bullet lists.', source: journal.view.order[0]!.id }]);
+    worker.intake([update(3, 'Actually, the room is green.')]); await worker.drain();
+    expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'prefer', 'forget', 'correct']);
+    worker.intake([update(4, 'Use detailed answers.')]); await worker.drain();
+    expect(journal.view.memory).toHaveLength(4);
+    expect(journal.view.order[3]?.memoryPending).toBe(true);
+    next = worker.probe('How should you answer now?');
+    if ('reason' in next) throw Error(next.reason);
+    expect(JSON.parse(next.context).preferences).toEqual([{ text: 'Never use bullet lists.', source: journal.view.order[0]!.id }]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('renders an explicit reinstatement of the same preference after removal', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-preference-recapture-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const requests: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => {
+        const packet = JSON.parse(input.context);
+        if (input.id.startsWith('summary:')) {
+          requests.push(packet.memoryRequest?.message);
+          if (packet.memoryRequest?.id === journal.view.order[1]?.id) return JSON.stringify({
+            summary: 'The answer preference was removed.', people: [],
+            memory: [{ mode: 'forget', source: journal.view.order[0]!.id, quote: 'Shorter please.' }] });
+          return JSON.stringify({ summary: 'An answer style was requested.', people: [],
+            memory: [{ mode: 'prefer', source: packet.memoryRequest.id, quote: 'Shorter please.' }] });
+        }
+        return 'Understood.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Shorter please.')]); await worker.drain();
+    worker.intake([update(2, 'Forget my answer style preference.')]); await worker.drain();
+    let next = worker.probe('What style?');
+    if ('reason' in next) throw Error(next.reason);
+    expect(JSON.parse(next.context).preferences).toBeUndefined();
+    worker.intake([update(3, 'Shorter please.')]); await worker.drain();
+    expect(requests.at(-1)).toBe('Shorter please.');
+    expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'forget', 'prefer']);
+    next = worker.probe('What style now?');
+    if ('reason' in next) throw Error(next.reason);
+    expect(JSON.parse(next.context).preferences).toEqual([{ text: 'Shorter please.', source: journal.view.order[2]!.id }]);
+    expect(JSON.parse(next.context).history?.[0]?.user).toBe('[withheld: operator correction or forgetting]');
+    expect(JSON.parse(next.context).history?.at(-1)?.user).toBe('Shorter please.');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
