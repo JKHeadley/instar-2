@@ -92,7 +92,7 @@ it('reports holds, pending decisions and the next unforgotten dated item from th
     journal.append({ kind: 'reserve', id: 'three', at });
     journal.append({ kind: 'answer', id: 'three', text: 'uncertain', state: 'complete',
       memoryPending: true, datedPending: true, at });
-    journal.append({ kind: 'memory-undecided', id: 'three', at });
+    journal.append({ kind: 'memory-undecided', id: 'three', reason: 'summary-uncertain', at });
     expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Pending memory decisions: 1 (updates 3).');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
