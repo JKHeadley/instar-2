@@ -106,6 +106,32 @@ export interface MemoryChange { mode: 'correct' | 'forget' | 'prefer'; source: s
   /** Absent for an operator/source message; reply means the agent's actual send intent. */
   in?: 'reply';
   replies?: string[]; summaryPassages?: string[] }
+export interface PreferenceAppliedCheck { source: string; words: number; maxWords: number; violated: boolean }
+/** A deterministic signal for unambiguous length preferences; it never changes a send. */
+function replyWordLimit(quote: string): number | undefined {
+  const clause = quote.trim().toLowerCase().replace(/[.!]+$/u, '').replace(/\s+/gu, ' ');
+  if (/^(?:please )?(?:always )?(?:use|keep|give|make) (?:your )?(?:short|brief|concise) (?:answers|replies)$/u.test(clause)
+    || /^(?:please )?(?:always )?(?:use|keep|give|make) (?:your )?(?:answers|replies) (?:short|brief|concise)$/u.test(clause)
+    || /^(?:i prefer|i'd prefer|i would prefer) (?:short|brief|concise) (?:answers|replies)$/u.test(clause)) return 80;
+  const explicit = /^(?:please )?(?:always )?(?:keep|make) (?:your )?(?:replies|answers) (under|below|to at most|to no more than) (\d{1,3}) words$/u.exec(clause);
+  if (!explicit) return undefined;
+  const bound = Number(explicit[2]);
+  return bound >= 1 && bound <= 500 ? bound - (explicit[1] === 'under' || explicit[1] === 'below' ? 1 : 0) : undefined;
+}
+function appliedPreferenceChecks(memory: readonly MemoryChange[], reply: string): PreferenceAppliedCheck[] {
+  const active = new Map<string, { source: string; quote: string }>();
+  for (const change of memory) {
+    const key = JSON.stringify([change.source, change.quote]);
+    if (change.mode === 'prefer') active.set(key, { source: change.source, quote: change.quote });
+    else if (active.delete(key) && change.mode === 'correct')
+      active.set(JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement! });
+  }
+  const words = reply.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+  return [...active.values()].flatMap(item => {
+    const maxWords = replyWordLimit(item.quote);
+    return maxWords === undefined ? [] : [{ source: item.source, words, maxWords, violated: words > maxWords }];
+  });
+}
 interface UndoTarget { change: number; replies?: string[]; summaryPassages?: string[] }
 interface RecordedChange { kind: 'memory' | 'dated'; at: number; value: MemoryChange | DatedItem; undone: boolean }
 export interface OpenQuestion { source: string; quote: string; reason: 'held' | 'lost-answer' | 'definite-failure' | 'unanswered-reply' }
@@ -181,6 +207,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
+  preferenceChecks?: PreferenceAppliedCheck[];
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[] }
@@ -959,6 +986,8 @@ function project(view: JournalView, row: JournalRecord): void {
       view.undos.push({ change: row.undo.change, trigger: turn.id, at: row.at });
     } }
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
+    turn.preferenceChecks = row.text === HOLDING_REPLY || turn.noticeClass || turn.modelState === 'rejected'
+      ? [] : appliedPreferenceChecks(view.memory, row.text);
     if (row.promises?.some(promise => !row.text.includes(promise.quote) || promise.owner !== 'agent'
       || promise.waitsOn !== 'next-relevant-reply')) throw Error('preview journal: invalid agent promise');
     for (const promise of row.promises ?? []) view.commitments.push({ in: 'reply', source: turn.id, quote: promise.quote, agentPromise: promise });
