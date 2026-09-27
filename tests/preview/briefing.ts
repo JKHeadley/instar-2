@@ -16,17 +16,19 @@ export const SOURCE_EXCERPTS = Object.freeze([
     end: 'Alignment held by memory is not alignment.', title: 'Coherency is the root' }),
 ]);
 export const CAPABILITY_NOTE_DATE = '2026-09-26';
-export function capabilityNote(limits: { providerAttempts: number; expiresAt: number }) {
+export function capabilityNote(limits: { providerAttempts: number; expiresAt: number; reminders?: boolean }) {
   return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. `
     + 'It keeps this trial\'s complete original message history across all of them as one memory and attempts at most one plain-text reply per admitted message '
-    + 'through a subscription model. It has no tools: it cannot browse, run code, schedule work, send extra messages or act outside this chat. '
+    + 'through a subscription model. It has no tools: it cannot browse, run code or act outside this chat. '
+    + (limits.reminders ? 'The runner sends one fixed morning reminder for each settled dated item, inside the reply limit. '
+      : 'It cannot schedule work or send extra messages. ')
     + `This trial allows at most ${limits.providerAttempts} model attempts, including any summaries, and ends at epoch millisecond ${limits.expiresAt}. `
     + 'Every reply is prefixed PREVIEW. Outcomes the system could not confirm (a model call or a delivery) are marked unknown, '
     + 'and model charges are recorded as unknown, never settled. Production safeguards are incomplete.';
 }
 /** Reads each excerpt exactly from the repository, verifying the pinned digest. */
 export function sourcePacket(readSource: (path: string) => string, pins: Readonly<Record<string, string>>,
-  limits: { providerAttempts: number; expiresAt: number }) {
+  limits: { providerAttempts: number; expiresAt: number; reminders?: boolean }) {
   const sources: { id: string; title: string; text: string; provenance: Record<string, string | number> }[]
     = SOURCE_EXCERPTS.map(excerpt => {
     const document = readSource(excerpt.path);

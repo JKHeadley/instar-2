@@ -599,10 +599,19 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --time-zone America/Los_Angeles
 ```
 
+For a separately reviewed grant that covers initiated reminders, add
+`--reminder-grant-reference GRANT_REFERENCE` on the first reminder-enabled run.
+The runner records that reference in the encrypted journal after validating
+the trial activation, with private-chat scope, the bound operator as custodian,
+and UNKNOWN-never-retry recovery. The desk must verify that the reference names
+an actual operator grant for this scope; a CLI string does not create authority.
+Later runs may omit it; a different reference refuses.
+Without the reference, the runner keeps dated memory but sends no reminders.
+
 ### What the preview knows about itself and 2.0
 
 Each model call's packet carries `now`, the audience, the conversation history,
-a `capability` line (capped preview, answer only, no tools, memory is this trial's
+a `capability` line (capped preview, answers and fixed morning reminders, no tools, memory is this trial's
 journal only) and `sources`: the three pinned purpose excerpts, the dated
 capability note, the preview's **own self-state**, and the **desk's report** on
 other work.
@@ -620,7 +629,7 @@ failure, cycle limit, or error). A launch with no end line is reported as ended
 without recording why (crash, kill or power loss); a torn line is counted, never
 guessed at. From it the self-state gives this run's start and uptime, the last
 restart, how the run before it ended, and launches today. "Today" is the local date
-in `--time-zone` (an IANA zone, default `UTC`; an unknown zone refuses start), and
+in `--time-zone` (an IANA zone, default `America/Los_Angeles`; an unknown zone refuses start), and
 the zone is stated in the text. The counts include the message being answered; its
 own reply is not yet sent. Imported turns from an older root may have unknown
 times. Launches before this change were not recorded, and the text says so. It is
@@ -643,8 +652,9 @@ Updating the file needs no restart. Sample:
 ```md
 # Instar 2.0 — desk report
 What 2.0 is: Instar rebuilt so coherence is something an agent cannot lose.
-This preview: a private, capped Telegram trial. It answers only; it has no tools,
-cannot act, browse or schedule. Its memory is this trial's journal.
+This preview: a private, capped Telegram trial. It answers and sends fixed morning
+reminders for settled dated items; it has no tools and cannot browse. Its memory
+is this trial's journal.
 Lanes:
 - preview-awareness: built, awaiting gate.
 - production speed work: in progress.
@@ -774,10 +784,27 @@ shows the next packet's dated block. Corrections and forgetting use the existing
 memory change: an affected old item is withheld, and a corrected date is recorded only when
 the operator's replacement clause is selected and validated in its own turn.
 
-The capability line says plainly: this preview **answers only and never sends unprompted
-reminders**. An item in memory is not a scheduled notification; the runner has no scheduler or
-tools. It can mention a due or overdue item in a reply to the operator's next message.
-For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
+With the reminder grant recorded, the runner checks active items on every poll
+cycle. From 08:00 through 11:59 on the item's settled local day (`--time-zone`,
+default `America/Los_Angeles`), it sends a message with one fixed-shape line per
+eligible item: `PREVIEW reminder: <original operator clause> today at <24-hour time>`.
+A day-only item uses `time unspecified`; an ambiguous day or hour sends nothing.
+The original clause stays verbatim, including its original date wording. All
+known items for one day and private-chat topic are aggregated into one message,
+which consumes one `maxReplies` slot and needs no model call or new scheduler.
+Items recorded after that day's message are still kept in memory but receive no
+second push that day. The existing outbound secret
+wall and physical send gate still apply. The same encrypted journal fsyncs an
+intent before transport; a crash or unknown Bot API result never triggers a
+retry. Exact repeated clauses with the same settled day and time share one
+line; differently worded items remain separate evidence. `status.reminders`
+separates intents, Bot API acceptance and unknowns.
+Corrections and forgetting suppress unsent items. An unresolved correction
+holds all reminders until its memory decision settles. Expiry, stop and reply
+capacity or an absent reminder grant can prevent a due reminder; a runner that is not active during the
+morning window does not send it later. The private trial grant must explicitly
+cover these initiated reminders before a live run. For Justin's supervised
+procedure, see [dated-reminder-live-test.md](dated-reminder-live-test.md).
 ### How the operator likes answers
 
 The same capped summary or reply decision can record a durable reply preference from the
