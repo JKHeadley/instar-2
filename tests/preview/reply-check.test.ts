@@ -261,8 +261,10 @@ it('answers a long, summarized conversation when Jev is unsure: the full-context
         : input.context.includes('ORCHID') && input.question.includes('first unique memory') ? 'It was ORCHID.' : 'ok',
       checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); return input.update; },
       replyCheck: { elapsedMs: () => 100,
-        jev: async text => ({ value: text.includes('ORCHID') && ++jevMemoryChecks === 1
-          ? scores({ claims_blocked: 0.5 }) : scores(), latencyMs: 150 }),
+        jev: async (text, questions) => ({ value: questions
+          ? { model: 'jev-1.13.0', answers: { summary_integrity: { type: 'noul', noul: 0.05 } } }
+          : text.includes('ORCHID') && ++jevMemoryChecks === 1
+            ? scores({ claims_blocked: 0.5 }) : scores(), latencyMs: 150 }),
         escalate: async (text, _id, originalPrompt) => {
           reviewed.push(JSON.parse(replyReviewContext(originalPrompt!, text)));
           return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 };

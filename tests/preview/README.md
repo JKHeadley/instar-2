@@ -845,6 +845,19 @@ for the next reply. The journal and stop latch are deliberately machine-local.
 The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
 
+Each live rolling-summary candidate receives one Jev 1.13.0 integrity check
+using the same TypeSafe binding and two-second timeout as the reply check.
+The check sees the summary packet and proposed summary, people, commitments,
+closures and memory decisions. It asks about dropped commitments, people,
+corrections or dates and invented facts. A Jev pass accepts the candidate.
+A violation or unsure signal reserves one full-context subscription review
+under the same call cap; only that review decides whether to accept or retry.
+Jev unavailable or a confirmed violation keeps the prior summary frontier
+and uses the existing bounded summary retry path. An uncertain reserved
+subscription review stays pending across restart and is never repeated.
+`status.summaryChecks` and `lastSummaryCheck` report content-free verdicts.
+The live procedure is [summary-supervisor-live-test.md](summary-supervisor-live-test.md).
+
 ### One memory across conversations
 
 The runner serves every conversation in the operator's own private chat: the main

@@ -13,6 +13,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/product
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
+import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
  * can later raise the finite counters without altering genesis or usage. */
@@ -69,7 +70,9 @@ export type JournalRecord =
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
-  | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
+  | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; at: number }
+  | { kind: 'summary-check'; through: number; result: SummaryCheckResult; at: number }
+  | { kind: 'summary-review-reserve'; through: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[]; memoryFor?: string[]; memory?: MemoryChange[];
@@ -87,8 +90,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
-  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
+  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; summaryRequired: Set<number>;
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
+  summaryChecks: Map<number, SummaryCheckResult[]>; summaryReviews: Set<number>;
+  summaryCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number }; lastSummaryCheck: SummaryCheckResult | null;
   sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[];
   /** Flagged replies whose correction note no later model call has carried yet. */
@@ -159,7 +164,25 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary-reserve') {
     if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
       || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
-    view.summaryReservations.add(row.through); view.calls++; return;
+    view.summaryChecks.delete(row.through); view.summaryReviews.delete(row.through);
+    view.summaryReservations.add(row.through); if (row.supervised) view.summaryRequired.add(row.through); view.calls++; return;
+  }
+  if (row.kind === 'summary-review-reserve') {
+    if (!view.summaryReservations.has(row.through) || view.summaryReviews.has(row.through)
+      || !view.summaryChecks.get(row.through)?.some(check => check.path === 'jev'
+        && (check.verdict === 'violation' || check.verdict === 'unsure'))
+      || view.calls >= view.limits.maxCalls) throw Error('preview journal: summary review reservation order or cap');
+    view.summaryReviews.add(row.through); view.calls++; return;
+  }
+  if (row.kind === 'summary-check') {
+    if (!view.summaryReservations.has(row.through) || row.result.path === 'subscription' && !view.summaryReviews.has(row.through))
+      throw Error('preview journal: summary check without reservation');
+    const checks = view.summaryChecks.get(row.through) ?? [];
+    if (row.result.path === 'jev' && checks.some(check => check.path === 'jev')
+      || row.result.path === 'subscription' && checks.some(check => check.path === 'subscription'))
+      throw Error('preview journal: duplicate summary check');
+    checks.push(row.result); view.summaryChecks.set(row.through, checks);
+    view.summaryCheckCounts[row.result.verdict]++; view.lastSummaryCheck = row.result; return;
   }
   if (row.kind === 'summary-failed') {
     if (!view.summaryReservations.delete(row.through)) throw Error('preview journal: failed summary without reservation');
@@ -178,6 +201,8 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary') {
     if (!view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
+    if (view.summaryRequired.has(row.through) && !view.summaryChecks.get(row.through)?.some(check => check.verdict === 'pass'))
+      throw Error('preview journal: unchecked summary');
     view.summaryReservations.delete(row.through);
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
     if (row.memory) view.memory.push(...row.memory);
@@ -282,7 +307,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryRequired: new Set(), summaryFailures: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -319,7 +344,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryRequired: new Set(), summaryFailures: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -402,7 +427,8 @@ export interface PreviewPorts {
     | {state:'uncertain'; usage?: ModelUsage}>;
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
-  replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'>;
+  replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
+    verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }> };
   boundary?(stage: string): void;
 }
 
@@ -1012,7 +1038,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       const { through, packet, prepared, offered, memorySources, trigger, strictMemory } = chosen;
       gate();
-      journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),at:ports.now()});
+      journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
+        ...(ports.replyCheck ? { supervised: true as const } : {}),at:ports.now()});
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,
         context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }
@@ -1062,6 +1089,49 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
+      }
+      if (ports.replyCheck) {
+        gate();
+        const state = redact(JSON.stringify({ packet: JSON.parse(packet) as object,
+          proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
+            closed: closed ?? [], memory: memory ?? [] } })).text;
+        const started = ports.replyCheck.elapsedMs();
+        let jev: SummaryCheckResult;
+        try {
+          const answer = await ports.replyCheck.jev(state, SUMMARY_QUESTION);
+          jev = interpretSummaryJev(answer.value, answer.latencyMs);
+        } catch {
+          jev = { verdict: 'unavailable', path: 'jev', latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - started) };
+        }
+        journal.append({ kind: 'summary-check', through, result: jev, at: ports.now() });
+        if (jev.verdict === 'unavailable') {
+          journal.append({ kind: 'summary-failed', through,
+            ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
+        }
+        if (jev.verdict !== 'pass') {
+          if (journal.view.calls >= journal.view.limits.maxCalls || !ports.replyCheck.summaryReview) {
+            journal.append({ kind: 'summary-failed', through,
+              ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
+          }
+          gate();
+          journal.append({ kind: 'summary-review-reserve', through, at: ports.now() });
+          const reviewStarted = ports.replyCheck.elapsedMs();
+          let review: SummaryCheckResult;
+          try {
+            const result = await ports.replyCheck.summaryReview(state, through);
+            review = { ...result, path: 'subscription' };
+          } catch {
+            review = { verdict: 'unavailable', path: 'subscription',
+              latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - reviewStarted) };
+          }
+          journal.append({ kind: 'summary-check', through, result: review, at: ports.now() });
+          if (review.verdict === 'unavailable' && !review.retryable) return; // paid outcome may be UNKNOWN
+          if (review.verdict !== 'pass') {
+            journal.append({ kind: 'summary-failed', through,
+              ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
+          }
+        }
+        gate();
       }
       journal.append({kind:'summary',through,text:clean(redact(summaryText).text, true),
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
