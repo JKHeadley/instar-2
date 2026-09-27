@@ -236,6 +236,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
 
 it.each([
   ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1 }, null, {}],
+  // int11's reply verdict is one line; CRLF fencing applies to the outer Decision.
+  ['wrapped-crlf', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1 }, null, {}],
   ['verdict-contradicted', { 'reply-review/verdict/malformed/not-json': 1 },
     { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
   ['decision-contradicted', { 'reply-review/decision/malformed/prose-wrapped': 1 },
@@ -260,6 +262,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const review=envelope.messages[0].content.startsWith('Judge this proposed reply');
   const verdict='PASS | The reply stays within the rules.';
+  const newline=mode === 'wrapped-crlf' ? '\\r\\n' : '\\n';
   const value=!review ? 'Noted.'
     : mode === 'verdict-contradicted' ? 'VIOLATION: the proposed reply exposes a credential. Do not send it. '+verdict
     : mode === 'verdict-second-line' ? verdict+'\\nVIOLATION:credential | Do not send this reply.' : verdict;
@@ -268,7 +271,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
     floor:{allowed:binding.floor,chosen:binding.floor.default}});
   const bytes=mode === 'decision-contradicted' && review ? 'VIOLATION: this reply must not be sent. '+decision
-    : mode === 'wrapped' ? (review ? '\\u0060\\u0060\\u0060\\n'+decision+'\\n\\u0060\\u0060\\u0060' : '\\u0060\\u0060\\u0060json\\n'+decision+'\\n\\u0060\\u0060\\u0060')
+    : mode === 'wrapped' || mode === 'wrapped-crlf' ? (review ? '\\u0060\\u0060\\u0060'+newline+decision+newline+'\\u0060\\u0060\\u0060' : '\\u0060\\u0060\\u0060json'+newline+decision+newline+'\\u0060\\u0060\\u0060')
     : mode === 'answer-two-objects' && !review ? decision+'\\n'+decision : decision;
   return {state:'complete',bytes,usage:{inputTokens:1,outputTokens:1}};
 }}});
@@ -298,7 +301,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
-    expect(sends.some(send => send.text === 'PREVIEW — Noted.')).toBe(mode === 'wrapped');
+    expect(sends.some(send => send.text === 'PREVIEW — Noted.')).toBe(mode === 'wrapped' || mode === 'wrapped-crlf');
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);

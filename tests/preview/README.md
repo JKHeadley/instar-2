@@ -1527,6 +1527,10 @@ The inner reply-review verdict is one exact line (`PASS | reason` or
 text, so a malformed line is counted as `reply-review/verdict/malformed/not-json`.
 Model JSON (the outer Decision and the inner summary-review verdict) is accepted when it is exactly one object: the whole text, or the sole
 content of one ```json or ``` fence that is itself the whole response. Prose
+Model JSON (the outer Decision and the inner reply-review or summary-review
+verdict) is accepted when it is exactly one object: the whole text, or the sole
+content of one ```json or ``` fence that is itself the whole response. Fence
+line endings may be LF or CRLF, including a mix of the two. Prose
 around the JSON is never discarded, because it may state a judgment (such as a
 rejection) that contradicts the object; such text and every other wrapper stays
 malformed under the held outcome, and every field check still applies. `status`
