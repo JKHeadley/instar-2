@@ -53,7 +53,9 @@ it('names the forgotten subject without repeating a code value, while a no-chang
         const packet = JSON.parse(input.context);
         if (input.id.startsWith('summary:')) {
           const phrase = packet.memoryRequest?.message === 'Forget the archive access phrase.';
-          const quote = phrase ? 'The archive access phrase is silver crane.' : 'My gym locker code is 3310.';
+          const combination = packet.memoryRequest?.message === 'Forget my locker combination.';
+          const quote = phrase ? 'The archive access phrase is silver crane.'
+            : combination ? 'My locker combination is 7744.' : 'My gym locker code is 3310.';
           const source = packet.memoryCandidates?.find((item: { message: string }) => item.message.includes(quote));
           return JSON.stringify({ summary: 'The requested secret was forgotten.', people: [], memory: source
             ? [{ mode: 'forget', source: source.id, quote }] : [] });
@@ -70,6 +72,10 @@ it('names the forgotten subject without repeating a code value, while a no-chang
     worker.intake([update(5, 'Forget the archive access phrase.')]); await worker.drain();
     expect(sends[4]).toBe('PREVIEW — Forgot The archive access phrase.');
     expect(sends[4]).not.toContain('silver crane');
+    worker.intake([update(6, 'My locker combination is 7744.')]); await worker.drain();
+    worker.intake([update(7, 'Forget my locker combination.')]); await worker.drain();
+    expect(sends[6]).toBe('PREVIEW — Forgot My locker combination.');
+    expect(sends[6]).not.toContain('7744');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

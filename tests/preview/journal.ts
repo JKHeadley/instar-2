@@ -580,6 +580,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const changes = journal.view.memory.filter(change => change.trigger === turn.id && change.mode !== 'prefer');
     if (!changes.length) return undefined;
     const subject = (quote: string) => {
+      const statement = quote.match(/^(.{3,100}?)\s+(?:is|are|was|were|equals)\s+.+$/iu);
+      if (statement) return statement[1]!.trim().replace(/\s+/gu, ' ');
       const credential = /\b(?:(?:access|recovery) phrase|code|password|passphrase|token|secret|pin|key|credential)\b/iu.exec(quote);
       if (!credential) return quote.trim().replace(/\s+/gu, ' ');
       const prefix = quote.slice(0, credential.index + credential[0].length);
