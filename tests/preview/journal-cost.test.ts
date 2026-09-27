@@ -70,10 +70,11 @@ it('counts an older unmetered reservation at the current durable maximum', () =>
       expires: 9999999999999, maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
     journal.append({ kind: 'intake', id: turn(1), update: 1, text: 'hello', raw: '{}', accepted: true, cursor: 2, at: 1000 });
     journal.append({ kind: 'reserve', id: turn(1), at: 1000 });
-    expect(journal.view.tokenTotals.answer).toEqual({ calls: 1, inputTokens: 32768, outputTokens: 2048, unknownCalls: 1 });
+    journal.append({ kind: 'legacy-call', at: 1000 });
+    expect(journal.view.tokenTotals.answer).toEqual({ calls: 2, inputTokens: 65536, outputTokens: 4096, unknownCalls: 2 });
     journal.close();
     const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
-    expect(reopened.view.tokenTotals.answer).toEqual({ calls: 1, inputTokens: 32768, outputTokens: 2048, unknownCalls: 1 });
+    expect(reopened.view.tokenTotals.answer).toEqual({ calls: 2, inputTokens: 65536, outputTokens: 4096, unknownCalls: 2 });
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

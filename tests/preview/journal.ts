@@ -183,7 +183,11 @@ function project(view: JournalView, row: JournalRecord): void {
     view.channelItems.set(key, item); return;
   }
   if (row.kind === 'stop') { view.stop ??= row.reason; return; }
-  if (row.kind === 'legacy-call') { view.calls++; return; }
+  if (row.kind === 'legacy-call') {
+    // The old single-answer preview had no summary or reply-check model route.
+    reserveTokens(view, `legacy:${String(view.calls)}`, 'answer', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++; return;
+  }
   if (row.kind === 'legacy-reply') { view.replies++; return; }
   if (row.kind === 'import') {
     if (!view.genesis.importSource || view.imported || row.source !== view.genesis.importSource)
@@ -206,7 +210,7 @@ function project(view: JournalView, row: JournalRecord): void {
       if (!trigger?.accepted || trigger.update > row.through) throw Error('preview journal: failed summary trigger absent');
       trigger.memoryPending = true;
     }
-    settleTokens(view, `summary:${String(row.through)}`, row.usage);
+    if (row.state !== 'uncertain') settleTokens(view, `summary:${String(row.through)}`, row.usage);
     view.summaryFailures.set(row.through, (view.summaryFailures.get(row.through) ?? 0) + 1);
     return;
   }
@@ -254,8 +258,9 @@ function project(view: JournalView, row: JournalRecord): void {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
-    if (row.result.path === 'jev') settleTokens(view, `jev:${row.id}`, row.result.usage);
-    if (row.result.path === 'subscription' && turn.reviewState !== 'uncertain')
+    if (row.result.path === 'jev' && row.result.verdict !== 'unavailable')
+      settleTokens(view, `jev:${row.id}`, row.result.usage);
+    if (row.result.path === 'subscription' && row.result.verdict !== 'unavailable' && turn.reviewState !== 'uncertain')
       settleTokens(view, `review:${row.id}`, row.result.usage);
     turn.replyChecks ??= []; turn.replyChecks.push(row.result);
     view.replyCheckCounts[row.result.verdict]++; view.replyCheckPaths[row.result.path]++;

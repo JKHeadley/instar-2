@@ -766,7 +766,8 @@ usage retains the maximum for each unmeasured side. The Jev route rejects a
 response above its ceiling.
 The same numbers are in the journal-derived `self` text. Old journal records
 without explicit token maxima replay at the then-current prompt ceiling and
-route output maximum. See [summary-cost-accounting-live-test.md](summary-cost-accounting-live-test.md)
+route output maximum. Unattributed imported calls from the older single-answer
+preview count as UNKNOWN answers at those maxima. See [summary-cost-accounting-live-test.md](summary-cost-accounting-live-test.md)
 for the supervised operator check.
 
 The command takes the exclusive writer lease, refuses UNKNOWN model calls,
