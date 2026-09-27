@@ -137,8 +137,9 @@ async function main() {
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
       lastReplyCheck: view.view.lastReplyCheck,
-      people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
-        note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
+      people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
+        note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
+        ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
       launches: readRuns(runsPath).launches.slice(-3),
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
     finally { view.close(); }

@@ -45,6 +45,12 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     expect(packet.memory).toMatchObject([{ mode: 'forgotten' }]);
     expect(next.context).not.toContain('silver crane');
     expect(packet.channelMemory?.[0]?.quote).toContain('[withheld: operator correction or forgetting]');
+    const aboutSender = worker.probe('What did operator say about the archive?');
+    expect('reason' in aboutSender).toBe(false);
+    if ('reason' in aboutSender) throw Error(aboutSender.reason);
+    const timeline = JSON.parse(aboutSender.context).people;
+    expect(timeline).toBeUndefined();
+    expect(aboutSender.context).not.toContain('silver crane');
     expect(journal.view.channelItems.size).toBe(1);
     journal.close();
     const status = spawnSync(process.execPath,

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, PREVIEW_RECALL_LIMIT } from './journal.js';
+import { createJournalWorker, importChannelFixture, openPreviewJournal, PREVIEW_RECALL_LIMIT } from './journal.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 
 const key = new Uint8Array(32).fill(9);
@@ -31,8 +31,8 @@ const summarizer = (names: readonly string[], bad = true) => (context: string) =
 };
 
 function world(root: string, options: { names?: readonly string[]; bad?: boolean; plain?: boolean;
-  prepare?: (context: string) => void; summarize?: (context: string) => string } = {}) {
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+  prepare?: (context: string) => void; summarize?: (context: string) => string; maxBytes?: number } = {}) {
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(options.maxBytes));
   const asked = new Map<string, string>();
   const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
     prepareModel: input => { options.prepare?.(input.context); return input.context; },
@@ -91,13 +91,13 @@ it('recalls every note about a named person after compaction, keeps the operator
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
     expect(packet.people).toEqual([
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
+      { sourceId: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
         message: 'My cofounder Sam thinks the launch should slip to November.',
         mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
+      { sourceId: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
         message: 'Priya said she disagrees with Sam about the launch date.',
         mentions: [{ person: 'Sam', quote: 'Priya said she disagrees with Sam about the launch date.' }] }]);
-    expect(packet.capability).toContain('did not say it unless from is that person');
+    expect(packet.capability).toContain('The operator reporting what someone said is still the operator\'s report');
     // The named failure: word-match recall alone ranks the many launch-budget turns above both turns about Sam.
     const covered = w.journal.view.order.filter(turn => turn.update <= packet.summary.through);
     const ranked = bm25(terms(question), covered.map(turn => terms(`${turn.text} ${turn.answer ?? ''}`)))
@@ -169,10 +169,55 @@ it('renders the whole source message, so an excerpt can never drop the context t
     const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
-    expect(packet.people).toEqual([{ from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+    expect(packet.people).toEqual([{ sourceId: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
       mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
-    expect(packet.capability).toContain('Read a quote only within its whole message');
+    expect(packet.capability).toContain('Read a mention only within its whole message');
     w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('carries a dated, sourced timeline from imported messages and caps it per person', async () => {
+  const root = origin();
+  try {
+    let w = world(root, { maxBytes: 16000 });
+    const account = 'agent@example.test';
+    const at = 1790000000000;
+    const items = Array.from({ length: 12 }, (_, i) => ({ source: 'email' as const, account,
+      id: `maya-${i + 1}`, from: 'Maya Chen <maya@example.test>', at: at + i * 60000,
+      text: `Shipment ${i + 1} is ready.` }));
+    expect(importChannelFixture(w.journal, items, account, at)).toBe(12);
+    importChannelFixture(w.journal, [{ source: 'conversation', account, id: 'about-maya',
+      from: 'justin@example.test', at: at + 12 * 60000,
+      text: 'Maya denied ordering shipment 12.' }], account, at);
+    await w.say(1, 'What did Maya say about shipments?');
+    const packet = JSON.parse(w.asked.get('What did Maya say about shipments?')!);
+    expect(packet.people).toHaveLength(10);
+    expect(packet.people.map((entry: { date: string }) => entry.date)).toEqual(
+      [...packet.people.map((entry: { date: string }) => entry.date)].sort());
+    expect(packet.people[0].sourceId).toContain('maya-4');
+    expect(packet.people.at(-1)).toMatchObject({ source: 'conversation',
+      from: 'justin@example.test (export sender metadata, unverified)',
+      message: 'Maya denied ordering shipment 12.',
+      mentions: [{ person: 'Maya Chen', quote: 'Maya denied ordering shipment 12.' }] });
+    expect(packet.people.some((entry: { sourceId: string }) => entry.sourceId.includes('"maya-1"'))).toBe(false);
+    expect(packet.capability).toContain('short dated timeline');
+    w.journal.close();
+    w = world(root, { maxBytes: 16000 });
+    const replay = w.worker.probe('What did Maya say about shipments?');
+    expect('reason' in replay).toBe(false);
+    if ('reason' in replay) throw Error(replay.reason);
+    expect(JSON.parse(replay.context).people).toEqual(packet.people);
+    const unrelated = w.worker.probe('What did Oliver say?');
+    expect('reason' in unrelated).toBe(false);
+    if ('reason' in unrelated) throw Error(unrelated.reason);
+    expect(JSON.parse(unrelated.context).people).toBeUndefined();
+    w.journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout).people).toContain('Maya Chen');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
