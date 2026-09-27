@@ -76,6 +76,8 @@ it('treats an unrecorded correction decision as undecided and gives Jev the deci
     history: [{ user: 'Actually, forget my workshop code.', answer: null }],
     memoryRequest: { message: 'Actually, forget my workshop code.' } });
   expect(exactSummaryFaithfulness(packet, 'The code is 7319. Actually, forget my workshop code.', [])).toBe('undecided');
+  expect(exactSummaryFaithfulness(JSON.stringify({ summary: { text: 'The code is 7319.' },
+    history: [], memory: [{ mode: 'corrected', replacement: 'The code is 4412.' }] }), 'The code is 7319.', [])).toBe('undecided');
   expect(JSON.parse(summaryFaithfulnessEvidence(packet, 'The code is gone.', [])).memoryRequest.message).toContain('forget');
   expect(interpretSummaryJev(jev(0.01))).toBe('pass');
   expect(interpretSummaryJev(jev(0.99))).toBe('lost');

@@ -16,8 +16,9 @@ export function summaryFaithfulnessEvidence(packet: string, candidate: string, m
  * Missing prose is undecided, since a faithful paraphrase is possible. */
 export function exactSummaryFaithfulness(packet: string, candidate: string, memory: unknown[]): 'pass' | 'undecided' {
   const source = JSON.parse(packet) as { summary?: { text?: string }; history?: Array<{ user?: string; answer?: string | null }>;
-    memoryRequest?: unknown };
-  if (source.memoryRequest && memory.length === 0) return 'undecided';
+    memory?: unknown[]; memoryRequest?: unknown };
+  // Exact words cannot prove that a paraphrased stale claim was superseded.
+  if (source.memory?.length || source.memoryRequest || memory.length) return 'undecided';
   const originals = [source.summary?.text ?? '', ...(source.history ?? []).flatMap(item => [item.user ?? '', item.answer ?? ''])]
     .map(text => text.trim()).filter(Boolean);
   return originals.every(text => candidate.includes(text)) ? 'pass' : 'undecided';
