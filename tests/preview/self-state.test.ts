@@ -150,6 +150,40 @@ it('reports the bounded durable work snapshot only after a recorded restart', ()
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('keeps an UNKNOWN model outcome in the handoff after its notice gains an intent or receipt', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-handoff-')));
+  const path = join(root, 'journal.encrypted'), runs = join(root, 'runs.jsonl');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    let calls = 0;
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => ++calls === 1 ? { state: 'uncertain' } : 'done',
+      send: async () => calls === 1 ? null : 7, checkOutbound: () => {} });
+    worker.intake([update(1, 'uncertain', NOON)]); await worker.drain();
+    worker.intake([update(2, 'completed', NOON)]); await worker.drain();
+    expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer' });
+    expect(journal.view.order[0]!.intent).toBeDefined();
+    expect(journal.view.order[1]).toMatchObject({ modelState: 'complete', sent: 7 });
+    journal.close();
+    appendRun(runs, { v: 1, launch: NOON - 60_000, pid: 1 });
+    appendRun(runs, { v: 1, launch: NOON + 60_000, pid: 2 });
+    const reopened = openPreviewJournal(path, key);
+    const note = restartHandoff(reopened.view, readRuns(runs), NOON + 60_000)!.text;
+    expect(note).toContain('pending turns 0');
+    expect(note).toContain('UNKNOWN model outcomes 1 (updates 1)');
+    expect(note).toContain('UNKNOWN sends 1 (updates 1)');
+    expect(note).toContain('lost-answer notices due 0');
+    reopened.append({ kind: 'sent', id: reopened.view.order[0]!.id, message: 8, at: NOON + 60_000 });
+    reopened.close();
+    const delivered = openPreviewJournal(path, key);
+    const deliveredNote = restartHandoff(delivered.view, readRuns(runs), NOON + 60_000)!.text;
+    expect(deliveredNote).toContain('UNKNOWN model outcomes 1 (updates 1)');
+    expect(deliveredNote).toContain('UNKNOWN sends 0');
+    expect(deliveredNote).not.toContain('updates 2');
+    delivered.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('recovers a new launch after a torn tail and counts malformed rows without hiding damage', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-self-')));
   const path = join(root, 'runs.jsonl'), old = NOON - 3_600_000, current = NOON;

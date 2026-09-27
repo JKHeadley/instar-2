@@ -146,7 +146,8 @@ export function restartHandoff(view: JournalView, runs: RunLog, launch: number) 
   const previous = runs.launches[index - 1]!;
   const pending = view.order.filter(turn => turn.accepted && turn.sent === undefined && turn.intent === undefined);
   const held = pending.filter(turn => turn.held !== undefined);
-  const unknownCalls = pending.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined));
+  const unknownCalls = view.order.filter(turn => turn.accepted && turn.reserved
+    && (turn.modelState === 'uncertain' || turn.answer === undefined));
   const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined && turn.sent === undefined);
   const noticesDue = pending.filter(turn => turn.modelState === 'uncertain' && turn.noticeDueAt !== undefined
     && turn.noticeDueAt <= launch);
