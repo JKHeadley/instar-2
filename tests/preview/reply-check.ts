@@ -16,7 +16,7 @@ export type ReplyPath = 'jev' | 'subscription' | 'holding';
 export const JEV_MODEL = 'jev-1.13.0';
 export const JEV_RESPONSE_MAX_BYTES = 4096;
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
-  path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string;
+  path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string; candidateDigest?: string;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 /** The pinned JSON-result route reports total output usage, but no thinking blocks. */
 export interface ReplyReviewDiagnostics { outputTokens: number | null; thinkingPresent: 'unobservable' }
@@ -25,6 +25,7 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
   return { outputTokens: typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null,
     thinkingPresent: 'unobservable' };
 }
+
 
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
 const rules = Object.keys(REPLY_RULES) as ReplyRule[];

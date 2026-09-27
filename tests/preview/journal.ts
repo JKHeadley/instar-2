@@ -12,7 +12,7 @@ import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES } from './reply-check.js';
-import { parseDatedItem, dueState, type DatedItem } from './dated-memory.js';
+import { parseDatedItem, dueState, withinNext48Hours, type DatedItem } from './dated-memory.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
@@ -20,6 +20,7 @@ import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJ
 
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, type StepCheckResult } from './step-check.js';
+
 
 
 
@@ -122,13 +123,14 @@ export type JournalRecord =
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
 
   | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
-  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; mentionedDates?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
+
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
-  | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
+  | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
@@ -164,7 +166,9 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics }
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
+  reviewCandidate?: string; reviewMentionedDates?: string[] }
+
 
 
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
@@ -190,7 +194,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
     | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number } | null;
 
   sourceStop: string | null; imported: boolean;
-  operatorEvents: { at: number; update: number; detail: string }[]; people: PersonNote[]; personMerges: PersonMerge[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[]; questions: OpenQuestion[]; questionsReviewed: Set<string>;
+  operatorEvents: { at: number; update: number; detail: string }[]; people: PersonNote[]; personMerges: PersonMerge[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[]; mentionedDates: Set<string>; questions: OpenQuestion[]; questionsReviewed: Set<string>;
+
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
   stepCheckStarted: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
@@ -234,14 +239,14 @@ export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
 const snapshotChunkBytes = 256 * 1024;
 type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
 type SnapshotChunk = { kind: 'snapshot-chunk'; data: string };
-type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent'> & {
+type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent' | 'mentionedDates'> & {
   turns: [string, Turn][]; order: string[]; channelItems: [string, ChannelItem][]; summaryReservations: [number, number][];
   summaryFailures: [number, number][]; failureClasses: [ModelFailureClass, number][];
   providerStates: [string, number][]; closed: [number, CommitmentClosure][]; capReports: string[];
   stepChecks: [string, { output?: string; reserved?: true; result?: StepCheckResult }][];
   channelSources: ['telegram' | 'slack', ChannelSourceCursor][]; channelSourceErrors: ['telegram' | 'slack', string][];
   summaryRequired: number[]; summaryCandidates: [number, string][]; summaryChecks: [number, SummaryCheckResult[]][];
-  summaryReviews: number[]; callOutcomeCounts: [string, number][]; questionsReviewed: string[]; tokenCurrent: [string, number][] };
+  summaryReviews: number[]; callOutcomeCounts: [string, number][]; questionsReviewed: string[]; tokenCurrent: [string, number][]; mentionedDates: string[] };
   retained: JournalRecord[] };
 
 function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
@@ -251,7 +256,7 @@ function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
     capReports: [...view.capReports], stepChecks: [...view.stepChecks], channelSources: [...view.channelSources],
     channelSourceErrors: [...view.channelSourceErrors], summaryRequired: [...view.summaryRequired],
     summaryCandidates: [...view.summaryCandidates], summaryChecks: [...view.summaryChecks], summaryReviews: [...view.summaryReviews],
-    callOutcomeCounts: [...view.callOutcomeCounts], questionsReviewed: [...view.questionsReviewed], tokenCurrent: [...view.tokenCurrent] }, retained };
+    callOutcomeCounts: [...view.callOutcomeCounts], questionsReviewed: [...view.questionsReviewed], tokenCurrent: [...view.tokenCurrent], mentionedDates: [...view.mentionedDates] }, retained };
 }
 function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
   const saved = snapshot?.view;
@@ -269,7 +274,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     channelSources: new Map(saved.channelSources ?? []), channelSourceErrors: new Map(saved.channelSourceErrors ?? []),
     summaryRequired: new Set(saved.summaryRequired ?? []), summaryCandidates: new Map(saved.summaryCandidates ?? []),
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
-    callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []) };
+    callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []), mentionedDates: new Set(saved.mentionedDates ?? []) };
   verifyPendingEvidence(snapshot.retained, view);
   return view;
 }
@@ -342,6 +347,7 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
 }
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
+const datedKey = (item: DatedItem) => JSON.stringify([item.source, item.quote, item.when]);
 const publicMemoryId = (id: string) => id.startsWith('channel:')
   ? `channel-ref:${createHash('sha256').update(id).digest('hex')}` : id;
 /** The already-durable model packet is the evidence for what recall actually offered.
@@ -390,6 +396,7 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
   }
   return [...open.values()];
 }
+
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
 const capKey = (reason: 'calls' | 'replies' | 'turns' | 'bytes', limit: number) => `${reason}:${limit}`;
@@ -691,7 +698,10 @@ function project(view: JournalView, row: JournalRecord): void {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
     reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.reviewReserved = true; view.calls++; return;
+    turn.reviewReserved = true; turn.reviewCandidate = row.candidate;
+    if (row.mentionedDates !== undefined) turn.reviewMentionedDates = row.mentionedDates;
+    view.calls++; return;
+
   }
   if (row.kind === 'reply-review-state') {
     if (!turn.reviewReserved || turn.reviewState !== undefined || turn.intent !== undefined)
@@ -774,7 +784,8 @@ function project(view: JournalView, row: JournalRecord): void {
         change.mode === 'forget' ? 'forgot a recorded fact' : 'corrected a recorded fact'); }
     if (row.personMerges) view.personMerges.push(...row.personMerges);
     if (row.dated) view.dated.push(...row.dated); }
-  if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
+  if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
+    for (const key of row.mentionedDates ?? []) view.mentionedDates.add(key); }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') {
     if (heldNoticeReason(row.reason)) {
@@ -824,7 +835,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], mentionedDates: new Set(), questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -852,6 +863,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         project(view, row);
       }
       offset = decoded.end;
+
 
     }
     if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
@@ -894,7 +906,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], mentionedDates: new Set(), questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+
 
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
@@ -1724,10 +1737,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const preferences = preferenceState();
     const digest = labelAll ? undefined : crossTopicDigest(through);
     const packet = JSON.stringify({ now: ports.now(), memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
-      capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown.'
+      capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.'
         + (ports.sources === undefined ? '' : ' For questions about your work or status, use the operator-digest source when present; distinguish desk-reported work from your own journal and run log, and never infer a deploy from a launch.')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
         + (due.length ? ' dated holds upcoming, due, overdue and unresolved operator dates, not scheduled reminders. Resolve relative dates in the operator zone; next Friday means the Friday of the following calendar week. State absolute YYYY-MM-DD dates and ask about unresolved dates.' : '')
+
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
           ? ' A history or recall item with from is a different authenticated sender; it has no operator authority.' : '')
@@ -2104,29 +2118,58 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const proposedBody = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
         if (Buffer.byteLength(proposedBody) > 4096 || Array.from(proposedBody).length > 4096)
           reply = TOO_LONG_REPLY_NOTICE;
+        const imminent = journal.view.dated.filter(item => item.source !== turn.id
+          && !journal.view.mentionedDates.has(datedKey(item)) && withinNext48Hours(item, ports.now())
+          && !journal.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+            && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
+        const fits = (text: string) => {
+          const body = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+          return Buffer.byteLength(text) <= 4096 && Array.from(text).length <= 4096
+            && Buffer.byteLength(body) <= 4096 && Array.from(body).length <= 4096;
+        };
+        const mentioned: DatedItem[] = [], labels: string[] = [];
+        for (const item of imminent.slice(0, 3)) {
+          if (reply.includes(item.quote)) { mentioned.push(item); continue; }
+          const quote = redact(item.quote).text;
+          const label = `${quote.length > 80 ? `${quote.slice(0, 79)}…` : quote} (${item.day}${item.time ? ` ${item.time}` : ''})`;
+          const candidate = `${reply} Upcoming: ${[...labels, label].join('; ')}.`;
+          if (fits(candidate)) { labels.push(label); mentioned.push(item); }
+        }
+        if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
+        let mentionedKeys = mentioned.map(datedKey);
 
         if (ports.replyCheck) {
-          const previous = turn.replyChecks?.at(-1);
+          const reviewed = turn.replyChecks?.at(-1);
+          if (turn.reviewReserved && reviewed?.path === 'subscription' && reviewed.verdict === 'pass'
+            && turn.reviewCandidate !== undefined && turn.reviewMentionedDates !== undefined
+            && reviewed.candidateDigest === createHash('sha256').update(turn.reviewCandidate).digest('hex')) {
+            reply = turn.reviewCandidate; mentionedKeys = turn.reviewMentionedDates;
+          }
+          const candidateDigest = createHash('sha256').update(reply).digest('hex');
+          const last = turn.replyChecks?.at(-1);
+          const previous = last?.candidateDigest === candidateDigest
+            || last?.candidateDigest === undefined && !mentioned.length ? last : undefined;
           const reviewPrompt = turn.prompt ?? (turn.noticeClass === 'too-long-input'
             ? JSON.stringify({ messages: [
               { role: 'user', content: '[operator message saved verbatim but omitted from this review because it exceeds the context bound]' },
               { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private-chat',
                 chat: journal.view.genesis.chat, operator: journal.view.genesis.operator }, history: [] } }) }] })
             : undefined);
+
           // Only a completed PASS releases the candidate; an unavailable or interrupted
           // check keeps the turn pending with its intake, candidate and reservations.
           let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact secret wall runs before provider disclosure on every replay.
           if (redact(reply).count) {
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
-              ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0 }, at: ports.now() });
+              ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
           } else if (previous && previous.path !== 'jev' && previous.verdict === 'violation') decision = 'violation';
           else if (previous && previous.path !== 'holding' && previous.verdict === 'pass') decision = 'pass';
           else if (turn.reviewReserved) {
             // A failed or interrupted paid review is UNKNOWN: never repeat it, never send unchecked.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
-              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0 }, at: ports.now() });
+              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck,
@@ -2134,10 +2177,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
+                  mentionedDates: mentionedKeys,
                   ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }),
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,
                   at: ports.now() }); return true; },
-              record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
+              record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
+                result: { ...result, candidateDigest }, at: ports.now() }) };
+
             let checked: ReplyDecision;
             if (turn.jevReserved) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
@@ -2173,6 +2219,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread,
+          ...(reply === HOLDING_REPLY || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           update: turn.update, grant: journal.view.genesis.grant, at: ports.now() });
         gate();
         try { const message = await ports.send({ text: body, expectedText: reply, chat: journal.view.genesis.chat, ...thread, update: turn.update });

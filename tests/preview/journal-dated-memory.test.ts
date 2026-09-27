@@ -4,7 +4,10 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { dueState, parseDatedItem } from './dated-memory.js';
+import { HOLDING_REPLY, JEV_MODEL, REPLY_RULES } from './reply-check.js';
+import { SOURCE_PINS, sourcePacket } from './briefing.js';
+import { readFileSync } from 'node:fs';
+import { dueState, parseDatedItem, withinNext48Hours } from './dated-memory.js';
 
 const key = new Uint8Array(32).fill(23);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -435,6 +438,243 @@ it('withholds a corrected dated source and carries a replacement from the same v
     if ('reason' in forgotten) throw Error(forgotten.reason);
     expect(JSON.parse(forgotten.context).dated).toBeUndefined();
     expect(forgotten.context).not.toContain('the invoice deadline is October 3.');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('uses inclusive 48-hour instant edges, local day edges, and refuses ambiguous dates', () => {
+  const zone = 'America/Los_Angeles';
+  const precise = parseDatedItem('one', 'Invoice due Oct 3 at 8 am.', 'Oct 3 at 8 am', start, zone);
+  const event = Date.UTC(2026, 9, 3, 15);
+  expect(withinNext48Hours(precise, event - 48 * 60 * 60 * 1000 - 1)).toBe(false);
+  expect(withinNext48Hours(precise, event - 48 * 60 * 60 * 1000)).toBe(true);
+  expect(withinNext48Hours(precise, event)).toBe(true);
+  expect(withinNext48Hours(precise, event + 1)).toBe(false);
+  const dayOnly = parseDatedItem('two', 'Invoice due Oct 3.', 'Oct 3', start, zone);
+  expect(withinNext48Hours(dayOnly, Date.UTC(2026, 8, 30, 6, 59))).toBe(false);
+  expect(withinNext48Hours(dayOnly, Date.UTC(2026, 9, 1, 7))).toBe(true);
+  expect(withinNext48Hours(dayOnly, Date.UTC(2026, 9, 4, 7))).toBe(false);
+  expect(withinNext48Hours(parseDatedItem('three', 'Meet tomorrow at 3.', 'tomorrow at 3', start, zone), start)).toBe(true);
+  expect(withinNext48Hours(parseDatedItem('three', 'Meet on Thursday or Friday.', 'Thursday or Friday', start, zone), start)).toBe(false);
+  // The repeated 1:30 during the fall clock change has a future occurrence.
+  const fold = parseDatedItem('four', 'Meet Nov 1, 2026 at 1:30 am.', 'Nov 1, 2026 at 1:30 am', start, zone);
+  expect(withinNext48Hours(fold, Date.UTC(2026, 10, 1, 8, 45))).toBe(true);
+});
+
+it('adds one short imminent clause to the next checked intent and replays its marker', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-imminent-'))), path = join(root, 'journal.encrypted');
+  try {
+    let now = start;
+    const sends: string[] = [];
+    let journal = openPreviewJournal(path, key, genesis);
+    const ports = { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
+        dated: input.question.includes('Invoice due')
+          ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
+      send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; },
+      checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
+    expect(sends[0]).not.toContain('Upcoming:'); // save turn is not the next reply
+    now = Date.UTC(2026, 9, 1, 14, 59, 59, 999);
+    worker.intake([update(2, 'Hello')]); await worker.drain();
+    expect(sends[1]).not.toContain('Upcoming:');
+    now = Date.UTC(2026, 9, 1, 15);
+    worker.intake([update(3, 'Hello again')]); await worker.drain();
+    expect(sends[2]).toContain('Upcoming: Invoice due Oct 3 at 8 am. (2026-10-03 08:00).');
+    expect(sends[2]!.match(/Upcoming:/gu)).toHaveLength(1);
+    expect(journal.view.mentionedDates.size).toBe(1);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    expect(journal.view.mentionedDates.size).toBe(1);
+    worker.intake([update(4, 'Another question')]); await worker.drain();
+    expect(sends[3]).not.toContain('Upcoming:');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('fits an upcoming clause inside visible and encoded limits, leaving an omitted item eligible after replay', async () => {
+  for (const [name, answer, included] of [
+    ['visible-fit', 'a'.repeat(3970), true],
+    ['visible-overflow', 'a'.repeat(4040), false],
+    ['encoded-overflow', '<'.repeat(1010), false],
+  ] as const) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), `preview-imminent-${name}-`)));
+    const path = join(root, 'journal.encrypted');
+    try {
+      let now = start;
+      const sends: string[] = [], checked: string[] = [];
+      let journal = openPreviewJournal(path, key, genesis);
+      const ports = { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+        model: async (input: { question: string }) => JSON.stringify({
+          reply: input.question === 'Long' ? answer : 'Okay.', memory: [],
+          dated: input.question.includes('Invoice due')
+            ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
+        send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; },
+        checkOutbound: () => {}, replyCheck: {
+          jev: async (text: string) => { checked.push(text); return { value: { model: JEV_MODEL,
+            answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0 }])) }, latencyMs: 1 }; },
+          escalate: async () => { throw Error('unexpected review'); }, elapsedMs: () => 0 } };
+      let worker = createJournalWorker(journal, ports);
+      worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
+      now = Date.UTC(2026, 9, 1, 15);
+      worker.intake([update(2, 'Long')]); await worker.drain();
+      expect(sends[1]).toBe(`PREVIEW — ${answer}${included ? ' Upcoming: Invoice due Oct 3 at 8 am. (2026-10-03 08:00).' : ''}`);
+      expect(checked[1]).toBe(sends[1]);
+      expect(journal.view.order[1]?.held).toBeUndefined();
+      expect(journal.view.mentionedDates.size).toBe(included ? 1 : 0);
+      journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+      await worker.drain();
+      expect(sends).toHaveLength(2);
+      worker.intake([update(3, 'Short')]); await worker.drain();
+      expect(sends[2]?.includes('Upcoming:')).toBe(!included);
+      expect(journal.view.mentionedDates.size).toBe(1);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('delivers upcoming-date behavior in the prepared packet and source briefing', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-imminent-briefing-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
+      model: async () => 'Okay.', send: async () => 1, checkOutbound: () => {} });
+    const prepared = worker.probe('Hello');
+    if ('reason' in prepared) throw Error(prepared.reason);
+    expect(JSON.parse(prepared.context).capability).toContain('within 48 hours');
+    expect(JSON.parse(prepared.context).capability).toContain('remembered across restarts');
+    const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
+      { providerAttempts: 30, expiresAt: genesis.expires });
+    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('unprompted reminder');
+    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('remembered across restarts');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not repeat an imminent item after an UNKNOWN send intent', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-imminent-unknown-'))), path = join(root, 'journal.encrypted');
+  try {
+    let now = start, sends = 0;
+    let journal = openPreviewJournal(path, key, genesis);
+    const ports = { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
+        dated: input.question.includes('Invoice due')
+          ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
+      send: async () => { sends++; return sends === 2 ? null : sends; }, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
+    now = Date.UTC(2026, 9, 1, 15);
+    worker.intake([update(2, 'Hello')]); await worker.drain();
+    expect(journal.view.order[1]?.intent).toContain('Upcoming:');
+    expect(journal.view.order[1]?.sent).toBeUndefined();
+    journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    worker.intake([update(3, 'More')]); await worker.drain();
+    expect(sends).toBe(3);
+    expect(journal.view.order[2]?.intent).not.toContain('Upcoming:');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an imminent item eligible when the reply check replaces its candidate', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-imminent-check-'))), path = join(root, 'journal.encrypted');
+  try {
+    let now = start, rejectOnce = true;
+    const sends: string[] = [];
+    const journal = openPreviewJournal(path, key, genesis);
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
+        dated: input.question.includes('Invoice due')
+          ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
+      send: async input => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {},
+      replyCheck: {
+        jev: async text => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
+          .map(id => [id, { type: 'noul', noul: rejectOnce && text.includes('Upcoming:') && id === 'raw_path' ? 1 : 0 }])) }, latencyMs: 1 }),
+        escalate: async () => { rejectOnce = false; return { verdict: 'violation' as const, ruleIds: ['raw_path' as const], confidence: 1, latencyMs: 1 }; },
+        elapsedMs: () => 0 } });
+    worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
+    now = Date.UTC(2026, 9, 1, 15);
+    worker.intake([update(2, 'Hello')]); await worker.drain();
+    expect(sends[1]).toBe(HOLDING_REPLY);
+    expect(journal.view.mentionedDates.size).toBe(0);
+    worker.intake([update(3, 'Another question')]); await worker.drain();
+    expect(sends[2]).toContain('Upcoming: Invoice due Oct 3 at 8 am.');
+    expect(journal.view.mentionedDates.size).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('rechecks a candidate when the 48-hour edge moves after a durable check', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-imminent-recheck-'))), path = join(root, 'journal.encrypted');
+  try {
+    let now = start, failAtCheck = false, reviews = 0;
+    const sends: string[] = [];
+    let journal = openPreviewJournal(path, key, genesis, stage => {
+      if (failAtCheck && stage === 'after:reply-check') { failAtCheck = false; throw Error('simulated stop'); }
+    });
+    const ports = { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
+        dated: input.question.includes('Invoice due')
+          ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
+      send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {},
+      replyCheck: {
+        jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
+          .map(id => [id, { type: 'noul', noul: 0 }])) }, latencyMs: 1 }),
+        escalate: async () => { reviews++; return { verdict: 'pass' as const, ruleIds: [], confidence: 1, latencyMs: 1 }; },
+        elapsedMs: () => 0 } };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
+    now = Date.UTC(2026, 9, 1, 14, 59, 59, 999);
+    worker.intake([update(2, 'Hello')]);
+    failAtCheck = true;
+    await expect(worker.drain()).rejects.toThrow('simulated stop');
+    expect(journal.view.order[1]?.intent).toBeUndefined();
+    journal.close();
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    now = Date.UTC(2026, 9, 1, 15);
+    await worker.drain();
+    expect(reviews).toBe(1);
+    expect(sends[1]).toContain('Upcoming: Invoice due Oct 3 at 8 am.');
+    expect(journal.view.mentionedDates.size).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays the exact completed paid review when the 48-hour edge moves', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-imminent-paid-replay-'))), path = join(root, 'journal.encrypted');
+  try {
+    let now = start, stopAfterReview = false, reviews = 0;
+    const sends: string[] = [];
+    let journal = openPreviewJournal(path, key, genesis);
+    const ports = { now: () => now, stopped: () => stopAfterReview, timeZone: 'America/Los_Angeles',
+      model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
+        dated: input.question.includes('Invoice due')
+          ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
+      send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {},
+      replyCheck: {
+        jev: async (text: string) => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
+          .map(id => [id, { type: 'noul', noul: text === 'PREVIEW — Okay.' && now !== start && id === 'raw_path' ? 0.5 : 0 }])) }, latencyMs: 1 }),
+        escalate: async () => { reviews++; stopAfterReview = true;
+          return { verdict: 'pass' as const, ruleIds: [], confidence: 1, latencyMs: 1 }; },
+        elapsedMs: () => 0 } };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
+    now = Date.UTC(2026, 9, 1, 14, 59, 59, 999);
+    worker.intake([update(2, 'Hello')]);
+    await expect(worker.drain()).rejects.toThrow('preview stopped');
+    expect(journal.view.order[1]?.replyChecks?.at(-1)).toMatchObject({ path: 'subscription', verdict: 'pass' });
+    expect(journal.view.order[1]?.intent).toBeUndefined();
+    journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    now = Date.UTC(2026, 9, 1, 15); stopAfterReview = false;
+    await worker.drain();
+    expect(reviews).toBe(1);
+    expect(sends[1]).toBe('PREVIEW — Okay.');
+    expect(journal.view.order[1]?.held).toBeUndefined();
+    expect(journal.view.mentionedDates.size).toBe(0);
+    worker.intake([update(3, 'Next')]); await worker.drain();
+    expect(sends[2]).toContain('Upcoming: Invoice due Oct 3 at 8 am.');
+    expect(journal.view.mentionedDates.size).toBe(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

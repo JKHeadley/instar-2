@@ -987,6 +987,25 @@ The capability line says plainly: this preview **answers only and never sends un
 reminders**. An item in memory is not a scheduled notification; the runner has no scheduler or
 tools. It can mention a due or overdue item in a reply to the operator's next message.
 For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
+
+### Upcoming date mention
+
+When a settled dated item enters the next 48 hours, the next reply to the private
+operator chat adds one short `Upcoming:` clause. A precise hour uses the actual
+instant in the item's zone, including a daylight-saving change; a day-only item
+uses its local calendar day. An unspecified AM/PM is treated as day-only. An
+unresolved date is never presented as an upcoming certainty. The saving reply
+does not count as the next reply. Up to three eligible items share one clause;
+additional items remain eligible for later replies. A corrected or forgotten
+source is excluded.
+
+The existing reply check sees the complete candidate, including the clause.
+Only the final send intent records which items were mentioned. A held check or
+holding reply records none. The intent is fsynced before Telegram dispatch, so
+even an UNKNOWN send cannot repeat the clause after replay. `status.mentionedDates`
+counts these durable intent markers. This is a reply aside, never an unprompted
+reminder or scheduled action. For the supervised private-chat procedure, see
+[upcoming-date-mention-live-test.md](upcoming-date-mention-live-test.md).
 ### How the operator likes answers
 
 The same capped summary or reply decision can record a durable reply preference from the

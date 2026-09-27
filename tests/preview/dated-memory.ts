@@ -78,3 +78,33 @@ export function dueState(item: DatedItem, now: number): 'upcoming' | 'due' | 'ov
   if (item.time && !item.ambiguity && item.time < `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`) return 'overdue';
   return 'due';
 }
+
+/** A day-only item is eligible while its local calendar day intersects the next
+ * 48 hours. A settled hour is compared as an instant, including a zone offset
+ * change inside the window. Unresolved dates and hours cannot be promised. */
+export function withinNext48Hours(item: DatedItem, now: number): boolean {
+  if (!item.day || item.ambiguity && item.ambiguity !== 'AM or PM unspecified' || !Number.isFinite(now)) return false;
+  const end = now + 48 * 60 * 60 * 1000;
+  const localDay = (at: number) => {
+    const parts = localParts(at, item.zone);
+    return dayKey(parts.year, parts.month, parts.day);
+  };
+  if (!item.time) return item.day >= localDay(now) && item.day <= localDay(end);
+  const [year, month, day] = item.day.split('-').map(Number);
+  const [hour, minute] = item.time.split(':').map(Number);
+  const wall = Date.UTC(year!, month! - 1, day!, hour!, minute!);
+  // Both offsets are considered when a daylight-saving transition repeats an hour.
+  const offset = (at: number) => {
+    const value = new Intl.DateTimeFormat('en-US', { timeZone: item.zone,
+      timeZoneName: 'shortOffset' }).formatToParts(at).find(part => part.type === 'timeZoneName')?.value ?? 'GMT';
+    const match = /^GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/u.exec(value);
+    if (!match) throw Error('preview dated memory: zone offset unavailable');
+    return (match[1] === '-' ? -1 : 1) * (Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)) * 60000;
+  };
+  return [offset(now), offset(end)].some(value => {
+    const at = wall - value;
+    const parts = localParts(at, item.zone);
+    return at >= now && at <= end && dayKey(parts.year, parts.month, parts.day) === item.day
+      && parts.hour === hour && parts.minute === minute;
+  });
+}
