@@ -572,7 +572,7 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
   try {
     const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
       grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-      maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 4000, cursor: 0 });
+      maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 16384, cursor: 0 });
     const reviewed: { historyMode: string; summary?: { text: string }; operatorMessage: string; candidateReply: string; history: unknown[]; rules: Record<string, string> }[] = [];
 
     const sent: string[] = [];
@@ -595,18 +595,18 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
 
           return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 };
         } } });
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 32; i++) {
       worker.intake([{ update_id: i + 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
         text: i === 0 ? 'ORCHID is the first unique memory.' : `turn ${i} ${'a'.repeat(450)}` } }]);
       await worker.drain(); await worker.summarizeIfNeeded();
     }
     expect(journal.view.summaries.length).toBeGreaterThan(0);
-    worker.intake([{ update_id: 13, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+    worker.intake([{ update_id: 33, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
       text: 'What was the first unique memory?' } }]);
     await worker.drain();
     const last = journal.view.order.at(-1)!;
     expect(sent.at(-1)).toBe('PREVIEW — It was ORCHID.');
-    expect(last.sent).toBe(13);
+    expect(last.sent).toBe(33);
     expect(last.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'unsure'], ['subscription', 'pass']]);
     // The deciding review sees the summary even when earlier turns leave recent history.
     expect(reviewed).toHaveLength(1);
@@ -615,12 +615,12 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
     expect(reviewed[0]!.summary!.text).toContain('ORCHID');
     expect(reviewed[0]!.history).toBeDefined();
     expect(reviewed[0]!.rules).toEqual({ claims_blocked: REPLY_RULES.claims_blocked });
-    worker.intake([{ update_id: 14, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+    worker.intake([{ update_id: 34, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
       text: 'Please repeat the first unique memory.' } }]);
     await worker.drain();
     const pass = journal.view.order.at(-1)!;
     expect(sent.at(-1)).toBe('PREVIEW — It was ORCHID.');
-    expect(pass.sent).toBe(14);
+    expect(pass.sent).toBe(34);
     expect(pass.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'pass']]);
     expect(reviewed).toHaveLength(1);
     expect(jevMemoryChecks).toBe(2);
@@ -628,7 +628,7 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
     journal.close();
     const replay = openPreviewJournal(path, key);
     expect(replay.view.replyCheckPaths.subscription).toBe(1);
-    expect(replay.view.replyCheckPaths.jev).toBe(14);
+    expect(replay.view.replyCheckPaths.jev).toBe(34);
     expect(replay.view.replyCheckCounts.unsure).toBe(1);
     expect(replay.view.lastReplyCheck).toMatchObject({ path: 'jev', verdict: 'pass' });
     replay.close();

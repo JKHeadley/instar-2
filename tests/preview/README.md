@@ -878,6 +878,15 @@ same test checks that a contextual flower fact survives five incidental birthday
 matches in a summary-covered packet, alongside a quiet-history neighbor. The
 private-chat procedure is [recall-paraphrase-consistency-live-test.md](live-tests-archive/recall-paraphrase-consistency-live-test.md).
 
+The offline [long conversation program](long-conversation-program.test.ts) drives 200
+mixed-length turns through this journal, rolling summaries, the exact prepared
+envelope and forced full-context reply reviews. Answer packet fitting leaves a
+bounded 8 KiB review allowance when reply checking is installed, so an answer
+near the prompt limit does not routinely strand its review. The allowance
+still yields to the existing packet and prompt limits; an exceptional long
+or heavily escaped reply can remain held visibly. Justin's supervised check is
+[long-conversation-program-live-test.md](live-tests-archive/long-conversation-program-live-test.md).
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
