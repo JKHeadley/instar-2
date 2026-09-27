@@ -132,19 +132,96 @@ it('keeps successive revisions attached to one original and treats a wording edi
     if ('reason' in probe) throw Error(probe.reason);
     expect(probe.context).toContain('The launch is Thursday.');
     expect(probe.context).not.toContain('Tuesday');
+    expect(journal.view.order[2]?.memoryUndecided).toBeUndefined();
+    worker.intake([message(4, 'When is the launch?', 43)]); await worker.drain();
+    expect(sends).toBe(2);
+    expect(journal.view.order[3]?.sent).toBeDefined();
     journal.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-it('holds later replies when edit judgment fails and preserves the edit through replay', async () => {
+it('allows a later edit to restore an earlier fact, including after replay', async () => {
+  const directory = root(), path = join(directory, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const sends: number[] = [];
+    const ports = { now: () => 1790002000000, stopped: () => false,
+      model: async (input: { id: string; context: string }) => {
+        if (!input.id.startsWith('summary:')) return 'Understood.';
+        const packet = JSON.parse(input.context);
+        if (!packet.memoryRequest?.editedTurn) return JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], memory: [] });
+        const restored = packet.memoryRequest.message === 'The launch is on Tuesday.';
+        expect(packet.memoryCandidates[0].message).toBe(restored ? 'The launch is on Thursday.' : 'The launch is on Tuesday.');
+        return JSON.stringify({ summary: packet.memoryRequest.message, people: [], memory: [{ mode: 'correct',
+          source: packet.memoryRequest.replaces, quote: packet.memoryCandidates[0].message,
+          replacement: packet.memoryRequest.message }] });
+      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
+    worker.intake([edit(2, 'The launch is on Thursday.')]); await worker.drain();
+    worker.intake([edit(3, 'The launch is on Tuesday.')]); await worker.drain();
+    expect(journal.view.memory).toHaveLength(2);
+    expect(journal.view.order[2]?.memoryUndecided).toBeUndefined();
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    const probe = worker.probe('When is the launch?');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(probe.context).toContain('The launch is on Tuesday.');
+    expect(probe.context).not.toContain('The launch is on Thursday.');
+    worker.intake([message(4, 'When is the launch?', 43)]); await worker.drain();
+    expect(sends).toEqual([1, 4]);
+    journal.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+it('withdraws an edited claim without inventing a replacement', async () => {
+  const directory = root(), path = join(directory, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const sends: number[] = [];
+    const ports = { now: () => 1790002000000, stopped: () => false,
+      model: async (input: { id: string; context: string }) => {
+        if (!input.id.startsWith('summary:')) return 'Understood.';
+        const packet = JSON.parse(input.context);
+        return packet.memoryRequest?.editedTurn
+          ? JSON.stringify({ summary: 'The operator withdrew the launch claim.', people: [], memory: [{ mode: 'forget',
+            source: packet.memoryRequest.replaces, quote: 'The launch is on Tuesday.' }] })
+          : JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], memory: [] });
+      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
+    worker.intake([edit(2, 'I withdraw that claim.')]); await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'forget', source: journal.view.order[0]!.id,
+      trigger: journal.view.order[1]!.id }]);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    const probe = worker.probe('What was the launch date?');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(probe.context).not.toContain('The launch is on Tuesday.');
+    worker.intake([message(3, 'What was the launch date?', 43)]); await worker.drain();
+    expect(sends).toEqual([1, 3]);
+    journal.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+it.each(['unresolved', 'malformed'] as const)('releases later replies after %s edit judgment and preserves uncertainty through replay', async failure => {
   const directory = root(), path = join(directory, 'journal.encrypted');
   try {
     let journal = openPreviewJournal(path, key, genesis);
     let sends = 0;
     const ports = { now: () => 1790002000000, stopped: () => false,
-      model: async (input: { id: string }) => input.id.startsWith('summary:')
-        ? JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], memory: [], memoryDisposition: 'unresolved' })
-        : 'ok', send: async () => ++sends, checkOutbound: () => {} };
+      model: async (input: { id: string; context: string }) => {
+        if (!input.id.startsWith('summary:')) return 'ok';
+        const packet = JSON.parse(input.context);
+        return packet.memoryRequest?.editedTurn
+          ? failure === 'malformed' ? 'not a JSON judgment'
+            : JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], memory: [], memoryDisposition: 'unresolved' })
+          : JSON.stringify({ summary: 'The edit is unresolved.', people: [], memory: [] });
+      }, send: async () => ++sends, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
     worker.intake([edit(2, 'The launch is on Thursday.'), message(3, 'When is the launch?', 43)]);
@@ -156,8 +233,16 @@ it('holds later replies when edit judgment fails and preserves the edit through 
     worker = createJournalWorker(journal, ports);
     expect(journal.view.order[1]?.editOf).toBe(journal.view.order[0]?.id);
     await worker.drain();
-    expect(sends).toBe(1);
-    expect(journal.view.order[2]?.held).toBe('memory correction pending');
+    expect(sends).toBe(2);
+    expect(journal.view.order[1]?.memoryUndecided).toBe(true);
+    expect(journal.view.order[2]?.held).toBeUndefined();
+    const probe = worker.probe('Another question');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(probe.context).toContain('undecidedEdits');
+    expect(probe.context).toContain('The launch is on Thursday.');
+    worker.intake([message(4, 'Unrelated question', 44)]); await worker.drain();
+    expect(sends).toBe(3);
     journal.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
