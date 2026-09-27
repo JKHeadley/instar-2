@@ -1688,8 +1688,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`,
         measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) })
       .map(index => older[index]!);
-    const dated = older.filter(item => dueSoon(clean(item.text, true))).slice(-PREVIEW_RECALL_LIMIT).reverse();
-    return [...new Map([...dated, ...ranked].map(item => [item.id, item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
+    // A nearby date is useful context, but five unrelated dates must not hide
+    // the source that actually matches the question.
+    const dated = asksForUpcoming(turn.text) ? older.filter(item => dueSoon(clean(item.text, true))).at(-1) : undefined;
+    return [...new Map([...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
+      .slice(0, PREVIEW_RECALL_LIMIT);
   };
   /** Imported items use the existing sentinel but never become executable turns. */
   const channelFor = (turn: Turn, summary?: string, prioritizeDates = true) => {
@@ -1701,9 +1704,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(previous ? { previous: `${clean(previous.text, true, previous.id)} ${clean(sentText(previous) ?? '', true, previous.id)}` } : {}),
       candidates: items.map(item => ({ text: clean(`${item.from} ${item.subject ?? ''} ${item.text}`, true), at: item.at })) })
       .map(index => items[index]!);
-    const dated = prioritizeDates
-      ? items.filter(item => dueSoon(clean(`${item.subject ?? ''} ${item.text}`, true))).slice(-PREVIEW_RECALL_LIMIT).reverse() : [];
-    return [...new Map([...dated, ...ranked].map(item => [channelMemoryId(item), item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
+    const dated = prioritizeDates && asksForUpcoming(turn.text)
+      ? items.filter(item => dueSoon(clean(`${item.subject ?? ''} ${item.text}`, true))).at(-1) : undefined;
+    return [...new Map([...(dated ? [dated] : []), ...ranked].map(item => [channelMemoryId(item), item])).values()]
+      .slice(0, PREVIEW_RECALL_LIMIT);
   };
   // A correction needs the target source; reply-only date priority must not crowd it out.
   const channelCandidates = (turn: Turn, summary?: string) => channelFor(turn, summary, false)
@@ -1842,6 +1846,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       return Number.isFinite(at) && at >= start && at <= end;
     });
   };
+  const asksForUpcoming = (text: string) => /\b(?:today|tomorrow|upcoming|due|deadline|schedule|calendar|pending)\b|what should i know/iu.test(text);
   const relatedOpenFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>, resumed: boolean) => {
     const open = openFor(summary.through, journal.view.commitments.length);
     if (resumed || /\b(?:anything open|what(?:'s| is| remains) (?:still )?(?:open|pending)|what open commitments|what did i ask you to (?:remember|do)|what (?:did you|have you) (?:promise|commit)|list (?:my|your|our|the) (?:open )?(?:commitments|promises|reminders))\b/iu.test(turn.text))

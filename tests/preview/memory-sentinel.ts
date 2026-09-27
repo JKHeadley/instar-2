@@ -8,8 +8,8 @@
  * just before ("what would she want?"), and a paraphrase of something the
  * summary still names but no longer quotes ("the code for my gym cabinet" for a
  * "locker combination"). It also cannot answer "what did I tell you yesterday?".
- * The query here is therefore the new message, plus at half weight the turn it
- * continues and the summary sentences it touches, plus any day it names. */
+ * The query ranks direct matches first and can widen through the prior turn
+ * and touched summary sentences. A named day also helps. */
 import { bm25, terms } from '../../src/recall/lexical.js';
 
 export interface SentinelTurn { readonly text: string; readonly at: number; readonly measurementText?: string }
@@ -183,13 +183,16 @@ export function selectRecall(input: SentinelInput): number[] {
     }).length;
   })
     : new Array<number>(documents.length).fill(0);
+  const direct = bm25(message, documents);
   const add = (query: readonly string[], weight: number) => {
     for (const hit of bm25(query, documents)) {
       score[hit.index]! += weight * hit.score;
       if (weight === 1) coverage[hit.index] = hit.matched;
     }
   };
-  add(message, 1);
+  // Keep complementary direct evidence and bridged paraphrases eligible even
+  // when another source shares more words with the question.
+  for (const hit of direct) { score[hit.index]! += hit.score; coverage[hit.index] = hit.matched; }
   add(input.previous ? terms(input.previous) : [], 0.5);
   add(bridge(input.summary, new Set(message)), 0.5);
   // Prefer a relevant original measurement over several topical but numberless

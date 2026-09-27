@@ -45,6 +45,10 @@ it('retains higher-priority memory at the byte boundary and records every lower-
     journal.append({ kind: 'coherence', id, findings: [{ rule: 84, check: 'unsupported action', excerpt: 'I scheduled a meeting.' }], at: now });
     summarize(journal, 5);
     const worker = workerFor(journal);
+    const specific = worker.probe('What did Sam say?');
+    if ('reason' in specific) throw Error(specific.reason);
+    expect((JSON.parse(specific.context) as { recalled?: { id: string }[] }).recalled
+      ?.some(item => item.id === 'telegram:12345678:update:2') ?? false).toBe(false);
     const seen = new Set<string>(), boundary = new Set<string>();
     for (let limit = 10000; limit >= 950; limit -= 50) { // int12: reply instructions grew the packet
       journal.view.limits.maxBytes = limit;

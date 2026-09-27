@@ -699,6 +699,19 @@ quality, provider latency or Telegram delivery. Its 10,000 facts are written
 only to a temporary journal that is removed after the run. Justin's bounded
 live check is [memory-scale-10k-live-test.md](memory-scale-10k-live-test.md).
 
+`packet-selection-quality.test.ts` is a separate labelled selection corpus:
+12 ordinary follow-up questions, 12 answer sources, six nearby but unrelated
+dated notes and routine filler. Each question declares the smallest original
+turn set that answers it. The test probes the actual read-only journal worker
+packet after a covering summary, compares its `recalled` source IDs to those
+labels, and reports micro precision, micro recall and mean full model-context
+bytes, plus every question's selections and bytes. Precision counts extra
+original turns as false positives; the rolling summary and other packet fields
+remain in the measured byte total. The fixed corpus tests selection, not the
+semantic correctness of a model answer. A broad upcoming-plans neighbor
+checks that dated context remains available when it is requested. The live
+operator procedure is [packet-selection-quality-live-test.md](packet-selection-quality-live-test.md).
+
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
 2000-turn private-chat histories. It uses the real encrypted preview journal,
 summary scheduling, replay, channel fixture import, memory correction/forget
