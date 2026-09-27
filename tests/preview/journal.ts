@@ -665,7 +665,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               promptFit = true;
               const packet = JSON.parse(context) as { history: unknown[]; recalled?: unknown[]; people?: unknown[];
                   commitments?: { items: unknown[] }[]; channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[];
-                  memoryCandidates?: { id: string }[] };
+                  memoryCandidates?: { id: string }[]; memorySummary?: { text: string } };
                 const cited = new Set([...named.slice(named.length - people).map(item => item.source),
                   ...open.slice(open.length - promised).map(item => item.turn!.id)]);
                 const shownRecall = recalled.slice(0, kept - promised - people).filter(item => !cited.has(item.id));
@@ -678,7 +678,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 const history = journal.view.order.filter(item => item.accepted && item.update < turn.update
                   && (!summary || item.update > summary.through)).map(item => item.id);
                 const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),
-                  summaryThrough: summary?.through ?? null, history, recalled: shownRecall.map(item => item.id),
+                  summaryThrough: summary?.through ?? (packet.memorySummary ? summaryFor(turn.update - 1)!.through : null),
+                  history, recalled: shownRecall.map(item => item.id),
                   people: shownPeople, commitments: shownCommitments,
                   channelItems: channels.slice(0, channelCount).map(channelMemoryId),
                   corrections: shownCorrections, memoryChanges,

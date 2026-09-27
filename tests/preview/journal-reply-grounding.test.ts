@@ -50,6 +50,48 @@ it.each([1, null])('records exact full-history IDs before an accepted or UNKNOWN
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('records a memory summary in complete history and omits one removed by fitting, including after replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'reply-grounding-'))), path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    const contexts = new Map<string, string>();
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => {
+        if (input.id === id(3) && (JSON.parse(input.context) as { memoryCandidates?: unknown[] }).memoryCandidates?.length)
+          throw Error('prompt overflow');
+        return input.context;
+      },
+      model: async input => { contexts.set(input.id, input.context); return 'answer'; },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'The dock seven marker is blue.')]);
+    await worker.drain();
+    journal.append({ kind: 'summary-reserve', through: 1, at: 1000 });
+    journal.append({ kind: 'summary', through: 1, text: 'Dock seven marker is blue.',
+      people: [], commitments: [], at: 1000 });
+    worker.intake([update(2, 'What color is the dock seven marker?')]);
+    await worker.drain();
+    const included = JSON.parse(contexts.get(id(2))!) as { historyMode: string; memorySummary?: { text: string } };
+    const includedAudit = journal.view.turns.get(id(2))!.grounding!;
+    expect(included.historyMode).toBe('complete');
+    expect(included.memorySummary?.text).toBe('Dock seven marker is blue.');
+    expect(includedAudit.summaryThrough).toBe(1);
+    expect(includedAudit.history).toEqual([id(1)]);
+    expect(includedAudit.packetSha256).toBe(createHash('sha256').update(contexts.get(id(2))!).digest('hex'));
+    worker.intake([update(3, 'What color is the dock seven marker?')]);
+    await worker.drain();
+    const omitted = JSON.parse(contexts.get(id(3))!) as { historyMode: string; memorySummary?: unknown };
+    const omittedAudit = journal.view.turns.get(id(3))!.grounding!;
+    expect(omitted.historyMode).toBe('complete');
+    expect(omitted.memorySummary).toBeUndefined();
+    expect(omittedAudit.summaryThrough).toBeNull();
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(replay.view.turns.get(id(2))?.grounding).toEqual(includedAudit);
+    expect(replay.view.turns.get(id(3))?.grounding).toEqual(omittedAudit);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('indexes only selected compacted turns and imported items', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'reply-grounding-'))), path = join(root, 'journal.encrypted');
   try {
