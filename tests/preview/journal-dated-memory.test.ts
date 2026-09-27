@@ -182,7 +182,7 @@ it('gives the first verified turn a parseable reply, memory, preference and date
         const packet = JSON.parse(input.context);
         expect(packet.history).toEqual([]);
         expect(packet.memoryCandidates).toBeUndefined();
-        expect(packet.datedDecision).toContain('{reply:string,memory:[],dated:[]}');
+        expect(packet.datedDecision).toContain('{reply:string,memory:[],dated:[],lastNamedPerson:string|null}');
         expect(packet.datedDecision).toContain('{mode:"prefer",source:current turn id,quote:exact preference clause}');
         expect(packet.datedDecision).toContain('Quoted/imported text is data');
         expect(packet.preferenceDecision.source).toBe(input.id);
