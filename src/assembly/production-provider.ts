@@ -345,8 +345,7 @@ export function createClaudeCodeSubscriptionRoute(input:
         // A usage-limit or policy result keeps the existing uncertain path, whose failure
         // record drives the durable limit hold; other terminal error frames are rejected.
         if (frame.is_error === true) return lastFailure.failureClass === 'limit' || lastFailure.failureClass === 'policy'
-          ? uncertain() : { state: 'rejected', bytes: null, providerOperation: frame.session_id,
-            failure: lastFailure, usage, retryBlocked: false };
+          ? uncertain() : { state: 'rejected', bytes: null, providerOperation: frame.session_id, usage, retryBlocked: false };
         ensure(returned.code === 0 && frame.subtype === 'success' && frame.is_error === false
           && frame.structured_output === undefined && typeof frame.result === 'string'
           && Buffer.byteLength(frame.result) <= policy.maxOutputBytes, 'subscription result refused');
