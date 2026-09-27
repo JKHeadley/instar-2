@@ -612,6 +612,7 @@ it('keeps expiry and non-operator stop from becoming permanent latches', () => {
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
+// Six sequential loader processes need a wider total deadline than one child process.
 it('the cap command requires the exclusive writer lease and reports the recorded limits', () => {
   const root = origin(), path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(1));
