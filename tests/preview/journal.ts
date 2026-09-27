@@ -60,7 +60,7 @@ export type JournalRecord =
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer'; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
-  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
+  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; mentionedDates?: string[]; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; at: number }
@@ -85,7 +85,8 @@ export type JournalRecord =
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
   reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewCandidate?: string;
+  reviewMentionedDates?: string[]; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent';
@@ -207,7 +208,9 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'reply-review-reserve') {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
-    turn.reviewReserved = true; view.calls++; return;
+    turn.reviewReserved = true; turn.reviewCandidate = row.candidate;
+    if (row.mentionedDates !== undefined) turn.reviewMentionedDates = row.mentionedDates;
+    view.calls++; return;
   }
   if (row.kind === 'reply-review-state') {
     if (!turn.reviewReserved || turn.reviewState !== undefined || turn.intent !== undefined)
@@ -660,7 +663,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
     const preferences = preferenceState();
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
-      capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns.'
+      capability: 'Private preview: never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary: old; history: new. Saved dates within 48 hours get one clause in next reply, remembered across restarts.'
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
@@ -861,15 +864,31 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
         // Keep the automatic aside short. Any remaining items stay eligible for
         // the next reply, and an unsent or UNKNOWN intent cannot repeat one.
-        const mentioned = imminent.slice(0, 3);
-        if (mentioned.length) {
-          const labels = mentioned.filter(item => !reply.includes(item.quote)).map(item => {
-            const quote = redact(item.quote).text;
-            return `${quote.length > 80 ? `${quote.slice(0, 79)}…` : quote} (${item.day}${item.time ? ` ${item.time}` : ''})`;
-          });
-          if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
+        const fits = (text: string) => {
+          const body = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+          return Buffer.byteLength(text) <= 4096 && Array.from(text).length <= 4096
+            && Buffer.byteLength(body) <= 4096 && Array.from(body).length <= 4096;
+        };
+        const mentioned: DatedItem[] = [], labels: string[] = [];
+        for (const item of imminent.slice(0, 3)) {
+          if (reply.includes(item.quote)) { mentioned.push(item); continue; }
+          const quote = redact(item.quote).text;
+          const label = `${quote.length > 80 ? `${quote.slice(0, 79)}…` : quote} (${item.day}${item.time ? ` ${item.time}` : ''})`;
+          const candidate = `${reply} Upcoming: ${[...labels, label].join('; ')}.`;
+          if (fits(candidate)) { labels.push(label); mentioned.push(item); }
         }
+        if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
+        let mentionedKeys = mentioned.map(datedKey);
         if (ports.replyCheck) {
+          const reviewed = turn.replyChecks?.at(-1);
+          // A completed paid review binds the exact candidate stored at reservation.
+          // A moving window must not turn that durable PASS into an unknown call.
+          if (turn.reviewReserved && reviewed?.path === 'subscription' && reviewed.verdict === 'pass'
+            && turn.reviewCandidate !== undefined && turn.reviewMentionedDates !== undefined
+            && reviewed.candidateDigest === createHash('sha256').update(turn.reviewCandidate).digest('hex')) {
+            reply = turn.reviewCandidate;
+            mentionedKeys = turn.reviewMentionedDates;
+          }
           const candidateDigest = createHash('sha256').update(reply).digest('hex');
           const last = turn.replyChecks?.at(-1);
           // A window edge may move while a checked send waits on stop or a cap.
@@ -897,6 +916,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
+                  mentionedDates: mentionedKeys,
                   ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
                 result: { ...result, candidateDigest }, at: ports.now() }) };
@@ -930,7 +950,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread,
-          ...(reply === HOLDING_REPLY || !mentioned.length ? {} : { mentionedDates: mentioned.map(datedKey) }),
+          ...(reply === HOLDING_REPLY || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           update: turn.update, grant: journal.view.genesis.grant, at: ports.now() });
         gate();
         try { const message = await ports.send({ text: body, expectedText: reply, chat: journal.view.genesis.chat, ...thread, update: turn.update });
