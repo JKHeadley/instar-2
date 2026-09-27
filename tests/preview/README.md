@@ -761,6 +761,33 @@ answers; the offline benchmark above measures packet visibility. See
 [real-model-recall-sample-live-test.md](real-model-recall-sample-live-test.md)
 for Justin's exact command and review steps.
 
+`realistic-recall-fixture.ts` defines a fictional 300-turn operator diary across
+errands, family, work and appointments, with five direct corrections, two forget
+requests, quantities, interruptions, and sarcastic or elliptical follow-ups.
+`realistic-recall.ts` replays those turns through the same encrypted journal,
+summary, correction and packet builder, then probes 60 labelled questions against
+their expected current answers. Each follow-up has its earlier named question
+and one unrelated interruption in the journal. The probe is the read-only
+`preparedFor` packet path; no model is asked to answer these questions. The
+deterministic summary keeps only six recent exact facts, so older detail must
+be selected from retained original turns. This measures packet visibility and
+stale exclusion under a deliberately lossy summary, not real-model comprehension.
+The JSON lists every question, packet byte count, source turn, expected answer,
+scenario category and observed packet miss. Categories describe the fixture, not
+the cause of a miss. A baseline comparison can test the antecedent-selection
+change; narrower attribution remains unmeasured. Generate it with:
+
+```sh
+node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/realistic-recall.mjs /ABSOLUTE/OFFLINE_RESULT.json
+npx vitest run tests/preview/realistic-recall.test.ts --configLoader=runner --testTimeout=120000
+```
+
+Original-turn recall now uses up to three immediately preceding accepted turns
+as its bounded antecedent. That lets a short interruption leave the
+named subject available for an elliptical follow-up; the model still judges
+meaning. The supervised operator procedure is
+[realistic-recall-live-test.md](realistic-recall-live-test.md).
+
 `journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
 append-only local journal and one exclusive writer. At boot it replays the journal once;
 ordinary turns append records and update an in-memory transcript. It fsyncs an update and

@@ -1687,9 +1687,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * sentences it touches and any day it names. Best first; empty when nothing relates. */
   const recallFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>) => {
     const older = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update <= summary.through);
-    const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).at(-1);
+    // A brief interruption does not erase the subject of a follow-up. Keep this
+    // bounded so unrelated older turns cannot dominate the current question.
+    const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).slice(-3)
+      .map(item => `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`).join(' ');
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
-      ...(previous ? { previous: `${clean(previous.text, true, previous.id)} ${clean(sentText(previous) ?? '', true, previous.id)}` } : {}),
+      ...(previous ? { previous } : {}),
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`,
         measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) })
       .map(index => older[index]!);
