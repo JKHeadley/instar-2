@@ -798,6 +798,27 @@ historical source without masking a new operator turn that uses the same words. 
 preference leaves that turn's reply and commitments intact. `inspect --text` shows the active
 preferences in the next packet. No second store or model call type is involved.
 
+### Checking whether a length preference reached the reply
+
+The journal's exact send intent is also the source for an observe-only preference
+check. When an active, verified operator preference unambiguously requests short,
+brief or concise replies, a reply of more than 80 visible words is a finding.
+`Keep replies under N words` and `Make answers to at most N words` use the stated
+bound (with `under` exclusive). Only direct, whole-clause forms are recognized;
+relative requests such as `Shorter please.` and other styles remain for the model
+and human review. Word counts include the visible `PREVIEW` marker. A holding
+reply or lost-answer notice is not scored as the model's answer. The check never
+holds, rewrites, or sends a reply.
+
+`status.preferenceApplied` and `inspect.preferenceApplied` show the number of
+checked preference/reply pairs and any findings, with reply update, preference
+source update, measured words, bound, and Bot API acceptance or unknown delivery.
+The existing encrypted intent and memory actions reconstruct the same result on
+replay, including the preference active when that intent was recorded; a later
+forget does not erase the historical observation. No new store, provider call,
+daemon, or journal frame is added. For Justin's private-chat procedure, see
+[preference-applied-live-test.md](preference-applied-live-test.md).
+
 Live script for Justin in the existing private preview chat, after the desk lands this
 revision and resumes the one runner on its existing root:
 

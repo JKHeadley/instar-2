@@ -49,6 +49,43 @@ export interface ChannelItem { source: 'email' | 'conversation'; account: string
 /** An operator correction supersedes a source excerpt in model-facing projections only. */
 export interface MemoryChange { mode: 'correct' | 'forget' | 'prefer'; source: string; quote: string; trigger: string; replacement?: string;
   replies?: string[]; summaryPassages?: string[] }
+export interface PreferenceAppliedCheck { source: string; words: number; maxWords: number; violated: boolean }
+
+/** Only unambiguous length preferences have a deterministic bound. Other styles
+ * remain for the model to judge; this signal never controls a send (Rules 10, 86). */
+function replyWordLimit(quote: string): number | undefined {
+  const clause = quote.trim().toLowerCase().replace(/[.!]+$/u, '').replace(/\s+/gu, ' ');
+  if (/^(?:please )?(?:always )?(?:use|keep|give|make) (?:your )?(?:short|brief|concise) (?:answers|replies)$/u.test(clause)
+    || /^(?:please )?(?:always )?(?:use|keep|give|make) (?:your )?(?:answers|replies) (?:short|brief|concise)$/u.test(clause)
+    || /^(?:i prefer|i'd prefer|i would prefer) (?:short|brief|concise) (?:answers|replies)$/u.test(clause)) return 80;
+  const explicit = /^(?:please )?(?:always )?(?:keep|make) (?:your )?(?:replies|answers) (under|below|to at most|to no more than) (\d{1,3}) words$/u.exec(clause);
+  if (!explicit) return undefined;
+  const bound = Number(explicit[2]);
+  return bound >= 1 && bound <= 500 ? bound - (explicit[1] === 'under' || explicit[1] === 'below' ? 1 : 0) : undefined;
+}
+
+function preferenceState(memory: readonly MemoryChange[]) {
+  const active = new Map<string, { source: string; quote: string }>();
+  const lineage = new Set<string>();
+  for (const change of memory) {
+    const key = JSON.stringify([change.source, change.quote]);
+    if (change.mode === 'prefer') { active.set(key, { source: change.source, quote: change.quote }); lineage.add(key); }
+    else if (active.delete(key) && change.mode === 'correct') {
+      const replacementKey = JSON.stringify([change.trigger, change.replacement]);
+      active.set(replacementKey, { source: change.trigger, quote: change.replacement! });
+      lineage.add(replacementKey);
+    }
+  }
+  return { active, lineage };
+}
+
+function appliedPreferenceChecks(memory: readonly MemoryChange[], reply: string): PreferenceAppliedCheck[] {
+  const words = reply.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+  return [...preferenceState(memory).active.values()].flatMap(item => {
+    const maxWords = replyWordLimit(item.quote);
+    return maxWords === undefined ? [] : [{ source: item.source, words, maxWords, violated: words > maxWords }];
+  });
+}
 
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
@@ -85,6 +122,7 @@ export type JournalRecord =
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
   reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
+  preferenceChecks?: PreferenceAppliedCheck[];
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
@@ -258,7 +296,13 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.datedPending) turn.datedPending = true;
     if (row.memory) view.memory.push(...row.memory);
     if (row.dated) view.dated.push(...row.dated); }
-  if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
+  if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order');
+    turn.intent = row.text; turn.intentBody = row.body ?? row.text;
+    // The durable intent fixes the exact visible text and the preference state at
+    // attempt time. Replay reconstructs this observation without another record.
+    turn.preferenceChecks = row.text === HOLDING_REPLY || turn.noticeClass || turn.modelState === 'rejected'
+      ? [] : appliedPreferenceChecks(view.memory, row.text);
+    view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') turn.held = row.reason;
   if (row.kind === 'memory-undecided') {
@@ -544,7 +588,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Preference retirement belongs to its source clause, not identical words in a later turn.
   const clean = (value: string, _derived = false, source?: string | number) => journal.view.memory.filter(change => {
     if (change.mode === 'prefer') return false;
-    if (!preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))) return true;
+    if (!preferenceState(journal.view.memory).lineage.has(JSON.stringify([change.source, change.quote]))) return true;
     if (typeof source === 'string') return source === change.source;
     if (typeof source === 'number') {
       const original = journal.view.turns.get(change.source), trigger = journal.view.turns.get(change.trigger);
@@ -556,21 +600,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, withheld);
     return projected;
   }, value);
-  const preferenceState = () => {
-    const active = new Map<string, { source: string; quote: string }>();
-    const lineage = new Set<string>();
-    for (const change of journal.view.memory) {
-      const key = JSON.stringify([change.source, change.quote]);
-      if (change.mode === 'prefer') { active.set(key, { source: change.source, quote: change.quote }); lineage.add(key); }
-      else if (active.delete(key) && change.mode === 'correct') {
-        const replacementKey = JSON.stringify([change.trigger, change.replacement]);
-        active.set(replacementKey, { source: change.trigger, quote: change.replacement! });
-        lineage.add(replacementKey);
-      }
-    }
-    return { active, lineage };
-  };
-  const activePreferences = () => [...preferenceState().active.values()];
+  const activePreferences = () => [...preferenceState(journal.view.memory).active.values()];
   const replyFor = (turn: Turn) => turn.noticeClass ? clean(redact(sentText(turn) ?? '').text, true, turn.id)
     : journal.view.memory.some(change => change.mode !== 'prefer' && (change.source === turn.id || change.replies?.includes(turn.id)))
       ? withheld : clean(redact(sentText(turn) ?? '').text, true, turn.id);
@@ -656,7 +686,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && !journal.view.memory.some(change => change.mode !== 'prefer' && change.source === item.id));
     const datedPending = pendingDates.slice(0, 3)
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
-    const preferences = preferenceState();
+    const preferences = preferenceState(journal.view.memory);
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns.'
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
@@ -973,7 +1003,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const memoryFrom = (proposed: unknown[], trigger: Turn, offered: ReadonlySet<string>, offeredSummary?: string): MemoryChange[] | undefined => {
     const changes: MemoryChange[] = [], seen = new Set<string>();
-    const preferences = preferenceState();
+    const preferences = preferenceState(journal.view.memory);
     if (!trigger.accepted || !fromOperator(trigger) || proposed.length > 3) return undefined;
     for (const item of proposed.slice(0, 3)) {
       const { mode, source, quote, replacement, replies, summaryPassages } = (item ?? {}) as { mode?: unknown; source?: unknown; quote?: unknown;
@@ -1159,7 +1189,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       if ([...journal.view.memory, ...memory ?? []].some(change => change.mode !== 'prefer'
-        && !preferenceState().lineage.has(JSON.stringify([change.source, change.quote])) && summaryText.includes(change.quote))) {
+        && !preferenceState(journal.view.memory).lineage.has(JSON.stringify([change.source, change.quote])) && summaryText.includes(change.quote))) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;

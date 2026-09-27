@@ -83,6 +83,11 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
+const preferenceAppliedView = view => ({
+  checked: view.order.reduce((count, turn) => count + (turn.preferenceChecks?.length ?? 0), 0),
+  findings: view.order.flatMap(turn => (turn.preferenceChecks ?? []).filter(check => check.violated).map(check => ({
+    update: turn.update, sourceUpdate: view.turns.get(check.source)?.update ?? null,
+    words: check.words, maxWords: check.maxWords, delivery: turn.sent ? 'api-accepted' : 'unknown' }))) });
 const withheldView = view => {
   const preferenceKeys = new Set();
   for (const change of view.memory) {
@@ -139,6 +144,7 @@ async function main() {
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
+      preferenceApplied: preferenceAppliedView(view.view),
       withheld: withheldView(view.view),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
@@ -187,7 +193,7 @@ async function main() {
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
         ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-        lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
+        lastReplyCheck: view.view.lastReplyCheck, preferenceApplied: preferenceAppliedView(view.view) })).text}\n`);
     } finally { view.close(); }
     return;
   }
