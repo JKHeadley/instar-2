@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(41);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -229,13 +230,13 @@ it('audits a recorded preference beside an imported source after replay', async 
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-preference-')));
   const path = join(root, 'journal.encrypted');
   try {
-    let journal = openPreviewJournal(path, key, genesis);
+    let journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 16000 });
     importChannelFixture(journal, [{ source: 'email', account: 'agent@example.test', id: 'mail-1',
       from: 'sam@example.test', at: 1789999000000, subject: 'Studio', text: 'The studio opens Friday.' }],
     'agent@example.test', 1790000000000);
     const ports = { now: () => 1790000000000, stopped: () => false,
-      prepareModel: (input: { question: string; context: string }) => JSON.stringify({ messages: [
-        { role: 'user', content: input.question }, { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      prepareModel: (input: { question: string; context: string; id: string }) =>
+        prepareJournalEnvelope(input, 'offline-model', genesis.grant, 1790000000000, 16000),
       model: async (input: { id: string; question: string; context: string }) => input.id.startsWith('summary:')
         ? JSON.stringify({ summary: 'The operator prefers brief replies.', people: [],
           memory: [{ mode: 'prefer', source: JSON.parse(input.context).memoryRequest.id,

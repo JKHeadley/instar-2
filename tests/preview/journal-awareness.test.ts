@@ -47,7 +47,7 @@ const desk = (context: string) => {
 };
 
 it('puts a current, labelled desk report into every turn packet within the context and prompt bounds, reading it afresh each turn', async () => {
-  const world = await turns(['What have you been doing?', 'status'], (index, status) => {
+  const world = await turns(['What have you been doing?', 'Tell me your current work status.'], (index, status) => {
     writeFileSync(status, index === 0 ? '# Instar 2.0 — desk report\nLane preview-awareness: building.'
       : '# Instar 2.0 — desk report\nLane preview-awareness: READY.');
     utimesSync(status, NOW / 1000 - 3600, NOW / 1000 - 3600);
@@ -64,7 +64,7 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(JSON.parse(input.context).capability).toContain('use the operator-digest source when present');
       expect(JSON.parse(input.context).sources.map((s: { id: string }) => s.id)).toContain('purpose:purpose');
       expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text)
-        .toContain('exact status or how are you doing commands read the durable journal');
+        .toContain('exact status and how are you doing commands read the durable journal');
     }
     expect(desk(world.seen[0]!.context).text).toContain('building.');
     expect(desk(world.seen[1]!.context).text).toContain('READY.');

@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createDecipheriv } from 'node:crypto';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { exactSummaryFaithfulness, interpretSummaryJev, summaryFaithfulnessEvidence } from './summary-faithfulness.js';
 
@@ -12,6 +13,18 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 const jev = (score: number) => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: score } } });
+function durableRows(path: string): { kind: string; through?: number; result?: { usage?: { inputTokens: number; outputTokens: number } } }[] {
+  const bytes = readFileSync(path), rows = [];
+  for (let offset = 0; offset < bytes.length;) {
+    const length = bytes.readUInt32BE(offset), frame = bytes.subarray(offset + 4, offset + 4 + length);
+    const decipher = createDecipheriv('aes-256-gcm', key, frame.subarray(0, 12));
+    decipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+    decipher.setAuthTag(frame.subarray(12, 28));
+    rows.push(JSON.parse(Buffer.concat([decipher.update(frame.subarray(28)), decipher.final()]).toString('utf8')));
+    offset += length + 4;
+  }
+  return rows;
+}
 
 it('proves exact coverage without Jev, and accepts a faithful paraphrase only after Jev', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-pass-')));
@@ -201,6 +214,12 @@ it.each([['lost', 0.99], ['supervisor outage', 0.01]] as const)(
           : 'Understood.',
         summaryCheck: async () => ({ ...jev(score), usage: { input_tokens: 777, output_tokens: 7 } }),
         replyCheck: { elapsedMs: () => 100, jev: async (_state, questions) => {
+          if (questions && score < 0.85) {
+            const prefix = durableRows(path);
+            expect(prefix.find(row => row.kind === 'summary-faithfulness' && row.through === 1)?.result?.usage)
+              .toMatchObject({ inputTokens: 777, outputTokens: 7 });
+            expect(prefix.some(row => row.kind === 'summary')).toBe(false);
+          }
           if (questions) throw Error('supervisor unavailable');
           return { value: { model: 'jev-1.13.0', answers: Object.fromEntries(
             ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user']

@@ -19,7 +19,7 @@ it.each(['SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and re
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const binding=JSON.parse(JSON.parse(prepared).messages[1].content).bindings;
-  const review=JSON.parse(prepared).messages[0].content.startsWith('Judge the candidate reply');
+  const review=JSON.parse(prepared).messages[0].content.startsWith('Judge this proposed reply');
   const decision={type:'Decision',schemaVersion:1,id:'resumed-answer',at:binding.at,by:binding.by,
     conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value:review
       ? 'PASS | The reply stays within the rules.' : 'Resumed answer.',evidence:binding.evidence},
@@ -123,7 +123,7 @@ it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic fr
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const context=envelope.messages[1].content, asked=envelope.messages[0].content;
-  const value=asked.startsWith('Judge the candidate reply')
+  const value=asked.startsWith('Judge this proposed reply')
     ? 'PASS | The reply stays within the rules.'
     : asked.includes('What is my sister') ? (context.includes('Wren') && context.includes('main chat')
     ? 'Your sister is Wren; you told me in the main chat.' : 'I do not know.') : 'Noted.';
