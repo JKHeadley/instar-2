@@ -262,6 +262,26 @@ Every other field is copied; `predecessor` names the prior reference and file di
 an exhausted limit, an unknown observation field or a record this build refuses writes nothing.
 Outputs are created exclusively and never replace an existing file.
 
+When a reviewed build changes only the conversation invocation policy digest and the
+current record already has this build's expiry, the desk can issue a policy successor.
+Use a fresh observation with the same fields above and the **same reference** as the
+current record, then run:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/renew-activation.mjs \
+  --policy-successor --current /ABSOLUTE/activation.json \
+  --profile /ABSOLUTE/profile.json --observation /ABSOLUTE/observation.json \
+  --out /ABSOLUTE/activation-policy-successor.json
+```
+
+Keep `--profile-out` omitted. The tool requires the same model, account, profile, and expiry; it copies all
+other current fields, records `previousInvocationPolicyDigest` and the predecessor
+reference and file digest, and pins the new digest computed by this build for its
+conversation framing. An unchanged digest, a changed reference, or any other changed
+binding refuses before writing. The desk reviews the new record and supplies that
+record to the runner with the existing profile. This procedure does not renew the
+journal expiry or call Claude.
+
 A journal's genesis fixes its original expiry. With the runner stopped, extend a live trial,
 once per reviewed expiry and only before it lapses, under the writer lease:
 
