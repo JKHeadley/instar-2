@@ -73,6 +73,16 @@ it('keeps the directly named memory ahead of an unrelated previous turn in five 
   expect(selectRecall({ message: 'What did we plan for lunch?', previous, candidates, now, limit: 1 })).toEqual([2]);
 });
 
+it('lets a named conversational source compete with repeated question words', () => {
+  const candidates = [{ text: 'My sister Maya loves ranunculus flowers.', at: now - 9 * day },
+    ...Array.from({ length: 5 }, (_, i) => ({ text: `Birthday gift catalog ${i}: socks, mugs and scarves.`, at: now - day }))];
+  const picked = selectRecall({ message: 'What gift would she want for her birthday?',
+    previous: 'We were talking about my sister Maya and her flowers.', candidates, now, limit: 5 });
+  expect(picked).toContain(0);
+  expect(selectRecall({ message: 'What gift would she want for her birthday?', candidates, now, limit: 5 }))
+    .not.toContain(0);
+});
+
 it('offers the same source facts to five paraphrases before and after summary replay', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'recall-paraphrase-')));
   const path = join(root, 'journal.encrypted');
@@ -132,6 +142,48 @@ it('offers the same source facts to five paraphrases before and after summary re
     expect(measure(journal, 'summary-plus-recent')).toBe(0);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('retains a contextual source when incidental direct matches fill the recall slots', () => {
+  for (const noisy of [false, true]) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'recall-context-')));
+    const path = join(root, 'journal.encrypted');
+    const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 16000, cursor: 0 };
+    const journal = openPreviewJournal(path, new Uint8Array(32).fill(61), genesis);
+    const add = (id: number, value: string) => {
+      const key = `telegram:12345678:update:${id}`;
+      const raw = JSON.stringify({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
+        from: { id: 7654321 }, text: value, date: Math.floor(now / 1000) - 10000 + id } });
+      journal.append({ kind: 'intake', id: key, update: id, text: value, raw, accepted: true, cursor: id + 1, at: now });
+      journal.append({ kind: 'reserve', id: key, at: now });
+      journal.append({ kind: 'answer', id: key, text: 'Noted.', state: 'complete', at: now });
+      journal.append({ kind: 'intent', id: key, text: 'PREVIEW — Noted.', chat: genesis.chat,
+        update: id, grant: genesis.grant, at: now });
+      journal.append({ kind: 'sent', id: key, message: id, at: now });
+    };
+    try {
+      for (let id = 1; id <= 40; id++) add(id, id === 3 ? 'My sister Maya loves ranunculus flowers.'
+        : noisy && id >= 4 && id <= 8 ? `Birthday lunch discussion ${id}: lentils, bread and coffee.`
+          : `Ordinary equipment and scheduling update ${id}. ${'Mundane routine details. '.repeat(35)}`);
+      journal.append({ kind: 'summary-reserve', through: 40, at: now });
+      journal.append({ kind: 'summary', through: 40,
+        text: 'Earlier the operator discussed Maya and flowers. Other conversations were routine.', at: now });
+      add(41, 'We were talking about my sister Maya and her flowers.');
+      const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+        model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+      const result = worker.probe('What would she want for her birthday?');
+      if ('reason' in result) throw Error(result.reason);
+      const packet = JSON.parse(result.context) as { historyMode: string; recalled?: { id: string; user: string }[];
+        packetDropped?: string[] };
+      expect(packet.historyMode).toBe('summary-plus-recent');
+      expect(packet.recalled?.map(item => item.id)).toContain('telegram:12345678:update:3');
+      expect(packet.recalled?.find(item => item.id.endsWith(':3'))?.user).toContain('ranunculus');
+      expect(packet.recalled?.length).toBeLessThanOrEqual(5);
+      expect(Buffer.byteLength(result.context)).toBeLessThanOrEqual(genesis.maxBytes);
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {

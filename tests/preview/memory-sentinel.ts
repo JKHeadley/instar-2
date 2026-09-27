@@ -8,8 +8,8 @@
  * just before ("what would she want?"), and a paraphrase of something the
  * summary still names but no longer quotes ("the code for my gym cabinet" for a
  * "locker combination"). It also cannot answer "what did I tell you yesterday?".
- * The query here is therefore the new message, plus at half weight the turn it
- * continues and the summary sentences it touches, plus any day it names. */
+ * The score strengthens distinctive question matches while the turn it
+ * continues, touching summary sentences, and a named day can surface a source. */
 import { bm25, terms } from '../../src/recall/lexical.js';
 
 export interface SentinelTurn { readonly text: string; readonly at: number }
@@ -64,25 +64,23 @@ export function selectRecall(input: SentinelInput): number[] {
   const window = namedWindow(input.message, input.now);
   const documents = input.candidates.map(turn => terms(turn.text));
   const score = new Array<number>(documents.length).fill(0);
-  const direct = bm25(message, documents);
-  const directByIndex = new Map(direct.map(hit => [hit.index, hit]));
   const add = (query: readonly string[], weight: number) => {
     for (const hit of bm25(query, documents)) score[hit.index]! += weight * hit.score;
   };
+  // Boost a direct hit only when its question-term coverage is distinctive.
+  // Shared words alone leave room for the preceding turn and summary to compete.
+  const direct = bm25(message, documents);
+  const mostMatched = direct.reduce((max, hit) => Math.max(max, hit.matched), 0);
+  const leaders = direct.filter(hit => hit.matched === mostMatched).length;
+  for (const hit of direct) score[hit.index]! += (leaders === 1 && hit.matched === mostMatched ? 4 : 1) * hit.score;
   add(input.previous ? terms(input.previous) : [], 0.5);
   add(bridge(input.summary, new Set(message)), 0.5);
   // A named day counts like one strong matching term, so it ranks alongside content.
   if (window) input.candidates.forEach((turn, index) => {
     if (turn.at >= window.from && turn.at <= window.to) score[index]! += 2;
   });
-  return score.map((context, index) => ({ context, index, direct: directByIndex.get(index) }))
-    .filter(item => item.direct || item.context > 0)
-    // A current-question match outranks merely continuing the previous turn.
-    // Context still resolves ellipsis and paraphrases with no direct match.
-    .sort((a, b) => (b.direct?.matched ?? 0) - (a.direct?.matched ?? 0)
-      || (b.direct?.score ?? 0) - (a.direct?.score ?? 0)
-      || b.context - a.context || b.index - a.index)
-    .slice(0, input.limit).map(item => item.index);
+  return score.map((value, index) => ({ value, index })).filter(item => item.value > 0)
+    .sort((a, b) => b.value - a.value || b.index - a.index).slice(0, input.limit).map(item => item.index);
 }
 
 /** An exact subject/value overlap is only a packet signal. The model decides
