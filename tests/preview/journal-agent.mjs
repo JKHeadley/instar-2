@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS, activeMemoryConflicts } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
@@ -141,7 +141,7 @@ async function main() {
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       withheld: withheldView(view.view),
-      conflicts: view.view.conflicts.map(item => ({ askedByUpdate: view.view.turns.get(item.askedBy)?.update,
+      conflicts: activeMemoryConflicts(view.view).map(item => ({ askedByUpdate: view.view.turns.get(item.askedBy)?.update,
         asked: item.asked, answeredByUpdate: item.answeredBy ? view.view.turns.get(item.answeredBy)?.update : null,
         first: { source: item.first.source, quote: redact(item.first.quote).text },
         second: { source: item.second.source, quote: redact(item.second.quote).text }, winner: item.winner ?? null })),

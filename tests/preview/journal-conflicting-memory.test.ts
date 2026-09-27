@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { activeMemoryConflicts, createJournalWorker, openPreviewJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(41);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -84,6 +84,48 @@ it('asks once about two active birthday claims, then records the operator choice
     worker.intake([update(6, 'Check that disagreement again.')]); await worker.drain();
     expect(sends.filter(text => text.includes('Which is right?'))).toHaveLength(1);
     expect(journal.view.conflicts).toHaveLength(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('forgets one conflict without exposing it after replay and retains an unrelated active pair', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-conflict-forget-')));
+  const path = join(root, 'journal.encrypted');
+  const march = 'My birthday is March 2.', april = 'My birthday is April 4.';
+  const paris = 'My home city is Paris.', london = 'My home city is London.';
+  const seen: string[] = [];
+  const ports = { now: () => 1790000000000, stopped: () => false,
+    model: async (input: { id: string; question: string; context: string }) => {
+      const packet = JSON.parse(input.context);
+      seen.push(input.context);
+      if (input.question === april || input.question === london) {
+        const first = input.question === april ? march : paris;
+        const old = packet.memoryCandidates.find((item: { message: string }) => item.message.includes(first));
+        return JSON.stringify({ reply: 'I should check.', memory: [], dated: [], conflict: {
+          first: { source: old.id, quote: first }, second: { source: input.id, quote: input.question } } });
+      }
+      if (input.question === 'Remove the March 2 birthday from your memory.') {
+        const old = packet.memoryCandidates.find((item: { message: string }) => item.message.includes(march));
+        return JSON.stringify({ reply: 'Removed.', memory: [{ mode: 'forget', source: old.id, quote: march }], dated: [] });
+      }
+      return JSON.stringify({ reply: 'Okay.', memory: [], dated: [] });
+    }, send: async () => 1, checkOutbound: () => {} };
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    let worker = createJournalWorker(journal, ports);
+    for (const [id, statement] of [march, april, paris, london, 'Remove the March 2 birthday from your memory.'].entries()) {
+      worker.intake([update(id + 1, statement)]); await worker.drain();
+    }
+    expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: march }]);
+    expect(journal.view.conflicts).toHaveLength(2); // Encrypted history remains intact.
+    expect(activeMemoryConflicts(journal.view)).toMatchObject([{ first: { quote: paris }, second: { quote: london } }]);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    worker.intake([update(6, 'Which facts still conflict?')]); await worker.drain();
+    const packet = JSON.parse(seen.at(-1)!);
+    expect(packet.openConflicts).toMatchObject([{ first: { quote: paris }, second: { quote: london } }]);
+    expect(seen.at(-1)).not.toContain(march);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -213,8 +255,11 @@ it('asks on a later turn if the first checked send carried a holding reply inste
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     const sends: string[] = [];
-    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'March 2 is right.', memory: [], dated: [] }),
+    let worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => input.question === 'For future answers, use a concise style.'
+        ? JSON.stringify({ reply: 'I will be concise.', memory: [{ mode: 'prefer', source: input.id,
+          quote: input.question }], dated: [] })
+        : JSON.stringify({ reply: 'March 2 is right.', memory: [], dated: [] }),
       send: async input => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
     const first = 'My birthday is March 2.', second = 'My birthday is April 4.';
     worker.intake([update(1, first)]); await worker.drain();
@@ -227,10 +272,20 @@ it('asks on a later turn if the first checked send carried a holding reply inste
       update: turn.update, grant: genesis.grant, at: 1790000000000 });
     journal.append({ kind: 'sent', id: turn.id, message: 2, at: 1790000000000 });
     expect(journal.view.conflicts[0]?.asked).toBe(false);
-    worker.intake([update(3, 'What is my birthday?')]); await worker.drain();
-    expect(sends.at(-1)).toContain('Which is right?');
-    expect(journal.view.conflicts).toHaveLength(1);
-    expect(journal.view.conflicts[0]?.asked).toBe(true);
+    worker.intake([update(3, 'For future answers, use a concise style.')]); await worker.drain();
+    expect(sends.at(-1)).toContain('I will be concise.');
+    expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote: 'For future answers, use a concise style.' }]);
+    expect(journal.view.conflicts[0]?.asked).toBe(false);
     journal.close();
+    const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(replay.view.memory).toMatchObject([{ mode: 'prefer' }]);
+    worker = createJournalWorker(replay, { now: () => 1790000000000, stopped: () => false,
+      model: async () => JSON.stringify({ reply: 'March 2 is right.', memory: [], dated: [] }),
+      send: async input => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
+    worker.intake([update(4, 'What is my birthday?')]); await worker.drain();
+    expect(sends.at(-1)).toContain('Which is right?');
+    expect(replay.view.conflicts).toHaveLength(1);
+    expect(replay.view.conflicts[0]?.asked).toBe(true);
+    replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

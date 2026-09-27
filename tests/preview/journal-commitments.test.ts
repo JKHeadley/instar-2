@@ -254,10 +254,10 @@ it('keeps a plain summary and reports the missing commitment record in status', 
 it('keeps per-turn non-model overhead flat through 200 turns with commitments and a restart', async () => {
   const root = origin(), samples: number[] = [];
   try {
-    let w = world(root, { bad: false });
+    let w = world(root, { bad: false, maxBytes: 8192 });
     for (let i = 1; i <= 200; i++) {
-      if (i === 100) { w.journal.close(); w = world(root, { bad: false }); }
-      const text = i % 10 === 1 ? `Please remember item ${i} for the review.` : i === 199 ? 'What did I ask you to remember?' : filler(i);
+      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 8192 }); }
+      const text = i % 10 === 1 ? `Please remember item ${i} for the review.` : i === 199 ? 'What did I ask you to remember?' : `${filler(i)} ${'x'.repeat(250)}`;
       const start = performance.now();
       await w.say(i, text);
       samples.push(performance.now() - start);

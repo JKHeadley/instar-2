@@ -676,7 +676,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
     journal.append({kind:'answer',id:'telegram:12345678:update:1',text:'old answer',at:1000});
     journal.append({kind:'summary-reserve',through:1,at:1000});
     journal.append({kind:'summary',through:1,text:'Earlier long turn: ORCHID.',at:1000});
-    journal.append({kind:'intake',id:'telegram:12345678:update:2',update:2,text:'b'.repeat(6000),
+    journal.append({kind:'intake',id:'telegram:12345678:update:2',update:2,text:'b'.repeat(5000),
       raw:JSON.stringify(update(2)),accepted:true,cursor:3,at:1000});
     journal.append({kind:'reserve',id:'telegram:12345678:update:2',at:1000});
     journal.append({kind:'answer',id:'telegram:12345678:update:2',text:'recent answer',at:1000});
@@ -733,14 +733,14 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();
   try {
-    const initial = { ...genesis(), maxBytes: 1100 };
+    const initial = { ...genesis(), maxBytes: 5000 };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
         : JSON.stringify({ reply: 'ok', memory: [], dated: [] }),
       send: async () => 1, checkOutbound: () => {} });
     for (let i = 0; i < 12; i++) {
-      worker.intake([update(i + 1, i === 0 ? 'ORCHID is the first unique memory.' : `turn ${i} ${'a'.repeat(45)}`)]);
+      worker.intake([update(i + 1, i === 0 ? 'ORCHID is the first unique memory.' : `turn ${i} ${'a'.repeat(450)}`)]);
       await worker.drain(); await worker.summarizeIfNeeded();
     }
     expect(journal.view.summaries.length).toBeGreaterThan(0);

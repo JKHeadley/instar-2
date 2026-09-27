@@ -107,7 +107,8 @@ it('keeps a reply reachable when a correction cannot fit and retains the uncarri
     sample.worker.checkCoherence();
     const withNote = sample.worker.probe('Can I open it?');
     expect('context' in withNote).toBe(true);
-    const limit = 1300; // Fits the next reply while excluding its optional correction note.
+    const limit = 1800;
+    // Fits the ordinary next reply while excluding its optional correction note.
     expect(Buffer.byteLength(('context' in withNote ? withNote.context : ''))).toBeGreaterThan(limit);
     sample.journal.close();
 
