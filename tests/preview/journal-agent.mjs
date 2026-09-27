@@ -79,16 +79,27 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
+  preferences: packet.preferences ?? [],
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
-const withheldView = view => view.memory.map(change => ({
-  ...(change.source.startsWith('channel:')
-    ? { channelSource: view.channelItems.get(change.source.slice('channel:'.length))?.source,
-      channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
-    : { sourceUpdate: view.turns.get(change.source)?.update }),
-  operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
-  reason: change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
+const withheldView = view => {
+  const preferenceKeys = new Set();
+  for (const change of view.memory) {
+    if (change.mode === 'prefer') preferenceKeys.add(JSON.stringify([change.source, change.quote]));
+    else if (change.mode === 'correct' && preferenceKeys.has(JSON.stringify([change.source, change.quote])))
+      preferenceKeys.add(JSON.stringify([change.trigger, change.replacement]));
+  }
+  return view.memory.filter(change => change.mode !== 'prefer').map(change => ({
+    ...(change.source.startsWith('channel:')
+      ? { channelSource: view.channelItems.get(change.source.slice('channel:'.length))?.source,
+        channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
+      : { sourceUpdate: view.turns.get(change.source)?.update }),
+    operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
+    reason: preferenceKeys.has(JSON.stringify([change.source, change.quote]))
+      ? change.mode === 'forget' ? 'verified operator removed this reply preference' : 'verified operator changed this reply preference'
+      : change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
+};
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 
 async function main() {

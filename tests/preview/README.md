@@ -778,6 +778,42 @@ The capability line says plainly: this preview **answers only and never sends un
 reminders**. An item in memory is not a scheduled notification; the runner has no scheduler or
 tools. It can mention a due or overdue item in a reply to the operator's next message.
 For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
+### How the operator likes answers
+
+The same capped summary or reply decision can record a durable reply preference from the
+verified operator. It returns `mode: "prefer"`, this turn's ID, and an exact clause from
+the operator's message. A small wording cue can schedule the summary early; the model
+still decides whether the statement is a direct, durable preference. An uncued statement
+can be recorded by the ordinary reply decision. Quoted and imported statements are data,
+and a different sender has no operator authority. Invalid actions remain pending rather
+than producing an acknowledgement that the preference was saved.
+
+Preferences live in the existing encrypted journal memory actions. Every later model
+packet carries the active `preferences` with their source IDs. A later verified operator
+statement can replace or remove one through the same `correct` or `forget` action, naming
+the earlier source and exact old clause. Replay rebuilds the active set from the journal;
+old actions and source messages remain as evidence. Each clause can be changed independently,
+including when one message supplied several preferences. Retiring a clause withholds its
+historical source without masking a new operator turn that uses the same words. Saving a
+preference leaves that turn's reply and commitments intact. `inspect --text` shows the active
+preferences in the next packet. No second store or model call type is involved.
+
+Live script for Justin in the existing private preview chat, after the desk lands this
+revision and resumes the one runner on its existing root:
+
+1. Check `status` for at least ten calls, seven replies and seven turns of room; use the
+   recorded `raise-caps` authority if needed. Send `Shorter please.` Wait for its reply.
+   Use `inspect --text "What changed?" --model MODEL`; `next.preferences` should contain
+   `Shorter please.` Ask `What changed?` and check the reply is brief.
+2. Send `Use detailed answers instead of shorter replies.` Wait for its reply. The next
+   `inspect --text "What changed?" --model MODEL` should carry only the detailed-answer
+   preference. Ask again and check the answer follows it.
+3. Send `Forget my answer style preference.` Wait for its reply. The next inspect view
+   should have no active preference. Send `Shorter please.` again; the next inspect view
+   should carry that preference from the new source and show the retired historical source
+   as withheld. Ask again and record the actual reply, status and inspect outputs. If a
+   summary decision is pending or a cap is exhausted, record the visible hold as an
+   incomplete result.
 
 Live script for Justin in the existing private preview chat, after the desk lands this revision
 and resumes the one runner on its existing root:
