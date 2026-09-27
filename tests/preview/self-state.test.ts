@@ -2,9 +2,10 @@ import { expect, it } from 'vitest';
 import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
-import { appendRun, readRuns, selfState, selfStateSource } from './self-state.js';
+import { appendRun, heldNotices, holdNotice, readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(4);
 // 2026-09-26 19:00 UTC = 12:00 PDT.
@@ -14,6 +15,61 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
   maxBytes: 32768, cursor: 0 };
 const update = (id: number, text: string, at: number) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(at / 1000) } });
+
+it('gives every held reply one fixed plain reason and truthful resend advice', () => {
+  const cases = [
+    ['reply check unavailable', 'a safety check is unavailable'],
+    ['outbound secret refused', 'it may contain a secret'],
+    ['call cap', 'the spend limit was reached'],
+    ['reply cap', 'the spend limit was reached'],
+    ['memory correction pending', 'a safety check is unavailable'],
+  ];
+  for (const [reason, words] of cases) {
+    const notice = holdNotice(reason!);
+    expect(notice).toBe(`This reply is held because ${words}; resending will not help.`);
+    expect(notice).not.toMatch(/(?:credential|cap|correction|check unavailable|rule[_-]|\bNF-\d+\b)/iu);
+  }
+  expect(holdNotice('call cap', true)).toBe('This reply is held because the trial is stopped; resending will not help.');
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-notice-')));
+  try {
+    const path = join(root, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, genesis);
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'one', NOON), update(2, 'two', NOON)]);
+    expect(heldNotices(journal.view)).toEqual([]);
+    journal.append({ kind: 'hold', id: journal.view.order[0]!.id, reason: 'outbound secret refused', at: NOON });
+    journal.append({ kind: 'hold', id: journal.view.order[1]!.id, reason: 'call cap', at: NOON });
+    expect(heldNotices(journal.view)).toEqual([
+      { update: 1, notice: holdNotice('outbound secret refused') },
+      { update: 2, notice: holdNotice('call cap') },
+    ]);
+    expect(heldNotices(journal.view, true).map(item => item.notice)).toEqual([
+      holdNotice('', true), holdNotice('', true),
+    ]);
+    journal.close();
+    const reopened = openPreviewJournal(path, key, undefined, undefined, true);
+    expect(heldNotices(reopened.view)).toHaveLength(2);
+    reopened.close();
+    const command = (action: string) => spawnSync(process.execPath,
+      ['--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', action, '--root', root],
+      { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env,
+        INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    const before = command('status');
+    expect(before.status, before.stderr).toBe(0);
+    expect(JSON.parse(before.stdout).holds).toEqual([
+      { update: 1, notice: holdNotice('outbound secret refused') },
+      { update: 2, notice: holdNotice('call cap') },
+    ]);
+    const stop = command('stop');
+    expect(stop.status, stop.stderr).toBe(0);
+    const after = command('status');
+    expect(after.status, after.stderr).toBe(0);
+    expect(JSON.parse(after.stdout).holds.map((item: { notice: string }) => item.notice)).toEqual([
+      holdNotice('', true), holdNotice('', true),
+    ]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 it('derives an honest self-state from the journal and run log, correct across a restart and a raised cap', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-self-')));
@@ -45,7 +101,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(text).toContain('Operator messages received: 2 today, 4 in this trial');
     expect(text).toContain('My replies Telegram accepted: 1 today, 3 in this trial');
     expect(text).toContain('Model attempts: 3 of 3 used, 0 left');
-    expect(text).toContain('Held messages: 1 (call cap)');
+    expect(text).toContain('Held messages: 1 — This reply is held because the spend limit was reached; resending will not help.');
     expect(text).toContain('Caps have not been raised');
     expect(text).toContain('Last restart: 2026-09-26 08:00 PDT. The run before it started 2026-09-25 16:00 PDT and ended 2026-09-25 16:01 PDT: paused by signal SIGTERM.');
     w.journal.close(); // Run 2 dies without recording an end (crash).
@@ -58,6 +114,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     clock = NOON;
     w = world();
     await w.worker.drain();
+    expect(heldNotices(w.journal.view)).toEqual([]);
     w.worker.intake([update(5, 'how many messages today and when did you last restart?', clock)]);
     const probeState = selfState(w.journal.view, readRuns(runs), clock, 'America/Los_Angeles', run3);
     await w.worker.drain();

@@ -12,7 +12,7 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
-import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { appendRun, heldNotices, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 import { dueState } from './dated-memory.js';
@@ -129,7 +129,9 @@ async function main() {
       process.stdout.write(`${JSON.stringify({ cursor: null, importComplete: false })}\n`);
       return;
     }
-    try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+    try {
+      const now = Date.now(), stopped = existsSync(stopPath) || view.view.stop !== null || now >= view.view.genesis.expires;
+      process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       capAuthority: view.view.capAuthority,
@@ -140,7 +142,7 @@ async function main() {
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       withheld: withheldView(view.view),
-      holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
+      holds: heldNotices(view.view, stopped),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
@@ -166,7 +168,7 @@ async function main() {
       people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
         note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
       launches: readRuns(runsPath).launches.slice(-3),
-      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
+      self: selfState(view.view, readRuns(runsPath), now, timeZoneOf(options), undefined, stopped) })}\n`); }
     finally { view.close(); }
     return;
   }

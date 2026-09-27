@@ -580,6 +580,14 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+`status.holds` and the self-state text show a fixed plain sentence for each held
+reply: safety check unavailable, possible secret, spend limit, or stopped. Each
+says resending will not help, because the original operator message remains in
+the encrypted journal. The precise cause stays in the journal; the read-only
+notice does not make a second send or consume a reply slot. Follow
+[hold-reason-plain-live-test.md](hold-reason-plain-live-test.md) for Justin's
+operator-channel check.
+
 The launcher uses the existing `INSTAR_SECRET_PREVIEW_STORAGE_KEY` and
 `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` host bindings, production storage lease,
 Telegram bridge and subscription route. The desk supplies the same reviewed activation
@@ -744,7 +752,7 @@ new fact is carried as `memory`. A forget carries only a withholding reason. Sim
 different wording and sources remain. `status.withheld` and `inspect.withheld` show the redacted
 old clause, the source update or channel ID, the operator update ID, and why it was withheld; the model packet does not
 receive the forgotten clause. If the shared attempt cap or summary route prevents a decision,
-`status.holds` shows `memory correction pending` and the intake remains durable.
+`status.holds` shows the plain safety-check hold notice and the intake remains durable.
 
 ### Dated memory (preview)
 
@@ -842,7 +850,7 @@ Recall is proven only when a question's own persisted prompt shows
 complete history is used for as long as it still fits.
 
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists current
-caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import
+caps, counters, UNKNOWN calls and sends, held update IDs and plain notices, and import
 completion. After pausing the runner and verifying the operator's authority, the
 desk can raise all or some of the finite limits with:
 
@@ -1105,8 +1113,8 @@ candidate. If no check can decide (review budget exhausted, reviewer outage,
 malformed output), nothing is sent: the turn stays held with its message,
 candidate and reservations. A refused review reservation is a `call cap` hold
 that `raise-caps` retries; any other failure is a `reply check unavailable`
-hold shown in `status`. New answers leave one shared call-budget
-slot available for a possible review. The deterministic credential wall runs
+hold. `status` presents their plain spend-limit or safety-check notice. New answers
+leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed

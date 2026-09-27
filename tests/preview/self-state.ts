@@ -72,9 +72,25 @@ export const messageTime = (turn: Turn): number | null => {
   return turn.at > 0 ? turn.at : null;
 };
 
+/** Operator wording for a reply that the journal still holds. The journal keeps
+ * its precise internal cause; this fixed wording never exposes it in a notice. */
+export function holdNotice(reason: string, stopped = false): string {
+  if (stopped) return 'This reply is held because the trial is stopped; resending will not help.';
+  if (reason === 'outbound secret refused')
+    return 'This reply is held because it may contain a secret; resending will not help.';
+  if (reason === 'call cap' || reason === 'reply cap')
+    return 'This reply is held because the spend limit was reached; resending will not help.';
+  return 'This reply is held because a safety check is unavailable; resending will not help.';
+}
+
+export function heldNotices(view: JournalView, stopped = false) {
+  return view.order.filter(turn => turn.accepted && !turn.intent && (turn.held || stopped))
+    .map(turn => ({ update: turn.update, notice: holdNotice(turn.held ?? '', stopped) }));
+}
+
 /** Plain facts about this preview, computed from the journal and run log at `now`.
  * `current` is the launch this process recorded; absent for a read-only status view. */
-export function selfState(view: JournalView, runs: RunLog, now: number, timeZone: string, current?: number) {
+export function selfState(view: JournalView, runs: RunLog, now: number, timeZone: string, current?: number, stopped = false) {
   const format = zoneFormatter(timeZone), today = parts(format, now).day;
   // Only a time within the last 26 hours can fall on today's local date; older ones are never formatted.
   const isToday = (ms: number | null | undefined) => ms !== null && ms !== undefined && ms > 0
@@ -85,7 +101,8 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const incoming = count(accepted, messageTime);
   const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
   const holds = new Map<string, number>();
-  for (const turn of view.order) if (turn.held) holds.set(turn.held, (holds.get(turn.held) ?? 0) + 1);
+  for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.genesis.expires))
+    holds.set(notice, (holds.get(notice) ?? 0) + 1);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = [...view.summaryReservations].filter(through => !view.summaries.some(item => item.through === through)).length;
   const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined).length;
@@ -102,7 +119,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
     `Unknown outcomes (never retried): ${String(unknownCalls)} model call(s), ${String(unknownSends)} send(s).`,
     `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
-    holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
+    holds.size ? `Held messages: ${[...holds].map(([notice, n]) => `${String(n)} — ${notice}`).join(' ')}` : 'Held messages: none.',
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
     `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.genesis.expires)}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',
