@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, pendingRequestedReminders, reminderDue, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { greetingContinuity } from './greeting-continuity.js';
@@ -339,6 +339,12 @@ async function main() {
         pending: pendingRequestedReminders(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
           quote: redact(item.quote).text, due: `${reminderDue(item)} ${item.zone}` })),
         cancelled: view.view.reminderCancels.length },
+      requestedSummaries: { requested: view.view.summaryGrants.length, cancelled: view.view.summaryCancels.length,
+        active: activeSummaryGrants(view.view).map(grant => ({ id: grant.id, sourceUpdate: view.view.turns.get(grant.source)?.update,
+          quote: redact(grant.quote).text, covers: grant.period, repeat: grant.repeat, time: grant.time, first: grant.first, zone: grant.zone })),
+        slots: view.view.order.filter(t => t.requestedSummary).map(t => ({ grant: t.requestedSummary.grant, slot: t.requestedSummary.slot,
+          late: t.requestedSummary.late ?? null, state: t.sent !== undefined ? 'accepted' : t.intent !== undefined ? 'UNKNOWN send'
+            : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) },
       dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
 

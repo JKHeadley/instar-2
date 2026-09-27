@@ -23,7 +23,8 @@ export function capabilityNote(limits: { providerAttempts: number; expiresAt: nu
     + 'It has no tools: it cannot browse, run code or act outside this chat. '
     + 'When a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; its mention is remembered across restarts. '
     + 'When the operator explicitly asks to be reminded at a settled day and time, it sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit. '
-    + 'It cannot schedule other work, send summaries, nudges or any other unprompted message. '
+    + 'When the operator explicitly asks for a summary at a later time, once or repeatedly, it sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary. '
+    + 'It cannot schedule other work, send nudges or any other unprompted message. '
 
     + `This trial allows at most ${limits.providerAttempts} model attempts, including any summaries, and ends at epoch millisecond ${limits.expiresAt}. `
     + 'Every reply is prefixed PREVIEW. Outcomes the system could not confirm (a model call or a delivery) are marked unknown, '

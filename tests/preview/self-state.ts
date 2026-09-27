@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { activeSummaryGrants, pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`). */
 export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string };
@@ -128,7 +128,9 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   // Only a time within the last 26 hours can fall on today's local date; older ones are never formatted.
   const isToday = (ms: number | null | undefined) => ms !== null && ms !== undefined && ms > 0
     && now - ms < 26 * 3_600_000 && ms <= now + 60_000 && parts(format, ms).day === today;
-  const accepted = view.order.filter(turn => turn.accepted);
+  // A requested summary's turn is runner-authored, not an operator message.
+  const accepted = view.order.filter(turn => turn.accepted && !turn.requestedSummary);
+  const summarySends = view.order.filter(turn => turn.requestedSummary && turn.sent !== undefined);
   const count = (turns: readonly Turn[], when: (turn: Turn) => number | null | undefined) =>
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
@@ -154,6 +156,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
     `Requested reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; ${String(pendingRequestedReminders(view).length)} requested and not yet sent.`,
+    ...(view.summaryGrants.length ? [`Requested summaries Telegram accepted: ${String(summarySends.filter(turn => isToday(turn.sentAt)).length)} today, ${String(summarySends.length)} in this trial; ${String(activeSummaryGrants(view).length)} summary requests active.`] : []),
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     `Model tokens by call kind (input/output; missing usage counts at its reservation): ${Object.entries(view.tokenTotals)
