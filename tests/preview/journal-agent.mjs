@@ -13,6 +13,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { operatorDigest } from './operator-digest.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 
 const parse = values => {
@@ -62,8 +63,12 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
   const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
-  return () => [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current())),
-    deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
+  return () => {
+    const now = Date.now(), log = runs();
+    const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
+    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())),
+      desk, operatorDigest(view, log, desk)];
+  };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
@@ -109,7 +114,11 @@ async function main() {
       process.stdout.write(`${JSON.stringify({ cursor: null, importComplete: false })}\n`);
       return;
     }
-    try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+    try {
+      const now = Date.now(), log = readRuns(runsPath);
+      const deskPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
+      const desk = deskStatusSource(readDeskStatus(deskPath), now, deskPath);
+      process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       capAuthority: view.view.capAuthority,
@@ -139,8 +148,10 @@ async function main() {
       lastReplyCheck: view.view.lastReplyCheck,
       people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
         note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
-      launches: readRuns(runsPath).launches.slice(-3),
-      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
+      launches: log.launches.slice(-3),
+      digest: operatorDigest(view.view, log, desk).text,
+      self: selfState(view.view, log, now, timeZoneOf(options)) })}\n`);
+    }
     finally { view.close(); }
     return;
   }
