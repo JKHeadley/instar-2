@@ -117,9 +117,9 @@ it('brings open items back after compaction with who said them and when, says it
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === LOCKER || turn.user === DENTIST)).toBe(false);
     expect(packet.commitments).toEqual([
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 0, quote: LOCKER }] },
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 1, quote: DENTIST }] },
-      { from: 'you, in your own earlier reply', date: '2026-09-21T14:15Z', reply: `Noted. ${PROMISE}`, answering: DENTIST,
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 0, quote: LOCKER }] },
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 1, quote: DENTIST }] },
+      { source: 'telegram:12345678:update:2', from: 'you, in your own earlier reply', date: '2026-09-21T14:15Z', reply: `Noted. ${PROMISE}`, answering: DENTIST,
         delivery: 'Telegram API accepted', items: [{ id: 2, quote: PROMISE }] }]);
     expect(packet.capability).toContain('you cannot do, schedule or remind anyone of anything');
     expect(packet.capability).toContain('never add one that is not listed');

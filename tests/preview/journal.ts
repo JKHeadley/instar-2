@@ -88,6 +88,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
+  lastPrompt: { kind: 'answer'; id: string; prompt: string | null; memoryCount: number }
+    | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number } | null;
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[];
@@ -159,7 +161,9 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary-reserve') {
     if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
       || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
-    view.summaryReservations.add(row.through); view.calls++; return;
+    view.summaryReservations.add(row.through); view.calls++;
+    view.lastPrompt = { kind: 'summary', through: row.through, prompt: row.prompt ?? null, memoryCount: view.memory.length };
+    return;
   }
   if (row.kind === 'summary-failed') {
     if (!view.summaryReservations.delete(row.through)) throw Error('preview journal: failed summary without reservation');
@@ -216,6 +220,7 @@ function project(view: JournalView, row: JournalRecord): void {
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
+    view.lastPrompt = { kind: 'answer', id: turn.id, prompt: row.prompt ?? null, memoryCount: view.memory.length };
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];
     else {
@@ -253,7 +258,7 @@ function project(view: JournalView, row: JournalRecord): void {
 }
 
 export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extract<JournalRecord,{kind:'genesis'}>,
-  boundary?: (stage: string) => void, readOnly = false) {
+  boundary?: (stage: string) => void, readOnly = false, strictReadOnly = false) {
   if (resolve(path) !== path || key.byteLength !== 32) throw Error('preview journal: path or key refused');
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   if (realpathSync(dirname(path)) !== dirname(path) || lstatSync(dirname(path)).isSymbolicLink())
@@ -282,10 +287,11 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), lastPrompt: null, summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
+    if (offset < sealed.length && strictReadOnly) throw Error('preview journal: incomplete read-only frame');
     if (offset < sealed.length && !readOnly) {
       // Retain the incomplete suffix for diagnosis before removing it from the
       // active append point. It never becomes accepted intake or an effect.
@@ -319,7 +325,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), lastPrompt: null, summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -543,7 +549,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
-    const history = earlier.map(item => ({ ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
+    const history = earlier.map(item => ({ id: item.id, ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true),
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}), outcome: outcome(item) }));
@@ -554,7 +560,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       entry.mentions.push({ person: note.name, quote: note.quote }); sources.set(note.source, entry);
     }
     const people = [...sources.values()].sort((a, b) => a.turn.update - b.turn.update).map(({ turn, mentions }) =>
-      ({ from: speakerOf(turn), date: dated(turn),
+      ({ source: turn.id, from: speakerOf(turn), date: dated(turn),
       ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
       message: clean(redact(turn.text).text, true), mentions: mentions.map(mention => ({ ...mention, quote: clean(mention.quote, true) })) }));
     // Each commitment renders the whole message or reply it was quoted from, and who said it.
@@ -564,20 +570,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       entry.items.push({ id, quote: note.quote }); promised.set(slot, entry);
     }
     const commitments = [...promised.values()].sort((a, b) => a.turn.update - b.turn.update || (a.side === 'message' ? -1 : 1))
-      .map(({ turn, side, items }) => ({ from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn),
+      .map(({ turn, side, items }) => ({ source: turn.id, from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn),
         ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
         ...(side === 'message' ? { message: clean(redact(turn.text).text, true) }
           : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true), delivery: outcome(turn) }),
         items: items.map(item => ({ ...item, quote: clean(item.quote, true) })) }));
     const cited = new Set([...sources.keys(), ...[...promised.values()].map(entry => entry.turn.id)]);
-    const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
+    const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ id: item.id, date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true), answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.filter(item => !journal.view.memory.some(change =>
-      change.source === item.id || change.replies?.includes(item.id))).map(item => ({ update: item.update, date: dated(item),
+      change.source === item.id || change.replies?.includes(item.id))).map(item => ({ source: item.id, update: item.update, date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
       findings: correctionNote(item.checked ?? []).map(finding => ({ ...finding,
         possibleProblem: clean(finding.possibleProblem, true), inYourReply: clean(finding.inYourReply, true) })) }));
@@ -604,10 +610,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { through: summary.through, text: clean(redact(summary.text).text, true) } }
         : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
-        Array<{ mode: string; reason?: string; replacement?: string }> => {
-        if (change.mode === 'forget') return [{ mode: 'forgotten', reason: 'verified operator requested forgetting' }];
+        Array<{ mode: string; source: string; trigger: string; reason?: string; replacement?: string }> => {
+        if (change.mode === 'forget') return [{ mode: 'forgotten', source: change.source, trigger: change.trigger,
+          reason: 'verified operator requested forgetting' }];
         const later = journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!));
-        return later ? [] : [{ mode: 'corrected', replacement: clean(redact(change.replacement!).text) }];
+        return later ? [] : [{ mode: 'corrected', source: change.source, trigger: change.trigger,
+          replacement: clean(redact(change.replacement!).text) }];
       }) } : {}),
       ...(corrections.length ? { corrections } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), history });
     return packet;

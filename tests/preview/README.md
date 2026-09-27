@@ -728,6 +728,29 @@ Recall is proven only when a question's own persisted prompt shows
 `summary-plus-recent` with its people. A summary alone is not enough, because
 complete history is used for as long as it still fits.
 
+`audit --root /ABSOLUTE/EXISTING_ROOT` is a read-only desk check of the latest
+recorded model packet, whether that call answered a turn or updated the rolling
+summary. With the same storage-key host binding as `status`, it replays the
+encrypted journal and prints JSON `modelCall`, `update`, `items` and `findings`.
+Each item names its packet location and a source chain: original Telegram turn,
+agent-owned channel import, summary frontier, operator correction or forgetting,
+person/commitment note, or reply-check note. It prints turn IDs and one-way
+source-key digests for imports, never
+message, answer, summary or quoted body text. It exits nonzero when a source or
+attribution cannot be verified, an exact forgotten/superseded clause remains in
+the packet, a people note lacks its original accepted turn, or a recorded packet
+or journal frame is incomplete. A root with no model reservation reports an
+empty item list; an older reservation without a saved packet reports a finding.
+The report describes the last **recorded** model input, not a future answer or
+what the model chose to use. The exact-clause checks cannot prove that a
+paraphrase of a superseded fact is absent. Run it after each live proof step as
+described in [journal-audit-live-test.md](journal-audit-live-test.md).
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs audit \
+  --root /ABSOLUTE/EXISTING_ROOT
+```
+
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists current
 caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import
 completion. After pausing the runner and verifying the operator's authority, the

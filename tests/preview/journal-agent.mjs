@@ -14,6 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { auditJournal } from './journal-audit.mjs';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -84,7 +85,7 @@ const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.r
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
-  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'audit'].includes(command)) throw Error('preview: unknown command');
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -99,6 +100,15 @@ async function main() {
   if (command === 'stop') {
     if (!existsSync(journalPath)) throw Error('preview: journal absent');
     if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'operator' });
+    return;
+  }
+  if (command === 'audit') {
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true, true);
+    try {
+      const report = auditJournal(journal.view);
+      process.stdout.write(`${JSON.stringify(report)}\n`);
+      if (report.findings.length) process.exitCode = 1;
+    } finally { journal.close(); }
     return;
   }
   if (command === 'status') {

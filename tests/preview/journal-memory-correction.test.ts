@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, importChannelFixture, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal.js';
+import { auditPacket } from './journal-audit.mjs';
 
 const key = new Uint8Array(32).fill(17);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -43,6 +44,8 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     if ('reason' in next) throw Error(next.reason);
     const packet = JSON.parse(next.context);
     expect(packet.memory).toMatchObject([{ mode: 'forgotten' }]);
+    expect(auditPacket(journal.view, { id: 'probe', update: 2, text: '', raw: '', accepted: true,
+      at: 1790000000000, reserved: false }, packet).findings).toEqual([]);
     expect(next.context).not.toContain('silver crane');
     expect(packet.channelMemory?.[0]?.quote).toContain('[withheld: operator correction or forgetting]');
     expect(journal.view.channelItems.size).toBe(1);

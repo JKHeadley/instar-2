@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, PREVIEW_RECALL_LIMIT } from './journal.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
+import { auditPacket } from './journal-audit.mjs';
 
 const key = new Uint8Array(32).fill(9);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-people-')));
@@ -91,12 +92,13 @@ it('recalls every note about a named person after compaction, keeps the operator
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
     expect(packet.people).toEqual([
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
         message: 'My cofounder Sam thinks the launch should slip to November.',
         mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
         message: 'Priya said she disagrees with Sam about the launch date.',
         mentions: [{ person: 'Sam', quote: 'Priya said she disagrees with Sam about the launch date.' }] }]);
+    expect(auditPacket(w.journal.view, w.journal.view.order.find(turn => turn.text === question)!, packet).findings).toEqual([]);
     expect(packet.capability).toContain('did not say it unless from is that person');
     // The named failure: word-match recall alone ranks the many launch-budget turns above both turns about Sam.
     const covered = w.journal.view.order.filter(turn => turn.update <= packet.summary.through);
@@ -169,7 +171,7 @@ it('renders the whole source message, so an excerpt can never drop the context t
     const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
-    expect(packet.people).toEqual([{ from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+    expect(packet.people).toEqual([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
       mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
     expect(packet.capability).toContain('Read a quote only within its whole message');
     w.journal.close();
