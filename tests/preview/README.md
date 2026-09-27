@@ -712,6 +712,9 @@ the phrase deterministically in `--time-zone`. It stores the interpreted local d
 store, service or scheduler is added. A syntax cue only invites the model to judge whether a
 dated statement was made; it never creates an item itself. Up to three items can be recorded
 from one turn. A malformed proposed item is not recorded.
+If the model returns no structured date decision after a date syntax signal, the original turn
+stays durable and `datedPending` names it in `status` and the next packet. That is an unconfirmed
+signal, never a due item; the preview must not claim it saved a deadline from that evidence alone.
 
 An unqualified weekday means its next occurrence (the same weekday today is ambiguous). A
 month and day without a year means the next occurrence on or after the message's local day.

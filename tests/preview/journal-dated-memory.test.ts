@@ -87,6 +87,24 @@ it('holds a malformed dated proposal with intake intact and does not accept a fo
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('keeps a missed structured date decision visible without treating the cue as authority', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-pending-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
+      model: async () => 'Okay.', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'My dentist is Thursday at 3.')]); await worker.drain();
+    expect(journal.view.order[0]?.datedPending).toBe(true);
+    expect(journal.view.dated).toHaveLength(0);
+    const next = worker.probe('Any plans?');
+    if ('reason' in next) throw Error(next.reason);
+    expect(JSON.parse(next.context).datedPending).toMatchObject([{ update: 1,
+      message: 'My dentist is Thursday at 3.' }]);
+    expect(JSON.parse(next.context).dated).toBeUndefined();
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('withholds a corrected dated source and carries a replacement from the same verified turn', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-correct-')));
   try {

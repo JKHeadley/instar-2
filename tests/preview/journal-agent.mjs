@@ -72,6 +72,7 @@ const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zone
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
+  datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -135,6 +136,8 @@ async function main() {
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
         time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
+      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.source === item.id))
+        .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
