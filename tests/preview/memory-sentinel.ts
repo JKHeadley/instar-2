@@ -77,3 +77,20 @@ export function selectRecall(input: SentinelInput): number[] {
   return score.map((value, index) => ({ value, index })).filter(item => item.value > 0)
     .sort((a, b) => b.value - a.value || b.index - a.index).slice(0, input.limit).map(item => item.index);
 }
+
+/** An exact subject/value overlap is only a packet signal. The model decides
+ * whether the statements really conflict; neither this match nor its absence
+ * changes memory. Clauses are deliberately narrow to avoid invented facts. */
+export function statedFacts(text: string): { subject: string; value: string; quote: string }[] {
+  const facts: { subject: string; value: string; quote: string }[] = [];
+  const direct = text.replace(/```[\s\S]*?```/gu, '').replace(/^\s*>.*$/gmu, '');
+  for (const match of direct.matchAll(/(?:^|[.!?]\s+|\n)\s*((?:my|the)\s+[\p{L}\p{N}'-]+(?:\s+[\p{L}\p{N}'-]+){0,5}\s+is\s+[^.!?\n]{1,100})/giu)) {
+    const quote = match[1]!.trim().replace(/,\s+not\s+[^,]+$/iu, '').trim();
+    const parts = /^(my|the)\s+(.+?)\s+is\s+(.+)$/iu.exec(quote);
+    if (!parts) continue;
+    const subject = `${parts[1]!.toLowerCase()} ${parts[2]!.toLowerCase().replace(/\s+/gu, ' ')}`;
+    const value = parts[3]!.toLowerCase().replace(/\s+/gu, ' ').trim();
+    if (value && !/[“"”]/u.test(quote)) facts.push({ subject, value, quote });
+  }
+  return facts.slice(0, 3);
+}

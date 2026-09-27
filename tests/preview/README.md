@@ -670,6 +670,20 @@ recalled turns, person notes, and the oldest open items. `status` reports `commi
 
 ### Correcting and forgetting memory
 
+An authenticated operator statement in the narrow form `my/the SUBJECT is VALUE`
+is compared with earlier, unsuperseded statements about that literal subject in
+accepted operator turns or imported channel items. If the most recent value
+differs, the reply packet carries `contradictions` with the two redacted quotes,
+source IDs, dates and provenance. A channel import is labelled as export metadata,
+not an authenticated operator assertion. This is a bounded candidate signal: the
+model judges whether the statements really conflict and can ask whether to update
+memory. A matching value, different subject, quotation, or nonoperator turn raises
+no signal. The signal never writes a memory change; the authenticated correction
+path below still decides and validates any change. If the prompt bound cannot hold
+the signal, it yields before accepted intake or reply can be blocked. `inspect`
+shows any signal in the persisted reply packet. The [live test for Justin](contradiction-notice-live-test.md)
+exercises the private preview chat after the desk lands this revision.
+
 A direct correction or forget request from the bound Telegram operator can be judged in the existing
 rolling summary before its reply. A small text cue schedules that call early;
 it cannot itself supersede anything. The ordinary capped reply call can also return a memory
