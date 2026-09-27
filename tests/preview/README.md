@@ -1053,9 +1053,10 @@ installed those projections. Imported sender identity is export metadata, not an
 identity the fixture route independently authenticated. This is a review of
 recorded memory, not a claim that a bounded selection is complete.
 
-The report never prints a forgotten clause. It also withholds old corrected
-clauses and matching terms from every displayed field, and applies the existing
-credential redactor again on output. A source message over 700 bytes is omitted
+The report withholds recorded forgotten and old corrected clauses where they
+appear in displayed fields, while showing active correction replacements. It
+applies the existing credential redactor to each original field before display.
+A source message over 700 bytes is omitted
 as a whole instead of showing a potentially misleading fragment. Each category
 shows at most 20 newest entries; the complete output is at most 16 KiB and names
 omitted counts. Originals remain in the encrypted journal. The command does not

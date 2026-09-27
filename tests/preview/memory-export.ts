@@ -12,20 +12,13 @@ const MAX_FIELD_BYTES = 700;
 
 export function memoryReport(view: ExportView): string {
   const actions = view.memory as Action[];
-  // Scrub before redaction and formatting, including metadata and contextual messages.
-  // A forgotten phrase can occur in a different person note or imported item.
+  // A retired exact clause can occur in another displayed field.
   const hidden = actions.filter(item => item.mode !== 'prefer').flatMap(item => [item.quote]);
-  const words = (value: string) => value.match(/[\p{L}\p{N}_-]+/gu) ?? [];
-  const hiddenTerms = [...new Set(actions.filter(item => item.mode !== 'prefer').flatMap(item => {
-    const retained = new Set(words(item.replacement ?? '').map(word => word.toLowerCase()));
-    return words(item.quote).filter(term => (term.length >= 4 || /\d/u.test(term))
-      && (item.mode === 'forget' || !retained.has(term.toLowerCase())));
-  }))];
-  const safe = (value: string): string => {
-    let text = value;
-    for (const phrase of hidden) if (phrase) text = text.replaceAll(phrase, '[withheld]');
-    for (const term of hiddenTerms) text = text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'giu'), '[withheld]');
-    text = redact(text).text.replace(/[\r\n\t]+/gu, ' ').replace(/[\u0000-\u001f\u007f]/gu, ' ');
+  const safe = (value: string, retiredClauses = true): string => {
+    // Redact the original before a recorded clause can remove a credential label.
+    let text = redact(value).text;
+    if (retiredClauses) for (const phrase of hidden) if (phrase) text = text.replaceAll(phrase, '[withheld]');
+    text = text.replace(/[\r\n\t]+/gu, ' ').replace(/[\u0000-\u001f\u007f]/gu, ' ');
     if (Buffer.byteLength(text) > MAX_FIELD_BYTES) return '[field omitted: over 700 bytes]';
     return text.replace(/[\\`*_{}\[\]()#+!|<>]/gu, '\\$&').trim();
   };
@@ -45,10 +38,11 @@ export function memoryReport(view: ExportView): string {
     const turn = view.turns.get(note.source);
     return `- **${safe(note.name)}** — ${turn ? safe(turn.text) : '[source unavailable]'}; source: ${source(note.source)}`;
   }) });
-  const corrections = actions.filter(item => item.mode === 'correct' && item.replacement
-    && !actions.some(later => later !== item && later.mode !== 'prefer' && later.quote.includes(item.replacement!)));
+  const corrections = actions.filter((item, index) => item.mode === 'correct' && item.replacement
+    && !actions.slice(index + 1).some(later => later.mode !== 'prefer' && later.source === item.trigger
+      && later.quote.includes(item.replacement!)));
   sections.push({ title: 'Corrections', rows: corrections.map(item =>
-    `- ${safe(item.replacement!)}; original: ${source(item.source)}; corrected by ${source(item.trigger)}`) });
+    `- ${safe(item.replacement!, false)}; original: ${source(item.source)}; corrected by ${source(item.trigger)}`) });
   sections.push({ title: 'Forgotten markers', rows: actions.filter(item => item.mode === 'forget').map(item =>
     `- Content withheld; original: ${source(item.source)}; requested by ${source(item.trigger)}`) });
   const dated = (view.dated ?? []).filter(item => !actions.some(change => change.mode !== 'prefer'

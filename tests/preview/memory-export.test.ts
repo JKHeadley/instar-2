@@ -37,7 +37,7 @@ it('shows sourced active categories while withholding forgotten content and cred
     Object.assign(journal.view, { dated: [{ source: 'telegram:4', quote: 'Review the design tomorrow', when: 'tomorrow',
       day: '2026-09-22', zone: 'UTC' }] });
     const imported = { source: 'email' as const, account: 'agent@example.test', id: 'm-1', from: 'sam@example.test',
-      at, text: 'Old locker code is 3310; password: abcdefghijklmnop' };
+      at, text: 'Imported note: the locker code is 3310; password: abcdefghijklmnop' };
     journal.view.channelItems.set(JSON.stringify([imported.source, imported.account, imported.id]), imported);
     const output = memoryReport(journal.view);
     expect(output).toContain('## People notes');
@@ -90,6 +90,50 @@ it('exports through the read-only CLI without changing journal bytes or making a
     expect(existsSync(absent)).toBe(false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('replays redaction, restored corrections, and exact forgetting through the CLI', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-export-replay-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const messages = [
+      'My color is blue.', 'My color is green.', 'My color is blue.',
+      'I label this field password.', 'Ada shared password: abcdefghijklmnop',
+      'Forget I label this field password.', 'I use Rust.', 'Forget I use Rust.',
+      'Ada says Trust matters.',
+    ];
+    messages.forEach((message, index) => journal.append({ kind: 'intake', id: `telegram:${index + 1}`,
+      update: index + 1, text: message, raw: JSON.stringify(update(index + 1, message)),
+      accepted: true, cursor: index + 2, at: at + index + 1 }));
+    journal.append({ kind: 'summary-reserve', through: 9, at });
+    journal.append({ kind: 'summary', through: 9, text: 'Recorded memory decisions.', at,
+      people: [
+        { name: 'Ada', source: 'telegram:5', quote: messages[4]! },
+        { name: 'Operator', source: 'telegram:7', quote: messages[6]! },
+        { name: 'Ada', source: 'telegram:9', quote: messages[8]! },
+      ],
+      memory: [
+        { mode: 'correct', source: 'telegram:1', quote: 'My color is blue.', trigger: 'telegram:2', replacement: 'My color is green.' },
+        { mode: 'correct', source: 'telegram:2', quote: 'My color is green.', trigger: 'telegram:3', replacement: 'My color is blue.' },
+        { mode: 'forget', source: 'telegram:4', quote: 'I label this field password.', trigger: 'telegram:6' },
+        { mode: 'forget', source: 'telegram:7', quote: 'I use Rust.', trigger: 'telegram:8' },
+      ] });
+    journal.close();
+    const call = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'export-memory', '--root', root], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(call.status, call.stderr).toBe(0);
+    expect(call.stdout).toContain('## Corrections (1)');
+    expect(call.stdout).toContain('My color is blue.');
+    expect(call.stdout).not.toContain('My color is green.');
+    expect(call.stdout).toContain('Ada shared password: \\[redacted credential\\]');
+    expect(call.stdout).not.toContain('abcdefghijklmnop');
+    expect(call.stdout).toContain('Ada says Trust matters.');
+    expect(call.stdout).not.toContain('T[withheld]');
+    expect(call.stdout).not.toContain('I use Rust.');
+    expect(call.stdout).toContain('## Forgotten markers (2)');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 20_000);
 
 it('bounds a large import and reports omissions', () => {
   const view = { people: [], memory: [], dated: [], turns: new Map(), channelItems: new Map() } as unknown as JournalView;

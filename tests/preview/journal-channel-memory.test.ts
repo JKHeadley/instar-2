@@ -109,6 +109,7 @@ it('recalls an imported email after Telegram summary, with source sender and dat
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+// Four bounded child processes can take over 10 seconds together under parallel test load.
 it('CLI reads an agent-owned JSONL fixture without changing it or advancing Telegram intake', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-cli-')));
   try {
@@ -137,7 +138,7 @@ it('CLI reads an agent-owned JSONL fixture without changing it or advancing Tele
     expect(reopened.view.channelItems.size).toBe(1);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 45_000);
 
 it('refuses an oversized fixture through a bounded descriptor read', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-size-')));

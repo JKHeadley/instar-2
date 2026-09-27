@@ -92,6 +92,8 @@ describe('recall capture — exchanges become durable part-two facts', () => {
       expect(secretShape(out.text)).toBe(false);
     }
     expect(redact('an ordinary sentence about tokens and keys').count).toBe(0);
+    const alreadyScrubbed = 'password: [redacted credential]; token: abcdefghijklmnop';
+    expect(redact(alreadyScrubbed).text).toBe('password: [redacted credential]; token: [redacted credential]');
   });
 
   it('validates the input before anything is appended', () => {

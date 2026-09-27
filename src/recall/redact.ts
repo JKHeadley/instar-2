@@ -16,7 +16,7 @@ const patterns: readonly RegExp[] = [
   /\b[Bb]earer\s+[A-Za-z0-9._~+/-]{16,}=*/g,
 ];
 // key = value / key: value for obviously secret-named keys; the key name stays readable.
-const assignment = /\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key|client[_-]?secret|token)\s*[:=]\s*)(["']?)[^\s"']{6,}\2/gi;
+const assignment = /\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key|client[_-]?secret|token)\s*[:=]\s*)(["']?)(?!\[redacted credential\](?=$|[\s,;.!?]))[^\s"']{6,}\2/gi;
 
 export const redactionMark = '[redacted credential]';
 export function redact(text: string): { readonly text: string; readonly count: number } {
