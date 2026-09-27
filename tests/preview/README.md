@@ -1157,6 +1157,33 @@ The runner adds no call or send; `inspect` exposes the saved cue and a read-only
 next-message probe. See [follow-up-question-live-test.md](follow-up-question-live-test.md)
 for Justin's supervised private-chat test.
 
+### People attributes over time
+
+The capped reply and summary calls can select direct operator reports that a named
+person's job, city, partner or pet changed. Each selected event carries an exact
+name, value and clause from one authenticated operator message, plus whether the
+value began or ended. The runner checks those strings against the original
+message, then stores the event in the existing encrypted answer or summary frame.
+An invented value, a mismatched clause or another sender's report cannot become
+an attribute event. The original message remains durable if a selection fails.
+
+Replay projects these events in source order. A newer value for the same exact
+name and attribute makes earlier values historical; an ended value leaves no
+current value. `inspect --text` and answer packets show selected events with
+`current`, `historical` or `ended` status, their source message date, source ID
+and authenticated sender. The date is when Justin reported the change, not an
+inferred effective date. The model compares later unsummarized history before
+answering, states the current value with its report date, and lists earlier
+dated values when asked. Shared names remain separate identity questions.
+The packet fits current events first and gives requested history priority over
+unrelated older evidence; a tight byte limit may omit history, never turn an
+older event into a current one. Correction and forgetting filter affected
+events without erasing their journal evidence. Forgetting a newer value keeps
+its predecessor historical; the current value remains unknown until a surviving
+newer report supports it. No new store, call or service is
+used. See [people-attribute-history-live-test.md](people-attribute-history-live-test.md)
+for Justin's supervised check after integration.
+
 ### Remembering commitments
 
 An explicit first-person promise in the agent's **actual send intent** is captured immediately,
