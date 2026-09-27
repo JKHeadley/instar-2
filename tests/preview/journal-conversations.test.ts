@@ -241,6 +241,8 @@ it('keeps a question with an UNKNOWN send unanswered after replay without resend
     expect(packet.crossTopicDigest.conversations[0]).toMatchObject({ conversation: 'topic 7',
       unansweredQuestions: [{ question: 'Who has the map?', outcome: 'delivery UNKNOWN' }],
       heldItems: [{ message: 'Who has the map?', status: 'delivery UNKNOWN' }] });
+    expect(packet.crossTopicDigest.conversations[1]).toMatchObject({ conversation: 'main chat',
+      unansweredQuestions: [], heldItems: [] });
     second.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
