@@ -986,7 +986,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || mode === 'prefer' && (source !== trigger.id || typeof quote !== 'string'
           || quote.length < 8 || Buffer.byteLength(quote) > 1000
           || !redact(trigger.text).text.includes(quote) || replacement !== undefined
-          || replies !== undefined || summaryPassages !== undefined)
+          || replies !== undefined && (!Array.isArray(replies) || replies.length > 0)
+          || summaryPassages !== undefined && (!Array.isArray(summaryPassages) || summaryPassages.length > 0))
         || mode !== 'prefer' && (!original?.accepted && !channel)
         || original !== undefined && !fromOperator(original)
         || mode !== 'prefer' && !offered.has(source as string)
@@ -1011,8 +1012,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       seen.add(JSON.stringify([source, quote]));
       changes.push({ mode, source: source as string, quote, trigger: trigger.id,
         ...(mode === 'correct' ? { replacement: replacement as string } : {}),
-        ...(replies === undefined ? {} : { replies: replies as string[] }),
-        ...(summaryPassages === undefined ? {} : { summaryPassages: summaryPassages as string[] }) });
+        ...(mode === 'prefer' || replies === undefined ? {} : { replies: replies as string[] }),
+        ...(mode === 'prefer' || summaryPassages === undefined ? {} : { summaryPassages: summaryPassages as string[] }) });
     }
     return changes;
   };

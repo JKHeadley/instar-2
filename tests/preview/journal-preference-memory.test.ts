@@ -74,7 +74,7 @@ it('applies more detail and shorter answers as reversible reply instructions aft
         const active = packet.memoryCandidates?.find((item: { message: string }) =>
           item.message === 'More detail.' || item.message === 'Shorter answers.');
         const memory = request === 'More detail.'
-          ? [{ mode: 'prefer', source: packet.memoryRequest.id, quote: request }]
+          ? [{ mode: 'prefer', source: packet.memoryRequest.id, quote: request, replies: [], summaryPassages: [] }]
           : request === 'Shorter answers.'
             ? [{ mode: 'correct', source: active.id, quote: 'More detail.', replacement: request }]
             : request === 'Forget my answer length preference.'
@@ -96,10 +96,14 @@ it('applies more detail and shorter answers as reversible reply instructions aft
     worker.intake([update(1, 'More detail.')]); await worker.drain();
     expect(journal.view.memory, JSON.stringify({ holds: journal.view.order.map(item => item.held),
       summaries: journal.view.summaries.length, calls: journal.view.calls })).toMatchObject([{ mode: 'prefer', quote: 'More detail.' }]);
+    expect(journal.view.memory[0]).not.toHaveProperty('replies');
+    expect(journal.view.memory[0]).not.toHaveProperty('summaryPassages');
+    expect(journal.view.order[0]?.sent).toBe(1);
     journal.close();
 
     journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     worker.intake([update(2, 'Explain the change.')]); await worker.drain();
+    expect(journal.view.order[1]?.sent).toBe(1);
     expect(packets.at(-1)?.preferences).toEqual([{ text: 'More detail.', source: journal.view.order[0]!.id }]);
     worker.intake([update(3, 'Shorter answers.')]); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct']);
@@ -117,6 +121,34 @@ it('applies more detail and shorter answers as reversible reply instructions aft
     expect(packets.at(-1)?.preferences).toBeUndefined();
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('rejects nonempty old-reply or summary metadata on a new preference', async () => {
+  for (const field of ['replies', 'summaryPassages'] as const) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), `preview-preference-${field}-`)));
+    try {
+      const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+      const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+        model: async input => {
+          if (!input.id.startsWith('summary:')) return 'Understood.';
+          const packet = JSON.parse(input.context);
+          if (!packet.memoryRequest) return JSON.stringify({ summary: 'Please answer with detail.', people: [], memory: [] });
+          expect(packet.memoryCandidates.map((item: { id: string }) => item.id)).toContain(journal.view.order[0]!.id);
+          expect(packet.summary.text).toContain('Please answer with detail.');
+          return JSON.stringify({ summary: 'The operator requested more detail.', people: [],
+            memory: [{ mode: 'prefer', source: packet.memoryRequest.id, quote: 'More detail.',
+              [field]: field === 'replies' ? [journal.view.order[0]!.id] : ['Please answer with detail.'] }] });
+        }, send: async () => 1, checkOutbound: () => {} });
+      worker.intake([update(1, 'Please answer with detail.')]); await worker.drain();
+      expect(journal.view.order[0]?.sent).toBe(1);
+      await worker.summarizeIfNeeded(true);
+      worker.intake([update(2, 'More detail.')]); await worker.drain();
+      expect(journal.view.memory).toEqual([]);
+      expect(journal.view.order[1]).toMatchObject({ memoryPending: true, held: 'memory correction pending' });
+      expect(journal.view.order[1]?.sent).toBeUndefined();
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 it('keeps the two-term guard for an unrelated factual correction', async () => {
