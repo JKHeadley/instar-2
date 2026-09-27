@@ -121,10 +121,13 @@ async function main() {
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       withheld: withheldView(view.view),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
+      heldNotices: view.view.order.filter(t => t.heldNoticeIntent !== undefined).map(t => ({ update: t.update,
+        state: t.heldNoticeSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
-      unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
+      unknownSends: view.view.order.filter(t => t.intent && !t.sent
+        || t.heldNoticeIntent && !t.heldNoticeSent).length,
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
@@ -271,6 +274,7 @@ async function main() {
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
+      timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
@@ -376,6 +380,15 @@ async function main() {
       try { worker.pollGate(); } catch {
         const v = journal.view;
         endReason = `${v.order.length >= v.limits.maxTurns ? 'update' : v.calls >= v.limits.maxCalls ? 'model attempt' : 'reply'} cap reached`;
+        // Keep this bounded runner alive until a held turn's one notice is due.
+        // The existing stop and expiry gates remain active during the wait.
+        let due;
+        while ((due = worker.nextHeldNoticeAt()) !== null) {
+          while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, g.expires))
+            await delay(Math.min(1000, due - Date.now(), g.expires - Date.now()));
+          if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= g.expires) break;
+          await worker.drain(); summarizeLater();
+        }
         break;
       }
       if (signalled || workerStop.value || existsSync(stopPath)) break;

@@ -12,6 +12,7 @@ import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
+import { messageTime, zoneFormatter } from './self-state.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
@@ -27,6 +28,9 @@ export const PREVIEW_COMMITMENT_LIMIT = 10;
 export const PREVIEW_CORRECTION_LIMIT = 3;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
+export const HELD_NOTICE_AFTER_MS = 600_000;
+const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable'
+  || reason === 'call cap' || reason === 'memory correction pending';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
 
@@ -57,6 +61,8 @@ export type JournalRecord =
     memory?: MemoryChange[]; memoryPending?: true; usage?: ModelUsage; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer'; at: number }
+  | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
@@ -80,7 +86,7 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true;
+  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
@@ -127,7 +133,7 @@ function project(view: JournalView, row: JournalRecord): void {
     checkCaps(view, row);
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
     view.capAuthority = row.authority; view.capRaisedAt = row.at;
-    for (const turn of view.order) if (turn.held === 'call cap' || turn.held === 'reply cap') delete turn.held;
+    for (const turn of view.order) if (turn.held === 'call cap' || turn.held === 'reply cap') { delete turn.held; delete turn.heldSince; }
     return;
   }
   if (row.kind === 'intake') {
@@ -189,6 +195,20 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
+  if (row.kind === 'held-notice-intent') {
+    if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldSince === undefined
+      || row.at <= turn.heldSince + HELD_NOTICE_AFTER_MS || turn.intent !== undefined
+      || turn.heldNoticeIntent !== undefined || view.replies >= view.limits.maxReplies
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
+      || row.grant !== view.genesis.grant || !/^PREVIEW — I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text))
+      throw Error('preview journal: held notice intent order');
+    turn.heldNoticeIntent = row.text; view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent') {
+    if (turn.heldNoticeIntent === undefined || turn.heldNoticeSent !== undefined
+      || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: held notice receipt order');
+    turn.heldNoticeSent = row.message; return;
+  }
   const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? UNKNOWN_ANSWER_NOTICE : undefined);
   if (row.kind === 'reply-jev-reserve') {
     if (replyCandidate === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
@@ -214,7 +234,7 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
-  if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
+  if (row.kind === 'reserve' || row.kind === 'intent') { delete turn.held; delete turn.heldSince; }
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];
@@ -249,7 +269,13 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.memory) view.memory.push(...row.memory); }
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
-  if (row.kind === 'hold') turn.held = row.reason;
+  if (row.kind === 'hold') {
+    if (!heldNoticeReason(turn.held) || !heldNoticeReason(row.reason)) {
+      if (heldNoticeReason(row.reason)) turn.heldSince = row.at;
+      else delete turn.heldSince;
+    }
+    turn.held = row.reason;
+  }
 }
 
 export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extract<JournalRecord,{kind:'genesis'}>,
@@ -394,6 +420,7 @@ export function raiseJournalCaps(journal: ReturnType<typeof openPreviewJournal>,
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  timeZone?: string;
   /** Static sources, or a function read at each turn (for the desk's report). */
   sources?: unknown;
   prepareModel?(input: { question: string; context: string; id: string }): string;
@@ -423,6 +450,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       throw Error('preview poll capacity reached');
     }
   };
+  const nextHeldNoticeAt = () => journal.view.order.filter(turn => turn.accepted && heldNoticeReason(turn.held)
+    && turn.heldSince !== undefined && turn.intent === undefined && turn.heldNoticeIntent === undefined
+    && journal.view.replies < journal.view.limits.maxReplies)
+    .reduce<number | null>((due, turn) => Math.min(due ?? Infinity, turn.heldSince! + HELD_NOTICE_AFTER_MS + 1), null);
   const intake = (updates: readonly TelegramUpdate[]) => {
     gate();
     for (const update of updates) {
@@ -534,6 +565,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN' : 'Telegram API accepted')
     : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
       : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
+    : item.heldNoticeIntent ? (item.heldNoticeSent === undefined ? 'held notice delivery UNKNOWN; answer pending'
+      : 'held notice Telegram API accepted; answer pending')
     : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending';
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
@@ -546,7 +579,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const history = earlier.map(item => ({ ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true),
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
-      ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}), outcome: outcome(item) }));
+      ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
+      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent } : {}), outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn; mentions: { person: string; quote: string }[] }>();
     if (summary) for (const note of named) {
@@ -575,6 +609,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true), answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
+      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.filter(item => !journal.view.memory.some(change =>
       change.source === item.id || change.replies?.includes(item.id))).map(item => ({ update: item.update, date: dated(item),
@@ -679,12 +714,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
             continue; // later eligible loss notices must still be reached
           }
-          if (turn.held === 'memory correction pending') delete turn.held;
+          if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; }
         }
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
           if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
-          delete turn.held;
+          delete turn.held; delete turn.heldSince;
         }
         if (turn.held) continue;
         gate();
@@ -819,6 +854,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (message !== null && Number.isSafeInteger(message) && message > 0)
             journal.append({ kind: 'sent', id: turn.id, message, at: ports.now() });
         } catch { /* exact intent stays UNKNOWN */ }
+      }
+      // A held notice has its own one-shot intent. It never settles or redispatches
+      // the answer, so a later cap raise can still release that answer normally.
+      for (const turn of journal.view.order) {
+        if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldNoticeIntent !== undefined
+          || turn.intent !== undefined || turn.heldSince === undefined
+          || ports.now() <= turn.heldSince + HELD_NOTICE_AFTER_MS
+          || journal.view.replies >= journal.view.limits.maxReplies) continue;
+        gate();
+        const parts = Object.fromEntries(zoneFormatter(ports.timeZone ?? 'UTC').formatToParts(messageTime(turn) ?? turn.at)
+          .map(part => [part.type, part.value]));
+        const reply = `PREVIEW — I'm holding my answer to your message from ${parts.hour}:${parts.minute}; it will follow or I'll tell you why`;
+        ports.checkOutbound(reply);
+        const thread = turn.thread === undefined ? {} : { thread: turn.thread };
+        journal.append({ kind: 'held-notice-intent', id: turn.id, text: reply, chat: journal.view.genesis.chat,
+          ...thread, update: turn.update, grant: journal.view.genesis.grant, at: ports.now() });
+        gate();
+        try { const message = await ports.send({ text: reply, expectedText: reply, chat: journal.view.genesis.chat,
+          ...thread, update: turn.update });
+          if (message !== null && Number.isSafeInteger(message) && message > 0)
+            journal.append({ kind: 'held-notice-sent', id: turn.id, message, at: ports.now() });
+        } catch { /* held notice intent stays UNKNOWN; never repeat it */ }
       }
     } finally { working = false; }
   };
@@ -1097,7 +1154,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return preparedFor({ id: 'probe', update: (last?.update ?? -1) + 1, text, raw: '', accepted: true,
       at: ports.now(), reserved: false });
   };
-  return { intake, drain, summarizeIfNeeded, checkCoherence, gate, pollGate, probe,
+  return { intake, drain, summarizeIfNeeded, checkCoherence, gate, pollGate, nextHeldNoticeAt, probe,
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };
 }
