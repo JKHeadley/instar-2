@@ -1179,6 +1179,16 @@ reports `modelJsonShapes`: content-free counts keyed `role/layer/outcome/shape`
 or `<wrapper>-wrong-fields` when the JSON parsed but failed its checks), plus the
 last malformed one, from a plaintext sidecar `model-json-shapes.json` outside
 the journal. It never holds model text and never feeds an outcome.
+Both LF and CRLF line endings are accepted for a whole-response fence. A CRLF
+fence containing one valid review verdict now reaches the existing field checks;
+prose before or after it, including prose that contradicts a PASS object, still
+holds the reply as malformed. `held-reply-replay.test.ts` drives twelve isolated
+encrypted-journal turns with stubbed output caps, fences, contradictory prose,
+Jev outage, review timeout and ordinary neighbors. It prints first-attempt holds
+by class using the same `callOutcomeCounts`, `lastCallOutcomes` and
+`modelJsonShapes` shapes as status. The fixed fixture is a regression benchmark,
+not a measurement of the live incident frequency. Justin's supervised
+operator-channel procedure is [held-reply-reduction-live-test.md](held-reply-reduction-live-test.md).
 The journal never stores the failed model's raw output. To exercise this path in
 an isolated trial, follow [journal-model-failure-live-test.md](journal-model-failure-live-test.md).
 

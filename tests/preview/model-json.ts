@@ -52,7 +52,7 @@ export function parseModelJson(text: string): ModelJsonResult {
   if (whole !== undefined) return { ok: false, shape: 'not-json' };
   // A complete whole-response fence: its body must parse as one object on its own,
   // so a fence inside a JSON string (an answer quoting code) stays data.
-  const fence = /^```(?:json)?[ \t]*\n([\s\S]*?)\n?[ \t]*```$/iu.exec(trimmed);
+  const fence = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\n?[ \t]*```$/iu.exec(trimmed);
   if (fence) {
     let inner: unknown;
     try { inner = JSON.parse((fence[1] ?? '').trim()); } catch { inner = undefined; }

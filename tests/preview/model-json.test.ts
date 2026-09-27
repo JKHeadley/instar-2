@@ -1,13 +1,21 @@
 import { expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { failureShapeOf, parseModelJson } from './model-json.js';
 
 const decision = { type: 'Decision', conclusion: { subject: 'preview-stage2-answer', value: 'Noted {not json} "quoted".' } };
 const text = JSON.stringify(decision);
 
+it('parses the genuine redacted provider result capture as one bare object', () => {
+  const captured = readFileSync(join(process.cwd(), 'tests/fixtures/provider-failure/claude-limit-result.json'), 'utf8');
+  expect(parseModelJson(captured)).toMatchObject({ ok: true, shape: 'bare', value: { type: 'result' } });
+});
+
 it.each([
   ['the whole text', `  ${text}\n`, 'bare'],
   ['a ```json fence', `\`\`\`json\n${text}\n\`\`\``, 'fenced'],
   ['a bare ``` fence', `\`\`\`\n${text}\n\`\`\``, 'fenced'],
+  ['a whole CRLF fence', `\`\`\`json\r\n${text}\r\n\`\`\``, 'fenced'],
   ['a whole-response fence with spaces outside', `  \`\`\`json\n${text}\n\`\`\`  `, 'fenced'],
 ])('accepts exactly one object as %s', (_name, input, shape) => {
   expect(parseModelJson(input)).toEqual({ ok: true, value: decision, shape });
@@ -21,6 +29,7 @@ it.each([
   ['a pass object inside an unterminated array', `[{"verdict":"pass","ruleIds":[],"reason":"ok"}`, 'prose-wrapped'],
   ['a rejection fence followed by a JSON fence', `\`\`\`\nVIOLATION: do not send\n\`\`\`\n\`\`\`json\n{"verdict":"pass","ruleIds":[],"reason":"ok"}\n\`\`\``, 'fenced'],
   ['a JSON fence followed by a rejection', `\`\`\`json\n${text}\n\`\`\`\nVIOLATION: do not send this.`, 'fenced'],
+  ['a CRLF JSON fence followed by a rejection', `\`\`\`json\r\n${text}\r\n\`\`\`\r\nVIOLATION: do not send this.`, 'fenced'],
   ['two objects in prose', `First ${text} and second ${text}`, 'multiple-objects'],
   ['a trailing second object', `${text} {"type":"Decision"}`, 'multiple-objects'],
   ['two fences', `\`\`\`json\n${text}\n\`\`\`\n\`\`\`json\n${text}\n\`\`\``, 'multiple-objects'],
