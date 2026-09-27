@@ -592,9 +592,10 @@ npx vitest run tests/preview/journal-upgrade-compat.test.ts --configLoader=runne
 actual runner-frozen14 (`7d824d64`) journal module. It contains the reviewed
 renewal frame, two answered turns, a corrected summary, and a held turn. It also
 seeds the runner's content-free `model-json-shapes.json` diagnostic sidecar.
-The test archives frozen14 and this tree into separate checkouts and verifies
-equal status, replayed state, prepared answer packet, and one grounded answer
-with an offline model stub. The older frozen13 (`89d5ee35`) status and writer
+The test archives frozen14 and frozen13 into separate checkouts and exercises
+the current candidate checkout, comparing status, replayed state, prepared
+answer packet, and one grounded answer with an offline model stub. The older
+frozen13 (`89d5ee35`) status and writer
 both refuse the renewed journal without output or byte change. The older
 reader's known refusal is for an **uncompacted** renewal frame; compaction can
 hide that frame in a snapshot, so this is not a rollback guarantee. No network,
