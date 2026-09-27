@@ -592,6 +592,9 @@ export function settleSummarySchedule(when: string, repeat: SummaryGrant['repeat
     // refused, never widened to an earlier start or dropped (Rule 57).
     const iso = /\b(\d{4}-\d{2}-\d{2})\b/u.exec(phrase), rest = phrase.replace(/\bfrom now on\b/gu, ' ');
     let start = today;
+    // An end or duration qualification is refused whether or not a start day was recognized.
+    if (/\b(?:next|until|till|through|ending|for)\b/u.test(rest))
+      return { refusal: 'I can only settle a start day given as tomorrow, a weekday or YYYY-MM-DD, with no end date' };
     if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d/u.test(phrase))
       return { refusal: 'give the start day as tomorrow, a weekday or YYYY-MM-DD' };
     if (/\btomorrow\b/u.test(phrase)) start = addDays(today, 1);
@@ -603,7 +606,7 @@ export function settleSummarySchedule(when: string, repeat: SummaryGrant['repeat
       if (!/\b(?:starting|beginning|from)\b/u.test(rest)) return { refusal: 'a daily summary names no single weekday; say every Friday for weekly' };
       if (offsetTo(weekday) === 0) return { refusal: 'that weekday could mean today or next week' };
       start = addDays(today, offsetTo(weekday));
-    } else if (/\b(?:starting|start|beginning|from|after|next|until|till|through|ending|for)\b/u.test(rest))
+    } else if (/\b(?:starting|start|beginning|from|after)\b/u.test(rest))
       return { refusal: 'I can only settle a start day given as tomorrow, a weekday or YYYY-MM-DD, with no end date' };
     if (repeat === 'weekly') {
       if (weekday < 0) return { refusal: 'a weekly summary needs a weekday, such as every Friday at 5 pm' };
@@ -3827,7 +3830,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(ports.now(), item.zone)
           || reminderUnsettled(item)) continue;
         // A requested summary created for this conversation carries its due reminders (Rule 52).
+        // A withdrawn summary never sends, so it carries nothing (Rule 93).
         if (journal.view.order.some(turn => summaryAwaitingSend(turn) && turn.held === undefined
+          && activeSummaryGrants(journal.view).some(grant => grant.id === turn.requestedSummary!.grant)
           && turn.thread === journal.view.turns.get(item.source)!.thread)) continue;
         const thread = journal.view.turns.get(item.source)!.thread, key = JSON.stringify(thread ?? null);
         let group = groups.get(key);
