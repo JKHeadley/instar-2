@@ -17,8 +17,12 @@ const clauses = {
   doorNew: 'the studio door code is 6194.',
   keyOld: 'The spare key is under the cedar pot.',
   channel: 'The ferry docket ID is FERRY-Q7.',
+  samPatel: 'Sam Patel in accounting approved the blue budget.',
+  samRuiz: 'Sam Ruiz, my neighbour, lent me the red ladder.',
+  jon: 'Jon Moss from design chose the amber cover.',
+  john: 'John Vale from legal chose the green contract.',
 } as const;
-type Case = { id: string; question: string; wanted?: string; absent?: string; kind: string };
+type Case = { id: string; question: string; wanted?: string; alsoWanted?: string; absent?: string; kind: string };
 const cases: Case[] = [
   { id: 'observatory', kind: 'fact', question: 'What is the observatory access color?', wanted: clauses.observatory },
   { id: 'person', kind: 'person', question: 'Which entrance does Mira Patel prefer?', wanted: clauses.person },
@@ -27,6 +31,12 @@ const cases: Case[] = [
   { id: 'channel', kind: 'channel-import', question: 'What is the ferry docket ID?', wanted: clauses.channel },
   { id: 'corrected', kind: 'correction', question: 'What is the studio door code?', wanted: clauses.doorNew, absent: clauses.doorOld },
   { id: 'forgotten', kind: 'forget', question: 'Where is the spare key?', absent: clauses.keyOld },
+  { id: 'sam-ambiguous', kind: 'overlapping-name', question: 'What did Sam do?', wanted: clauses.samPatel, alsoWanted: clauses.samRuiz },
+  { id: 'sam-accounting', kind: 'overlapping-name', question: 'What did Sam in accounting approve?', wanted: clauses.samPatel },
+  { id: 'sam-neighbour', kind: 'overlapping-name', question: 'What did my neighbour Sam lend me?', wanted: clauses.samRuiz },
+  { id: 'john-ambiguous', kind: 'overlapping-name', question: 'What did John choose?', wanted: clauses.john, alsoWanted: clauses.jon },
+  { id: 'jon-design', kind: 'overlapping-name', question: 'What did Jon from design choose?', wanted: clauses.jon },
+  { id: 'john-legal', kind: 'overlapping-name', question: 'What did John from legal choose?', wanted: clauses.john },
 ];
 
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
@@ -38,6 +48,14 @@ function packetAnswer(question: string, context: string): string {
   const packet = JSON.parse(context) as Record<string, unknown>;
   const visible = JSON.stringify({ summary: packet.summary, history: packet.history, recalled: packet.recalled,
     people: packet.people, channelMemory: packet.channelMemory, memory: packet.memory });
+  if (question === 'What did Sam do?') return visible.includes(clauses.samPatel) && visible.includes(clauses.samRuiz)
+    ? 'Which Sam do you mean, Sam Patel in accounting or Sam Ruiz your neighbour?' : 'UNKNOWN';
+  if (question === 'What did John choose?') return visible.includes(clauses.john) && visible.includes(clauses.jon)
+    ? 'Which person do you mean, John Vale from legal or Jon Moss from design?' : 'UNKNOWN';
+  if (question.includes('Sam in accounting')) return visible.includes(clauses.samPatel) ? clauses.samPatel : 'UNKNOWN';
+  if (question.includes('neighbour Sam')) return visible.includes(clauses.samRuiz) ? clauses.samRuiz : 'UNKNOWN';
+  if (question.includes('Jon from design')) return visible.includes(clauses.jon) ? clauses.jon : 'UNKNOWN';
+  if (question.includes('John from legal')) return visible.includes(clauses.john) ? clauses.john : 'UNKNOWN';
   const pattern = question.includes('observatory') ? /The observatory access color is [^.]+\./u
     : question.includes('Mira') ? /Mira Patel prefers the [^.]+\./u
     : question.includes('archive') ? /On Tuesday, the archive opens at [^.]+\./u
@@ -54,7 +72,9 @@ function summarize(context: string): string {
     memoryRequest?: { message: string }; memoryCandidates?: { id: string; message: string }[] };
   const found = new Set<string>();
   const input = [packet.summary?.text ?? '', ...packet.history.map(item => item.user)].join('\n');
-  for (const clause of Object.values(clauses)) if (input.includes(clause)) found.add(clause);
+  // The overlapping-name set must be recovered from source-backed people notes, not a verbatim summary.
+  const personClauses = new Set<string>([clauses.samPatel, clauses.samRuiz, clauses.jon, clauses.john]);
+  for (const clause of Object.values(clauses)) if (!personClauses.has(clause) && input.includes(clause)) found.add(clause);
   const message = packet.memoryRequest?.message ?? '';
   const mode = message.startsWith('Actually,') ? 'correct' : message.startsWith('Forget ') ? 'forget' : null;
   const old = mode === 'correct' ? clauses.doorOld : mode === 'forget' ? clauses.keyOld : '';
@@ -64,8 +84,9 @@ function summarize(context: string): string {
     ...(packet.summary?.text.includes(old) ? { summaryPassages: [old] } : {}) }] : [];
   if (mode) found.delete(old);
   if (mode === 'correct') found.add(clauses.doorNew);
-  const people = packet.history.filter(item => item.user.includes('Mira Patel'))
-    .map(item => ({ name: 'Mira Patel', quote: item.user }));
+  const names = ['Mira Patel', 'Sam Patel', 'Sam Ruiz', 'Jon Moss', 'John Vale'];
+  const people = packet.history.flatMap(item => names.filter(name => item.user.includes(name))
+    .map(name => ({ name, quote: item.user })));
   return JSON.stringify({ summary: [...found].join('\n') || 'No planted fact in this interval.', people,
     commitments: [], closed: [], memory, ...(mode && !source ? { memoryDisposition: 'unresolved' } : {}) });
 }
@@ -100,7 +121,8 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
     importChannelFixture(journal, [{ source: 'email', account, id: 'ferry-archive-1', from: 'clerk@example.test',
       at: now - 86_400_000, subject: 'Ferry docket', text: clauses.channel }], account, now);
     const plants = new Map<number, { text: string; thread?: number }>([
-      [3, { text: clauses.observatory }], [Math.floor(turns * .25), { text: clauses.person }],
+      [3, { text: clauses.observatory }], [10, { text: clauses.samPatel }], [11, { text: clauses.samRuiz }],
+      [12, { text: clauses.jon }], [13, { text: clauses.john }], [Math.floor(turns * .25), { text: clauses.person }],
       [Math.floor(turns * .5), { text: clauses.dated }],
       [Math.floor(turns * .75), { text: clauses.topic, thread: 42 }],
       [turns - 15, { text: clauses.doorOld }], [turns - 14, { text: `Actually, ${clauses.doorNew}` }],
@@ -147,7 +169,8 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
       if (!context) throw Error(`model did not receive ${item.id}`);
       const answer = packetAnswer(item.question, context);
       results.push({ id: item.id, kind: item.kind, packetBytes: Buffer.byteLength(context),
-        containsWanted: item.wanted === undefined ? null : context.includes(item.wanted),
+        containsWanted: item.wanted === undefined ? null : context.includes(item.wanted)
+          && (item.alsoWanted === undefined || context.includes(item.alsoWanted)),
         excludesAbsent: item.absent === undefined ? null : !context.includes(item.absent),
         answer, historyMode: (JSON.parse(context) as { historyMode: string }).historyMode, probePreparationMs });
     }

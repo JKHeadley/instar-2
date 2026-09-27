@@ -28,6 +28,26 @@ const hour = 3_600_000, day = 24 * hour;
 const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const counts: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 };
 
+/** Candidate matching only. A nearby spelling never establishes identity. */
+export function similarName(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.min(a.length, b.length) < 3 || Math.max(a.length, b.length) > 24 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length >= b.length) i++;
+    if (b.length >= a.length) j++;
+  }
+  return edits + Number(i < a.length || j < b.length) <= 1;
+}
+
+/** Bound fuzzy selection to capitalized name-shaped query words. */
+export function namedTerms(message: string): string[] {
+  return [...new Set([...message.matchAll(/\b\p{Lu}[\p{L}]{2,23}\b/gu)]
+    .flatMap(match => terms(match[0]!)).filter(word => word.length >= 3 && word.length <= 24))].slice(0, 8);
+}
+
 /** A window of send times named by the message. The operator's time zone is not
  * known, so every window is widened by at least half a day either side. */
 export function namedWindow(message: string, now: number): { from: number; to: number } | null {
@@ -70,6 +90,11 @@ export function selectRecall(input: SentinelInput): number[] {
   add(message, 1);
   add(input.previous ? terms(input.previous) : [], 0.5);
   add(bridge(input.summary, new Set(message)), 0.5);
+  const names = namedTerms(input.message);
+  if (names.length) documents.forEach((words, index) => {
+    if (names.some(name => words.includes(name))) score[index]! += 2;
+    else if (names.some(name => words.some(word => similarName(name, word)))) score[index]! += 1;
+  });
   // A named day counts like one strong matching term, so it ranks alongside content.
   if (window) input.candidates.forEach((turn, index) => {
     if (turn.at >= window.from && turn.at <= window.to) score[index]! += 2;
