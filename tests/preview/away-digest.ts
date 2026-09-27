@@ -55,8 +55,8 @@ export function awayDigest(view: JournalView, runs: RunLog, now: number, current
   const reasons = [...new Set(holds.map(event => event.reason).filter((value): value is string => !!value))].slice(0, 3);
   const uncertainCalls = new Set(changes.filter(event => (event.kind === 'reserve' || event.kind === 'model-uncertain')
     && event.id && view.turns.get(event.id)?.answer === undefined).map(event => event.id));
-  const uncertainSummaries = changes.filter(event => event.kind === 'summary-reserve' && event.through !== undefined
-    && !view.summaries.some(item => item.through === event.through)).length;
+  const uncertainSummaries = new Set(changes.filter(event => event.kind === 'summary-reserve' && event.through !== undefined
+    && view.summaryReservations.has(event.through)).map(event => event.through)).size;
   const unknownSends = changes.filter(event => event.kind === 'intent'
     && event.id && view.turns.get(event.id)?.sent === undefined).length;
   const launches = runs.launches.filter(run => run.at > since && run.at <= now);

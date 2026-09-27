@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE, type JournalRecord } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import type { RunLog } from './self-state.js';
 
@@ -31,6 +31,41 @@ it('uses the prior verified message as the gap anchor and stays absent at or bel
     expect(awayDigest(journal.view, runs, start + 3 * HOUR, journal.view.order[1]!, [])).toBeNull();
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('counts only unresolved in-window summary reservations, including after journal replay', () => {
+  const cases: { name: string; outcome: JournalRecord[]; unknown: number }[] = [
+    { name: 'pending reservation', outcome: [], unknown: 1 },
+    { name: 'recorded unknown outcome', outcome: [
+      { kind: 'summary-uncertain', through: 1, state: 'uncertain', at: start + HOUR + 1 }], unknown: 1 },
+    { name: 'definite failure', outcome: [
+      { kind: 'summary-failed', through: 1, state: 'rejected', failureClass: 'rejected', at: start + HOUR + 1 }], unknown: 0 },
+    { name: 'failure then unresolved retry', outcome: [
+      { kind: 'summary-failed', through: 1, state: 'rejected', failureClass: 'rejected', at: start + HOUR + 1 },
+      { kind: 'summary-reserve', through: 1, at: start + HOUR + 2 }], unknown: 1 },
+    { name: 'completed summary', outcome: [
+      { kind: 'summary', through: 1, text: 'Earlier conversation.', at: start + HOUR + 1 }], unknown: 0 },
+  ];
+  for (const { name, outcome, unknown } of cases) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'away-digest-summary-')));
+    const path = join(root, 'journal.encrypted');
+    try {
+      const journal = openPreviewJournal(path, key, genesis);
+      journal.append({ kind: 'intake', id: 'first', update: 1, text: 'hello', raw: raw(1, 'hello'), accepted: true,
+        cursor: 2, at: start });
+      journal.append({ kind: 'summary-reserve', through: 1, at: start + HOUR });
+      for (const row of outcome) journal.append(row);
+      journal.append({ kind: 'intake', id: 'second', update: 2, text: 'back', raw: raw(2, 'back'), accepted: true,
+        cursor: 3, at: start + 4 * HOUR });
+      const digest = awayDigest(journal.view, runs, start + 4 * HOUR, journal.view.order[1]!, [])!;
+      expect(digest, name).toContain(unknown ? `0 unknown answer call(s), ${unknown} unknown summary call(s), 0 unknown send(s)`
+        : 'No recorded changes in these sources.');
+      journal.close();
+      const recovered = openPreviewJournal(path, key);
+      expect(awayDigest(recovered.view, runs, start + 4 * HOUR, recovered.view.order[1]!, []), `${name} on replay`).toBe(digest);
+      recovered.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 it('replays a bounded digest of runs, holds, lost answers, unknown effects, raised caps and desk changes', () => {
