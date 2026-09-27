@@ -580,6 +580,16 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+Each poll requests up to the remaining durable turn slots, capped at Telegram's
+100-update batch limit. The worker fsyncs every returned update in `update_id` order
+before it starts reply work. If a crash interrupts a batch, replay starts at the
+last fsynced cursor; redelivery deduplicates those updates. A burst that spans
+polls remains queued at Telegram until its update is fetched. An edit in the same
+accepted batch can supersede an earlier unsent message. If edit settlement needs
+several summary frontiers, the worker completes reachable frontiers before sending
+later ordinary replies; an unresolved earlier turn holds later ordinary work with
+an explicit reason. Lost-answer notices retain their separate recovery path.
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
@@ -954,8 +964,10 @@ decides whether a stated fact changed. Its validated correction uses the same me
 withholding path as a direct operator correction; the old revision and earlier replies stay in
 the journal, while later model packets show the latest revision and withhold the superseded
 fact. A wording-only edit can record an empty memory decision. If the model cannot settle the
-edit, later ordinary replies are held as `memory correction pending`; no second send route is
-created. Revisions consume the existing intake and model-call caps. The journal and writer
+edit within the existing bounded attempts, the journal records it as undecided
+and later replies see both redacted revisions with an uncertainty instruction.
+While that decision is pending, later ordinary replies are held behind the
+earlier turn. No second send route is created. Revisions consume the existing intake and model-call caps. The journal and writer
 remain machine-local. See [message-edit-live-test.md](message-edit-live-test.md) for the
 supervised private-channel test.
 

@@ -27,14 +27,14 @@ it('records a fact edit against the original turn, corrects memory, and never re
         if (input.id.startsWith('summary:')) {
           if (packet.memoryRequest?.editedTurn) {
             expect(packet.memoryCandidates[0]).toMatchObject({ message: 'The launch is on Tuesday.' });
-            return JSON.stringify({ summary: 'The launch is on Thursday.', people: [], memory: [{ mode: 'correct',
+            return JSON.stringify({ summary: 'The launch is on Thursday.', people: [], questions: [], memory: [{ mode: 'correct',
               source: packet.memoryRequest.replaces, quote: 'The launch is on Tuesday.',
               replacement: 'The launch is on Thursday.' }] });
           }
-          return JSON.stringify({ summary: 'The launch is Thursday.', people: [], memory: [] });
+          return JSON.stringify({ summary: 'The launch is Thursday.', people: [], questions: [], memory: [] });
         }
         return JSON.stringify({ reply: 'Understood.', memory: [], dated: [] });
-      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {} };
+      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {}, summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }) };
     let worker = createJournalWorker(journal, ports);
     worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
     expect(sends).toEqual([1]);
@@ -71,7 +71,7 @@ it('keeps foreign and unlinked edits durably without a turn, model call or reply
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, genesis);
     let calls = 0, sends = 0;
     const worker = createJournalWorker(journal, { now: () => 1790002000000, stopped: () => false,
-      model: async () => { calls++; return 'reply'; }, send: async () => { sends++; return 1; }, checkOutbound: () => {} });
+      model: async () => { calls++; return 'reply'; }, send: async () => { sends++; return 1; }, checkOutbound: () => {}, summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }) });
     worker.intake([edit(1, 'orphan'), message(2, 'Known fact.'), edit(3, 'foreign', 42, 99), edit(4, 'different message', 99)]);
     await worker.drain();
     expect(journal.view.cursor).toBe(5);
@@ -89,10 +89,10 @@ it('does not send a stale answer when the message is edited before its first dra
     const sends: number[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790002000000, stopped: () => false,
       model: async input => input.id.startsWith('summary:')
-        ? JSON.stringify({ summary: 'The launch is on Thursday.', people: [], memory: [{ mode: 'correct',
+        ? JSON.stringify({ summary: 'The launch is on Thursday.', people: [], questions: [], memory: [{ mode: 'correct',
           source: journal.view.order[0]!.id, quote: 'The launch is on Tuesday.', replacement: 'The launch is on Thursday.' }] })
         : 'The launch is on Thursday.',
-      send: async input => { sends.push(input.update); return sends.length; }, checkOutbound: () => {} });
+      send: async input => { sends.push(input.update); return sends.length; }, checkOutbound: () => {}, summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }) });
     worker.intake([message(1, 'The launch is on Tuesday.'), edit(2, 'The launch is on Thursday.')]);
     await worker.drain();
     expect(journal.view.order[0]?.held).toBe('superseded by edit');
@@ -115,11 +115,11 @@ it('keeps successive revisions attached to one original and treats a wording edi
         const packet = JSON.parse(input.context);
         if (packet.memoryRequest?.message === 'The launch is Thursday.') {
           expect(packet.memoryCandidates[0].message).toBe('The launch is on Thursday.');
-          return JSON.stringify({ summary: 'The launch is on Thursday.', people: [], memory: [] });
+          return JSON.stringify({ summary: 'The launch is on Thursday.', people: [], questions: [], memory: [] });
         }
-        return JSON.stringify({ summary: 'The launch is on Thursday.', people: [], memory: [{ mode: 'correct',
+        return JSON.stringify({ summary: 'The launch is on Thursday.', people: [], questions: [], memory: [{ mode: 'correct',
           source: packet.memoryRequest.replaces, quote: 'The launch is on Tuesday.', replacement: 'The launch is on Thursday.' }] });
-      }, send: async () => ++sends, checkOutbound: () => {} });
+      }, send: async () => ++sends, checkOutbound: () => {}, summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }) });
     worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
     worker.intake([edit(2, 'The launch is on Thursday.')]); await worker.drain();
     worker.intake([edit(3, 'The launch is Thursday.')]); await worker.drain();
@@ -149,13 +149,13 @@ it('allows a later edit to restore an earlier fact, including after replay', asy
       model: async (input: { id: string; context: string }) => {
         if (!input.id.startsWith('summary:')) return 'Understood.';
         const packet = JSON.parse(input.context);
-        if (!packet.memoryRequest?.editedTurn) return JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], memory: [] });
+        if (!packet.memoryRequest?.editedTurn) return JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], questions: [], memory: [] });
         const restored = packet.memoryRequest.message === 'The launch is on Tuesday.';
         expect(packet.memoryCandidates[0].message).toBe(restored ? 'The launch is on Thursday.' : 'The launch is on Tuesday.');
-        return JSON.stringify({ summary: packet.memoryRequest.message, people: [], memory: [{ mode: 'correct',
+        return JSON.stringify({ summary: packet.memoryRequest.message, people: [], questions: [], memory: [{ mode: 'correct',
           source: packet.memoryRequest.replaces, quote: packet.memoryCandidates[0].message,
           replacement: packet.memoryRequest.message }] });
-      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {} };
+      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {}, summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }) };
     let worker = createJournalWorker(journal, ports);
     worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
     worker.intake([edit(2, 'The launch is on Thursday.')]); await worker.drain();
@@ -186,10 +186,10 @@ it('withdraws an edited claim without inventing a replacement', async () => {
         if (!input.id.startsWith('summary:')) return 'Understood.';
         const packet = JSON.parse(input.context);
         return packet.memoryRequest?.editedTurn
-          ? JSON.stringify({ summary: 'The operator withdrew the launch claim.', people: [], memory: [{ mode: 'forget',
+          ? JSON.stringify({ summary: 'The operator withdrew the launch claim.', people: [], questions: [], memory: [{ mode: 'forget',
             source: packet.memoryRequest.replaces, quote: 'The launch is on Tuesday.' }] })
-          : JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], memory: [] });
-      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {} };
+          : JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], questions: [], memory: [] });
+      }, send: async (input: { update: number }) => { sends.push(input.update); return sends.length; }, checkOutbound: () => {}, summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }) };
     let worker = createJournalWorker(journal, ports);
     worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
     worker.intake([edit(2, 'I withdraw that claim.')]); await worker.drain();
@@ -219,9 +219,9 @@ it.each(['unresolved', 'malformed'] as const)('releases later replies after %s e
         const packet = JSON.parse(input.context);
         return packet.memoryRequest?.editedTurn
           ? failure === 'malformed' ? 'not a JSON judgment'
-            : JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], memory: [], memoryDisposition: 'unresolved' })
-          : JSON.stringify({ summary: 'The edit is unresolved.', people: [], memory: [] });
-      }, send: async () => ++sends, checkOutbound: () => {} };
+            : JSON.stringify({ summary: 'The launch is on Tuesday.', people: [], questions: [], memory: [], memoryDisposition: 'unresolved' })
+          : JSON.stringify({ summary: 'The edit is unresolved.', people: [], questions: [], memory: [] });
+      }, send: async () => ++sends, checkOutbound: () => {}, summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }) };
     let worker = createJournalWorker(journal, ports);
     worker.intake([message(1, 'The launch is on Tuesday.')]); await worker.drain();
     worker.intake([edit(2, 'The launch is on Thursday.'), message(3, 'When is the launch?', 43)]);

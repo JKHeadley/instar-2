@@ -362,6 +362,8 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
     || turn.held === 'summary unavailable: prompt overflow')) return { reason: 'bytes', limit: view.limits.maxBytes };
   return null;
 }
+/** Telegram may return 100 updates. Never request past the remaining durable turn slots. */
+export const journalPollLimit = (view: JournalView) => Math.min(100, Math.max(0, view.limits.maxTurns - view.order.length));
 /** The local operator line is durably fenced before output. It consumes no
  * reply slot and never sends a message after the reply allowance is spent. */
 export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>, at: number, writeLine: (line: string) => void): string | null {
@@ -1902,11 +1904,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (working) throw Error('preview journal: second worker refused');
     working = true;
     try {
+      let blockedEarlier = false;
       for (const turn of journal.view.order) {
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
         if (journal.view.order.some(item => item.accepted && item.editOf === turn.id)) {
           if (turn.held !== 'superseded by edit')
             journal.append({ kind: 'hold', id: turn.id, reason: 'superseded by edit', at: ports.now() });
+          continue;
+        }
+        if (blockedEarlier && turn.modelState !== 'uncertain') {
+          if (turn.held !== 'earlier turn pending')
+            journal.append({ kind: 'hold', id: turn.id, reason: 'earlier turn pending', at: ports.now() });
           continue;
         }
         // A correction is decided before its reply, so an uncertain send cannot
@@ -1915,19 +1923,27 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // A content-free loss notice cannot repeat the stale fact; let it through
         // even if a later correction still holds ordinary answers.
         if (pendingMemory() && turn.modelState !== 'uncertain') {
-          await summarizeIfNeeded(true);
-          settleExhaustedEdit();
+          // A batch can need more than one summary frontier before the edit is
+          // reached. Finish each durable prefix before considering later replies.
+          for (let attempt = 0; pendingMemory() && attempt < journal.view.order.length; attempt++) {
+            const before = journal.view.summaries.length;
+            await summarizeIfNeeded(true);
+            settleExhaustedEdit();
+            if (journal.view.summaries.length === before) break;
+          }
           // An UNKNOWN summary cannot decide this request. Settle it as undecided
           // so the recovery pause does not hold every later answer.
           for (let request = pendingMemory(); request && journal.view.summaryReservations.size > 0; request = pendingMemory())
             journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-uncertain', at: ports.now() });
           if (pendingMemory()) {
             if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
+            blockedEarlier = true;
             continue; // later eligible loss notices must still be reached
           }
           if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; }
         }
         if (!pendingMemory() && turn.held === 'memory correction pending') delete turn.held;
+        if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
           if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
