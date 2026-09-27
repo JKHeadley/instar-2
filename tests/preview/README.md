@@ -714,6 +714,18 @@ recalled turns, person notes, and the oldest open items. `status` reports `commi
 
 ### Correcting and forgetting memory
 
+An operator can ask "What do you remember about me?" in the private preview chat. The existing
+capped answer model identifies that request; the runner renders a plain list from the active
+journal projection, newest first, with at most 20 entries. It includes open operator memory
+requests, dated items, active reply preferences, and corrected replacement facts. It excludes
+closed requests, forgotten clauses, and corrected-away clauses. Each entry says to quote that
+item and ask for a correction or forgetting. A byte bound may show fewer than 20, and the
+reply states how many older active items were omitted. An empty projection is stated plainly.
+This is a list of explicitly saved items in this preview journal, not a claim to enumerate
+every fact in the raw conversation or an agent-owned channel export. The existing reply check,
+secret wall, stop, cap, durable intent, and UNKNOWN non-replay path apply. For the supervised
+operator check, use [memory-list-live-test.md](memory-list-live-test.md).
+
 A direct correction or forget request from the bound Telegram operator can be judged in the existing
 rolling summary before its reply. A small text cue schedules that call early;
 it cannot itself supersede anything. The ordinary capped reply call can also return a memory
