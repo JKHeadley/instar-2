@@ -24,8 +24,9 @@ compacted by this script. No Telegram send or model call is needed.
    ```
 
 3. Require `result: "verified"`, unchanged cursor, turns, calls, replies, holds,
-   UNKNOWN calls and sends, stop and summary reservations, and a readable compacted file. Compare
-   the counters with the saved live `status`. Record the before and after byte
+   UNKNOWN calls and sends, journal-level stop and summary reservations, and a readable compacted file. Compare
+   the counters with the saved live `status`; the separate live stop sidecar stays
+   on the original root and is not part of this copy. Record the before and after byte
    counts. A small live trial may make the snapshot larger; the automatic path
    starts after 8 MiB and only runs again after the file doubles from its last
    snapshot size.
