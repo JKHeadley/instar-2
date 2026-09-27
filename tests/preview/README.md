@@ -686,6 +686,35 @@ records; it does not exercise admission, draining, the safety gates, a model,
 or a Telegram send. Justin's supervised channel procedure is in
 [journal-memory-restart-soak-live-test.md](live-tests-archive/journal-memory-restart-soak-live-test.md).
 
+### Offline pre-switch canary
+
+From the candidate checkout, the desk runs one foreground command before any
+live preview build switch:
+
+```sh
+node tests/preview/offline-canary.mjs
+```
+
+It exits 0 with `OFFLINE PRE-SWITCH CANARY: PASS`, or exits 1 with `FAIL` and
+the failing assertion. It runs only `offline-canary.test.ts`. All journal roots
+are temporary, use a fixture key, and are deleted after each test. The model,
+Jev and Telegram sends are deterministic substitutes; no provider, Bot API,
+vault binding or live journal is used. The suite checks an answered turn and
+clean reply check; a flagged reply whose review text contradicts itself stays
+held; rolling summary acceptance and rejection through Jev and full-context
+review; renewal and policy-successor validation against the pinned invocation
+policy; the narrow Decision and summary-verdict JSON parser; read-only status
+counters; and reopening an encrypted frozen15 journal fixture with a pending
+send intent. On replay that UNKNOWN send is not repeated, while a later turn can
+be answered.
+
+The frozen journal fixture was generated with `journal.ts` whose bytes match
+live commit `3695117d` at this canary's base. It contains synthetic text and an
+UNKNOWN send, never an operator conversation.
+This is compatibility and offline behavior evidence, not a live-channel proof.
+For the separate supervised operator-channel check, Justin follows
+[offline-canary-live-test.md](live-tests-archive/offline-canary-live-test.md).
+
 ### Offline recall benchmark
 
 `memory-scale-10k.test.ts` is the offline depth-at-scale check. It seeds the
