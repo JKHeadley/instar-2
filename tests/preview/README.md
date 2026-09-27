@@ -758,6 +758,27 @@ proof that nothing was said. `inspect --text` shows the selected entries without
 making a call or changing the journal. See
 [people-timeline-live-test.md](people-timeline-live-test.md) for Justin's live check.
 
+When two recalled notes use a short and longer name with the same name words
+(for example, `Sam` and `Sam Ortiz`), the packet carries up to five
+`personMergeCandidates`. Each candidate identifies both exact source notes and
+their names, and gives a `confirmText` sentence. This is evidence for the reply to ask the operator, never an
+identity decision. A shared first name can produce several candidates; `Sam
+Ruiz` remains a separate person even if the operator later links `Sam` and
+`Sam Ortiz`. If two source pairs would need the same confirmation sentence,
+neither is offered: that sentence cannot identify which Sam the operator meant.
+The model may propose a link in its ordinary reply decision only
+after the authenticated operator sends that candidate's exact `confirmText` as
+a direct correction. The runner verifies the offered note IDs and exact
+confirming message before recording a link in
+the existing encrypted answer frame. A question, another sender, malformed
+decision, or silence records no link. Replayed links let either confirmed note
+recall the other, while the original notes remain unchanged. `inspect --text`
+shows candidates and confirmed links; `status` lists confirmed source pairs and
+the confirming update. Candidate data gives way with optional person notes
+under the existing prompt bound. See
+[people-merge-live-test.md](people-merge-live-test.md) for Justin's private-chat
+check.
+
 ### Remembering commitments
 
 The same summary call also lists what the operator asked the agent to remember or do
