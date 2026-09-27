@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
-import { appendRun, readRuns, selfState, selfStateSource } from './self-state.js';
+import { appendRun, heldRepliesToday, readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(4);
 // 2026-09-26 19:00 UTC = 12:00 PDT.
@@ -47,7 +47,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(text).toContain('My replies Telegram accepted: 1 today, 3 in this trial');
     expect(text).toContain('Model attempts: 3 of 3 used, 0 left');
     expect(text).toContain('Held messages: 1 (call cap)');
-    expect(text).toContain('Replies held today: 1. Update 4: call cap (still held).');
+    expect(text).toContain('Replies held today: 1. Reasons: 1 (call cap). Update 4: call cap (still held).');
     expect(text).toContain('Caps have not been raised');
     expect(text).toContain('Last restart: 2026-09-26 08:00 PDT. The run before it started 2026-09-25 16:00 PDT and ended 2026-09-25 16:01 PDT: paused by signal SIGTERM.');
     w.journal.close(); // Run 2 dies without recording an end (crash).
@@ -73,7 +73,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(probeState).toContain('Last restart: 2026-09-26 11:30 PDT. The run before it started 2026-09-26 08:00 PDT and ended without recording why (crash, kill or power loss).');
     expect(probeState).toContain('Launches recorded: 3 (2 today)');
     expect(probeState).toContain('Unknown outcomes (never retried): 0 model call(s), 0 send(s).');
-    expect(probeState).toContain('Replies held today: 1. Update 4: call cap (released).');
+    expect(probeState).toContain('Replies held today: 1. Reasons: 1 (call cap). Update 4: call cap (released).');
     // The zone is stated, never assumed: an hour past local midnight nothing from "yesterday" counts.
     expect(selfState(w.journal.view, readRuns(runs), clock, 'UTC', run3)).toContain('(time zone UTC; "today" means 2026-09-26 there)');
     expect(selfState(w.journal.view, readRuns(runs), NOON + 13 * 3_600_000, 'America/Los_Angeles', run3))
@@ -136,11 +136,79 @@ it('status replays distinct replies held on the local day and gives each journal
       { update: 1, reasons: ['call cap'], stillHeld: true },
       { update: 2, reasons: ['reply check unavailable', 'reply cap'], stillHeld: true },
     ] });
-    expect(result.self).toContain('Replies held today: 2. Update 1: call cap (still held). '
+    expect(result.self).toContain('Replies held today: 2. Reasons: 1 (call cap), 1 (reply check unavailable), 1 (reply cap). '
+      + 'Update 1: call cap (still held). '
       + 'Update 2: reply check unavailable; reply cap (still held).');
     expect(result.holds).toEqual([{ update: 1, reason: 'call cap' }, { update: 2, reason: 'reply cap' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('excludes summary work on delivered turns while retaining a real reply hold after delivery', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-held-summary-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 1 });
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'first', NOON)]); await worker.drain();
+    const first = journal.view.order[0]!;
+    journal.append({ kind: 'hold', id: first.id, reason: 'summary oversized turn', at: NOON });
+    expect(heldRepliesToday(journal.view, NOON, 'UTC')).toEqual({ count: 0, replies: [] });
+    expect(selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC')).toContain('Replies held today: 0.');
+    worker.intake([update(2, 'second', NOON)]);
+    const second = journal.view.order[1]!;
+    await worker.drain();
+    expect(second.held).toBe('call cap');
+    raiseJournalCaps(journal, { maxCalls: 4, maxReplies: 4, maxTurns: 7, authority: 'Justin recorded raise', at: NOON });
+    await worker.drain();
+    expect(second.sent).toBe(1);
+    journal.append({ kind: 'hold', id: second.id, reason: 'summary preflight unavailable', at: NOON });
+    expect(heldRepliesToday(journal.view, NOON, 'UTC')).toEqual({ count: 1, replies: [
+      { update: 2, reasons: ['call cap'], stillHeld: false },
+    ] });
+    expect(selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC'))
+      .toContain('Replies held today: 1. Reasons: 1 (call cap). Update 2: call cap (released).');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps the model briefing bounded after many released holds and a completed summary', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-held-many-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis, maxCalls: 300, maxReplies: 300, maxTurns: 300, maxBytes: 6144 });
+    const intake = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    for (let i = 1; i <= 200; i++) {
+      intake.intake([update(i, 'hello', NOON)]);
+      const id = journal.view.order.at(-1)!.id;
+      journal.append({ kind: 'hold', id, reason: 'call cap', at: NOON });
+      journal.append({ kind: 'reserve', id, at: NOON });
+      journal.append({ kind: 'answer', id, text: 'ok', at: NOON });
+      journal.append({ kind: 'intent', id, text: 'PREVIEW — ok', chat: genesis.chat,
+        update: i, grant: genesis.grant, at: NOON });
+      journal.append({ kind: 'sent', id, message: i, at: NOON });
+    }
+    journal.append({ kind: 'summary-reserve', through: 200, at: NOON });
+    journal.append({ kind: 'summary', through: 200, text: 'Earlier hello messages.', at: NOON });
+    const held = heldRepliesToday(journal.view, NOON, 'UTC');
+    expect(held).toMatchObject({ count: 200 });
+    expect(held.replies).toHaveLength(200);
+    const briefing = selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC');
+    expect(briefing).toContain('Replies held today: 200. Reasons: 200 (call cap).');
+    expect(briefing).toContain('195 more reply details omitted; full reasons are in read-only status.');
+    expect(Buffer.byteLength(briefing)).toBeLessThan(4000);
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      sources: () => [selfStateSource(selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC'))],
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    const probe = worker.probe('How many replies were held today?');
+    expect(probe).toHaveProperty('context');
+    expect('context' in probe ? Buffer.byteLength(probe.context) : Infinity).toBeLessThan(6144);
+    worker.intake([update(201, 'next reply', NOON)]);
+    await worker.drain();
+    expect(journal.view.order.at(-1)?.sent).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 120000);
 
 it('recovers a new launch after a torn tail and counts malformed rows without hiding damage', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-self-')));

@@ -9,7 +9,7 @@ Do not edit the journal, stop file, or run log to create a hold.
    current local date, calls, replies and cursor. Check that an ordinary reply
    to a fresh message causes no hold and no increase in `heldRepliesToday`.
 2. If the approved run naturally holds an accepted reply today, record that
-   update and the exact plain hold reason from `status.heldRepliesToday.replies`.
+   update and the exact plain reply-hold reason from `status.heldRepliesToday.replies`.
    Ask from the same bound account and private chat, "How many of your replies
    were held today, and why?" Check the prepared packet's `self-state` source
    and the PREVIEW answer against a fresh `status`. Account for any additional
@@ -21,8 +21,9 @@ Do not edit the journal, stop file, or run log to create a hold.
    `status.holds` no longer lists it. After local midnight, check that the
    previous day's hold is absent from the new day's count.
 
-**Pass:** status and the prepared self-state agree on the local-day count,
-updates and journal reasons. An ordinary reply adds zero. A released hold
+**Pass:** status and the prepared self-state agree on the local-day count and
+reason totals; self-state shows up to five updates and says how many details it
+omitted. An ordinary reply adds zero. A released hold
 remains visible for its day, and yesterday's holds do not count today. The
 status command itself causes no model call, send intent or Telegram reply.
 Record a missing natural hold or unobserved midnight/release as untested,

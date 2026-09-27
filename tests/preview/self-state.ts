@@ -72,26 +72,46 @@ export const messageTime = (turn: Turn): number | null => {
   return turn.at > 0 ? turn.at : null;
 };
 
+const summaryHold = (reason: string) => reason === 'summary oversized turn' || reason === 'summary preflight unavailable';
+
 /** Distinct replies with a durable hold recorded on the operator's local day.
  * A later release does not erase the fact that the reply was held today. */
 export function heldRepliesToday(view: JournalView, now: number, timeZone: string) {
   const format = zoneFormatter(timeZone), today = parts(format, now).day;
   const replies = new Map<string, { update: number; reasons: string[]; stillHeld: boolean }>();
   for (const event of view.awayEvents) {
-    if (event.kind !== 'hold' || !event.id || !event.reason || !Number.isFinite(event.at) || event.at <= 0
+    if (event.kind !== 'hold' || !event.id || !event.reason || summaryHold(event.reason) || !Number.isFinite(event.at) || event.at <= 0
       || now - event.at >= 26 * 3_600_000 || event.at > now + 60_000
       || parts(format, event.at).day !== today) continue;
     const turn = view.turns.get(event.id);
     if (!turn?.accepted) continue;
     let reply = replies.get(event.id);
     if (!reply) {
-      reply = { update: turn.update, reasons: [], stillHeld: turn.held !== undefined };
+      reply = { update: turn.update, reasons: [], stillHeld: turn.held !== undefined && !summaryHold(turn.held) };
       replies.set(event.id, reply);
     }
     const reason = redact(event.reason).text;
     if (!reply.reasons.includes(reason)) reply.reasons.push(reason);
   }
   return { count: replies.size, replies: [...replies.values()] };
+}
+
+/** Keep historical diagnostics from consuming the mandatory reply packet. Full reasons stay in status. */
+function heldReplyBrief(held: ReturnType<typeof heldRepliesToday>): string {
+  if (!held.count) return 'Replies held today: 0.';
+  const groups = new Map<string, number>();
+  for (const reply of held.replies) for (const reason of reply.reasons)
+    groups.set(reason, (groups.get(reason) ?? 0) + 1);
+  const label = (reason: string) => reason.length > 80 ? `${reason.slice(0, 80)}…` : reason;
+  const aggregates = [...groups].slice(0, 8).map(([reason, count]) => `${String(count)} (${label(reason)})`).join(', ');
+  const details = held.replies.slice(0, 5).map(reply => {
+    const reasons = reply.reasons.slice(0, 3).map(label).join('; ');
+    return `Update ${String(reply.update)}: ${reasons}${reply.reasons.length > 3 ? '; more reasons' : ''} `
+      + `(${reply.stillHeld ? 'still held' : 'released'})`;
+  }).join('. ');
+  return `Replies held today: ${String(held.count)}. Reasons: ${aggregates}`
+    + `${groups.size > 8 ? ', more reason types' : ''}. ${details}.`
+    + (held.count > 5 ? ` ${String(held.count - 5)} more reply details omitted; full reasons are in read-only status.` : '');
 }
 
 /** Plain facts about this preview, computed from the journal and run log at `now`.
@@ -126,9 +146,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Unknown outcomes (never retried): ${String(unknownCalls)} model call(s), ${String(unknownSends)} send(s).`,
     `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
     holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
-    `Replies held today: ${String(heldToday.count)}${heldToday.replies.length
-      ? `. ${heldToday.replies.map(reply => `Update ${String(reply.update)}: ${reply.reasons.join('; ')} (${reply.stillHeld ? 'still held' : 'released'})`).join('. ')}.`
-      : '.'}`,
+    heldReplyBrief(heldToday),
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
     `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.genesis.expires)}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',

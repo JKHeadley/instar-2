@@ -628,9 +628,11 @@ recomputed from memory each turn (p95 about 6 ms at 2000 turns, no model call, n
 extra read), and `status` prints the same text as `self` plus the last three
 `launches`, so an answer can be checked against it (status, read after the reply,
 counts that reply too). `status.heldRepliesToday` and the self-state text count
-distinct operator replies with a hold recorded in the journal on today's local
-date. Each reply lists its update, every reason recorded today, and whether it
-remains held; a later release does not erase the day's hold. `status.holds`
+distinct operator replies with a reply hold recorded on today's local date;
+summary-work holds are excluded. Status lists every update, reply-hold reason,
+and current held state. The model-facing self-state gives the exact total,
+reason totals, up to five reply details, and an omitted-details count so history
+cannot fill the reply packet. A later release does not erase the day's hold. `status.holds`
 continues to show only holds still in force, regardless of date.
 
 The desk report is optional: a plain file the desk maintains about other 2.0 work, re-read at every turn
