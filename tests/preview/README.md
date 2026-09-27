@@ -914,6 +914,17 @@ procedure, see [memory-dedupe-live-test.md](memory-dedupe-live-test.md).
 
 ### Correcting and forgetting memory
 
+A direct operator correction of the agent's answer uses the encrypted journal memory
+decision. A recent actual send intent is offered even when a short correction shares no
+words with the earlier question. The model marks an answer correction with `in:"reply"`,
+the earlier turn ID, an exact clause from the text actually sent, and a replacement
+quoted from the operator's correction. Validation rejects a clause found only in
+the operator's question or an unsent candidate. Later packets withhold that answer,
+keep the original question, and carry the corrected clause. Invalid decisions stay
+pending under the existing bounded path. Source-fact corrections omit `in`.
+The [supervised answer-correction script](answer-correction-live-test.md) is for the
+approved private runner; offline tests do not claim a live Telegram result.
+
 An authenticated operator statement in the narrow form `my/the SUBJECT is VALUE`
 is compared with earlier, unsuperseded statements about that literal subject in
 accepted operator turns or imported channel items. If the most recent value

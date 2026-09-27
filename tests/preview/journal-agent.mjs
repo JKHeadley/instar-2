@@ -158,9 +158,11 @@ const withheldView = view => {
       : { sourceUpdate: view.turns.get(change.source)?.update }),
     operatorUpdate: view.turns.get(change.trigger)?.update,
     ...(change.mode === 'correct' ? { quote: redact(change.quote).text } : {}),
+    ...(change.in === 'reply' ? { in: 'reply' } : {}),
     reason: preferenceKeys.has(JSON.stringify([change.source, change.quote]))
       ? change.mode === 'forget' ? 'verified operator removed this reply preference' : 'verified operator changed this reply preference'
-      : change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
+      : change.mode === 'forget' ? 'verified operator requested forgetting'
+        : change.in === 'reply' ? 'verified operator corrected this answer' : 'verified operator corrected this fact' }));
 };
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
@@ -298,12 +300,12 @@ async function main() {
         accepted: [...view.view.reminders.values()].filter(item => item.sent !== undefined).length,
         unknown: [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
         grant: view.view.reminderGrant },
-      dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+      dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
 
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
         time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
-      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.id))
+      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,
 
@@ -330,7 +332,7 @@ async function main() {
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
       people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
-        note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
+        change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
       personMerges: activePersonMerges(view.view).map(link => ({ left: view.view.people[link.left]?.name,
         leftSource: view.view.people[link.left]?.source, right: view.view.people[link.right]?.name,
