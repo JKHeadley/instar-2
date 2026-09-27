@@ -749,6 +749,17 @@ unreadable report data is never invented. The digest is rebuilt on each attempt
 from existing records, capped at 640 characters, and uses no model call, daemon,
 or additional store. See `away-digest-live-test.md` for the operator-channel proof.
 
+Every reply packet also states the injected clock as an absolute UTC instant and
+as the current day, weekday and time in the operator zone. After at least 24 hours
+since the previous verified operator message, the first reply packet carries
+`resume`: the measured gap and guidance to read old “today” and “tomorrow” against
+their original dates. It offers the bounded open commitments alongside the
+existing dated-item states, even for a broad catch-up question. Closed commitments
+stay out. The next ordinary reply has no `resume` field. The encrypted journal and
+existing prompt limits remain the sources and bounds; no timer or extra call runs.
+The injected-clock fixtures are in `journal-long-gap.test.ts`; Justin's supervised
+private-chat procedure is in [long-gap-resume-live-test.md](long-gap-resume-live-test.md).
+
 Every reply packet also carries `operator-digest`: the first 700 characters of the
 redacted desk source, its freshness label, the last three recorded runner launches,
 and up to eight recent hold, lost-answer and memory-change events reconstructed

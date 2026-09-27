@@ -12,7 +12,7 @@ import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
-import { parseDatedItem, dueState, type DatedItem } from './dated-memory.js';
+import { localParts, parseDatedItem, dueState, type DatedItem } from './dated-memory.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
@@ -1181,9 +1181,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       return Number.isFinite(at) && at >= start && at <= end;
     });
   };
-  const relatedOpenFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>) => {
+  const relatedOpenFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>, resumed: boolean) => {
     const open = openFor(summary.through, journal.view.commitments.length);
-    if (/\b(?:anything open|what(?:'s| is| remains) (?:still )?(?:open|pending)|what open commitments|what did i ask you to (?:remember|do)|what (?:did you|have you) (?:promise|commit)|list (?:my|your|our|the) (?:open )?(?:commitments|promises|reminders))\b/iu.test(turn.text))
+    if (resumed || /\b(?:anything open|what(?:'s| is| remains) (?:still )?(?:open|pending)|what open commitments|what did i ask you to (?:remember|do)|what (?:did you|have you) (?:promise|commit)|list (?:my|your|our|the) (?:open )?(?:commitments|promises|reminders))\b/iu.test(turn.text))
       return openFor(summary.through, PREVIEW_COMMITMENT_LIMIT);
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_COMMITMENT_LIMIT,
       candidates: open.map(({ note, turn: source }) => ({ text: clean(note.quote, true), at: sentAt(source!) ?? 0 })) });
@@ -1192,6 +1192,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const fromOperator = (turn: Turn) => {
     try { return String((JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id) === journal.view.genesis.operator; }
     catch { return false; }
+  };
+  const resumeGap = (turn: Turn) => {
+    if (!fromOperator(turn)) return null;
+    const previous = journal.view.order.filter(item => item.accepted && item.update < turn.update && fromOperator(item)).at(-1);
+    const at = previous && messageTime(previous);
+    const elapsed = at === null || at === undefined ? null : ports.now() - at;
+    return elapsed !== null && elapsed >= 86_400_000 ? { previous: previous!.id, elapsedHours: Math.floor(elapsed / 3_600_000) } : null;
   };
   // Conservative identity for an exact restatement. A different value keeps a
   // different key; semantic near-matches remain separate for the model to judge.
@@ -1625,7 +1632,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
     const preferences = preferenceState();
     const digest = labelAll ? undefined : crossTopicDigest(through);
-    const packet = JSON.stringify({ now: ports.now(), memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
+    const now = ports.now(), zone = ports.timeZone ?? 'America/Los_Angeles';
+    const local = localParts(now, zone), resume = awayFor && resumeGap(awayFor);
+    const localDay = `${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
+    const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
+      time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
+      weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
+      ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
+        guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
+      memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown.'
         + (ports.sources === undefined ? '' : ' For questions about your work or status, use the operator-digest source when present; distinguish desk-reported work from your own journal and run log, and never infer a deploy from a launch.')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
@@ -1737,7 +1752,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const channels = channelFor(turn, summary?.text);
       const candidateChannels = channelFor(turn, summary?.text, false);
       const named = peopleFor(turn.text, summary?.through ?? -1);
-      const open = summary ? relatedOpenFor(turn, summary) : [];
+      const open = summary ? relatedOpenFor(turn, summary, resumeGap(turn) !== null) : [];
       type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'recent' | 'candidate';
         key: string; rank: number; match: number; recent: number; index: number };
       const optional: Optional[] = [];
