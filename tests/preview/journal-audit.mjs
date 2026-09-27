@@ -323,7 +323,9 @@ export function auditActiveMemory(view) {
   const items = [], findings = [];
   const fault = (code, at) => findings.push({ code, at });
   const add = (kind, at, chain) => items.push({ kind, at, chain });
+  const checkedOperators = new Map();
   const operator = (id, at) => {
+    if (checkedOperators.has(id)) return checkedOperators.get(id);
     const turn = view.turns.get(id);
     let raw;
     try { raw = JSON.parse(turn?.raw); } catch { /* missing authenticated envelope */ }
@@ -331,10 +333,18 @@ export function auditActiveMemory(view) {
       || String(raw?.message?.from?.id) !== view.genesis.operator
       || String(raw?.message?.chat?.id) !== view.genesis.chat
       || raw?.message?.text !== turn.text) {
-      fault('memory-operator-source-absent', at); return null;
+      fault('memory-operator-source-absent', at); checkedOperators.set(id, null); return null;
     }
-    return { kind: 'operator-turn', id, update: turn.update };
+    const link = { kind: 'operator-turn', id, update: turn.update };
+    checkedOperators.set(id, link);
+    return link;
   };
+  // Conversation history is memory even when no summary or derived note uses it.
+  for (const [n, turn] of view.order.entries()) {
+    if (!turn.accepted) continue;
+    const at = `conversation-turn[${n}]`, link = operator(turn.id, at);
+    if (link) add('conversation-turn', at, [link]);
+  }
   const imported = (id, at) => {
     if (typeof id !== 'string' || !id.startsWith('channel:')) {
       fault('memory-import-source-absent', at); return null;
@@ -382,7 +392,9 @@ export function auditActiveMemory(view) {
       const chain = [link];
       for (const extra of note.sources ?? []) {
         const source = operator(extra.source, at);
-        if (!source || !redact(view.turns.get(extra.source).text).text.includes(extra.quote)) fault('commitment-merge-unattributed', at);
+        const turn = view.turns.get(extra.source);
+        const text = note.in === 'reply' ? turn?.intent?.replace(/^PREVIEW — /u, '') : turn?.text;
+        if (!source || !redact(text ?? '').text.includes(extra.quote)) fault('commitment-merge-unattributed', at);
         else chain.push(source);
       }
       add('commitment', at, chain);
@@ -400,8 +412,24 @@ export function auditActiveMemory(view) {
       return link;
     }).filter(Boolean);
     const passageLinks = (change.summaryPassages ?? []).map(passage => {
-      const summary = view.summaries.find(row => row.at < view.turns.get(change.trigger)?.at
-        && row.text.includes(passage));
+      const triggerTurn = view.turns.get(change.trigger);
+      let offered;
+      if (triggerTurn?.prompt) try {
+        const messages = JSON.parse(triggerTurn.prompt).messages;
+        const packet = JSON.parse(messages.find(message => message.role === 'context').content).packet;
+        offered = packet.memorySummary ?? packet.summary;
+      } catch { /* an unreadable recorded decision cannot prove a passage */ }
+      const decision = view.summaries.find(row => row.memoryFor?.includes(change.trigger)
+        && row.memory?.some(item => item.mode === change.mode && item.source === change.source
+          && item.trigger === change.trigger && item.quote === change.quote));
+      const prior = decision && view.summaries.filter(row => row.through < decision.through && row.at <= decision.at).at(-1);
+      const reserved = view.awayEvents.find(event => event.kind === 'reserve' && event.id === change.trigger);
+      const summary = view.summaries.find(row => row.through < triggerTurn?.update && row.text.includes(passage)
+        && (decision ? prior === row : triggerTurn?.prompt ? offered?.text?.includes(passage)
+          && row.at <= (reserved?.at ?? triggerTurn.at)
+          && (offered.through === row.through || offered.through === undefined
+            && row === view.summaries.filter(candidate => candidate.through < triggerTurn.update).at(-1))
+          : row.at <= (reserved?.at ?? triggerTurn?.at)));
       if (!summary) fault('memory-summary-passage-absent', at);
       return summary && { kind: 'summary', through: summary.through };
     }).filter(Boolean);

@@ -134,7 +134,7 @@ it('traces every active item through random correction, merge, summary and compa
       }
       journal.close();
     }
-    expect(seenKinds).toEqual(new Set(['channel-import', 'people-note', 'person-merge', 'commitment',
+    expect(seenKinds).toEqual(new Set(['conversation-turn', 'channel-import', 'people-note', 'person-merge', 'commitment',
       'preference', 'correction', 'dated', 'open-question', 'summary']));
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120000);
