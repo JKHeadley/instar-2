@@ -747,6 +747,20 @@ model, provider latency or a live Telegram path. For the supervised human
 check, use [recall-benchmark-live-test.md](recall-benchmark-live-test.md) and
 [overlapping-names-recall-live-test.md](overlapping-names-recall-live-test.md).
 
+### Real model recall sample
+
+`real-model-recall-sample.mjs` uses a fixed 120-turn synthetic encrypted journal
+(30 facts, eight corrections, five forgets) and asks 20 questions from its
+replayed packet builder through the existing `claude-sonnet-5` subscription
+route. It requires `--live`, `--login-profile`, a matching activation record,
+and a new absolute report path. Without both the flag and profile it skips
+before opening a provider. Each question reserves once and invokes at most
+once; rejected and uncertain outcomes count as misses. The JSON report gives
+answer accuracy and the complete packet for every miss. This measures model
+answers; the offline benchmark above measures packet visibility. See
+[real-model-recall-sample-live-test.md](real-model-recall-sample-live-test.md)
+for Justin's exact command and review steps.
+
 `journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
 append-only local journal and one exclusive writer. At boot it replays the journal once;
 ordinary turns append records and update an in-memory transcript. It fsyncs an update and
