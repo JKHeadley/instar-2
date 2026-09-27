@@ -2315,6 +2315,23 @@ merge, summary and snapshot histories, reopens each journal, and breaks links
 to confirm the audit fails. Justin's supervised procedure is
 [correction-provenance-audit-live-test.md](correction-provenance-audit-live-test.md).
 
+### Build handoff on one journal
+
+`journal-handoff.test.ts` uses separate processes on one encrypted journal. It
+compares the durable facts shared by both builds before and after each reopen,
+including cursor, pending and held turns, memory, open commitments, summaries
+and the common facts in the next packet. It checks newer question and preference
+fields separately because the old build did not write them. It also kills the
+first process after an exact send intent, then confirms the successor does not repeat that send or
+an orphaned model reservation. A later turn is answered after compaction and
+reopen. The test can load the `56fe0b7c` journal module for its first process
+through `PREVIEW_OLD_JOURNAL_MODULE=file:///ABSOLUTE/OLD/tests/preview/journal.js`
+and the old read-only status command through
+`PREVIEW_OLD_LAUNCHER=/ABSOLUTE/OLD/tests/preview/journal-agent.mjs`. Archive
+`tests/preview`, `src` and `scripts` from that commit for the old tree. Without
+those settings it tests process handoff on the checked-out build. The
+supervised trial procedure is [journal-handoff-live-test.md](journal-handoff-live-test.md).
+
 ### Reply grounding audit
 
 Each answer-call reservation now includes a bounded index of the exact packet it
