@@ -99,13 +99,13 @@ it('replays redaction, restored corrections, and exact forgetting through the CL
       'My color is blue.', 'My color is green.', 'My color is blue.',
       'I label this field password.', 'Ada shared password: abcdefghijklmnop',
       'Forget I label this field password.', 'I use Rust.', 'Forget I use Rust.',
-      'Ada says Trust matters.',
+      'Ada says Trust matters.', 'My shape is round.', 'My shape is square.', 'Forget my shape.',
     ];
     messages.forEach((message, index) => journal.append({ kind: 'intake', id: `telegram:${index + 1}`,
       update: index + 1, text: message, raw: JSON.stringify(update(index + 1, message)),
       accepted: true, cursor: index + 2, at: at + index + 1 }));
-    journal.append({ kind: 'summary-reserve', through: 9, at });
-    journal.append({ kind: 'summary', through: 9, text: 'Recorded memory decisions.', at,
+    journal.append({ kind: 'summary-reserve', through: 12, at });
+    journal.append({ kind: 'summary', through: 12, text: 'Recorded memory decisions.', at,
       people: [
         { name: 'Ada', source: 'telegram:5', quote: messages[4]! },
         { name: 'Operator', source: 'telegram:7', quote: messages[6]! },
@@ -116,6 +116,8 @@ it('replays redaction, restored corrections, and exact forgetting through the CL
         { mode: 'correct', source: 'telegram:2', quote: 'My color is green.', trigger: 'telegram:3', replacement: 'My color is blue.' },
         { mode: 'forget', source: 'telegram:4', quote: 'I label this field password.', trigger: 'telegram:6' },
         { mode: 'forget', source: 'telegram:7', quote: 'I use Rust.', trigger: 'telegram:8' },
+        { mode: 'correct', source: 'telegram:10', quote: 'My shape is round.', trigger: 'telegram:11', replacement: 'My shape is square.' },
+        { mode: 'forget', source: 'telegram:11', quote: 'shape is square', trigger: 'telegram:12' },
       ] });
     journal.close();
     const call = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
@@ -131,7 +133,8 @@ it('replays redaction, restored corrections, and exact forgetting through the CL
     expect(call.stdout).toContain('Ada says Trust matters.');
     expect(call.stdout).not.toContain('T[withheld]');
     expect(call.stdout).not.toContain('I use Rust.');
-    expect(call.stdout).toContain('## Forgotten markers (2)');
+    expect(call.stdout).not.toContain('My shape is square.');
+    expect(call.stdout).toContain('## Forgotten markers (3)');
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 20_000);
 

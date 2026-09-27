@@ -40,7 +40,7 @@ export function memoryReport(view: ExportView): string {
   }) });
   const corrections = actions.filter((item, index) => item.mode === 'correct' && item.replacement
     && !actions.slice(index + 1).some(later => later.mode !== 'prefer' && later.source === item.trigger
-      && later.quote.includes(item.replacement!)));
+      && (later.quote.includes(item.replacement!) || item.replacement!.includes(later.quote))));
   sections.push({ title: 'Corrections', rows: corrections.map(item =>
     `- ${safe(item.replacement!, false)}; original: ${source(item.source)}; corrected by ${source(item.trigger)}`) });
   sections.push({ title: 'Forgotten markers', rows: actions.filter(item => item.mode === 'forget').map(item =>
