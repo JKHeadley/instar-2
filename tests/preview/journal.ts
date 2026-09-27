@@ -221,6 +221,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
+  /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
+  clockFloor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   tokenTotals: TokenTotals; tokenCalls: TokenReservation[]; tokenCurrent: Map<string, number>;
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent';
@@ -350,7 +352,9 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   if (saved.order.length !== turns.size || new Set(saved.order).size !== saved.order.length
     || saved.order.some(id => !turns.has(id) || turns.get(id)?.id !== id))
     throw Error('preview journal: snapshot turn index differs');
-  const view: JournalView = { ...saved, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null,
+  const legacyFloor = snapshot.retained.reduce((max, row) => 'at' in row ? Math.max(max, row.at) : max, 0);
+  const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
+  const view: JournalView = { ...saved, clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null,
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
     turns, order: saved.order.map(id => turns.get(id)!), channelItems: new Map(saved.channelItems),
@@ -661,6 +665,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
 }
 
 function project(view: JournalView, row: JournalRecord): void {
+  if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
   if (row.kind === 'hold') {
     for (let index = view.awayEvents.length - 1; index >= 0; index--) {
       const event = view.awayEvents[index]!;
@@ -796,7 +801,9 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'summary-faithfulness-reserve') {
     const key = summaryJevTokenKey(view, 'faithfulness', row.through);
-    if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
+    // The faithfulness check also runs on unsupervised summaries, which record no candidate row;
+    // its order check therefore matches the result record's own.
+    if (!view.summaryReservations.has(row.through)
       || view.summaryFaithfulness.has(row.through)
       || view.tokenCurrent.has(key))
       throw Error('preview journal: summary faithfulness reservation order');
@@ -1146,7 +1153,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1198,7 +1205,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     // A complete frame left by a process death before its original fsync is
     // made durable before recovery is allowed to consume its causal state.
     if (!readOnly) fsyncSync(fd);
-    const append = (row: JournalRecord) => {
+    const append = (incoming: JournalRecord) => {
+      const row: JournalRecord = view && 'at' in incoming && incoming.at < view.clockFloor
+        ? { ...incoming, at: view.clockFloor } : incoming;
       if (readOnly || closed) throw Error('preview journal: reader cannot append');
       if (row.kind === 'caps') checkCaps(view!, row, 'new');
       if (row.kind === 'expiry') checkExpiry(view!, row, 'new');
@@ -1218,7 +1227,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -1373,6 +1382,8 @@ export function renewJournalExpiry(journal: ReturnType<typeof openPreviewJournal
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
+  elapsed?(): number;
   timeZone?: string;
   /** Static sources, or a function read at each turn (for the desk's report). */
   sources?: readonly unknown[] | ((turn?: Turn) => readonly unknown[]);
@@ -1398,10 +1409,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
   const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
   let checkingSteps = false;
+  const elapsed = ports.elapsed ?? ports.now;
+  const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
+    [through, ports.elapsed ? elapsed() : at]));
   // An orphaned reservation may have completed at the provider. Never repeat it.
   const gate = () => {
-    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires)
+    if (journal.view.stop || ports.stopped())
       throw Error('preview stopped');
+    const now = ports.now();
+    if (now >= journal.view.expires) {
+      if (!journal.readOnly) journal.append({ kind: 'stop', reason: 'trial expired', at: now });
+      throw Error('preview stopped');
+    }
   };
   const pollGate = () => {
     gate();
@@ -2998,9 +3017,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!force && !memoryRequest && isStatusCommand(last.text)) return;
     const unknown = journal.view.summaryReservations;
     if (unknown.size) {
-      const now = ports.now();
-      for (const [through, at] of unknown)
-        if (last.update <= through || now - at < SUMMARY_UNKNOWN_RECOVERY_MS) return;
+      const now = elapsed();
+      for (const [through, at] of unknown) {
+        if (!unknownSince.has(through)) unknownSince.set(through, ports.elapsed ? now : at);
+        if (last.update <= through || now - unknownSince.get(through)! < SUMMARY_UNKNOWN_RECOVERY_MS) return;
+      }
     }
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
@@ -3116,6 +3137,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
         ...(ports.replyCheck ? { supervised: true as const } : {}),
         maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at:ports.now()});
+      unknownSince.set(through, elapsed());
 
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,

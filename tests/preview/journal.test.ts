@@ -600,16 +600,19 @@ it('refuses a cap raise while a model call is UNKNOWN', async () => {
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
-it('keeps expiry and non-operator stop from becoming permanent latches', () => {
+it('durably latches observed expiry while refusing non-operator stop requests', () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), expires: 999 });
-    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+    let now = 998;
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    expect(() => worker.gate()).not.toThrow();
+    now = 1000;
     expect(() => worker.gate()).toThrow('stopped');
-    expect(journal.view.stop).toBeNull();
+    expect(journal.view.stop).toBe('trial expired');
     expect(() => worker.stop('transport-breaker')).toThrow('only operator stop');
-    expect(journal.view.stop).toBeNull();
+    expect(journal.view.stop).toBe('trial expired');
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }
 });

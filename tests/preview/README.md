@@ -1236,6 +1236,21 @@ settled dated items, within the same reply cap and secret check. It fsyncs a sen
 before dispatch. A send with unknown outcome consumes its slot and is never retried.
 Forgotten or corrected clauses and unsettled memory requests hold or exclude reminders.
 See [dated-reminder-live-test.md](dated-reminder-live-test.md).
+### Host clock corrections
+
+The journal launcher samples wall time through one process clock that also advances with
+monotonic elapsed time. A backward wall-clock correction cannot move its expiry, provider
+deadline, held notice, self-state or model packet backward. Summary recovery and polling
+backoff use monotonic elapsed time, so a forward correction cannot shorten their minimum waits.
+A forward correction advances the absolute clock immediately. Once expiry is observed, the
+worker durably latches it in the journal before refusing further work; restart and a backward
+correction cannot reopen the trial. Each journal append has a durable timestamp floor,
+which is restored after replay or compaction and seeds the clock on restart. Telegram's own
+message timestamp remains the source for interpreting an operator's relative date; the durable
+intake timestamp is its fallback. The journal remains machine-local, with no new service or
+store. A host reboot while its wall clock is still wrong cannot establish elapsed downtime from
+the local journal alone; the recorded floor prevents regression but does not claim an external
+time authority. The supervised exercise is [clock-jump-live-test.md](clock-jump-live-test.md).
 
 ### How the operator likes answers
 
@@ -1601,12 +1616,13 @@ The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
 
 An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
-It is never retried at its recorded update frontier. After 60 seconds from
-every outstanding UNKNOWN summary reservation, a new summary can cover a
+It is never retried at its recorded update frontier. After 60 seconds of actual elapsed
+time from every outstanding UNKNOWN summary reservation, a new summary can cover a
 different, later update frontier under the same finite call cap. The earlier
 reservation remains unresolved even after the later summary succeeds; `status`
 still refuses a cap raise while it exists. The pause is a lower bound between
-uncertain summary calls, not an automatic retry timer. A later accepted turn
+uncertain summary calls; a reservation inherited on restart waits a full 60 seconds from
+reopening because prior process elapsed time cannot be established. A later accepted turn
 and a free call slot are still required. A correction whose deciding summary
 is UNKNOWN follows the existing `memory-undecided` path; the later summary
 does not silently turn that undecided request into a verified decision.
