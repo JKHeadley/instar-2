@@ -1266,7 +1266,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const metadata = removals.flatMap(change => {
       const item = change.source.startsWith('channel:')
         ? journal.view.channelItems.get(change.source.slice('channel:'.length)) : undefined;
-      return item ? [item.id, item.from, item.subject, item.conversation,
+      return item ? [item.account, item.id, item.from, item.subject, item.conversation,
         `import:${item.source}/${(item.conversation ?? 'unknown conversation').replace(/\s+/gu, ' ').slice(0, 40)}/${isoMinute(item.at)}/${createHash('sha256').update(channelKey(item)).digest('hex').slice(0, 12)}`]
         .filter((part): part is string => typeof part === 'string' && part.length >= 4) : [];
     });

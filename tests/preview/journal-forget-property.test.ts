@@ -32,6 +32,7 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
     const oldSaved = `ORBIT${seed}X`, newSaved = `NOVA${seed}Y`, oldImport = `EMBER${seed}Z`, otherImport = `CEDAR${seed}Q`;
     const savedClause = `My archive code is ${oldSaved}.`;
     const importedClause = seed === 1 ? `I keep the archive key ${oldImport}.` : `The archive key is ${oldImport}.`;
+    const affectedAccount = seed === 1 ? `agent-${oldImport}@example.test` : 'agent@example.test';
     const check = (surface: string, value: string) => {
       seen.add(surface);
       for (const token of stale) expect(value, `seed ${seed}, ${surface}, stale ${token}`).not.toContain(token);
@@ -72,13 +73,14 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
     try {
       let worker = createJournalWorker(journal, ports);
       const say = async (message: string) => { worker.intake([update(id++, message)]); await worker.drain(); };
-      const imported = () => importChannelFixture(journal, [{ source: 'email' as const, account: 'agent@example.test',
+      const imported = () => { importChannelFixture(journal, [{ source: 'email' as const, account: affectedAccount,
         id: `archive-${oldImport}`, from: `operator-${oldImport}@example.test`, at: 1789999000000,
-        subject: `Archive ${oldImport}`, conversation: `Archive ${oldImport}`, text: importedClause },
-      { source: 'email' as const, account: 'agent@example.test', id: `other-${seed}`,
+        subject: `Archive ${oldImport}`, conversation: `Archive ${oldImport}`, text: importedClause }],
+      affectedAccount, 1790000000000);
+      importChannelFixture(journal, [{ source: 'email' as const, account: 'agent@example.test', id: `other-${seed}`,
         from: 'operator@example.test', at: 1789999000001, subject: 'Other archive',
         text: `The other archive key is ${otherImport}.` }],
-      'agent@example.test', 1790000000000);
+      'agent@example.test', 1790000000000); };
       if (next() < 0.5) { imported(); await say(savedClause); }
       else { await say(savedClause); imported(); }
       const before = worker.probe('What is in the archive?');
