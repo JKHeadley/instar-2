@@ -13,7 +13,7 @@ const quote = 'Please remember to revisit the garden plan.';
 const update = (id: number, text: string, at: number, from = 7) => ({ update_id: id,
   message: { chat: { id: 7, type: 'private' }, from: { id: from }, text, date: Math.floor(at / 1000) } });
 
-function world(initialQuote = quote) {
+function world(initialQuote = quote, summarize = true) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-greeting-')));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8', chat: '7',
     operator: '7', grant: 'trial', configurationDigest: 'sha256:test', expires: start + 100 * hour,
@@ -25,14 +25,31 @@ function world(initialQuote = quote) {
     return journal.view.turns.get(turnId)!;
   };
   const previous = append(1, initialQuote, start);
-  journal.append({ kind: 'summary-reserve', through: 1, at: start + 1 });
-  journal.append({ kind: 'summary', through: 1, text: initialQuote,
-    commitments: [{ in: 'message', source: previous.id, quote: initialQuote }], at: start + 2 });
+  if (summarize) {
+    journal.append({ kind: 'summary-reserve', through: 1, at: start + 1 });
+    journal.append({ kind: 'summary', through: 1, text: initialQuote,
+      commitments: [{ in: 'message', source: previous.id, quote: initialQuote }], at: start + 2 });
+  }
   const close = () => {
     journal.close(); rmSync(root, { recursive: true, force: true });
   };
   return { journal, append, previous, close };
 }
+
+it('selects the latest open source turn even when summary commitments are reversed', () => {
+  const w = world(quote, false);
+  try {
+    const kitchen = 'Please remember to revisit the kitchen plan.';
+    const later = w.append(2, kitchen, start + hour);
+    w.journal.append({ kind: 'summary-reserve', through: 2, at: start + hour + 1 });
+    w.journal.append({ kind: 'summary', through: 2, text: `${quote} ${kitchen}`,
+      commitments: [{ in: 'message', source: later.id, quote: kitchen },
+        { in: 'message', source: w.previous.id, quote }], at: start + hour + 2 });
+    const current = w.append(3, 'Hello', start + 8 * hour);
+    const hint = greetingContinuity(w.journal.view, { launches: [], unreadable: 0 }, start + 8 * hour, current);
+    expect(hint?.topic).toBe(kitchen);
+  } finally { w.close(); }
+});
 
 it('offers the exact open topic only beyond six hours, and leaves a fresh or exactly six-hour reply alone', () => {
   const w = world();

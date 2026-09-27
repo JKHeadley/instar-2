@@ -30,7 +30,7 @@ export function greetingContinuity(view: JournalView, runs: RunLog, now: number,
       && !view.closed.has(item.id)
       && !view.memory.some(change => change.mode !== 'prefer' && change.source === item.note.source
         && (item.note.quote.includes(change.quote) || change.quote.includes(item.note.quote))));
-  const latest = open.at(-1);
+  const latest = open.sort((left, right) => left.turn!.update - right.turn!.update || left.id - right.id).at(-1);
   if (!latest) return null;
   const quote = redact(latest.note.quote).text.replace(/\s+/gu, ' ').trim();
   if (!quote || Array.from(quote).length > 140) return null;
