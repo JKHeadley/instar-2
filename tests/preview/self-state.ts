@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`). */
 export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string };
@@ -133,7 +133,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
   const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
-  const reminders = [...view.reminders.values()].filter(item => item.sent !== undefined);
+  const reminders = [...view.reminders.values()].filter(item => item.requested && item.sent !== undefined);
   const remindersToday = reminders.filter(item => isToday(item.sentAt)).length;
   const holds = new Map<string, number>();
   for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.expires))
@@ -153,7 +153,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `As of ${when(now)} (time zone ${timeZone}; "today" means ${today} there).`,
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
-    `Morning reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; separate grant ${view.reminderGrant === null ? 'absent' : 'recorded'}.`,
+    `Requested reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; ${String(pendingRequestedReminders(view).length)} requested and not yet sent.`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     `Model tokens by call kind (input/output; missing usage counts at its reservation): ${Object.entries(view.tokenTotals)

@@ -3,55 +3,70 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(29);
-const start = Date.UTC(2026, 8, 26, 17);
-const morning = Date.UTC(2026, 8, 27, 15);
-const faithfulSummary = async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } });
+const start = Date.UTC(2026, 8, 26, 17); // Saturday 10:00 in Los Angeles.
+const friday9 = Date.UTC(2026, 9, 2, 16); // Friday 2026-10-02 09:00 in Los Angeles.
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
-  grant: 'grant:reminder', configurationDigest: 'sha256:reminder', expires: Date.UTC(2026, 8, 28),
-  maxCalls: 20, maxReplies: 4, maxTurns: 10, maxBytes: 12000, cursor: 0 };
-const reminderGrant = (at: number) => ({ kind: 'reminder-grant' as const, reference: 'operator:reminders',
-  trial: genesis.grant, surface: 'telegram-private-chat' as const, scope: 'initiated-dated-reminders' as const,
-  custodian: genesis.operator, recovery: 'unknown-never-retry' as const, at });
+  grant: 'grant:reminder', configurationDigest: 'sha256:reminder', expires: Date.UTC(2026, 9, 10),
+  maxCalls: 20, maxReplies: 8, maxTurns: 10, maxBytes: 12000, cursor: 0 };
 const update = (id: number, text: string, sender = 7654321, thread?: number) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: sender }, text,
     date: Math.floor(start / 1000) + id * 60, ...(thread === undefined ? {} : { message_thread_id: thread }) } });
+const priya = 'remind me Friday at 9 am to call Priya';
+const priyaLine = `PREVIEW reminder you asked for on 2026-09-26 10:01: "${priya}" (due 2026-10-02 09:00 America/Los_Angeles)`;
+type Input = { id: string; question: string; context: string };
+/** A decision that marks a remind request only when the message asks for one; the model decides meaning. */
+const decide = (input: Input) => {
+  const request = /^remind me (.+?) to /u.exec(input.question) ?? /^remind me (.+)$/u.exec(input.question);
+  if (request) return JSON.stringify({ reply: 'Okay.', memory: [], dated: [{ quote: input.question, when: request[1]!, remind: true }] });
+  const cancel = /^cancel the (\w+) reminder/u.exec(input.question);
+  if (cancel) {
+    const listed = (JSON.parse(input.context) as { reminders?: { id: string; quote: string }[] }).reminders ?? [];
+    const ids = listed.filter(item => item.quote.includes(cancel[1]!)).map(item => item.id);
+    return JSON.stringify({ reply: 'Okay.', memory: [], dated: [], cancelReminders: ids.length ? ids : ['reminder-unlisted'] });
+  }
+  const dated = /(Friday at \d+ am|Oct \d+)/u.exec(input.question);
+  return JSON.stringify({ reply: 'Recorded.', memory: [], dated: dated ? [{ quote: input.question, when: dated[1] }] : [] });
+};
+const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
+  const state = { now: start, stopped: false, stopAfterModel: false, fail: false, uncertain: false, sent: [] as { text: string; thread?: number }[] };
+  const ports = { now: () => state.now, stopped: () => state.stopped, timeZone: 'America/Los_Angeles',
+    model: async (input: Input) => { if (state.stopAfterModel) state.stopped = true;
+      return state.uncertain ? { state: 'uncertain' as const } : decide(input); }, checkOutbound: () => {},
+    send: async (value: { expectedText: string; thread?: number }) => {
+      state.sent.push({ text: value.expectedText, ...(value.thread === undefined ? {} : { thread: value.thread }) });
+      return state.fail && value.expectedText.startsWith('PREVIEW reminder') ? null : state.sent.length;
+    } };
+  const path = join(root, 'journal.encrypted');
+  const open = (first = false) => { const journal = first ? openPreviewJournal(path, key, { ...genesis, maxReplies, ...limits }) : openPreviewJournal(path, key);
+    return { journal, worker: createJournalWorker(journal, ports) }; };
+  const pushes = () => state.sent.filter(item => item.text.startsWith('PREVIEW reminder')).map(item => item.text);
+  return { state, open, pushes };
+};
+const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-requested-${name}-`)));
 
-it('sends once in the operator morning, with a durable intent and one reply slot across restart', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-'))), path = join(root, 'journal.encrypted');
+it('sends a requested reminder once at its due time with its reason, across restarts at every step', async () => {
+  const root = tmp('once');
   try {
-    let now = start;
-    const sent: { text: string; thread?: number }[] = [];
-    const ports = { now: () => now, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'Recorded.', memory: [],
-        dated: [{ quote: 'Dentist tomorrow at 3 pm.', when: 'tomorrow at 3 pm' }] }),
-      checkOutbound: () => {}, send: async (value: { expectedText: string; thread?: number }) => {
-        sent.push({ text: value.expectedText, ...(value.thread === undefined ? {} : { thread: value.thread }) });
-        return sent.length;
-      } };
-    let journal = openPreviewJournal(path, key, genesis), worker = createJournalWorker(journal, ports);
-    worker.intake([update(1, 'Dentist tomorrow at 3 pm.', 7654321, 17), update(2, 'Dentist tomorrow at 3 pm.', 44)]);
-    await worker.drain();
-    expect(journal.view.dated).toHaveLength(1);
-    expect(journal.view.replies).toBe(1);
-    now = morning - 1;
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya)]); await worker.drain();
+    expect(journal.view.dated).toMatchObject([{ day: '2026-10-02', time: '09:00', remind: true }]);
+    expect(state.sent[0]!.text).toContain('I will send you one reminder at 2026-10-02 09:00 (America/Los_Angeles).');
+    journal.close(); ({ journal, worker } = open()); // restart after the grant, before due.
+    state.now = friday9 - 60_000;
     await worker.sendReminders();
-    expect(sent).toHaveLength(1);
-    now = morning;
+    expect(pushes()).toEqual([]);
+    state.now = friday9;
     await worker.sendReminders();
-    expect(sent).toHaveLength(1); // the reply trial alone grants no initiated send.
-    journal.append(reminderGrant(now));
-    await worker.sendReminders();
-    expect(sent[1]).toEqual({ text: 'PREVIEW reminder: Dentist tomorrow at 3 pm. today at 15:00', thread: 17 });
+    expect(pushes()).toEqual([priyaLine]);
     expect(journal.view.replies).toBe(2);
-    expect(journal.view.reminders.size).toBe(1);
-    journal.close();
-    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    journal.close(); ({ journal, worker } = open()); // restart after the receipt.
+    state.now = friday9 + 3600_000;
     await worker.sendReminders();
-    expect(sent).toHaveLength(2);
-    expect(journal.view.reminders.size).toBe(1);
+    expect(pushes()).toHaveLength(1);
     expect(journal.view.replies).toBe(2);
     journal.close();
     const status = spawnSync(process.execPath,
@@ -59,263 +74,253 @@ it('sends once in the operator morning, with a durable intent and one reply slot
       { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
         env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
     expect(status.status, status.stderr).toBe(0);
-    expect(JSON.parse(status.stdout).reminders).toEqual({ intents: 1, accepted: 1, unknown: 0, grant: 'operator:reminders' });
+    expect(JSON.parse(status.stdout).reminders).toEqual({ intents: 1, accepted: 1, unknown: 0, grant: null,
+      requested: 1, pending: [], cancelled: 0 });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('never retries an unknown send and rejects a late-day dispatch', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-guards-'))), path = join(root, 'journal.encrypted');
+it('keeps the grant when a crash follows the recorded decision, and never retries an UNKNOWN reminder', async () => {
+  const root = tmp('unknown');
   try {
-    let now = start, stopped = false, sends = 0;
-    const ports = { now: () => now, stopped: () => stopped,
-      model: async (input: { question: string }) => JSON.stringify({ reply: 'Recorded.', memory: [], dated: [{
-        quote: input.question, when: input.question.includes('tomorrow') ? 'tomorrow' : 'this Sunday' }] }),
-      checkOutbound: () => {}, send: async () => { sends++; return null; } };
-    let journal = openPreviewJournal(path, key, { ...genesis, maxReplies: 2 }), worker = createJournalWorker(journal, ports);
-    journal.append(reminderGrant(start));
-    worker.intake([update(1, 'Invoice tomorrow.')]); await worker.drain();
-    now = morning + 4 * 3600000; await worker.sendReminders(); // noon is outside the morning window.
-    expect(sends).toBe(1);
-    now = morning; await worker.sendReminders();
-    expect(sends).toBe(2);
-    expect(journal.view.replies).toBe(2);
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya)]);
+    // Stop after the decision is journaled and before the reply dispatch: the next gate refuses.
+    state.stopAfterModel = true;
+    await expect(worker.drain()).rejects.toThrow('preview stopped');
+    expect(journal.view.order[0]?.answer).toBeDefined();
+    expect(state.sent).toHaveLength(0);
+    journal.close(); state.stopped = false; state.stopAfterModel = false; ({ journal, worker } = open());
+    await worker.drain();
+    expect(state.sent).toHaveLength(1);
+    state.now = friday9; state.fail = true;
+    await worker.sendReminders();
+    expect(pushes()).toEqual([priyaLine]);
     expect([...journal.view.reminders.values()][0]?.sent).toBeUndefined();
-    journal.close();
-    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    journal.close(); ({ journal, worker } = open());
+    state.fail = false;
     await worker.sendReminders();
-    expect(sends).toBe(2); // unknown is a consumed slot, not a retry.
-    stopped = true;
-    await expect(worker.sendReminders()).rejects.toThrow('preview stopped');
+    expect(pushes()).toHaveLength(1); // UNKNOWN consumed its slot; it is never retried.
+    expect(journal.view.replies).toBe(2);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('suppresses a forgotten item before its morning and keeps the original journal evidence', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-forget-')));
+it('never pushes an unrequested dated item, even when it is due or overdue', async () => {
+  const root = tmp('unrequested');
   try {
-    let now = start, sends = 0;
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    journal.append(reminderGrant(start));
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-      model: async (input: { id: string; question: string; context: string }) => {
-        if (input.id.startsWith('summary:')) {
-          const source = JSON.parse(input.context).memoryCandidates.find((item: { message: string }) =>
-            item.message.includes('Dentist tomorrow.'));
-          return JSON.stringify({ summary: 'The operator forgot the dentist item.', people: [],
-            memory: [{ mode: 'forget', source: source.id, quote: 'Dentist tomorrow.' }] });
-        }
-        return input.question.startsWith('Forget')
-          ? JSON.stringify({ reply: 'Forgotten.', memory: [], dated: [] })
-          : JSON.stringify({ reply: 'Recorded.', memory: [], dated: [{ quote: 'Dentist tomorrow.', when: 'tomorrow' }] });
-      }, summaryCheck: faithfulSummary, checkOutbound: () => {}, send: async () => ++sends });
-    worker.intake([update(1, 'Dentist tomorrow.')]); await worker.drain();
-    worker.intake([update(2, 'Forget the dentist item.')]); await worker.drain();
-    expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: 'Dentist tomorrow.' }]);
-    now = morning;
-    await worker.sendReminders();
-    expect(sends).toBe(2);
-    expect(journal.view.dated).toHaveLength(1);
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    // A legacy trial-wide grant frame still replays, but no longer authorizes pushing unrequested items.
+    journal.append({ kind: 'reminder-grant', reference: 'operator:legacy', trial: genesis.grant, surface: 'telegram-private-chat',
+      scope: 'initiated-dated-reminders', custodian: genesis.operator, recovery: 'unknown-never-retry', at: start });
+    journal.close(); ({ journal, worker } = open());
+    worker.intake([update(1, 'My dentist is Friday at 9 am.'), update(2, 'Invoice due Oct 2.')]); await worker.drain();
+    expect(journal.view.dated).toHaveLength(2);
+    expect(journal.view.dated.every(item => item.remind === undefined)).toBe(true);
+    expect(state.sent[0]!.text).toContain('I send a reminder only when you ask for one.');
+    for (const at of [friday9, friday9 + 6 * 3600_000, friday9 + 3 * 86400_000]) { state.now = at; await worker.sendReminders(); }
+    expect(pushes()).toEqual([]);
     expect(journal.view.reminders.size).toBe(0);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('holds reminders through replay for an undecided forget, but sends unrelated items after a settled forget', async () => {
-  for (const settled of [false, true]) {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-memory-')));
-    const path = join(root, 'journal.encrypted');
+it('groups reminders due together in one topic into one message, and keeps topics apart', async () => {
+  const root = tmp('group');
+  try {
+    const { state, open, pushes } = harness(root);
+    const { journal, worker } = open(true);
+    worker.intake([update(1, priya, 7654321, 17), update(2, 'remind me Oct 2 to pay rent', 7654321, 17),
+      update(3, 'remind me Friday at 9 am to water plants', 7654321, 23)]);
+    await worker.drain();
+    state.now = friday9;
+    await worker.sendReminders();
+    expect(pushes()).toHaveLength(2);
+    const topic17 = state.sent.find(item => item.thread === 17 && item.text.startsWith('PREVIEW reminder'))!;
+    expect(topic17.text).toBe(`${priyaLine}\nPREVIEW reminder you asked for on 2026-09-26 10:02: "remind me Oct 2 to pay rent" (due 2026-10-02 09:00 America/Los_Angeles)`);
+    expect(state.sent.find(item => item.thread === 23 && item.text.startsWith('PREVIEW reminder'))!.text).toContain('water plants');
+    expect(journal.view.reminders.size).toBe(2);
+    await worker.sendReminders();
+    expect(pushes()).toHaveLength(2);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('sends only the reminder that is due; a later one in the same topic gets its own message later', async () => {
+  const root = tmp('staggered');
+  try {
+    const { state, open, pushes } = harness(root);
+    const { journal, worker } = open(true);
+    worker.intake([update(1, priya), update(2, 'remind me Friday at 11 am to file taxes')]); await worker.drain();
+    state.now = friday9; await worker.sendReminders();
+    expect(pushes()).toEqual([priyaLine]);
+    state.now = friday9 + 2 * 3600_000; await worker.sendReminders();
+    expect(pushes()).toHaveLength(2);
+    expect(pushes()[1]).toContain('file taxes');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('cancels or changes a reminder by a later verified operator message, durably across restart', async () => {
+  const root = tmp('cancel');
+  try {
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya), update(2, 'remind me Friday at 9 am to buy milk')]); await worker.drain();
+    worker.intake([update(3, 'cancel the Priya reminder')]); await worker.drain();
+    expect(state.sent.at(-1)!.text).toContain(`Cancelled reminder: "${priya}".`);
+    expect(journal.view.reminderCancels).toHaveLength(1);
+    // A change is a cancel plus a new request.
+    worker.intake([update(4, 'cancel the milk reminder')]); await worker.drain();
+    worker.intake([update(5, 'remind me Friday at 10 am to buy milk')]); await worker.drain();
+    // A cancel naming nothing listed cancels nothing.
+    worker.intake([update(6, 'cancel the dentist reminder')]); await worker.drain();
+    expect(state.sent.at(-1)!.text).toContain('I could not tell which reminder to cancel, so none was cancelled.');
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9; await worker.sendReminders();
+    expect(pushes()).toEqual([]);
+    state.now = friday9 + 3600_000; await worker.sendReminders();
+    expect(pushes()).toEqual(['PREVIEW reminder you asked for on 2026-09-26 10:05: "remind me Friday at 10 am to buy milk" (due 2026-10-02 10:00 America/Los_Angeles)']);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('refuses a request whose time is unsettled, already past, or after the preview ends, and says why', async () => {
+  const root = tmp('refuse');
+  try {
+    const { state, open, pushes } = harness(root);
+    const { journal, worker } = open(true);
+    worker.intake([update(1, 'remind me Friday at 9 to call Priya'), update(2, 'remind me Sep 26 to stretch'),
+      update(3, 'remind me Oct 20 to renew')]);
+    await worker.drain();
+    expect(journal.view.dated.every(item => item.remind === undefined)).toBe(true);
+    expect(state.sent[0]!.text).toContain('I did not set the reminder you asked for: its day or time is not settled');
+    expect(state.sent[1]!.text).toContain('I did not set the reminder you asked for: that time has already passed.');
+    expect(state.sent[2]!.text).toContain('I did not set the reminder you asked for: this preview ends before then.');
+    state.now = friday9; await worker.sendReminders();
+    expect(pushes()).toEqual([]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('sends nothing while stopped, after an operator stop, or when the reply cap is reached', async () => {
+  for (const guard of ['stopped', 'operator-stop', 'cap'] as const) {
+    const root = tmp(guard);
     try {
-      let now = start;
-      const sent: string[] = [];
-      const ports = { now: () => now, stopped: () => false, checkOutbound: () => {}, summaryCheck: faithfulSummary,
-        send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length; },
-        model: async (input: { id: string; question: string; context: string }) => {
-          if (input.id.startsWith('summary:')) {
-            if (!settled) throw Error('summary unavailable');
-            const source = JSON.parse(input.context).memoryCandidates.find((item: { message: string }) =>
-              item.message.includes('Dentist tomorrow.'));
-            return JSON.stringify({ summary: 'The operator withdrew an appointment.', people: [],
-              memory: [{ mode: 'forget', source: source.id, quote: 'Dentist tomorrow.' }] });
-          }
-          if (input.question.startsWith('Forget')) return JSON.stringify({ reply: 'Noted.', memory: [],
-            memoryDisposition: settled ? 'settled' : 'unresolved' });
-          return JSON.stringify({ reply: 'Recorded.', memory: [], dated: [
-            { quote: 'Dentist tomorrow.', when: 'tomorrow' }, { quote: 'Invoice tomorrow.', when: 'tomorrow' }] });
-        } };
-      let journal = openPreviewJournal(path, key, genesis);
-      journal.append(reminderGrant(start));
-      let worker = createJournalWorker(journal, ports);
-      worker.intake([update(1, 'Dentist tomorrow. Invoice tomorrow.')]); await worker.drain();
-      worker.intake([update(2, 'Forget the dentist item.')]); await worker.drain();
-      expect(journal.view.order[1]?.memoryUndecided === true).toBe(!settled);
-      expect(journal.view.memory.length).toBe(settled ? 1 : 0);
-      now = morning;
-      await worker.sendReminders();
-      expect(sent).toHaveLength(settled ? 3 : 2);
-      if (settled) expect(sent[2]).toBe('PREVIEW reminder: Invoice tomorrow. today at time unspecified');
-      journal.close();
-      journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
-      await worker.sendReminders();
-      expect(sent).toHaveLength(settled ? 3 : 2);
-      expect(journal.view.reminders.size).toBe(settled ? 1 : 0);
+      const { state, open, pushes } = harness(root, guard === 'cap' ? 1 : genesis.maxReplies);
+      const { journal, worker } = open(true);
+      worker.intake([update(1, priya)]); await worker.drain();
+      expect(journal.view.dated).toMatchObject([{ remind: true }]);
+      state.now = friday9;
+      if (guard === 'stopped') {
+        state.stopped = true;
+        await expect(worker.sendReminders()).rejects.toThrow('preview stopped');
+      } else if (guard === 'operator-stop') {
+        worker.stop('operator');
+        await expect(worker.sendReminders()).rejects.toThrow();
+      } else await worker.sendReminders(); // the request's own reply used the only reply slot.
+      expect(pushes()).toEqual([]);
+      expect([...journal.view.reminders.values()].filter(item => item.requested)).toHaveLength(0);
       journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });
 
-it('withholds a repeated forgotten clause while reminding an unrelated item after replay', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-repeat-forget-')));
-  const path = join(root, 'journal.encrypted');
+it('refuses the retired trial-wide reminder grant option before any work, and accepts a launch without it', () => {
+  const root = tmp('retired');
   try {
-    let now = start;
-    const sent: string[] = [];
-    const ports = { now: () => now, stopped: () => false, checkOutbound: () => {}, summaryCheck: faithfulSummary,
-      send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length; },
-      model: async (input: { id: string; question: string; context: string }) => {
-        if (input.id.startsWith('summary:')) {
-          const source = JSON.parse(input.context).memoryCandidates.find((item: { message: string }) =>
-            item.message.includes('Dentist tomorrow.'));
-          return JSON.stringify({ summary: 'The operator withdrew an appointment.', people: [],
-            memory: [{ mode: 'forget', source: source.id, quote: 'Dentist tomorrow.' }] });
-        }
-        if (input.question.startsWith('Forget')) return JSON.stringify({ reply: 'Forgotten.', memory: [] });
-        return JSON.stringify({ reply: 'Recorded.', memory: [], dated: [{ quote: input.question, when: 'tomorrow' }] });
-      } };
-    let journal = openPreviewJournal(path, key, { ...genesis, maxReplies: 6 });
-    journal.append(reminderGrant(start));
-    let worker = createJournalWorker(journal, ports);
-    worker.intake([update(1, 'Dentist tomorrow.'), update(2, 'Dentist tomorrow.'), update(3, 'Invoice tomorrow.')]);
-    await worker.drain();
-    worker.intake([update(4, 'Forget the dentist item.')]); await worker.drain();
-    expect(journal.view.dated).toHaveLength(3);
-    expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: 'Dentist tomorrow.' }]);
-    journal.close();
-    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
-    now = morning;
-    await worker.sendReminders();
-    expect(sent).toHaveLength(5);
-    expect(sent[4]).toBe('PREVIEW reminder: Invoice tomorrow. today at time unspecified');
-    journal.close();
-    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
-    await worker.sendReminders();
-    expect(sent).toHaveLength(5);
-    expect(journal.view.reminders.size).toBe(1);
+    openPreviewJournal(join(root, 'journal.encrypted'), key, genesis).close();
+    const run = (extra: string[]) => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'status', '--root', root, ...extra],
+    { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    const plain = run([]);
+    expect(plain.status, plain.stderr).toBe(0);
+    expect(JSON.parse(plain.stdout).reminders).toMatchObject({ requested: 0, pending: [] });
+    const retired = run(['--reminder-grant-reference', 'operator:reminders']);
+    expect(retired.status).toBe(1);
+    expect(retired.stdout).toBe('');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('refuses a reminder intent frame for an unrequested, not-yet-due or repeated item, and accepts the exact due one', async () => {
+  const root = tmp('frames');
+  try {
+    const { state, open } = harness(root);
+    const { journal, worker } = open(true);
+    worker.intake([update(1, priya), update(2, 'My dentist is Friday at 9 am.')]); await worker.drain();
+    const [requested, unrequested] = journal.view.dated;
+    const frame = (item: typeof requested, at: number, text = priyaLine) => ({ kind: 'requested-reminder-intent' as const, batch: 0,
+      items: [{ source: item!.source, quote: item!.quote, when: item!.when }], text, body: text, chat: genesis.chat, grant: genesis.grant, at });
+    expect(() => journal.append(frame(unrequested, friday9, 'PREVIEW reminder you asked for'))).toThrow('requested reminder intent refused');
+    expect(() => journal.append(frame(requested, friday9 - 60_000))).toThrow('requested reminder intent refused');
+    expect(() => journal.append(frame(requested, friday9, `${priyaLine} extra`))).toThrow('requested reminder intent refused');
+    journal.append(frame(requested, friday9));
+    expect(() => journal.append({ ...frame(requested, friday9), batch: 1 })).toThrow('requested reminder intent refused');
+    state.now = friday9; await worker.sendReminders();
+    expect(state.sent.filter(item => item.text.startsWith('PREVIEW reminder'))).toEqual([]); // the durable intent is UNKNOWN; never sent twice.
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('holds ambiguous dates and a latched stop while a settled day-only item uses an honest time', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-bounds-')));
-  try {
-    let now = start, stopped = false, sends = 0;
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxReplies: 4 });
-    journal.append(reminderGrant(start));
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
-      model: async (input: { question: string }) => JSON.stringify({ reply: 'Recorded.', memory: [], dated: [{
-        quote: input.question, when: input.question.includes('tomorrow') ? 'tomorrow' : 'this Sunday' }] }),
-      checkOutbound: () => {}, send: async () => ++sends });
-    worker.intake([update(1, 'Invoice tomorrow.'), update(2, 'Lunch this Sunday.')]); await worker.drain();
-    now = morning;
-    stopped = true;
-    await expect(worker.sendReminders()).rejects.toThrow('preview stopped');
-    expect(sends).toBe(2);
-    stopped = false;
-    await worker.sendReminders();
-    expect(sends).toBe(3);
-    expect([...journal.view.reminders.values()][0]?.text).toBe('PREVIEW reminder: Invoice tomorrow. today at time unspecified');
-    expect(journal.view.replies).toBe(3);
-    expect(journal.view.dated[1]?.ambiguity).toBeTruthy();
-    await worker.sendReminders();
-    expect(sends).toBe(3);
-    journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it('refuses a reminder when the reply cap or outbound secret wall prevents it', async () => {
-  for (const reason of ['cap', 'secret']) {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), `preview-reminder-${reason}-`)));
+it('holds a reminder while a later operator cancellation is unsettled by a call cap or an UNKNOWN model result', async () => {
+  for (const unsettled of ['cap', 'uncertain'] as const) {
+    const root = tmp(`unsettled-${unsettled}`);
     try {
-      let now = start, sends = 0;
-      const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-        { ...genesis, maxReplies: reason === 'cap' ? 1 : 2 });
-      journal.append(reminderGrant(start));
-      const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-        model: async () => JSON.stringify({ reply: 'Recorded.', memory: [],
-          dated: [{ quote: 'Invoice tomorrow.', when: 'tomorrow' }] }),
-        checkOutbound: text => { if (reason === 'secret' && text.startsWith('PREVIEW reminder:')) throw Error('secret'); },
-        send: async () => ++sends });
-      worker.intake([update(1, 'Invoice tomorrow.')]); await worker.drain();
-      now = morning; await worker.sendReminders();
-      expect(sends).toBe(1);
-      expect(journal.view.reminders.size).toBe(0);
+      const { state, open, pushes } = harness(root, genesis.maxReplies, unsettled === 'cap' ? { maxCalls: 1 } : {});
+      let { journal, worker } = open(true);
+      worker.intake([update(1, priya)]); await worker.drain();
+      expect(journal.view.dated).toMatchObject([{ remind: true }]);
+      state.uncertain = unsettled === 'uncertain';
+      worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
+      if (unsettled === 'cap') expect(journal.view.order[1]?.held).toBe('call cap');
+      else expect(journal.view.order[1]?.modelState).toBe('uncertain');
+      journal.close(); ({ journal, worker } = open()); // reopen keeps the hold.
+      state.now = friday9 + 3600_000;
+      await worker.drain(); // an UNKNOWN answer's content-free notice does not settle it either.
+      await worker.sendReminders();
+      expect(pushes()).toEqual([]);
+      expect(journal.view.replies).toBeLessThanOrEqual(2);
       journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });
 
-it('coalesces exact repeated clauses for the same local day without losing either source turn', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-repeat-')));
+it('releases the reminder once a later operator message is interpreted and cancels nothing', async () => {
+  const root = tmp('settled');
   try {
-    let now = start, sends = 0;
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    journal.append(reminderGrant(start));
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'Recorded.', memory: [],
-        dated: [{ quote: 'Invoice tomorrow.', when: 'tomorrow' }] }),
-      checkOutbound: () => {}, send: async () => ++sends });
-    worker.intake([update(1, 'Invoice tomorrow.'), update(2, 'Invoice tomorrow.')]); await worker.drain();
-    expect(journal.view.dated).toHaveLength(2);
-    now = morning;
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya), update(2, 'My dentist is Oct 9.')]); await worker.drain();
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9;
     await worker.sendReminders();
-    expect(sends).toBe(3);
-    expect(journal.view.reminders.size).toBe(1);
+    expect(pushes()).toEqual([priyaLine]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('aggregates distinct items into one fixed-line notification for the same day and topic', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-batch-')));
+it('sends an oversized same-topic group across polls, one fitting message each, never repeating an item across restart', async () => {
+  const root = tmp('overflow');
   try {
-    let now = start;
-    const sent: string[] = [];
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    journal.append(reminderGrant(start));
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'Recorded.', memory: [], dated: [
-        { quote: 'Dentist tomorrow at 3 pm.', when: 'tomorrow at 3 pm' },
-        { quote: 'Invoice tomorrow at 5 pm.', when: 'tomorrow at 5 pm' }] }),
-      checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length; } });
-    worker.intake([update(1, 'Dentist tomorrow at 3 pm. Invoice tomorrow at 5 pm.', 7654321, 17)]);
-    await worker.drain();
-    now = morning;
+    const { state, open, pushes } = harness(root, 40, { maxCalls: 40, maxTurns: 30, maxBytes: 32768 });
+    let { journal, worker } = open(true);
+    const tasks = Array.from({ length: 8 }, (_, n) => `remind me Friday at 9 am to do task ${n} ${'detailed description '.repeat(21)}`.trim());
+    worker.intake(tasks.map((text, n) => update(n + 1, text))); await worker.drain();
+    expect(journal.view.dated.filter(item => item.remind)).toHaveLength(8);
+    state.now = friday9;
+    for (let poll = 0; poll < 8 && pushes().join('\n').split('\n').length < 8; poll++) {
+      await worker.sendReminders();
+      journal.close(); ({ journal, worker } = open());
+    }
+    const lines = pushes().flatMap(text => text.split('\n'));
+    expect(pushes().length).toBeGreaterThan(1);
+    expect(pushes().every(text => Buffer.byteLength(text) <= 4096)).toBe(true);
+    expect(lines).toHaveLength(8);
+    expect(new Set(lines).size).toBe(8);
     await worker.sendReminders();
-    expect(sent).toHaveLength(2);
-    expect(sent[1]).toBe('PREVIEW reminder: Dentist tomorrow at 3 pm. today at 15:00\n'
-      + 'PREVIEW reminder: Invoice tomorrow at 5 pm. today at 17:00');
-    expect(journal.view.reminders.size).toBe(1);
-    expect(journal.view.replies).toBe(2);
-    journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it('does not create a second push for an item recorded after the daily topic batch', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-late-')));
-  try {
-    let now = start, sends = 0;
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    journal.append(reminderGrant(start));
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-      model: async (input: { question: string }) => JSON.stringify({ reply: 'Recorded.', memory: [],
-        dated: [{ quote: input.question, when: input.question.includes('tomorrow') ? 'tomorrow' : 'September 27' }] }),
-      checkOutbound: () => {}, send: async () => ++sends });
-    worker.intake([update(1, 'Invoice tomorrow.')]); await worker.drain();
-    now = morning; await worker.sendReminders();
-    expect(sends).toBe(2);
-    worker.intake([update(2, 'Dentist September 27.')]); await worker.drain();
-    await worker.sendReminders();
-    expect(sends).toBe(3); // ordinary answer only; one morning push for this topic and day.
-    expect(journal.view.dated).toHaveLength(2);
-    expect(journal.view.reminders.size).toBe(1);
+    expect(pushes().flatMap(text => text.split('\n'))).toHaveLength(8);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

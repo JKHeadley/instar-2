@@ -760,7 +760,7 @@ status request never changes pending memory decisions. For an operator-channel
 check, use [status-command-live-test.md](status-command-live-test.md).
 
 Each model call's packet carries `now`, the audience, the conversation history,
-a `capability` line (capped preview, answers and fixed morning reminders, no tools, memory is this trial's
+a `capability` line (capped preview, answers and reminders the operator explicitly asked for, no tools, memory is this trial's
 journal only) and `sources`: the three pinned purpose excerpts, the dated
 capability note, the preview's **own self-state**, and the **desk's report** on
 other work.
@@ -830,8 +830,8 @@ Updating the file needs no restart. Sample:
 ```md
 # Instar 2.0 — desk report
 What 2.0 is: Instar rebuilt so coherence is something an agent cannot lose.
-This preview: a private, capped Telegram trial. It answers and sends fixed morning
-reminders for settled dated items; it has no tools and cannot browse. Its memory
+This preview: a private, capped Telegram trial. It answers and sends a reminder
+only when the operator asks for one; it has no tools and cannot browse. Its memory
 is this trial's journal.
 Lanes:
 - preview-awareness: built, awaiting gate.
@@ -999,7 +999,7 @@ open list carries the ten most recent. Each is shown inside its whole message or
 `from`, date, elapsed age, conversation and, for the agent's own reply, its delivery outcome.
 Closed and superseded items are excluded before ranking. The model addresses a related open
 item and its age; the packet says the preview has no tools, so it can only remember an item,
-never do, schedule or remind. It never calls an item done unless a message says so, and
+never do or schedule it; only an explicit dated reminder request sends a reminder. It never calls an item done unless a message says so, and
 absence is not evidence. Under the context bound, optional evidence follows the current packet priority. `status` reports `commitments: {total, open}` and per summary
 `commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
 This reuses the journal projection and recall function, with no new store, call or classifier.
@@ -1183,8 +1183,8 @@ An unresolved date gets a clarification. Later answer packets carry those absolu
 dates and ask the model to state them when relevant. The exact reply still passes the existing
 reply check and send intent.
 
-By default, the capability line says plainly: this preview **answers only and has no grant to send
-unprompted reminders**. An item in memory is not a scheduled notification; the runner has no
+The capability line says plainly: this preview **sends a reminder only when the operator
+explicitly asks for one**. An item in memory is not a scheduled notification; the runner has no
 external scheduler or tools. It can mention a due or overdue item in a reply to the operator's next message.
 For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
 
@@ -1207,15 +1207,35 @@ counts these durable intent markers. This is a reply aside, never an unprompted
 reminder or scheduled action. For the supervised private-chat procedure, see
 [upcoming-date-mention-live-test.md](upcoming-date-mention-live-test.md).
 
-### Separately granted morning reminders
+### Reminders the operator asks for
 
-The `--reminder-grant-reference` launch option records a separate operator grant for initiated
-dated reminders in this private trial. Without that record, `sendReminders()` sends nothing.
-With it, the runner can send one fixed, bounded morning batch per local day and topic for
-settled dated items, within the same reply cap and secret check. It fsyncs a send intent
-before dispatch. A send with unknown outcome consumes its slot and is never retried.
-Forgotten or corrected clauses and unsettled memory requests hold or exclude reminders.
-See [dated-reminder-live-test.md](dated-reminder-live-test.md).
+An explicit verified-operator request such as “remind me Friday at 9 am to call Priya” is the
+scoped grant for exactly that reminder. The model decides by meaning that the message asks to be
+reminded and marks the dated item `remind: true`; the runner grants it only for a settled local
+day and time that is still ahead and before trial expiry. A day-only request is due at 09:00 local.
+The item is journaled in the same fsynced answer frame as the decision, so a crash before the
+reply cannot lose it; replay refuses a `remind` mark on any other turn. The grant's fields are
+fixed by that record: who asked (the verified operator), when (the message time), what (the exact
+quoted clause), when due (day, time and zone), surface (this private chat or topic) and recovery
+(an UNKNOWN send is never retried). The immediate reply states the due time, or why the request
+was not granted (unsettled day or AM/PM, already past, or after the preview ends).
+
+At or after the due time, `sendReminders()` sends one message per topic holding every requested
+reminder due at that poll (Rule 52), each line
+`PREVIEW reminder you asked for on <asked local time>: "<request>" (due <day time zone>)`, which
+states its reason (Rule 54). A later reminder in the same topic gets its own message when it
+falls due. The runner fsyncs a `requested-reminder-intent` (consuming one reply slot) before
+dispatch and records Bot API acceptance only for the exact chat, topic and text. A crash or
+UNKNOWN result is never retried. Stop, expiry, the reply cap, the outbound secret check and
+unsettled memory requests hold it. A dated item the operator did not ask to be reminded of is
+never pushed; nor is any summary, digest or nudge.
+
+A later verified-operator message cancels a pending reminder: the packet lists pending requests as
+`reminders` with ids, and the decision returns `cancelReminders`. A change is a cancel plus a new
+request. Forgetting, correcting or undoing the dated clause also removes its reminder. `status.reminders`
+reports intents, accepted, UNKNOWN, requested, pending and cancelled. The old trial-wide
+`--reminder-grant-reference` launch option is retired and refused; its journal frames still
+replay but authorize nothing. See [requested-reminder-live-test.md](requested-reminder-live-test.md).
 
 ### How the operator likes answers
 

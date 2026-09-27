@@ -1,6 +1,8 @@
 /** Calendar interpretation for the preview's operator-authored dated clauses. */
 export interface DatedItem { source: string; quote: string; when: string; zone: string;
-  day?: string; time?: string; ambiguity?: string }
+  day?: string; time?: string; ambiguity?: string;
+  /** The verified operator explicitly asked to be reminded: the scoped grant for this one send. */
+  remind?: true }
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',

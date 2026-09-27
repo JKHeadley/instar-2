@@ -194,7 +194,8 @@ it('journals verified dated items once, surfaces them on the next due message, a
     const due = worker.probe('hello');
     if ('reason' in due) throw Error(due.reason);
     expect(JSON.parse(due.context).dated).toMatchObject([{ state: 'due', quote: 'Remind me about the invoice on Oct 1.' }]);
-    expect(JSON.parse(due.context).capability).toContain('no initiated reminders are granted');
+    expect(JSON.parse(due.context).capability).toContain('explicitly asked for');
+    await worker.sendReminders();
     expect(sends).toBe(1);
     now = Date.UTC(2026, 9, 2, 17);
     const overdue = worker.probe('hello');
@@ -400,9 +401,6 @@ it('withholds a corrected dated source and carries a replacement from the same v
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     let now = start, sends = 0;
-    journal.append({ kind: 'reminder-grant', reference: 'operator:reminders', trial: genesis.grant,
-      surface: 'telegram-private-chat', scope: 'initiated-dated-reminders', custodian: genesis.operator,
-      recovery: 'unknown-never-retry', at: start });
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
       model: async input => {
         const packet = JSON.parse(input.context);
@@ -418,29 +416,29 @@ it('withholds a corrected dated source and carries a replacement from the same v
               replacement: 'the invoice deadline is October 3.' }] : [] });
         }
         if (input.question === 'The invoice deadline is Oct 1.') return JSON.stringify({ reply: 'Recorded.', memory: [],
-          dated: [{ quote: input.question, when: 'Oct 1' }] });
+          dated: [{ quote: input.question, when: 'Oct 1', remind: true }] });
         if (input.question.startsWith('Actually')) return JSON.stringify({ reply: 'Updated.', memory: [],
-          dated: [{ quote: 'the invoice deadline is October 3.', when: 'October 3' }] });
+          dated: [{ quote: 'the invoice deadline is October 3.', when: 'October 3', remind: true }] });
         return 'Okay.';
       }, send: async () => ++sends, checkOutbound: () => {} });
     worker.intake([update(1, 'The invoice deadline is Oct 1.')]); await worker.drain();
     worker.intake([update(2, 'Actually, the invoice deadline is October 3.')]); await worker.drain();
-    now = Date.UTC(2026, 9, 1, 15);
+    now = Date.UTC(2026, 9, 1, 17);
     await worker.sendReminders();
-    expect(sends).toBe(2); // the old October 1 item was corrected before its morning.
+    expect(sends).toBe(2); // the old October 1 request was corrected before its due time.
     now = Date.UTC(2026, 9, 2, 17);
     const next = worker.probe('What is due?');
     if ('reason' in next) throw Error(next.reason);
     const packet = JSON.parse(next.context);
     expect(packet.dated).toMatchObject([{ day: '2026-10-03', state: 'upcoming' }]); // October 1 was superseded.
     expect(journal.view.dated).toHaveLength(2);
-    now = Date.UTC(2026, 9, 3, 15);
+    now = Date.UTC(2026, 9, 3, 17);
     const due = worker.probe('What is due?');
     if ('reason' in due) throw Error(due.reason);
     expect(JSON.parse(due.context).dated).toMatchObject([{ day: '2026-10-03', state: 'due' }]);
     expect(due.context).not.toContain('The invoice deadline is Oct 1.');
     await worker.sendReminders();
-    expect(sends).toBe(3); // the replacement gets its own morning reminder.
+    expect(sends).toBe(3); // the requested replacement gets its own reminder.
     worker.intake([update(3, 'Forget the invoice deadline.')]); await worker.drain();
     const forgotten = worker.probe('What is due?');
     if ('reason' in forgotten) throw Error(forgotten.reason);
@@ -557,7 +555,7 @@ it('delivers upcoming-date behavior in the prepared packet and source briefing',
     expect(JSON.parse(prepared.context).capability).toContain('remembered across restarts');
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 30, expiresAt: genesis.expires });
-    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('unprompted reminder');
+    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('unprompted message');
     expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('remembered across restarts');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
