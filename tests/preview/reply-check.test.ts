@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkReply, HOLDING_REPLY, REPLY_RULES, replyReviewContext } from './reply-check.js';
 import type { ReplyCheckResult } from './reply-check.js';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const scores = (overrides: Record<string, number> = {}) => ({ model: 'jev-1.13.0', answers: Object.fromEntries(
@@ -30,7 +30,7 @@ it.each([
       ruleIds: expected === 'violation' ? ['parks_on_user'] : [], confidence: null, latencyMs: 500 }; },
     record: row => records.push(row),
   });
-  expect(result.sendOriginal).toBe(sendOriginal);
+  expect(result.outcome === 'pass').toBe(sendOriginal);
   expect(calls).toBe(Number(escalate));
   expect(reserved).toBe(Number(escalate));
   expect(records.at(-1)?.verdict).toBe(expected);
@@ -38,24 +38,24 @@ it.each([
   if (escalate) expect(records.at(-1)?.path).toBe('subscription');
 });
 
-it('keeps a non-secret candidate reachable when review cannot be reserved', async () => {
+it('keeps the turn pending, never sending unchecked, when review cannot be reserved', async () => {
   const records: ReplyCheckResult[] = [];
   const result = await checkReply('PREVIEW — candidate', 'turn:1', {
     elapsedMs: () => 100, jev: async () => ({ value: scores({ parks_on_user: 0.5 }), latencyMs: 160 }),
     reserveEscalation: () => false, escalate: async () => { throw Error('must not call'); }, record: row => records.push(row),
   });
-  expect(result).toEqual({ sendOriginal: true, path: 'holding' });
+  expect(result).toEqual({ outcome: 'unavailable', path: 'holding', capRefused: true });
   expect(records.at(-1)?.path).toBe('holding');
 });
 
-it('keeps a non-secret candidate reachable when the full-context review errors', async () => {
+it('keeps the turn pending, never sending unchecked, when Jev and the full-context review both fail', async () => {
   const records: ReplyCheckResult[] = [];
   const result = await checkReply('PREVIEW — candidate', 'turn:1', {
     elapsedMs: () => 100, jev: async () => { throw Error('timeout'); },
     reserveEscalation: () => true, escalate: async () => { throw Error('provider unavailable'); },
     record: row => records.push(row),
   });
-  expect(result.sendOriginal).toBe(true);
+  expect(result.outcome).toBe('unavailable');
   expect(records.map(row => row.path)).toEqual(['jev', 'subscription']);
   expect(records.at(-1)?.verdict).toBe('unavailable');
 });
@@ -205,7 +205,7 @@ it('escalates an interrupted Jev check without repeating Jev after restart', asy
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('does not repeat an interrupted paid review and sends the non-secret candidate', async () => {
+it('does not repeat an interrupted paid review and holds the candidate instead of sending it unchecked', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-crash-')));
   const path = join(root, 'journal.encrypted');
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -230,10 +230,14 @@ it('does not repeat an interrupted paid review and sends the non-secret candidat
       replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('Jev repeated'); },
         escalate: async () => { throw Error('review repeated'); } } });
     await recovered.drain();
-    expect(sent).toBe('PREVIEW — candidate');
+    await recovered.drain();
+    expect(sent).toBe('');
     expect(second.view.calls).toBe(2);
     expect(second.view.lastReplyCheck?.path).toBe('subscription');
     expect(second.view.lastReplyCheck?.verdict).toBe('unavailable');
+    expect(second.view.order[0]?.intent).toBeUndefined();
+    expect(second.view.order[0]?.answer).toBe('candidate');
+    expect(second.view.order[0]?.held).toBe('reply check unavailable');
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -298,5 +302,68 @@ it('answers a long, summarized conversation when Jev is unsure: the full-context
     expect(replay.view.replyCheckCounts.unsure).toBe(1);
     expect(replay.view.lastReplyCheck).toMatchObject({ path: 'jev', verdict: 'pass' });
     replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+const outageGenesis = (maxCalls: number) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
+  grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+  maxCalls, maxReplies: 4, maxTurns: 4, maxBytes: 32768, cursor: 0 });
+const hello = [{ update_id: 1, message: { chat: { id: 7654321, type: 'private' as const }, from: { id: 7654321 }, text: 'hello' } }];
+
+it('sends nothing when Jev and the full-context review both fail, including after a restart', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-outage-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const sends: string[] = [];
+    const ports = { now: () => 1000, stopped: () => false, model: async () => 'candidate', checkOutbound: () => {},
+      send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return 1; },
+      replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('timeout'); },
+        escalate: async () => { throw Error('provider unavailable'); } } };
+    const first = openPreviewJournal(path, key, outageGenesis(4));
+    const worker = createJournalWorker(first, ports);
+    worker.intake(hello);
+    await worker.drain();
+    expect(sends).toEqual([]);
+    expect(first.view.order[0]?.held).toBe('reply check unavailable');
+    first.close();
+    const second = openPreviewJournal(path, key);
+    await createJournalWorker(second, { ...ports, model: async () => { throw Error('model repeated'); },
+      replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('Jev repeated'); },
+        escalate: async () => { throw Error('review repeated'); } } }).drain();
+    expect(sends).toEqual([]);
+    expect(second.view.order[0]?.answer).toBe('candidate');
+    expect(second.view.order[0]?.intent).toBeUndefined();
+    expect(second.view.calls).toBe(2);
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('holds at the shared call cap and answers with a completed review after an authorized cap raise', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-cap-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const sends: string[] = [];
+    let reviewed = 0;
+    const journal = openPreviewJournal(path, key, outageGenesis(2));
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'candidate', checkOutbound: () => {},
+      send: async input => { sends.push(input.expectedText); return 1; },
+      replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores({ parks_on_user: 0.5 }), latencyMs: 160 }),
+        escalate: async () => { reviewed++; return { verdict: 'pass', ruleIds: [] as [], confidence: null, latencyMs: 500 }; } } });
+    worker.intake(hello);
+    await worker.drain();
+    expect(journal.view.calls).toBe(2);
+    expect(reviewed).toBe(1);
+    expect(sends).toEqual(['PREVIEW — candidate']);
+    worker.intake([{ update_id: 2, message: { chat: { id: 7654321, type: 'private' as const }, from: { id: 7654321 }, text: 'again' } }]);
+    await worker.drain();
+    expect(sends).toHaveLength(1);
+    expect(journal.view.order[1]?.held).toBe('call cap');
+    raiseJournalCaps(journal, { maxCalls: 4, maxReplies: 4, maxTurns: 4, authority: 'test: operator raise', at: 2000 });
+    await worker.drain();
+    expect(journal.view.order[1]?.answer).toBe('candidate');
+    expect(reviewed).toBe(2);
+    expect(sends).toEqual(['PREVIEW — candidate', 'PREVIEW — candidate']);
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

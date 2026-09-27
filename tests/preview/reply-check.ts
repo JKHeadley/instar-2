@@ -68,33 +68,38 @@ export interface ReplyCheckPorts {
   elapsedMs(): number;
 }
 export async function checkReply(text: string, id: string, ports: ReplyCheckPorts,
-  originalPrompt?: string): Promise<{ sendOriginal: boolean; path: ReplyPath }> {
+  originalPrompt?: string): Promise<ReplyDecision> {
   let first: ReplyCheckResult;
   const started = ports.elapsedMs();
   try { const answer = await ports.jev(text); first = interpretJev(answer.value, answer.latencyMs); }
   catch { first = { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
     latencyMs: Math.max(0, ports.elapsedMs() - started) }; }
   ports.record(first);
-  if (first.verdict === 'pass') return { sendOriginal: true, path: 'jev' };
+  if (first.verdict === 'pass') return { outcome: 'pass', path: 'jev' };
   return reviewReply(text, id, ports, first.ruleIds, originalPrompt);
 }
 
-/** Only a full-context verdict may suppress a non-secret reply. A failed review
- * has a declared reachability fail direction: send the original candidate. */
+/** Supervision outcome. Only a completed check may release the original candidate:
+ * a Jev PASS or a full-context PASS. When no judgment was obtained (review budget
+ * exhausted, reviewer outage, malformed output) the outcome is `unavailable` and the
+ * caller must keep the turn pending, never send it unchecked (Rules 38, 67). */
+export type ReplyDecision = { outcome: 'pass' | 'violation' | 'unavailable'; path: ReplyPath; capRefused?: boolean };
+
+/** Only a full-context verdict may suppress a non-secret reply (Rules 4, 86). */
 export async function reviewReply(text: string, id: string, ports: ReplyCheckPorts, ruleIds: ReplyRule[],
-  originalPrompt?: string): Promise<{ sendOriginal: boolean; path: ReplyPath }> {
+  originalPrompt?: string): Promise<ReplyDecision> {
   if (!ports.reserveEscalation(text, originalPrompt)) {
     ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'holding', latencyMs: 0 });
-    return { sendOriginal: true, path: 'holding' };
+    return { outcome: 'unavailable', path: 'holding', capRefused: true };
   }
   const fallbackStarted = ports.elapsedMs();
   try {
     const result = await ports.escalate(text, id, originalPrompt);
     ports.record({ ...result, path: 'subscription' });
-    return { sendOriginal: result.verdict === 'pass', path: 'subscription' };
+    return { outcome: result.verdict === 'pass' ? 'pass' : 'violation', path: 'subscription' };
   } catch {
     ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'subscription',
       latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted) });
-    return { sendOriginal: true, path: 'subscription' };
+    return { outcome: 'unavailable', path: 'subscription' };
   }
 }

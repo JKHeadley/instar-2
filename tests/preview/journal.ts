@@ -12,7 +12,7 @@ import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
-import type { ReplyCheckResult, ReplyCheckPorts } from './reply-check.js';
+import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
  * can later raise the finite counters without altering genesis or usage. */
@@ -523,21 +523,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         let reply = `PREVIEW — ${turn.answer!}`;
         if (ports.replyCheck) {
           const previous = turn.replyChecks?.at(-1);
+          // Only a completed PASS releases the candidate; an unavailable or interrupted
+          // check keeps the turn pending with its intake, candidate and reservations.
+          let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact secret wall runs before provider disclosure on every replay.
           if (redact(reply).count) {
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0 }, at: ports.now() });
-            reply = HOLDING_REPLY;
-          } else if (previous?.path === 'holding') {
-            if (previous.verdict === 'violation') reply = HOLDING_REPLY;
-          }
-          else if (previous?.path === 'subscription') {
-            if (previous.verdict === 'violation') reply = HOLDING_REPLY;
-          } else if (previous?.path === 'jev' && previous.verdict === 'pass') { /* Checked pass. */ }
+            decision = 'violation';
+          } else if (previous && previous.path !== 'jev' && previous.verdict === 'violation') decision = 'violation';
+          else if (previous && previous.path !== 'holding' && previous.verdict === 'pass') decision = 'pass';
           else if (turn.reviewReserved) {
-            // An interrupted paid review is UNKNOWN, so never repeat it.
-            journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
+            // A failed or interrupted paid review is UNKNOWN: never repeat it, never send unchecked.
+            if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
               ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0 }, at: ports.now() });
+            decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck,
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
@@ -546,19 +546,24 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
                   ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
+            let checked: ReplyDecision;
             if (turn.jevReserved) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
-              const checked = await reviewReply(reply, turn.id, checkPorts, previous?.ruleIds ?? [], turn.prompt);
-              if (!checked.sendOriginal) reply = HOLDING_REPLY;
+              checked = await reviewReply(reply, turn.id, checkPorts, previous?.ruleIds ?? [], turn.prompt);
             } else if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
-              checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
-              const checked = await reviewReply(reply, turn.id, checkPorts, [], turn.prompt);
-              if (!checked.sendOriginal) reply = HOLDING_REPLY;
+              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
+              checked = await reviewReply(reply, turn.id, checkPorts, [], turn.prompt);
             } else {
               journal.append({ kind: 'reply-jev-reserve', id: turn.id, at: ports.now() });
-              const checked = await checkReply(reply, turn.id, checkPorts, turn.prompt);
-              if (!checked.sendOriginal) reply = HOLDING_REPLY;
+              checked = await checkReply(reply, turn.id, checkPorts, turn.prompt);
             }
+            decision = checked.outcome; capRefused = checked.capRefused === true;
+          }
+          if (decision === 'violation') reply = HOLDING_REPLY;
+          else if (decision === 'unavailable') {
+            // A refused review reservation waits on `raise-caps` like any call-cap hold.
+            journal.append({ kind: 'hold', id: turn.id, reason: capRefused ? 'call cap' : 'reply check unavailable', at: ports.now() });
+            continue;
           }
         }
         gate();

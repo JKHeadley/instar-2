@@ -871,14 +871,18 @@ Jev checks the eight measured message questions in one batch. A clear pass sends
 the candidate. A violation, uncertain score, or unavailable Jev invokes one
 subscription review with the original operator message, audience, sources,
 memory and history. Only that full-context review can suppress a non-secret
-candidate. If the review cannot decide, the original candidate sends under the
-declared reachability fail direction. New answers leave one shared call-budget
+candidate. Only a completed PASS (Jev or the full-context review) releases the
+candidate. If no check can decide (review budget exhausted, reviewer outage,
+malformed output), nothing is sent: the turn stays held with its message,
+candidate and reservations. A refused review reservation is a `call cap` hold
+that `raise-caps` retries; any other failure is a `reply check unavailable`
+hold shown in `status`. New answers leave one shared call-budget
 slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
-subscription review is not retried or charged again from this runner; recovery
-uses the reachability fail direction through the existing exact intent fence.
+subscription review is not retried or charged again from this runner; the turn
+is held as `reply check unavailable` rather than sent unchecked.
 An interrupted Jev check escalates without repeating Jev.
 
 Desk one-call connectivity check, after setting the host binding from the vault:
