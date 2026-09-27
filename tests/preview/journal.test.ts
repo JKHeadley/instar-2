@@ -432,6 +432,32 @@ it('reviews the UNKNOWN notice and distinguishes it from an answer in later hist
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('labels a holding reply that review sent in place of the loss notice truthfully in later history', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let context = '';
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => {
+        if (input.id.endsWith(':1')) return { state: 'uncertain' };
+        context = input.context; return 'second answer';
+      },
+      replyCheck: { jev: async () => { throw Error('Jev unavailable'); },
+        escalate: async input => input.endsWith('Please send it again.')
+          ? { verdict: 'violation', ruleIds: ['parks_on_user'], confidence: 1, latencyMs: 0 }
+          : { verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 },
+        elapsedMs: () => 0 },
+      checkOutbound: () => {}, send: async () => 1 });
+    worker.intake([update(1)]); await worker.drain();
+    worker.intake([update(2)]); await worker.drain();
+    const history = JSON.parse(context).history;
+    expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
+      notice: 'I need to check that answer before I can send it.',
+      outcome: 'holding reply delivered in place of the loss notice; model UNKNOWN' });
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('replays a content-free subscription review state after its reservation', () => {
   const root = origin();
   try {

@@ -481,8 +481,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return String(from) === journal.view.genesis.operator ? 'the operator (verified sender)'
       : `Telegram user ${String(from)} (authenticated sender, not the operator)`;
   };
-  const outcome = (item: Turn) => item.sent ? (item.noticeClass ? 'loss notice delivered; model UNKNOWN' : 'Telegram API accepted')
-    : item.intent ? (item.noticeClass ? 'loss notice delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
+  // The label follows the text actually intended: review can replace the notice with a holding reply.
+  const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
+  const outcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
+      : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN' : 'Telegram API accepted')
+    : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
+      : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
     : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending';
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
