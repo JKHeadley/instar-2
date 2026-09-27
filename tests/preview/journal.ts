@@ -2292,7 +2292,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;
       const pending = journal.view.order.filter(turn => turn.accepted && turn.update > previous && turn.update <= last.update);
       const full = packetFor(last.update, true, [], [], [], last.thread, true);
-      if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .7), SUMMARY_MAX_PROMPT_BYTES)) return;
+      // The answer envelope, source briefing and next operator message also use
+      // the 32 KiB packet allowance. Start rolling before the history alone
+      // consumes that headroom; the existing summary path remains bounded.
+      if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) return;
       const candidates: { turn: Turn; bases: string[] }[] = [];
       for (const turn of pending.slice(0, SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);

@@ -1306,6 +1306,17 @@ for the next reply. The journal and stop latch are deliberately machine-local.
 The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
 
+The rolling summary starts when the unsummarized packet reaches 45% of the
+configured context limit (or the existing 24 KiB summary ceiling), leaving room
+for the answer envelope, briefing, desk report and next question before 32 KiB
+is reached. Its existing four-turn chunks, call cap, stop, expiry, supervision,
+and synchronous overflow fallback remain in force. The offline
+`long-conversation-headroom.test.ts` sends 40 successive 285-character questions
+with pinned briefing and a near-limit desk report: all 40 receive replies with
+a faithful summary stub; a rejected summary leaves the overflowing turn visibly
+held with its original intake. Justin's private-chat procedure is
+[long-conversation-headroom-live-test.md](long-conversation-headroom-live-test.md).
+
 An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
 It is never retried at its recorded update frontier. After 60 seconds from
 every outstanding UNKNOWN summary reservation, a new summary can cover a
