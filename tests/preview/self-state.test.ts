@@ -3,6 +3,7 @@ import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource } from './self-state.js';
 
@@ -46,6 +47,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(text).toContain('My replies Telegram accepted: 1 today, 3 in this trial');
     expect(text).toContain('Model attempts: 3 of 3 used, 0 left');
     expect(text).toContain('Held messages: 1 (call cap)');
+    expect(text).toContain('Replies held today: 1. Update 4: call cap (still held).');
     expect(text).toContain('Caps have not been raised');
     expect(text).toContain('Last restart: 2026-09-26 08:00 PDT. The run before it started 2026-09-25 16:00 PDT and ended 2026-09-25 16:01 PDT: paused by signal SIGTERM.');
     w.journal.close(); // Run 2 dies without recording an end (crash).
@@ -71,10 +73,13 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(probeState).toContain('Last restart: 2026-09-26 11:30 PDT. The run before it started 2026-09-26 08:00 PDT and ended without recording why (crash, kill or power loss).');
     expect(probeState).toContain('Launches recorded: 3 (2 today)');
     expect(probeState).toContain('Unknown outcomes (never retried): 0 model call(s), 0 send(s).');
+    expect(probeState).toContain('Replies held today: 1. Update 4: call cap (released).');
     // The zone is stated, never assumed: an hour past local midnight nothing from "yesterday" counts.
     expect(selfState(w.journal.view, readRuns(runs), clock, 'UTC', run3)).toContain('(time zone UTC; "today" means 2026-09-26 there)');
     expect(selfState(w.journal.view, readRuns(runs), NOON + 13 * 3_600_000, 'America/Los_Angeles', run3))
       .toContain('Operator messages received: 0 today, 5 in this trial');
+    expect(selfState(w.journal.view, readRuns(runs), NOON + 13 * 3_600_000, 'America/Los_Angeles', run3))
+      .toContain('Replies held today: 0.');
     // A read-only status view, with no current launch, reports the latest launch honestly.
     const status = selfState(w.journal.view, readRuns(runs), clock, 'America/Los_Angeles');
     expect(status).toContain('Latest launch 2026-09-26 11:30 PDT has no recorded end: it is running, or ended without recording why.');
@@ -103,6 +108,37 @@ it('says uptime and restarts are unknown when no launch was recorded, and marks 
     expect(text).toContain('Unknown outcomes (never retried): 1 model call(s), 0 send(s).');
     expect(() => selfState(journal.view, readRuns(join(root, 'runs.jsonl')), NOON, 'Mars/Olympus')).toThrow(RangeError);
     journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('status replays distinct replies held on the local day and gives each journal reason', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-held-status-')));
+  const now = Date.now(), dayStart = Math.floor(now / 86_400_000) * 86_400_000;
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: now + 86_400_000 });
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async () => 'unused', send: async () => null, checkOutbound: () => {} });
+    worker.intake([update(1, 'earlier question', dayStart - 3_600_000), update(2, 'today question', dayStart)]);
+    const [earlier, today] = journal.view.order;
+    journal.append({ kind: 'hold', id: earlier!.id, reason: 'reply cap', at: dayStart - 1_000 });
+    journal.append({ kind: 'hold', id: earlier!.id, reason: 'call cap', at: dayStart });
+    journal.append({ kind: 'hold', id: today!.id, reason: 'reply check unavailable', at: dayStart });
+    journal.append({ kind: 'hold', id: today!.id, reason: 'reply cap', at: dayStart });
+    journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
+        'status', '--root', root, '--time-zone', 'UTC'],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10_000 });
+    expect(status.status, status.stderr).toBe(0);
+    const result = JSON.parse(status.stdout);
+    expect(result.heldRepliesToday).toEqual({ count: 2, replies: [
+      { update: 1, reasons: ['call cap'], stillHeld: true },
+      { update: 2, reasons: ['reply check unavailable', 'reply cap'], stillHeld: true },
+    ] });
+    expect(result.self).toContain('Replies held today: 2. Update 1: call cap (still held). '
+      + 'Update 2: reply check unavailable; reply cap (still held).');
+    expect(result.holds).toEqual([{ update: 1, reason: 'call cap' }, { update: 2, reason: 'reply cap' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

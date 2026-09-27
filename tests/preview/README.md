@@ -627,7 +627,11 @@ times. Launches before this change were not recorded, and the text says so. It i
 recomputed from memory each turn (p95 about 6 ms at 2000 turns, no model call, no
 extra read), and `status` prints the same text as `self` plus the last three
 `launches`, so an answer can be checked against it (status, read after the reply,
-counts that reply too).
+counts that reply too). `status.heldRepliesToday` and the self-state text count
+distinct operator replies with a hold recorded in the journal on today's local
+date. Each reply lists its update, every reason recorded today, and whether it
+remains held; a later release does not erase the day's hold. `status.holds`
+continues to show only holds still in force, regardless of date.
 
 The desk report is optional: a plain file the desk maintains about other 2.0 work, re-read at every turn
 (default `ROOT/desk-status.md`; override with `--desk-status /ABSOLUTE/PATH`).
