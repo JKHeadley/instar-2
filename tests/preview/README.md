@@ -687,6 +687,14 @@ A plain-text summary keeps no notes; `status` lists each summary's note count
 (`null` = none recorded), `summaryPending` (a summary call still in flight) and the
 known names.
 
+The conversation model prompt asks one short clarifying question when a question
+fits two active items that disagree or refer to different people or things. It
+uses a distinguishing name or detail, and answers directly when the question
+identifies one item. This judgment uses the existing reply call, source messages
+and correction/forgetting projection. The focused offline fixture checks prompt
+wiring, source visibility and the reply path. Justin's real-model check is
+[ambiguous-recall-live-test.md](ambiguous-recall-live-test.md).
+
 ### Remembering commitments
 
 The same summary call also lists what the operator asked the agent to remember or do

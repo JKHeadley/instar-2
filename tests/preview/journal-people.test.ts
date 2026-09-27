@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, PREVIEW_RECALL_LIMIT } from './journal.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 
 const key = new Uint8Array(32).fill(9);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-people-')));
@@ -31,14 +32,15 @@ const summarizer = (names: readonly string[], bad = true) => (context: string) =
 };
 
 function world(root: string, options: { names?: readonly string[]; bad?: boolean; plain?: boolean;
-  prepare?: (context: string) => void; summarize?: (context: string) => string } = {}) {
+  prepare?: (context: string) => void; summarize?: (context: string) => string;
+  reply?: (question: string, context: string) => string } = {}) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
   const asked = new Map<string, string>();
   const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
     prepareModel: input => { options.prepare?.(input.context); return input.context; },
     model: async input => {
       if (input.id.startsWith('summary:')) return options.plain ? 'A plain summary.' : options.summarize?.(input.context) ?? summarizer(options.names ?? ['Sam', 'Priya'], options.bad ?? true)(input.context);
-      asked.set(input.question, input.context); return 'Noted. Sam agrees with you.';
+      asked.set(input.question, input.context); return options.reply?.(input.question, input.context) ?? 'Noted. Sam agrees with you.';
     },
     send: async () => 1, checkOutbound: () => {} });
   const say = async (id: number, text: string, from?: number) => {
@@ -150,6 +152,61 @@ it('keeps same-name people apart for the model and gives an unknown person nothi
     const unknown = JSON.parse(w.asked.get('What did Oliver say about the launch?')!);
     expect(unknown.people).toBeUndefined();
     expect(JSON.stringify(unknown)).not.toContain('Oliver said');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('carries two distinct people into the reply call and sends one short clarification for an unnamed Sam', async () => {
+  const root = origin();
+  try {
+    const instruction = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question';
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(instruction);
+    const policy = subscriptionConversationPolicy('claude-opus-5-5');
+    expect(policy.args[policy.args.indexOf('--system-prompt') + 1]).toBe(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+    const w = world(root, { names: ['Sam Patel', 'Sam Ruiz'], bad: false, reply: (question, context) => {
+      if (question === 'What did Sam do?') {
+        const people = JSON.parse(context).people as { mentions: { person: string }[] }[];
+        expect(people.flatMap(item => item.mentions.map(note => note.person))).toEqual(['Sam Patel', 'Sam Ruiz']);
+        return 'Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?';
+      }
+      if (question === 'What did Sam Ruiz do?') return 'Sam Ruiz lent you a ladder.';
+      return 'Okay.';
+    } });
+    await w.say(1, 'Sam Patel from accounting approved the budget.');
+    await w.say(2, 'Sam Ruiz, my neighbour, lent me a ladder.');
+    const n = await w.fillUntilRecall(3, 'What did Sam do?');
+    await w.say(n, 'What did Sam do?');
+    const ambiguous = w.journal.view.order.at(-1)!;
+    expect(ambiguous.intent).toBe('PREVIEW — Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
+    expect(ambiguous.intent?.match(/\?/gu)).toHaveLength(1);
+    expect(ambiguous.sent).toBe(1);
+    await w.say(n + 1, 'What did Sam Ruiz do?');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Sam Ruiz lent you a ladder.');
+    expect(w.journal.view.order.at(-1)?.sent).toBe(1);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps disagreeing active facts in context for clarification and answers a question identifying one', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { bad: false, reply: (question, context) => {
+      if (question === 'When is the Atlas launch?') {
+        const history = JSON.parse(context).history as { user: string }[];
+        expect(history.map(item => item.user)).toEqual([
+          'The Atlas launch is on October 8.', 'The Atlas launch is on November 12.']);
+        return 'Which Atlas launch date should I use, October 8 or November 12?';
+      }
+      if (question === 'What October date did I mention for Atlas?') return 'October 8.';
+      return 'Okay.';
+    } });
+    await w.say(1, 'The Atlas launch is on October 8.');
+    await w.say(2, 'The Atlas launch is on November 12.');
+    await w.say(3, 'When is the Atlas launch?');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Which Atlas launch date should I use, October 8 or November 12?');
+    await w.say(4, 'What October date did I mention for Atlas?');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — October 8.');
+    expect(w.journal.view.replies).toBe(4);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
