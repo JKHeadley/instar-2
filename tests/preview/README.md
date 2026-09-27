@@ -797,6 +797,14 @@ including when one message supplied several preferences. Retiring a clause withh
 historical source without masking a new operator turn that uses the same words. Saving a
 preference leaves that turn's reply and commitments intact. `inspect --text` shows the active
 preferences in the next packet. No second store or model call type is involved.
+The conversation prompt explicitly applies active, validated `packet.preferences` to
+answer length and detail on later replies. A direct request in the current operator
+message takes precedence. `More detail.` and `Shorter answers.` enter the existing
+memory decision path; one-word-style clauses with one significant search term can
+be stored as reply preferences without relaxing factual correction validation.
+Changing this bound prompt requires a matching preview activation before the runner
+can start. The supervised check is
+[reply-length-preference-live-test.md](reply-length-preference-live-test.md).
 
 Live script for Justin in the existing private preview chat, after the desk lands this
 revision and resumes the one runner on its existing root:

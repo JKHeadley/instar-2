@@ -520,7 +520,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // A cue only schedules the existing capped model judgment; it never creates a preference.
   const preferenceCue = (turn: Turn) => fromOperator(turn)
-    && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
+    && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:please\s+)?(?:more|less)\s+detail\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
   const pendingMemory = () => journal.view.order.find(turn => turn.accepted && fromOperator(turn) && !turn.memoryUndecided
     && (memoryCue(turn) || preferenceCue(turn) || turn.memoryPending || turn.held === 'memory correction pending')
     && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)
@@ -978,12 +978,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const item of proposed.slice(0, 3)) {
       const { mode, source, quote, replacement, replies, summaryPassages } = (item ?? {}) as { mode?: unknown; source?: unknown; quote?: unknown;
         replacement?: unknown; replies?: unknown; summaryPassages?: unknown };
+      const activePreference = preferences.active.has(JSON.stringify([source, quote]));
       const original = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
       const channel = typeof source === 'string' && source.startsWith('channel:')
         ? journal.view.channelItems.get(source.slice('channel:'.length)) : undefined;
       if ((mode !== 'correct' && mode !== 'forget' && mode !== 'prefer')
         || mode === 'prefer' && (source !== trigger.id || typeof quote !== 'string'
-          || quote.length < 8 || Buffer.byteLength(quote) > 1000 || terms(quote).length < 2
+          || quote.length < 8 || Buffer.byteLength(quote) > 1000
           || !redact(trigger.text).text.includes(quote) || replacement !== undefined
           || replies !== undefined || summaryPassages !== undefined)
         || mode !== 'prefer' && (!original?.accepted && !channel)
@@ -992,7 +993,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || original !== undefined && original.update >= trigger.update && mode !== 'prefer'
         || channel !== undefined && (channelMemoryId(channel) !== source || channel.at >= trigger.at)
         || typeof quote !== 'string' || quote.length < 8
-        || Buffer.byteLength(quote) > 1000 || terms(quote).length < 2
+        || Buffer.byteLength(quote) > 1000 || terms(quote).length < (mode === 'prefer' || activePreference ? 1 : 2)
         || !(original && redact(original.text).text.includes(quote)
           || channel && redact(`${channel.subject ?? ''} ${channel.text}`).text.includes(quote))
         || seen.has(JSON.stringify([source, quote]))

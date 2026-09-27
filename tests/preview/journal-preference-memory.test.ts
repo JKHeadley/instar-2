@@ -3,6 +3,8 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(29);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -54,6 +56,86 @@ it('keeps a direct reply preference in every later packet, then supersedes and f
     worker.intake([update(4, 'How was your day?')]); await worker.drain();
     expect(JSON.parse(seen.at(-1)!).preferences).toBeUndefined();
     expect(journal.view.order).toHaveLength(4);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('applies more detail and shorter answers as reversible reply instructions after restart', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-length-')));
+  const path = join(root, 'journal.encrypted');
+  const packets: Record<string, unknown>[] = [];
+  const ports = { now: () => 1790000000000, stopped: () => false,
+    prepareModel: (input: { question: string; context: string; id: string }) =>
+      prepareJournalEnvelope(input, 'offline-model', 'grant:preview', 1790000000000, 16000),
+    model: async (input: { id: string; context: string; prepared?: string }) => {
+      const packet = JSON.parse(input.context);
+      if (input.id.startsWith('summary:')) {
+        const request = packet.memoryRequest?.message;
+        const active = packet.memoryCandidates?.find((item: { message: string }) =>
+          item.message === 'More detail.' || item.message === 'Shorter answers.');
+        const memory = request === 'More detail.'
+          ? [{ mode: 'prefer', source: packet.memoryRequest.id, quote: request }]
+          : request === 'Shorter answers.'
+            ? [{ mode: 'correct', source: active.id, quote: 'More detail.', replacement: request }]
+            : request === 'Forget my answer length preference.'
+              ? [{ mode: 'forget', source: active.id, quote: 'Shorter answers.' }]
+              : [];
+        return JSON.stringify({ summary: 'The operator discussed reply length.', people: [], memory });
+      }
+      const envelope = JSON.parse(input.prepared!);
+      packets.push(JSON.parse(envelope.messages.find((message: { role: string }) =>
+        message.role === 'context').content).packet);
+      return 'Understood.';
+    }, send: async () => 1, checkOutbound: () => {} };
+  try {
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('packet.preferences contains active, validated reply preferences');
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('apply them to answer length and detail');
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('The current operator message takes precedence');
+    let journal = openPreviewJournal(path, key, genesis);
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'More detail.')]); await worker.drain();
+    expect(journal.view.memory, JSON.stringify({ holds: journal.view.order.map(item => item.held),
+      summaries: journal.view.summaries.length, calls: journal.view.calls })).toMatchObject([{ mode: 'prefer', quote: 'More detail.' }]);
+    journal.close();
+
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    worker.intake([update(2, 'Explain the change.')]); await worker.drain();
+    expect(packets.at(-1)?.preferences).toEqual([{ text: 'More detail.', source: journal.view.order[0]!.id }]);
+    worker.intake([update(3, 'Shorter answers.')]); await worker.drain();
+    expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct']);
+    journal.close();
+
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    worker.intake([update(4, 'Explain the change.')]); await worker.drain();
+    expect(packets.at(-1)?.preferences).toEqual([{ text: 'Shorter answers.', source: journal.view.order[2]!.id }]);
+    worker.intake([update(5, 'Forget my answer length preference.')]); await worker.drain();
+    expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct', 'forget']);
+    journal.close();
+
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    worker.intake([update(6, 'Explain the change.')]); await worker.drain();
+    expect(packets.at(-1)?.preferences).toBeUndefined();
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps the two-term guard for an unrelated factual correction', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-preference-one-term-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => {
+        const packet = JSON.parse(input.context);
+        if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'A name was discussed.', people: [],
+          memory: packet.memoryRequest?.message === 'Actually Larchwood is Oakwood.'
+            ? [{ mode: 'correct', source: journal.view.order[0]!.id, quote: 'Larchwood', replacement: 'Oakwood' }]
+            : [] });
+        return 'Understood.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Larchwood')]); await worker.drain();
+    worker.intake([update(2, 'Actually Larchwood is Oakwood.')]); await worker.drain();
+    expect(journal.view.memory).toEqual([]);
+    expect(journal.view.order[1]?.memoryPending).toBe(true);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
