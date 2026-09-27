@@ -709,17 +709,19 @@ same encrypted append-only journal. The ordinary capped reply call selects an ex
 date phrase from the operator's message; the runner checks both against that message and parses
 the phrase deterministically in `--time-zone`. It stores the interpreted local day, optional
 24-hour time, original phrase, zone and any ambiguity in the answer frame. No extra model call,
-store, service or scheduler is added. A syntax cue only invites the model to judge whether a
-dated statement was made; it never creates an item itself. Up to three items can be recorded
-from one turn. A malformed proposed item is not recorded.
-If the model returns no structured date decision after a date syntax signal, the original turn
-stays durable and `datedPending` names it in `status` and the next packet. That is an unconfirmed
-signal, never a due item; the preview must not claim it saved a deadline from that evidence alone.
+store, service or scheduler is added. Every verified operator reply packet asks the model for a
+dated decision, including `dated:[]` when there is no event or deadline. Up to three items can be
+recorded from one turn. A malformed proposed item is not recorded; the runner retains a pending
+date decision and sends a checked, truthful clarification instead of the model's false save claim.
+If the model omits the structured date decision, the original turn stays durable and
+`datedPending` names it in `status` and the next packet. That is an unconfirmed missing decision,
+never a due item; the preview must not claim it saved a deadline from that evidence alone.
 
 An unqualified weekday means its next occurrence (the same weekday today is ambiguous). A
 month and day without a year means the next occurrence on or after the message's local day.
-`this` or `next` weekday, multiple dates, invalid dates, and a bare hour such as “at 3” retain
-their ambiguity; a bare hour still has a known day. Day-only and ambiguous-hour items become
+`this` or `next` weekday, multiple dates, invalid dates, unsupported modifiers, numeric dates and
+relative phrases retain their ambiguity. A bare hour such as “at 3:30” has a known day but no
+settled time. Day-only and ambiguous-hour items become
 due on their local date and overdue the next local day. A precise time becomes overdue after
 that local time. Items without a resolved day are shown as ambiguous. The packet of the next
 operator message includes up to ten due, overdue or ambiguous active items, with a count of

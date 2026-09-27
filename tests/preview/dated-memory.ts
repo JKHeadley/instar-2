@@ -23,11 +23,13 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
   const today = localParts(at, zone), localToday = dayKey(today.year, today.month, today.day);
   let day: string | undefined, ambiguity: string | undefined;
   const phrase = when.trim();
-  const iso = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/u.exec(phrase);
-  const named = /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/iu.exec(phrase);
-  const weekday = /\b(?:(this|next)\s+)?(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/iu.exec(phrase);
-  const dateMentions = [...phrase.matchAll(/\b\d{4}-\d{1,2}-\d{1,2}\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+\d{1,2}\b|\b(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|today|tomorrow)\b/giu)];
-  if (dateMentions.length > 1 || /\b(?:or|between|through)\b/iu.test(phrase)) ambiguity = 'multiple possible dates';
+  const expression = phrase.replace(/\.$/u, '');
+  const timed = /^(.+?)\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/iu.exec(expression);
+  const date = timed?.[1] ?? expression;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/u.exec(date);
+  const named = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?$/iu.exec(date);
+  const weekday = /^(?:(this|next)\s+)?(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/iu.exec(date);
+  if (/\b(?:or|between|through)\b/iu.test(date)) ambiguity = 'multiple possible dates';
   else if (iso) {
     const year = Number(iso[1]), month = Number(iso[2]), date = Number(iso[3]);
     if (validDay(year, month, date)) day = dayKey(year, month, date); else ambiguity = 'invalid calendar date';
@@ -47,21 +49,20 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
       const value = new Date(Date.UTC(today.year, today.month - 1, today.day + ahead));
       day = dayKey(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate());
     }
-  } else if (/\btomorrow\b/iu.test(phrase)) {
+  } else if (/^tomorrow$/iu.test(date)) {
     const value = new Date(Date.UTC(today.year, today.month - 1, today.day + 1));
     day = dayKey(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate());
-  } else if (/\btoday\b/iu.test(phrase)) day = localToday;
+  } else if (/^today$/iu.test(date)) day = localToday;
   else ambiguity = 'date expression unresolved';
   let time: string | undefined;
-  const clock = /\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/iu.exec(phrase);
-  const military = /\bat\s+([01]?\d|2[0-3]):([0-5]\d)\b/u.exec(phrase);
-  const bare = /\bat\s+(\d{1,2})(?::(\d{2}))?\b(?!\s*(?:am|pm))/iu.exec(phrase);
-  if (clock) {
-    const hour = Number(clock[1]), minute = Number(clock[2] ?? 0);
-    if (hour < 1 || hour > 12 || minute > 59) ambiguity = 'invalid time';
-    else time = `${String(hour % 12 + (clock[3]!.toLowerCase() === 'pm' ? 12 : 0)).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-  } else if (military) time = `${String(Number(military[1])).padStart(2, '0')}:${military[2]}`;
-  else if (bare) ambiguity = ambiguity ?? 'AM or PM unspecified';
+  if (timed) {
+    const hour = Number(timed[2]), minute = Number(timed[3] ?? 0);
+    const meridiem = timed[4]?.toLowerCase();
+    if (minute > 59 || hour > 23 || (meridiem && (hour < 1 || hour > 12))) ambiguity = 'invalid time';
+    else if (meridiem) time = `${String(hour % 12 + (meridiem === 'pm' ? 12 : 0)).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    else if (timed[3] && (hour === 0 || hour > 12)) time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    else ambiguity = ambiguity ?? 'AM or PM unspecified';
+  }
   return { source, quote, when: phrase, zone, ...(day ? { day } : {}), ...(time ? { time } : {}),
     ...(ambiguity ? { ambiguity } : {}) };
 }

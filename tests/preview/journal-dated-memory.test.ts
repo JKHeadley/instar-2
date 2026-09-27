@@ -35,6 +35,19 @@ it('parses in the operator zone, keeps an unspecified hour ambiguous, and does n
   expect(dueState(invalid, start)).toBe('ambiguous');
 });
 
+it('does not turn a partial date or unqualified hour into a certain calendar fact', () => {
+  const parse = (when: string) => parseDatedItem('one', when, when, start, 'America/Los_Angeles');
+  expect(parse('tomorrow at 3:30')).toMatchObject({ day: '2026-09-27', ambiguity: 'AM or PM unspecified' });
+  expect(parse('tomorrow at 3:30').time).toBeUndefined();
+  expect(parse('day after tomorrow').day).toBeUndefined();
+  expect(parse('day after tomorrow').ambiguity).toBeTruthy();
+  expect(parse('last Thursday').day).toBeUndefined();
+  expect(parse('last Thursday').ambiguity).toBeTruthy();
+  expect(parse('tomorrow at 15:30')).toMatchObject({ day: '2026-09-27', time: '15:30' });
+  expect(parse('tomorrow at 3 pm')).toMatchObject({ day: '2026-09-27', time: '15:00' });
+  expect(parse('tomorrow at 3 pm.')).toMatchObject({ day: '2026-09-27', time: '15:00' });
+});
+
 it('journals verified dated items once, surfaces them on the next due message, and replays without a send', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-'))), path = join(root, 'journal.encrypted');
   try {
@@ -68,39 +81,93 @@ it('journals verified dated items once, surfaces them on the next due message, a
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('holds a malformed dated proposal with intake intact and does not accept a foreign sender', async () => {
+it('replies truthfully once to a malformed dated proposal across restart, retaining unresolved intake', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-invalid-')));
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    let sends = 0;
-    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false, timeZone: 'America/Los_Angeles',
+    const path = join(root, 'journal.encrypted');
+    let journal = openPreviewJournal(path, key, genesis);
+    let sends = 0, sent = '';
+    const ports = { now: () => start, stopped: () => false, timeZone: 'America/Los_Angeles',
       model: async () => JSON.stringify({ reply: 'I saved it.', memory: [],
         dated: [{ quote: 'Dentist on Oct 1.', when: 'October 5' }] }),
-      send: async () => { sends++; return sends; }, checkOutbound: () => {} });
+      send: async (input: { text: string }) => { sends++; sent = input.text; return sends; }, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Dentist on Oct 1.', 99), update(2, 'Dentist on Oct 1.')]);
     await worker.drain();
     expect(journal.view.order[0]?.accepted).toBe(false);
-    expect(journal.view.order[1]?.held).toBe('dated item invalid');
+    expect(journal.view.order[1]?.datedPending).toBe(true);
     expect(journal.view.dated).toHaveLength(0);
-    expect(sends).toBe(0);
+    expect(sends).toBe(1);
+    expect(sent).not.toContain('I saved it');
+    expect(sent).toMatch(/date.*not saved|not saved.*date/i);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    await worker.drain();
+    expect(sends).toBe(1);
+    expect(journal.view.order[1]?.datedPending).toBe(true);
+    expect(journal.view.dated).toHaveLength(0);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps a missed structured date decision visible without treating the cue as authority', async () => {
+it('requests a date decision for every verified turn and exposes missing numeric and relative decisions', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-pending-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const decisions: string[] = [];
     const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
-      model: async () => 'Okay.', send: async () => 1, checkOutbound: () => {} });
-    worker.intake([update(1, 'My dentist is Thursday at 3.')]); await worker.drain();
+      model: async input => { decisions.push(JSON.parse(input.context).datedDecision ?? ''); return 'Okay.'; },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'My dentist is on 10/01/2026 at 3 pm.'), update(2, 'Invoice due in two days.')]);
+    await worker.drain();
+    expect(decisions).toHaveLength(2);
+    expect(decisions.every(value => value.includes('dated:[]'))).toBe(true);
     expect(journal.view.order[0]?.datedPending).toBe(true);
+    expect(journal.view.order[1]?.datedPending).toBe(true);
     expect(journal.view.dated).toHaveLength(0);
     const next = worker.probe('Any plans?');
     if ('reason' in next) throw Error(next.reason);
     expect(JSON.parse(next.context).datedPending).toMatchObject([{ update: 1,
-      message: 'My dentist is Thursday at 3.' }]);
+      message: 'My dentist is on 10/01/2026 at 3 pm.' }, { update: 2, message: 'Invoice due in two days.' }]);
     expect(JSON.parse(next.context).dated).toBeUndefined();
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('accepts an explicit empty date decision for an ordinary no-event turn', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-empty-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
+      model: async input => {
+        expect(JSON.parse(input.context).datedDecision).toContain('dated:[]');
+        return JSON.stringify({ reply: 'Hello.', memory: [], dated: [] });
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Hello.')]); await worker.drain();
+    expect(journal.view.order[0]?.datedPending).toBeUndefined();
+    expect(journal.view.dated).toHaveLength(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('records unsupported numeric and relative dates as unresolved rather than dropping them', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-relative-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
+      model: async input => JSON.stringify({ reply: 'I can remember the wording, but the dates need clarification.',
+        memory: [], dated: [{ quote: input.question, when: input.question.includes('10/01')
+          ? '10/01/2026 at 3 pm' : 'in two days' }] }),
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'My dentist is on 10/01/2026 at 3 pm.'), update(2, 'Invoice due in two days.')]);
+    await worker.drain();
+    expect(journal.view.dated).toHaveLength(2);
+    expect(journal.view.dated.every(item => item.day === undefined && item.ambiguity === 'date expression unresolved')).toBe(true);
+    expect(journal.view.order.every(item => item.datedPending === undefined)).toBe(true);
+    const next = worker.probe('What is unresolved?');
+    if ('reason' in next) throw Error(next.reason);
+    expect(JSON.parse(next.context).dated).toMatchObject([{ state: 'ambiguous' }, { state: 'ambiguous' }]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
