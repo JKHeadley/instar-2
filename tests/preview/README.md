@@ -1761,12 +1761,13 @@ test on an isolated copy of the actual preview journal is
 ### Build handoff on one journal
 
 `journal-handoff.test.ts` uses separate processes on one encrypted journal. It
-compares the complete selected conversation projection before and after each
-reopen, including cursor, pending and held turns, memory, open commitments and
-questions, summaries and the next packet. It also kills the first process after
-an exact send intent, then confirms the successor does not repeat that send or
+compares the durable facts shared by both builds before and after each reopen,
+including cursor, pending and held turns, memory, open commitments, summaries
+and the common facts in the next packet. It checks newer question and preference
+fields separately because the old build did not write them. It also kills the
+first process after an exact send intent, then confirms the successor does not repeat that send or
 an orphaned model reservation. A later turn is answered after compaction and
-reopen. The test can load the `0c0b8617` journal module for its first process
+reopen. The test can load the `56fe0b7c` journal module for its first process
 through `PREVIEW_OLD_JOURNAL_MODULE=file:///ABSOLUTE/OLD/tests/preview/journal.js`
 and the old read-only status command through
 `PREVIEW_OLD_LAUNCHER=/ABSOLUTE/OLD/tests/preview/journal-agent.mjs`. Archive

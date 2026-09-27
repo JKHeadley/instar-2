@@ -2,8 +2,9 @@ import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
-const { createJournalWorker, openPreviewJournal, openQuestionCandidates, projectMemoryText } =
-  await import(process.env.PREVIEW_JOURNAL_MODULE ?? './journal.js');
+const journalModule = await import(process.env.PREVIEW_JOURNAL_MODULE ?? './journal.js');
+const { createJournalWorker, openPreviewJournal } = journalModule;
+const hasQuestions = typeof journalModule.openQuestionCandidates === 'function';
 
 const [root, phase] = process.argv.slice(2);
 const key = new Uint8Array(32).fill(7);
@@ -37,25 +38,25 @@ const worker = createJournalWorker(journal, {
 });
 
 if (phase.startsWith('seed')) {
-  add(1, 'Remember the silver key; I prefer short replies.');
+  add(1, 'Sam keeps the silver key in the old drawer; I prefer short replies.');
   journal.append({ kind: 'reserve', id: id(1), at });
   journal.append({ kind: 'answer', id: id(1), text: 'I will remember the silver key.', state: 'complete',
-    memory: [{ mode: 'prefer', source: id(1), quote: 'I prefer short replies', trigger: id(1) }], at });
+    ...(hasQuestions ? { memory: [{ mode: 'prefer', source: id(1), quote: 'I prefer short replies', trigger: id(1) }] } : {}), at });
   journal.append({ kind: 'intent', id: id(1), text: 'PREVIEW — I will remember the silver key.',
     chat: genesis.chat, update: 1, grant: genesis.grant, at });
   journal.append({ kind: 'sent', id: id(1), message: 101, at });
-  add(2, 'Where is the silver key?');
+  add(2, 'Actually, it is a brass key. Where is it?');
   journal.append({ kind: 'reserve', id: id(2), at });
   journal.append({ kind: 'answer', id: id(2), text: "I don't know.", state: 'complete', at });
   journal.append({ kind: 'intent', id: id(2), text: "PREVIEW — I don't know.",
     chat: genesis.chat, update: 2, grant: genesis.grant, at });
   journal.append({ kind: 'sent', id: id(2), message: 102, at });
   journal.append({ kind: 'summary-reserve', through: 2, at });
-  journal.append({ kind: 'summary', through: 2, text: 'The silver key is in the old drawer.',
-    people: [{ name: 'the operator', source: id(1), quote: 'silver key' }],
+  journal.append({ kind: 'summary', through: 2, text: 'Sam keeps the key in the old drawer.',
+    people: [{ name: 'Sam', source: id(1), quote: 'Sam keeps the silver key' }],
     commitments: [{ in: 'reply', source: id(1), quote: 'I will remember the silver key.' }],
-    questions: [{ source: id(2), quote: 'Where is the silver key?', reason: 'unanswered-reply' }],
-    questionsReviewed: [id(2)], memory: [{ mode: 'correct', source: id(1),
+    ...(hasQuestions ? { questions: [{ source: id(2), quote: 'Where is it?', reason: 'unanswered-reply' }],
+      questionsReviewed: [id(2)] } : {}), memory: [{ mode: 'correct', source: id(1),
       quote: 'silver key', trigger: id(2), replacement: 'brass key' }], state: 'complete', at });
   add(3, 'Please check the drawer.');
   journal.append({ kind: 'hold', id: id(3), reason: 'reply check unavailable', at });
@@ -70,7 +71,7 @@ if (phase.startsWith('seed')) {
   if (phase === 'seed-kill') process.kill(process.pid, 'SIGKILL');
 }
 if (phase === 'resume') {
-  worker.intake([update(1, 'Remember the silver key; I prefer short replies.'), update(4, 'What happens next?')]);
+  worker.intake([update(1, 'Sam keeps the silver key in the old drawer; I prefer short replies.'), update(4, 'What happens next?')]);
   await worker.drain();
   worker.checkCoherence();
 }
@@ -81,18 +82,26 @@ if (phase === 'after-compact') {
   worker.checkCoherence();
 }
 const view = journal.view;
+const probe = worker.probe('Where is the key and what is still open?');
+const packet = 'context' in probe ? JSON.parse(probe.context) : null;
 const state = {
   cursor: view.cursor, calls: view.calls, replies: view.replies,
   turns: view.order.map(turn => ({ id: turn.id, update: turn.update, answer: turn.answer ?? null,
-    held: turn.held ?? null, heldSince: turn.heldSince ?? null, reserved: turn.reserved,
+    held: turn.held ?? null, reserved: turn.reserved,
     intent: turn.intent ?? null, sent: turn.sent ?? null, modelState: turn.modelState ?? null })),
   pending: view.order.filter(turn => turn.accepted && !turn.sent && !turn.intent).map(turn => turn.id),
   held: view.order.filter(turn => turn.held).map(turn => turn.id),
   summaries: view.summaries, reservations: [...view.summaryReservations],
   people: view.people, commitments: view.commitments, closed: [...view.closed],
-  questions: openQuestionCandidates(view), reviewed: [...view.questionsReviewed],
-  memory: view.memory, projected: projectMemoryText(view, 'silver key; I prefer short replies'),
-  probe: worker.probe('Where is the key and what is still open?'),
+  memory: view.memory,
+  probe: packet ? { question: probe.question, historyMode: packet.historyMode,
+    summary: packet.summary?.text ?? null,
+    history: packet.history.map(item => ({ user: item.user, answer: item.answer, outcome: item.outcome })),
+    memory: packet.memory?.map(item => ({ mode: item.mode, replacement: item.replacement ?? null })) ?? [],
+    commitments: packet.commitments?.map(item => ({ reply: item.reply ?? null,
+      items: item.items.map(note => ({ id: note.id, quote: note.quote })) })) ?? [] } : probe,
+  ...(hasQuestions ? { newFeatures: { questions: journalModule.openQuestionCandidates(view),
+    reviewed: [...view.questionsReviewed], preferences: view.memory.filter(item => item.mode === 'prefer') } } : {}),
 };
 process.stdout.write(JSON.stringify(state));
 journal.close();

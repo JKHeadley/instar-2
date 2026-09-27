@@ -43,6 +43,6 @@ uses a SIGKILL after a durable send intent, checks both UNKNOWN fences, and
 continues after compaction. For an old-to-new source test, set
 `PREVIEW_OLD_JOURNAL_MODULE` to the `file:///.../tests/preview/journal.js` URL
 and `PREVIEW_OLD_LAUNCHER` to the absolute `journal-agent.mjs` path of an
-archived `0c0b8617` tree containing `tests/preview`, `src` and `scripts` before
+archived `56fe0b7c` tree containing `tests/preview`, `src` and `scripts` before
 running that one test file. Preserve the
 trial trace for the desk. This script does not itself authorize a deploy.

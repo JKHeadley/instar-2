@@ -20,6 +20,7 @@ const run = (root: string, phase: string, old = false): Record<string, unknown> 
   expect(result.status, `${phase}: ${result.stderr}`).toBe(0);
   return JSON.parse(result.stdout) as Record<string, unknown>;
 };
+const durableFacts = ({ newFeatures: _newFeatures, ...facts }: Record<string, unknown>) => facts;
 const status = (root: string, old = false) => {
   const result = spawnSync(process.execPath,
     ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
@@ -30,25 +31,32 @@ const status = (root: string, old = false) => {
   const view = JSON.parse(result.stdout) as Record<string, unknown>;
   return { cursor: view.cursor, turns: view.turns, calls: view.calls, replies: view.replies,
     summaryThrough: view.summaryThrough, holds: view.holds, unknownCalls: view.unknownCalls,
-    unknownSends: view.unknownSends, openQuestions: view.openQuestions, openCommitments: view.openCommitments };
+    unknownSends: view.unknownSends, commitments: view.commitments };
 };
 
-it('keeps the full conversation projection and one-shot effects across build switch and compaction', () => {
+it('keeps shared durable facts and one-shot effects across build switch and compaction', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-handoff-')));
   try {
     const seeded = run(root, 'seed', true);
     expect(seeded.pending).toEqual(['telegram:12345678:update:3', 'telegram:12345678:update:4',
       'telegram:12345678:update:5']);
     expect(seeded.held).toEqual(['telegram:12345678:update:3']);
-    expect((seeded.questions as unknown[]).length).toBe(2);
+    const hasNewFeatures = seeded.newFeatures !== undefined;
+    if (hasNewFeatures) expect(((seeded.newFeatures as { questions: unknown[] }).questions)).toHaveLength(2);
     expect((seeded.summaries as unknown[]).length).toBe(1);
     expect((seeded.commitments as unknown[]).length).toBe(1);
-    expect((seeded.memory as unknown[]).length).toBe(2);
+    expect((seeded.memory as unknown[]).length).toBe(hasNewFeatures ? 2 : 1);
     expect((seeded.turns as { intent: string | null; sent: number | null }[])[5]).toMatchObject({
       intent: 'PREVIEW — Already prepared.', sent: null,
     });
-    expect(seeded.projected).not.toContain('silver key');
-    expect(run(root, 'inspect')).toEqual(seeded);
+    expect(JSON.stringify(seeded.probe)).not.toContain('silver key');
+    expect(JSON.stringify(seeded.probe)).toContain('brass key');
+    const reopened = run(root, 'inspect');
+    expect(durableFacts(reopened)).toEqual(durableFacts(seeded));
+    expect(((reopened.newFeatures as { questions: unknown[]; preferences: unknown[] }).questions))
+      .toHaveLength(hasNewFeatures ? 2 : 1);
+    expect(((reopened.newFeatures as { preferences: unknown[] }).preferences))
+      .toHaveLength(hasNewFeatures ? 1 : 0);
     expect(status(root)).toEqual(status(root, true));
 
     const resumed = run(root, 'resume');
