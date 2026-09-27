@@ -1038,6 +1038,26 @@ source record and recall path can then be used without another store or model ca
 For the supervised end-to-end procedure, see
 [channel-memory-live-test.md](channel-memory-live-test.md).
 
+### Memory source trust
+
+The journal already distinguishes authenticated operator turns, channel imports and
+model summaries. Reply packets carry `sourceKind` on each memory item:
+`operator-stated` for the verified operator's text and exact excerpts from it,
+`channel-import` for imported messages, and `inferred-by-summary` for rolling
+summary text and notes derived from the agent's own earlier replies. A verified
+operator correction carries `operator-stated`. The label is computed from the
+source record at projection time, including after restart; model prose cannot
+upgrade its own summary or an import. Prior agent answers remain labelled as
+answers, not as operator statements.
+
+When a summary is present, the answer packet instructs the model to state
+operator-stated facts plainly, hedge summary inferences with “I think”, and
+resolve a conflict in favor of the operator-stated item. The original messages
+remain in the encrypted journal; bounded recall may omit one from a particular
+packet, so an absent quote is not proof of absence. This adds no model call,
+store, send path or authority. The supervised end-to-end procedure is
+[memory-source-trust-live-test.md](memory-source-trust-live-test.md).
+
 ### Coherence check after each reply
 
 After a reply is sent (or its send is UNKNOWN, since it may have reached the
