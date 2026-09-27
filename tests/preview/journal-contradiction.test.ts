@@ -21,6 +21,25 @@ it('only emits quotes present verbatim in the projected source', () => {
   expect(statedFacts('My notebook cover ```\nexample\n``` is blue.')).toEqual([]);
 });
 
+it('does not scan old assertions for a question, but still detects a later assertion', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-contradiction-question-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const packets: Record<string, unknown>[] = [];
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async input => { packets.push(JSON.parse(input.context) as Record<string, unknown>); return 'Noted.'; },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'My notebook cover is blue.')]); await worker.drain();
+    worker.intake([update(2, 'What color is my notebook cover?')]); await worker.drain();
+    worker.intake([update(3, 'My notebook cover is green.')]); await worker.drain();
+    expect(packets[1]?.contradictions).toBeUndefined();
+    expect(packets[2]?.contradictions).toMatchObject([{ subject: 'my notebook cover',
+      earlier: { update: 1, quote: 'My notebook cover is blue' },
+      operator: { update: 3, quote: 'My notebook cover is green' } }]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('flags two sourced values after compaction and replay without changing memory', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-contradiction-')));
   const path = join(root, 'journal.encrypted');

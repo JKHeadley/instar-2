@@ -22,6 +22,16 @@ it('resolves a pronoun through the turn it continues, which message-only word ma
   expect(selectRecall({ message, previous, candidates, now, limit: 5 })[0]).toBe(2);
   // Other side: with no earlier turn to continue, the same vague message recalls nothing.
   expect(selectRecall({ message, candidates, now, limit: 5 })).toEqual([]);
+  const competing = [
+    { text: 'My sister Maya loves ranunculus flowers. noted', at: now - 9 * day },
+    ...['wash the car', 'repaint the kitchen', 'organize my desk', 'repair the fence', 'buy new shoes']
+      .map(text => ({ text: `I want to ${text}.`, at: now - 9 * day })),
+  ];
+  const continued = "Maya's birthday is next Saturday and I'm stuck on a gift. My sister loves flowers.";
+  const picked = selectRecall({ message, previous: continued, candidates: competing, now, limit: 5 });
+  expect(picked).toHaveLength(5);
+  expect(picked).toContain(0);
+  expect(picked).not.toContain(5);
 });
 
 it('bridges a paraphrase through the summary sentence that still names the topic', () => {
@@ -52,6 +62,26 @@ it('keeps direct word matches first and caps the result', () => {
   const picked = selectRecall({ message: 'where do the tomato seedlings go', candidates, now, limit: 5 });
   expect(picked).toHaveLength(5);
   expect(picked[0]).toBe(12);
+});
+
+it('puts full query coverage ahead of shorter repeated partial matches', () => {
+  const candidates = [
+    { text: 'Avery Stone project 01 venue is the west annex; the handoff notes cover suppliers and permits.', at: now - day },
+    ...Array.from({ length: 8 }, (_, index) => ({ text: `Avery Stone project venue ${index}: venue venue venue.`, at: now - day })),
+  ];
+  expect(selectRecall({ message: 'Avery Stone project 01 venue', candidates, now, limit: 1 })).toEqual([0]);
+  expect(selectRecall({ message: 'Avery Stone project venue', candidates, now, limit: 1 })).not.toEqual([0]);
+});
+
+it('keeps an exact compound project id distinct from its component numbers', () => {
+  const candidates = [
+    { text: 'Devon Stone person-10-project-09 venue is west annex 10-9.', at: now - day },
+    { text: 'Devon Stone person-10-project-10 venue is north hall 10-10.', at: now - day },
+    { text: 'Devon Stone person-10-project-1 venue is garden studio 10-1.', at: now - day },
+  ];
+  expect(selectRecall({ message: 'Devon Stone person-10-project-10 venue', candidates, now, limit: 1 })).toEqual([1]);
+  expect(selectRecall({ message: 'Devon Stone person-10-project-09 venue', candidates, now, limit: 1 })).toEqual([0]);
+  expect(selectRecall({ message: 'Devon Stone person-10-project-1 venue', candidates, now, limit: 1 })).toEqual([2]);
 });
 
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {

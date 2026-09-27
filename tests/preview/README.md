@@ -660,6 +660,31 @@ not assume an older binary can read a journal after a newer writer appends.
 
 ### Offline recall benchmark
 
+`memory-scale-10k.test.ts` is the offline depth-at-scale check. It seeds the
+encrypted journal with exactly 10,000 synthetic saved facts in 2,000 accepted
+turns: 20 frequent people have 100 facts each, 80 people have 50 each, and
+200 topics have 20 each. Five related facts share each project turn. The fixed
+66-question set samples early, middle and late projects across all three
+frequency bands. The answer stub copies a matching clause only from the
+actual reply packet. Selection correctness requires that packet's `recalled`
+entry to carry the expected durable turn ID and verbatim fact. The check
+reopens the journal before asking questions, measures cold replay separately,
+and advances a fixture summary frontier every eight question turns so later
+questions do not consume the packet with unrelated recent history. It measures
+read-only probe and full offline turn p50/p95 separately. Explicit
+bounds are 100% packet selection and answer accuracy, at most 24,000 packet
+bytes, probe p95 below 500 ms, full offline turn p95 below 250 ms, and replay
+below 5 seconds. Run only the named test file:
+
+```sh
+npx vitest run tests/preview/memory-scale-10k.test.ts --configLoader=runner --testTimeout=180000
+```
+
+The synthetic fixture uses offline stubs and cannot establish semantic recall
+quality, provider latency or Telegram delivery. Its 10,000 facts are written
+only to a temporary journal that is removed after the run. Justin's bounded
+live check is [memory-scale-10k-live-test.md](memory-scale-10k-live-test.md).
+
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
 2000-turn private-chat histories. It uses the real encrypted preview journal,
 summary scheduling, replay, channel fixture import, memory correction/forget
