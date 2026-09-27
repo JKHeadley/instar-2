@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SUBSCRIPTION_THINKING_ENV, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -58,6 +58,8 @@ it('F02 wrapped JSON: a single whole-response fence parses, while prose and extr
   expect(parseModelJson(`${fence}json\r\n${decision}\r\n${fence}`)).toMatchObject({ ok: true, shape: 'fenced' });
   expect(parseModelJson(`Here is my decision: ${decision}`)).toEqual({ ok: false, shape: 'prose-wrapped' });
   expect(parseModelJson(`${decision}\n${decision}`)).toEqual({ ok: false, shape: 'multiple-objects' });
+  const captured = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8'));
+  expect(parseModelJson(captured.result)).toEqual({ ok: false, shape: 'not-json' });
 });
 
 it('F03 contradicting review prose: a PASS is valid alone, never after a written rejection', () => {
