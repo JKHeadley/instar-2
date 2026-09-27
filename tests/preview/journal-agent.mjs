@@ -14,9 +14,10 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
+
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
@@ -478,17 +479,15 @@ async function main() {
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
+
           const prepared = modelEnvelope({ question,
-            context: replyReviewContext(originalPrompt, text), id: `${id}:reply-review` });
+            context: replyReviewContext(originalPrompt, text, reviewRules), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
-          const parsed = JSON.parse(result.value);
-          if (!['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
-            || parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))
-            || (parsed.verdict === 'pass' && parsed.ruleIds.length !== 0)
-            || (parsed.verdict === 'violation' && parsed.ruleIds.length === 0)
-            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
+          const parsed = parseReplyReviewVerdict(result.value);
+          if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule)))
             throw Error('preview: review malformed');
+
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
