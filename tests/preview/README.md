@@ -689,6 +689,28 @@ known names.
 
 ### Remembering commitments
 
+An explicit first-person promise in the agent's **actual send intent** is captured immediately,
+before any rolling summary. The deterministic detector accepts a narrow sentence beginning
+`I'll`/`I will` (including `I’ll`) with `remind you`, `remind you to`, `check`, `follow up`, `send`, `tell`,
+`update`, or `keep`; quoted lines, code blocks, conditional or negated language do not qualify.
+The encrypted intent carries the exact quote, agent ownership, the next-relevant-reply wait,
+and any supported `today`, `tomorrow`, or `on YYYY-MM-DD` due date resolved in the configured
+time zone. An unsent candidate creates no commitment. An intent with an unknown send remains
+open because it may have reached Telegram. Replay reconstructs the same item without another
+store. Summary extraction skips an already captured promise rather than duplicating it.
+
+Open agent promises enter the next reply packet even before compaction. Due or overdue ones
+take priority under the existing ten-item and prompt bounds; the existing memory sentinel
+selects older promises related to the current message. The model judges relevance and
+can mention a due promise only in a normal reply to a new operator message: this preview has
+no scheduler, tools, or unprompted send. A later API-accepted reply saying exactly
+`Reminder: <promised action>` closes a matching reminder once its due day arrives; an
+early or unreceipted send does not.
+Promises to check, send, or perform external work remain open until the verified operator
+reports completion or withdrawal through the existing summary closure path. No bare claim
+of having checked the world counts as evidence. For the supervised operator-channel check,
+see [agent-commitment-live-test.md](agent-commitment-live-test.md).
+
 The same summary call also lists what the operator asked the agent to remember or do
 (`in: "message"`, quoted from their message) and what the agent said in its own reply that
 it would do or remember (`in: "reply"`). The runner keeps an item only when its quote occurs
