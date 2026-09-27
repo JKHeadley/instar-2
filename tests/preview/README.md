@@ -1032,3 +1032,24 @@ durable check order, and the holding reply without network access.
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),
 never an unsent candidate.
+
+### 2,000-turn recall latency
+
+The offline `recall-latency.test.ts` fixture measures model-free per-turn time with
+2,000 accepted journal turns, 100 person notes, 100 commitments, 10 memory
+corrections, 100 imported channel items, a covering summary, the recall sentinel,
+Jev's pass path and the post-reply coherence check. It reports p95 for read-only
+packet preparation and for intake, drain and coherence combined over 20 new
+turns. Historical turns are seeded directly into the in-memory projection, so
+the measurement excludes boot replay, live model time, network time and real
+Telegram transport. New turns use the encrypted, fsynced journal path.
+
+At large history size, the complete-history packet can be provably too large
+before it is rendered: each accepted item has at least `user`, `answer` and
+`outcome` JSON fields, even after redaction and memory withholding. The runner
+skips rendering that mode only when those minimum bytes alone exceed the
+current packet cap, then uses its existing summary path. Smaller histories
+still try complete history. No packet format, source selection, journal record,
+model call or reply decision changes. The focused test proves the large-history
+packet hash, the complete-history neighbor and the no-summary hold. Justin's
+supervised script is [recall-latency-live-test.md](recall-latency-live-test.md).

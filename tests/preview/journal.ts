@@ -621,8 +621,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: older.map(item => ({ text: `${clean(item.text, true)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) });
     const candidates = ranked.map(index => ({ id: older[index]!.id,
       message: clean(redact(older[index]!.text).text, true).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
+    // Even after redaction and withholding, every complete-history item has
+    // these three JSON fields. If their minimum bytes exceed the packet cap,
+    // optional quotes and prompt fitting cannot make complete history fit.
+    const minimumHistoryItemBytes = Buffer.byteLength('{"user":"","answer":"","outcome":""}');
+    const completeTooLarge = journal.view.order.reduce((count, item) => count + Number(item.accepted && item.update < turn.update), 0)
+      * minimumHistoryItemBytes > journal.view.limits.maxBytes;
     let promptFit = false;
     for (const compact of [false, true]) {
+      if (!compact && completeTooLarge) continue;
       const summary = compact ? summaryFor(turn.update - 1) : undefined;
       if (compact && !summary) continue;
       const recalled = summary ? recallFor(turn, summary) : [];
