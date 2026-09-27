@@ -84,6 +84,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   preferences: packet.preferences ?? [],
   recalled: packet.recalled?.length ?? 0, recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind),
   history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
+
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
 const withheldView = view => {

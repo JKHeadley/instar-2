@@ -1308,3 +1308,34 @@ surface. This preview remains deliberately machine-local under one writer.
 
 For the supervised operator check, see
 [reply-grounding-live-test.md](reply-grounding-live-test.md).
+
+### Why did you say that? (journal runner)
+
+When the verified operator asks about an earlier reply, the normal model packet
+may carry `replyProvenance`: one candidate reply and the packet saved with that
+reply's model reservation. A Telegram reply to a bot message selects that exact
+sent message; otherwise the memory sentinel ranks reply text against the new
+question, with the latest reply as the fallback. This is candidate selection,
+not a decision about what the operator meant. The model checks whether the
+candidate is the reply being asked about. If it is not, or its packet is absent,
+it says so instead of inventing a reason.
+
+The recorded view names the earlier turns and imported channel items that were
+available, plus any summary, recalled turns, people, commitments, corrections,
+memory changes and pinned sources in that packet. The reply says these were
+**available inputs**, not proven causes inside the model. Current secret redaction
+applies to the view. If a verified memory correction or forgetting came after
+the saved packet, the whole historical view is withheld with an explicit reason:
+legacy packet fields cannot reliably tie a paraphrased reply to its source turn.
+Packets saved after the current memory changes remain available. If the full
+record cannot fit the bounded prompt, the packet explicitly says that the
+recorded view was omitted; the turn can still receive an honest answer.
+
+The saved Seven envelope is the provenance record: this adds no store, model
+call, service or send route. The explanation uses the same capped answer call,
+Jev check, full-context escalation when needed, stop gate, exact send intent
+and no-resend rule as every other reply. `inspect` exposes the selected reply
+update, whether its packet was available, and source counts and imported source
+IDs without dumping the old packet. Earlier journal turns without a saved prompt are reported as
+missing. For the private operator procedure, see
+[why-did-you-say-live-test.md](why-did-you-say-live-test.md).
