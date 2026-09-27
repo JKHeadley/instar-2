@@ -118,7 +118,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
   const root = origin(), samples: number[] = [];
   const fact = 'The spare house key is under the blue heron statue.';
   let asked: string | undefined;
-  const open = () => world(root, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 8192 }), model: input => {
+  const open = () => world(root, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 9800 }), model: input => { // int12: reply instructions grew ~1.6 KB
     if (input.id.startsWith('summary:')) return 'Ordinary talk about weather, errands and plans across two conversations.';
     if (input.question.includes('spare house key')) asked = input.context;
     return 'noted';
@@ -143,7 +143,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
     expect(packet.audience.conversation).toBe('main chat');
     expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:4', date: '2026-09-21T14:17Z', conversation: 'topic 7', user: fact,
       answer: 'noted', outcome: 'Telegram API accepted' }));
-    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
+    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(9800);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
     const first = p95(samples.slice(0, 10)), last = p95(samples.slice(80));
     process.stdout.write(`journal conversations 90 turns / 3 conversations: non-model p95=${p95(samples).toFixed(1)} ms, first-ten=${first.toFixed(1)} ms, final-ten=${last.toFixed(1)} ms\n`);
@@ -156,7 +156,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
 it('gives the summarizer every turn\'s conversation and date, including the main chat, so the summary can keep where and when', async () => {
   const root = origin();
   try {
-    const w = world(root, { initial: genesis({ maxBytes: 4096 }) });
+    const w = world(root, { initial: genesis({ maxBytes: 5700 }) }); // int12: reply instructions grew ~1.6 KB
     for (let id = 1; id <= 40; id++) {
       w.worker.intake([update(id, `Main chat fact number ${String(id)} about the garden plan.`, undefined, 1790000000 + id * 60)]);
       await w.worker.drain(); await w.worker.summarizeIfNeeded();

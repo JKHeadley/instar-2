@@ -7,7 +7,7 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 const key = new Uint8Array(32).fill(19);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:dedupe', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 6000, cursor: 0 };
+  maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 7600, cursor: 0 }; // int12: reply instructions grew ~1.6 KB
 const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
   from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 
@@ -133,7 +133,7 @@ it('counts pending links against the 49-source limit', async () => {
     expect(journal.view.commitments[0]!.sources).toHaveLength(49);
     expect(journal.view.commitments).toHaveLength(2);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
-});
+}, 60000); // 70 summarized turns; 8.5 s alone, so the 10 s default fails under suite load.
 
 it('keeps punctuation that is the remembered value distinct', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-punctuation-')));

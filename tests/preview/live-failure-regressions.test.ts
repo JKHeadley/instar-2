@@ -175,7 +175,8 @@ it('memory denial: full-context review holds a false no-memory claim while a gro
     const worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Can you remember what I tell you?')]); await worker.drain();
     worker.intake([update(2, 'What can this preview remember?')]); await worker.drain();
-    expect(JSON.parse(packets[0]!).capability).toContain('Memory is this trial');
+    // The memory self-description piece states the trial memory as durable, journal-scoped memory.
+    expect(JSON.parse(packets[0]!).capability).toContain("You have durable memory in this trial's encrypted local journal");
     expect(sent).toEqual([HOLDING_REPLY, 'PREVIEW — I can use this trial journal to remember earlier turns.']);
   });
 });

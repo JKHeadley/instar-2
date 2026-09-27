@@ -9,7 +9,7 @@ const key = new Uint8Array(32).fill(31);
 const start = Date.UTC(2026, 8, 20, 18);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:gap', configurationDigest: 'sha256:gap', expires: Date.UTC(2026, 9, 30),
-  maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 7000, cursor: 0 };
+  maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 8600, cursor: 0 }; // int12: reply instructions grew ~1.6 KB
 const update = (id: number, text: string, at: number) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(at / 1000) } });
 

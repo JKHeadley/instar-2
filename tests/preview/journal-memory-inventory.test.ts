@@ -137,7 +137,7 @@ it('does not expose forgotten content encoded in imported metadata or candidate 
 it('drains an accepted memory question when the ordinary envelope fits but even empty inventory does not', async () => {
   const directory = root();
   try {
-    const g = { ...genesis, maxBytes: 9800 }; // int12: reply instructions grew; still between the two bounds // int12: reply instructions grew; still between the two bounds
+    const g = { ...genesis, maxBytes: 10450 }; // int12: reply instructions grew; midway in the measured 10300-10600 window between the two bounds
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
     const full = workerFor(journal).probe(question);

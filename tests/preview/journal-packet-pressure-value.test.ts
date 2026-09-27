@@ -48,8 +48,9 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
     // int12: the reply packet carries more fixed instructions, so the one- and two-item
-    // pressure points moved from 3000/3500 bytes to 5250/5500.
-    for (const limit of [5250, 5500, 6000]) {
+    // pressure points moved from 3000/3500 bytes to 5750/6000 (measured; the memory
+    // self-description and person-attribute instructions added the last 500 bytes).
+    for (const limit of [5750, 6000, 6500]) {
       journal.view.limits.maxBytes = limit;
       const probe = worker.probe('What is the harbor key handoff status?');
       if ('reason' in probe) {
@@ -60,16 +61,16 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
       const kept = packet.recalled?.map(item => item.id) ?? [];
       process.stdout.write(`packet pressure ${limit}: bytes=${Buffer.byteLength(probe.context)} kept=${kept.map(id => id.split(':').at(-1)).join(',')} dropped=${probe.dropped.map(item => `${item.kind}:${item.source.split(':').at(-1)}`).join(',')} open=${packet.openQuestions?.length ?? 0}\n`);
       expect(Buffer.byteLength(probe.context)).toBeLessThanOrEqual(limit);
-      if (limit === 5250) {
+      if (limit === 5750) {
         expect(kept).toEqual([source(200)]); // open question link wins a one-item boundary
       }
-      if (limit === 5500) {
+      if (limit === 6000) {
         expect(kept).toEqual([source(100), source(200)]);
         expect(probe.dropped.filter(item => item.kind === 'recent').map(item => item.source))
           .toEqual([source(300), source(400), source(500)]);
       }
     }
-    journal.view.limits.maxBytes = 5500;
+    journal.view.limits.maxBytes = 6000;
     const recentTurn = journal.view.turns.get(source(4998))!;
     const sent = recentTurn.sent!;
     delete recentTurn.sent;
@@ -88,7 +89,7 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
     if ('reason' in withoutSignals) throw Error(withoutSignals.reason);
     const before = (JSON.parse(withoutSignals.context) as { recalled?: { id: string }[] }).recalled?.map(item => item.id) ?? [];
     expect(before).toEqual([source(400), source(500)]);
-    process.stdout.write(`packet pressure 3500 without reference signals: kept=${before.map(id => id.split(':').at(-1)).join(',')} needed=0/2\n`);
+    process.stdout.write(`packet pressure 6000 without reference signals: kept=${before.map(id => id.split(':').at(-1)).join(',')} needed=0/2\n`);
     recentTurn.sent = sent;
     journal.view.questions.push(...questions);
     journal.close();

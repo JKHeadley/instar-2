@@ -83,4 +83,4 @@ it('opens the frozen14 journal and answers identically; frozen13 refuses the ren
     expect(digest(join(seed, 'journal.encrypted'))).toBe(before);
     expect(digest(join(seed, 'model-json-shapes.json'))).toBe(sidecarBefore);
   } finally { rmSync(temp, { recursive: true, force: true }); }
-}, 120000);
+}, 240000); // Seven checkout subprocesses each carry their own 30 s bound; the test bound must exceed their sum under load.

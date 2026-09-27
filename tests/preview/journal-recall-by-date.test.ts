@@ -45,7 +45,7 @@ it('quotes bounded dated originals when a summary covers the requested range', (
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, {
       kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
       configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 20, maxReplies: 20,
-      maxTurns: 20, maxBytes: 5000, cursor: 0 });
+      maxTurns: 20, maxBytes: 7800, cursor: 0 }); // int12: reply instructions grew; midway in the measured window where recall fits but complete history does not
     for (let id = 1; id <= 9; id++) {
       const when = id === 9 ? '2026-09-23T08:00:00Z' : `2026-09-22T${String(id + 7).padStart(2, '0')}:00:00Z`;
       const text = id === 2 ? `The orchard gate is green. ${'x'.repeat(220)}` : `Ordinary note ${id}. ${'x'.repeat(220)}`;

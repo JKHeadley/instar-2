@@ -1798,6 +1798,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const kept = perPerson.get(note.name) ?? new Map<string, PersonNote>();
       kept.set(note.source, note); perPerson.set(note.name, kept);
     }
+    // Chronological packet order breaks timestamp ties by journal order, so relevance ranking never reorders equal-time sources.
+    const chronological = [...perPerson.values()].flatMap(items => [...items.values()]);
+    const order = (a: PersonNote, b: PersonNote) => time(a) - time(b) || chronological.indexOf(a) - chronological.indexOf(b);
     const relevance = (note: PersonNote) => terms(note.quote).filter(word => asked.has(word) && !terms(note.name).includes(word)).length;
     const selected = [...perPerson.values()].flatMap(items => [...items.values()]
       .sort((a, b) => relevance(b) - relevance(a) || time(b) - time(a)).slice(0, PREVIEW_PEOPLE_LIMIT));
@@ -1805,7 +1808,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // first names remain candidates, but cannot evict the exact person's sources.
     return selected.sort((a, b) => Number(exactPersonName(b.name, question)) - Number(exactPersonName(a.name, question))
       || relevance(b) - relevance(a) || time(b) - time(a))
-      .slice(0, PREVIEW_PEOPLE_PACKET_LIMIT).sort((a, b) => time(a) - time(b));
+      .slice(0, PREVIEW_PEOPLE_PACKET_LIMIT).sort(order);
   };
   const attributesFor = (question: string, through: number) => {
     const asked = new Set(terms(question)), seen = new Set<string>();
