@@ -35,6 +35,8 @@ const importSource = (journal, state, source, stopped) => {
   }
 };
 
+import { auditJournal } from './journal-audit.mjs';
+
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -139,7 +141,7 @@ const packetStatus = view => {
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
-  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store', 'audit'].includes(command)) throw Error('preview: unknown command');
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -154,6 +156,15 @@ async function main() {
   if (command === 'stop') {
     if (!existsSync(journalPath)) throw Error('preview: journal absent');
     if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'operator' });
+    return;
+  }
+  if (command === 'audit') {
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true, true);
+    try {
+      const report = auditJournal(journal.view);
+      process.stdout.write(`${JSON.stringify(report)}\n`);
+      if (report.findings.length) process.exitCode = 1;
+    } finally { journal.close(); }
     return;
   }
   if (command === 'status') {
