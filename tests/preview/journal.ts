@@ -1252,7 +1252,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || summary.memoryFor === undefined && !turn.memoryPending && summary.through >= turn.update));
   const settleExhaustedEdit = () => {
     const request = pendingMemory();
-    if (request?.editOf && [...journal.view.summaryFailures].some(([through, failures]) => through >= request.update && failures >= 2))
+    const previous = request ? summaryFor(request.update)?.through ?? -1 : -1;
+    // A failed prefix before the edit also prevents its judgment from being reached.
+    if (request?.editOf && [...journal.view.summaryFailures].some(([through, failures]) => through > previous && failures >= 2))
       journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-failed', at: ports.now() });
   };
   const datedFrom = (proposed: unknown, turn: Turn): DatedItem[] | undefined => {
@@ -1666,8 +1668,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const activeDated = journal.view.dated.filter(item => !journal.view.memory.some(change =>
       change.mode !== 'prefer' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))
-      && clean(item.quote, true, item.source) === item.quote).map(item => ({ ...item, state: dueState(item, ports.now()) }))
-      .filter(item => item.state !== 'upcoming');
+      && clean(item.quote, true, item.source) === item.quote).map(item => ({ ...item, state: dueState(item, ports.now()) }));
     const due = activeDated.slice(0, 10).map(item => ({ ...item,
       quote: redact(item.quote).text, when: redact(item.when).text }));
     const pendingDates = journal.view.order.filter(item => item.accepted && item.update <= through && item.datedPending

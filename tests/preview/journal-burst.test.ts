@@ -20,6 +20,9 @@ const burst = [
   message(7, 'Why did you say first answer?', 47, { message_id: 101 }),
   ...[8, 9, 10].map(id => message(id, `Question ${id}.`)),
 ];
+const lateEditBurst = [...Array.from({ length: 9 }, (_, index) => message(index + 1, `Question ${index + 1}.`)),
+  { update_id: 10, edited_message: { message_id: 1, chat: { id: 7654321, type: 'private' },
+    from: { id: 7654321 }, text: 'Revised question 1.' } }];
 
 it('fsyncs a ten-update burst in update order across a mid-batch crash, merges the edit, and sends once per other turn', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-burst-'))), path = join(root, 'journal.encrypted');
@@ -109,6 +112,68 @@ it('holds later ordinary burst turns when an earlier edit judgment cannot finish
     expect(journal.view.order[1]?.held).toBe('memory correction pending');
     expect(journal.view.order[3]?.held).toBe('earlier turn pending');
     expect(journal.view.order[4]?.held).toBe('earlier turn pending');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('settles an edit beyond an exhausted summary prefix and drains ordinary replies after replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-burst-prefix-'))), path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis());
+    const sent: number[] = [], summaries: string[] = [];
+    const ports = { now: () => 1790000000000, stopped: () => false,
+      model: async (input: { id: string }) => {
+        if (input.id.startsWith('summary:')) {
+          summaries.push(input.id);
+          return { state: 'rejected' as const, failureClass: 'rejected' as const };
+        }
+        return 'answer';
+      },
+      send: async (input: { update: number }) => { sent.push(input.update); return sent.length; },
+      checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    expect(worker.intake(lateEditBurst)).toBe(11);
+    await worker.drain();
+    expect(sent).toEqual([]);
+    expect(summaries).toEqual(['summary:4', 'summary:4']);
+    expect(journal.view.order[9]?.memoryUndecided).toBe(true);
+    await worker.drain();
+    expect(journal.view.order[9]).toMatchObject({ editOf: journal.view.order[0]!.id,
+      memoryUndecided: true });
+    expect(journal.view.order[0]?.held).toBe('superseded by edit');
+    expect(sent).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    await worker.drain();
+    expect(summaries).toEqual(['summary:4', 'summary:4']);
+    expect(sent).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(journal.view.cursor).toBe(11);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reaches a late edit after successful summary prefixes', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-burst-prefix-success-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const sent: number[] = [], summaries: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async (input: { id: string }) => {
+        if (input.id.startsWith('summary:')) {
+          summaries.push(input.id);
+          return JSON.stringify({ summary: 'Revised question 1.', people: [], questions: [], memory: [] });
+        }
+        return 'answer';
+      },
+      summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
+      send: async (input: { update: number }) => { sent.push(input.update); return sent.length; },
+      checkOutbound: () => {} });
+    worker.intake(lateEditBurst);
+    await worker.drain();
+    expect(summaries).toEqual(['summary:4', 'summary:8', 'summary:10']);
+    expect(journal.view.order[9]?.memoryUndecided).toBeUndefined();
+    expect(sent).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
