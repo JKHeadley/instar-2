@@ -57,6 +57,7 @@ it.each([0.05, 0.9, 0.5])('accepts only a passing Jev or full-context review (%s
     expect(run.summaryChecks).toBe(1);
     expect(run.reviews).toBe(score === 0.05 ? 0 : 1);
     expect(run.observed).toContain('On 26 September, remember the launch.');
+    expect(run.journal.view.summaryCandidates.get(1)).toBe(run.observed);
     expect(run.journal.view.summaryCheckCounts.pass).toBe(1);
     run.journal.close();
     const replay = openPreviewJournal(join(run.root, 'journal.encrypted'), key);
@@ -73,6 +74,7 @@ it.each([[0.9, 'violation'], ['unavailable', 'pass']])('keeps the prior frontier
     expect(run.journal.view.summaryFailures.get(1)).toBe(1);
     expect(run.journal.view.order[0]?.text).toContain('remember the launch');
     expect(run.journal.view.summaryCheckCounts[score === 'unavailable' ? 'unavailable' : 'violation']).toBeGreaterThan(0);
+    expect(run.journal.view.summaryCandidates.get(1)).toContain('Justin asked us to remember the launch');
     run.journal.close();
     const replay = openPreviewJournal(join(run.root, 'journal.encrypted'), key);
     expect(replay.view.summaries).toHaveLength(0);

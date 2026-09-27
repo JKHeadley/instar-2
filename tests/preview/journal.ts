@@ -71,6 +71,7 @@ export type JournalRecord =
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; at: number }
+  | { kind: 'summary-candidate'; through: number; state: string; at: number }
   | { kind: 'summary-check'; through: number; result: SummaryCheckResult; at: number }
   | { kind: 'summary-review-reserve'; through: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
@@ -92,7 +93,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>; summaryRequired: Set<number>;
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
-  summaryChecks: Map<number, SummaryCheckResult[]>; summaryReviews: Set<number>;
+  summaryCandidates: Map<number, string>; summaryChecks: Map<number, SummaryCheckResult[]>; summaryReviews: Set<number>;
   summaryCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number }; lastSummaryCheck: SummaryCheckResult | null;
   sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[];
@@ -164,8 +165,13 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary-reserve') {
     if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
       || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
-    view.summaryChecks.delete(row.through); view.summaryReviews.delete(row.through);
+    view.summaryCandidates.delete(row.through); view.summaryChecks.delete(row.through); view.summaryReviews.delete(row.through);
     view.summaryReservations.add(row.through); if (row.supervised) view.summaryRequired.add(row.through); view.calls++; return;
+  }
+  if (row.kind === 'summary-candidate') {
+    if (!view.summaryReservations.has(row.through) || view.summaryCandidates.has(row.through))
+      throw Error('preview journal: summary candidate order');
+    view.summaryCandidates.set(row.through, row.state); return;
   }
   if (row.kind === 'summary-review-reserve') {
     if (!view.summaryReservations.has(row.through) || view.summaryReviews.has(row.through)
@@ -175,7 +181,8 @@ function project(view: JournalView, row: JournalRecord): void {
     view.summaryReviews.add(row.through); view.calls++; return;
   }
   if (row.kind === 'summary-check') {
-    if (!view.summaryReservations.has(row.through) || row.result.path === 'subscription' && !view.summaryReviews.has(row.through))
+    if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
+      || row.result.path === 'subscription' && !view.summaryReviews.has(row.through))
       throw Error('preview journal: summary check without reservation');
     const checks = view.summaryChecks.get(row.through) ?? [];
     if (row.result.path === 'jev' && checks.some(check => check.path === 'jev')
@@ -201,7 +208,8 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary') {
     if (!view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
-    if (view.summaryRequired.has(row.through) && !view.summaryChecks.get(row.through)?.some(check => check.verdict === 'pass'))
+    if (view.summaryRequired.has(row.through) && (!view.summaryCandidates.has(row.through)
+      || !view.summaryChecks.get(row.through)?.some(check => check.verdict === 'pass')))
       throw Error('preview journal: unchecked summary');
     view.summaryReservations.delete(row.through);
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
@@ -307,7 +315,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryRequired: new Set(), summaryFailures: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryRequired: new Set(), summaryFailures: new Map(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -344,7 +352,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryRequired: new Set(), summaryFailures: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryRequired: new Set(), summaryFailures: new Map(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -1095,6 +1103,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const state = redact(JSON.stringify({ packet: JSON.parse(packet) as object,
           proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
             closed: closed ?? [], memory: memory ?? [] } })).text;
+        journal.append({ kind: 'summary-candidate', through, state, at: ports.now() });
         const started = ports.replyCheck.elapsedMs();
         let jev: SummaryCheckResult;
         try {

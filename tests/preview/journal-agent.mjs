@@ -130,7 +130,10 @@ async function main() {
         memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
-      summaryChecks: view.view.summaryCheckCounts, lastSummaryCheck: view.view.lastSummaryCheck,
+      summaryChecks: view.view.summaryCheckCounts,
+      lastSummaryCheck: view.view.lastSummaryCheck && { verdict: view.view.lastSummaryCheck.verdict,
+        path: view.view.lastSummaryCheck.path, latencyMs: view.view.lastSummaryCheck.latencyMs,
+        usage: view.view.lastSummaryCheck.usage ?? null },
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
         failed: view.view.order.filter(t => t.checkFailed).length,
@@ -316,7 +319,7 @@ async function main() {
         },
         summaryReview: async (state, through) => {
           const start = performance.now();
-          const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. Return only JSON {"verdict":"pass"|"violation"}. Pass only when coverage is faithful; uncertainty is a violation.';
+          const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
           const id = `summary:${through}:review`;
           let prepared;
           try { prepared = modelEnvelope({ question, context: state, id }); }
@@ -328,9 +331,10 @@ async function main() {
             return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start), usage };
           let parsed;
           try { parsed = JSON.parse(result.value); } catch { parsed = null; }
-          if (parsed?.verdict !== 'pass' && parsed?.verdict !== 'violation')
+          if ((parsed?.verdict !== 'pass' && parsed?.verdict !== 'violation')
+            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
             return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start), usage };
-          return { verdict: parsed.verdict, latencyMs: Math.round(performance.now() - start),
+          return { verdict: parsed.verdict, reason: parsed.reason, latencyMs: Math.round(performance.now() - start),
             usage };
         }
       },
