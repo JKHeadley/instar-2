@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
+import type { PreviewPorts } from './journal.js';
+import { REPLY_RULES } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(9);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-conversations-')));
@@ -20,7 +22,8 @@ type Seen = { id: string; question: string; context: string };
 type Sent = { chat: string; thread?: number; update: number };
 
 function world(root: string, options: { initial?: ReturnType<typeof genesis>; send?: (input: Sent) => number | null;
-  model?: (input: Seen) => string } = {}) {
+  model?: (input: Seen) => string | { state: 'rejected'; failureClass: 'rejected' };
+  replyCheck?: PreviewPorts['replyCheck'] } = {}) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, options.initial ?? genesis());
   const seen: Seen[] = [], sent: Sent[] = [];
   let stopped = false;
@@ -29,7 +32,7 @@ function world(root: string, options: { initial?: ReturnType<typeof genesis>; se
     send: async input => { const { chat, thread, update: id } = input;
       sent.push({ chat, update: id, ...(thread === undefined ? {} : { thread }) });
       return options.send ? options.send(sent.at(-1)!) : sent.length; },
-    checkOutbound: () => {} });
+    checkOutbound: () => {}, ...(options.replyCheck ? { replyCheck: options.replyCheck } : {}) });
   return { journal, worker, seen, sent, stop: () => { stopped = true; } };
 }
 
@@ -246,6 +249,46 @@ it('keeps a question with an UNKNOWN send unanswered after replay without resend
     second.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each(['answered', 'rejected', 'empty', 'held'] as const)(
+  'keeps delivered %s outcomes distinguishable in the cross-topic digest after replay', async result => {
+    const root = origin();
+    try {
+      const replyCheck: PreviewPorts['replyCheck'] = result === 'held' ? {
+        elapsedMs: () => 100,
+        jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+          Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: id === 'raw_path' ? 0.91 : 0.01 }])) }, latencyMs: 170 }),
+        escalate: async () => ({ verdict: 'violation' as const, ruleIds: ['raw_path'], confidence: null, latencyMs: 500 }),
+      } : undefined;
+      const first = world(root, { model: input => input.question === 'When is the review?'
+        ? result === 'rejected' ? { state: 'rejected', failureClass: 'rejected' }
+          : result === 'empty' ? '' : 'The review is tomorrow.'
+        : 'The permit is ready.', ...(replyCheck ? { replyCheck } : {}) });
+      first.worker.intake([update(1, 'When is the review?'), update(2, 'Permit status', 7)]);
+      await first.worker.drain();
+      expect(first.sent).toHaveLength(2);
+      first.journal.close();
+
+      const second = world(root);
+      const packet = JSON.parse((second.worker.probe('What is open across my topics?') as { context: string }).context);
+      const main = packet.crossTopicDigest.conversations.find((item: { conversation: string }) => item.conversation === 'main chat');
+      expect(main).toBeDefined();
+      if (result === 'answered') {
+        expect(main).toMatchObject({ unansweredQuestions: [], heldItems: [] });
+        expect(packet.history[0]).toMatchObject({ answer: 'The review is tomorrow.', outcome: 'Telegram API accepted' });
+      } else {
+        const status = result === 'held' ? 'holding reply delivered after review violation'
+          : `model failure notice delivered (${result === 'empty' ? 'empty' : 'rejected'})`;
+        expect(main).toMatchObject({
+          unansweredQuestions: [{ question: 'When is the review?', outcome: status }],
+          heldItems: [{ message: 'When is the review?', status }],
+        });
+        expect(packet.history[0].outcome).toBe(status);
+      }
+      expect(second.sent).toEqual([]);
+      second.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
 
 it('shrinks the included conversations when item excerpts would exceed the byte ceiling', () => {
   const root = origin();

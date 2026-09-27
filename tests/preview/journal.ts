@@ -82,7 +82,7 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true;
+  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
@@ -247,6 +247,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
     turn.answer = row.text;
     if (row.state) turn.modelState = row.state;
+    if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
     if (row.memory) view.memory.push(...row.memory); }
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
@@ -532,11 +533,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
   const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
+  const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
+    && (item.failureClass !== undefined || item.modelState === 'rejected');
+  const holdingReply = (item: Turn) => item.intent === HOLDING_REPLY
+    && item.replyChecks?.some(check => check.verdict === 'violation') === true;
+  const knownNonAnswer = (item: Turn) => item.noticeClass !== undefined || modelFailure(item) || holdingReply(item);
   const outcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
-      : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN' : 'Telegram API accepted')
+      : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
+        : holdingReply(item) ? 'holding reply delivered after review violation'
+          : modelFailure(item) ? `model failure notice delivered (${item.failureClass ?? 'rejected'})` : 'Telegram API accepted')
     : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
-      : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
-    : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending';
+      : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN'
+        : holdingReply(item) ? 'holding reply delivery UNKNOWN after review violation'
+          : modelFailure(item) ? `model failure notice delivery UNKNOWN (${item.failureClass ?? 'rejected'})` : 'delivery UNKNOWN')
+    : item.reserved && item.answer === undefined ? 'model UNKNOWN'
+      : item.held ?? (modelFailure(item) ? `model failure notice pending (${item.failureClass ?? 'rejected'})` : 'pending');
   const crossTopicDigest = (through: number) => {
     const groups = new Map<string, Turn[]>();
     for (const turn of journal.view.order) {
@@ -557,10 +568,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           && !journal.view.closed.has(item.id) && !affectedNote(item.note))
         .slice(-2).map(item => ({ id: item.id, date: dated(item.source!), quote: excerpt(item.note.quote), in: item.note.in }));
       const unanswered = turns.filter(item => item.text.includes('?') &&
-        (item.sent === undefined || item.noticeClass !== undefined)).slice(-2)
+        (item.sent === undefined || knownNonAnswer(item))).slice(-2)
         .map(item => ({ date: dated(item), question: excerpt(item.text), outcome: outcome(item) }));
       const held = turns.filter(item => item.held !== undefined || item.modelState === 'uncertain'
-        || item.intent !== undefined && item.sent === undefined).slice(-2)
+        || item.intent !== undefined && item.sent === undefined || knownNonAnswer(item)).slice(-2)
         .map(item => ({ date: dated(item), message: excerpt(item.text), status: item.held ?? outcome(item) }));
       return { conversation, lastActivity: dated(latest), openCommitments: open,
         unansweredQuestions: unanswered, heldItems: held };
