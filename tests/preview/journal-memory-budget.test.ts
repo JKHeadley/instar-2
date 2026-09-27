@@ -19,7 +19,7 @@ const probe = (journal: ReturnType<typeof openPreviewJournal>, question: string)
     model: refuse, send: refuse, checkOutbound: refuse }).probe(question);
   if ('reason' in result) throw Error(result.reason);
   return JSON.parse(result.context) as { people?: { mentions: { person: string }[] }[];
-    preferences?: { text: string }[]; historyMode: string };
+    preferences?: { text: string }[]; historyMode: string; capability: string };
 };
 const names = (packet: ReturnType<typeof probe>) => packet.people?.flatMap(item => item.mentions.map(mention => mention.person)) ?? [];
 
@@ -47,7 +47,10 @@ it('archives the least recently used inferred note, searches it on request, and 
     expect(first.active).toEqual([1, 2]);
     expect(first.archived).toEqual([0]);
     expect(first.activeBytes).toBeLessThanOrEqual(PREVIEW_MEMORY_BUDGET_BYTES);
-    expect(names(probe(journal, 'Tell me about Aster'))).toEqual([]);
+    const ordinary = probe(journal, 'Tell me about Aster');
+    expect(names(ordinary)).toEqual([]);
+    expect(ordinary.capability).toContain('Search memory NAME');
+    expect(ordinary.capability).toContain('A missing match does not prove absence');
     expect(names(probe(journal, 'Tell me about Beryl'))).toEqual(['Beryl']);
     expect(names(probe(journal, 'Search memory Aster'))).toContain('Aster');
     // The real worker records the exact archived note offered in its durable reservation.
@@ -76,6 +79,43 @@ it('archives the least recently used inferred note, searches it on request, and 
       at: 1790000010002 });
     expect(names(probe(journal, 'Search memory Aster'))).toEqual([]);
     expect(projectMemoryBudget(journal.view).active).not.toContain(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('releases corrected and forgotten pinned content while retaining its journal evidence', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-retire-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const first = `Use concise answers ${'a'.repeat(4100)}`;
+    const replacement = `Use concise answers ${'b'.repeat(4100)}`;
+    addTurn(journal, 1, first);
+    journal.append({ kind: 'reserve', id: id(1), at: 1790000000001 });
+    journal.append({ kind: 'answer', id: id(1), text: 'Understood.', memory: [
+      { mode: 'prefer', source: id(1), quote: first, trigger: id(1) }], at: 1790000000002 });
+    expect(projectMemoryBudget(journal.view).pinnedBytes).toBe(Buffer.byteLength(first));
+    addTurn(journal, 2, replacement);
+    journal.append({ kind: 'reserve', id: id(2), at: 1790000000003 });
+    journal.append({ kind: 'answer', id: id(2), text: 'Updated.', memory: [
+      { mode: 'correct', source: id(1), quote: first, trigger: id(2), replacement }], at: 1790000000004 });
+    expect(projectMemoryBudget(journal.view).pinnedBytes).toBe(Buffer.byteLength(replacement));
+    addTurn(journal, 3, 'Forget my answer style preference.');
+    journal.append({ kind: 'reserve', id: id(3), at: 1790000000005 });
+    journal.append({ kind: 'answer', id: id(3), text: 'Forgotten.', memory: [
+      { mode: 'forget', source: id(2), quote: replacement, trigger: id(3) }], at: 1790000000006 });
+    expect(projectMemoryBudget(journal.view).pinnedBytes).toBe(0);
+    const note = 'Aster planted a blue flag.';
+    addTurn(journal, 4, note);
+    journal.append({ kind: 'summary-reserve', through: 4, at: 1790000000007 });
+    journal.append({ kind: 'summary', through: 4, text: 'The operator discussed Aster.',
+      commitments: [{ in: 'message', source: id(1), quote: first }],
+      people: [{ name: 'Aster', source: id(4), quote: note }], at: 1790000000008 });
+    expect(projectMemoryBudget(journal.view)).toMatchObject({ pinnedBytes: 0, active: [0], archived: [] });
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    expect(journal.view.memory).toHaveLength(3);
+    expect(projectMemoryBudget(journal.view)).toMatchObject({ pinnedBytes: 0, active: [0], archived: [] });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
