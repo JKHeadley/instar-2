@@ -106,13 +106,13 @@ it('records requests and its own promises verbatim after replies, drops everythi
 it('brings open items back after compaction with who said them and when, says it cannot act, and survives restart', async () => {
   const root = origin();
   try {
-    let w = world(root);
+    let w = world(root, { maxBytes: 4000 });
     await w.say(1, LOCKER);
     await w.say(2, DENTIST);
     const question = 'What did I ask you to remember?';
     const n = await w.fillUntilCompacted(3, question);
     w.journal.close();
-    w = world(root);
+    w = world(root, { maxBytes: 4000 });
     expect(w.journal.view.commitments.length).toBe(3);
     await w.say(n, question);
     const packet = JSON.parse(w.asked.get(question)!);

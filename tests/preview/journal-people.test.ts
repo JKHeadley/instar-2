@@ -191,7 +191,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
     return 'I can ask whether those two notes refer to the same person.';
   };
   try {
-    let w = world(root, { summarize, answer });
+    let w = world(root, { summarize, answer, maxBytes: 10000 });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, 'Sam Ruiz, my neighbour, lent me a ladder.');
@@ -220,7 +220,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).personMerges).toMatchObject([{ left: 'Sam', right: 'Sam Ortiz',
       triggerUpdate: n + 1 }]);
-    w = world(root, { summarize, answer });
+    w = world(root, { summarize, answer, maxBytes: 10000 });
     const linked = w.worker.probe('What does Ortiz think?');
     if ('reason' in linked) throw Error(linked.reason);
     const packet = JSON.parse(linked.context);
@@ -252,7 +252,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
         encoding: 'utf8', timeout: 10000 });
     expect(inactive.status, inactive.stderr).toBe(0);
     expect(JSON.parse(inactive.stdout).personMerges).toEqual([]);
-    w = world(root, { summarize, answer });
+    w = world(root, { summarize, answer, maxBytes: 10000 });
     const replay = w.worker.probe('What does Ortiz think?');
     if ('reason' in replay) throw Error(replay.reason);
     expect(JSON.parse(replay.context).personMerges).toBeUndefined();
