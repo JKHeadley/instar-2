@@ -147,7 +147,7 @@ it('keeps a faithful preference summary and its source reply while still withhol
     if ('reason' in next) throw Error(next.reason);
     packet = JSON.parse(next.context);
     expect(next.context).not.toContain('3310');
-    expect(packet.memory).toContainEqual({ mode: 'forgotten', reason: 'verified operator requested forgetting' });
+    expect(packet.memory).toContainEqual({ sourceKind: 'operator-stated', mode: 'forgotten', reason: 'verified operator requested forgetting' });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -126,16 +126,18 @@ export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
 const snapshotChunkBytes = 256 * 1024;
 type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
 type SnapshotChunk = { kind: 'snapshot-chunk'; data: string };
-type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed'> & {
+type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks'> & {
   turns: [string, Turn][]; order: string[]; channelItems: [string, ChannelItem][]; summaryReservations: number[];
   summaryFailures: [number, number][]; failureClasses: [ModelFailureClass, number][];
-  providerStates: [string, number][]; closed: [number, CommitmentClosure][] };
+  providerStates: [string, number][]; closed: [number, CommitmentClosure][]; capReports: string[];
+  stepChecks: [string, { output?: string; reserved?: true; result?: StepCheckResult }][] };
   retained: JournalRecord[] };
 
 function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
   return { view: { ...view, turns: [...view.turns], order: view.order.map(turn => turn.id), channelItems: [...view.channelItems],
     summaryReservations: [...view.summaryReservations], summaryFailures: [...view.summaryFailures],
-    failureClasses: [...view.failureClasses], providerStates: [...view.providerStates], closed: [...view.closed] }, retained };
+    failureClasses: [...view.failureClasses], providerStates: [...view.providerStates], closed: [...view.closed],
+    capReports: [...view.capReports], stepChecks: [...view.stepChecks] }, retained };
 }
 function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
   const saved = snapshot?.view;
@@ -147,7 +149,8 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     throw Error('preview journal: snapshot turn index differs');
   const view: JournalView = { ...saved, turns, order: saved.order.map(id => turns.get(id)!), channelItems: new Map(saved.channelItems),
     summaryReservations: new Set(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
-    failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed) };
+    failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed),
+    capReports: new Set(saved.capReports ?? []), stepChecks: new Map(saved.stepChecks ?? []) };
   verifyPendingEvidence(snapshot.retained, view);
   return view;
 }
@@ -278,6 +281,14 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
 function project(view: JournalView, row: JournalRecord): void {
+  if (row.kind === 'hold') {
+    for (let index = view.awayEvents.length - 1; index >= 0; index--) {
+      const event = view.awayEvents[index]!;
+      if (event.kind === 'hold' && event.id === row.id && event.reason === row.reason) {
+        view.awayEvents.splice(index, 1); break;
+      }
+    }
+  }
   if (row.kind === 'hold' || row.kind === 'caps' || row.kind === 'reserve' || row.kind === 'summary-reserve'
     || row.kind === 'model-uncertain' || row.kind === 'notice' || row.kind === 'intent')
     view.awayEvents.push({ kind: row.kind, at: row.at, ...('id' in row ? { id: row.id } : {}),
@@ -550,7 +561,17 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const append = (row: JournalRecord) => {
       if (readOnly || closed) throw Error('preview journal: reader cannot append');
       if (row.kind === 'caps') checkCaps(view!, row, 'new');
-
+      if (view && ((row.kind === 'intake' && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns)
+        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve')
+          && view.calls >= view.limits.maxCalls)
+        || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
+        || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
+        throw Error('preview journal: capacity reached');
+      if (row.kind === 'cap-report') {
+        const reached = reachedJournalCap(view!);
+        if (reached?.reason !== row.reason || reached.limit !== row.limit
+          || view!.capReports.has(capKey(row.reason, row.limit))) throw Error('preview journal: cap report order');
+      }
       boundary?.(`before:${row.kind}`);
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
@@ -911,6 +932,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // correction can withhold a paraphrased reply that string redaction cannot find.
     // The saved count also covers a correction decided after a later turn was prepared.
     const superseded = journal.view.memory.length > 0 && packet?.memoryVersion !== journal.view.memory.length;
+    if (packet && !includeRecorded) return { update: target.update, reply: replyFor(target), recorded: null,
+      missing: 'The recorded packet did not fit this bounded reply context.' };
     return { guidance: 'This is one candidate reply. Judge whether it matches the question. This redacted view of its recorded packet shows inputs available to the model, not which ones it actually relied on. If the target or packet is missing, say so; do not infer a reason from current history.',
       update: target.update, conversation: conversationName(target.thread), reply: replyFor(target),
       delivery: outcome(target), ...(target.replyChecks?.length ? { replyCheck: target.replyChecks.at(-1) } : {}),
@@ -1117,10 +1140,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 const shownRecall = recalled.slice(0, kept - promised - people).filter(item => !cited.has(item.id));
                 const shownPeople = [...new Set(named.slice(named.length - people).map(item => item.source))];
                 const shownCommitments = open.slice(open.length - promised).map(item => item.id);
-                const shownCorrections = flagged.filter(item => !journal.view.memory.some(change =>
-                  change.source === item.id || change.replies?.includes(item.id))).map(item => item.id);
-                const memoryChanges = journal.view.memory.flatMap((change, index) => change.mode === 'forget'
-                  ? [index] : journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!)) ? [] : [index]);
+                const shownCorrections = flagged.filter(item => !journal.view.memory.some(change => change.mode !== 'prefer'
+                  && (change.source === item.id || change.replies?.includes(item.id)))).map(item => item.id);
+                const lineage = preferenceState().lineage;
+                const memoryChanges = journal.view.memory.flatMap((change, index) => {
+                  if (change.mode === 'prefer' || lineage.has(JSON.stringify([change.source, change.quote]))) return [];
+                  return change.mode === 'forget' || !journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!))
+                    ? [index] : [];
+                });
                 const history = journal.view.order.filter(item => item.accepted && item.update < turn.update
                   && (!summary || item.update > summary.through)).map(item => item.id);
                 const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),

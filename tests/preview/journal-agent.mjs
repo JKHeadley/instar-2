@@ -428,24 +428,30 @@ async function main() {
       summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
     };
     const reportCap = () => reportJournalCap(journal, Date.now(), line => process.stderr.write(line));
+    const waitHeldNotices = async () => {
+      let due;
+      while ((due = worker.nextHeldNoticeAt()) !== null) {
+        while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, g.expires))
+          await delay(Math.min(1000, due - Date.now(), g.expires - Date.now()));
+        if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= g.expires) break;
+        await worker.drain(); summarizeLater();
+      }
+    };
+    const stopAtCap = async () => {
+      const cap = reportCap();
+      if (!cap) return false;
+      endReason = cap;
+      if (cap === 'model attempt cap reached') await waitHeldNotices();
+      return true;
+    };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
-      if ((endReason = reportCap())) break;
+      if (await stopAtCap()) break;
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch {
-        const v = journal.view;
-        endReason = reportCap() ?? 'cap reached';
-        // Keep this bounded runner alive until a held turn's one notice is due.
-        // The existing stop and expiry gates remain active during the wait.
-        let due;
-        while ((due = worker.nextHeldNoticeAt()) !== null) {
-          while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, g.expires))
-            await delay(Math.min(1000, due - Date.now(), g.expires - Date.now()));
-          if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= g.expires) break;
-          await worker.drain(); summarizeLater();
-        }
+        if (!await stopAtCap()) endReason = 'cap reached';
         break;
       }
       if (signalled || workerStop.value || existsSync(stopPath)) break;
@@ -462,7 +468,7 @@ async function main() {
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
       failedPolls = 0;
       worker.intake(updates.result); await worker.drain(); summarizeLater();
-      if ((endReason = reportCap())) break;
+      if (await stopAtCap()) break;
     }
     await summaryJob;
     await stepJob;

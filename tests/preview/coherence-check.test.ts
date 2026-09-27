@@ -116,7 +116,7 @@ it('keeps a reply reachable when a correction cannot fit and retains the uncarri
       delete packet.memoryCandidates;
       return JSON.stringify(packet);
     };
-    const limit = Buffer.byteLength(withoutCandidates('context' in bare ? bare.context : '{}')) + 1;
+    const limit = Buffer.byteLength(withoutCandidates('context' in bare ? bare.context : '{}')) + 420;
     expect(Buffer.byteLength(withoutCandidates('context' in withNote ? withNote.context : '{}'))).toBeGreaterThan(limit);
     sample.journal.close();
 
