@@ -580,6 +580,14 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+When the operator uses Telegram Reply, `replyTo` identifies the referenced
+message from an earlier accepted turn in the same private topic. It carries
+that turn's redacted operator text and actual sent reply, each limited to
+1,200 characters, even if a summary covers the turn. An unknown or cross-topic
+target is labelled unavailable; embedded Telegram reply text is never used as
+journal evidence. Ordinary messages have no `replyTo` field. Inspect shows the
+reference. See the [supervised thread-reference script](thread-reference-live-test.md).
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
