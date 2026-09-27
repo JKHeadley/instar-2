@@ -483,9 +483,11 @@ it('carries a dated, sourced timeline from imported messages and caps it per per
       id: `maya-${i + 1}`, from: 'Maya Chen <maya@example.test>', at: at + i * 60000,
       text: `Shipment ${i + 1} is ready.` }));
     expect(importChannelFixture(w.journal, items, account, at)).toBe(12);
-    importChannelFixture(w.journal, [{ source: 'conversation', account, id: 'about-maya',
+    importChannelFixture(w.journal, [{ source: 'conversation', account, id: 'first-name-only',
       from: 'justin@example.test', at: at + 12 * 60000,
-      text: 'Maya denied ordering shipment 12.' }], account, at);
+      text: 'Maya denied ordering shipment 12.' }, { source: 'conversation', account, id: 'about-maya',
+      from: 'justin@example.test', at: at + 12 * 60000,
+      text: 'Maya Chen denied ordering shipment 12.' }], account, at);
     await w.say(1, 'What did Maya say about shipments?');
     const packet = JSON.parse(w.asked.get('What did Maya say about shipments?')!);
     expect(packet.people).toHaveLength(10);
@@ -495,8 +497,10 @@ it('carries a dated, sourced timeline from imported messages and caps it per per
     expect(packet.people[0].date).toBe('2026-09-21T14:16Z');
     expect(packet.people.at(-1)).toMatchObject({ source: 'conversation',
       from: 'justin@example.test (export sender metadata, unverified)',
-      message: 'Maya denied ordering shipment 12.',
-      mentions: [{ person: 'Maya Chen', quote: 'Maya denied ordering shipment 12.' }] });
+      message: 'Maya Chen denied ordering shipment 12.',
+      mentions: [{ person: 'Maya Chen', quote: 'Maya Chen denied ordering shipment 12.' }] });
+    expect(packet.people.some((entry: { message: string }) => entry.message === 'Maya denied ordering shipment 12.'))
+      .toBe(false);
     expect(packet.people.some((entry: { sourceId: string }) => entry.sourceId.includes('"maya-1"'))).toBe(false);
     expect(packet.capability).toContain('short dated timeline');
     w.journal.close();

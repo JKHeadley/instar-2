@@ -1726,6 +1726,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const senderName = (item: ChannelItem) => item.from.split('<')[0]!.trim().split('@')[0]!.replace(/[._-]+/gu, ' ');
   /** Dated source candidates for each person the journal knows. The model judges identity
    * and what an imported item means; name matching only chooses bounded evidence. */
+  const exactPersonName = (name: string, question: string) => {
+    const nameWords = terms(name), questionWords = terms(question);
+    return nameWords.length > 1 && questionWords.some((word, index) =>
+      word === nameWords[0] && nameWords.every((part, offset) => questionWords[index + offset] === part));
+  };
   const peopleFor = (question: string, through: number) => {
     const asked = new Set(terms(question));
     const names = namedTerms(question);
@@ -1772,7 +1777,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const words = new Set(terms(text));
       for (const name of known) {
         const nameWords = terms(name);
-        if (!nameWords.length || !(nameWords.some(word => words.has(word))
+        if (!nameWords.length || !((nameWords.length > 1 ? exactPersonName(name, text) : words.has(nameWords[0]!))
           || name === senderName(item))) continue;
         const note = { name, source: channelMemoryId(item), quote: text.trim() };
         if (!journal.view.memory.some(change => change.source === note.source
@@ -1787,8 +1792,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const kept = perPerson.get(note.name) ?? new Map<string, PersonNote>();
       kept.set(note.source, note); perPerson.set(note.name, kept);
     }
-    return [...perPerson.values()].flatMap(items => [...items.values()].slice(-PREVIEW_PEOPLE_LIMIT))
-      .sort((a, b) => time(a) - time(b)).slice(-PREVIEW_PEOPLE_PACKET_LIMIT);
+    const relevance = (note: PersonNote) => terms(note.quote).filter(word => asked.has(word) && !terms(note.name).includes(word)).length;
+    const selected = [...perPerson.values()].flatMap(items => [...items.values()]
+      .sort((a, b) => relevance(b) - relevance(a) || time(b) - time(a)).slice(0, PREVIEW_PEOPLE_LIMIT));
+    // A full name in the question gets first claim on the finite packet. Shared
+    // first names remain candidates, but cannot evict the exact person's sources.
+    return selected.sort((a, b) => Number(exactPersonName(b.name, question)) - Number(exactPersonName(a.name, question))
+      || relevance(b) - relevance(a) || time(b) - time(a))
+      .slice(0, PREVIEW_PEOPLE_PACKET_LIMIT).sort((a, b) => time(a) - time(b));
   };
   const attributesFor = (question: string, through: number) => {
     const asked = new Set(terms(question)), seen = new Set<string>();
@@ -2752,7 +2763,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         signal: item.source,
         rank: activePersonMerges(journal.view).some(link => journal.view.people[link.left] === item
           || journal.view.people[link.right] === item) ? 0 : 3,
-        match: 0, recent: journal.view.turns.get(item.source)?.update ?? 0, index }));
+        match: (exactPersonName(item.name, turn.text) ? 100 : 0) + matches(item.quote),
+        recent: journal.view.turns.get(item.source)?.update ?? 0, index }));
       attributes.forEach((item, index) => {
         const askedAttribute = item.attribute === 'job' ? /\b(?:job|work|career|employ)\b/iu.test(turn.text)
           : item.attribute === 'city' ? /\b(?:city|live|lived|move|moved|where)\b/iu.test(turn.text)
@@ -3310,10 +3322,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(item => ({ id: item.id, text: redact(item.text).text }));
     const notes: PersonNote[] = [], seen = new Set<string>();
     for (const item of proposed.slice(0, 50)) {
-      const { name, quote } = (item ?? {}) as { name?: unknown; quote?: unknown };
+      const { name, quote, source: proposedSource } = (item ?? {}) as { name?: unknown; quote?: unknown; source?: unknown };
       if (typeof name !== 'string' || typeof quote !== 'string' || !name.trim() || !quote.includes(name)
         || Buffer.byteLength(quote) > 1000 || !terms(name).length) continue;
-      const source = shown.find(turn => turn.text.includes(quote));
+      const matches = shown.filter(turn => turn.text.includes(quote));
+      const source = typeof proposedSource === 'string'
+        ? matches.find(turn => turn.id === proposedSource) : matches.length === 1 ? matches[0] : undefined;
       const key = JSON.stringify([name, source?.id, quote]);
       if (!source || seen.has(key)) continue;
       seen.add(key); notes.push({ name, source: source.id, quote });
@@ -3515,7 +3529,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + '"source": <id from memoryCandidates>, "quote": <the complete old factual clause, exactly quoted from that source>, '
       + '"replacement": <for correct only, the corrected factual clause exactly quoted from memoryRequest.message>}], '
       + '"people": [{"name": <a person\'s name exactly as written '
-      + 'in an operator message in history>, "quote": <an exact, unaltered excerpt of that operator message containing the name and '
+      + 'in an operator message in history>, "source": <that history item\'s id>, "quote": <an exact, unaltered excerpt of that operator message containing the name and '
       + 'what it says by or about that person>}], "personAttributes": [{"name": <name exactly in the direct operator clause>, '
       + '"attribute": "job"|"city"|"partner"|"pet", "value": <exact value in that clause>, '
       + '"status": "current" if it becomes true or "ended" if it ceases, "quote": <exact direct operator clause containing name and value>}], '

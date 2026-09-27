@@ -1099,6 +1099,21 @@ Status and inspect expose `memoryBudget` counts and bytes. Archiving never
 deletes encrypted evidence or advances intake. See the
 [supervised memory-budget script](memory-budget-live-test.md).
 
+The summary decision also names each note's history source ID. The runner checks
+that the exact quote occurs in that source. An older response without a source ID
+is accepted only when exactly one shown message contains the quote; an ambiguous
+duplicate is omitted rather than attributed to the first match. For a question
+using a full name, that person's notes take precedence over people sharing one
+name word within the existing 20-entry packet limit. Within each person's ten
+entries, query-related facts take precedence over merely recent ones. Short-name
+questions can still show several people, and the model must judge identity.
+`people-facts-benchmark.test.ts` measures source-backed packet attribution over
+160 turns, 48 people with shared first names, one distracting channel import,
+40 summaries and journal replay: 48/48 complete and 0/48 contaminated after
+the fix versus 6/48 complete and 14/48 contaminated at the frozen base. It does
+not measure a real model's answer quality or prove the live runner has this code.
+Justin's supervised check is [people-facts-through-summaries-live-test.md](people-facts-through-summaries-live-test.md).
+
 When the operator asks about a known person, `people` is also the short dated
 timeline for that person. Each entry carries its journal `sourceId`, whole source
 message, date, actual sender and the matched mention. Entries are ordered by source
