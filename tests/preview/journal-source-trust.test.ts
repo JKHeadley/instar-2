@@ -44,15 +44,26 @@ it('labels direct, imported and summary memory after replay; direct facts outran
 
     journal = openPreviewJournal(path, key);
     worker = createJournalWorker(journal, ports);
+    worker.intake([update(2, 'What day is my studio launch?')]);
+    await worker.drain();
+    const complete = JSON.parse(contexts.at(-1)!);
+    expect(complete.historyMode).toBe('complete');
+    expect(complete.summary).toBeUndefined();
+    expect(complete.memorySummary).toEqual({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
+    expect(complete.history).toMatchObject([
+      { sourceKind: 'operator-stated', user: 'My studio launch day is Tuesday.' }]);
+    expect(complete.capability).toContain('operator-stated wins over inferred-by-summary');
+    expect(complete.capability).toContain('hedge summary inference with "I think"');
     compact = true;
     const inferenceOnly = worker.probe('What did the summary infer about the launch day?');
     if ('reason' in inferenceOnly) throw Error(inferenceOnly.reason);
     expect(JSON.parse(inferenceOnly.context).summary.sourceKind).toBe('inferred-by-summary');
-    worker.intake([update(2, 'What day is my studio launch, and what color was in my email?')]);
+    worker.intake([update(3, 'What day is my studio launch, and what color was in my email?')]);
     await worker.drain();
     const packet = JSON.parse(contexts.at(-1)!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.summary).toMatchObject({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
+    expect(packet.memorySummary).toEqual({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
     expect(packet.recalled).toMatchObject([{ sourceKind: 'operator-stated', user: 'My studio launch day is Tuesday.' }]);
     expect(packet.channelMemory).toMatchObject([{ sourceKind: 'channel-import', source: 'email',
       from: 'justin@example.test', quote: 'The studio launch color is blue.' }]);
@@ -61,7 +72,7 @@ it('labels direct, imported and summary memory after replay; direct facts outran
     expect(packet.memoryCandidates).toEqual(expect.arrayContaining([
       expect.objectContaining({ sourceKind: 'operator-stated', message: 'My studio launch day is Tuesday.' }),
       expect.objectContaining({ sourceKind: 'channel-import', source: 'channel-import' })]));
-    expect(journal.view.calls).toBe(3); // One answer, one existing summary, one answer; no trust-check call.
+    expect(journal.view.calls).toBe(4); // Three answers and one existing summary; no trust-check call.
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
