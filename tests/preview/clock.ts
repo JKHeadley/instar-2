@@ -10,5 +10,5 @@ export function createPreviewClock(wall: () => number, elapsed: () => number) {
     tick = nextTick;
     return Math.floor(last);
   };
-  return { now, seed: (floor: number) => { last = Math.max(last, floor); tick = elapsed(); } };
+  return { now, elapsed, seed: (floor: number) => { last = Math.max(last, floor); tick = elapsed(); } };
 }

@@ -508,7 +508,7 @@ async function main() {
       if (!response.ok) throw Error('preview: Jev unavailable');
       return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
     };
-    worker = createJournalWorker(journal, { now: wallNow, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
@@ -604,9 +604,9 @@ async function main() {
     const pollFailure = async () => {
       failedPolls++;
       if (failedPolls >= 20) { endReason = 'Telegram polling failed 20 times in a row'; return false; }
-      const until = wallNow() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
-      while (!workerStop.value && !existsSync(stopPath) && wallNow() < until)
-        await delay(Math.min(100, until - wallNow()));
+      const until = clock.elapsed() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
+      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
+        await delay(Math.min(100, until - clock.elapsed()));
       return true;
     };
         let summaryJob = null, stepJob = null;
@@ -703,12 +703,18 @@ async function main() {
     }
   } catch (error) { if (!signalled) throw error; }
   finally {
-    if (launchedAt !== null) {
-      const reason = signalName ? `paused by signal ${signalName}` : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched'
-        : journal && wallNow() >= journal.view.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
-      try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason }); } catch { /* the next launch reports an unrecorded end */ }
+    try {
+      if (journal && !journal.view.stop && !journal.readOnly && wallNow() >= journal.view.expires)
+        journal.append({ kind: 'stop', reason: 'trial expired', at: wallNow() });
+      if (launchedAt !== null) {
+        const reason = signalName ? `paused by signal ${signalName}` : journal?.view.stop === 'trial expired' ? 'trial expired'
+          : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched' : endReason ?? 'error (details suppressed)';
+        try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason }); } catch { /* the next launch reports an unrecorded end */ }
+      }
+    } finally {
+      journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }
-    journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
+  }
 }
 
 try { await main(); } catch { process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }

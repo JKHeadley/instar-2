@@ -70,10 +70,20 @@ it('keeps dated answers and journal time ordered, and never reopens expiry after
     expect(dueState(journal.view.dated[0]!, resumed.now())).toBe('upcoming');
     wall = start + 120_000;
     expect(() => worker.gate()).toThrow('preview stopped');
+    expect(journal.view.stop).toBe('trial expired');
     wall = start + 2 * 86_400_000;
     expect(dueState(journal.view.dated[0]!, resumed.now())).toBe('overdue');
     wall = start - 3_600_000; elapsed += 1000;
     expect(() => worker.gate()).toThrow('preview stopped');
+    expect(sends).toBe(2);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    const rolledBack = createPreviewClock(() => wall, () => elapsed);
+    rolledBack.seed(journal.view.clockFloor);
+    worker = createJournalWorker(journal, { ...ports, now: rolledBack.now });
+    expect(rolledBack.now()).toBeGreaterThanOrEqual(journal.view.expires);
+    expect(() => worker.gate()).toThrow('preview stopped');
+    expect(() => worker.intake([update(3, 'Try again')])).toThrow('preview stopped');
     expect(sends).toBe(2);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -87,13 +97,50 @@ it('waits the full elapsed pause before a new summary frontier after a backward 
     const clock = createPreviewClock(() => wall, () => elapsed);
     const journal = openPreviewJournal(path, key, { ...genesis, expires: start + 600_000 });
     const summaries: string[] = [];
-    const worker = createJournalWorker(journal, { now: clock.now, stopped: () => false,
-      model: async input => { if (input.id.startsWith('summary:')) summaries.push(input.id); return 'answer'; },
-      send: async () => 1, checkOutbound: () => {} });
+    const ports = { now: clock.now, elapsed: clock.elapsed, stopped: () => false,
+      model: async (input: { id: string }) => { if (input.id.startsWith('summary:')) summaries.push(input.id); return 'answer'; },
+      send: async () => 1, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Remember ORCHID')]); await worker.drain();
     journal.append({ kind: 'summary-reserve', through: 1, at: clock.now() });
+    worker = createJournalWorker(journal, ports);
     worker.intake([update(2, 'What did I ask?')]); await worker.drain();
     wall -= 3_600_000; elapsed += SUMMARY_UNKNOWN_RECOVERY_MS - 1;
+    await worker.summarizeIfNeeded(true);
+    expect(summaries).toEqual([]);
+    elapsed += 1;
+    await worker.summarizeIfNeeded(true);
+    expect(summaries).toEqual(['summary:2']);
+    expect(journal.view.summaryReservations.has(1)).toBe(true);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('requires elapsed recovery after a forward correction and after reopening an UNKNOWN summary', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-clock-forward-summary-')));
+  try {
+    const path = join(root, 'journal.encrypted');
+    let wall = start, elapsed = 0;
+    const clock = createPreviewClock(() => wall, () => elapsed);
+    let journal = openPreviewJournal(path, key, { ...genesis, expires: start + 600_000 });
+    const summaries: string[] = [];
+    const ports = { now: clock.now, elapsed: clock.elapsed, stopped: () => false,
+      model: async (input: { id: string }) => { if (input.id.startsWith('summary:')) summaries.push(input.id); return 'answer'; },
+      send: async () => 1, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'Remember ORCHID')]); await worker.drain();
+    journal.append({ kind: 'summary-reserve', through: 1, at: clock.now() });
+    worker = createJournalWorker(journal, ports);
+    worker.intake([update(2, 'What did I ask?')]); await worker.drain();
+    wall += 60_000; elapsed += 1;
+    await worker.summarizeIfNeeded(true);
+    expect(summaries).toEqual([]);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    const resumed = createPreviewClock(() => wall, () => elapsed);
+    resumed.seed(journal.view.clockFloor);
+    worker = createJournalWorker(journal, { ...ports, now: resumed.now, elapsed: resumed.elapsed });
+    elapsed += SUMMARY_UNKNOWN_RECOVERY_MS - 1;
     await worker.summarizeIfNeeded(true);
     expect(summaries).toEqual([]);
     elapsed += 1;

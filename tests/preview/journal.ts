@@ -992,6 +992,8 @@ export function renewJournalExpiry(journal: ReturnType<typeof openPreviewJournal
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
+  elapsed?(): number;
   timeZone?: string;
   /** Static sources, or a function read at each turn (for the desk's report). */
   sources?: readonly unknown[] | ((turn?: Turn) => readonly unknown[]);
@@ -1015,10 +1017,18 @@ export interface PreviewPorts {
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
   let checkingSteps = false;
+  const elapsed = ports.elapsed ?? ports.now;
+  const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
+    [through, ports.elapsed ? elapsed() : at]));
   // An orphaned reservation may have completed at the provider. Never repeat it.
   const gate = () => {
-    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires)
+    if (journal.view.stop || ports.stopped())
       throw Error('preview stopped');
+    const now = ports.now();
+    if (now >= journal.view.expires) {
+      if (!journal.readOnly) journal.append({ kind: 'stop', reason: 'trial expired', at: now });
+      throw Error('preview stopped');
+    }
   };
   const pollGate = () => {
     gate();
@@ -2265,9 +2275,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!last) return;
     const unknown = journal.view.summaryReservations;
     if (unknown.size) {
-      const now = ports.now();
-      for (const [through, at] of unknown)
-        if (last.update <= through || now - at < SUMMARY_UNKNOWN_RECOVERY_MS) return;
+      const now = elapsed();
+      for (const [through, at] of unknown) {
+        if (!unknownSince.has(through)) unknownSince.set(through, ports.elapsed ? now : at);
+        if (last.update <= through || now - unknownSince.get(through)! < SUMMARY_UNKNOWN_RECOVERY_MS) return;
+      }
     }
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
@@ -2377,6 +2389,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       gate();
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
         ...(ports.replyCheck ? { supervised: true as const } : {}),at:ports.now()});
+      unknownSince.set(through, elapsed());
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,
         context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }
