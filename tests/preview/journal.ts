@@ -33,6 +33,8 @@ import { interpretStepJev, type StepCheckResult } from './step-check.js';
 export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns: 20, contextBytes: 32768 });
 /** Most original turns recalled beside a summary; fewer are used when the prompt bound needs it. */
 export const PREVIEW_RECALL_LIMIT = 5;
+/** Compacted turns just before a new message that stay recalled so a short answer keeps its question. */
+export const PREVIEW_CONTINUED_TURNS = 2;
 /** Most dated source entries recalled for each named person; the packet also has a total bound. */
 export const PREVIEW_PEOPLE_LIMIT = 10;
 /** Most related open commitments shown with a new message after compaction. */
@@ -1455,7 +1457,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
       .map(index => older[index]!);
     const dated = older.filter(item => dueSoon(clean(item.text, true))).slice(-PREVIEW_RECALL_LIMIT).reverse();
-    return [...new Map([...dated, ...ranked].map(item => [item.id, item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
+    // A terse reply ("second", "the dentist one") may answer the agent's question from
+    // one or two turns back. Keep those exchanges beside it even after compaction; the
+    // model, not a word match, decides whether the new message answers either one.
+    const continued = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update)
+      .slice(-PREVIEW_CONTINUED_TURNS).filter(item => item.update <= summary.through);
+    return [...new Map([...continued, ...dated, ...ranked].map(item => [item.id, item])).values()]
+      .slice(0, PREVIEW_RECALL_LIMIT + continued.length);
   };
   /** Imported items use the existing sentinel but never become executable turns. */
   const channelFor = (turn: Turn, summary?: string, prioritizeDates = true) => {

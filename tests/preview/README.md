@@ -956,6 +956,27 @@ and correction/forgetting projection. The focused offline fixture checks prompt
 wiring, source visibility and the reply path. Justin's real-model check is
 [ambiguous-recall-live-test.md](ambiguous-recall-live-test.md).
 
+The answer to such a question is often terse ("second", "the dentist one",
+"neither, a new one"). When the rolling summary has already covered the two
+turns just before a new message, the memory sentinel now recalls both verbatim
+beside it, ahead of its ordinary word-matched recall, so the question and any
+answer already given stay visible. Turns still in `history` are not repeated.
+The model decides whether the message answers either one; no word test does.
+These items yield first under the prompt bound, like other recalled turns, and
+a question three or more turns back relies on ordinary recall. The offline
+`clarification-binding.ts` harness drives the real journal, replay and summary
+with a stub that binds only to what its packet shows, over two conflicts, six
+terse replies, nine timing conditions and four not-an-answer controls. At
+`3695117d` its 54 cases bound 43 and dropped 11: 8 lost their question after
+interleaved messages and compaction, and 3 were held (below). None bound to the
+wrong question and all controls held. With the carried turns, 47 bind; the four
+still missing have their question three turns back. The remaining measured gap: an ideal reader that resolves a
+disagreement ("the November one") by correcting the other statement is refused,
+because a correction's replacement must be quoted from the triggering message,
+so the reply is held for the memory decision. It measures packet evidence, not
+real-model reading. Justin's check is
+[clarification-reply-live-test.md](clarification-reply-live-test.md).
+
 ### Remembering commitments
 
 An explicit first-person promise in the agent's **actual send intent** is captured immediately,
