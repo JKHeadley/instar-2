@@ -82,7 +82,9 @@ it.each(cuts)('recovers from %s', cut => {
     const recovered = run(root, 'none', 'resume');
     expect(recovered.status, `${cut}: ${recovered.stderr}`).toBe(0);
     const sends = lines(root, 'sends.log').map(line => JSON.parse(line) as { update: number; text: string });
-    const interruptedReview = cuts.indexOf(cut) >= cuts.indexOf('journal:after:reply-review-reserve:1')
+    // int11's reply-check budget runs from the durable Jev reservation, so a restart after it
+    // finds the budget spent and holds the reply rather than repeating the check.
+    const interruptedReview = cuts.indexOf(cut) >= cuts.indexOf('journal:after:reply-jev-reserve:2')
       && cuts.indexOf(cut) <= cuts.indexOf('journal:before:reply-check:3');
     const uncertainSend = cuts.indexOf(cut) >= cuts.indexOf('journal:after:intent:2')
       && cuts.indexOf(cut) < cuts.indexOf('journal:after:sent:2');
@@ -117,7 +119,7 @@ it.each(cuts)('recovers from %s', cut => {
         && cuts.indexOf(cut) <= cuts.indexOf('journal:compact:after-reopen:1'))
         expect(frontiers, cut).toContain(1);
       if (interruptedReview) {
-        expect(view.order[1]?.held, cut).toBe('reply check unavailable');
+        expect(['reply check unavailable', 'reply check budget exceeded'], cut).toContain(view.order[1]?.held);
         expect(view.order[1]?.intent, cut).toBeUndefined();
       }
     } finally { journal.close(); }
