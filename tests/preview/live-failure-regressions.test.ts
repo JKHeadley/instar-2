@@ -83,7 +83,7 @@ it('review thinking overflow: a 3617-token review outcome holds the candidate wi
   });
 });
 
-it('wrapped Decision JSON: a malformed wrapped answer cannot be sent as raw model syntax', async () => {
+it('wrapped Decision JSON: an unavailable full-context review holds raw syntax while ordinary JSON passes', async () => {
   await withJournal(async journal => {
     const sent: string[] = [];
     const wrapped = '```json\n' + JSON.stringify({ type: 'Decision', schemaVersion: 1,
@@ -93,14 +93,18 @@ it('wrapped Decision JSON: a malformed wrapped answer cannot be sent as raw mode
       ? wrapped : answer('The journal remembers this trial.'), sent),
       replyCheck: { jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
         .map(id => [id, { type: 'noul', noul: 0.5 }])) }, latencyMs: 0 }),
-      escalate: async candidate => ({ verdict: candidate.includes('```') ? 'violation' as const : 'pass' as const,
-        ruleIds: [], confidence: 1, latencyMs: 0 }), elapsedMs: () => 0 } });
+      escalate: async candidate => {
+        if (candidate.includes('```')) throw Error('review unavailable');
+        return { verdict: 'pass' as const, ruleIds: [], reason: 'The ordinary answer follows the supplied context.',
+          confidence: null, latencyMs: 0 };
+      }, elapsedMs: () => 0 } });
     worker.intake([update(1, 'What can you remember?')]); await worker.drain();
-    expect(journal.view.order[0]?.intent).toBe(HOLDING_REPLY);
-    expect(sent).toEqual([HOLDING_REPLY]);
-    expect(journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('violation');
+    expect(journal.view.order[0]?.held).toBe('reply check unavailable');
+    expect(journal.view.order[0]?.intent).toBeUndefined();
+    expect(journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('unavailable');
+    expect(sent).toEqual([]);
     worker.intake([update(2, 'What does this journal hold?')]); await worker.drain();
-    expect(sent[1]).toBe('PREVIEW — The journal remembers this trial.');
+    expect(sent).toEqual(['PREVIEW — The journal remembers this trial.']);
   });
 });
 
@@ -154,14 +158,17 @@ it('memory denial: full-context review holds a false no-memory claim while a gro
   await withJournal(async journal => {
     const sent: string[] = [], packets: string[] = [];
     const ports = basePorts(async input => { packets.push(input.context);
-      return input.question.startsWith('Can you') ? answer('I do not store memory.')
+      return input.question.startsWith('Can you') ? answer('I cannot remember anything; memory is unavailable.')
         : answer('I can use this trial journal to remember earlier turns.'); }, sent);
     ports.replyCheck = { jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
       .map(id => [id, { type: 'noul', noul: 0.5 }])) }, latencyMs: 0 }),
-    escalate: async (candidate, _id, originalPrompt) => {
+    escalate: async (candidate, _id, originalPrompt, reviewRules) => {
       expect(originalPrompt).toContain('Memory is this trial');
-      return { verdict: candidate.includes('do not store memory') ? 'violation' as const : 'pass' as const,
-        ruleIds: [], confidence: 1, latencyMs: 0 };
+      expect(reviewRules).toContain('claims_blocked');
+      return candidate.includes('memory is unavailable')
+        ? { verdict: 'violation' as const, ruleIds: ['claims_blocked' as const],
+          reason: 'It claims memory is unavailable without evidence despite the supplied trial memory.', confidence: null, latencyMs: 0 }
+        : { verdict: 'pass' as const, ruleIds: [], reason: 'The scoped memory claim matches the supplied trial.', confidence: null, latencyMs: 0 };
     }, elapsedMs: () => 0 };
     const worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Can you remember what I tell you?')]); await worker.drain();

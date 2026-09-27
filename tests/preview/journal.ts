@@ -2402,9 +2402,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       let supervisedState: string | undefined;
       if (ports.replyCheck) {
-        supervisedState = redact(JSON.stringify({ packet: JSON.parse(packet) as object,
+        supervisedState = JSON.stringify({ packet: JSON.parse(packet) as object,
           proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
-            closed: closed ?? [], memory: memory ?? [] } })).text;
+            closed: closed ?? [], memory: memory ?? [] } }, (_key, value: unknown) =>
+          typeof value === 'string' ? redact(value).text : value);
         journal.append({ kind: 'summary-candidate', through, state: supervisedState,
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
         gate();
