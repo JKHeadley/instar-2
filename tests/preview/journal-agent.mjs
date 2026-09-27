@@ -159,6 +159,7 @@ async function main() {
       unknownSends: view.view.order.reduce((count, t) => count
         + Number(t.intent !== undefined && t.sent === undefined)
         + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined), 0),
+
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
@@ -191,6 +192,8 @@ async function main() {
     const view = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try {
       const last = view.view.order.filter(t => t.prompt !== undefined).at(-1);
+      const reply = options.update === undefined ? view.view.order.filter(t => t.intent).at(-1)
+        : view.view.order.find(t => t.update === number(options.update, 'update', 0));
       let next;
       if (options.text !== undefined) {
         const refuse = () => { throw Error('preview: inspect never calls or sends'); };
@@ -200,7 +203,10 @@ async function main() {
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
-        ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
+        ...recallView(contextOf(last.prompt)) } : null,
+        reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
+          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
+        ...(next ? { next } : {}), withheld: withheldView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
         lastReplyCheck: view.view.lastReplyCheck,
         ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);

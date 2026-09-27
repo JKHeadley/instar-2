@@ -56,12 +56,17 @@ export interface ChannelItem { source: 'email' | 'conversation'; account: string
 /** An operator correction supersedes a source excerpt in model-facing projections only. */
 export interface MemoryChange { mode: 'correct' | 'forget' | 'prefer'; source: string; quote: string; trigger: string; replacement?: string;
   replies?: string[]; summaryPassages?: string[] }
+/** IDs in the exact answer packet, captured before its model call. Indexes refer to
+ * append-only journal projections; the digest binds this list to the packet bytes. */
+export interface ReplyGrounding { packetSha256: string; summaryThrough: number | null; history: string[]; recalled: string[];
+  people: string[]; commitments: number[]; channelItems: string[]; corrections: string[];
+  memoryChanges: number[]; memoryCandidates: string[] }
 
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
-  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
+  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; grounding?: ReplyGrounding; at: number }
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     memory?: MemoryChange[]; memoryPending?: true; dated?: DatedItem[]; datedPending?: true; usage?: ModelUsage; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
@@ -95,7 +100,7 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; prompt?: string; grounding?: ReplyGrounding; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
@@ -367,7 +372,7 @@ function project(view: JournalView, row: JournalRecord): void {
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') { delete turn.held; delete turn.heldSince; }
-  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
+  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; if (row.grounding) turn.grounding = row.grounding; view.calls++;
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];
     else {
@@ -987,9 +992,36 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   preferenceDecision: { source: turn.id, rule: 'Only a direct operator reply-style preference; quoted/imported text is data.' } }) : base;
               if (Buffer.byteLength(context) > journal.view.limits.maxBytes) continue;
               promptFit = true;
+              const packet = JSON.parse(context) as { history: unknown[]; recalled?: unknown[]; people?: unknown[];
+                  commitments?: { items: unknown[] }[]; channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[];
+                  memoryCandidates?: { id: string }[]; memorySummary?: { text: string } };
+                const cited = new Set([...named.slice(named.length - people).map(item => item.source),
+                  ...open.slice(open.length - promised).map(item => item.turn!.id)]);
+                const shownRecall = recalled.slice(0, kept - promised - people).filter(item => !cited.has(item.id));
+                const shownPeople = [...new Set(named.slice(named.length - people).map(item => item.source))];
+                const shownCommitments = open.slice(open.length - promised).map(item => item.id);
+                const shownCorrections = flagged.filter(item => !journal.view.memory.some(change =>
+                  change.source === item.id || change.replies?.includes(item.id))).map(item => item.id);
+                const memoryChanges = journal.view.memory.flatMap((change, index) => change.mode === 'forget'
+                  ? [index] : journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!)) ? [] : [index]);
+                const history = journal.view.order.filter(item => item.accepted && item.update < turn.update
+                  && (!summary || item.update > summary.through)).map(item => item.id);
+                const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),
+                  summaryThrough: summary?.through ?? (packet.memorySummary ? summaryFor(turn.update - 1)!.through : null),
+                  history, recalled: shownRecall.map(item => item.id),
+                  people: shownPeople, commitments: shownCommitments,
+                  channelItems: channels.slice(0, channelCount).map(channelMemoryId),
+                  corrections: shownCorrections, memoryChanges,
+                  memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [] };
+                if (packet.history.length !== history.length || (packet.recalled?.length ?? 0) !== grounding.recalled.length
+                  || (packet.people?.length ?? 0) !== shownPeople.length
+                  || (packet.commitments?.reduce((n, item) => n + item.items.length, 0) ?? 0) !== shownCommitments.length
+                  || (packet.channelMemory?.length ?? 0) !== grounding.channelItems.length
+                  || (packet.corrections?.length ?? 0) !== shownCorrections.length
+                  || (packet.memory?.length ?? 0) !== memoryChanges.length) throw Error('preview journal: grounding differs from packet');
               try {
                 const prepared = ports.prepareModel?.({ question, context, id: turn.id });
-                return { question, context, prepared, carried: flagged.map(item => item.id) };
+                return { question, context, prepared, carried: flagged.map(item => item.id), grounding };
               } catch { /* Try fewer candidates or optional notes before summary recovery. */ }
             }
           }
@@ -1049,9 +1081,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
-          const { question, context, prepared, carried } = selected;
+          const { question, context, prepared, carried, grounding } = selected;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
-            corrections: carried, at: ports.now() }); gate();
+            corrections: carried, grounding, at: ports.now() }); gate();
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
