@@ -580,6 +580,18 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+When the operator uses Telegram Reply on an earlier message, the packet's `replyTo`
+identifies that message by Telegram message ID and, when it matches an earlier accepted
+turn in the same private topic, carries the earlier operator text and the agent's
+actual sent reply with its delivery label. Replying to either the operator message
+or the agent reply resolves the same turn. The field stays available even when a
+summary covers that turn; each side is redacted and limited to 1200 characters,
+and the normal packet byte limit still applies. An unknown or cross-topic target
+is labelled unavailable; embedded Telegram reply text is never substituted for
+journal evidence. Ordinary messages have no `replyTo` field. `inspect` shows the
+last packet's reference. For the supervised Telegram check, see
+[thread-reference-live-test.md](thread-reference-live-test.md).
+
 The launcher uses the existing `INSTAR_SECRET_PREVIEW_STORAGE_KEY` and
 `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` host bindings, production storage lease,
 Telegram bridge and subscription route. The desk supplies the same reviewed activation
