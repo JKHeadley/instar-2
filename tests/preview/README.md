@@ -624,9 +624,10 @@ in `--time-zone` (an IANA zone, default `UTC`; an unknown zone refuses start), a
 the zone is stated in the text. The counts include the message being answered; its
 own reply is not yet sent. Imported turns from an older root may have unknown
 times. Launches before this change were not recorded, and the text says so. It is
-recomputed from memory each turn (p95 about 6 ms at 2000 turns, no model call, no
-extra read), and `status` prints the same text as `self` plus the last three
-`launches`, so an answer can be checked against it (status, read after the reply,
+recomputed from memory each turn (no model call or extra read). The 2000-turn
+timing check is quarantined under Rule 37 while its wall-clock flake is diagnosed;
+functional self-state checks remain active. `status` prints the same text as `self`
+plus the last three `launches`, so an answer can be checked against it (status, read after the reply,
 counts that reply too).
 
 The desk report is optional: a plain file the desk maintains about other 2.0 work, re-read at every turn
@@ -684,7 +685,7 @@ and that absence from `people` is not evidence. Before a summary exists every or
 in `history`, so notes are only needed and only recalled for compacted turns. Under
 the context bound, recalled turns give way first, then the oldest person notes.
 A plain-text summary keeps no notes; `status` lists each summary's note count
-(`null` = none recorded), `summaryPending` (a summary call still in flight) and the
+(`null` = none recorded), `summaryPending` (unresolved reservations, including UNKNOWN) and the
 known names.
 
 ### Remembering commitments
@@ -972,6 +973,44 @@ run outside this reply worker; none is a synchronous dual write or a prerequisit
 for the next reply. The journal and stop latch are deliberately machine-local.
 The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
+
+An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
+It is never retried at its recorded update frontier. After 60 seconds from
+every outstanding UNKNOWN summary reservation, a new summary can cover a
+different, later update frontier under the same finite call cap. The earlier
+reservation remains unresolved even after the later summary succeeds; `status`
+still refuses a cap raise while it exists. The pause is a lower bound between
+uncertain summary calls, not an automatic retry timer. A later accepted turn
+and a free call slot are still required. A correction whose deciding summary
+is UNKNOWN follows the existing `memory-undecided` path; the later summary
+does not silently turn that undecided request into a verified decision.
+
+Live test script for Justin, on a separately authorized, isolated private-chat
+preview trial with spare call and turn slots provisioned **before** the fault:
+
+1. Send a distinct fact, such as `Remember that my test flower is ORCHID-721.`
+   Wait for its reply, then send non-sensitive filler turns until the rolling
+   summary path starts. Record `status` counters and `summaryThrough`.
+2. During a rolling summary call, observe `summaryPending: 1`
+   in `status`, then terminate the trial process before a summary result is
+   durably appended. Restart it on the same root. Confirm the reservation is
+   still visible, the call count did not fall, and no second call for that
+   update appears. If a summary completed before termination, restart with
+   a fresh isolated trial; do not edit the journal or the live root.
+3. Send `What is my test flower?` before 60 seconds have elapsed from the
+   recorded reservation. Confirm this distinct turn is durably admitted and
+   answered or visibly held, while `summaryThrough` has not advanced through
+   the new update. Wait until the 60-second boundary, leaving the process
+   running; the next worker cycle may then summarize the later frontier.
+4. Confirm `summaryThrough` advances through the later update, the answer or
+   `inspect` packet retains `ORCHID-721` with its source, and the original
+   reservation still contributes one to `summaryPending`. Confirm one new
+   summary call was charged and no call at the old frontier was repeated.
+5. Terminate the trial process without latching operator stop, then attempt
+   the documented `raise-caps` command with valid authority and larger finite
+   limits. It must refuse with `UNKNOWN`. Restart and confirm the original
+   and later summary records still replay. Retain the status, inspect, call
+   trace, and trial root as evidence under the desk's trial handling rules.
 
 ### One memory across conversations
 

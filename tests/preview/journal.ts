@@ -26,6 +26,8 @@ export const PREVIEW_PEOPLE_LIMIT = 10;
 export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
+/** An UNKNOWN summary keeps its charge; a distinct later frontier may start after this pause. */
+export const SUMMARY_UNKNOWN_RECOVERY_MS = 60_000;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
@@ -96,7 +98,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
     at: number; id?: string; through?: number; reason?: string }[];
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
-  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
+  summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Map<number, number>; // frontier -> durable reservation time
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   callOutcomes: Extract<JournalRecord, {kind:'call-outcome'}>[]; callOutcomeCounts: Map<string, number>;
   sourceStop: string | null; imported: boolean;
@@ -125,7 +127,7 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
       && row.maxTurns === view.limits.maxTurns && maxBytes === view.limits.maxBytes)
     throw Error('preview journal: cap authority or monotonic bounds refused');
   if (view.order.some(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
-    || [...view.summaryReservations].some(through => !view.summaries.some(item => item.through === through)))
+    || view.summaryReservations.size > 0)
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
 function project(view: JournalView, row: JournalRecord): void {
@@ -192,7 +194,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary-reserve') {
     if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
       || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
-    view.summaryReservations.add(row.through); view.calls++; return;
+    view.summaryReservations.set(row.through, row.at); view.calls++; return;
   }
   if (row.kind === 'summary-failed') {
     if (!view.summaryReservations.delete(row.through)) throw Error('preview journal: failed summary without reservation');
@@ -322,7 +324,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Map(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+
 
       } else project(view, row);
       offset += 4 + length;
@@ -360,7 +363,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Map(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+
 
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
@@ -783,9 +787,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // even if a later correction still holds ordinary answers.
         if (pendingMemory() && turn.modelState !== 'uncertain') {
           await summarizeIfNeeded(true);
-          // No summary can ever run again while an UNKNOWN summary reservation stands
-          // (it is never repeated), so a pending request is settled as undecided and gets
-          // one honest reply, instead of holding every later answer forever.
+          // An UNKNOWN summary cannot decide this request. Settle it as undecided
+          // so the recovery pause does not hold every later answer.
           for (let request = pendingMemory(); request && journal.view.summaryReservations.size > 0; request = pendingMemory())
             journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-uncertain', at: ports.now() });
           if (pendingMemory()) {
@@ -1046,7 +1049,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const runSummary = async (force: boolean) => {
     const last = pendingMemory() ?? journal.view.order.filter(turn => turn.sent).at(-1);
     if (!last) return;
-    if (journal.view.summaryReservations.size) return; // an uncertain prior call is never repeated
+    const unknown = journal.view.summaryReservations;
+    if (unknown.size) {
+      const now = ports.now();
+      for (const [through, at] of unknown)
+        if (last.update <= through || now - at < SUMMARY_UNKNOWN_RECOVERY_MS) return;
+    }
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
@@ -1097,7 +1105,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // prepared envelope needs more room than the packet itself.
       for (const { turn, base } of candidates.reverse()) {
         const through = turn.update;
-        if (journal.view.summaryReservations.has(through) || (journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
+        // Recovery may only dispatch a frontier later than every UNKNOWN charge,
+        // including when prompt overflow sends selection to a smaller prefix.
+        if ([...unknown.keys()].some(frontier => through <= frontier)) continue;
+        if ((journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
         const closable = openFor(through, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
         const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item) && !item.memoryUndecided
           && (memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')

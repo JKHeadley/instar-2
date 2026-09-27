@@ -158,7 +158,7 @@ async function main() {
         time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
       datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
-      summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
+      summaryPending: view.view.summaryReservations.size,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
         failed: view.view.order.filter(t => t.checkFailed).length,
