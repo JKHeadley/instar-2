@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
-import { auditPacket } from './journal-audit.mjs';
+import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, projectMemoryText, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
+import { auditJournal, auditPacket } from './journal-audit.mjs';
 
 const key = new Uint8Array(32).fill(17);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -547,6 +547,84 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(JSON.parse(inspect.stdout).withheld[1].quote).toBeUndefined();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('keeps only the tenth correction with longer and shorter quotes through restarts and compaction', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-chain-')));
+  const path = join(root, 'journal.encrypted');
+  const current = (value: number) => `The observatory access word is waypoint${value}.`;
+  let journal = openPreviewJournal(path, key, { ...genesis, maxCalls: 100, maxReplies: 30,
+    maxTurns: 30, maxBytes: 32768 }, undefined, false, 4096);
+  let compactions = 0;
+  const sends: string[] = [];
+  const ports = { now: () => 1790000000000, stopped: () => false,
+    prepareModel: (input: { question: string; context: string }) => JSON.stringify({ messages: [
+      { role: 'user', content: input.question }, { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+    model: async (input: { id: string; question: string; context: string }) => {
+      const packet = JSON.parse(input.context);
+      if (input.id.startsWith('summary:')) {
+        const request: string | undefined = packet.memoryRequest?.message;
+        const number = request ? Number(/waypoint(\d+)/u.exec(request)?.[1]) : NaN;
+        const source = packet.memoryCandidates?.find((item: { message: string }) =>
+          item.message.includes(current(number - 1)));
+        return JSON.stringify({ summary: current(Number.isNaN(number) ? 0 : number), people: [],
+          memory: request && number > 0 && source ? [{ mode: 'correct', source: source.id,
+            quote: number === 1 ? current(0) : number === 2 ? `Actually, ${current(1)}` : current(number - 1).slice(4, -1),
+            replacement: current(number) }] : [] });
+      }
+      const active = packet.memory?.filter((item: { mode: string }) => item.mode === 'corrected') ?? [];
+      if (input.question === 'What is the observatory access word?') return active.at(-1)?.replacement ?? current(0);
+      return JSON.stringify({ reply: 'Understood.', memory: [] });
+    }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
+  try {
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, current(0))]); await worker.drain();
+    for (let number = 1; number <= 10; number++) {
+      worker.intake([update(number + 1, `Actually, ${current(number)}`)]);
+      await worker.drain();
+      await worker.summarizeIfNeeded(true);
+      expect(journal.view.memory, `correction ${number}`).toHaveLength(number);
+      if (number % 2 === 0) {
+        journal.close();
+        journal = openPreviewJournal(path, key, undefined,
+          stage => { if (stage === 'compact:after-rename') compactions++; }, false, 4096);
+        worker = createJournalWorker(journal, ports);
+      }
+    }
+    expect(compactions).toBeGreaterThan(0);
+    expect(journal.view.summaries.length).toBeGreaterThan(0);
+    for (let id = 12; id < 20; id++) {
+      worker.intake([update(id, `Unrelated garden note ${id}: ${'garden '.repeat(500)}`)]);
+      await worker.drain(); await worker.summarizeIfNeeded(true);
+    }
+    const probe = worker.probe('What is the observatory access word?');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    const packet = JSON.parse(probe.context);
+    expect(packet.historyMode).toBe('summary-plus-recent');
+    expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: current(10) }]);
+    expect(packet.memory).toHaveLength(1);
+    expect(projectMemoryText(journal.view, current(10))).toBe(current(10));
+    expect(projectMemoryText(journal.view, current(9))).toContain('[withheld: operator correction or forgetting]');
+    for (let number = 0; number < 10; number++) expect(probe.context).not.toContain(current(number));
+    worker.intake([update(20, 'What is the observatory access word?')]); await worker.drain();
+    expect(journal.view.order.at(-1)?.answer).toBe(current(10));
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    expect(sends).toHaveLength(20);
+    expect(journal.view.memory.map(change => [change.quote, change.replacement])).toEqual(
+      Array.from({ length: 10 }, (_, index) => [index === 0 ? current(0)
+        : index === 1 ? `Actually, ${current(1)}` : current(index).slice(4, -1), current(index + 1)]));
+    journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(status.status, status.stderr).toBe(0);
+    const audit = JSON.parse(status.stdout).withheld as { sourceUpdate: number; operatorUpdate: number; quote: string }[];
+    expect(audit.map(item => [item.sourceUpdate, item.operatorUpdate, item.quote])).toEqual(
+      Array.from({ length: 10 }, (_, index) => [index + 1, index + 2,
+        index === 0 ? current(0) : index === 1 ? `Actually, ${current(1)}` : current(index).slice(4, -1)]));
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+}, 20000);
 
 it('corrects a relationship without an actually cue', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-relative-')));

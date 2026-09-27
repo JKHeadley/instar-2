@@ -1221,6 +1221,14 @@ store, scheduler, or outbound path is added. Follow
 [conflicting-memory-live-test.md](conflicting-memory-live-test.md) for Justin's supervised
 private-chat procedure.
 
+Successive corrections may quote a shorter clause from the immediately prior correction turn.
+The packet retires that prior replacement by its source link, while the journal and
+`status.withheld` retain every correction. Clause matching observes word boundaries, so a
+corrected value ending in `1` does not suppress a later value ending in `10` during projection
+or summary validation. The ten-correction restart and isolated compaction regression is in
+`journal-memory-correction.test.ts`; Justin's supervised procedure is
+[correction-chain-restart-live-test.md](correction-chain-restart-live-test.md).
+
 ### Dated memory (preview)
 
 The private journal runner records dated events and deadlines from the verified operator in the

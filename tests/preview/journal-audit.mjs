@@ -2,6 +2,7 @@ import { redact } from '../../src/recall/redact.js';
 import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
+import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
@@ -61,9 +62,9 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     .map(change => JSON.stringify([change.source, change.quote])));
   const clean = value => activeChanges.filter(change => change.mode !== 'prefer'
     && !preferenceKeys.has(JSON.stringify([change.source, change.quote]))).reduce((text, change) => {
-    let next = text.replaceAll(change.quote, '[withheld: operator correction or forgetting]');
+    let next = replaceClaim(text, change.quote, '[withheld: operator correction or forgetting]');
     for (const passage of change.summaryPassages ?? [])
-      next = next.replaceAll(passage, '[withheld: operator correction or forgetting]');
+      next = replaceClaim(next, passage, '[withheld: operator correction or forgetting]');
     return next;
   }, redact(value).text);
   const metadata = value => activeChanges.filter(change => change.mode !== 'prefer')
@@ -74,7 +75,9 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   const replyFor = found => {
     const sent = found.intent?.replace(/^PREVIEW — /u, '');
     if (found.noticeClass) return clean(sent ?? '');
-    if (activeChanges.some(change => change.mode !== 'prefer' && (change.source === found.id || change.replies?.includes(found.id))))
+    // A validated correction's own acknowledgement names the old clause, so it is withheld whole.
+    if (activeChanges.some(change => change.mode !== 'prefer' && (change.source === found.id || change.replies?.includes(found.id))
+      || change.mode === 'correct' && change.trigger === found.id))
       return '[withheld: operator correction or forgetting]';
     return clean(sent ?? '');
   };
@@ -272,11 +275,10 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   for (const [n, change] of activeChanges.entries()) {
     const trigger = view.turns.get(change.trigger);
     if (!trigger || trigger.update >= turn.update || change.mode === 'prefer') continue;
-    const superseded = change.mode === 'correct' && activeChanges.slice(n + 1)
-      .some(next => next.quote.includes(change.replacement));
+    const superseded = activeChanges.slice(n + 1).some(next => supersedesCorrection(change, next));
     if (!superseded && !packetMemory.some(item => item?.source === publicSource(change.source) && item?.trigger === change.trigger))
       fault('memory-change-unrepresented', `memory-change[${n}]`);
-    if (offered.some(value => value.includes(change.quote)))
+    if (offered.some(value => hasClaim(value, change.quote)))
       fault(change.mode === 'forget' ? 'forgotten-reachable' : 'superseded-current', `memory-change[${n}]`);
   }
   for (const [n, note] of view.people.entries()) {

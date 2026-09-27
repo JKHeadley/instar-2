@@ -10,6 +10,7 @@ import { selectRecall, selectSaidTurns, statedFacts } from './memory-sentinel.js
 import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS } from './reply-check.js';
 import { parseDatedItem, dueState, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
@@ -382,8 +383,8 @@ const projectMemoryClause = (view: JournalView, value: string, source?: string |
     const quotes = [change.quote, ...linked.flatMap(note => [
       ...(note.source === change.source ? [] : [note.quote]),
       ...note.sources?.filter(item => item.source !== change.source).map(item => item.quote) ?? []])];
-    let projected = quotes.reduce((result, quote) => result.replaceAll(quote, withheld), text);
-    for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, withheld);
+    let projected = quotes.reduce((result, quote) => replaceClaim(result, quote, withheld), text);
+    for (const passage of change.summaryPassages ?? []) projected = replaceClaim(projected, passage, withheld);
     return projected;
   }, value);
 };
@@ -545,7 +546,7 @@ export function projectMemoryBudget(view: JournalView) {
     ...view.commitments.flatMap((note, index) => view.closed.has(index) || affected(note) ? [] : [note.quote]),
     ...view.memory.flatMap((change, index) => change.mode === 'correct'
       && !preferenceLineage.has(JSON.stringify([change.source, change.quote]))
-      && !view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!))
+      && !view.memory.slice(index + 1).some(next => supersedesCorrection(change, next))
       ? [change.replacement!] : [])];
   const pinnedBytes = pinned.reduce((total, value) => total + Buffer.byteLength(value), 0);
   let remaining = Math.max(0, PREVIEW_MEMORY_BUDGET_BYTES - pinnedBytes);
@@ -591,8 +592,8 @@ const operatorTurn = (view: JournalView, turn: Turn) => {
 /** This phrase match only requests a capped model judgment; it never opens or closes a question. */
 export const unansweredCue = (reply: string) => /\b(?:I (?:don['’]t|do not) know|I(?:['’]m| am) not sure|I (?:can['’]t|cannot) answer)\b/iu.test(reply);
 export const projectMemoryText = (view: JournalView, value: string) => view.memory.reduce((text, change) => {
-  let projected = text.replaceAll(change.quote, '[withheld: operator correction or forgetting]');
-  for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, '[withheld: operator correction or forgetting]');
+  let projected = replaceClaim(text, change.quote, '[withheld: operator correction or forgetting]');
+  for (const passage of change.summaryPassages ?? []) projected = replaceClaim(projected, passage, '[withheld: operator correction or forgetting]');
   return projected;
 }, value);
 export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
@@ -1842,7 +1843,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     .reduce((text, term) => text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'giu'), withheld),
       clean(redact(value).text, true));
   const supersededCorrection = (change: MemoryChange) => journal.view.memory
-    .slice(journal.view.memory.indexOf(change) + 1).some(next => next.quote.includes(change.replacement!));
+    .slice(journal.view.memory.indexOf(change) + 1).some(next => supersedesCorrection(change, next));
   const preferenceState = (changes: readonly MemoryChange[] = journal.view.memory) => memoryPreferenceState(journal.view, changes);
   const activePreferences = (changes: readonly MemoryChange[] = journal.view.memory) => [...preferenceState(changes).active.values()];
   const activeConflicts = () => activeMemoryConflicts(journal.view);
@@ -2367,7 +2368,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (change.mode === 'forget') return [{ sourceKind: 'operator-stated', mode: 'forgotten', source: publicMemoryId(change.source), sourceLabel: memoryLabel(change), trigger: change.trigger,
           reason: 'verified operator requested forgetting' }];
 
-        const later = journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!));
+        const later = supersededCorrection(change);
         return later ? [] : [{ sourceKind: 'operator-stated', mode: 'corrected', source: publicMemoryId(change.source), sourceLabel: memoryLabel(change), trigger: change.trigger,
           replacement: clean(redact(change.replacement!).text, true, change.trigger) }];
       }) } : {}),
@@ -2592,7 +2593,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               channelItems: selectedChannels.map(channelMemoryId), corrections: flagged.map(item => item.id),
               memoryChanges: journal.view.memory.flatMap((change, index) => change.mode === 'prefer'
                 || preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
-                || change.mode === 'correct' && journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!))
+                || change.mode === 'correct' && supersededCorrection(change)
                 ? [] : [index]), memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [] };
             if ((packet.history?.length ?? 0) !== grounding.history.length || (packet.recalled?.length ?? 0) !== grounding.recalled.length
               || (packet.people?.length ?? 0) !== grounding.people.length || (packet.commitments?.reduce((n, item) => n + item.items.length, 0) ?? 0) !== grounding.commitments.length
@@ -3380,8 +3381,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (allMemory.some((change, index) => change.mode !== 'prefer'
         && !preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
         && !allMemory.slice(index + 1).some(later => later.mode === 'correct' && later.replacement?.includes(change.quote))
-        && (summaryText.includes(change.quote)
-          || change.summaryPassages?.some(passage => summaryText.includes(passage))))) {
+        && (hasClaim(summaryText, change.quote)
+          || change.summaryPassages?.some(passage => hasClaim(summaryText, passage))))) {
         const reason = 'summary faithfulness: stale corrected or forgotten claim';
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',reason,
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
