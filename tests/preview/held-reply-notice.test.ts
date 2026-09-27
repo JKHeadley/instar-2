@@ -228,13 +228,19 @@ it('fences an uncertain notice send and later releases the held answer once', as
       model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
       send: async input => { sends++; expect(input.expectedText).toBe('PREVIEW — answer'); return 15; } });
     const before = resumed.probe('next');
-    if ('context' in before) expect(JSON.parse(before.context).history[0]).toMatchObject({
-      answer: null, outcome: 'held notice delivery UNKNOWN; answer pending' });
+    if ('context' in before) {
+      const packet = JSON.parse(before.context);
+      expect(packet.history[0]).toMatchObject({ answer: null, outcome: 'answer pending', heldNotice: true,
+        heldNoticeOutcome: 'delivery UNKNOWN' });
+      expect(before.context).not.toContain("I'm holding my answer to your message from");
+      expect(packet.capability).toContain('do not narrate a past hold or repeat its notice');
+      expect(packet.capability).toContain('Explain a hold when the operator asks about it');
+    }
     await resumed.drain(); await resumed.drain();
     expect({ sends, replies: second.view.replies, answerSent: second.view.order[0]?.sent }).toEqual({ sends: 2, replies: 2, answerSent: 15 });
     const after = resumed.probe('next');
     if ('context' in after) expect(JSON.parse(after.context).history[0]).toMatchObject({
-      answer: 'answer', outcome: 'Telegram API accepted', heldNotice: second.view.order[0]?.heldNoticeIntent,
+      answer: 'answer', outcome: 'Telegram API accepted', heldNotice: true,
       heldNoticeOutcome: 'delivery UNKNOWN' });
     second.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -276,7 +282,7 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
       try {
         const resumed = createJournalWorker(reopened, { now: () => now + 2, stopped: () => false,
           model: async () => { throw Error('model repeated'); }, checkOutbound: () => {}, send: async () => { throw Error('send repeated'); } });
-        const expected = { heldNotice: reopened.view.order[0]?.heldNoticeIntent,
+        const expected = { heldNotice: true,
           heldNoticeOutcome: noticeReceipt === null ? 'delivery UNKNOWN' : 'Telegram API accepted',
           answer: 'answer', outcome: answerReceipt === null ? 'delivery UNKNOWN' : 'Telegram API accepted' };
         const history = resumed.probe('question 1');

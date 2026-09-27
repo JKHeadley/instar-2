@@ -1,6 +1,7 @@
 // @ts-nocheck -- bounded child-process fixture for the real preview launcher.
 import { expect, it } from 'vitest';
 import { createDecipheriv } from 'node:crypto';
+import { brotliDecompressSync } from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -129,7 +130,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         const cipher = createDecipheriv('aes-256-gcm', OFFLINE_STORAGE_KEY, bytes.subarray(0, 12));
         cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
         cipher.setAuthTag(bytes.subarray(12, 28));
-        evidence.push(JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString('utf8')));
+        const plain = Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]);
+        // A leading 1 marks a brotli-compressed frame (journal-growth); legacy frames are plain JSON.
+        evidence.push(JSON.parse((plain[0] === 1 ? brotliDecompressSync(plain.subarray(1)) : plain).toString('utf8')));
         offset += 4 + length;
       }
       const metered = evidence.filter(row => {

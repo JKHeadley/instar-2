@@ -3,7 +3,8 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+// Fixtures substitute the model and Jev (int11's faithfulness check runs before a summary commits).
+import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { REPLY_RULES } from './reply-check.js';
 
@@ -91,12 +92,13 @@ it('reports a missing historical packet instead of inventing a reason', async ()
 it('keeps answering honestly when the old packet cannot fit the reply bound', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-why-bound-'))), path = join(root, 'journal.encrypted');
   try {
-    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 4000 }); // int12: reply instructions grew
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 5500 }); // int12: reply instructions grew
     const seen: Record<string, unknown>[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       sources: [{ id: 'source:large', text: 'x'.repeat(450) }],
       prepareModel: input => JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
-      model: async input => { seen.push(JSON.parse(input.context)); return input.question.startsWith('Why')
+      model: async input => { if (input.id.startsWith('summary:')) return 'The operator asked about the marker.';
+        seen.push(JSON.parse(input.context)); return input.question.startsWith('Why')
         ? 'I have the reply, but its recorded packet did not fit this context.' : 'Cedar is the marker.'; },
       send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(1, 'What is the marker?')]); await worker.drain();

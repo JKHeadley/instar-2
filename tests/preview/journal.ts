@@ -2159,7 +2159,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN'
         : holdingReply(item) ? 'holding reply delivery UNKNOWN after review violation'
           : modelFailure(item) ? `model failure notice delivery UNKNOWN (${item.failureClass ?? 'rejected'})` : 'delivery UNKNOWN')
-    : item.heldNoticeIntent ? (item.heldNoticeSent === undefined ? 'held notice delivery UNKNOWN; answer pending' : 'held notice Telegram API accepted; answer pending')
+    : item.heldNoticeIntent ? 'answer pending'
     : item.reserved && item.answer === undefined ? 'model UNKNOWN'
       : item.held ?? (modelFailure(item) ? `model failure notice pending (${item.failureClass ?? 'rejected'})` : 'pending');
   /** Only retained, authenticated journal turns can satisfy a Telegram reply reference. */
@@ -2360,7 +2360,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
-      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent, heldNoticeOutcome: heldNoticeOutcome(item) } : {}), outcome: outcome(item) }));
+      ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}), outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn | undefined; item: ChannelItem | undefined;
       mentions: { person: string; quote: string }[] }>();
@@ -2425,7 +2425,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : clean(redact(item.text).text, true, item.id), answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
 
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
-      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
+      ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' &&
       (change.source === item.id || change.replies?.includes(item.id)))).map(item => ({ source: item.id, sourceLabel: turnLabel(item), update: item.update, date: dated(item),
@@ -2482,7 +2482,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
         guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
-      capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. Memory is this trial's journal only. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail. A similar name, event or date, a summary inference, your earlier reply, or the question's premise does not establish it. If the offered evidence does not support the requested detail, say "I don't know from this journal"; do not fill the gap with a likely answer or claim the operator never said it. Cite sourceLabel for supported remembered facts. Say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
+      capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. You have durable memory in this trial's encrypted local journal: accepted turns, summaries and validated memory changes survive runner restarts and span this trial's topics. You can recall it while the trial is active. The verified operator can directly ask you to correct or forget a recorded fact; later packets withhold the old claim, while the original audit record remains in the journal. This is not production or other-agent memory. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail. A similar name, event or date, a summary inference, your earlier reply, or the question's premise does not establish it. If the offered evidence does not support the requested detail, say "I don't know from this journal"; do not fill the gap with a likely answer or claim the operator never said it. Cite sourceLabel for supported remembered facts. Say when the source is unknown. History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
         + (sourceList?.some(source => typeof source === 'object' && source !== null
           && 'id' in source && source.id === 'greeting-continuity')
           ? ' A greeting-continuity source quotes one earlier open operator request. Set continuity:true only if a brief reminder is useful and still true; otherwise false. Do not write that line yourself; the runner uses the exact quoted topic. Never invent a topic.' : '')

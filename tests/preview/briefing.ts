@@ -18,7 +18,9 @@ export const SOURCE_EXCERPTS = Object.freeze([
 export const CAPABILITY_NOTE_DATE = '2026-09-27';
 export function capabilityNote(limits: { providerAttempts: number; expiresAt: number; reminders?: boolean }) {
   return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. `
-    + 'It keeps this trial\'s complete original message history across all of them as one memory and attempts at most one plain-text reply per admitted message. '
+    + 'It keeps accepted messages, summaries and validated memory changes in one encrypted local journal across restarts and topics for this trial. '
+    + 'The bound operator can directly ask it to correct or forget a recorded fact; later reply packets withhold the old claim, while the original audit record remains in the journal. '
+    + 'This memory is available to the preview while the trial is active, not to production or another agent. It attempts at most one plain-text reply per admitted message. '
     + 'Ordinary answers use a subscription model; exact status and how are you doing commands read the durable journal without answer generation. '
     + 'It has no tools: it cannot browse, run code or act outside this chat. '
     + 'When a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; its mention is remembered across restarts. '

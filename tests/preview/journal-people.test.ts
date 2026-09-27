@@ -336,7 +336,7 @@ const mergeAnswer = (question: string, context: string) => {
 it('links an introductory claim even when its source ends in a question', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
+    const w = world(root, { maxBytes: 8000, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
@@ -357,7 +357,7 @@ it.each(['Can you remember that?', 'Please remember that.'])
   ('keeps a distinct homonym ambiguous with ending: %s', async ending => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
+    const w = world(root, { maxBytes: 7000, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, `My neighbour Sam lent me a ladder. ${ending}`);

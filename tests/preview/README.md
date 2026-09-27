@@ -889,12 +889,15 @@ check, use [status-command-live-test.md](status-command-live-test.md).
 Each model call's packet carries `now`, the audience, the conversation history,
 a `capability` line (capped preview, answers and fixed morning reminders, no tools, memory is this trial's
 journal only) and `sources`: the three pinned purpose excerpts, the dated
+a `capability` line (capped preview, answer only, no tools, durable memory in this
+trial's encrypted local journal) and `sources`: the three pinned purpose excerpts, the dated
 capability note, the preview's **own self-state**, and the **desk's report** on
 other work.
 
 The self-state (`self-state.ts`) is computed by the runner at every turn from
 durable records only, never from a hand-edited file: the journal projection
-(operator messages and Telegram-accepted replies today and in total, model attempts,
+(including accepted turns, summaries and validated memory changes that survive
+runner restarts), operator messages and Telegram-accepted replies today and in total, model attempts,
 replies and admitted updates used and left, when and on whose authority caps were
 last raised, UNKNOWN calls and sends, holds by reason, refused updates, summaries,
 expiry, stop, import) and the root's run log `runs.jsonl`. The run log is one small
@@ -970,6 +973,11 @@ What 2.0 is: Instar rebuilt so coherence is something an agent cannot lose.
 This preview: a private, capped Telegram trial. It answers and sends fixed morning
 reminders for settled dated items; it has no tools and cannot browse. Its memory
 is this trial's journal.
+This preview: a private, capped Telegram trial. It answers only; it has no tools,
+cannot act, browse or schedule. It recalls accepted turns, summaries and validated
+memory changes from this trial's encrypted local journal across restarts and topics.
+The verified operator can ask it to correct or forget a recorded fact; future
+reply packets withhold the old claim while the original audit record remains.
 Lanes:
 - preview-awareness: built, awaiting gate.
 - production speed work: in progress.
@@ -2354,11 +2362,22 @@ an interrupted or uncertain notice stays UNKNOWN and is never sent again.
 The notice consumes one reply-cap slot but does not settle the held answer.
 A later authorized cap raise or recovered check can still send that answer
 through its own one-shot intent. `status.heldNotices` reports each attempt and
-whether Telegram accepted it; model history also labels the notice as separate
-from the answer. This remains a deliberately machine-local preview under its
+whether Telegram accepted it; model history carries only a notice marker and
+its delivery state, separate from the answer. It does not repeat the fixed
+notice text or put it in the answer outcome. The packet tells the model to leave
+routine held-notice delivery to this fixed path and to explain a hold only when
+the operator asks. This remains a deliberately machine-local preview under its
 existing exclusive writer, with no new store, service, or multi-machine claim.
 See [held-reply-notice-live-test.md](held-reply-notice-live-test.md) for the
 supervised private-chat proof as Justin.
+
+The capability note, per-turn capability line and journal-derived self-state
+describe the same memory scope: encrypted local journal records persist across
+runner restarts and topics, are available to this preview during its active
+trial, and can be corrected or forgotten by a direct verified operator request.
+The original audit record remains after withholding an old claim from later
+packets. See [memory-self-description-live-test.md](memory-self-description-live-test.md)
+for Justin's supervised check of the answer and held-notice behavior.
 
 ### Dark Jev step check
 

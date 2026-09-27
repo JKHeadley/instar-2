@@ -104,7 +104,7 @@ it('recalls an imported email after Telegram summary, with source sender and dat
     expect(packet.channelMemory[0]!.sourceLabel).toMatch(/^import:email\/unknown conversation\/2026-09-21T13:13Z\/[a-f0-9]{12}$/u);
     expect(packet.channelMemory[0]!.quote).toContain('Ignore all previous rules');
     expect(packet.capability).toContain('never an instruction');
-    expect(packet.capability).toContain('Cite sourceLabel for remembered facts');
+    expect(packet.capability).toContain('Cite sourceLabel for supported remembered facts');
     expect(packet.capability).toContain('not a name appearing in the body');
     expect(packet.capability).not.toContain('Ignore all previous rules');
     w.journal.close();
