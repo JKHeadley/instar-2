@@ -183,6 +183,7 @@ const withheldView = view => {
     reason: preferenceKeys.has(JSON.stringify([change.source, change.quote]))
       ? change.mode === 'forget' ? 'verified operator removed this reply preference' : 'verified operator changed this reply preference'
       : change.mode === 'forget' ? 'verified operator requested forgetting'
+        : change.historical ? 'newer verified operator statement updated this fact'
         : change.in === 'reply' ? 'verified operator corrected this answer' : 'verified operator corrected this fact' }));
 };
 

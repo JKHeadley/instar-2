@@ -174,5 +174,12 @@ export function statedFacts(text: string): { subject: string; value: string; quo
     const value = parts[3]!.toLowerCase().replace(/\s+/gu, ' ').trim();
     if (value && !/[“"”]/u.test(quote)) facts.push({ subject, value, quote });
   }
+  for (const match of direct.matchAll(/(?:^|[.!?]\s+|\n)\s*((?:my|the)\s+[\p{L}\p{N}'-]+(?:\s+[\p{L}\p{N}'-]+){0,5}\s+moved\s+from\s+[^.!?\n]{1,50}\s+to\s+[^.!?\n]{1,50})/giu)) {
+    const quote = match[1]!.trim();
+    if (!text.includes(quote) || /[“"”]/u.test(quote)) continue;
+    const parts = /^((?:my|the)\s+.+?)\s+moved\s+from\s+.+?\s+to\s+(.+)$/iu.exec(quote);
+    if (parts) facts.push({ subject: parts[1]!.toLowerCase().replace(/\s+/gu, ' '),
+      value: `in ${parts[2]!.toLowerCase().trim()}`, quote });
+  }
   return facts.slice(0, 3);
 }

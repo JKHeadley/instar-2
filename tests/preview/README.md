@@ -1105,15 +1105,25 @@ accepted operator turns or imported channel items. If the most recent value
 differs, the reply packet carries `contradictions` with the two redacted quotes,
 source IDs, dates and provenance. A channel import is labelled as export metadata,
 not an authenticated operator assertion. This is a bounded candidate signal: the
-model judges whether the statements really conflict and can ask whether to update
-memory. Matching values, different subjects and nonoperator turns raise no
-signal. The extractor skips double-quoted clauses, whole-line blockquotes and
+model judges whether the statements really update the same fact. On a newer
+verified operator statement, it may return an `update` memory decision in the
+ordinary capped reply call. The runner accepts that decision only when the
+packet offered the exact earlier operator quote and the exact newer operator
+quote in its contradiction signal. It records the update in the existing
+encrypted answer frame. Later packets present the new value as current and
+withhold the old clause from ordinary history and summary projections.
+`memorySearch` presents the current value first and can show the superseded
+quote with its original date and the update date; the original journal turns
+remain intact. A repeat of an old value becomes current again without erasing
+either occurrence. The narrow signal also recognizes `the launch moved from
+October to November` beside `the launch is in October`. Matching values,
+different subjects and nonoperator turns raise no signal. The extractor skips double-quoted clauses, whole-line blockquotes and
 fenced spans, and emits a quote only when it occurs verbatim in the redacted
-source; other quotation forms can still produce a candidate. The signal never
-writes a memory change; the authenticated correction
-path below still decides and validates any change. If the prompt bound cannot hold
-the signal, it yields before accepted intake or reply can be blocked. `inspect`
-shows any signal in the persisted reply packet. The [live test for Justin](contradiction-notice-live-test.md)
+source; other quotation forms can still produce a candidate. The signal alone
+never writes a memory change. An imported earlier claim cannot authorize an
+automatic update. If the prompt bound cannot hold the signal, it yields before
+accepted intake or reply can be blocked. `inspect`
+shows any signal in the persisted reply packet. The [live test for Justin](fact-update-without-correction-live-test.md)
 exercises the private preview chat after the desk lands this revision.
 
 A direct correction or forget request from the bound Telegram operator can be judged in the existing

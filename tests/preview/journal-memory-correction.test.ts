@@ -593,7 +593,8 @@ it('keeps only the tenth correction with longer and shorter quotes through resta
     expect(compactions).toBeGreaterThan(0);
     expect(journal.view.summaries.length).toBeGreaterThan(0);
     for (let id = 12; id < 20; id++) {
-      worker.intake([update(id, `Unrelated garden note ${id}: ${'garden '.repeat(500)}`)]);
+      // int12: filler leaves room for the fact-update instruction in each reply packet.
+      worker.intake([update(id, `Unrelated garden note ${id}: ${'garden '.repeat(450)}`)]);
       await worker.drain(); await worker.summarizeIfNeeded(true);
     }
     const probe = worker.probe('What is the observatory access word?');

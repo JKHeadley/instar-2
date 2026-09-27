@@ -16,6 +16,8 @@ export const hasClaim = (text, quote) => claimSpans(text, quote).length > 0;
 export const replaceClaim = (text, quote, replacement) => claimSpans(text, quote)
   .reduceRight((result, at) => result.slice(0, at) + replacement + result.slice(at + quote.length), text);
 
-/** A later change must cite the prior trigger and contain its replacement, or quote a clause inside it. */
+/** A later change must cite the prior trigger and contain its replacement; a later correction may
+ * instead quote a clause inside it. Forgetting part of a replacement withholds that clause but
+ * leaves the correction itself represented. */
 export const supersedesCorrection = (change, next) => change.mode === 'correct' && next.source === change.trigger
-  && (hasClaim(change.replacement, next.quote) || hasClaim(next.quote, change.replacement));
+  && (next.mode === 'correct' && hasClaim(change.replacement, next.quote) || hasClaim(next.quote, change.replacement));
