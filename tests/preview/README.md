@@ -2176,3 +2176,45 @@ the rolling summary. The calendar window is a candidate for the model to judge;
 ambiguous or conflicting periods use ordinary recall. `inspect` exposes the
 same bounded period evidence. Existing prompt, review, secret, cap, stop and
 send-intent gates apply. See [week-summary-request-live-test.md](week-summary-request-live-test.md).
+
+### Desk probe turns stay out of memory
+
+The desk's build switches and renewal canaries send one fixed form through the
+operator's own Telegram account: `Build check <commit>:`, `Renewal check <commit>:`
+or `Canary check <commit>:` at the start of the message, followed by a planted
+test fact such as a test marker. `probeTurn` (journal.ts) recognizes exactly that
+desk-authored tag from the verified operator. It is a protocol tag, like the
+status command, not a reading of meaning: the same words mid-sentence, in lower
+case, without a commit id, or from another sender are ordinary turns.
+
+A probe turn is still answered from its own message, sent once and kept verbatim
+in the journal. `status` counts it, `inspect` shows it and a Telegram Reply to it
+still resolves. It is never read back as operator memory. Later packets omit it
+from history, recall, rolling-summary input, period recaps, inventory, search,
+contradictions, open questions and the cross-conversation digest. Summary
+memory requests and pending dates skip it. Its own answer decision cannot record
+a preference, a correction or a dated item. A canary that says "I prefer short
+replies" no longer sets the operator's reply style. Summaries written before this
+change keep any probe text they already contain. The away digest and greeting
+continuity still measure gaps from the last operator message, which can be a
+probe.
+
+`probe-traffic-replay.ts` measures this over the real encrypted journal. It
+replays a week of ordinary conversation in two conversations with eight probes
+(one with the canary's model-failure answer), nine rolling summaries and three
+restarts, then asks later ordinary questions read-only. The controls are the
+operator genuinely mentioning a niece named Juniper, juniper shrubs, a whiteboard
+marker and "I prefer short replies". Before the fix every later packet carried
+probe content: 8 history hits, up to 20 recalled, 18 in the summary, the failed
+canary as an open question and in the digest. Six of nine summaries contained it,
+the week recap counted 29 turns instead of 21, the inventory counted 32 records
+instead of 24, and one canary set a preference. After the fix every surface is
+probe-free and every control still surfaces. The summarizer and answer models
+are deterministic stubs, so this is packet evidence, not real-model quality.
+
+```sh
+node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/probe-traffic-replay.mjs
+npx vitest run tests/preview/probe-traffic-replay.test.ts --configLoader=runner
+```
+
+The supervised procedure is [probe-traffic-live-test.md](probe-traffic-live-test.md).

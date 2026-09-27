@@ -511,6 +511,14 @@ const operatorTurn = (view: JournalView, turn: Turn) => {
   try { return String((JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id) === view.genesis.operator; }
   catch { return false; }
 };
+/** The desk's build-switch and renewal canaries send one fixed, desk-authored form through
+ * the operator's own account: "Build|Renewal|Canary check <commit>: ...". It is a protocol tag
+ * like the status command, not a reading of meaning. Such a turn is answered and kept verbatim
+ * in the journal, where status, inspect and Telegram reply references still find it, but it is
+ * never read back as operator memory: history, recall, summaries, week recaps, inventory,
+ * search, open questions, digests, preferences and dated items all skip it. */
+export const PROBE_TAG = /^(?:Build|Renewal|Canary) check [0-9a-f]{7,40}: /u;
+export const probeTurn = (view: JournalView, turn: Turn) => PROBE_TAG.test(turn.text) && operatorTurn(view, turn);
 /** This phrase match only requests a capped model judgment; it never opens or closes a question. */
 export const unansweredCue = (reply: string) => /\b(?:I (?:don['’]t|do not) know|I(?:['’]m| am) not sure|I (?:can['’]t|cannot) answer)\b/iu.test(reply);
 export const projectMemoryText = (view: JournalView, value: string) => view.memory.reduce((text, change) => {
@@ -523,7 +531,7 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
     .flatMap(turn => turn.closedQuestions ?? []));
   const open = new Map<string, OpenQuestion>();
   for (const turn of view.order) {
-    if (!turn.accepted || !(turn.wasHeld || turn.noticeClass && turn.intent
+    if (!turn.accepted || probeTurn(view, turn) || !(turn.wasHeld || turn.noticeClass && turn.intent
       || turn.answer === MODEL_FAILURE_REPLY && turn.intent)) continue;
     if (operatorTurn(view, turn) && turn.noticeClass !== 'too-long-input') open.set(turn.id, { source: turn.id, quote: turn.text,
       reason: turn.wasHeld ? 'held' : turn.noticeClass ? 'lost-answer' : 'definite-failure' });
@@ -1446,8 +1454,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * for the new message: its words, the turn it continues, the summary
    * sentences it touches and any day it names. Best first; empty when nothing relates. */
   const recallFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>) => {
-    const older = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update <= summary.through);
-    const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).at(-1);
+    const older = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update <= summary.through);
+    const previous = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).at(-1);
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
       ...(previous ? { previous: `${clean(previous.text, true, previous.id)} ${clean(sentText(previous) ?? '', true, previous.id)}` } : {}),
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`, at: sentAt(item) ?? 0 })) })
@@ -1460,7 +1468,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Imported items use the existing sentinel but never become executable turns. */
   const channelFor = (turn: Turn, summary?: string, prioritizeDates = true) => {
     const items = [...journal.view.channelItems.values()];
-    const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).at(-1);
+    const previous = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).at(-1);
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT,
 
       ...(summary === undefined ? {} : { summary }),
@@ -1616,6 +1624,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try { return String((JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id) === journal.view.genesis.operator; }
     catch { return false; }
   };
+  /** An accepted turn that may be read back as memory; a desk probe is only audit evidence. */
+  const remembered = (turn: Turn) => turn.accepted && !probeTurn(journal.view, turn);
   // Conservative identity for an exact restatement. A different value keeps a
   // different key; semantic near-matches remain separate for the model to judge.
   const commitmentKey = (note: Pick<CommitmentNote, 'in' | 'quote'>) => JSON.stringify([note.in,
@@ -1638,7 +1648,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // A cue only schedules the existing capped model judgment; it never creates a preference.
   const preferenceCue = (turn: Turn) => fromOperator(turn)
     && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:please\s+)?(?:more|less)\s+detail\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
-  const pendingMemory = () => journal.view.order.find(turn => turn.accepted && fromOperator(turn) && !turn.memoryUndecided
+  const pendingMemory = () => journal.view.order.find(turn => remembered(turn) && fromOperator(turn) && !turn.memoryUndecided
     && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
     && (memoryCue(turn) || preferenceCue(turn) || turn.memoryPending)
 
@@ -1849,7 +1859,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * either statement is a correction and never writes a memory action. */
   const contradictionFor = (turn: Turn) => {
     if (!fromOperator(turn)) return [];
-    const older = journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < turn.update);
+    const older = journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < turn.update);
     const sources = [
       ...older.filter(item => !sizeRefused(item)).map(item => ({ id: item.id, imported: false, update: item.update as number | null, at: sentAt(item) ?? item.at, date: dated(item), from: speakerOf(item),
         text: clean(redact(item.text).text, true) })),
@@ -1916,7 +1926,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const crossTopicDigest = (through: number) => {
     const groups = new Map<string, Turn[]>();
     for (const turn of journal.view.order) {
-      if (!turn.accepted || turn.update > through) continue;
+      if (!remembered(turn) || turn.update > through) continue;
       const name = conversationName(turn.thread);
       const group = groups.get(name) ?? [];
       group.push(turn); groups.set(name, group);
@@ -1991,7 +2001,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         text: clean(redact(`${item.subject ? `${item.subject}: ` : ''}${item.text}`).text, true) });
     }
     for (const source of journal.view.order) {
-      if (!source.accepted || !fromOperator(source) || source.update >= turn.update || !relevant(source.text)) continue;
+      if (!remembered(source) || !fromOperator(source) || source.update >= turn.update || !relevant(source.text)) continue;
       groups[4]!.push({ kind: 'dated', source: sourceOf(source.id), date: dated(source), from: speakerOf(source),
         text: clean(redact(source.text).text, true) });
     }
@@ -2010,7 +2020,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const searchFor = (turn: Turn) => {
     const memoryTriggers = new Set(journal.view.memory.map(change => change.trigger));
     const sources = [
-      ...journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < turn.update
+      ...journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < turn.update
         && (!memoryTriggers.has(item.id) || journal.view.memory.some(change => change.source === item.id)))
         .map(item => ({ id: item.id, text: item.text, at: sentAt(item) ?? 0, source: `turn ${item.update}`,
           date: dated(item), conversation: conversationName(item.thread) })),
@@ -2050,7 +2060,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     contradictions: ReturnType<typeof contradictionFor> = [], questions: readonly OpenQuestion[] = [], question?: Turn, includeRecorded = true,
     saidRange?: { from: string; to: string; matched: number }, allowGreeting = true) => {
     const summary = compact ? summaryFor(through) : undefined;
-    const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
+    const earlier = journal.view.order.filter(item => remembered(item) && item.update <= through
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: conversationName(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
@@ -2152,7 +2162,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const due = activeDated.slice(0, 10).map(item => ({ ...item,
 
       quote: redact(item.quote).text, when: redact(item.when).text }));
-    const pendingDates = journal.view.order.filter(item => item.accepted && item.update <= through && item.datedPending
+    const pendingDates = journal.view.order.filter(item => remembered(item) && item.update <= through && item.datedPending
       && !journal.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id));
     const datedPending = pendingDates.slice(0, 3)
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
@@ -2249,13 +2259,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const preparedFor = (turn: Turn, includeRecorded = true) => {
     const question = redact(turn.text).text;
     const period = fromOperator(turn) ? requestedPeriod(turn.text, sentAt(turn) ?? turn.at, ports.timeZone ?? 'America/Los_Angeles') : null;
-    const periodMatches = period ? journal.view.order.filter(item => item.accepted && item.update < turn.update
+    const periodMatches = period ? journal.view.order.filter(item => remembered(item) && item.update < turn.update
       && inRequestedPeriod(sentAt(item), period)) : [];
     const periodTurns = periodMatches.slice(-12);
     const inventory = inventoryFor(turn);
     const contradictions = contradictionFor(turn);
     const pending = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(0, PREVIEW_CORRECTION_LIMIT);
-    const older = journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < turn.update);
+    const older = journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < turn.update);
     const latestSummary = summaryFor(turn.update - 1);
 
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: 5,
@@ -2280,7 +2290,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ? searchFor(turn) : undefined;
 
     const unresolved = openQuestionCandidates(journal.view).filter(note => journal.view.turns.get(note.source)!.update < turn.update);
-    const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).at(-1);
+    const previous = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).at(-1);
     const related = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_QUESTION_LIMIT - 2,
       ...(previous ? { previous: `${clean(previous.text, true)} ${replyFor(previous)}` } : {}),
       summary: summaryFor(turn.update - 1)?.text ?? '',
@@ -2419,7 +2429,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const shownOpen = open.filter((_, index) => has('commitment', index));
             const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),
               summaryThrough: packet.summary?.through ?? (packet.memorySummary ? summaryFor(turn.update - 1)?.through ?? null : null),
-              history: journal.view.order.filter(item => item.accepted && item.update < turn.update
+              history: journal.view.order.filter(item => remembered(item) && item.update < turn.update
                 && (!packet.summary || item.update > packet.summary.through)).map(item => item.id),
               recalled: selectedRecall.filter(item => !new Set([...shownPeople.map(note => note.source),
                 ...shownOpen.map(item => item.turn?.id)].filter(Boolean)).has(item.id)).map(item => item.id),
@@ -2607,11 +2617,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   decision.personMergeCandidates ?? []);
                 if (memory === undefined || parsed.memoryDisposition === 'unresolved'
                   || parsed.personMerges !== undefined && personMerges === undefined) invalidMemory = true;
-                if (parsed.memoryList === true && fromOperator(turn) && !invalidMemory && !invalidDate)
+                if (parsed.memoryList === true && fromOperator(turn) && !probeTurn(journal.view, turn) && !invalidMemory && !invalidDate)
                   text = memoryList(memory, dated);
               } else if (parsed && (parsed.memory !== undefined || parsed.memoryDisposition !== undefined || parsed.dated !== undefined || parsed.personMerges !== undefined || parsed.undo !== undefined)) invalidMemory = true;
             } catch { /* Legacy plain reply. */ }
             if (invalidMemory) { memory = undefined; dated = undefined; personMerges = undefined; undo = undefined; }
+            // A desk probe's decision is answered, but it never writes operator memory or dates.
+            const probe = probeTurn(journal.view, turn);
+            if (probe) { invalidMemory = false; invalidDate = false; memory = []; dated = []; personMerges = undefined; undo = undefined; }
             if (invalidDate) undo = undefined;
             if (invalidDate && !invalidMemory) {
               // Legacy reply strings can mix an answer with an unchecked save claim.
@@ -2633,7 +2646,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(dated === undefined ? {} : { dated }),
               ...(undo === undefined ? {} : { undo }),
-              ...(fromOperator(turn) && dated === undefined ? { datedPending: true as const } : {}),
+              ...(fromOperator(turn) && !probe && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
               ...(typeof answer === 'string' ? {} : { usage: answer.usage }), latencyMs: answerMs, at: decisionAt });
@@ -2951,7 +2964,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return links;
   };
-  const unreviewedQuestions = (through: number) => journal.view.order.filter(turn => turn.accepted && !sizeRefused(turn) && fromOperator(turn)
+  const unreviewedQuestions = (through: number) => journal.view.order.filter(turn => remembered(turn) && !sizeRefused(turn) && fromOperator(turn)
     && turn.update <= through && turn.intent !== undefined && unansweredCue(sentText(turn) ?? '')
     && !journal.view.questionsReviewed.has(turn.id));
   const questionsFrom = (proposed: unknown[], offered: readonly Turn[]): OpenQuestion[] | undefined => {
@@ -3041,14 +3054,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if ([...unknown.keys()].some(frontier => through <= frontier)) continue;
         if ((journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
         const closable = openFor(through, 50).map(({ id, note, turn: source }) => ({ id, sourceLabel: turnLabel(source!), in: note.in, quote: note.quote }));
-        const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item) && !item.memoryUndecided
+        const strictTrigger = journal.view.order.find(item => remembered(item) && fromOperator(item) && !item.memoryUndecided
           && (memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
 
           && item.update > previous && item.update <= through);
-        const trigger = strictTrigger ?? journal.view.order.filter(item => item.accepted && fromOperator(item) && !sizeRefused(item)
+        const trigger = strictTrigger ?? journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
           && item.update > previous && item.update <= through
           && !/^\s*(?:hi|hello|hey)(?:\s+(?:again|there))?[.!?]?\s*$/iu.test(item.text)).at(-1);
-        const older = trigger ? journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < trigger.update) : [];
+        const older = trigger ? journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < trigger.update) : [];
         const ranked = trigger ? selectRecall({ message: trigger.text, now: ports.now(), limit: 5,
           summary: summaryFor(trigger.update)?.text ?? '', candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) }) : [];
         const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
@@ -3281,7 +3294,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const checkCoherence = () => {
     for (const turn of journal.view.order) {
       if (turn.intent === undefined || turn.checked !== undefined || turn.answer === undefined) continue;
-      const earlier = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).map(item => item.text);
+      const earlier = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).map(item => item.text);
       let findings: CoherenceFinding[], failed = false;
       try { findings = checkCoherenceOf({ reply: sentText(turn)!, earlier }); } catch { findings = []; failed = true; }
       journal.append({ kind: 'coherence', id: turn.id, findings, ...(failed ? { failed: true as const } : {}), at: ports.now() });
