@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
-import { appendRun, readRuns, selfState, selfStateSource } from './self-state.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
+import { appendRun, memoryHealthLine, readRuns, selfState, selfStateSource } from './self-state.js';
+
 
 const key = new Uint8Array(32).fill(4);
 // 2026-09-26 19:00 UTC = 12:00 PDT.
@@ -70,7 +72,8 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(probeState).toContain('This run started 2026-09-26 11:30 PDT; uptime 30m.');
     expect(probeState).toContain('Last restart: 2026-09-26 11:30 PDT. The run before it started 2026-09-26 08:00 PDT and ended without recording why (crash, kill or power loss).');
     expect(probeState).toContain('Launches recorded: 3 (2 today)');
-    expect(probeState).toContain('Unknown outcomes (never retried): 0 model call(s), 0 send(s).');
+    expect(probeState).toContain('0 turn-model calls and 0 summary-model calls without a durable result');
+    expect(probeState).toContain('0 Telegram sends without a durable result');
     // The zone is stated, never assumed: an hour past local midnight nothing from "yesterday" counts.
     expect(selfState(w.journal.view, readRuns(runs), clock, 'UTC', run3)).toContain('(time zone UTC; "today" means 2026-09-26 there)');
     expect(selfState(w.journal.view, readRuns(runs), NOON + 13 * 3_600_000, 'America/Los_Angeles', run3))
@@ -100,9 +103,55 @@ it('says uptime and restarts are unknown when no launch was recorded, and marks 
     worker.intake([update(1, 'hi', NOON)]); await worker.drain();
     const text = selfState(journal.view, readRuns(join(root, 'runs.jsonl')), NOON, 'UTC');
     expect(text).toContain('Run history: no launch has been recorded, so uptime and restarts are unknown.');
-    expect(text).toContain('Unknown outcomes (never retried): 1 model call(s), 0 send(s).');
+    expect(text).toContain('1 turn-model calls and 0 summary-model calls without a durable result');
+    expect(text).toContain('0 Telegram sends without a durable result');
     expect(() => selfState(journal.view, readRuns(join(root, 'runs.jsonl')), NOON, 'Mars/Olympus')).toThrow(RangeError);
     journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('counts memory health from recorded prompt evidence and journal dispositions across replay', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-health-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    for (const [index, text] of ['old', 'new', 'turn 3'].entries()) worker.intake([update(index + 1, text, NOON)]);
+    const [first, second, third] = journal.view.order;
+    const prompt = (id: string, packet: object) => prepareJournalEnvelope({ question: 'health', context: JSON.stringify(packet), id },
+      'claude-offline-exact-1', genesis.grant, NOON);
+    journal.append({ kind: 'reserve', id: first!.id, prompt: prompt(first!.id, { recalled: [{ id: 'old-1' }, { id: 'old-2' }],
+      channelMemory: [{ id: 'channel-1' }] }), at: NOON });
+    journal.append({ kind: 'answer', id: first!.id, text: 'old', at: NOON });
+    journal.append({ kind: 'intent', id: first!.id, text: 'PREVIEW — old', chat: genesis.chat,
+      update: first!.update, grant: genesis.grant, at: NOON });
+    journal.append({ kind: 'reserve', id: second!.id, at: NOON }); // older journal had no prepared prompt
+    journal.append({ kind: 'answer', id: second!.id, text: 'pending', memoryPending: true, at: NOON });
+    journal.append({ kind: 'hold', id: second!.id, reason: 'memory correction pending', at: NOON });
+    journal.append({ kind: 'reserve', id: third!.id, prompt: prompt(third!.id, {}), at: NOON });
+    journal.append({ kind: 'channel-item', item: { source: 'conversation', account: 'owned-account', id: 'item-1',
+      from: 'operator', at: NOON, text: 'older fact' }, at: NOON });
+    journal.append({ kind: 'summary-reserve', through: 1, at: NOON });
+    journal.append({ kind: 'summary', through: 1, text: 'first turn', at: NOON });
+    expect(memoryHealthLine(journal.view)).toContain('1 unresolved operator memory corrections');
+    journal.append({ kind: 'summary-reserve', through: 2, at: NOON });
+    journal.append({ kind: 'summary', through: 2, text: 'corrected fact', memoryFor: [second!.id],
+      memory: [{ mode: 'correct', source: first!.id, trigger: second!.id, quote: 'old', replacement: 'new' }], at: NOON });
+    journal.append({ kind: 'summary-reserve', through: 3, at: NOON });
+    const expected = memoryHealthLine(journal.view);
+    expect(expected).toContain('1 journal turns currently held; 2 summaries, 2 accepted operator turns covered by latest summary (through Telegram update 2)');
+    expect(expected).toContain('2 original-turn recall-sentinel hits and 1 channel-item recall-sentinel hits in 2 recorded model prompts (1 unmeasured legacy prompts)');
+    expect(expected).toContain('1 old-claim items withheld; 0 unresolved operator memory corrections');
+    expect(expected).toContain('0 channel-import cursors recorded (1 imported channel items; fixture import has no source cursor)');
+    expect(expected).toContain('1 turn-model calls and 1 summary-model calls without a durable result');
+    expect(expected).toContain('1 Telegram sends without a durable result');
+    expect(expected).not.toContain('older fact');
+    expect(Buffer.byteLength(expected)).toBeLessThan(1024);
+    journal.close();
+    const replay = openPreviewJournal(path, key, undefined, undefined, true);
+    expect(memoryHealthLine(replay.view)).toBe(expected);
+    replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

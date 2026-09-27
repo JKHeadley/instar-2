@@ -110,7 +110,8 @@ export type JournalRecord =
  * (`thread`); every one has the operator as its only audience. */
 export interface PacketDrop { kind: string; source: string; reason: string }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; packetDropped?: PacketDrop[]; packetLimit?: number; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
+
 
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
@@ -145,6 +146,21 @@ const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.acco
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const publicMemoryId = (id: string) => id.startsWith('channel:')
   ? `channel-ref:${createHash('sha256').update(id).digest('hex')}` : id;
+/** The already-durable model packet is the evidence for what recall actually offered.
+ * A legacy reservation without a prepared prompt has unknown hit counts. */
+function promptRecallHits(prompt: string | undefined): { turns: number; channels: number } | null {
+  if (prompt === undefined) return null;
+  try {
+    const envelope = JSON.parse(prompt) as { messages?: { role?: string; content?: string }[] };
+    const content = envelope.messages?.find(message => message.role === 'context')?.content;
+    if (typeof content !== 'string') return null;
+    const packet = (JSON.parse(content) as { packet?: { recalled?: unknown; channelMemory?: unknown } }).packet;
+    if (!packet || packet.recalled !== undefined && !Array.isArray(packet.recalled)
+      || packet.channelMemory !== undefined && !Array.isArray(packet.channelMemory)) return null;
+    return { turns: packet.recalled?.length ?? 0, channels: packet.channelMemory?.length ?? 0 };
+  } catch { return null; }
+}
+
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
 function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
@@ -341,9 +357,12 @@ function project(view: JournalView, row: JournalRecord): void {
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
-  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; view.calls++;
+  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
+    if (hits) { turn.recallHits = hits.turns; turn.channelRecallHits = hits.channels; }
+    view.calls++;
     view.lastPrompt = { kind: 'answer', id: turn.id, prompt: row.prompt ?? null, memoryCount: view.memory.length,
       summaryCount: view.summaries.length, closedCount: view.closed.size };
+
 
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];

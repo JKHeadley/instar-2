@@ -12,7 +12,7 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
-import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { appendRun, memoryHealthLine, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
@@ -36,6 +36,7 @@ const importSource = (journal, state, source, stopped) => {
 };
 
 import { auditJournal } from './journal-audit.mjs';
+
 
 
 const parse = values => {
@@ -200,6 +201,8 @@ async function main() {
           ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
           : null,
       packet: packetStatus(view.view),
+
+      memoryHealth: memoryHealthLine(view.view),
 
       withheld: withheldView(view.view),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),

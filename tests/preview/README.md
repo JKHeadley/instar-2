@@ -668,6 +668,23 @@ functional self-state checks remain active. `status` prints the same text as `se
 plus the last three `launches`, so an answer can be checked against it (status, read after the reply,
 counts that reply too).
 
+The `Memory health:` line in that self-state is computed from the journal projection
+alone and is also `status.memoryHealth`. It gives current held-turn count, summary
+count and the number of accepted operator turns covered by the latest summary,
+and recall-sentinel hits actually offered in recorded model prompts (original
+turns and imported channel items separately). A reservation without a readable
+prepared prompt is counted as unmeasured, not as a miss. It also counts old-claim
+items withheld by validated memory changes, operator memory corrections with an
+explicit pending disposition and no later summary resolution, and turn-model,
+summary-model and Telegram-send outcomes still without durable results. Summary
+reservations can be in flight, so their line says "in flight or UNKNOWN". Channel
+fixture imports retain item IDs but have no source cursor; the line reports zero
+recorded channel-import cursors and the imported item count. Telegram's intake
+cursor is a different value already shown by `status.cursor`. The line includes
+counts and the latest summary's update ID only, never remembered text, and uses
+no model call, file read or new store. See [memory-health-live-test.md](memory-health-live-test.md)
+for Justin's read-only live check after installation.
+
 The desk report is optional: a plain file the desk maintains about other 2.0 work, re-read at every turn
 (default `ROOT/desk-status.md`; override with `--desk-status /ABSOLUTE/PATH`).
 It enters the packet as the `desk-status` source, labelled as the desk's report,

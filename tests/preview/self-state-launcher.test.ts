@@ -73,6 +73,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second')]));
     const firstLaunch = run(4);
     let s = status();
+    expect(s.self).toContain(s.memoryHealth);
+    expect(s.memoryHealth).toContain('Memory health:');
     expect(s, JSON.stringify({ calls: s.calls, replies: s.replies, holds: s.holds,
       replyChecks: s.replyChecks, launches: s.launches, turns: s.turns, summaries: s.summaries }))
       .toMatchObject({ calls: 2, replies: 2, unknownCalls: 0, unknownSends: 0 });
@@ -92,6 +94,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       message(3, 'how many messages have we exchanged today and when did you last restart?')]));
     const secondLaunch = run(3);
     s = status();
+    expect(s.self).toContain(s.memoryHealth);
     prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt).toHaveLength(3);
     const now = prompt[2];

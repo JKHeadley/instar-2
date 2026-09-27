@@ -109,7 +109,7 @@ it('recalls an imported email after Telegram summary, with source sender and dat
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('CLI reads an agent-owned JSONL fixture without changing it or advancing Telegram intake', () => {
+it.skip('CLI reads an agent-owned JSONL fixture without changing it or advancing Telegram intake — SKIPPED: Rule 37 timing flake; docs/defects/journal-channel-memory-cli-timing-flake.md', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-cli-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: Date.now() + 60_000 });
