@@ -668,6 +668,18 @@ absence is not evidence. Under the context bound, correction notes give way firs
 recalled turns, person notes, and the oldest open items. `status` reports `commitments: {total, open}` and per summary
 `commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
 
+When a later complete quoted request or promise repeats an active one, the summary
+projection keeps one open item and attaches the later source message to it. The
+bounded match removes only an introductory “remember” request, final sentence
+punctuation and spacing; the remaining clause must match exactly, including its
+value and letter case, and the authenticated speaker and quoted side must agree.
+Partial quotes and less certain paraphrases stay separate for the model to judge.
+Both original turns remain in the encrypted journal. A correction of a grouped
+claim withholds both old source quotes, while a changed value remains a distinct
+item. `inspect` shows the additional source inside the open item's `sources`; the
+existing finite packet bound can omit optional commitments. For the operator
+procedure, see [memory-dedupe-live-test.md](memory-dedupe-live-test.md).
+
 ### Correcting and forgetting memory
 
 A direct correction or forget request from the bound Telegram operator can be judged in the existing
