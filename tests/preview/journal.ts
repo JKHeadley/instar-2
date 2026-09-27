@@ -1733,7 +1733,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       grounding.recalled.forEach(id => target.add(id));
       grounding.people.forEach(id => target.add(id));
       grounding.commitments.forEach(id => target.add(`commitment:${id}`));
-      grounding.channelItems.forEach(id => target.add(id));
+      grounding.channelItems.forEach(id => { target.add(id); target.add(publicMemoryId(id)); });
       grounding.corrections.forEach(id => target.add(id));
       grounding.memoryCandidates.forEach(id => target.add(id));
     };
@@ -1787,7 +1787,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
       candidates.forEach((item, index) => optional.push({ kind: 'candidate', key: item.id, signal: item.id, rank: 5,
         match: 0, recent: index, index }));
-      candidateChannels.forEach((item, index) => optional.push({ kind: 'candidate', key: publicMemoryId(channelMemoryId(item)), signal: channelMemoryId(item), rank: 5,
+      candidateChannels.forEach((item, index) => optional.push({ kind: 'candidate', key: publicMemoryId(channelMemoryId(item)), signal: publicMemoryId(channelMemoryId(item)), rank: 5,
         match: 0, recent: item.at, index: candidates.length + index }));
       // Within an existing tier, unreferenced evidence yields first.
       const value = (item: Optional) => Number(questionTies.has(item.signal)) * 2 + Number(referenced.has(item.signal));
