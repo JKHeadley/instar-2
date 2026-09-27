@@ -15,7 +15,6 @@ it.each([
   ['the whole text', `  ${text}\n`, 'bare'],
   ['a ```json fence', `\`\`\`json\n${text}\n\`\`\``, 'fenced'],
   ['a bare ``` fence', `\`\`\`\n${text}\n\`\`\``, 'fenced'],
-  ['a whole CRLF fence', `\`\`\`json\r\n${text}\r\n\`\`\``, 'fenced'],
   ['a whole-response fence with spaces outside', `  \`\`\`json\n${text}\n\`\`\`  `, 'fenced'],
   ['a ```json fence with CRLF', `\`\`\`json\r\n${text}\r\n\`\`\``, 'fenced'],
   ['a bare ``` fence with CRLF', `\`\`\`\r\n${text}\r\n\`\`\``, 'fenced'],

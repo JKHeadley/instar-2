@@ -715,6 +715,31 @@ This is compatibility and offline behavior evidence, not a live-channel proof.
 For the separate supervised operator-channel check, Justin follows
 [offline-canary-live-test.md](live-tests-archive/offline-canary-live-test.md).
 
+### Live failure regression catalog
+
+[`live-failure-catalog.test.ts`](live-failure-catalog.test.ts) keeps the five
+recorded preview failure shapes together. Its offline fixtures use the frozen
+runner's parser, encrypted journal, worker, and packet selection; they make no
+provider call or Telegram send. Each case checks a failing boundary and a
+permitted neighbor:
+
+| Fixture | Recorded failure | Regression boundary |
+|---|---|---|
+| F01 thinking overflow | Review output filled the shared 2,048-token allowance before a verdict. | Thinking remains disabled in the route; an over-cap reviewer result stays charged and held after replay, while a capped result can complete. The synthetic result does not reveal thinking tokens. |
+| F02 wrapped JSON | A complete fenced Decision was held as malformed. | Bare and whole-response LF/CRLF fences parse; prose, extra objects, and a real redacted Claude limit-result capture do not. The CRLF fence itself is a synthetic boundary because failed raw model text is not retained. |
+| F03 contradicting review prose | A PASS object appeared beside written rejection. | A lone PASS line or whole fence parses; rejecting prose around it cannot authorize a send. |
+| F04 too-long notice | An input or answer exceeded a preview limit. | A short reply sends whole; oversized input and answer send their fixed notices, never a prefix. The answer notice does not repeat after replay. |
+| F05 held-item crowding | Many held turns competed for packet space. | The relevant older item reaches the bounded ten-item packet; excess items stay outside it. The answer model still judges relevance. |
+
+Run only this catalog and the parser unit test after a catalog change:
+
+```sh
+./node_modules/.bin/vitest run tests/preview/live-failure-catalog.test.ts tests/preview/model-json.test.ts --configLoader=runner --maxWorkers=1 --no-file-parallelism
+```
+
+Justin's supervised operator-channel check is
+[live-failure-catalog-live-test.md](live-tests-archive/live-failure-catalog-live-test.md).
+
 ### Offline recall benchmark
 
 `memory-scale-10k.test.ts` is the offline depth-at-scale check. It seeds the
