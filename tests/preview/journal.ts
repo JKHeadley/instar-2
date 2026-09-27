@@ -523,6 +523,50 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const replyFor = (turn: Turn) => turn.noticeClass ? clean(redact(sentText(turn) ?? '').text, true)
     : journal.view.memory.some(change => change.source === turn.id || change.replies?.includes(turn.id))
       ? withheld : clean(redact(sentText(turn) ?? '').text, true);
+  /** A saved packet is evidence of what the model saw, not proof of which input it used.
+   * Older journal frames may have only the prepared Seven envelope, or no packet at all. */
+  const recordedPacket = (turn: Turn): Record<string, unknown> | null => {
+    try {
+      const packet = turn.prompt === undefined ? undefined
+        : (JSON.parse(turn.prompt) as { messages?: { role: string; content: string }[] }).messages
+          ?.find(message => message.role === 'context')?.content;
+      const parsed: unknown = packet === undefined ? null : JSON.parse(packet);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      const object = parsed as Record<string, unknown>;
+      const source = 'packet' in object ? object.packet : object;
+      return source && typeof source === 'object' && !Array.isArray(source)
+        && Array.isArray((source as Record<string, unknown>).history) ? source as Record<string, unknown> : null;
+    } catch { return null; }
+  };
+  const safeProvenance = (value: unknown): unknown => {
+    if (typeof value === 'string') return clean(redact(value).text, true);
+    if (Array.isArray(value)) return value.map(safeProvenance);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, safeProvenance(item)]));
+    return value;
+  };
+  // This cue only offers evidence. The model still decides what the operator means.
+  const provenanceCue = (text: string) => /\b(?:why\b.{0,60}\b(?:say|said|answer|reply|claim|tell me)|what (?:made|led) you\b.{0,40}\b(?:say|answer|reply|claim)|where did (?:that|this|your (?:answer|reply|claim))\b)/iu.test(text);
+  const replyProvenanceFor = (question: Turn, includeRecorded: boolean) => {
+    if (!provenanceCue(question.text)) return undefined;
+    const previous = journal.view.order.filter(item => item.accepted && item.update < question.update && item.intent !== undefined);
+    if (!previous.length) return { recorded: null, missing: 'No earlier reply is recorded in this journal.' };
+    let replyTo: number | undefined;
+    try { replyTo = (JSON.parse(question.raw) as { message?: { reply_to_message?: { message_id?: number } } })
+      .message?.reply_to_message?.message_id; } catch { /* an inspect probe has no Telegram envelope */ }
+    const direct = previous.find(item => item.sent === replyTo);
+    const ranked = selectRecall({ message: question.text, now: ports.now(), limit: 1,
+      candidates: previous.map(item => ({ text: sentText(item) ?? '', at: sentAt(item) ?? 0 })) });
+    const target = direct ?? (ranked.length ? previous[ranked[0]!]! : previous.at(-1)!);
+    const packet = recordedPacket(target);
+    return { guidance: 'This is one candidate reply. Judge whether it matches the question. This redacted view of its recorded packet shows inputs available to the model, not which ones it actually relied on. If the target or packet is missing, say so; do not infer a reason from current history.',
+      update: target.update, conversation: conversationName(target.thread), reply: replyFor(target),
+      delivery: outcome(target), ...(target.replyChecks?.length ? { replyCheck: target.replyChecks.at(-1) } : {}),
+      ...(packet && includeRecorded ? { recorded: safeProvenance(Object.fromEntries(
+        ['now', 'sources', 'historyMode', 'summary', 'memory', 'history', 'recalled', 'people', 'commitments', 'channelMemory', 'corrections']
+          .filter(key => key in packet).map(key => [key, packet[key]]))) }
+        : { recorded: null, missing: packet ? 'The recorded packet did not fit this bounded reply context.'
+          : 'No packet was retained for this reply.' }) };
+  };
   const affectedNote = (note: { source: string; quote: string; in?: 'message' | 'reply' }) => journal.view.memory.some(change =>
     note.in === 'reply' && (note.source === change.source || change.replies?.includes(note.source))
     || note.source === change.source && (change.quote.includes(note.quote) || note.quote.includes(change.quote))
@@ -545,7 +589,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
-    open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = []) => {
+    open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], question?: Turn,
+    includeRecorded = true) => {
     const summary = compact ? summaryFor(through) : undefined;
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
       && (!summary || item.update > summary.through));
@@ -616,10 +661,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const later = journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!));
         return later ? [] : [{ mode: 'corrected', replacement: clean(redact(change.replacement!).text) }];
       }) } : {}),
-      ...(corrections.length ? { corrections } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), history });
+      ...(corrections.length ? { corrections } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), history,
+      ...(labelAll || question === undefined ? {} : { replyProvenance: replyProvenanceFor(question, includeRecorded) }) });
     return packet;
   };
-  const preparedFor = (turn: Turn) => {
+  const preparedFor = (turn: Turn, includeRecorded = true): { question: string; context: string; prepared: string | undefined; carried: string[] } | { reason: string } => {
     const question = redact(turn.text).text;
     const pending = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(0, PREVIEW_CORRECTION_LIMIT);
     const older = journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < turn.update);
@@ -646,7 +692,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const promised = Math.min(open.length, kept), people = Math.min(named.length, kept - promised);
             const base = packetFor(turn.update - 1, compact, recalled.slice(0, kept - promised - people),
               named.slice(named.length - people), open.slice(open.length - promised), turn.thread, false, flagged,
-              channels.slice(0, channelCount));
+              channels.slice(0, channelCount), turn, includeRecorded);
             const offered = [...candidates, ...channels.slice(0, channelCount).map(item => ({
               id: channelMemoryId(item), source: 'channel-import',
               message: clean(redact(`${item.subject ?? ''} ${item.text}`).text, true).slice(0, 1000), reply: '' }))];
@@ -667,6 +713,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
       }
     }
+    if (includeRecorded && provenanceCue(turn.text)) return preparedFor(turn, false);
     return { reason: promptFit ? 'prompt overflow' : 'context overflow' };
   };
   const drain = async () => {

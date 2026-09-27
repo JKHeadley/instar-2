@@ -71,6 +71,11 @@ const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zone
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
+  replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
+    recorded: packet.replyProvenance.recorded !== null,
+    history: packet.replyProvenance.recorded?.history?.length ?? 0,
+    recalled: packet.replyProvenance.recorded?.recalled?.length ?? 0,
+    channelSourceIds: (packet.replyProvenance.recorded?.channelMemory ?? []).map(item => item.sourceId) } : null,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
 const withheldView = view => view.memory.map(change => ({
