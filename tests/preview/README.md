@@ -683,7 +683,7 @@ report, never as Sam's words; only a message authenticated as Sam's own could ca
 `from` Sam. The packet says that the same or a partial name can mean different people
 and that absence from `people` is not evidence. Before a summary exists every original message is already
 in `history`, so notes are only needed and only recalled for compacted turns. Under
-the context bound, recalled turns give way first, then the oldest person notes.
+the context bound, optional evidence follows the packet priority described below.
 A plain-text summary keeps no notes; `status` lists each summary's note count
 (`null` = none recorded), `summaryPending` (unresolved reservations, including UNKNOWN) and the
 known names.
@@ -709,9 +709,36 @@ conversation and, for the agent's own reply, its delivery outcome. The model jud
 whether the new message relates; it brings an item up only then, or when asked what it was
 asked to remember or do. The packet says the preview has no tools, so it can only remember an
 item, never do, schedule or remind; it never calls an item done unless a message says so, and
-absence is not evidence. Under the context bound, correction notes give way first, then
-recalled turns, person notes, and the oldest open items. `status` reports `commitments: {total, open}` and per summary
+absence is not evidence. Under the context bound, optional evidence follows the packet priority described below.
+`status` reports `commitments: {total, open}` and per summary
 `commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
+
+### Packet priority near the byte envelope
+
+The complete unsummarized history is tried first. When it cannot fit, the current
+summary and post-summary turns remain mandatory. Optional older evidence is then
+kept in this deterministic order: open commitments to the operator (including
+those with a nearby explicit date), older items with an ISO `YYYY-MM-DD` date
+from one day before now through 14 days ahead, pending correction notes, notes
+about people named in the new message, then other recalled turns and channel
+imports. The existing recall scorer selects candidates; among ordinary recalled
+turns and imports, query-word overlap breaks priority ties before recency.
+Memory-decision candidates yield before quoted evidence.
+The date pattern is only a budget signal, never a judgment that something is
+actually due. The model judges the meaning and identity of every selected item.
+
+At most ten open commitments, five recalled turns, five channel items, ten person
+notes and three correction notes are offered. Within the commitment window,
+nearby dated items precede newer undated ones. Every selected reply reservation
+records each optional omission by kind, source ID and `packet or prepared prompt
+byte envelope` reason in the encrypted journal. `status.packet` gives the last
+reply reservation's prepared prompt byte count, its bound and those omissions;
+the byte count is `null` if no prepared prompt was stored, and older reservations
+say the omission record is unavailable. Original intake and summaries remain in
+the journal even when a packet omits them. Packet omission is never evidence that
+the fact is absent. The offline 200/1000/2000-turn benchmark is in
+`journal-packet-priority.test.ts`; Justin's live script is in
+`packet-priority-live-test.md`.
 
 ### Correcting and forgetting memory
 

@@ -1265,8 +1265,8 @@ it('summarizes and answers with pending corrections and a commitment before any 
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.summary.text).toContain('Friday dentist');
     expect(packet.commitments[0].items[0].quote).toBe(request);
-    expect(packet.corrections).toBeUndefined();
-    expect(journal.view.corrections).toEqual(['telegram:12345678:update:2']);
+    expect(packet.corrections?.map((item: { update: number }) => item.update)).toEqual([2]);
+    expect(journal.view.corrections).toEqual([]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -1433,9 +1433,12 @@ it('recalls imported old-root turns with their original Telegram dates and drops
     limit = Buffer.byteLength(contexts[0]!) - 1;
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();
     expect(journal.view.order.at(-1)?.sent).toBe(1);
-    // The optional memory-decision candidates now yield before useful recalled history.
-    expect(JSON.parse(contexts[1]!).recalled).toEqual(packet.recalled);
+    // The new unsummarized turn is mandatory. At this bound even a candidate-free
+    // packet cannot also fit the old quote, so the omission is recorded.
+    expect(JSON.parse(contexts[1]!).recalled).toBeUndefined();
     expect(JSON.parse(contexts[1]!).memoryCandidates).toBeUndefined();
+    expect(journal.view.order.at(-1)?.packetDropped?.at(-1)).toMatchObject({ kind: 'recent',
+      source: 'telegram:12345678:update:1', reason: 'packet or prepared prompt byte envelope' });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
