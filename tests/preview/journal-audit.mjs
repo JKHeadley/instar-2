@@ -2,6 +2,7 @@ import { redact } from '../../src/recall/redact.js';
 import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
+import { activePersonMerges } from './journal.js';
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
@@ -290,13 +291,14 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
 }
 
 export function auditJournal(view) {
+  const memory = auditActiveMemory(view);
   const latest = view.lastPrompt;
-  if (!latest) return { update: null, modelCall: null, items: [], findings: [] };
+  if (!latest) return { update: null, modelCall: null, ...memory };
   if (!latest.prompt) return { update: latest.kind === 'summary' ? latest.through : view.turns.get(latest.id)?.update ?? null,
-    modelCall: latest.kind, items: [], findings: [{ code: 'recorded-prompt-absent', at: 'prompt' }] };
+    modelCall: latest.kind, items: memory.items, findings: [...memory.findings, { code: 'recorded-prompt-absent', at: 'prompt' }] };
   const turn = latest.kind === 'answer' ? view.turns.get(latest.id)
     : { id: `summary:${latest.through}`, update: latest.through + 1 };
-  if (!turn) return { update: null, modelCall: latest.kind, items: [], findings: [{ code: 'source-turn-absent', at: 'prompt' }] };
+  if (!turn) return { update: null, modelCall: latest.kind, items: memory.items, findings: [...memory.findings, { code: 'source-turn-absent', at: 'prompt' }] };
   let packet, question;
   try {
     const envelope = JSON.parse(latest.prompt);
@@ -304,12 +306,141 @@ export function auditJournal(view) {
     question = envelope.messages.find(message => message.role === 'user')?.content;
   }
   catch { return { update: latest.kind === 'summary' ? latest.through : turn.update, modelCall: latest.kind,
-    items: [], findings: [{ code: 'recorded-prompt-unreadable', at: 'prompt' }] }; }
+    items: memory.items, findings: [...memory.findings, { code: 'recorded-prompt-unreadable', at: 'prompt' }] }; }
   const report = auditPacket(view, turn, packet, latest.memoryCount, latest.summaryCount, latest.closedCount);
   if (latest.kind === 'answer') {
     if (question !== redact(turn.text).text) report.findings.push({ code: 'current-turn-source', at: 'question' });
     report.items.unshift({ kind: 'current-turn', at: 'question',
       chain: [{ kind: 'source-turn', id: turn.id, update: turn.update }] });
   }
-  return { ...report, update: latest.kind === 'summary' ? latest.through : turn.update, modelCall: latest.kind };
+  return { ...report, items: [...memory.items, ...report.items], findings: [...memory.findings, ...report.findings],
+    update: latest.kind === 'summary' ? latest.through : turn.update, modelCall: latest.kind };
+}
+
+/** Trace the entire active projection, including items outside the latest fitted packet.
+ * The authenticated journal proves lineage; it cannot prove a summary's semantics. */
+export function auditActiveMemory(view) {
+  const items = [], findings = [];
+  const fault = (code, at) => findings.push({ code, at });
+  const add = (kind, at, chain) => items.push({ kind, at, chain });
+  const operator = (id, at) => {
+    const turn = view.turns.get(id);
+    let raw;
+    try { raw = JSON.parse(turn?.raw); } catch { /* missing authenticated envelope */ }
+    if (!turn?.accepted || raw?.update_id !== turn.update || raw?.message?.chat?.type !== 'private'
+      || String(raw?.message?.from?.id) !== view.genesis.operator
+      || String(raw?.message?.chat?.id) !== view.genesis.chat
+      || raw?.message?.text !== turn.text) {
+      fault('memory-operator-source-absent', at); return null;
+    }
+    return { kind: 'operator-turn', id, update: turn.update };
+  };
+  const imported = (id, at) => {
+    if (typeof id !== 'string' || !id.startsWith('channel:')) {
+      fault('memory-import-source-absent', at); return null;
+    }
+    const found = view.channelItems.get(id.slice(8));
+    if (!found || !['email', 'conversation'].includes(found.source)
+      || !found.account || !found.id || !found.from || !Number.isSafeInteger(found.at)
+      || typeof found.text !== 'string'
+      || JSON.stringify([found.source, found.account, found.id]) !== id.slice(8)) {
+      fault('memory-import-source-absent', at); return null;
+    }
+    return { kind: 'approved-import', ref: `sha256:${createHash('sha256').update(id).digest('hex')}` };
+  };
+  const origin = (id, at) => typeof id === 'string' && id.startsWith('channel:')
+    ? imported(id, at) : operator(id, at);
+  const active = (source, quote) => !view.memory.some(change => change.mode !== 'prefer'
+    && change.source === source && (quote.includes(change.quote) || change.quote.includes(quote)));
+  for (const [id, item] of view.channelItems) {
+    const at = `stored-import[${items.length}]`, link = imported(`channel:${id}`, at);
+    if (link) add('channel-import', at, [link]);
+  }
+  for (const [n, note] of view.people.entries()) {
+    if (!active(note.source, note.quote)) continue;
+    const at = `stored-people[${n}]`, link = operator(note.source, at);
+    if (!link || !view.turns.get(note.source).text.includes(note.quote) || !note.quote.includes(note.name))
+      fault('stored-people-note-unattributed', at);
+    else add('people-note', at, [link]);
+  }
+  for (const [n, merge] of activePersonMerges(view).entries()) {
+    const at = `person-merge[${n}]`, trigger = operator(merge.trigger, at);
+    const left = view.people[merge.left], right = view.people[merge.right];
+    const first = left && operator(left.source, at), second = right && operator(right.source, at);
+    if (!trigger || !first || !second || !view.turns.get(merge.trigger).text.includes(merge.confirmation))
+      fault('person-merge-unattributed', at);
+    else add('person-merge', at, [first, second, trigger]);
+  }
+  for (const [n, note] of view.commitments.entries()) {
+    if (view.closed.has(n) || !active(note.source, note.quote)) continue;
+    const at = `commitment[${n}]`, link = operator(note.source, at);
+    const turn = view.turns.get(note.source);
+    if (!link || note.in === 'message' && !turn.text.includes(note.quote)
+      || note.in === 'reply' && !turn.intent?.replace(/^PREVIEW — /u, '').includes(note.quote)) fault('commitment-unattributed', at);
+    else {
+      const chain = [link];
+      for (const extra of note.sources ?? []) {
+        const source = operator(extra.source, at);
+        if (!source || !view.turns.get(extra.source).text.includes(extra.quote)) fault('commitment-merge-unattributed', at);
+        else chain.push(source);
+      }
+      add('commitment', at, chain);
+    }
+  }
+  for (const [n, change] of view.memory.entries()) {
+    const at = `memory-change[${n}]`, source = origin(change.source, at), trigger = operator(change.trigger, at);
+    const importedItem = change.source.startsWith('channel:') ? view.channelItems.get(change.source.slice(8)) : undefined;
+    const original = importedItem ? `${importedItem.subject ?? ''} ${importedItem.text}`.trim()
+      : view.turns.get(change.source)?.text;
+    const replyLinks = (change.replies ?? []).map(id => {
+      const link = operator(id, at), reply = view.turns.get(id);
+      if (!link || !reply?.intent || !trigger || reply.update >= trigger.update)
+        fault('memory-reply-source-absent', at);
+      return link;
+    }).filter(Boolean);
+    const passageLinks = (change.summaryPassages ?? []).map(passage => {
+      const summary = view.summaries.find(row => row.at < view.turns.get(change.trigger)?.at
+        && row.text.includes(passage));
+      if (!summary) fault('memory-summary-passage-absent', at);
+      return summary && { kind: 'summary', through: summary.through };
+    }).filter(Boolean);
+    if (!source || !trigger || typeof change.quote !== 'string' || !original?.includes(change.quote)
+      || change.mode !== 'prefer' && (change.source.startsWith('channel:')
+        ? view.channelItems.get(change.source.slice(8)).at >= view.turns.get(change.trigger).at
+        : view.turns.get(change.source).update >= view.turns.get(change.trigger).update)
+      || change.mode === 'correct' && (!change.replacement || !view.turns.get(change.trigger).text.includes(change.replacement))
+      || change.mode === 'prefer' && change.trigger !== change.source)
+      fault('memory-change-unattributed', at);
+    else add(change.mode === 'prefer' ? 'preference' : change.mode === 'forget' ? 'forgetting' : 'correction', at,
+      [source, trigger, ...replyLinks, ...passageLinks]);
+  }
+  for (const [n, item] of view.dated.entries()) {
+    if (!active(item.source, item.quote)) continue;
+    const at = `dated[${n}]`, link = operator(item.source, at);
+    const message = view.turns.get(item.source)?.text;
+    if (!link || !message.includes(item.quote) || !item.quote.includes(item.when)) fault('dated-unattributed', at);
+    else add('dated', at, [link]);
+  }
+  for (const [n, item] of view.questions.entries()) {
+    if (!active(item.source, item.quote)) continue;
+    const at = `question[${n}]`, link = operator(item.source, at);
+    if (!link || !view.turns.get(item.source).text.includes(item.quote)) fault('question-unattributed', at);
+    else add('open-question', at, [link]);
+  }
+  const summary = view.summaries.at(-1);
+  if (summary) {
+    const at = 'active-summary', covered = view.order.filter(turn => turn.accepted && turn.update <= summary.through);
+    const chain = covered
+      .map(turn => operator(turn.id, at)).filter(Boolean);
+    for (const id of view.channelItems.keys()) {
+      if (view.channelItems.get(id).at > summary.at) continue;
+      const link = imported(`channel:${id}`, at);
+      if (link) chain.push(link);
+    }
+    if (!covered.length || !covered.some(turn => turn.update === summary.through)
+      || chain.filter(link => link.kind === 'operator-turn').length !== covered.length)
+      fault('summary-unattributed', at);
+    else add('summary', at, [{ kind: 'summary', through: summary.through }, ...chain]);
+  }
+  return { items, findings };
 }
