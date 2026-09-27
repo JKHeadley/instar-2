@@ -55,14 +55,15 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };
     const agent = (...rest) => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       '--loader', loader, 'tests/preview/journal-agent.mjs', ...rest], { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
-    const run = cycles => {
+    const run = (cycles, stepCheck = false) => {
       const start = performance.now();
       const result = agent('run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
         '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
         '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
         '--activation-record', activation, '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles', String(cycles), '--max-poll-seconds', '1',
-        '--max-calls', '3', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles');
+        '--max-calls', '3', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles',
+        ...(stepCheck ? ['--step-check', 'true'] : []));
       expect(result.status, result.stderr).toBe(0);
       return performance.now() - start;
     };
@@ -77,6 +78,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       replyChecks: s.replyChecks, launches: s.launches, turns: s.turns, summaries: s.summaries }))
       .toMatchObject({ calls: 2, replies: 2, unknownCalls: 0, unknownSends: 0 });
     expect(s.launches).toHaveLength(1);
+    expect(s.stepChecks).toBeUndefined();
     expect(s.launches[0].reason).toBe('reply cap reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt[0]).toContain('That is the first recorded launch');
@@ -90,8 +92,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(raised.status, raised.stderr).toBe(0);
     writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second'),
       message(3, 'how many messages have we exchanged today and when did you last restart?')]));
-    const secondLaunch = run(3);
+    const secondLaunch = run(3, true);
     s = status();
+    expect(s.stepChecks.verdicts.some(item => item.step.endsWith(':update:3')
+      && item.result?.verdict === 'pass'), JSON.stringify(s.stepChecks)).toBe(true);
     prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt).toHaveLength(3);
     const now = prompt[2];
