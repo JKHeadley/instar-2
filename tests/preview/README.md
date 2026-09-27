@@ -636,6 +636,10 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --agent-state-dir /ABSOLUTE/AGENT/.instar
 ```
 
+For a supervised sequence of the existing private-chat live procedures on one
+runner root, follow [live-test-suite-live-test.md](live-test-suite-live-test.md).
+The coordinator reads status and sends nothing; Justin performs the steps.
+
 `--agent-state-dir` enables read-only live channel memory from this agent's
 `telegram-messages.jsonl` and, when present, `slack-messages.jsonl`. The path must
 be the canonical absolute path of the agent's own `.instar` directory. The preview
