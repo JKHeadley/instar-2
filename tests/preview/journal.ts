@@ -1683,9 +1683,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).at(-1);
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
       ...(previous ? { previous: `${clean(previous.text, true, previous.id)} ${clean(sentText(previous) ?? '', true, previous.id)}` } : {}),
-      candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`, at: sentAt(item) ?? 0 })) })
-
-
+      candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`,
+        measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) })
       .map(index => older[index]!);
     const dated = older.filter(item => dueSoon(clean(item.text, true))).slice(-PREVIEW_RECALL_LIMIT).reverse();
     return [...new Map([...dated, ...ranked].map(item => [item.id, item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
@@ -2483,6 +2482,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. You have durable memory in this trial's encrypted local journal: accepted turns, summaries and validated memory changes survive runner restarts and span this trial's topics. You can recall it while the trial is active. The verified operator can directly ask you to correct or forget a recorded fact; later packets withhold the old claim, while the original audit record remains in the journal. This is not production or other-agent memory. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail. A similar name, event or date, a summary inference, your earlier reply, or the question's premise does not establish it. If the offered evidence does not support the requested detail, say "I don't know from this journal"; do not fill the gap with a likely answer or claim the operator never said it. Cite sourceLabel for supported remembered facts. Say when the source is unknown. History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
+        + ' When recalling a measured fact, copy its exact number and unit from an original history, recalled, or channelMemory quote. Do not round, convert, omit, or invent the unit. If only a summary gives an approximate value, say the exact value is unknown.'
         + (sourceList?.some(source => typeof source === 'object' && source !== null
           && 'id' in source && source.id === 'greeting-continuity')
           ? ' A greeting-continuity source quotes one earlier open operator request. Set continuity:true only if a brief reminder is useful and still true; otherwise false. Do not write that line yourself; the runner uses the exact quoted topic. Never invent a topic.' : '')
@@ -3397,6 +3397,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
+      + 'Copy each quantitative fact you retain with its original number and unit exactly; do not round, convert, or drop the unit. '
       + 'Make your answer text one JSON object: {"summary": <the summary>, "memory": [{"mode": "prefer", "source": <memoryRequest.id>, "quote": <exact durable reply preference clause from memoryRequest.message>} or {"mode": "correct" or "forget", '
       + '"source": <id from memoryCandidates>, "quote": <the complete old factual clause, exactly quoted from that source>, '
       + '"replacement": <for correct only, the corrected factual clause exactly quoted from memoryRequest.message>}], '

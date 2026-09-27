@@ -20,8 +20,12 @@ const message = (n: number) => n === 1 ? "Sam's atlas is blue."
 const raw = (n: number, text: string) => JSON.stringify({ update_id: n, message: {
   chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
   date: Math.floor(at(n) / 1000) } });
+// Compare content, not object key order: a snapshot restore rebuilds derived indexes
+// (such as the held-turn set) in a different key position than the live view.
 const normalized = (value: unknown) => JSON.stringify(value, (_key, item) =>
-  item instanceof Map ? [...item] : item instanceof Set ? [...item] : item);
+  item instanceof Map ? [...item] : item instanceof Set ? [...item]
+    : item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))) : item);
 const workerFor = (journal: ReturnType<typeof openPreviewJournal>) => createJournalWorker(journal,
   { now: () => at(2001), stopped: () => false, model: async () => { throw Error('offline probe made a call'); },
     send: async () => { throw Error('offline probe sent a reply'); }, checkOutbound: () => {} });

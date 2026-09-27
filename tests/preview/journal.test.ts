@@ -688,7 +688,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
       { ...genesis(), maxBytes: 34000 });
-    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(24500),
+    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(23500),
       raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
     journal.append({kind:'reserve',id:'telegram:12345678:update:1',at:1000});
     journal.append({kind:'answer',id:'telegram:12345678:update:1',text:'old answer',at:1000});
@@ -1414,7 +1414,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis(), maxBytes: 4096, importSource: 'old-root', importCursor: 10 });
+      { ...genesis(), maxBytes: 6144, importSource: 'old-root', importCursor: 10 });
     const imported = (id: number, text: string) => {
       const raw = update(id, text); (raw.message as { date?: number }).date = 1789000000 + id;
       journal.append({ kind: 'intake', id: `telegram:12345678:update:${id}`, update: id, text, raw: JSON.stringify(raw),
@@ -1439,8 +1439,9 @@ it('recalls imported old-root turns with their original Telegram dates and drops
     expect(packet.recalled).toMatchObject([{ id: 'telegram:12345678:update:1', date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
     // A narrower provider envelope still fits recall, after optional candidates yield.
-    // int12: bound relative to the full first packet, so added reply instructions cannot shift it.
-    limit = Buffer.byteLength(contexts[0]!) - 1;
+    // int12: bound relative to the full first packet (which carries the old quote), so added
+    // reply instructions cannot shift it past the recall-drop window.
+    limit = Buffer.byteLength(contexts[0]!) - 600;
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();
     expect(journal.view.order.at(-1)?.sent).toBe(1);
     // The new unsummarized turn is mandatory. At this bound even a candidate-free

@@ -1508,6 +1508,22 @@ store. A host reboot while its wall clock is still wrong cannot establish elapse
 the local journal alone; the recorded floor prevents regression but does not claim an external
 time authority. The supervised exercise is [clock-jump-live-test.md](clock-jump-live-test.md).
 
+
+### Exact numbers and units
+
+Original operator turns stay in the encrypted journal with their exact text. A
+quantity question gives a relevant original turn containing a measured number a
+recall ranking boost; it does not surface an unrelated measurement. The selected
+turn is quoted verbatim beside a summary, even if that summary rounded it. The
+answer packet asks the model to copy the exact number and unit from original
+evidence, never round, convert, omit or invent the unit, and to say the exact
+value is unknown if only an approximate summary is available. The rolling
+summary call receives the same exactness instruction. No new store, call or
+notification is added. The cue is only a retrieval signal; it does not decide
+what the operator meant or authorize a send. The existing correction/forgetting
+projection withholds superseded quotes. A real-model answer still needs the
+supervised check in [numbers-and-units-live-test.md](numbers-and-units-live-test.md).
+
 ### How the operator likes answers
 
 The same capped summary or reply decision can record a durable reply preference from the

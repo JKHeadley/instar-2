@@ -84,6 +84,27 @@ it('keeps an exact compound project id distinct from its component numbers', () 
   expect(selectRecall({ message: 'Devon Stone person-10-project-1 venue', candidates, now, limit: 1 })).toEqual([2]);
 });
 
+it('ranks an exact measured source above topical chatter for a quantity question, without widening a vague query', () => {
+  const candidates = [
+    { text: 'The route notes mention scenery but no distance.', at: now - day },
+    { text: 'The route was 3.25 miles.', at: now - 2 * day },
+    { text: 'The route notes mention water stops.', at: now - day },
+  ];
+  expect(selectRecall({ message: 'How far was the route?', candidates, now, limit: 1 })).toEqual([1]);
+  expect(selectRecall({ message: 'What did I say?', candidates, now, limit: 1 })).toEqual([]);
+  expect(selectRecall({ message: 'What about the route scenery?', candidates, now, limit: 1 })).toEqual([0]);
+  const doses = [{ text: 'The supplement discussion had no dose.', at: now - day },
+    { text: 'The supplement dose is 5 mg.', at: now - 2 * day }];
+  expect(selectRecall({ message: 'How much was the supplement dose?', candidates: doses, now, limit: 1 })).toEqual([1]);
+  const unusual = [{ text: 'The race notes describe the course.', at: now - day },
+    { text: 'The race course was 17 furlongs.', at: now - 2 * day }];
+  expect(selectRecall({ message: 'How far was the race course?', candidates: unusual, now, limit: 1 })).toEqual([1]);
+  const modelGuess = [{ text: 'The supplement dose is unknown. Earlier answer guessed 5 mg.',
+    measurementText: 'The supplement dose is unknown.', at: now - day },
+  { text: 'The supplement dose is 5 mg.', measurementText: 'The supplement dose is 5 mg.', at: now - 2 * day }];
+  expect(selectRecall({ message: 'How much was the supplement dose?', candidates: modelGuess, now, limit: 1 })).toEqual([1]);
+});
+
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-sentinel-')));
   const key = new Uint8Array(32).fill(9), samples: number[] = [];
