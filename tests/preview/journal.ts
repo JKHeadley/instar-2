@@ -161,7 +161,8 @@ export type JournalRecord =
 
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[]; at: number }
-  | { kind: 'sent'; id: string; message: number; at: number }
+  | { kind: 'sent'; id: string; message: number; latencyMs?: number; at: number }
+  /** Legacy: successful-send duration now rides on `sent`; still read on replay. */
   | { kind: 'send-timing'; id: string; latencyMs: number; at: number }
   | { kind: 'reminder-intent'; items: ReminderRef[]; day: string; text: string; body: string; chat: string; thread?: number; grant: string; reminderGrant: string; at: number }
   | { kind: 'reminder-sent'; day: string; thread?: number; message: number; at: number }
@@ -1195,7 +1196,11 @@ function project(view: JournalView, row: JournalRecord): void {
       || promise.waitsOn !== 'next-relevant-reply')) throw Error('preview journal: invalid agent promise');
     for (const promise of row.promises ?? []) view.commitments.push({ in: 'reply', source: turn.id, quote: promise.quote, agentPromise: promise });
     for (const key of row.mentionedDates ?? []) view.mentionedDates.add(key); }
-  if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at;
+  if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined
+      || row.latencyMs !== undefined && (turn.sendMs !== undefined || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0))
+      throw Error('preview journal: receipt order');
+    turn.sent = row.message; turn.sentAt = row.at;
+    if (row.latencyMs !== undefined) turn.sendMs = row.latencyMs;
     for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id)
       && note.source !== turn.id && view.turns.get(note.source)!.update < turn.update
       && (!note.agentPromise.due || dueState(note.agentPromise.due, row.at) === 'due'
@@ -3203,11 +3208,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         gate();
         const sendStarted = elapsedMs();
         try { const message = await ports.send({ text: body, expectedText: reply, chat: journal.view.genesis.chat, ...thread, update: turn.update });
-          journal.append({ kind: 'send-timing', id: turn.id, latencyMs: duration(sendStarted), at: ports.now() });
+          // The receipt carries the measured duration; an UNKNOWN or failed attempt records no timing.
           if (message !== null && Number.isSafeInteger(message) && message > 0)
-            journal.append({ kind: 'sent', id: turn.id, message, at: ports.now() });
-        } catch { if (turn.sendMs === undefined) journal.append({ kind: 'send-timing', id: turn.id,
-          latencyMs: duration(sendStarted), at: ports.now() }); /* exact intent stays UNKNOWN */ }
+            journal.append({ kind: 'sent', id: turn.id, message, latencyMs: duration(sendStarted), at: ports.now() });
+        } catch { /* exact intent stays UNKNOWN */ }
       }
       // A held notice has its own one-shot intent. It never settles or redispatches
       // the answer, so a later cap raise can still release that answer normally.

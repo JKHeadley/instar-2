@@ -2343,8 +2343,9 @@ for Justin's bounded live check of the next review hold.
 in milliseconds, plus each stage's sample count, p50 and p95 (nearest-rank).
 Missing stages are `null` and do not enter a percentile. Answer, check and send
 measurements come from the existing encrypted journal; old turns have nulls.
-An attempted send is timed even when its Telegram outcome is UNKNOWN. These are
-runner wall times, not Telegram delivery times. For Justin's supervised check,
+Send time rides on the durable `sent` receipt, so an UNKNOWN or failed attempt
+has a null send time; older journals' separate `send-timing` frames are still
+read. These are runner wall times, not Telegram delivery times. For Justin's supervised check,
 see [reply-check-timing-live-test.md](reply-check-timing-live-test.md).
 
 Desk one-call connectivity check, after setting the host binding from the vault:

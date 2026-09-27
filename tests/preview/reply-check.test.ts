@@ -302,7 +302,7 @@ it('excludes legacy recovery zeros but retains measured zero durations', () => {
   expect(replyTimings(view).jev).toEqual({ count: 2, p50Ms: 0, p95Ms: 0 });
 });
 
-it('retains send time for UNKNOWN without making the send repeatable', async () => {
+it('records no send time for UNKNOWN, reads a legacy send-timing frame, and never repeats the send', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-unknown-send-time-')));
   const path = join(root, 'journal.encrypted');
   try {
@@ -319,6 +319,9 @@ it('retains send time for UNKNOWN without making the send repeatable', async () 
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: 'hello' } }]);
     await worker.drain();
+    expect(replyTimings(journal.view).perReply[0]?.sendMs).toBeNull();
+    // A journal written before the timing moved onto `sent` carries a separate frame.
+    journal.append({ kind: 'send-timing', id: journal.view.order[0]!.id, latencyMs: 75, at: clock });
     journal.close();
     const replay = openPreviewJournal(path, key);
     expect(replyTimings(replay.view).perReply[0]?.sendMs).toBe(75);
