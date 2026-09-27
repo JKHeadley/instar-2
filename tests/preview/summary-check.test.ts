@@ -178,6 +178,48 @@ it('does not reserve a paid review or accept a summary after stop during Jev', a
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it.each(['stop', 'expiry'] as const)('retains completed summary usage when %s arrives during the model call', async cause => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-interrupted-')));
+  const path = join(root, 'journal.encrypted');
+  const grant = genesis();
+  let stopped = false, now = 1000, checks = 0, reviews = 0;
+  const journal = openPreviewJournal(path, key, grant);
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
+    model: async input => {
+      if (!input.id.startsWith('summary:')) return 'ok';
+      if (cause === 'stop') stopped = true;
+      else now = grant.expires;
+      return { state: 'complete', text: JSON.stringify({ summary: 'Short recap.', people: [], commitments: [] }), usage };
+    }, send: async () => 1, checkOutbound: () => {},
+    replyCheck: { elapsedMs: () => 100,
+      jev: async (_state, questions) => {
+        if (questions) checks++;
+        return { value: questions ? jevAnswer(0.05)
+          : { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
+      }, escalate: async () => { throw Error('unexpected reply review'); },
+      summaryReview: async () => { reviews++; return { verdict: 'pass', latencyMs: 1 }; } } });
+  try {
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'Remember this.' } }]);
+    await worker.drain();
+    await expect(worker.summarizeIfNeeded(true)).rejects.toThrow('preview stopped');
+    expect(checks).toBe(0);
+    expect(reviews).toBe(0);
+    expect(journal.view.calls).toBe(2);
+    expect(journal.view.summaries).toHaveLength(0);
+    expect(journal.view.summaryReservations.has(1)).toBe(true);
+    expect(records(path).filter(row => row.kind === 'summary-candidate' && row.usage?.inputTokens === 1234)).toHaveLength(1);
+    expect(records(path).filter(row => row.kind === 'summary-check' || row.kind === 'summary')).toHaveLength(0);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(replay.view.calls).toBe(2);
+    expect(replay.view.summaries).toHaveLength(0);
+    expect(replay.view.summaryReservations.has(1)).toBe(true);
+    expect(records(path).filter(row => row.kind === 'summary-candidate' && row.usage?.inputTokens === 1234)).toHaveLength(1);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('keeps rejected and accepted candidate packets out of status and the next model packet across replay', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-state-')));
   const path = join(root, 'journal.encrypted');

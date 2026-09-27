@@ -1101,12 +1101,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       if (ports.replyCheck) {
-        gate();
         const state = redact(JSON.stringify({ packet: JSON.parse(packet) as object,
           proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
             closed: closed ?? [], memory: memory ?? [] } })).text;
         journal.append({ kind: 'summary-candidate', through, state,
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
+        gate();
         const started = ports.replyCheck.elapsedMs();
         let jev: SummaryCheckResult;
         try {
