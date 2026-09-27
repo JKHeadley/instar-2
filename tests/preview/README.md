@@ -1814,3 +1814,20 @@ update, whether its packet was available, and source counts and imported source
 IDs without dumping the old packet. Earlier journal turns without a saved prompt are reported as
 missing. For the private operator procedure, see
 [why-did-you-say-live-test.md](why-did-you-say-live-test.md).
+
+### Summary and reply-review restart continuity
+
+`journal-summary-crash.test.ts` kills a real child process at each durable and
+in-flight boundary of a supervised summary, journal compaction, and a reply
+review. It reopens the same encrypted journal, advances to a later summary
+frontier after an interrupted reservation, and compares the resulting memory
+projection with a no-crash run. It also checks one accepted answer to the
+operator's later question and no duplicate physical sends. An interrupted paid
+reply review leaves its original turn visibly held. Run only this focused file:
+
+```sh
+npx vitest run tests/preview/journal-summary-crash.test.ts --configLoader=runner --maxWorkers=1
+```
+
+Justin's supervised private-chat procedure is
+[crash-during-summary-live-test.md](crash-during-summary-live-test.md).
