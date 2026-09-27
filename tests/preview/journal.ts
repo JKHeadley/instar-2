@@ -139,7 +139,7 @@ export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>,
     : cap.reason === 'calls' ? 'model attempt cap reached'
       : cap.reason === 'replies' ? 'reply cap reached' : 'context byte cap reached';
 }
-function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
+function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>, admission: 'new' | 'replay'): void {
   const maxBytes = row.maxBytes ?? view.limits.maxBytes; // Earlier cap frames did not carry this field.
   if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
     || !Number.isSafeInteger(row.at) || row.at <= 0 || typeof row.authority !== 'string'
@@ -152,7 +152,12 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     || row.maxCalls === view.limits.maxCalls && row.maxReplies === view.limits.maxReplies
       && row.maxTurns === view.limits.maxTurns && maxBytes === view.limits.maxBytes)
     throw Error('preview journal: cap authority or monotonic bounds refused');
-  if (unknownCallCounts(view).total > 0)
+  // Older writers permitted a raise after an unavailable Jev check or review.
+  // Replay keeps that rule; only a new raise uses the expanded UNKNOWN count.
+  const unknown = admission === 'new' ? unknownCallCounts(view).total > 0
+    : view.order.some(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
+      || view.summaryReservations.size > 0;
+  if (unknown)
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
 function project(view: JournalView, row: JournalRecord): void {
@@ -167,7 +172,7 @@ function project(view: JournalView, row: JournalRecord): void {
     view.capReports.add(capKey(row.reason, row.limit)); return;
   }
   if (row.kind === 'caps') {
-    checkCaps(view, row);
+    checkCaps(view, row, 'replay');
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
     view.capAuthority = row.authority; view.capRaisedAt = row.at;
     for (const turn of view.order) if (turn.held === 'call cap' || turn.held === 'reply cap') delete turn.held;
@@ -354,7 +359,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     if (!readOnly) fsyncSync(fd);
     const append = (row: JournalRecord) => {
       if (readOnly) throw Error('preview journal: reader cannot append');
-      if (row.kind === 'caps') checkCaps(view!, row);
+      if (row.kind === 'caps') checkCaps(view!, row, 'new');
       if (view && ((row.kind === 'intake' && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve')
           && view.calls >= view.limits.maxCalls)

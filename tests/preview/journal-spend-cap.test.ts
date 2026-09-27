@@ -1,8 +1,9 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts } from './journal.js';
 
 const key = new Uint8Array(32).fill(19);
@@ -102,6 +103,50 @@ it('counts an UNKNOWN subscription review separately from a completed answer and
     expect(unknownCallCounts(journal.view)).toEqual({ answers: 0, summaries: 0, reviews: 1, jev: 0, total: 1 });
     expect(() => raiseJournalCaps(journal, { maxCalls: 3, maxReplies: 4, maxTurns: 4,
       authority: 'Justin recorded raise', at: 1001 })).toThrow('UNKNOWN');
+    journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('replays a previously valid cap raise after unavailable Jev and completed subscription review', () => {
+  const dir = root(), path = join(dir, 'journal.encrypted'), origin = genesis();
+  try {
+    let journal = openPreviewJournal(path, key, origin);
+    worker(journal, { calls: 0, sends: 0 }).intake([update(1)]);
+    journal.append({ kind: 'reserve', id: id(1), at: 1000 });
+    journal.append({ kind: 'answer', id: id(1), text: 'answer', at: 1000 });
+    journal.append({ kind: 'reply-jev-reserve', id: id(1), at: 1000 });
+    journal.append({ kind: 'reply-check', id: id(1), result: { verdict: 'unavailable', ruleIds: [],
+      confidence: null, path: 'jev', latencyMs: 2 }, at: 1000 });
+    journal.append({ kind: 'reply-review-reserve', id: id(1), candidate: 'answer', at: 1000 });
+    journal.append({ kind: 'reply-review-state', id: id(1), state: 'complete', at: 1000 });
+    journal.append({ kind: 'reply-check', id: id(1), result: { verdict: 'pass', ruleIds: [],
+      confidence: 1, path: 'subscription', latencyMs: 2 }, at: 1000 });
+    journal.append({ kind: 'intent', id: id(1), text: 'PREVIEW — answer', chat: origin.chat,
+      update: 1, grant: origin.grant, at: 1000 });
+    journal.append({ kind: 'sent', id: id(1), message: 1, at: 1000 });
+    expect(unknownCallCounts(journal.view)).toEqual({ answers: 0, summaries: 0, reviews: 0, jev: 1, total: 1 });
+    expect(() => raiseJournalCaps(journal, { maxCalls: 5, maxReplies: 4, maxTurns: 4,
+      authority: 'Justin recorded raise', at: 1001 })).toThrow('UNKNOWN');
+    journal.close();
+
+    // Reproduce a cap frame emitted by the prior writer, with its authenticated
+    // journal framing, so the upgraded reader must accept the existing history.
+    const row = { kind: 'caps', genesisHash: createHash('sha256').update(JSON.stringify(origin)).digest('hex'),
+      maxCalls: 5, maxReplies: 4, maxTurns: 4, maxBytes: 32768, authority: 'Justin recorded raise', at: 1001 };
+    const offset = readFileSync(path).length, nonce = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', key, nonce);
+    cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+    const body = Buffer.concat([cipher.update(JSON.stringify(row), 'utf8'), cipher.final()]);
+    const frame = Buffer.concat([nonce, cipher.getAuthTag(), body]);
+    const length = Buffer.alloc(4); length.writeUInt32BE(frame.length);
+    writeFileSync(path, Buffer.concat([length, frame]), { flag: 'a' });
+
+    journal = openPreviewJournal(path, key);
+    expect(journal.view.limits.maxCalls).toBe(5);
+    expect(journal.view.calls).toBe(2);
+    expect(journal.view.replies).toBe(1);
+    expect(journal.view.order[0]?.sent).toBe(1);
+    expect(unknownCallCounts(journal.view).jev).toBe(1);
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
