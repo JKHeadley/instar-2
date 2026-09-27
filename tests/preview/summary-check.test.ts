@@ -65,12 +65,14 @@ it('accepts a whole-response fenced summary verdict, refuses prose-wrapped ones,
   const shapes: string[] = [];
   const review = (value: string) => interpretSummaryReview({ state: 'complete', value, usage: reviewUsage }, 30, shape => shapes.push(shape));
   expect(review('```json\n{"verdict":"pass","reason":"All turns covered."}\n```')).toMatchObject({ verdict: 'pass', reason: 'All turns covered.' });
+  expect(review('```json\r\n{"verdict":"pass","reason":"All turns covered."}\r\n```')).toMatchObject({ verdict: 'pass', reason: 'All turns covered.' });
   expect(shapes).toEqual([]);
   expect(review('VIOLATION: this summary invents facts. {"verdict":"pass","reason":"All turns covered."}')).toMatchObject({ verdict: 'unavailable', retryable: true });
+  expect(review('```json\r\n{"verdict":"pass","reason":"All turns covered."}\r\n```\r\nVIOLATION: this summary invents facts.')).toMatchObject({ verdict: 'unavailable', retryable: true });
   expect(review('{"verdict":"pass","reason":"a"} {"verdict":"violation","reason":"b"}')).toMatchObject({ verdict: 'unavailable', retryable: true });
   expect(review('{"verdict":"pass","reason":"cut')).toMatchObject({ verdict: 'unavailable', retryable: true });
   expect(review('```json\n{"verdict":"maybe","reason":"x"}\n```')).toMatchObject({ verdict: 'unavailable', retryable: true });
-  expect(shapes).toEqual(['prose-wrapped', 'multiple-objects', 'truncated', 'fenced-wrong-fields']);
+  expect(shapes).toEqual(['prose-wrapped', 'fenced', 'multiple-objects', 'truncated', 'fenced-wrong-fields']);
 });
 
 it('classifies Jev pass, violation, uncertainty and malformed output', () => {
