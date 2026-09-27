@@ -10,12 +10,9 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 const key = new Uint8Array(32).fill(19);
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
-const genesis = (maxBytes = 4096) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
+const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes, cursor: 0 });
-// int12: the fixed reply instructions alone now exceed 4 KB, so a test that must also answer
-// uses this packet bound and sizes its oversized input relative to it.
-const ANSWERING = 6144;
+  maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 4096, cursor: 0 });
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-long-message-')));
 const status = (dir: string) => {
   const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
@@ -68,12 +65,12 @@ it('drains a batched oversized correction and retires its stale holds across res
   const dir = root();
   try {
     const path = join(dir, 'journal.encrypted');
-    const journal = openPreviewJournal(path, key, genesis(ANSWERING));
+    const journal = openPreviewJournal(path, key, genesis());
     const sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => 'First answer', send: async ({ text }) => { sent.push(text); return sent.length; },
       checkOutbound: () => {} });
-    worker.intake([update(1, 'Short message'), update(2, `Actually ${'x'.repeat(ANSWERING + 100)}`)]);
+    worker.intake([update(1, 'Short message'), update(2, `Actually ${'x'.repeat(4200)}`)]);
     // These holds reproduce the state left by an earlier drain before the size notice.
     journal.append({ kind: 'hold', id: journal.view.order[0]!.id, reason: 'memory correction pending', at: 1000 });
     journal.append({ kind: 'hold', id: journal.view.order[1]!.id, reason: 'summary oversized turn', at: 1000 });
@@ -98,14 +95,14 @@ it.each([{ verdict: 'pass', receipt: 7 }, { verdict: 'pass', receipt: null },
   const dir = root();
   try {
     const path = join(dir, 'journal.encrypted');
-    const journal = openPreviewJournal(path, key, genesis(ANSWERING));
+    const journal = openPreviewJournal(path, key, genesis());
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => 'Follow-up answer',
       replyCheck: { elapsedMs: () => 1, jev: async () => { throw Error('Jev unavailable'); },
         escalate: async () => ({ verdict, ruleIds: [], confidence: null, latencyMs: 1 }) },
       send: async ({ text }) => { expect(text).toBe(verdict === 'pass' ? TOO_LONG_INPUT_NOTICE : HOLDING_REPLY);
         return receipt; }, checkOutbound: () => {} });
-    worker.intake([update(1, 'x'.repeat(ANSWERING + 1))]);
+    worker.intake([update(1, 'x'.repeat(4097))]);
     await worker.drain();
     expect(journal.view.order[0]?.intent).toBe(verdict === 'pass' ? TOO_LONG_INPUT_NOTICE : HOLDING_REPLY);
     journal.close();
@@ -136,7 +133,7 @@ it.each([{ verdict: 'pass', receipt: 7 }, { verdict: 'pass', receipt: null },
 it('retains Telegram split parts as distinct updates and answers or explains each part', async () => {
   const dir = root();
   try {
-    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(8192));
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
     const sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => 'I can read this part.',
@@ -229,7 +226,7 @@ it('sends a full reply at the Telegram boundary and a truthful notice for longer
   for (const answer of ['a'.repeat(4084), 'a'.repeat(4085), '<'.repeat(1200)]) {
     const dir = root();
     try {
-      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(ANSWERING));
+      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
       const sent: string[] = [];
       const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
         model: async () => answer, send: async ({ text }) => { sent.push(text); return 7; }, checkOutbound: () => {} });

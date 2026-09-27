@@ -7,7 +7,7 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 const key = new Uint8Array(32).fill(19);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:dedupe', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 7600, cursor: 0 }; // int12: reply instructions grew ~1.6 KB
+  maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 6000, cursor: 0 };
 const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
   from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 

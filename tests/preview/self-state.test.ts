@@ -429,7 +429,7 @@ it('keeps the model briefing bounded after many released holds and a completed s
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-held-many-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis, maxCalls: 300, maxReplies: 300, maxTurns: 300, maxBytes: 9800 }); // int12: reply instructions grew ~1.6 KB
+      { ...genesis, maxCalls: 300, maxReplies: 300, maxTurns: 300, maxBytes: 8192 });
     const intake = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
       model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
     for (let i = 1; i <= 200; i++) {
@@ -456,7 +456,7 @@ it('keeps the model briefing bounded after many released holds and a completed s
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
     const probe = worker.probe('How many replies were held today?');
     expect(probe).toHaveProperty('context');
-    expect('context' in probe ? Buffer.byteLength(probe.context) : Infinity).toBeLessThan(9800);
+    expect('context' in probe ? Buffer.byteLength(probe.context) : Infinity).toBeLessThan(8192);
     worker.intake([update(201, 'next reply', NOON)]);
     await worker.drain();
     expect(journal.view.order.at(-1)?.sent).toBe(1);

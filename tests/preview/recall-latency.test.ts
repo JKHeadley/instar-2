@@ -62,8 +62,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
       expect('context' in result).toBe(true);
       if ('context' in result) packetHash = createHash('sha256').update(result.context).digest('hex');
     }
-    // int12 re-pin: the person-attribute instructions and people-facts relevance selection changed this packet.
-    expect(packetHash).toBe('32c4226ed68a6d1d714ad9bc944200c66ab30effabbecc7103096548c72dead7');
+    // int12 re-pin: person-attribute instructions, people-facts relevance selection, and relevance-gated
+    // conflict/fact-update/held/exact-unit guidance changed this packet.
+    expect(packetHash).toBe('755d5330c2f876d0c80778a5b6437678ab660840c77cc21e5ee03fd4862ce5ce');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

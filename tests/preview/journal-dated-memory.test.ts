@@ -165,7 +165,7 @@ it('shrinks dated projections for summary and later replies without losing journ
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-fit-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis, maxCalls: 16, maxReplies: 16, maxBytes: 7100 }); // int12: reply instructions grew ~1.6 KB; moreDated still proves the shrink
+      { ...genesis, maxCalls: 16, maxReplies: 16, maxBytes: 5500 });
     const packets: Array<{ id: string; packet: Record<string, unknown> }> = [];
     let sends = 0;
     const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,

@@ -6,11 +6,9 @@ import { createJournalWorker, openPreviewJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(19);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-thread-reference-')));
-// int12: reply instructions grew ~1.6 KB; the packet bound follows the configured limit.
-const PACKET_BYTES = 9800;
 const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: PACKET_BYTES, cursor: 0 });
+  maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 8192, cursor: 0 });
 const message = (id: number, text: string, thread?: number, replyTo?: { id: number; from: number; thread?: number; text?: string }) => ({
   update_id: id, message: { message_id: id + 100, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     ...(thread === undefined ? {} : { message_thread_id: thread }),
@@ -65,7 +63,7 @@ it('resolves a reply to the agent sent message in the same topic, even when a su
       answer: 'The earlier answer was blue.' });
     expect(packet.replyTo.user).toMatch(/^The blue plan is approved\./u);
     expect(packet.replyTo.user.length).toBe(1200);
-    expect(Buffer.byteLength(w.packets[2]!)).toBeLessThanOrEqual(PACKET_BYTES);
+    expect(Buffer.byteLength(w.packets[2]!)).toBeLessThanOrEqual(8192);
     w.journal.close();
   } finally { rmSync(path, { recursive: true, force: true }); }
 });
@@ -101,7 +99,7 @@ it('redacts and bounds both referenced sides before including them', async () =>
     const packet = JSON.parse(w.packets[1]!);
     expect(packet.replyTo.user.length).toBeLessThanOrEqual(1200);
     expect(packet.replyTo.user).not.toContain(secret);
-    expect(Buffer.byteLength(w.packets[1]!)).toBeLessThanOrEqual(PACKET_BYTES);
+    expect(Buffer.byteLength(w.packets[1]!)).toBeLessThanOrEqual(8192);
     w.journal.close();
   } finally { rmSync(path, { recursive: true, force: true }); }
 });
