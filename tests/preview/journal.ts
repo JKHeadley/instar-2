@@ -2,7 +2,7 @@
  * individually authenticated so replay reads the file once at boot; hot turns
  * append one frame and update only the in-memory projection. */
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
-import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync } from 'node:fs';
+import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { previewTurnId } from './state.js';
 import { redact } from '../../src/recall/redact.js';
@@ -113,6 +113,102 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
 const frameLimit = 2 * 1024 * 1024;
+export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
+const snapshotChunkBytes = 256 * 1024;
+type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
+type SnapshotChunk = { kind: 'snapshot-chunk'; data: string };
+type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed'> & {
+  turns: [string, Turn][]; order: string[]; channelItems: [string, ChannelItem][]; summaryReservations: number[];
+  summaryFailures: [number, number][]; failureClasses: [ModelFailureClass, number][];
+  providerStates: [string, number][]; closed: [number, CommitmentClosure][] };
+  retained: JournalRecord[] };
+
+function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
+  return { view: { ...view, turns: [...view.turns], order: view.order.map(turn => turn.id), channelItems: [...view.channelItems],
+    summaryReservations: [...view.summaryReservations], summaryFailures: [...view.summaryFailures],
+    failureClasses: [...view.failureClasses], providerStates: [...view.providerStates], closed: [...view.closed] }, retained };
+}
+function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
+  const saved = snapshot?.view;
+  if (!saved || JSON.stringify(saved.genesis) !== JSON.stringify(genesis) || !Array.isArray(snapshot.retained)
+    || !Array.isArray(saved.order) || !Array.isArray(saved.turns)) throw Error('preview journal: invalid snapshot');
+  const turns = new Map(saved.turns);
+  if (saved.order.length !== turns.size || new Set(saved.order).size !== saved.order.length
+    || saved.order.some(id => !turns.has(id) || turns.get(id)?.id !== id))
+    throw Error('preview journal: snapshot turn index differs');
+  const view: JournalView = { ...saved, turns, order: saved.order.map(id => turns.get(id)!), channelItems: new Map(saved.channelItems),
+    summaryReservations: new Set(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
+    failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed) };
+  verifyPendingEvidence(snapshot.retained, view);
+  return view;
+}
+function frame(row: JournalRecord | SnapshotStart | SnapshotChunk, key: Uint8Array, offset: number): Buffer {
+  const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
+  cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+  const body = Buffer.concat([cipher.update(JSON.stringify(row), 'utf8'), cipher.final()]);
+  const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]);
+  if (bytes.length > frameLimit) throw Error('preview journal: record too large');
+  const prefix = Buffer.alloc(4); prefix.writeUInt32BE(bytes.length);
+  return Buffer.concat([prefix, bytes]);
+}
+function writeFrame(fd: number, row: JournalRecord | SnapshotStart | SnapshotChunk, key: Uint8Array, offset: number): number {
+  const packet = frame(row, key, offset);
+  let written = 0;
+  while (written < packet.length) written += writeSync(fd, packet, written, packet.length - written, offset + written);
+  return offset + packet.length;
+}
+function syncDirectory(path: string): void {
+  const directory = openSync(dirname(path), 'r');
+  try { fsyncSync(directory); } finally { closeSync(directory); }
+}
+function decodeRow(sealed: Buffer, offset: number, key: Uint8Array): { row: JournalRecord | SnapshotStart | SnapshotChunk; end: number } | undefined {
+  if (sealed.length - offset < 4) return undefined;
+  const length = sealed.readUInt32BE(offset);
+  if (length < 28 || length > frameLimit) throw Error('preview journal: corrupt frame length');
+  if (sealed.length - offset - 4 < length) return undefined;
+  const bytes = sealed.subarray(offset + 4, offset + 4 + length);
+  const cipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(0, 12));
+  cipher.setAAD(Buffer.from(`preview-journal:${offset}`)); cipher.setAuthTag(bytes.subarray(12, 28));
+  return { row: JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString('utf8')) as JournalRecord | SnapshotStart | SnapshotChunk,
+    end: offset + 4 + length };
+}
+function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalRecord[] {
+  const open = new Set(view.order.filter(turn => turn.held !== undefined
+    || turn.accepted && (turn.intent === undefined || turn.sent === undefined)).map(turn => turn.id));
+  const evidence: JournalRecord[] = [];
+  const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
+  for (const row of rows) {
+    if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
+    // The projection omits per-call usage, failure details, prepared review and
+    // summary prompts, and earlier cap authority. Keep the original causal and
+    // accounting records; only superseded hold observations are redundant.
+    evidence.push(row);
+  }
+  for (const turn of view.order) { const hold = holds.get(turn.id); if (hold) evidence.push(hold); }
+  return evidence;
+}
+function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
+  const kinds = new Map<string, Set<string>>(), summaries = new Set<number>();
+  for (const row of rows) {
+    if ('id' in row) {
+      const found = kinds.get(row.id) ?? new Set<string>(); found.add(row.kind); kinds.set(row.id, found);
+    }
+    if (row.kind === 'summary-reserve') summaries.add(row.through);
+  }
+  for (const turn of view.order) {
+    if (!(turn.held !== undefined || turn.modelState === 'uncertain'
+      || turn.accepted && (turn.intent === undefined || turn.sent === undefined))) continue;
+    const found = kinds.get(turn.id);
+    const required = ['intake', ...(turn.reserved ? ['reserve'] : []),
+      ...(turn.modelState === 'uncertain' ? ['model-uncertain'] : []),
+      ...(turn.jevReserved ? ['reply-jev-reserve'] : []),
+      ...(turn.reviewReserved ? ['reply-review-reserve'] : []),
+      ...(turn.intent !== undefined ? ['intent'] : []), ...(turn.held !== undefined ? ['hold'] : [])];
+    for (const kind of required) if (!found?.has(kind)) throw Error(`preview journal: pending ${kind} evidence absent`);
+  }
+  if ([...view.summaryReservations].some(through => !summaries.has(through)))
+    throw Error('preview journal: summary reservation evidence absent');
+}
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
@@ -321,8 +417,9 @@ function project(view: JournalView, row: JournalRecord): void {
 }
 
 export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extract<JournalRecord,{kind:'genesis'}>,
-  boundary?: (stage: string) => void, readOnly = false) {
+  boundary?: (stage: string) => void, readOnly = false, compactBytes = PREVIEW_JOURNAL_COMPACT_BYTES) {
   if (resolve(path) !== path || key.byteLength !== 32) throw Error('preview journal: path or key refused');
+  if (!Number.isSafeInteger(compactBytes) || compactBytes <= 0) throw Error('preview journal: compaction threshold refused');
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   if (realpathSync(dirname(path)) !== dirname(path) || lstatSync(dirname(path)).isSymbolicLink())
     throw Error('preview journal: substituted directory');
@@ -331,29 +428,54 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
   if (!fresh && lstatSync(path).isSymbolicLink()) throw Error('preview journal: substituted file');
   const flags = fresh ? constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW
     : (readOnly ? constants.O_RDONLY : constants.O_RDWR) | constants.O_NOFOLLOW;
-  const fd = openSync(path, flags, 0o600);
-  if (fresh) { const directory = openSync(dirname(path), 'r'); try { fsyncSync(directory); } finally { closeSync(directory); } }
+  let fd = openSync(path, flags, 0o600);
+  if (fresh) syncDirectory(path);
   let size = statSync(path).size;
   let view: JournalView | undefined;
+  let retained: JournalRecord[] = [];
+  let snapshotBase = 0;
+  let snapshotAllowed = false;
+  let pendingSnapshot: { start: SnapshotStart; chunks: Buffer[] } | undefined;
+  let closed = false;
   const sealed = readFileSync(fd);
   let offset = 0;
   try {
     while (offset < sealed.length) {
-      if (sealed.length - offset < 4) break;
-      const length = sealed.readUInt32BE(offset);
-      if (length < 28 || length > frameLimit) throw Error('preview journal: corrupt frame length');
-      if (sealed.length - offset - 4 < length) break;
-      const bytes = sealed.subarray(offset + 4, offset + 4 + length);
-      const nonce = bytes.subarray(0, 12), tag = bytes.subarray(12, 28), ciphertext = bytes.subarray(28);
-      const cipher = createDecipheriv('aes-256-gcm', key, nonce);
-      cipher.setAAD(Buffer.from(`preview-journal:${offset}`)); cipher.setAuthTag(tag);
-      const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
+      const decoded = decodeRow(sealed, offset, key);
+      if (!decoded) break;
+      const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
         view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], stepCheckStarted: false, stepChecks: new Map(), jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
-      } else project(view, row);
-      offset += 4 + length;
+        snapshotAllowed = true;
+      } else if (row.kind === 'snapshot-start') {
+        if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
+          || !Number.isSafeInteger(row.chunks) || row.chunks !== Math.ceil(row.bytes / snapshotChunkBytes)
+          || !/^[a-f0-9]{64}$/.test(row.digest)) throw Error('preview journal: snapshot header refused');
+        pendingSnapshot = { start: row, chunks: [] }; snapshotAllowed = false;
+      } else if (row.kind === 'snapshot-chunk') {
+        if (!pendingSnapshot || typeof row.data !== 'string') throw Error('preview journal: orphan snapshot chunk');
+        const chunk = Buffer.from(row.data, 'base64');
+        if (chunk.toString('base64') !== row.data || chunk.length > snapshotChunkBytes || chunk.length === 0)
+          throw Error('preview journal: invalid snapshot chunk');
+        pendingSnapshot.chunks.push(chunk);
+        if (pendingSnapshot.chunks.length === pendingSnapshot.start.chunks) {
+          const bytes = Buffer.concat(pendingSnapshot.chunks);
+          if (bytes.length !== pendingSnapshot.start.bytes
+            || createHash('sha256').update(bytes).digest('hex') !== pendingSnapshot.start.digest)
+            throw Error('preview journal: snapshot digest differs');
+          const snapshot = JSON.parse(bytes.toString('utf8')) as Snapshot;
+          view = restoreSnapshot(snapshot, view.genesis); retained = snapshot.retained;
+          snapshotBase = decoded.end; pendingSnapshot = undefined;
+        }
+      } else {
+        if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
+        snapshotAllowed = false;
+        project(view, row);
+      }
+      offset = decoded.end;
     }
+    if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
     if (offset < sealed.length && !readOnly) {
       // Retain the incomplete suffix for diagnosis before removing it from the
       // active append point. It never becomes accepted intake or an effect.
@@ -366,31 +488,88 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
           while (written < suffix.length) written += writeSync(torn, suffix, written);
           fsyncSync(torn); } finally { closeSync(torn); }
       }
-      const dir = openSync(dirname(path), 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }
+      syncDirectory(path);
       ftruncateSync(fd, offset); fsyncSync(fd); size = offset;
     }
     // A complete frame left by a process death before its original fsync is
     // made durable before recovery is allowed to consume its causal state.
     if (!readOnly) fsyncSync(fd);
     const append = (row: JournalRecord) => {
-      if (readOnly) throw Error('preview journal: reader cannot append');
+      if (readOnly || closed) throw Error('preview journal: reader cannot append');
       if (row.kind === 'caps') checkCaps(view!, row);
       boundary?.(`before:${row.kind}`);
-      const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
-      cipher.setAAD(Buffer.from(`preview-journal:${size}`));
-      const body = Buffer.concat([cipher.update(JSON.stringify(row), 'utf8'), cipher.final()]);
-      const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]);
-      if (bytes.length > frameLimit) throw Error('preview journal: record too large');
-      const prefix = Buffer.alloc(4); prefix.writeUInt32BE(bytes.length);
-      const packet = Buffer.concat([prefix, bytes]);
-      let written = 0; while (written < packet.length) written += writeSync(fd, packet, written, packet.length - written, size + written);
-      fsyncSync(fd); size += packet.length;
+      size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
         view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], stepCheckStarted: false, stepChecks: new Map(), jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
+      if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
     };
+    function compact(): void {
+      if (readOnly || closed || !view) throw Error('preview journal: compaction refused');
+      const temp = `${path}.compacting`;
+      let tempFd: number | undefined;
+      try {
+        const rows = [...retained];
+        const source = Buffer.alloc(size);
+        for (let read = 0; read < size;) {
+          const count = readSync(fd, source, read, size - read, read);
+          if (count === 0) throw Error('preview journal: source shortened during compaction');
+          read += count;
+        }
+        for (let at = 0; at < source.length;) {
+          const decoded = decodeRow(source, at, key);
+          if (!decoded) throw Error('preview journal: incomplete source during compaction');
+          const row = decoded.row;
+          if (row.kind !== 'genesis' && row.kind !== 'snapshot-start' && row.kind !== 'snapshot-chunk') rows.push(row);
+          at = decoded.end;
+        }
+        const kept = retainedEvidence(rows, view);
+        verifyPendingEvidence(kept, view);
+        const bytes = Buffer.from(JSON.stringify(snapshotOf(view, kept)));
+        const chunks = Math.ceil(bytes.length / snapshotChunkBytes);
+        const start: SnapshotStart = { kind: 'snapshot-start', version: 1, chunks, bytes: bytes.length,
+          digest: createHash('sha256').update(bytes).digest('hex') };
+        boundary?.('compact:before-temp');
+        if (existsSync(temp)) {
+          if (lstatSync(temp).isSymbolicLink() || !lstatSync(temp).isFile()) throw Error('preview journal: substituted compaction temp');
+          unlinkSync(temp);
+        }
+        tempFd = openSync(temp, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+        boundary?.('compact:after-temp');
+        let nextSize = writeFrame(tempFd, view.genesis, key, 0);
+        boundary?.('compact:after-genesis');
+        nextSize = writeFrame(tempFd, start, key, nextSize);
+        boundary?.('compact:after-snapshot-start');
+        for (let i = 0; i < chunks; i++) {
+          const chunk = bytes.subarray(i * snapshotChunkBytes, (i + 1) * snapshotChunkBytes);
+          nextSize = writeFrame(tempFd, { kind: 'snapshot-chunk', data: chunk.toString('base64') }, key, nextSize);
+          boundary?.('compact:after-chunk');
+        }
+        boundary?.('compact:after-write');
+        fsyncSync(tempFd); closeSync(tempFd); tempFd = undefined;
+        boundary?.('compact:after-fsync');
+        const check = openPreviewJournal(temp, key, undefined, undefined, true, compactBytes);
+        try {
+          if (JSON.stringify(snapshotOf(check.view, []).view) !== JSON.stringify(snapshotOf(view, []).view))
+            throw Error('preview journal: snapshot projection differs');
+        } finally { check.close(); }
+        boundary?.('compact:after-verify');
+        boundary?.('compact:before-rename');
+        renameSync(temp, path);
+        boundary?.('compact:after-rename');
+        syncDirectory(path);
+        boundary?.('compact:after-dir-fsync');
+        const nextFd = openSync(path, constants.O_RDWR | constants.O_NOFOLLOW);
+        closeSync(fd); fd = nextFd; size = nextSize; snapshotBase = nextSize; retained = kept;
+        boundary?.('compact:after-reopen');
+      } catch (error) {
+        if (tempFd !== undefined) closeSync(tempFd);
+        closed = true; closeSync(fd);
+        throw error;
+      }
+    }
     if (!view) {
       if (!initial) throw Error('preview journal: identity absent');
       if (!initial.bot || !initial.chat || !initial.operator || !initial.grant || !initial.configurationDigest
@@ -402,8 +581,10 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         throw Error('preview journal: invalid genesis');
       append(initial);
     }
-    return { get view() { return view!; }, readOnly, append, close: () => closeSync(fd) };
-  } catch (error) { closeSync(fd); throw error; }
+    if (!readOnly && size > Math.max(compactBytes, snapshotBase * 2)) compact();
+    return { get view() { return view!; }, get size() { return size; }, readOnly, append, compact,
+      close: () => { if (!closed) { closed = true; closeSync(fd); } } };
+  } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
 
 /** Import a bounded, read-only export. The caller vouches that `agentAccount` is the

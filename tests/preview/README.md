@@ -1201,3 +1201,28 @@ The live private-chat procedure is in
 observation's evaluation target is 2026-09-30: the desk can decide whether to
 keep it on after Justin's script produces a recorded trace. While off, it is
 not a live safety guard.
+
+### Bounded encrypted journal compaction
+
+After an append takes the journal past 8 MiB, the same exclusive writer folds its
+authenticated records into a snapshot of the full in-memory projection. Original
+turns, imported channel items, summaries, memory corrections, counters, stop,
+cursor and exact send state remain in that projection. The snapshot retains the
+original non-hold records too, including completed call usage, failure details,
+review and summary prompts, and all UNKNOWN call and send evidence. A delivered
+lost-answer notice does not close its UNKNOWN model call. Repeated holds retain
+only the latest still-active record. The journal remains the single encrypted store.
+
+Snapshot data uses bounded encrypted frames. The writer fsyncs a temporary file,
+reopens it through the normal journal reader, compares its projection, atomically
+replaces the journal and fsyncs the directory. A killed process therefore leaves
+the old or the new file readable. An abandoned `.compacting` file is never read
+as journal state and is replaced on the next compaction. After a snapshot, the
+next automatic compaction waits until the journal exceeds twice that snapshot's
+size (or 8 MiB, whichever is larger), so an irreducible large projection cannot
+cause compaction after every append. No send, provider call or second writer is
+started by compaction.
+
+The offline crash matrix is `journal-compaction.test.ts`. Justin's supervised
+test on an isolated copy of the actual preview journal is
+[journal-compaction-live-test.md](journal-compaction-live-test.md).
