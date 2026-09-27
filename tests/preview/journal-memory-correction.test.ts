@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, projectMemoryText, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
-import { auditPacket } from './journal-audit.mjs';
+import { auditJournal, auditPacket } from './journal-audit.mjs';
 
 const key = new Uint8Array(32).fill(17);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -546,7 +546,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps only the tenth correction in recall while retaining the full chain through restarts and compaction', async () => {
+it('keeps only the tenth correction with longer and shorter quotes through restarts and compaction', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-chain-')));
   const path = join(root, 'journal.encrypted');
   const current = (value: number) => `The observatory access word is waypoint${value}.`;
@@ -555,6 +555,8 @@ it('keeps only the tenth correction in recall while retaining the full chain thr
   let compactions = 0;
   const sends: string[] = [];
   const ports = { now: () => 1790000000000, stopped: () => false,
+    prepareModel: (input: { question: string; context: string }) => JSON.stringify({ messages: [
+      { role: 'user', content: input.question }, { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
     model: async (input: { id: string; question: string; context: string }) => {
       const packet = JSON.parse(input.context);
       if (input.id.startsWith('summary:')) {
@@ -564,7 +566,7 @@ it('keeps only the tenth correction in recall while retaining the full chain thr
           item.message.includes(current(number - 1)));
         return JSON.stringify({ summary: current(Number.isNaN(number) ? 0 : number), people: [],
           memory: request && number > 0 && source ? [{ mode: 'correct', source: source.id,
-            quote: number === 1 ? current(0) : current(number - 1).slice(4, -1),
+            quote: number === 1 ? current(0) : number === 2 ? `Actually, ${current(1)}` : current(number - 1).slice(4, -1),
             replacement: current(number) }] : [] });
       }
       const active = packet.memory?.filter((item: { mode: string }) => item.mode === 'corrected') ?? [];
@@ -604,9 +606,11 @@ it('keeps only the tenth correction in recall while retaining the full chain thr
     for (let number = 0; number < 10; number++) expect(probe.context).not.toContain(current(number));
     worker.intake([update(20, 'What is the observatory access word?')]); await worker.drain();
     expect(journal.view.order.at(-1)?.answer).toBe(current(10));
+    expect(auditJournal(journal.view).findings).toEqual([]);
     expect(sends).toHaveLength(20);
     expect(journal.view.memory.map(change => [change.quote, change.replacement])).toEqual(
-      Array.from({ length: 10 }, (_, index) => [index === 0 ? current(0) : current(index).slice(4, -1), current(index + 1)]));
+      Array.from({ length: 10 }, (_, index) => [index === 0 ? current(0)
+        : index === 1 ? `Actually, ${current(1)}` : current(index).slice(4, -1), current(index + 1)]));
     journal.close();
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
@@ -616,7 +620,7 @@ it('keeps only the tenth correction in recall while retaining the full chain thr
     const audit = JSON.parse(status.stdout).withheld as { sourceUpdate: number; operatorUpdate: number; quote: string }[];
     expect(audit.map(item => [item.sourceUpdate, item.operatorUpdate, item.quote])).toEqual(
       Array.from({ length: 10 }, (_, index) => [index + 1, index + 2,
-        index === 0 ? current(0) : current(index).slice(4, -1)]));
+        index === 0 ? current(0) : index === 1 ? `Actually, ${current(1)}` : current(index).slice(4, -1)]));
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 }, 20000);
 

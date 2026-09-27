@@ -9,6 +9,7 @@ import { redact } from '../../src/recall/redact.js';
 import { selectRecall, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
+import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
@@ -314,22 +315,6 @@ const operatorTurn = (view: JournalView, turn: Turn) => {
 };
 /** This phrase match only requests a capped model judgment; it never opens or closes a question. */
 export const unansweredCue = (reply: string) => /\b(?:I (?:don['’]t|do not) know|I(?:['’]m| am) not sure|I (?:can['’]t|cannot) answer)\b/iu.test(reply);
-/** A shorter quoted clause must not match the beginning of a later value (e.g. code 1 in code 10). */
-function claimSpans(text: string, quote: string): number[] {
-  const starts: number[] = [];
-  if (!quote) return starts;
-  const word = /[\p{L}\p{N}_]/u;
-  for (let at = text.indexOf(quote); at >= 0; at = text.indexOf(quote, at + 1)) {
-    if (at > 0 && word.test(quote[0]!) && word.test(text[at - 1]!)) continue;
-    const end = at + quote.length;
-    if (end < text.length && word.test(quote.at(-1)!) && word.test(text[end]!)) continue;
-    starts.push(at);
-  }
-  return starts;
-}
-const hasClaim = (text: string, quote: string) => claimSpans(text, quote).length > 0;
-const replaceClaim = (text: string, quote: string, replacement: string) =>
-  claimSpans(text, quote).reduceRight((result, at) => result.slice(0, at) + replacement + result.slice(at + quote.length), text);
 export const projectMemoryText = (view: JournalView, value: string) => view.memory.reduce((text, change) => {
   let projected = replaceClaim(text, change.quote, '[withheld: operator correction or forgetting]');
   for (const passage of change.summaryPassages ?? []) projected = replaceClaim(projected, passage, '[withheld: operator correction or forgetting]');
@@ -1277,8 +1262,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     .reduce((text, term) => text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'giu'), withheld),
       clean(redact(value).text, true));
   const supersededCorrection = (change: MemoryChange) => journal.view.memory
-    .slice(journal.view.memory.indexOf(change) + 1).some(next => next.source === change.trigger
-      && hasClaim(change.replacement!, next.quote));
+    .slice(journal.view.memory.indexOf(change) + 1).some(next => supersedesCorrection(change, next));
   const preferenceState = () => {
     const active = new Map<string, { source: string; quote: string }>();
     const lineage = new Set<string>();
