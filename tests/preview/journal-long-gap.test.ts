@@ -47,9 +47,12 @@ function seed(journal: ReturnType<typeof openPreviewJournal>) {
 for (const days of [1, 3, 7]) it(`grounds the first reply after ${days} day(s) in the injected clock, dated items and open commitments`, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-gap-')));
   const now = start + days * 86_400_000;
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, genesis);
   try {
     seed(journal);
+    journal.close();
+    journal = openPreviewJournal(path, key);
     const packets: Record<string, unknown>[] = [], sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       timeZone: 'America/Los_Angeles',
