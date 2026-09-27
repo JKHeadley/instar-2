@@ -475,7 +475,9 @@ async function main() {
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(journal.view.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
-      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: Date.now() });
+      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
+        ...(result.usage ? { usage: { inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens, charge: null } } : {}), at: Date.now() });
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
@@ -537,8 +539,7 @@ async function main() {
           }
           if (extracted.shape !== 'bare') recordShape(shapesPath, 'reply-review', 'verdict', 'tolerated', extracted.shape);
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
-            latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
-            usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+            latencyMs: Math.round(performance.now() - start), reason: parsed.reason };
         },
         summaryReview: async (state, through) => {
           const start = performance.now();

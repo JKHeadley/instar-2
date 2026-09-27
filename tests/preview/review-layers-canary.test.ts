@@ -1,5 +1,6 @@
 // @ts-nocheck -- bounded child-process fixture for the real preview launcher.
 import { expect, it } from 'vitest';
+import { createDecipheriv } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -119,6 +120,30 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       expect(status.status, status.stderr).toBe(0);
       const view = JSON.parse(status.stdout);
       expect(view.calls).toBe(4);
+      const sealed = readFileSync(join(root, 'journal.encrypted'));
+      const evidence = [];
+      for (let offset = 0; offset < sealed.length;) {
+        const length = sealed.readUInt32BE(offset);
+        const bytes = sealed.subarray(offset + 4, offset + 4 + length);
+        const cipher = createDecipheriv('aes-256-gcm', OFFLINE_STORAGE_KEY, bytes.subarray(0, 12));
+        cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+        cipher.setAuthTag(bytes.subarray(12, 28));
+        evidence.push(JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString('utf8')));
+        offset += 4 + length;
+      }
+      const metered = evidence.filter(row => {
+        const usage = row.usage ?? row.result?.usage ?? row.faithfulness?.usage;
+        return usage?.inputTokens === 1 && usage?.outputTokens === 1;
+      });
+      expect(metered).toHaveLength(4);
+      if (mode !== 'summary-contradiction') {
+        expect(evidence.filter(row => row.kind === 'reply-review-state' && row.usage?.inputTokens === 1
+          && row.usage?.outputTokens === 1)).toHaveLength(1);
+        expect(evidence.filter(row => row.kind === 'reply-check' && row.result.path === 'subscription'
+          && row.result.usage)).toHaveLength(0);
+        expect(evidence.filter(row => row.kind === 'reply-check' && row.result.path === 'subscription')
+          .map(row => row.result.verdict)).toEqual([mode === 'wrapped' ? 'pass' : 'unavailable']);
+      }
       expect(view.modelJsonShapes.counts).toMatchObject(mode === 'summary-contradiction'
         ? { 'answer/decision/tolerated/fenced': 2, 'summary-review/decision/tolerated/fenced': 2 }
         : { 'answer/decision/tolerated/fenced': 2,
