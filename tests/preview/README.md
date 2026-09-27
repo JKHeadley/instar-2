@@ -887,6 +887,14 @@ under the existing prompt bound. See
 [people-merge-live-test.md](people-merge-live-test.md) for Justin's private-chat
 check.
 
+The conversation model prompt asks one short clarifying question when a question
+fits two active items that disagree or refer to different people or things. It
+uses a distinguishing name or detail, and answers directly when the question
+identifies one item. This judgment uses the existing reply call, source messages
+and correction/forgetting projection. The focused offline fixture checks prompt
+wiring, source visibility and the reply path. Justin's real-model check is
+[ambiguous-recall-live-test.md](ambiguous-recall-live-test.md).
+
 ### Remembering commitments
 
 An explicit first-person promise in the agent's **actual send intent** is captured immediately,
