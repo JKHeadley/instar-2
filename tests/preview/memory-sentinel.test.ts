@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { namedWindow, selectRecall } from './memory-sentinel.js';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 
 const now = 1790000000000, hour = 3_600_000, day = 24 * hour;
 const filler = (i: number) => ({ text: `ordinary turn ${i}: weather, errands and plans for the week noted`, at: now - 10 * day + i * 60000 });

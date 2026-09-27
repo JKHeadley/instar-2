@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, PREVIEW_RECALL_LIMIT } from './journal.js';
+import { createJournalWorker, openPreviewJournal, PREVIEW_RECALL_LIMIT } from './journal-test-worker.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 
 const key = new Uint8Array(32).fill(9);

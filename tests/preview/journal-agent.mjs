@@ -16,6 +16,7 @@ import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from '
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
+import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 
@@ -50,6 +51,15 @@ const typesafeKey = () => {
   const value = process.env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY;
   if (!value || !value.trim()) throw Error('preview: TypeSafe SecretRef unavailable');
   return value;
+};
+const askJev = async (state, questions) => {
+  const start = performance.now();
+  const response = await fetch('https://api.typesafe.ai/v1/systemone', {
+    method: 'POST', signal: AbortSignal.timeout(2000),
+    headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state, model: JEV_MODEL, questions }) });
+  if (!response.ok) throw Error('preview: Jev unavailable');
+  return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
 };
 const context = { site: 'preview.journal', preserved: 'preview:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
@@ -143,6 +153,13 @@ async function main() {
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
+      lastSummaryFaithfulness: view.view.lastSummaryFailure?.faithfulness
+        && view.view.lastSummaryFailure.at >= (view.view.summaries.at(-1)?.at ?? -1)
+        ? { through: view.view.lastSummaryFailure.through, ...view.view.lastSummaryFailure.faithfulness,
+          reason: view.view.lastSummaryFailure.reason }
+        : view.view.summaries.at(-1)?.faithfulness
+          ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
+          : null,
       withheld: withheldView(view.view),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
@@ -325,17 +342,10 @@ async function main() {
         return { state: 'complete', text: result.value,
           usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
       },
+      summaryCheck: async evidence => (await askJev(evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: async (text, questions = jevQuestions) => {
-          const start = performance.now();
-          const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-            method: 'POST', signal: AbortSignal.timeout(2000),
-            headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
-          if (!response.ok) throw Error('preview: Jev unavailable');
-          return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
-        },
+        jev: (text, questions = jevQuestions) => askJev(text, questions),
         escalate: async (text, id, originalPrompt, reviewRules) => {
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
