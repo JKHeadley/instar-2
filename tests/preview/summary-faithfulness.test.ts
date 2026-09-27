@@ -141,3 +141,49 @@ it('holds a summary that repeats an already corrected exact claim with a reason'
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each([
+  { candidate: 'The workshop access code is 7319. Riley owns a red bike.', rejected: true },
+  { candidate: 'Riley owns a red bike. The operator said thanks.', rejected: false },
+])('audits a prior forgetting decision while preserving an unrelated fact ($rejected)', async ({ candidate, rejected }) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-forgotten-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const seen: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: candidate, people: [] }) : 'Understood.',
+      summaryCheck: async evidence => {
+        seen.push(evidence);
+        const audit = JSON.parse(evidence).auditDecisions;
+        return jev(audit.some((decision: { sourceQuote: string; summaryPassages: string[] }) =>
+          decision.sourceQuote === 'My workshop code is 7319.'
+          && decision.summaryPassages.includes('The operator\'s workshop code is 7319.'))
+          && candidate.includes('workshop access code') ? 0.99 : 0.01);
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'My workshop code is 7319.'), update(2, 'Riley owns a red bike.')]);
+    await worker.drain();
+    const source = journal.view.order[0]!;
+    worker.intake([update(3, 'Please forget my workshop code.')]); await worker.drain();
+    const trigger = journal.view.order[2]!;
+    journal.append({ kind: 'summary-reserve', through: 3, at: 1790000000000 });
+    journal.append({ kind: 'summary', through: 3, text: 'Riley owns a red bike.', memoryFor: [trigger.id],
+      memory: [{ mode: 'forget', source: source.id, quote: 'My workshop code is 7319.', trigger: trigger.id,
+        summaryPassages: ["The operator's workshop code is 7319."] }], at: 1790000000000 });
+    worker.intake([update(4, 'Thank you.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(seen).toHaveLength(1);
+    const evidence = JSON.parse(seen[0]!);
+    expect(evidence.auditDecisions).toMatchObject([{ mode: 'forget', sourceQuote: 'My workshop code is 7319.',
+      sourceContext: 'My workshop code is 7319.',
+      operatorRequest: 'Please forget my workshop code.',
+      summaryPassages: ["The operator's workshop code is 7319."] }]);
+    expect(evidence.priorSummary).toBe('Riley owns a red bike.');
+    expect(evidence.activeMemory).toMatchObject([{ mode: 'forgotten' }]);
+    expect(JSON.stringify(evidence.activeMemory)).not.toContain('7319');
+    expect(journal.view.summaries).toHaveLength(rejected ? 1 : 2);
+    if (rejected) expect(journal.view.order[3]?.held).toBe('summary faithfulness: active memory item lost');
+    else expect(journal.view.summaries[1]?.text).toContain('Riley owns a red bike.');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

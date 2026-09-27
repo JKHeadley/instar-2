@@ -1094,9 +1094,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (exactSummaryFaithfulness(packet, candidate, memory ?? []) === 'undecided') {
         let verdict: 'pass' | 'lost' | 'undecided' = 'undecided';
         faithfulness = { path: 'jev', verdict, score: null };
-        const evidence = summaryFaithfulnessEvidence(packet, candidate, memory ?? []);
+        // Audit-only context: ordinary grounding deliberately withholds superseded facts.
+        const auditDecisions = [...journal.view.memory, ...(memory ?? [])].map(change => ({
+          mode: change.mode, sourceQuote: redact(change.quote).text,
+          sourceContext: redact(journal.view.turns.get(change.source)?.text
+            ?? journal.view.channelItems.get(change.source.slice('channel:'.length))?.text ?? '').text.slice(0, 1000),
+          operatorRequest: redact(journal.view.turns.get(change.trigger)?.text ?? '').text.slice(0, 1000),
+          ...(change.replacement === undefined ? {} : { replacement: redact(change.replacement).text }),
+          summaryPassages: (change.summaryPassages ?? []).map(passage => redact(passage).text) }));
+        const evidence = summaryFaithfulnessEvidence(packet, candidate, memory ?? [], auditDecisions);
         try {
           gate();
+          if (Buffer.byteLength(evidence) > journal.view.limits.maxBytes) throw Error('summary audit context too large');
           if (ports.summaryCheck) {
             const result = await ports.summaryCheck(evidence);
             verdict = interpretSummaryJev(result);

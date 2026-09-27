@@ -1,15 +1,16 @@
 /** A rolling summary replaces earlier prose. Exact preservation is cheap to prove;
  * paraphrases need the existing Jev judgment with the whole summary transition. */
 export const SUMMARY_FAITHFULNESS_QUESTION = {
-  lost_memory: { type: 'noul', instructions: 'Does the candidate summary lose any still-active fact, preference, or person detail from the prior summary or the new conversation turns, or drop a direct operator correction or forgetting decision? A corrected or forgotten old fact is no longer active. Active memory records and open commitments are carried separately, so their absence from candidate prose alone is not loss. Judge the whole supplied transition and recorded decisions. Ordinary greetings and repeated wording need not be kept.' }
+  lost_memory: { type: 'noul', instructions: 'Does the candidate summary lose any still-active fact, preference, or person detail from the prior summary or the new conversation turns, or retain or reintroduce any superseded or forgotten claim, including a paraphrase, contrary to a recorded correction or forgetting decision? A corrected or forgotten old fact is no longer active. Active memory records and open commitments are carried separately, so their absence from candidate prose alone is not loss. Judge the whole supplied transition and recorded decisions, including prior decisions in auditDecisions. Preserve unrelated facts. Ordinary greetings and repeated wording need not be kept.' }
 } as const;
 
-export function summaryFaithfulnessEvidence(packet: string, candidate: string, memory: unknown): string {
+export function summaryFaithfulnessEvidence(packet: string, candidate: string, memory: unknown, auditDecisions: unknown[] = []): string {
   const source = JSON.parse(packet) as { summary?: { text?: string }; history?: unknown[];
     memory?: unknown; memoryRequest?: unknown; openCommitments?: unknown };
   return JSON.stringify({ priorSummary: source.summary?.text ?? '', history: source.history ?? [],
     activeMemory: source.memory ?? [], openCommitments: source.openCommitments ?? [],
-    memoryRequest: source.memoryRequest ?? null, recordedDecision: memory ?? [], candidateSummary: candidate });
+    memoryRequest: source.memoryRequest ?? null, recordedDecision: memory ?? [], auditDecisions,
+    candidateSummary: candidate });
 }
 
 /** A definite pass requires every nonempty original line to survive verbatim.
