@@ -18,9 +18,10 @@ export function statusReply(view: JournalView, now: number, zone: string): strin
   const held = new Map<string, number>();
   for (const turn of view.order) if (turn.accepted && turn.held && !turn.intent)
     held.set(turn.held, (held.get(turn.held) ?? 0) + 1);
-  const pending = view.order.filter(turn => turn.accepted && !turn.memoryUndecided
-    && (turn.memoryPending || turn.datedPending || turn.held === 'memory correction pending')
-    && !view.summaries.some(summary => summary.memoryFor?.includes(turn.id)));
+  const pending = view.order.filter(turn => turn.accepted && (
+    (turn.datedPending && !view.memory.some(change => change.mode !== 'prefer' && change.source === turn.id))
+    || (!turn.memoryUndecided && (turn.memoryPending || turn.held === 'memory correction pending')
+      && !view.summaries.some(summary => summary.memoryFor?.includes(turn.id)))));
   const dated = view.dated.filter(item => item.day && !item.ambiguity && dueState(item, now) !== 'overdue'
     && !view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
       && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))

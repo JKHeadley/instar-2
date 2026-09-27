@@ -86,6 +86,45 @@ it('reports holds, pending decisions and the next unforgotten dated item from th
       memory: [{ mode: 'forget', source: 'one', quote: 'Dentist on 2026-09-29', trigger: 'two' }], at });
     expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Pending memory decisions: 0.');
     expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Next dated item: 2026-10-01');
+    journal.append({ kind: 'intake', id: 'three', update: 3, text: 'A date with an undecided memory request',
+      raw: JSON.stringify(update(3, 'A date with an undecided memory request')),
+      accepted: true, cursor: 4, at });
+    journal.append({ kind: 'reserve', id: 'three', at });
+    journal.append({ kind: 'answer', id: 'three', text: 'uncertain', state: 'complete',
+      memoryPending: true, datedPending: true, at });
+    journal.append({ kind: 'memory-undecided', id: 'three', at });
+    expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Pending memory decisions: 1 (updates 3).');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a pending date in status after a preference summary settles memory, including replay', async () => {
+  const root = path(), file = join(root, 'journal.encrypted');
+  const message = 'I prefer concise replies. My dentist is on 10/01/2026 at 3 pm.';
+  let journal = openPreviewJournal(file, key, { ...genesis, maxCalls: 4 });
+  let sends = 0;
+  const create = () => createJournalWorker(journal, { now: () => at, stopped: () => false,
+    timeZone: 'America/Los_Angeles',
+    model: async input => {
+      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The operator prefers concise replies.',
+        people: [], memory: [{ mode: 'prefer', source: JSON.parse(input.context).memoryRequest.id,
+          quote: 'I prefer concise replies.' }] });
+      return JSON.stringify({ reply: 'Understood.', memory: [] });
+    }, send: async () => ++sends, checkOutbound: () => {} });
+  try {
+    let worker = create();
+    worker.intake([update(1, message)]); await worker.drain();
+    const turn = journal.view.order[0]!;
+    expect(journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id))).toBe(true);
+    expect(turn.datedPending).toBe(true);
+    expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Pending memory decisions: 1 (updates 1).');
+    journal.close(); journal = openPreviewJournal(file, key); worker = create();
+    const probe = worker.probe('What is pending?');
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(JSON.parse(probe.context).datedPending).toMatchObject([{ update: 1, message }]);
+    expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Pending memory decisions: 1 (updates 1).');
+    worker.intake([update(2, 'status')]); await worker.drain();
+    expect(journal.view.order[1]?.intent).toContain('Pending memory decisions: 1 (updates 1).');
+    expect(sends).toBe(2);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
