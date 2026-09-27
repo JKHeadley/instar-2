@@ -14,7 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewDiagnostics } from './reply-check.js';
 import { dueState } from './dated-memory.js';
 
 const parse = values => {
@@ -101,6 +101,10 @@ const withheldView = view => {
       : change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
 };
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
+const lastReplyReview = view => {
+  const turn = view.order.filter(item => item.reviewState !== undefined).at(-1);
+  return turn ? { update: turn.update, state: turn.reviewState, diagnostics: turn.reviewDiagnostics ?? null } : null;
+};
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
@@ -163,6 +167,7 @@ async function main() {
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
       lastReplyCheck: view.view.lastReplyCheck,
+      lastReplyReview: lastReplyReview(view.view),
       people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
         note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
       launches: readRuns(runsPath).launches.slice(-3),
@@ -187,7 +192,7 @@ async function main() {
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
         ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-        lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
+        lastReplyCheck: view.view.lastReplyCheck, lastReplyReview: lastReplyReview(view.view) })).text}\n`);
     } finally { view.close(); }
     return;
   }
@@ -284,7 +289,8 @@ async function main() {
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
-      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: Date.now() });
+      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
+        diagnostics: replyReviewDiagnostics(result.usage), at: Date.now() });
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
