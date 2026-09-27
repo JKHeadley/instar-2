@@ -39,7 +39,7 @@ const recall = (journal: ReturnType<typeof openPreviewJournal>) => {
   return { packet: probe.context, ...answerFrom(probe.context) };
 };
 
-it('keeps memory projection, recall answers and audit bytes across 100 restarts and 20 compactions', () => {
+it('keeps memory projection, recall answers and audit bytes across 100 restarts and 20 compactions', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-restart-soak-')));
   const steadyPath = join(root, 'steady.encrypted'), restartPath = join(root, 'restart.encrypted');
   let steady = openPreviewJournal(steadyPath, key, genesis);
@@ -84,6 +84,8 @@ it('keeps memory projection, recall answers and audit bytes across 100 restarts 
         restartCount++;
         expect(normalized(restarted.view), `projection diverged after restart at frame ${n}`)
           .toBe(normalized(steady.view));
+        // Let the test worker answer Vitest's task-update RPC during this long soak.
+        await new Promise<void>(resolve => setImmediate(resolve));
       }
     }
     expect({ restartCount, compactionCount }).toEqual({ restartCount: 100, compactionCount: 20 });
