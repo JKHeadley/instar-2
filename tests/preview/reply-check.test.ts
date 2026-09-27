@@ -89,6 +89,16 @@ it('asks both reviewers to distinguish operator-supplied personal facts from aut
   expect(REPLY_RULES.credential).toMatch(/authentication secret remains a violation even if the operator supplied it/u);
 });
 
+it('gives full-context review the actual operator request and the required Decision envelope', () => {
+  const question = replyReviewQuestion(['cli_command']);
+  expect(question).toContain('packet.operatorMessage');
+  expect(question).toContain('conclusion.value');
+  expect(question).toContain('explicit request for the command');
+  expect(question).toContain('authentication secret');
+  expect(question).not.toContain('Jev cleared');
+  expect(question).not.toContain('raw_path":');
+});
+
 it('sends an operator-supplied personal code after a full-context false-positive review', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-personal-code-')));
   try {

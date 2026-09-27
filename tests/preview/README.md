@@ -1576,6 +1576,31 @@ has already cleared the other questions under the same criterion that permits
 a direct Jev PASS. If Jev is unavailable or malformed, the review judges all
 eight. The full packet and completed PASS requirement remain the same; the
 smaller rule list removes repeated review of questions Jev cleared.
+The review uses the actual `operatorMessage` and `candidateReply` in that packet.
+An operator-requested code example, quoted path, command or setting is judged in
+that context; an unrequested internal disclosure or handoff of work can still
+violate. The review asks for its verdict JSON inside the required Decision
+envelope's `conclusion.value`. The whole-response JSON parser and refusal on a
+malformed review are unchanged.
+
+`reply-review-corpus.mjs` is a bounded offline screen for false holds. Its 32
+synthetic cases each select one of the eight review rules: three human-fine
+neighbors and one clear violation. The cases include requested code, a personal
+fact supplied in the private chat, and a password control.
+It uses the frozen review model, subscription policy arguments, original packet
+envelope and reply-review question; it makes at most one sequential subscription
+call per selected case. It never opens the live journal or sends a Telegram
+message. With subscription CLI authentication available, run:
+
+```sh
+node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/reply-review-corpus.mjs all /ABSOLUTE/result.json
+```
+
+`rule:cli_command` or a case ID may replace `all` for a targeted follow-up.
+Count `violation` on human-fine cases as a false hold and `unavailable` separately
+as a format or provider hold. This screen measures the review prompt, not Jev
+selection, live delivery, or real private data. The supervised operator proof is
+[reply-review-false-hold-live-test.md](reply-review-false-hold-live-test.md).
 
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
