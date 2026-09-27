@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
@@ -153,7 +153,9 @@ async function main() {
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       heldNotices: view.view.order.filter(t => t.heldNoticeIntent !== undefined).map(t => ({ update: t.update,
         state: t.heldNoticeSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
-      unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
+      unknownCalls: unknownCallCounts(view.view).total,
+      unknownCallBreakdown: unknownCallCounts(view.view),
+      capReports: [...view.view.capReports],
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       unknownSends: view.view.order.reduce((count, t) => count
@@ -424,14 +426,16 @@ async function main() {
       if (summaryJob) return;
       summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
     };
+    const reportCap = () => reportJournalCap(journal, Date.now(), line => process.stderr.write(line));
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      if ((endReason = reportCap())) break;
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch {
         const v = journal.view;
-        endReason = `${v.order.length >= v.limits.maxTurns ? 'update' : v.calls >= v.limits.maxCalls ? 'model attempt' : 'reply'} cap reached`;
+        endReason = reportCap() ?? 'cap reached';
         // Keep this bounded runner alive until a held turn's one notice is due.
         // The existing stop and expiry gates remain active during the wait.
         let due;
@@ -457,6 +461,7 @@ async function main() {
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
       failedPolls = 0;
       worker.intake(updates.result); await worker.drain(); summarizeLater();
+      if ((endReason = reportCap())) break;
     }
     await summaryJob;
     await stepJob;

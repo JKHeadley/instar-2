@@ -580,6 +580,26 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+Each accepted update consumes one `maxTurns` slot, each subscription answer,
+summary or reply review reservation consumes one `maxCalls` slot, and each exact
+Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
+durable count bounded by `maxReplies`. UNKNOWN outcomes keep their reservations
+after restart; `status.unknownCalls` includes uncertain answers, summaries,
+reviews and Jev checks, with `unknownCallBreakdown` showing each kind. The
+`max-context-bytes` limit applies to the complete prepared model prompt; an
+oversized turn stays held with its original intake. A Telegram poll batch that
+fills the last turn slot leaves any further updates unrecorded and the cursor
+before them, so an authorized cap raise can fetch them again.
+
+When a cap stops this runner, it writes one fixed line to the local terminal:
+`PREVIEW — calls|replies|turns|bytes cap reached; work paused. Check status for held work.`
+The encrypted journal fences one line per cap kind and limit across restarts;
+`status.capReports` shows those fences. It is a local operator notice, not a
+Telegram send, so reaching `maxReplies` cannot spend an extra reply. A crash
+between the durable fence and terminal output may leave the line absent; the
+durable `status` and run-end reason remain available. The supervised procedure
+is [spend-cap-live-test.md](spend-cap-live-test.md).
+
 The launcher uses the existing `INSTAR_SECRET_PREVIEW_STORAGE_KEY` and
 `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` host bindings, production storage lease,
 Telegram bridge and subscription route. The desk supplies the same reviewed activation
