@@ -67,6 +67,7 @@ export type JournalRecord =
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
   | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }
+  | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; at: number }
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
@@ -89,6 +90,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
+  capReports: Set<string>;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   sourceStop: string | null; imported: boolean;
@@ -103,6 +105,40 @@ const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.acco
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
+const capKey = (reason: 'calls' | 'replies' | 'turns' | 'bytes', limit: number) => `${reason}:${limit}`;
+/** Reservations spend once, even when their external outcome is unknown. */
+export function unknownCallCounts(view: JournalView) {
+  const answers = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
+  const summaries = view.summaryReservations.size;
+  const reviews = view.order.filter(turn => turn.reviewReserved && turn.reviewState !== 'complete' && turn.reviewState !== 'rejected'
+    && !turn.replyChecks?.some(check => check.path === 'subscription' && (check.verdict === 'pass' || check.verdict === 'violation'))).length;
+  const jev = view.order.filter(turn => turn.jevReserved && !turn.replyChecks?.some(check => check.path === 'jev' && check.verdict !== 'unavailable')).length;
+  return { answers, summaries, reviews, jev, total: answers + summaries + reviews + jev };
+}
+export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number } | null {
+  if (view.order.length >= view.limits.maxTurns) return { reason: 'turns', limit: view.limits.maxTurns };
+  if (view.calls >= view.limits.maxCalls || view.order.some(turn => turn.held === 'call cap'))
+    return { reason: 'calls', limit: view.limits.maxCalls };
+  if (view.replies >= view.limits.maxReplies || view.order.some(turn => turn.held === 'reply cap'))
+    return { reason: 'replies', limit: view.limits.maxReplies };
+  if (view.order.some(turn => turn.held === 'context overflow' || turn.held === 'prompt overflow'
+    || turn.held === 'summary oversized turn' || turn.held === 'summary unavailable: context overflow'
+    || turn.held === 'summary unavailable: prompt overflow')) return { reason: 'bytes', limit: view.limits.maxBytes };
+  return null;
+}
+/** The local operator line is durably fenced before output. It consumes no
+ * reply slot and never sends a message after the reply allowance is spent. */
+export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>, at: number, writeLine: (line: string) => void): string | null {
+  const cap = reachedJournalCap(journal.view);
+  if (!cap) return null;
+  if (!journal.view.capReports.has(capKey(cap.reason, cap.limit))) {
+    journal.append({ kind: 'cap-report', ...cap, at });
+    writeLine(`PREVIEW — ${cap.reason} cap reached; work paused. Check status for held work.\n`);
+  }
+  return cap.reason === 'turns' ? 'update cap reached'
+    : cap.reason === 'calls' ? 'model attempt cap reached'
+      : cap.reason === 'replies' ? 'reply cap reached' : 'context byte cap reached';
+}
 function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
   const maxBytes = row.maxBytes ?? view.limits.maxBytes; // Earlier cap frames did not carry this field.
   if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
@@ -116,8 +152,7 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     || row.maxCalls === view.limits.maxCalls && row.maxReplies === view.limits.maxReplies
       && row.maxTurns === view.limits.maxTurns && maxBytes === view.limits.maxBytes)
     throw Error('preview journal: cap authority or monotonic bounds refused');
-  if (view.order.some(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
-    || [...view.summaryReservations].some(through => !view.summaries.some(item => item.through === through)))
+  if (unknownCallCounts(view).total > 0)
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
 function project(view: JournalView, row: JournalRecord): void {
@@ -125,6 +160,12 @@ function project(view: JournalView, row: JournalRecord): void {
   if ('failureClass' in row && row.failureClass)
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
+  if (row.kind === 'cap-report') {
+    const reached = reachedJournalCap(view);
+    if (reached?.reason !== row.reason || reached.limit !== row.limit) throw Error('preview journal: cap report without cap');
+    if (view.capReports.has(capKey(row.reason, row.limit))) throw Error('preview journal: repeated cap report');
+    view.capReports.add(capKey(row.reason, row.limit)); return;
+  }
   if (row.kind === 'caps') {
     checkCaps(view, row);
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
@@ -289,7 +330,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -314,6 +355,17 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const append = (row: JournalRecord) => {
       if (readOnly) throw Error('preview journal: reader cannot append');
       if (row.kind === 'caps') checkCaps(view!, row);
+      if (view && ((row.kind === 'intake' && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns)
+        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve')
+          && view.calls >= view.limits.maxCalls)
+        || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
+        || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
+        throw Error('preview journal: capacity reached');
+      if (row.kind === 'cap-report') {
+        const reached = reachedJournalCap(view!);
+        if (reached?.reason !== row.reason || reached.limit !== row.limit
+          || view!.capReports.has(capKey(row.reason, row.limit))) throw Error('preview journal: cap report order');
+      }
       boundary?.(`before:${row.kind}`);
       const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
       cipher.setAAD(Buffer.from(`preview-journal:${size}`));
@@ -326,7 +378,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -424,9 +476,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const pollGate = () => {
     gate();
-    if (journal.view.order.length >= journal.view.limits.maxTurns
-      || journal.view.calls >= journal.view.limits.maxCalls
-      || journal.view.replies >= journal.view.limits.maxReplies) {
+    if (reachedJournalCap(journal.view)) {
       throw Error('preview poll capacity reached');
     }
   };
@@ -435,6 +485,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const update of updates) {
       const parsed = admittedUpdate(journal.view.genesis, update), prior = journal.view.turns.get(parsed.id);
       if (prior) continue;
+      // A poll may return more than one update even when one slot was left.
+      // Keep the cursor before the first unrecorded update so it can be fetched
+      // after an authorized raise; never append an unreplayable over-cap frame.
+      if (journal.view.order.length >= journal.view.limits.maxTurns) break;
       const cursor = update.update_id + 1;
       journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: parsed.text,
         raw: JSON.stringify(update), accepted: parsed.accepted, cursor, at: ports.now(),

@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import type { JournalView, Turn } from './journal.js';
+import { unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`). */
 export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string };
@@ -86,7 +86,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
   const holds = new Map<string, number>();
   for (const turn of view.order) if (turn.held) holds.set(turn.held, (holds.get(turn.held) ?? 0) + 1);
-  const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
+  const unknownCalls = unknownCallCounts(view);
   const summaryPending = [...view.summaryReservations].filter(through => !view.summaries.some(item => item.through === through)).length;
   const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined).length;
   const refused = view.order.length - accepted.length;
@@ -97,10 +97,11 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
-    `Model attempts: ${left(view.limits.maxCalls, view.calls)} (replies and summaries share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
+    `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     view.capAuthority === null ? 'Caps have not been raised since the trial began.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
-    `Unknown outcomes (never retried): ${String(unknownCalls)} model call(s), ${String(unknownSends)} send(s).`,
+    `Unknown outcomes (never retried): ${String(unknownCalls.total)} model call(s), ${String(unknownSends)} send(s).`,
+    `Unknown call kinds: ${String(unknownCalls.answers)} answers, ${String(unknownCalls.summaries)} summaries, ${String(unknownCalls.reviews)} reviews, ${String(unknownCalls.jev)} Jev checks.`,
     `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
     holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
