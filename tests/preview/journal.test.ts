@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
+  SUMMARY_UNKNOWN_RECOVERY_MS } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
@@ -864,6 +865,76 @@ it('keeps a lost summary UNKNOWN after restart and never repeats it', async () =
     expect(summaries).toBe(0);
     expect(journal.view.calls).toBe(2);
     expect(journal.view.summaryReservations.size).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('starts a later summary only after the UNKNOWN pause, without releasing its charge or cap-raise refusal', async () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, { ...genesis(5), maxBytes: 32768 });
+    const initial = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => 'answer', send: async () => 1, checkOutbound: () => {} });
+    initial.intake([update(1, 'remember ORCHID')]); await initial.drain();
+    first.append({ kind: 'summary-reserve', through: 1, at: 1000 }); first.close();
+
+    const journal = openPreviewJournal(path, key);
+    let now = 1000, summaryCalls: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async input => { if (input.id.startsWith('summary:')) summaryCalls.push(input.id); return 'answer'; },
+      send: async () => 2, checkOutbound: () => {} });
+    now += SUMMARY_UNKNOWN_RECOVERY_MS;
+    await worker.summarizeIfNeeded(true); // Time alone cannot retry the same frontier.
+    expect(summaryCalls).toEqual([]);
+    worker.intake([update(2, 'What did I ask you to remember?')]); await worker.drain();
+    now--;
+    await worker.summarizeIfNeeded(true);
+    expect(summaryCalls).toEqual([]);
+    now++;
+    await worker.summarizeIfNeeded(true);
+    expect(summaryCalls).toEqual(['summary:2']);
+    expect(journal.view.summaries.map(item => item.through)).toEqual([2]);
+    expect(journal.view.summaryReservations.has(1)).toBe(true);
+    expect(journal.view.summaryReservations.has(2)).toBe(false);
+    expect(journal.view.calls).toBe(4); // two answers, charged UNKNOWN, later summary
+    expect(() => raiseJournalCaps(journal, { maxCalls: 6, maxReplies: 101, maxTurns: 101,
+      authority: 'Justin topic 52075', at: now + 1 })).toThrow('UNKNOWN');
+    journal.close();
+    const replayed = openPreviewJournal(path, key);
+    expect(replayed.view.calls).toBe(4);
+    expect(replayed.view.summaryReservations.has(1)).toBe(true);
+    expect(replayed.view.summaries.map(item => item.through)).toEqual([2]);
+    replayed.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('waits again after a second UNKNOWN summary and never spends beyond the call cap', async () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { ...genesis(7), maxBytes: 32768 });
+    let now = 1000;
+    const seen: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async input => { if (input.id.startsWith('summary:')) { seen.push(input.id); throw Error('lost'); }
+        return 'answer'; }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1)]); await worker.drain();
+    journal.append({ kind: 'summary-reserve', through: 1, at: now });
+    now += SUMMARY_UNKNOWN_RECOVERY_MS;
+    worker.intake([update(2)]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(seen).toEqual(['summary:2']);
+    expect(journal.view.summaryReservations.size).toBe(2);
+    worker.intake([update(3)]); await worker.drain();
+    now += SUMMARY_UNKNOWN_RECOVERY_MS - 1;
+    await worker.summarizeIfNeeded(true);
+    expect(seen).toEqual(['summary:2']);
+    now++;
+    await worker.summarizeIfNeeded(true);
+    expect(seen).toEqual(['summary:2', 'summary:3']);
+    worker.intake([update(4)]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(seen).toEqual(['summary:2', 'summary:3']); // finite cap, no fourth summary
+    expect(journal.view.calls).toBe(7);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -129,7 +129,7 @@ async function main() {
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
-      summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
+      summaryPending: view.view.summaryReservations.size,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
         failed: view.view.order.filter(t => t.checkFailed).length,
