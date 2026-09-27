@@ -11,7 +11,7 @@ import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
+import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES } from './reply-check.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
@@ -30,6 +30,14 @@ export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memor
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
+export type CallKind = 'answer' | 'summary' | 'replyCheck';
+export type TokenTotals = Record<CallKind, { calls: number; inputTokens: number; outputTokens: number; unknownCalls: number }>;
+type TokenReservation = { kind: CallKind; input: number; output: number; observedInput: boolean; observedOutput: boolean };
+const tokenKinds: CallKind[] = ['answer', 'summary', 'replyCheck'];
+const emptyTokenTotals = (): TokenTotals => Object.fromEntries(tokenKinds.map(kind =>
+  [kind, { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }])) as TokenTotals;
+const subscriptionOutputMaximum = 2048;
+const jevOutputMaximum = JEV_RESPONSE_MAX_BYTES;
 
 /** A person named in an earlier accepted message. The model only selects: the name
  * and quote are exact substrings of the source turn's own text, and who said the
@@ -53,14 +61,14 @@ export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
-  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
+  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     memory?: MemoryChange[]; memoryPending?: true; usage?: ModelUsage; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer'; at: number }
-  | { kind: 'reply-jev-reserve'; id: string; at: number }
-  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
-  | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
+  | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
@@ -70,7 +78,7 @@ export type JournalRecord =
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
-  | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
+  | { kind: 'summary-reserve'; through: number; prompt?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain'; at: number }
@@ -87,6 +95,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
+  tokenTotals: TokenTotals; tokenCalls: TokenReservation[]; tokenCurrent: Map<string, number>;
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
@@ -97,6 +106,31 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   corrections: string[];
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
+
+function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
+  if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
+  view.tokenCurrent.set(key, view.tokenCalls.length);
+  view.tokenCalls.push({ kind, input, output, observedInput: false, observedOutput: false });
+  const total = view.tokenTotals[kind];
+  total.calls++; total.inputTokens += input; total.outputTokens += output; total.unknownCalls++;
+}
+function settleTokens(view: JournalView, key: string, usage?: ModelUsage): void {
+  const index = view.tokenCurrent.get(key);
+  if (index === undefined || !usage) return;
+  const call = view.tokenCalls[index]!;
+  const total = view.tokenTotals[call.kind];
+  for (const [field, measured, flag] of [
+    ['input', usage.inputTokens, 'observedInput'], ['output', usage.outputTokens, 'observedOutput']
+  ] as const) {
+    if (measured === null || !Number.isSafeInteger(measured) || measured < 0 || call[flag]) continue;
+    if (field === 'input') total.inputTokens += measured - call.input;
+    else total.outputTokens += measured - call.output;
+    call[field] = measured; call[flag] = true;
+  }
+  if (call.observedInput && call.observedOutput && view.tokenCurrent.has(key)) {
+    total.unknownCalls--; view.tokenCurrent.delete(key);
+  }
+}
 
 const frameLimit = 2 * 1024 * 1024;
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
@@ -161,6 +195,8 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary-reserve') {
     if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
       || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
+    reserveTokens(view, `summary:${String(row.through)}`, 'summary', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
     view.summaryReservations.add(row.through); view.calls++; return;
   }
   if (row.kind === 'summary-failed') {
@@ -170,6 +206,7 @@ function project(view: JournalView, row: JournalRecord): void {
       if (!trigger?.accepted || trigger.update > row.through) throw Error('preview journal: failed summary trigger absent');
       trigger.memoryPending = true;
     }
+    settleTokens(view, `summary:${String(row.through)}`, row.usage);
     view.summaryFailures.set(row.through, (view.summaryFailures.get(row.through) ?? 0) + 1);
     return;
   }
@@ -181,6 +218,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (!view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
     view.summaryReservations.delete(row.through);
+    settleTokens(view, `summary:${String(row.through)}`, row.usage);
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
     if (row.memory) view.memory.push(...row.memory);
     if (row.commitments) view.commitments.push(...row.commitments);
@@ -195,21 +233,30 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'reply-jev-reserve') {
     if (replyCandidate === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
       throw Error('preview journal: Jev reservation order or cap');
+    reserveTokens(view, `jev:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? jevOutputMaximum);
     turn.jevReserved = true; view.jevChecks++; return;
   }
   if (row.kind === 'reply-review-reserve') {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
+    reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
     turn.reviewReserved = true; view.calls++; return;
   }
   if (row.kind === 'reply-review-state') {
     if (!turn.reviewReserved || turn.reviewState !== undefined || turn.intent !== undefined)
       throw Error('preview journal: review state order');
-    turn.reviewState = row.state; return;
+    turn.reviewState = row.state;
+    if (row.state !== 'uncertain') settleTokens(view, `review:${row.id}`, row.usage);
+    return;
   }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
+    if (row.result.path === 'jev') settleTokens(view, `jev:${row.id}`, row.result.usage);
+    if (row.result.path === 'subscription' && turn.reviewState !== 'uncertain')
+      settleTokens(view, `review:${row.id}`, row.result.usage);
     turn.replyChecks ??= []; turn.replyChecks.push(row.result);
     view.replyCheckCounts[row.result.verdict]++; view.replyCheckPaths[row.result.path]++;
     view.lastReplyCheck = row.result; return;
@@ -217,7 +264,10 @@ function project(view: JournalView, row: JournalRecord): void {
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
-  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
+  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation');
+    reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
+    turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];
     else {
@@ -246,6 +296,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
     turn.answer = row.text;
+    if (row.state !== 'uncertain') settleTokens(view, `answer:${row.id}`, row.usage);
     if (row.state) turn.modelState = row.state;
     if (row.memoryPending) turn.memoryPending = true;
     if (row.memory) view.memory.push(...row.memory); }
@@ -289,7 +340,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -326,7 +377,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -722,6 +773,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
           const { question, context, prepared, carried } = selected;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
+            maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,
             corrections: carried, at: ports.now() }); gate();
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
           try { answer = await ports.model({ question, context, id: turn.id,
@@ -794,7 +846,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
-                  ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
+                  ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }),
+                  maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,
+                  at: ports.now() }); return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
             let checked: ReplyDecision;
             if (turn.jevReserved) {
@@ -804,7 +858,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
               checked = await reviewReply(reply, turn.id, checkPorts, [], turn.prompt);
             } else {
-              journal.append({ kind: 'reply-jev-reserve', id: turn.id, at: ports.now() });
+              journal.append({ kind: 'reply-jev-reserve', id: turn.id,
+                maxInputTokens: Buffer.byteLength(jevRequestBody(reply)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
               checked = await checkReply(reply, turn.id, checkPorts, turn.prompt);
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
@@ -1025,7 +1080,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       const { through, packet, prepared, offered, memorySources, trigger, strictMemory } = chosen;
       gate();
-      journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),at:ports.now()});
+      journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
+        maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,at:ports.now()});
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,
         context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }

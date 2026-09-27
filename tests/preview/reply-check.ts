@@ -14,6 +14,7 @@ export type ReplyRule = keyof typeof REPLY_RULES;
 export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export type ReplyPath = 'jev' | 'subscription' | 'holding';
 export const JEV_MODEL = 'jev-1.13.0';
+export const JEV_RESPONSE_MAX_BYTES = 4096;
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
   path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }
@@ -23,6 +24,11 @@ const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0
   config_key: 0.85, credential: 0.70, api_endpoint: 0.85, quits_on_self: 0.70,
   claims_blocked: 0.85, parks_on_user: 0.85 };
 export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: REPLY_RULES[id] }]));
+export const jevRequestBody = (text: string): string => JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions });
+export function parseJevResponse(body: string): unknown {
+  if (Buffer.byteLength(body) > JEV_RESPONSE_MAX_BYTES) throw Error('preview: Jev response too large');
+  return JSON.parse(body);
+}
 
 /** Reuse the exact packet that grounded the proposed answer, including its
  * audience, sources, memory and conversation history. */

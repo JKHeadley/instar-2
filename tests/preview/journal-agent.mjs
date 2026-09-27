@@ -13,7 +13,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
-import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { jevRequestBody, parseJevResponse, REPLY_RULES, replyReviewContext } from './reply-check.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -112,6 +112,11 @@ async function main() {
     try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
+      tokens: view.view.tokenTotals,
+      tokenTotal: Object.values(view.view.tokenTotals).reduce((total, kind) => ({
+        calls: total.calls + kind.calls, inputTokens: total.inputTokens + kind.inputTokens,
+        outputTokens: total.outputTokens + kind.outputTokens, unknownCalls: total.unknownCalls + kind.unknownCalls }),
+      { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }),
       capAuthority: view.view.capAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
       sourceStop: view.view.sourceStop,
@@ -258,7 +263,9 @@ async function main() {
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
-      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: Date.now() });
+      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
+        ...(result.usage ? { usage: { inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens, charge: null } } : {}), at: Date.now() });
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
@@ -290,9 +297,9 @@ async function main() {
           const response = await fetch('https://api.typesafe.ai/v1/systemone', {
             method: 'POST', signal: AbortSignal.timeout(2000),
             headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions }) });
+            body: jevRequestBody(text) });
           if (!response.ok) throw Error('preview: Jev unavailable');
-          return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
+          return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
         },
         escalate: async (text, id, originalPrompt) => {
           const start = performance.now();

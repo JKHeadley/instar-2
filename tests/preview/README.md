@@ -753,6 +753,22 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs rais
   --authority 'Justin, topic 52075, 2026-09-25 16:25 PDT'
 ```
 
+`status.tokens` reports `answer`, `summary`, and `replyCheck` input/output token
+totals, call counts, and `unknownCalls` (calls with one or both token counts
+unmeasured). `status.tokenTotal` sums those three kinds. These are token counts,
+not dollars or a subscription bill. A reservation starts at its conservative
+maximum: the journal prompt byte ceiling for a subscription input, 2048 output
+tokens for that route, and the exact Jev request byte length plus a 4096-byte
+response ceiling for Jev. For a definite result, each returned numeric usage
+count replaces that side of the reservation once. An UNKNOWN result retains
+both maxima even when partial usage was returned; a definite result with missing
+usage retains the maximum for each unmeasured side. The Jev route rejects a
+response above its ceiling.
+The same numbers are in the journal-derived `self` text. Old journal records
+without explicit token maxima replay at the then-current prompt ceiling and
+route output maximum. See [summary-cost-accounting-live-test.md](summary-cost-accounting-live-test.md)
+for the supervised operator check.
+
 The command takes the exclusive writer lease, refuses UNKNOWN model calls,
 permanent stop, expiry, missing import, a missing authority reference and any
 lowered or unchanged bound. `--max-context-bytes` is optional and keeps the current
