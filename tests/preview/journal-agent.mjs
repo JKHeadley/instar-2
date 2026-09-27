@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
-import { existsSync, readFileSync, lstatSync, realpathSync, mkdirSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -171,8 +171,15 @@ async function main() {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       const file = resolve(required(options, 'file'));
       if (realpathSync(file) !== file || !lstatSync(file).isFile()) throw Error('preview: substituted fixture');
-      const bytes = readFileSync(file);
-      if (bytes.length > 2 * 1024 * 1024) throw Error('preview: fixture capacity');
+      const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+      let bytes;
+      try {
+        if (!fstatSync(fd).isFile()) throw Error('preview: substituted fixture');
+        const buffer = Buffer.alloc(2 * 1024 * 1024 + 1);
+        const length = readSync(fd, buffer, 0, buffer.length, 0);
+        if (length > 2 * 1024 * 1024) throw Error('preview: fixture capacity');
+        bytes = buffer.subarray(0, length);
+      } finally { closeSync(fd); }
       const rows = bytes.toString('utf8').split(/\r?\n/u).filter(Boolean).map(line => JSON.parse(line));
       fixtureJournal = openPreviewJournal(journalPath, key());
       if (fixtureJournal.view.genesis.importSource !== undefined && !fixtureJournal.view.imported)

@@ -315,6 +315,7 @@ export function importChannelFixture(journal: ReturnType<typeof openPreviewJourn
     if (journal.view.stop || stopped()) throw Error('preview journal: channel import stopped');
     const key = JSON.stringify([item.source, item.account, item.id]), prior = journal.view.channelItems.get(key);
     if (prior) { if (JSON.stringify(prior) !== JSON.stringify(item)) throw Error('preview journal: channel source id collision'); continue; }
+    if (journal.view.channelItems.size >= 2000) throw Error('preview journal: channel item capacity');
     journal.append({ kind: 'channel-item', item, at: now }); added++;
   }
   return added;

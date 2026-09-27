@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -59,6 +59,26 @@ it('imports only the named agent-owned source, redacts before journal write, and
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('accepts item 2000, leaves a duplicate alone, and refuses item 2001 before writing a replay-breaking frame', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-cap-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const items = Array.from({ length: 2000 }, (_, i) => row(`mail-${i}`, `Fact ${i}`));
+    expect(importChannelFixture(journal, items, account, now)).toBe(2000);
+    const atCapacity = statSync(path).size;
+    expect(importChannelFixture(journal, [items[0]!], account, now)).toBe(0);
+    expect(statSync(path).size).toBe(atCapacity);
+    expect(() => importChannelFixture(journal, [row('mail-2000', 'One too many')], account, now)).toThrow('channel item capacity');
+    expect(statSync(path).size).toBe(atCapacity);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    expect(journal.view.channelItems.size).toBe(2000);
+    expect(journal.view.cursor).toBe(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('recalls an imported email after Telegram summary, with source sender and date; body instructions stay quoted', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-')));
   try {
@@ -115,6 +135,52 @@ it('CLI reads an agent-owned JSONL fixture without changing it or advancing Tele
     const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(reopened.view.cursor).toBe(0);
     expect(reopened.view.channelItems.size).toBe(1);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('refuses an oversized fixture through a bounded descriptor read', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-size-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: Date.now() + 60_000 });
+    journal.close();
+    const fixture = join(root, 'large.jsonl');
+    writeFileSync(fixture, 'x'.repeat(2 * 1024 * 1024 + 1));
+    const guard = join(root, 'guard.mjs');
+    const observed = join(root, 'read-observed');
+    const unbounded = join(root, 'unbounded-read');
+    writeFileSync(guard, `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const original = fs.readFileSync, write = fs.writeFileSync, open = fs.openSync, read = fs.readSync;
+let fixtureFd;
+fs.openSync = (path, ...args) => {
+  const fd = open(path, ...args);
+  if (path === ${JSON.stringify(fixture)}) fixtureFd = fd;
+  return fd;
+};
+fs.readFileSync = (path, ...args) => {
+  if (path === ${JSON.stringify(fixture)}) write(${JSON.stringify(unbounded)}, 'yes');
+  return original(path, ...args);
+};
+fs.readSync = (fd, buffer, offset, length, position) => {
+  if (fd === fixtureFd) {
+    if (length > 2 * 1024 * 1024 + 1) throw Error('oversized fixture read');
+    write(${JSON.stringify(observed)}, 'bounded');
+  }
+  return read(fd, buffer, offset, length, position);
+};
+syncBuiltinESMExports();
+`);
+    const result = spawnSync(process.execPath,
+      ['--no-warnings', '--import', guard, '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
+        'import-fixture', '--root', root, '--file', fixture, '--agent-account', account],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
+        env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(observed, 'utf8')).toBe('bounded');
+    expect(existsSync(unbounded)).toBe(false);
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(reopened.view.channelItems.size).toBe(0);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
