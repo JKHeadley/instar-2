@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 import { interpretSummaryJev, interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';

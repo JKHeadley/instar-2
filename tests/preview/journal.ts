@@ -1277,6 +1277,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
+      let supervisedState: string | undefined;
+      if (ports.replyCheck) {
+        supervisedState = redact(JSON.stringify({ packet: JSON.parse(packet) as object,
+          proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
+            closed: closed ?? [], memory: memory ?? [] } })).text;
+        journal.append({ kind: 'summary-candidate', through, state: supervisedState,
+          ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
+        gate();
+      }
       const candidate = clean(redact(summaryText).text, true, through);
       let faithfulness: SummaryFaithfulness = { path: 'exact', verdict: 'pass', score: null };
       if (exactSummaryFaithfulness(packet, candidate, memory ?? []) === 'undecided') {
@@ -1317,12 +1326,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
       }
       if (ports.replyCheck) {
-        const state = redact(JSON.stringify({ packet: JSON.parse(packet) as object,
-          proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
-            closed: closed ?? [], memory: memory ?? [] } })).text;
-        journal.append({ kind: 'summary-candidate', through, state,
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
-        gate();
+        const state = supervisedState!;
         const started = ports.replyCheck.elapsedMs();
         let jev: SummaryCheckResult;
         try {
