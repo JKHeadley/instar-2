@@ -1220,6 +1220,24 @@ the fact is absent. The offline 200/1000/2000-turn benchmark is in
 `journal-packet-priority.test.ts`; Justin's live script is in
 `packet-priority-live-test.md`.
 
+The 5,000-turn packet-pressure fixture in `journal-packet-pressure-value.test.ts`
+measures the final model packet at 3,000, 3,500 and 4,000 UTF-8 bytes. At the
+3,500-byte boundary, the earlier fit retained two newer but unrelated recall
+items and dropped both sources needed by the next question. The current fit
+retains both needed sources and drops the three unrelated items. It uses only
+the existing durable reply-grounding index: a source offered in one of the last
+12 Telegram-accepted replies gets a recent-reference signal, and a source
+offered to a selected still-open question gets a stronger open-question signal.
+These signals reorder eviction only within the existing optional-evidence
+category, after the current category priority. Grounding proves a source was
+offered in a packet, not that a model used it. Old packets without grounding
+receive no boost. The encrypted journal retains every source and omission in
+the runner; the packet byte limit, model route and send path are unchanged. The
+fixture seeds the 5,000 synthetic turns in memory and checks each signal both
+present and absent. It does not measure journal write or replay time.
+Justin's private-chat procedure is
+[packet-pressure-value-live-test.md](packet-pressure-value-live-test.md).
+
 When a later complete quoted request or promise repeats an active one, the summary
 projection keeps one open item and attaches the later source message to it. The
 bounded match removes only an introductory “remember” request and outer spacing;

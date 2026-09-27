@@ -2631,6 +2631,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           periodGuide: 'The calendar window is a candidate inferred from the question, not a decision about its meaning. Interpret the full question using all available evidence. For period claims use dated evidence; the rolling summary also covers other dates. Mark open questions and commitments only when supported by evidence; identify uncertain delivery. If period.omitted is positive, say the recap is partial. Do not infer that no other turns exist.' });
       });
     };
+    // A completed reply's grounding and a still-open question's grounding name
+    // sources the model was offered. This is a packet signal, not proof of use.
+    const referenced = new Set<string>(), questionTies = new Set<string>();
+    const addReferences = (target: Set<string>, grounding: ReplyGrounding | undefined) => {
+      if (!grounding) return;
+      grounding.recalled.forEach(id => target.add(id));
+      grounding.people.forEach(id => target.add(id));
+      grounding.commitments.forEach(id => target.add(`commitment:${id}`));
+      grounding.channelItems.forEach(id => { target.add(id); target.add(publicMemoryId(id)); });
+      grounding.corrections.forEach(id => target.add(id));
+      grounding.memoryCandidates.forEach(id => target.add(id));
+    };
+    let recentReplies = 0;
+    for (let index = journal.view.order.length - 1; index >= 0 && recentReplies < 12; index--) {
+      const prior = journal.view.order[index]!;
+      if (prior.update >= turn.update || !prior.sent || !prior.grounding) continue;
+      addReferences(referenced, prior.grounding);
+      recentReplies++;
+    }
+    for (const note of questions) {
+      questionTies.add(note.source);
+      addReferences(questionTies, journal.view.turns.get(note.source)?.grounding);
+    }
     let promptFit = false;
     // Rule 96: a short history remains the grounding source even if a summary
     // was accepted early. The fixed bound prevents a raised packet cap from
@@ -2676,34 +2699,36 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || b.turn!.update - a.turn!.update).slice(0, PREVIEW_COMMITMENT_LIMIT)
         .sort((a, b) => a.turn!.update - b.turn!.update || a.id - b.id);
       type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'recent' | 'candidate';
-        key: string; rank: number; match: number; recent: number; index: number };
+        key: string; signal: string; rank: number; match: number; recent: number; index: number };
       const optional: Optional[] = [];
       const askedTerms = new Set(terms(turn.text));
       const matches = (value: string) => terms(value).filter(term => askedTerms.has(term)).length;
-      open.forEach((item, index) => optional.push({ kind: 'commitment', key: `${item.id}`, rank: 0,
+      open.forEach((item, index) => optional.push({ kind: 'commitment', key: `${item.id}`, signal: `commitment:${item.id}`, rank: 0,
         match: 0, recent: item.due ? Number.MAX_SAFE_INTEGER - item.id : item.turn!.update, index }));
-      pending.forEach((item, index) => optional.push({ kind: 'correction', key: item.id, rank: 2,
+      pending.forEach((item, index) => optional.push({ kind: 'correction', key: item.id, signal: item.id, rank: 2,
         match: 0, recent: item.update, index }));
       named.forEach((item, index) => optional.push({ kind: 'person', key: `${item.source}:${index}`,
+        signal: item.source,
         rank: activePersonMerges(journal.view).some(link => journal.view.people[link.left] === item
           || journal.view.people[link.right] === item) ? 0 : 3,
         match: 0, recent: journal.view.turns.get(item.source)?.update ?? 0, index }));
       recalled.forEach((item, index) => {
         const due = dueSoon(clean(item.text, true));
-        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, rank: due ? 1 : 4,
+        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due ? 1 : 4,
           match: matches(item.text), recent: sentAt(item) ?? 0, index });
       });
       channels.forEach((item, index) => {
         const due = dueSoon(clean(`${item.subject ?? ''} ${item.text}`, true));
-        optional.push({ kind: due ? 'dated' : 'recent', key: publicMemoryId(channelMemoryId(item)), rank: due ? 1 : 4,
+        optional.push({ kind: due ? 'dated' : 'recent', key: publicMemoryId(channelMemoryId(item)), signal: channelMemoryId(item), rank: due ? 1 : 4,
           match: matches(`${item.subject ?? ''} ${item.text}`), recent: item.at, index: recalled.length + index });
       });
-      candidates.forEach((item, index) => optional.push({ kind: 'candidate', key: item.id, rank: 5,
+      candidates.forEach((item, index) => optional.push({ kind: 'candidate', key: item.id, signal: item.id, rank: 5,
         match: 0, recent: index, index }));
-      candidateChannels.forEach((item, index) => optional.push({ kind: 'candidate', key: publicMemoryId(channelMemoryId(item)), rank: 5,
+      candidateChannels.forEach((item, index) => optional.push({ kind: 'candidate', key: publicMemoryId(channelMemoryId(item)), signal: publicMemoryId(channelMemoryId(item)), rank: 5,
         match: 0, recent: item.at, index: candidates.length + index }));
-      // Lowest priority, weaker query match and older evidence go first.
-      const dropOrder = optional.sort((a, b) => b.rank - a.rank || a.match - b.match
+      // Within an existing tier, unreferenced evidence yields first.
+      const value = (item: Optional) => Number(questionTies.has(item.signal)) * 2 + Number(referenced.has(item.signal));
+      const dropOrder = optional.sort((a, b) => b.rank - a.rank || value(a) - value(b) || a.match - b.match
         || a.recent - b.recent || a.key.localeCompare(b.key));
       const kept = new Set(optional), dropped: PacketDrop[] = [];
       for (let step = 0; step <= dropOrder.length; step++) {
