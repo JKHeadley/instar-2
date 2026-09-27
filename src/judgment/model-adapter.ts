@@ -11,7 +11,7 @@ export interface ModelClient {
 }
 export function observationCheck(v: ProviderObservation, d: ModelDescription): void {
   ensure(['complete', 'rejected', 'uncertain'].includes(v.state), 'unknown provider observation');
-  if (v.failure) ensure(v.state === 'uncertain'
+  if (v.failure) ensure(v.state !== 'complete'
     && ['limit', 'policy', 'timeout', 'transport', 'unknown'].includes(v.failure.failureClass)
     && (v.failure.resetHint === null || /^\d{1,2}:\d{2}(?:am|pm)$/.test(v.failure.resetHint))
     && (v.failure.resetAt === null || Number.isSafeInteger(v.failure.resetAt) && v.failure.resetAt >= 0), 'invalid provider failure code');

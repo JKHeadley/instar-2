@@ -349,7 +349,8 @@ export function createClaudeCodeSubscriptionRoute(input:
           || frame.structured_output !== undefined || typeof frame.result !== 'string'
           || frame.usage.output_tokens > policy.maxTokens
           || Buffer.byteLength(frame.result) > policy.maxOutputBytes)
-          return { state: 'rejected', bytes: null, providerOperation: frame.session_id, usage, retryBlocked: false };
+          return { state: 'rejected', bytes: null, providerOperation: frame.session_id,
+            failure: lastFailure, usage, retryBlocked: false };
         const draft: ProviderResponseEvidenceDraft = { eligibility: 'admitted', contract,
           basis: { sourceEvidence: approved.sourceEvidence, terminalEvidence: approved.terminalEvidence,
             terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] },

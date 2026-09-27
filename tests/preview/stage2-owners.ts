@@ -537,7 +537,7 @@ export function stage2Lifecycle(input) {
   };
   const recordProviderFailure = (owner, response) => {
     const observed = JSON.parse(value(owner.captures.read(record(response).receipt)));
-    if (observed.state === 'uncertain') {
+    if (observed.state === 'uncertain' || observed.state === 'rejected') {
       const selected = sidecar.read().selectedTurn;
       const turn = state.read().turns[selected];
       if (turn && !turn.failureClass) state.markFailure(selected, observed.failure?.failureClass ?? 'unknown', observed.failure?.resetHint ?? null);
@@ -729,8 +729,8 @@ export function reconcileStage2History(directory, d, outer, configuration, requi
       const response = remember('responseFact', responseFact); expected.receipt = response.receipt.reference;
       check(response.attempt === q.attempt && response.submittedDigest === q.inputDigest);
       const receipt = JSON.parse(readCapture(response.receipt));
-      check(['complete', 'uncertain'].includes(receipt.state) && receipt.usage.charge === null);
-      if (receipt.state === 'uncertain') {
+      check(['complete', 'rejected', 'uncertain'].includes(receipt.state) && receipt.usage.charge === null);
+      if (receipt.state !== 'complete') {
         check(!d.references.acceptanceFact && receipt.bytes === null && !receipt.responseEvidence);
         if (d.phase === 'held') check(turn.failureClass === (receipt.failure?.failureClass ?? 'unknown')
           && (turn.resetHint ?? null) === (receipt.failure?.resetHint ?? null));
