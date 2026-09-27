@@ -1817,6 +1817,26 @@ establish real model latency or end-to-end cost.
 
 ### Live Jev reply check (journal runner)
 
+The [2026-09-27 held-reply fixture](fixtures/held-reply-live-2026-09-27.json)
+uses the desk's saved, read-only status captures for four held update IDs and one
+unattributed UNKNOWN Telegram send. Personal codes, dates and markers in the
+operator messages are substituted while retaining each turn's correction,
+dated-preference, recall-question or memory-request shape. The captures report
+three UNKNOWN review calls and one review with a physical `output-cap` result;
+they do not contain the candidate or reviewer text, nor do they attribute the
+UNKNOWN send to an update. The worker replay therefore tests those observed
+boundaries with offline stubs and does not claim an exact reproduction of unseen
+provider output. It confirms that each review-unavailable turn keeps its reply
+held after restart, a completed review PASS releases a loss notice, and a send
+with no receipt is not repeated. Run only the focused regression file:
+
+```sh
+./node_modules/.bin/vitest run tests/preview/held-reply-live-rate.test.ts --configLoader=runner --maxWorkers=1 --no-file-parallelism
+```
+
+For a supervised operator-channel check after integration, use
+[held-reply-live-rate-live-test.md](held-reply-live-rate-live-test.md).
+
 The journal runner checks each candidate reply at its one send doorway. The desk
 launcher resolves vault entry `typesafe_api_key` into
 `INSTAR_SECRET_PREVIEW_TYPESAFE_KEY` for the runner process. Treat it like the
