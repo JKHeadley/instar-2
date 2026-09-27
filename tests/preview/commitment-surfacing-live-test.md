@@ -1,0 +1,11 @@
+# Commitment surfacing: Justin's supervised private-chat test
+
+Use the existing authorized preview bot and root after the desk lands this build. This script does not grant a trial or change its caps. Keep `INSTAR_TELEGRAM_LIVE_TEST` unset in offline checks.
+
+1. Check `journal-agent.mjs status --root ROOT` for enough remaining turns, replies and model calls to summarize, answer and close two items. The desk may use the existing authorized `raise-caps` path if needed.
+2. As Justin, send `Please remember that my bicycle lock code is 4417.` Then send `Remind me to call the dentist about my crown.` Wait for each reply. These are test facts only; do not use a real secret or appointment.
+3. Send unrelated filler messages until `status` shows a summary covering both requests. Before sending another message, use the read-only `inspect --root ROOT --text "What about my bicycle lock code?" --model MODEL`. Its `next.historyMode` must be `summary-plus-recent`; `next.commitments` must show only the bicycle item, with `date` and a nonempty `age`. Inspect `What about the dentist crown?` and verify it shows only the dentist item. Inspect `How are the garden tomatoes?` and verify it shows no `commitments` block.
+4. Ask the bot `What about my bicycle lock code?` The answer should address that open request and say how old it is, without claiming to have taken an action. Save the actual answer and `inspect` result. Restart the preview runner using the same root and repeat the read-only bicycle inspection; the item and age should still appear, with age advanced as time passes.
+5. As Justin, send `I called the dentist; that reminder is done.` Wait until a later summary records the closure (`status.commitments.open` falls). Inspect `What about the dentist crown?` again: the closed dentist item must be absent from `next.commitments`. Inspect `What open commitments do you have?` and verify the bicycle item remains while the dentist item does not. Save the status, inspect outputs and actual replies as the live trace.
+
+`inspect` makes no model call, send or journal write. A missing summary, failed closure decision, exhausted cap or incomplete reply is a visible incomplete result; record it as such. The send boundary remains the existing checked, capped, stop-aware, durable-intent path.
