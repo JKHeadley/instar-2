@@ -13,6 +13,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/product
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
 import { parseDatedItem, dueState, type DatedItem } from './dated-memory.js';
+import { isStatusCommand, statusReply } from './status-command.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
@@ -57,6 +58,7 @@ export type JournalRecord =
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     memory?: MemoryChange[]; memoryPending?: true; dated?: DatedItem[]; datedPending?: true; usage?: ModelUsage; at: number }
+  | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer'; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
@@ -258,6 +260,11 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.datedPending) turn.datedPending = true;
     if (row.memory) view.memory.push(...row.memory);
     if (row.dated) view.dated.push(...row.dated); }
+  if (row.kind === 'status-answer') {
+    if (!turn.accepted || !isStatusCommand(turn.text) || turn.reserved || turn.answer !== undefined || turn.intent !== undefined)
+      throw Error('preview journal: status answer order');
+    turn.answer = row.text; turn.prompt = row.prompt;
+  }
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') turn.held = row.reason;
@@ -435,7 +442,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const pollGate = () => {
     gate();
     if (journal.view.order.length >= journal.view.limits.maxTurns
-      || journal.view.calls >= journal.view.limits.maxCalls
       || journal.view.replies >= journal.view.limits.maxReplies) {
       throw Error('preview poll capacity reached');
     }
@@ -756,7 +762,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // capped summary path cannot decide it.
         // A content-free loss notice cannot repeat the stale fact; let it through
         // even if a later correction still holds ordinary answers.
-        if (pendingMemory() && turn.modelState !== 'uncertain') {
+        if (pendingMemory() && turn.modelState !== 'uncertain' && !isStatusCommand(turn.text)) {
           await summarizeIfNeeded(true);
           // No summary can ever run again while an UNKNOWN summary reservation stands
           // (it is never repeated), so a pending request is settled as undecided and gets
@@ -776,6 +782,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
         if (turn.held) continue;
         gate();
+        if (turn.answer === undefined && !turn.reserved && isStatusCommand(turn.text)) {
+          const answer = statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC');
+          const packet = { ...JSON.parse(packetFor(turn.update - 1, true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
+            statusFacts: answer };
+          const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },
+            { role: 'user', content: redact(turn.text).text }] });
+          journal.append({ kind: 'status-answer', id: turn.id, text: answer, prompt, at: ports.now() });
+        }
         if (turn.answer === undefined && !turn.reserved) {
           // Leave a shared-budget slot for a full-context review if Jev cannot pass.
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
@@ -1019,8 +1033,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * frontier; a failed result stays visible while originals remain durable. */
   const summaryPreflightBlocked = new Set<string>();
   const runSummary = async (force: boolean) => {
-    const last = pendingMemory() ?? journal.view.order.filter(turn => turn.sent).at(-1);
+    const memoryRequest = pendingMemory();
+    const last = memoryRequest ?? journal.view.order.filter(turn => turn.sent).at(-1);
     if (!last) return;
+    // A pull-only status adds no fact that needs a fresh model summary. Ordinary
+    // work can summarize this durable turn later if context requires it.
+    if (!force && !memoryRequest && isStatusCommand(last.text)) return;
     if (journal.view.summaryReservations.size) return; // an uncertain prior call is never repeated
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
