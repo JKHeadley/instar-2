@@ -247,6 +247,8 @@ function project(view: JournalView, row: JournalRecord): void {
       || (row.noticeClass === 'too-long-input' && turn.reserved))
       throw Error('preview journal: notice order');
     turn.noticeClass = row.noticeClass;
+    if (row.noticeClass === 'too-long-input' && (turn.held === 'summary oversized turn'
+      || turn.held === 'summary preflight unavailable' || turn.held === 'memory correction pending')) delete turn.held;
   }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
@@ -516,9 +518,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (/^\s*(?:imported|forwarded|pasted|quoted)\b/iu.test(direct)) return false;
     return /^\s*(?:actually\b|(?:please\s+)?forget\b|no longer true\b)|,\s*not\s+(?:my|the|a)\b/iu.test(direct);
   };
+  const sizeRefused = (turn: Turn) => turn.noticeClass === 'too-long-input'
+    || !turn.reserved && Buffer.byteLength(turn.text) > journal.view.limits.maxBytes;
   const pendingMemory = () => journal.view.order.find(turn => turn.accepted && fromOperator(turn) && !turn.memoryUndecided
-    && turn.noticeClass !== 'too-long-input'
-    && (memoryCue(turn) || turn.memoryPending || turn.held === 'memory correction pending')
+    && !sizeRefused(turn)
+    && (memoryCue(turn) || turn.memoryPending)
     && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
@@ -546,10 +550,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
   const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
-  const outcome = (item: Turn) => item.sent ? (item.noticeClass === 'too-long-input' ? 'too-long notice Telegram API accepted'
+  const sizeNotice = (item: Turn) => item.noticeClass === 'too-long-input' && item.intent === TOO_LONG_INPUT_NOTICE;
+  const outcome = (item: Turn) => item.sent ? (sizeNotice(item) ? 'too-long notice Telegram API accepted'
+      : item.noticeClass === 'too-long-input' ? 'holding reply delivered in place of the too-long notice'
       : lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN' : 'Telegram API accepted')
-    : item.intent ? (item.noticeClass === 'too-long-input' ? 'too-long notice delivery UNKNOWN'
+    : item.intent ? (sizeNotice(item) ? 'too-long notice delivery UNKNOWN'
+      : item.noticeClass === 'too-long-input' ? 'holding reply delivery UNKNOWN in place of the too-long notice'
       : lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
       : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
     : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending';
@@ -562,7 +569,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
-      user: item.noticeClass === 'too-long-input' ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
+      user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
         : clean(redact(item.text).text, true),
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}), outcome: outcome(item) }));
@@ -592,7 +599,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
-      user: item.noticeClass === 'too-long-input' ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
+      user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
         : clean(redact(item.text).text, true), answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
       outcome: outcome(item) })) : [];
@@ -707,7 +714,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // capped summary path cannot decide it.
         // A content-free loss notice cannot repeat the stale fact; let it through
         // even if a later correction still holds ordinary answers.
-        if (pendingMemory() && turn.modelState !== 'uncertain') {
+        if (pendingMemory() && turn.modelState !== 'uncertain' && turn.noticeClass !== 'too-long-input') {
           await summarizeIfNeeded(true);
           // No summary can ever run again while an UNKNOWN summary reservation stands
           // (it is never repeated), so a pending request is settled as undecided and gets
@@ -718,8 +725,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
             continue; // later eligible loss notices must still be reached
           }
-          if (turn.held === 'memory correction pending') delete turn.held;
         }
+        if (turn.held === 'memory correction pending' && (!pendingMemory() || turn.noticeClass === 'too-long-input'))
+          delete turn.held;
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
           if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
@@ -1028,9 +1036,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (journal.view.summaryReservations.has(through) || (journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
         const closable = openFor(through, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
         const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item) && !item.memoryUndecided
-          && (memoryCue(item) || item.memoryPending || item.held === 'memory correction pending')
+          && !sizeRefused(item)
+          && (memoryCue(item) || item.memoryPending)
           && item.update > previous && item.update <= through);
-        const trigger = strictTrigger ?? journal.view.order.filter(item => item.accepted && fromOperator(item)
+        const trigger = strictTrigger ?? journal.view.order.filter(item => item.accepted && fromOperator(item) && !sizeRefused(item)
           && item.update > previous && item.update <= through).at(-1);
         const older = trigger ? journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < trigger.update) : [];
         const ranked = trigger ? selectRecall({ message: trigger.text, now: ports.now(), limit: 5,

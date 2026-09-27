@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
-import { replyReviewContext } from './reply-check.js';
+import { HOLDING_REPLY, replyReviewContext } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(19);
@@ -58,6 +58,75 @@ it('records an over-maxBytes operator turn and sends one checked too-long notice
     replay.close();
     expect(status(dir)).toMatchObject({ unknownSends: 1,
       tooLong: [{ update: 1, kind: 'input', delivery: 'UNKNOWN' }] });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('drains a batched oversized correction and retires its stale holds across restart', async () => {
+  const dir = root();
+  try {
+    const path = join(dir, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, genesis());
+    const sent: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'First answer', send: async ({ text }) => { sent.push(text); return sent.length; },
+      checkOutbound: () => {} });
+    worker.intake([update(1, 'Short message'), update(2, `Actually ${'x'.repeat(4200)}`)]);
+    // These holds reproduce the state left by an earlier drain before the size notice.
+    journal.append({ kind: 'hold', id: journal.view.order[0]!.id, reason: 'memory correction pending', at: 1000 });
+    journal.append({ kind: 'hold', id: journal.view.order[1]!.id, reason: 'summary oversized turn', at: 1000 });
+    await worker.drain();
+    expect(sent).toEqual(['PREVIEW — First answer', TOO_LONG_INPUT_NOTICE]);
+    expect(journal.view.order.map(turn => turn.held)).toEqual([undefined, undefined]);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
+      model: async () => { throw Error('duplicate model call'); },
+      send: async () => { throw Error('duplicate send'); }, checkOutbound: () => {} });
+    await resumed.drain();
+    expect(replay.view.order.map(turn => turn.sent)).toEqual([1, 2]);
+    expect(replay.view.order.map(turn => turn.held)).toEqual([undefined, undefined]);
+    replay.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each([{ verdict: 'pass', receipt: 7 }, { verdict: 'pass', receipt: null },
+  { verdict: 'violation', receipt: 7 }, { verdict: 'violation', receipt: null }] as const)(
+  'reports the exact $verdict size-notice intent after send $receipt and replay', async ({ verdict, receipt }) => {
+  const dir = root();
+  try {
+    const path = join(dir, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, genesis());
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'Follow-up answer',
+      replyCheck: { elapsedMs: () => 1, jev: async () => { throw Error('Jev unavailable'); },
+        escalate: async () => ({ verdict, ruleIds: [], confidence: null, latencyMs: 1 }) },
+      send: async ({ text }) => { expect(text).toBe(verdict === 'pass' ? TOO_LONG_INPUT_NOTICE : HOLDING_REPLY);
+        return receipt; }, checkOutbound: () => {} });
+    worker.intake([update(1, 'x'.repeat(4097))]);
+    await worker.drain();
+    expect(journal.view.order[0]?.intent).toBe(verdict === 'pass' ? TOO_LONG_INPUT_NOTICE : HOLDING_REPLY);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
+      model: async () => { throw Error('duplicate model call'); },
+      send: async () => { throw Error('duplicate send'); }, checkOutbound: () => {} });
+    await resumed.drain();
+    expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'input', delivery: verdict === 'pass'
+      ? receipt === null ? 'UNKNOWN' : 'Telegram API accepted'
+      : receipt === null ? 'holding reply UNKNOWN' : 'holding reply Telegram API accepted' }]);
+    // The next prompt must describe the exact prior intent, including after journal replay.
+    const context = await (async () => {
+      const next = createJournalWorker(replay, { now: () => 1002, stopped: () => false,
+        model: async ({ context }) => context, send: async () => 8, checkOutbound: () => {} });
+      next.intake([update(2, 'What happened?')]);
+      await next.drain();
+      return replay.view.order[1]?.answer ?? '';
+    })();
+    expect(context).toContain(verdict === 'pass'
+      ? receipt === null ? 'too-long notice delivery UNKNOWN' : 'too-long notice Telegram API accepted'
+      : receipt === null ? 'holding reply delivery UNKNOWN in place of the too-long notice'
+        : 'holding reply delivered in place of the too-long notice');
+    replay.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
