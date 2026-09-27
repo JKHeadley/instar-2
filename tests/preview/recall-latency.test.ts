@@ -64,8 +64,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     }
     // int12 re-pin: person-attribute instructions, people-facts relevance selection, and relevance-gated
     // conflict/fact-update/held/exact-unit guidance changed this packet. Simplify re-pin: every retained
-    // person note is now eligible (no active/archive partition), so single-term "Sam N" names match mail.
-    expect(packetHash).toBe('a00fe70ac6cac80aae9676817e351cb9c869632028bacead8b1c13f206766309');
+    // person note is now eligible (no active/archive partition), so single-term "Sam N" names match mail; the
+    // compacted answer contract and single compact summary changed the bytes again.
+    expect(packetHash).toBe('3c84f3acac27ab185bf7cdaea8c2cf349572a60ebb9bb01ceed355666a77236b');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

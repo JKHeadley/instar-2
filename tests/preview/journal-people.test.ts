@@ -216,7 +216,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
     return 'I can ask whether those two notes refer to the same person.';
   };
   try {
-    let w = world(root, { summarize, answer, maxBytes: 11000 });
+    let w = world(root, { summarize, answer, maxBytes: 10000 });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, 'Sam Ruiz, my neighbour, lent me a ladder.');
@@ -245,7 +245,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).personMerges).toMatchObject([{ left: 'Sam', right: 'Sam Ortiz',
       triggerUpdate: n + 1 }]);
-    w = world(root, { summarize, answer, maxBytes: 11000 });
+    w = world(root, { summarize, answer, maxBytes: 10000 });
     const linked = w.worker.probe('What does Ortiz think?');
     if ('reason' in linked) throw Error(linked.reason);
     const packet = JSON.parse(linked.context);
@@ -277,7 +277,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
         encoding: 'utf8', timeout: 10000 });
     expect(inactive.status, inactive.stderr).toBe(0);
     expect(JSON.parse(inactive.stdout).personMerges).toEqual([]);
-    w = world(root, { summarize, answer, maxBytes: 11000 });
+    w = world(root, { summarize, answer, maxBytes: 10000 });
     const replay = w.worker.probe('What does Ortiz think?');
     if ('reason' in replay) throw Error(replay.reason);
     expect(JSON.parse(replay.context).personMerges).toBeUndefined();
@@ -357,7 +357,7 @@ const mergeAnswer = (question: string, context: string) => {
 it('links an introductory claim even when its source ends in a question', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 8000, summarize: sourceSummarizer, answer: mergeAnswer });
+    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
@@ -378,7 +378,7 @@ it.each(['Can you remember that?', 'Please remember that.'])
   ('keeps a distinct homonym ambiguous with ending: %s', async ending => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 7000, summarize: sourceSummarizer, answer: mergeAnswer });
+    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, `My neighbour Sam lent me a ladder. ${ending}`);

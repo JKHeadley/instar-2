@@ -10,7 +10,7 @@ import { auditJournal, auditPacket } from './journal-audit.mjs';
 const key = new Uint8Array(32).fill(17);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 100, maxReplies: 60, maxTurns: 60, maxBytes: 10000, cursor: 0 };
+  maxCalls: 100, maxReplies: 60, maxTurns: 60, maxBytes: 8000, cursor: 0 };
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: from }, text, date: 1790000000 + id * 60 } });
 

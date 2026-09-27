@@ -50,7 +50,7 @@ it('labels direct, imported and summary memory after replay; direct facts outran
     const covered = JSON.parse(contexts.at(-1)!);
     expect(covered.historyMode).toBe('summary-plus-recent');
     expect(covered.summary).toMatchObject({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
-    expect(covered.memorySummary).toEqual({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
+    expect(covered.memorySummary).toBeUndefined(); // The compact summary is the correction reference.
     expect(covered.history).toEqual([]);
     expect(covered.recalled).toMatchObject([
       { sourceKind: 'operator-stated', user: 'My studio launch day is Tuesday.' }]);
@@ -64,7 +64,7 @@ it('labels direct, imported and summary memory after replay; direct facts outran
     const packet = JSON.parse(contexts.at(-1)!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.summary).toMatchObject({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
-    expect(packet.memorySummary).toEqual({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
+    expect(packet.memorySummary).toBeUndefined();
     expect(packet.recalled).toMatchObject([{ sourceKind: 'operator-stated', user: 'My studio launch day is Tuesday.' }]);
     expect(packet.channelMemory).toMatchObject([{ sourceKind: 'channel-import', source: 'email',
       from: 'justin@example.test', quote: 'The studio launch color is blue.' }]);

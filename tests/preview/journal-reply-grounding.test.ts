@@ -55,7 +55,7 @@ it.each([1, null])('records exact full-history IDs before an accepted or UNKNOWN
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('records a compact summary and omits a duplicate memory summary under fitting, including after replay', async () => {
+it('records a compact summary once, without a duplicate memory summary, under fitting, including after replay', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'reply-grounding-'))), path = join(root, 'journal.encrypted');
   try {
     const journal = openPreviewJournal(path, key, genesis);
@@ -78,10 +78,11 @@ it('records a compact summary and omits a duplicate memory summary under fitting
       people: [], commitments: [], at: 1000 });
     worker.intake([update(2, 'What color is the dock seven marker?')]);
     await worker.drain();
-    const included = JSON.parse(contexts.get(id(2))!) as { historyMode: string; memorySummary?: { text: string } };
+    const included = JSON.parse(contexts.get(id(2))!) as { historyMode: string; summary?: { text: string }; memorySummary?: unknown };
     const includedAudit = journal.view.turns.get(id(2))!.grounding!;
     expect(included.historyMode).toBe('summary-plus-recent');
-    expect(included.memorySummary?.text).toBe('Dock seven marker is blue.');
+    expect(included.summary?.text).toBe('Dock seven marker is blue.'); // Also the correction reference.
+    expect(included.memorySummary).toBeUndefined();
     expect(includedAudit.summaryThrough).toBe(1);
     expect(includedAudit.history).toEqual([]);
     expect(includedAudit.recalled).toEqual([id(1)]);

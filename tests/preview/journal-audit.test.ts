@@ -315,7 +315,7 @@ it('audits a rolling summary when it is the latest model call', async () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('verifies memorySummary beside the compact summary and after replay', async () => {
+it('offers the compact summary once as the correction reference and verifies it after replay', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-memory-summary-')));
   try {
     const path = join(root, 'journal.encrypted');
@@ -334,13 +334,16 @@ it('verifies memorySummary beside the compact summary and after replay', async (
     const packet = JSON.parse(JSON.parse(journal.view.lastPrompt!.prompt!).messages[1].content).packet;
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.summary?.through).toBe(1);
-    expect(packet.memorySummary).toBeDefined();
+    expect(packet.memorySummary).toBeUndefined();
     expect(auditJournal(journal.view).findings).toEqual([]);
-    expect(auditJournal(journal.view).items).toContainEqual(expect.objectContaining({ kind: 'memory-summary',
-      chain: [{ kind: 'summary', through: 1 }] }));
+    expect(auditJournal(journal.view).items).toContainEqual(expect.objectContaining({ kind: 'summary' }));
     const altered = structuredClone(packet);
-    altered.memorySummary.text = 'Sam likes coffee.';
+    altered.summary.text = 'Sam likes coffee.';
     expect(auditPacket(journal.view, journal.view.order[1]!, altered).findings.map((item: { code: string }) => item.code))
+      .toContain('summary-text-source');
+    // A legacy packet that also carried the duplicate stays auditable.
+    const legacy = { ...structuredClone(packet), memorySummary: { sourceKind: 'inferred-by-summary', text: 'Sam likes coffee.' } };
+    expect(auditPacket(journal.view, journal.view.order[1]!, legacy).findings.map((item: { code: string }) => item.code))
       .toContain('memory-summary-source');
     journal.close(); journal = openPreviewJournal(path, key);
     expect(auditJournal(journal.view).findings).toEqual([]);

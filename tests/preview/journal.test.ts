@@ -750,7 +750,7 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();
   try {
-    const initial = { ...genesis(), maxBytes: 5000 };
+    const initial = { ...genesis(), maxBytes: 4000 };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
@@ -1413,7 +1413,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis(), maxBytes: 6144, importSource: 'old-root', importCursor: 10 });
+      { ...genesis(), maxBytes: 5120, importSource: 'old-root', importCursor: 10 });
     const imported = (id: number, text: string) => {
       const raw = update(id, text); (raw.message as { date?: number }).date = 1789000000 + id;
       journal.append({ kind: 'intake', id: `telegram:12345678:update:${id}`, update: id, text, raw: JSON.stringify(raw),
