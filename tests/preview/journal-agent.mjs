@@ -12,7 +12,8 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { createPreviewClock } from './clock.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
@@ -23,16 +24,24 @@ import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 
+const clock = createPreviewClock(() => Date.now(), () => performance.now());
+const wallNow = clock.now;
+const openPreviewJournal = (...args) => {
+  const journal = openJournal(...args);
+  clock.seed(journal.view.clockFloor);
+  return journal;
+};
+
 const importSource = (journal, state, source, stopped) => {
   try {
-    const result = importStorePass(journal, state, source, Date.now(), stopped);
+    const result = importStorePass(journal, state, source, wallNow(), stopped);
     if (journal.view.channelSourceErrors.has(source))
-      journal.append({ kind: 'channel-source-error', source, error: null, at: Date.now() });
+      journal.append({ kind: 'channel-source-error', source, error: null, at: wallNow() });
     return result;
   } catch (error) {
-    if (!stopped() && !journal.view.stop && Date.now() < journal.view.expires
+    if (!stopped() && !journal.view.stop && wallNow() < journal.view.expires
       && journal.view.channelSourceErrors.get(source) !== 'import refused')
-      journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: Date.now() });
+      journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: wallNow() });
     throw error;
   }
 };
@@ -102,7 +111,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     { providerAttempts: view.limits.maxCalls, expiresAt: view.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
-    const now = Date.now(), log = runs();
+    const now = wallNow(), log = runs();
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
     const note = handoff();
@@ -165,7 +174,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
     const saved = readShapes(path) ?? { version: 1, counts: {}, last: null };
     const key = `${role}/${layer}/${outcome}/${shape}`;
     saved.counts[key] = (saved.counts[key] ?? 0) + 1;
-    if (outcome === 'malformed') saved.last = { role, layer, shape, at: Date.now() };
+    if (outcome === 'malformed') saved.last = { role, layer, shape, at: wallNow() };
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
@@ -205,7 +214,7 @@ async function main() {
     throw Error('preview: import marker malformed');
   if (command === 'stop') {
     if (!existsSync(journalPath)) throw Error('preview: journal absent');
-    if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: Date.now(), reason: 'operator' });
+    if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: wallNow(), reason: 'operator' });
     return;
   }
   if (command === 'audit') {
@@ -233,7 +242,7 @@ async function main() {
       return;
     }
     try {
-      const now = Date.now(), log = readRuns(runsPath);
+      const now = wallNow(), log = readRuns(runsPath);
       const deskPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
       const desk = deskStatusSource(readDeskStatus(deskPath), now, deskPath);
       const lastSent = view.view.order.filter(turn => turn.sentAt !== undefined).at(-1);
@@ -286,7 +295,7 @@ async function main() {
       dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
-        time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
+        time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, wallNow()) })),
       datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,
@@ -319,7 +328,7 @@ async function main() {
         rightSource: view.view.people[link.right]?.source, triggerUpdate: view.view.turns.get(link.trigger)?.update })),
       launches: readRuns(runsPath).launches.slice(-3),
       digest: operatorDigest(view.view, log, desk).text,
-      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`);
+      self: selfState(view.view, readRuns(runsPath), wallNow(), timeZoneOf(options)) })}\n`);
     }
     finally { view.close(); }
     return;
@@ -335,8 +344,8 @@ async function main() {
       let next;
       if (options.text !== undefined) {
         const refuse = () => { throw Error('preview: inspect never calls or sends'); };
-        const probe = createJournalWorker(view, { now: Date.now, stopped: () => true, timeZone: timeZoneOf(options), sources: turnSources(root, options, view.view, () => readRuns(runsPath)),
-          prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, Date.now(), view.view.limits.maxBytes),
+        const probe = createJournalWorker(view, { now: wallNow, stopped: () => true, timeZone: timeZoneOf(options), sources: turnSources(root, options, view.view, () => readRuns(runsPath)),
+          prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, wallNow(), view.view.limits.maxBytes),
           model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
@@ -398,7 +407,7 @@ async function main() {
       fixtureJournal = openPreviewJournal(journalPath, key());
       if (fixtureJournal.view.genesis.importSource !== undefined && !fixtureJournal.view.imported)
         throw Error('preview: migration incomplete');
-      const added = importChannelFixture(fixtureJournal, rows, required(options, 'agent-account'), Date.now(), () => existsSync(stopPath));
+      const added = importChannelFixture(fixtureJournal, rows, required(options, 'agent-account'), wallNow(), () => existsSync(stopPath));
       process.stdout.write(`${JSON.stringify({ added, total: fixtureJournal.view.channelItems.size })}\n`);
     } finally { fixtureJournal?.close(); storage.close(); }
     return;
@@ -409,7 +418,7 @@ async function main() {
     try {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       renewJournal = openPreviewJournal(journalPath, key());
-      const now = Date.now();
+      const now = wallNow();
       if (now >= renewJournal.view.expires) throw Error('preview: expired');
       const bytes = readFileSync(required(options, 'activation-record'), 'utf8');
       const activation = JSON.parse(bytes);
@@ -427,12 +436,12 @@ async function main() {
     try {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       capJournal = openPreviewJournal(journalPath, key());
-      if (Date.now() >= capJournal.view.expires) throw Error('preview: expired');
+      if (wallNow() >= capJournal.view.expires) throw Error('preview: expired');
       raiseJournalCaps(capJournal, { maxCalls: number(options['max-calls'] ?? String(capJournal.view.limits.maxCalls), 'max-calls'),
         maxReplies: number(options['max-replies'] ?? String(capJournal.view.limits.maxReplies), 'max-replies'),
         maxTurns: number(options['max-turns'] ?? String(capJournal.view.limits.maxTurns), 'max-turns'),
         maxBytes: number(options['max-context-bytes'] ?? String(capJournal.view.limits.maxBytes), 'max-context-bytes'),
-        authority: required(options, 'authority'), at: Date.now() });
+        authority: required(options, 'authority'), at: wallNow() });
     } finally { capJournal?.close(); storage.close(); }
     return;
   }
@@ -469,13 +478,13 @@ async function main() {
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
-    const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
+    const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
     const invokeSubscription = async (prepared, id, reviewTurnId) => {
       const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
-      const result = await route.invoke(prepared, { operation: id, deadline: Math.min(journal.view.expires, Date.now() + 180000),
+      const result = await route.invoke(prepared, { operation: id, deadline: Math.min(journal.view.expires, wallNow() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
-      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: Date.now() });
+      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: wallNow() });
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
@@ -499,7 +508,7 @@ async function main() {
       if (!response.ok) throw Error('preview: Jev unavailable');
       return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
     };
-    worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { now: wallNow, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
@@ -554,7 +563,7 @@ async function main() {
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
       send: async ({ text, expectedText, chat, thread }) => {
-        if (workerStop.value || existsSync(stopPath) || Date.now() >= journal.view.expires || journal.view.stop) return null;
+        if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
           body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }) },
           timeoutMs: 30000 }, token());
@@ -570,7 +579,7 @@ async function main() {
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
-    validateSubscriptionActivation(activation, profile, required(options, 'model'), Date.now(), SUBSCRIPTION_CONVERSATION_FRAMING);
+    validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
     const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
@@ -586,7 +595,7 @@ async function main() {
     worker.startStepChecks();
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
-    launchedAt = Date.now();
+    launchedAt = wallNow();
     appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid });
     runs = readRuns(runsPath);
     handoff = restartHandoff(journal.view, runs, launchedAt);
@@ -595,9 +604,9 @@ async function main() {
     const pollFailure = async () => {
       failedPolls++;
       if (failedPolls >= 20) { endReason = 'Telegram polling failed 20 times in a row'; return false; }
-      const until = Date.now() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
-      while (!workerStop.value && !existsSync(stopPath) && Date.now() < until)
-        await delay(Math.min(100, until - Date.now()));
+      const until = wallNow() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
+      while (!workerStop.value && !existsSync(stopPath) && wallNow() < until)
+        await delay(Math.min(100, until - wallNow()));
       return true;
     };
         let summaryJob = null, stepJob = null;
@@ -616,13 +625,13 @@ async function main() {
       if (summaryJob) return;
       summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
     };
-    const reportCap = () => reportJournalCap(journal, Date.now(), line => process.stderr.write(line));
+    const reportCap = () => reportJournalCap(journal, wallNow(), line => process.stderr.write(line));
     const waitHeldNotices = async () => {
       let due;
       while ((due = worker.nextHeldNoticeAt()) !== null) {
-        while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, journal.view.expires))
-          await delay(Math.min(1000, due - Date.now(), journal.view.expires - Date.now()));
-        if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= journal.view.expires) break;
+        while (!signalled && !workerStop.value && !existsSync(stopPath) && wallNow() < Math.min(due, journal.view.expires))
+          await delay(Math.min(1000, due - wallNow(), journal.view.expires - wallNow()));
+        if (signalled || workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires) break;
         await worker.drain(); summarizeLater();
       }
     };
@@ -645,7 +654,7 @@ async function main() {
       }
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
       if (await stopAtCap()) break;
-      if (existsSync(stopPath) || Date.now() >= journal.view.expires) break;
+      if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {
         if (!await stopAtCap()) endReason = 'cap reached';
         break;
@@ -681,12 +690,13 @@ async function main() {
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
       const physicalIO = createSubscriptionProviderIO({ repository: process.cwd(),
         stopped: () => workerStop.value || existsSync(stopPath) || !active() });
-      const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row));
+      const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
+        { elapsed: () => performance.now(), at: wallNow });
       return take(createClaudeCodeSubscriptionRoute({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
         io,
-        now: Date.now, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
+        now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract,
         ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes
           ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
@@ -695,8 +705,8 @@ async function main() {
   finally {
     if (launchedAt !== null) {
       const reason = signalName ? `paused by signal ${signalName}` : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched'
-        : journal && Date.now() >= journal.view.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
-      try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: Date.now(), reason }); } catch { /* the next launch reports an unrecorded end */ }
+        : journal && wallNow() >= journal.view.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
+      try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason }); } catch { /* the next launch reports an unrecorded end */ }
     }
     journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
 }

@@ -1028,6 +1028,21 @@ The capability line says plainly: this preview **answers only and never sends un
 reminders**. An item in memory is not a scheduled notification; the runner has no scheduler or
 tools. It can mention a due or overdue item in a reply to the operator's next message.
 For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
+
+### Host clock corrections
+
+The journal launcher samples wall time through one process clock that also advances with
+monotonic elapsed time. A backward wall-clock correction cannot move its expiry, provider
+deadline, summary recovery wait, held notice, self-state or model packet backward. A forward
+correction takes effect immediately; expiry closes at its recorded absolute instant and stays
+closed if the wall clock later moves back. Each journal append has a durable timestamp floor,
+which is restored after replay or compaction and seeds the clock on restart. Telegram's own
+message timestamp remains the source for interpreting an operator's relative date; the durable
+intake timestamp is its fallback. The journal remains machine-local, with no new service or
+store. A host reboot while its wall clock is still wrong cannot establish elapsed downtime from
+the local journal alone; the recorded floor prevents regression but does not claim an external
+time authority. The supervised exercise is [clock-jump-live-test.md](clock-jump-live-test.md).
+
 ### How the operator likes answers
 
 The same capped summary or reply decision can record a durable reply preference from the
