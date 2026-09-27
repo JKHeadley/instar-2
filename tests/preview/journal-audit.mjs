@@ -424,12 +424,14 @@ export function auditActiveMemory(view) {
           && item.trigger === change.trigger && item.quote === change.quote));
       const prior = decision && view.summaries.filter(row => row.through < decision.through && row.at <= decision.at).at(-1);
       const reserved = view.awayEvents.find(event => event.kind === 'reserve' && event.id === change.trigger);
+      const boundary = reserved?.at ?? triggerTurn?.at;
       const summary = view.summaries.find(row => row.through < triggerTurn?.update && row.text.includes(passage)
         && (decision ? prior === row : triggerTurn?.prompt ? offered?.text?.includes(passage)
-          && row.at <= (reserved?.at ?? triggerTurn.at)
+          && row.at <= boundary
           && (offered.through === row.through || offered.through === undefined
-            && row === view.summaries.filter(candidate => candidate.through < triggerTurn.update).at(-1))
-          : row.at <= (reserved?.at ?? triggerTurn?.at)));
+            && row === view.summaries.filter(candidate => candidate.through < triggerTurn.update
+              && candidate.at <= boundary).at(-1))
+          : row.at <= boundary));
       if (!summary) fault('memory-summary-passage-absent', at);
       return summary && { kind: 'summary', through: summary.through };
     }).filter(Boolean);

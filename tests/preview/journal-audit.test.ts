@@ -120,6 +120,57 @@ it('accepts a summary completed after intake only when offered to the correction
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('keeps correction lineage valid when a later background summary completes', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-later-summary-')));
+  try {
+    const path = join(root, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
+    let now = 1790000000000;
+    let releaseSummary!: () => void;
+    let summaryStarted!: () => void;
+    const started = new Promise<void>(resolve => { summaryStarted = resolve; });
+    const held = new Promise<void>(resolve => { releaseSummary = resolve; });
+    const worker = createJournalWorker(journal, { now: () => now++, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => {
+        if (input.id === 'summary:2') { summaryStarted(); await held; }
+        if (input.id.startsWith('summary:')) return JSON.stringify({
+          summary: input.id === 'summary:1' ? 'Sam likes cedar tea.' : 'Sam discussed tea. The sky is blue.',
+          people: [], commitments: [], closed: [] });
+        if (input.question.startsWith('Please correct')) {
+          const packet = JSON.parse(input.context);
+          const old = packet.memoryCandidates.find((item: { message: string }) => item.message === 'Sam likes cedar tea.');
+          return JSON.stringify({ reply: 'Updated.', memory: [{ mode: 'correct', source: old.id,
+            quote: 'Sam likes cedar tea.', replacement: 'Sam likes mint tea.', summaryPassages: ['Sam likes cedar tea.'] }] });
+        }
+        return 'Noted.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Sam likes cedar tea.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    worker.intake([update(2, 'The sky is blue.')]); await worker.drain();
+    const background = worker.summarizeIfNeeded(true);
+    await started;
+    worker.intake([update(3, 'Please correct Sam likes cedar tea. Sam likes mint tea.')]);
+    await worker.drain();
+    expect(journal.view.memory[0]!.summaryPassages).toEqual(['Sam likes cedar tea.']);
+    const correction = journal.view.turns.get(journal.view.memory[0]!.trigger)!;
+    const offered = JSON.parse(JSON.parse(correction.prompt!).messages[1].content).packet.memorySummary;
+    expect(offered.text).toContain('Sam likes cedar tea.');
+    expect(offered.through).toBeUndefined();
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    releaseSummary(); await background;
+    const reservation = journal.view.awayEvents.find(event => event.kind === 'reserve'
+      && event.id === journal.view.memory[0]!.trigger)!;
+    expect(journal.view.summaries[1]!.at).toBeGreaterThan(reservation.at);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(auditJournal(replay.view).findings).toEqual([]);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('audits the recorded packet without emitting bodies and refuses lost provenance or leaked claims', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-')));
   try {
