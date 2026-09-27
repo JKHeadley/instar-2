@@ -610,6 +610,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const preferenceState = () => {
     const active = new Map<string, { source: string; quote: string }>();
     const lineage = new Set<string>();
+    // The active projection omits an undone correction, but its replacement
+    // remains a historical preference source for source-scoped retirement.
+    for (const record of journal.view.changeHistory) {
+      if (record.kind !== 'memory') continue;
+      const change = record.value as MemoryChange;
+      const key = JSON.stringify([change.source, change.quote]);
+      if (change.mode === 'prefer') lineage.add(key);
+      else if (change.mode === 'correct' && change.replacement !== undefined && lineage.has(key))
+        lineage.add(JSON.stringify([change.trigger, change.replacement]));
+    }
     for (const change of journal.view.memory) {
       const key = JSON.stringify([change.source, change.quote]);
       if (change.mode === 'prefer') { active.set(key, { source: change.source, quote: change.quote }); lineage.add(key); }

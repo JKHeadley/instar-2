@@ -209,6 +209,48 @@ it('keeps a later same-text preference after undo and replay', async () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('keeps a repeated preference correction after undo and replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-undo-correct-preference-')));
+  const path = join(root, 'journal.encrypted');
+  const original = 'I like answers in complete sentences.';
+  const replacement = 'I like answers in brief bullet points.';
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const ports = { now: () => start + 1_000, stopped: () => false,
+      model: async (input: { id: string; question: string; context: string }) => {
+        const packet = JSON.parse(input.context);
+        if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The operator set an answer style.', people: [], memory: [] });
+        if (input.question === original) return JSON.stringify({ reply: 'Understood.',
+          memory: [{ mode: 'prefer', source: input.id, quote: original }] });
+        if (input.question === replacement) return JSON.stringify({ reply: 'Understood.',
+          memory: [{ mode: 'correct', source: journal.view.order[0]!.id, quote: original, replacement }] });
+        return JSON.stringify({ reply: 'Undone.', memory: [], dated: [],
+          undo: { change: packet.undoCandidate.change, replies: [], summaryPassages: [] } });
+      }, send: async () => 1, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, original)]); await worker.drain();
+    worker.intake([update(2, replacement)]); await worker.drain();
+    worker.intake([update(3, 'Undo that.')]); await worker.drain();
+    expect(journal.view.undos).toHaveLength(1);
+    let packet = worker.probe('How should you answer?');
+    if ('reason' in packet) throw Error(packet.reason);
+    expect(JSON.parse(packet.context).preferences).toEqual([{ text: original, source: journal.view.order[0]!.id }]);
+    worker.intake([update(4, replacement)]); await worker.drain();
+    expect(journal.view.changeHistory.at(-1)?.undone).toBe(false);
+    for (const replay of [false, true]) {
+      if (replay) {
+        journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+      }
+      packet = worker.probe('How should you answer now?');
+      if ('reason' in packet) throw Error(packet.reason);
+      const context = JSON.parse(packet.context);
+      expect(context.preferences).toEqual([{ text: replacement, source: journal.view.order[3]!.id }]);
+      expect(context.history.at(-1).user).toBe(replacement);
+    }
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('undo removes paraphrased derived memory while retaining unrelated summary text', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-undo-derived-')));
   const path = join(root, 'journal.encrypted');
