@@ -24,6 +24,17 @@ const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0
   claims_blocked: 0.85, parks_on_user: 0.85 };
 export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: REPLY_RULES[id] }]));
 
+/** Jev already cleared every omitted question. A failed Jev response supplies no
+ * cleared questions, so its review still judges all eight. */
+export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, string> {
+  return Object.fromEntries((ruleIds.length ? ruleIds : rules).map(id => [id, REPLY_RULES[id]]));
+}
+
+export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
+  const scope = ruleIds.length && ruleIds.length < rules.length ? ' Jev cleared the other rules.' : '';
+  return `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(replyReviewRules(ruleIds))}.${scope} Return ONLY compact JSON {"verdict":"pass"|"violation","ruleIds":string[],"reason":string}. A violation requires an actual breach; uncertainty is a pass under the reachability fail direction. Give a short reason for either verdict.`;
+}
+
 /** Reuse the exact packet that grounded the proposed answer, including its
  * audience, sources, memory and conversation history. */
 export function replyReviewContext(originalPrompt: string, candidateReply: string): string {
@@ -51,9 +62,9 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
   const usage = { inputTokens: typeof response?.usage?.input_tokens === 'number' ? response.usage.input_tokens : null,
     outputTokens: typeof response?.usage?.output_tokens === 'number' ? response.usage.output_tokens : null, charge: null };
   const flagged = rules.filter((id, index) => probabilities[index]! >= positiveLine[id]);
-  if (flagged.length) return { verdict: 'violation', ruleIds: flagged,
-    confidence: Math.max(...flagged.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage };
   const uncertain = rules.filter((id, index) => probabilities[index]! > 0.15);
+  if (flagged.length) return { verdict: 'violation', ruleIds: uncertain,
+    confidence: Math.max(...flagged.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage };
   return uncertain.length
     ? { verdict: 'unsure', ruleIds: uncertain, confidence: Math.max(...uncertain.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage }
     : { verdict: 'pass', ruleIds: [], confidence: 1 - Math.max(...probabilities), path: 'jev', latencyMs, scores: scoreMap, usage };
@@ -61,7 +72,7 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 
 export interface ReplyCheckPorts {
   jev(text: string): Promise<{ value: unknown; latencyMs: number }>;
-  escalate(text: string, id: string, originalPrompt?: string): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
+  escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[]): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }>;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   record(result: ReplyCheckResult): void;
@@ -94,7 +105,7 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   }
   const fallbackStarted = ports.elapsedMs();
   try {
-    const result = await ports.escalate(text, id, originalPrompt);
+    const result = await ports.escalate(text, id, originalPrompt, ruleIds.length ? ruleIds : rules);
     ports.record({ ...result, path: 'subscription' });
     return { outcome: result.verdict === 'pass' ? 'pass' : 'violation', path: 'subscription' };
   } catch {

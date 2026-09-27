@@ -995,11 +995,20 @@ that `raise-caps` retries; any other failure is a `reply check unavailable`
 hold shown in `status`. New answers leave one shared call-budget
 slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
+When Jev completes but cannot pass, the review judges every rule with a score
+above its clear threshold, including both positive and uncertain signals. Jev
+has already cleared the other questions under the same criterion that permits
+a direct Jev PASS. If Jev is unavailable or malformed, the review judges all
+eight. The full packet and completed PASS requirement remain the same; the
+smaller rule list removes repeated review of questions Jev cleared.
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
 subscription review is not retried or charged again from this runner; the turn
 is held as `reply check unavailable` rather than sent unchecked.
 An interrupted Jev check escalates without repeating Jev.
+`status.lastReplyTiming` derives intake-to-Bot-API-acceptance milliseconds and
+the recorded reply-check milliseconds for the last accepted send from existing
+journal timestamps; it adds no state or network call.
 
 Desk one-call connectivity check, after setting the host binding from the vault:
 
@@ -1028,6 +1037,15 @@ grant, bot, audience, expiry, or limits:
 The live test depends on desk supplied credentials and operator messages. Offline
 tests stub both models and verify pass, violation, uncertainty, timeout, call cap,
 durable check order, and the holding reply without network access.
+
+`reply-latency.test.ts` measures the fixture path from accepted update to send
+using the real journal worker and prompt envelope, a timed Jev stub, a timed
+subscription stub and a timed send. Its all-rules comparison uses the previous
+review scope on the same path. The fixture's provider delay depends on prompt
+bytes by design, so its wall times are controlled comparisons, not live provider
+latency. The test prints both prompt byte counts and end-to-end milliseconds.
+Use [reply-latency-live-test.md](reply-latency-live-test.md) for Justin's live
+private-chat measurement after the desk gate.
 
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),

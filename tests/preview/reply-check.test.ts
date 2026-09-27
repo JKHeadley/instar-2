@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkReply, HOLDING_REPLY, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { checkReply, HOLDING_REPLY, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
 import type { ReplyCheckResult } from './reply-check.js';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -67,6 +67,35 @@ it('gives review the original audience, sources, history and operator message', 
     'claude-sonnet-4-5', 'grant:test', 1000);
   expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate'))).toEqual({
     ...context, operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate' });
+});
+
+it.each([
+  ['one uncertain rule', scores({ claims_blocked: 0.5 }), ['claims_blocked']],
+  ['positive plus uncertain', scores({ raw_path: 0.9, parks_on_user: 0.5 }), ['raw_path', 'parks_on_user']],
+  ['Jev unavailable', null, Object.keys(REPLY_RULES)],
+] as const)('%s: review receives every unresolved rule and full context', async (_name, answer, expected) => {
+  const prompt = prepareJournalEnvelope({ question: 'What did I say?',
+    context: JSON.stringify({ audience: { operator: 'verified' }, sources: [{ id: 'source:1' }],
+      history: [{ update: 1, user: 'remember this' }] }), id: 'turn:2' },
+  'claude-sonnet-4-5', 'grant:test', 1000);
+  let reviewed: readonly string[] = [];
+  const result = await checkReply('PREVIEW — candidate', 'turn:2', {
+    elapsedMs: () => 100,
+    jev: async () => { if (!answer) throw Error('timeout'); return { value: answer, latencyMs: 100 }; },
+    reserveEscalation: () => true,
+    escalate: async (text, _id, originalPrompt, ruleIds) => {
+      reviewed = ruleIds ?? [];
+      expect(JSON.parse(replyReviewContext(originalPrompt!, text))).toMatchObject({
+        operatorMessage: 'What did I say?', audience: { operator: 'verified' },
+        sources: [{ id: 'source:1' }], history: [{ update: 1, user: 'remember this' }] });
+      return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 100 };
+    }, record: () => {},
+  }, prompt);
+  expect(result.outcome).toBe('pass');
+  expect(reviewed).toEqual(expected);
+  const selected = replyReviewRules(reviewed as (keyof typeof REPLY_RULES)[]);
+  expect(selected).toEqual(Object.fromEntries(expected.map(id => [id, REPLY_RULES[id as keyof typeof REPLY_RULES]])));
+  expect(replyReviewQuestion(reviewed as (keyof typeof REPLY_RULES)[])).toContain(JSON.stringify(selected));
 });
 
 it('durably checks before intent, sends a holding reply on violation, and replays counts', async () => {
