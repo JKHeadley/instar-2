@@ -134,7 +134,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
     `Held-answer notices attempted: ${String(heldNotices)} (one per held turn; Telegram acceptance is not human receipt).`,
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
-    `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.genesis.expires)}.`,
+    `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.expires)}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',
     view.genesis.importSource !== undefined ? 'This journal was imported from an earlier preview root; imported turns keep their original content, and their times may be unknown.' : '',
   ];

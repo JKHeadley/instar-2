@@ -68,7 +68,7 @@ function channelRow(source, raw, agent, previewChat, channels) {
 
 export function importStorePass(journal, state, source, now, stopped) {
   if (!['telegram', 'slack'].includes(source)) throw Error('preview: unknown channel source');
-  if (journal.readOnly || journal.view.stop || stopped() || now >= journal.view.genesis.expires)
+  if (journal.readOnly || journal.view.stop || stopped() || now >= journal.view.expires)
     throw Error('preview: channel import stopped');
   const path = join(state.root, `${source}-messages.jsonl`);
   if (!existsSync(path)) {

@@ -167,7 +167,7 @@ it('cuts over a stopped predecessor with unchanged counters, cursor, exclusions 
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-cutover-evidence-')));
   const predecessorRoot = join(directory, 'old'), root = join(directory, 'new'), now = 1790000000000;
   const configuration = { root: predecessorRoot, limit: 8 }, nextConfiguration = { ...configuration, root };
-  const options = { root: predecessorRoot, configuration, expiresAt: 1790628000000, now: () => now,
+  const options = { root: predecessorRoot, configuration, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, now: () => now,
     replyLimit: 6, replyWindowMs: 60000, errorLimit: 5, totalErrorLimit: 1000, maxPendingTurns: 16, maxTrialTurns: 128 };
   const old = openPreviewState(options);
   old.recordIntake({ id: 'telegram:8820318295:update:82', updateId: 82,
@@ -200,7 +200,7 @@ it('cuts over a stopped predecessor with unchanged counters, cursor, exclusions 
 import { chmodSync, existsSync as requireExists } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { encoded, subscriptionInvocationPolicy } from './stage2-provider.js';
 // @ts-expect-error Physical host; inspection only, no installed CLI is executed.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
@@ -213,7 +213,7 @@ for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) it(`actual async laun
   for (const path of [root, home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
   const elapsedStart = performance.now(), epoch = 1790000000000;
   const clock = () => epoch + Math.floor(performance.now() - elapsedStart);
-  const now = clock(), cutoff = now - 1000, expiresAt = 1790628000000;
+  const now = clock(), cutoff = now - 1000, expiresAt = SUBSCRIPTION_PREVIEW_EXPIRY;
   const configuration = { root, machine: 'preview-local-machine', botId: '8820318295', botUsername: '@echo_mmtest_seam_b27x_bot',
     operatorSenderId: '7812716706', chatId: '7812716706', chatKind: 'private', forum: false, messageThreadId: null,
     maxPollSeconds: 1, maxBatchItems: 1, maxContextTurns: 8, maxContextBytes: 65536 };
@@ -444,7 +444,7 @@ it('replays the synthetic launcher preload clock independently of the runner cal
     const reading = JSON.parse(result.stdout);
     expect(reading.start).toBeGreaterThanOrEqual(1790000000000);
     expect(reading.end).toBeGreaterThan(reading.start);
-    expect(reading.end + 300000).toBeLessThan(1790628000000);
+    expect(reading.end + 300000).toBeLessThan(SUBSCRIPTION_PREVIEW_EXPIRY);
   }
 });
 

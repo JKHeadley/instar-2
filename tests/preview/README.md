@@ -97,7 +97,8 @@ Graduation requires replacing every stand-in with its named hardening unit, espe
 `run --stage 2` explicitly selects the implemented provider path. Stage 1 remains the default and
 refuses a root with a Stage 2 sidecar. Stage 2 accepts only bot `8820318295` /
 `@echo_mmtest_seam_b27x_bot`, private chat and sender `7812716706`, with no topic. Its fixed expiry
-is `2026-09-28T20:40:00Z` (`1790628000000`). Existing trial limits, cursor and counters carry forward.
+is `2026-10-05T20:40:00Z` (`1791232800000`), a one-week status-quo renewal of `2026-09-28T20:40:00Z`
+(see "Activation renewal" below). Existing trial limits, cursor and counters carry forward.
 This is the recorded supervised, unconfined preview waiver, not production admission or a
 replacement for M3/M4/M5. No code default supplies the model, login profile or activation record.
 
@@ -148,7 +149,7 @@ operatorAssertion, assertedAt, observer, observedAt, method, safeCaptureReferenc
 extraUsage: "observed-disabled" | "operator-asserted/unobservable" | "contradicted"
 extraUsageReason
 subscriptionLimit: "available" | "unobservable" | "exhausted"
-subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1790628000000
+subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1791232800000
 ```
 
 Digests are canonical SHA-256: profileDigest over the frozen descriptor, invocationPolicyDigest
@@ -238,6 +239,42 @@ lengths and references. `status` exposes these local controls; child exceptions/
 Unknown provider launch or send remains held across restart. A complete preserved response may
 finish only its original owner chain while authority is current. Durable API acceptance repairs
 outer status without a second send. Corrupt/missing state and owner/sidecar disagreement refuse.
+
+### Activation renewal
+
+A status-quo renewal keeps the same account, profile directories, pinned CLI, model and
+invocation policy, and moves only the reviewed expiry (`SUBSCRIPTION_PREVIEW_EXPIRY`). The
+desk writes the fresh observation as JSON with exactly these fields: `reference`,
+`reviewedHead`, `assertedAt`, `observedAt`, `method`, `observer`, `safeCaptureReference`,
+`observedAccount`, `subscriptionLimit` (`available` or `unobservable`) and
+`subscriptionLimitReason`, optionally `operatorAssertion`, `waiver` and `extraUsageReason`.
+It then creates a new record; the current record and profile are only read:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/renew-activation.mjs \
+  --current /ABSOLUTE/activation.json --profile /ABSOLUTE/profile.json \
+  --observation /ABSOLUTE/observation.json --out /ABSOLUTE/activation-next.json
+```
+
+Every other field is copied; `predecessor` names the prior reference and file digest. A new
+`reference` also needs `--profile-out /ABSOLUTE/profile-next.json`, a profile successor whose
+`activationReference` matches, and the record's `profileDigest` covers it. A different account,
+an exhausted limit, an unknown observation field or a record this build refuses writes nothing.
+Outputs are created exclusively and never replace an existing file.
+
+A journal's genesis fixes its original expiry. With the runner stopped, extend a live trial,
+once per reviewed expiry and only before it lapses, under the writer lease:
+
+```sh
+node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs renew-expiry \
+  --root /ABSOLUTE/ROOT --activation-record /ABSOLUTE/activation-next.json \
+  --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
+  --expires-at 2026-10-05T20:40:00Z --authority "WHO APPROVED, WHERE, WHEN"
+```
+
+It validates the new record with this build and records its byte digest and the authority.
+`status` then reports `expires` and `expiryAuthority`. Afterwards the runner accepts only the
+new record; the prior build refuses the renewed journal and the new record.
 
 ## Unanswered turns and host recovery
 
@@ -613,7 +650,7 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --root /ABSOLUTE/NEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME \
   --operator-sender-id OPERATOR_ID --chat-id PRIVATE_CHAT_ID \
   --grant-reference TRIAL_ID --configuration-digest sha256:TRIAL_CONFIGURATION_DIGEST \
-  --expires-at 2026-09-28T20:40:00Z --activation-record /ABSOLUTE/activation.json \
+  --expires-at 2026-10-05T20:40:00Z --activation-record /ABSOLUTE/activation.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
   --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768 \
   --time-zone America/Los_Angeles \

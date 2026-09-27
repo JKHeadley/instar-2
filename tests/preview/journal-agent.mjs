@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
+import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
@@ -11,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
@@ -28,7 +29,7 @@ const importSource = (journal, state, source, stopped) => {
       journal.append({ kind: 'channel-source-error', source, error: null, at: Date.now() });
     return result;
   } catch (error) {
-    if (!stopped() && !journal.view.stop && Date.now() < journal.view.genesis.expires
+    if (!stopped() && !journal.view.stop && Date.now() < journal.view.expires
       && journal.view.channelSourceErrors.get(source) !== 'import refused')
       journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: Date.now() });
     throw error;
@@ -97,7 +98,7 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
   const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
+    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = Date.now(), log = runs();
@@ -170,7 +171,7 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -224,6 +225,7 @@ async function main() {
         error: view.view.channelSourceErrors.get(source) ?? null }])),
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       capAuthority: view.view.capAuthority,
+      expires: view.view.expires, expiryAuthority: view.view.expiryAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
       sourceStop: view.view.sourceStop,
       importComplete: importMarker
@@ -381,12 +383,31 @@ async function main() {
     } finally { fixtureJournal?.close(); storage.close(); }
     return;
   }
+  if (command === 'renew-expiry') {
+    // Extends a live trial to a new reviewed activation's expiry under the exclusive writer lease.
+    let renewJournal;
+    try {
+      if (existsSync(stopPath)) throw Error('preview: stop latched');
+      renewJournal = openPreviewJournal(journalPath, key());
+      const now = Date.now();
+      if (now >= renewJournal.view.expires) throw Error('preview: expired');
+      const bytes = readFileSync(required(options, 'activation-record'), 'utf8');
+      const activation = JSON.parse(bytes);
+      const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+      validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+      if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
+        throw Error('preview: activation differs from journal');
+      renewJournalExpiry(renewJournal, { expires: activation.expiresAt, authority: required(options, 'authority'), at: now,
+        activation: `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}` });
+    } finally { renewJournal?.close(); storage.close(); }
+    return;
+  }
   if (command === 'raise-caps') {
     let capJournal;
     try {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       capJournal = openPreviewJournal(journalPath, key());
-      if (Date.now() >= capJournal.view.genesis.expires) throw Error('preview: expired');
+      if (Date.now() >= capJournal.view.expires) throw Error('preview: expired');
       raiseJournalCaps(capJournal, { maxCalls: number(options['max-calls'] ?? String(capJournal.view.limits.maxCalls), 'max-calls'),
         maxReplies: number(options['max-replies'] ?? String(capJournal.view.limits.maxReplies), 'max-replies'),
         maxTurns: number(options['max-turns'] ?? String(capJournal.view.limits.maxTurns), 'max-turns'),
@@ -431,7 +452,7 @@ async function main() {
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
     const invokeSubscription = async (prepared, id, reviewTurnId) => {
       const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
-      const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
+      const result = await route.invoke(prepared, { operation: id, deadline: Math.min(journal.view.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: Date.now() });
@@ -506,7 +527,7 @@ async function main() {
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
       send: async ({ text, expectedText, chat, thread }) => {
-        if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;
+        if (workerStop.value || existsSync(stopPath) || Date.now() >= journal.view.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
           body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }) },
           timeoutMs: 30000 }, token());
@@ -523,8 +544,7 @@ async function main() {
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), Date.now(), SUBSCRIPTION_CONVERSATION_FRAMING);
-    if (activation.trial !== g.grant || activation.baseConfigurationDigest !== g.configurationDigest || activation.expiresAt !== g.expires)
-      throw Error('preview: activation differs from journal');
+    if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
     const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
     if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
@@ -573,9 +593,9 @@ async function main() {
     const waitHeldNotices = async () => {
       let due;
       while ((due = worker.nextHeldNoticeAt()) !== null) {
-        while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, g.expires))
-          await delay(Math.min(1000, due - Date.now(), g.expires - Date.now()));
-        if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= g.expires) break;
+        while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, journal.view.expires))
+          await delay(Math.min(1000, due - Date.now(), journal.view.expires - Date.now()));
+        if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= journal.view.expires) break;
         await worker.drain(); summarizeLater();
       }
     };
@@ -598,7 +618,7 @@ async function main() {
       }
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
       if (await stopAtCap()) break;
-      if (existsSync(stopPath) || Date.now() >= g.expires) break;
+      if (existsSync(stopPath) || Date.now() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {
         if (!await stopAtCap()) endReason = 'cap reached';
         break;
@@ -648,7 +668,7 @@ async function main() {
   finally {
     if (launchedAt !== null) {
       const reason = signalName ? `paused by signal ${signalName}` : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched'
-        : journal && Date.now() >= journal.view.genesis.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
+        : journal && Date.now() >= journal.view.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
       try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: Date.now(), reason }); } catch { /* the next launch reports an unrecorded end */ }
     }
     journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
