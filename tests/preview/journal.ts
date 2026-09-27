@@ -6,7 +6,7 @@ import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readF
 import { dirname, resolve } from 'node:path';
 import { previewTurnId } from './state.js';
 import { redact } from '../../src/recall/redact.js';
-import { selectRecall } from './memory-sentinel.js';
+import { selectRecall, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -806,6 +806,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return String(from) === journal.view.genesis.operator ? 'the operator (verified sender)'
       : `Telegram user ${String(from)} (authenticated sender, not the operator)`;
   };
+  /** A bounded, source-linked hint for the reply model. It does not decide that
+   * either statement is a correction and never writes a memory action. */
+  const contradictionFor = (turn: Turn) => {
+    if (!fromOperator(turn)) return [];
+    const older = journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < turn.update);
+    const sources = [
+      ...older.map(item => ({ id: item.id, update: item.update as number | null, at: sentAt(item) ?? item.at, date: dated(item), from: speakerOf(item),
+        text: clean(redact(item.text).text, true) })),
+      ...[...journal.view.channelItems.values()].map(item => ({ id: channelMemoryId(item), update: null, at: item.at, date: isoMinute(item.at),
+        from: `channel import: ${redact(item.from).text} (export metadata)`,
+        text: clean(redact(item.text).text, true) }))
+    ].sort((a, b) => a.at - b.at);
+    return statedFacts(redact(turn.text).text).flatMap(current => {
+      const prior = sources.flatMap(source => statedFacts(source.text)
+        .filter(fact => fact.subject === current.subject && (fact.subject.startsWith('the ') || !source.id.startsWith('channel:')))
+        .map(fact => ({ source, fact }))).at(-1);
+      if (!prior || prior.fact.value === current.value) return [];
+      return [{ subject: current.subject,
+        earlier: { id: prior.source.id, ...(prior.source.update === null ? {} : { update: prior.source.update }),
+          date: prior.source.date, from: prior.source.from, quote: prior.fact.quote },
+        operator: { id: turn.id, update: turn.update, date: dated(turn), from: speakerOf(turn), quote: current.quote } }];
+    }).slice(0, 2);
+  };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
   const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
   const outcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
@@ -911,7 +934,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * another conversation is labelled with where and when it was said. */
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
     open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn,
-    inventory?: { total: number; items: { kind: string; source: string; date: string; text?: string; from?: string; status?: string }[] }, search?: ReturnType<typeof searchFor>) => {
+    inventory?: { total: number; items: { kind: string; source: string; date: string; text?: string; from?: string; status?: string }[] }, search?: ReturnType<typeof searchFor>,
+    contradictions: ReturnType<typeof contradictionFor> = []) => {
     const summary = compact ? summaryFor(through) : undefined;
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
       && (!summary || item.update > summary.through));
@@ -1000,6 +1024,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (corrections.length ? ' corrections lists possible problems in earlier replies, with rule numbers. These pattern-check signals are not verdicts: reread the reply, correct a real error briefly, and ignore a false alarm.' : '')
         + (inventory ? ' inventory is a bounded journal-derived selection for a possible memory question. Every item names its source and date; a forgotten item is only a withheld marker, never its content. Report limits and uncertainty honestly. A selection or lexical miss is never evidence that nothing else exists. Channel entries retain their recorded provenance.' : '')
         + (search ? ' memorySearch contains bounded, ranked evidence from this journal for the current question. Cite the source and date, mark corrected items, and report forgotten counts without content. A miss is not proof of absence; truncated means the citation list is incomplete. Imported sender metadata keeps its recorded provenance.' : '')
+        + (contradictions.length ? ' contradictions quotes two sourced statements with the same literal subject and different values. This is a narrow signal, not a verdict or a memory update. Judge both statements in context; if they really conflict, ask the operator whether to update memory. Only a direct verified operator correction can use the separate memory decision path.' : '')
         + (labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
@@ -1023,13 +1048,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(preferences.active.size ? { preferences: [...preferences.active.values()].map(item => ({ text: clean(redact(item.quote).text, false, item.source), source: item.source })) } : {}),
       ...(inventory ? { inventory: { total: inventory.total, shown: inventory.items.length,
         truncated: inventory.items.length < inventory.total, items: inventory.items } } : {}),
-      ...(corrections.length ? { corrections } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), ...(search ? { memorySearch: search } : {}), history });
+      ...(corrections.length ? { corrections } : {}), ...(contradictions.length ? { contradictions } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), ...(search ? { memorySearch: search } : {}), history });
 
     return packet;
   };
   const preparedFor = (turn: Turn) => {
     const question = redact(turn.text).text;
     const inventory = inventoryFor(turn);
+    const contradictions = contradictionFor(turn);
     const pending = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(0, PREVIEW_CORRECTION_LIMIT);
     const older = journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < turn.update);
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: 5,
@@ -1100,9 +1126,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const selectedSearch = search && searchCount >= 0
               ? { items: search.items.slice(0, searchCount), forgotten: search.forgotten,
                 truncated: search.truncated || searchCount < search.items.length } : undefined;
+            for (let contradictionCount = contradictions.length; contradictionCount >= 0; contradictionCount--) {
             const base = packetFor(turn.update - 1, compact, selectedRecall,
               named.filter((_, index) => has('person', index)), open.filter((_, index) => has('commitment', index)),
-              turn.thread, false, flagged, selectedChannels, fromOperator(turn), turn, selectedInventory, selectedSearch);
+              turn.thread, false, flagged, selectedChannels, fromOperator(turn), turn, selectedInventory, selectedSearch,
+              contradictions.slice(0, contradictionCount));
         const offered = [...preferenceCandidates, ...candidates.filter((_, index) => has('candidate', index)), ...candidateChannels.filter((_, index) =>
           has('candidate', candidates.length + index)).map(item => ({
           id: publicMemoryId(channelMemoryId(item)), source: 'channel-import',
@@ -1120,7 +1148,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             return { question, context, prepared, carried: flagged.map(item => item.id), dropped };
           } catch { /* The prepared envelope may need one more lower-priority item removed. */ }
           }
-        }
+          }
+          }
         }
         const next = dropOrder[step];
         if (!next) break;

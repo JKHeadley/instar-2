@@ -116,6 +116,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   inventory: packet.inventory ?? null,
   memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
 
+  contradictions: packet.contradictions ?? [],
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   sourceLabels: Object.fromEntries(['summary', 'memorySummary', 'history', 'recalled', 'people', 'commitments',
     'channelMemory', 'memory', 'memoryCandidates'].map(part => [part, (Array.isArray(packet[part]) ? packet[part]
