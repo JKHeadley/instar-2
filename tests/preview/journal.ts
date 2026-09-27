@@ -510,25 +510,34 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const mergeCandidates = (notes: readonly PersonNote[]) => {
     const pairs: { left: number; right: number; leftName: string; rightName: string;
       leftSource: string; rightSource: string; confirmText: string }[] = [];
-    // A question or the exact confirmation repeats names without introducing another person.
-    // Keep those notes for recall, but count only source claims when resolving a pair.
-    const sources = journal.view.people.filter(note => {
-      const text = journal.view.turns.get(note.source)?.text.trim() ?? '';
-      return !text.endsWith('?') && !/^Actually, .+ and .+ are the same person\.$/u.test(text)
-        && !journal.view.memory.some(change => change.trigger === note.source);
-    });
-    const eligible = notes.filter(note => sources.includes(note));
+    // A message solely asking about or confirming this particular pair repeats its
+    // names; it does not introduce either person. Other claims in question-ending
+    // messages remain eligible, including distinct people with the same name.
+    const repeatsPair = (note: PersonNote, other: PersonNote) => {
+      const text = journal.view.turns.get(note.source)?.text.trim();
+      return [[note.name, other.name], [other.name, note.name]].some(([first, second]) => {
+        return text === `Are ${first} and ${second} the same person?`
+          || text === `Actually, ${first} and ${second} are the same person.`
+          || text === `Actually, ${first} and ${second} are not the same person.`
+          || text === `Actually, ${first} and ${second} are different people.`
+          || text === `Please forget that ${first} and ${second} are the same person.`;
+      });
+    };
+    const eligible = notes.filter(note => !affectedNote(note));
     for (let a = 0; a < eligible.length; a++) for (let b = a + 1; b < eligible.length; b++) {
       const left = eligible[a]!, right = eligible[b]!;
       const one = new Set(terms(left.name)), two = new Set(terms(right.name));
       if (left.name === right.name || left.source === right.source || !one.size || !two.size
+        || repeatsPair(left, right) || repeatsPair(right, left)
         || !(one.size < two.size && [...one].every(term => two.has(term))
           || two.size < one.size && [...two].every(term => one.has(term)))) continue;
       const firstId = journal.view.people.indexOf(left), secondId = journal.view.people.indexOf(right);
       const [leftId, rightId, leftNote, rightNote] = firstId < secondId
         ? [firstId, secondId, left, right] as const : [secondId, firstId, right, left] as const;
-      if (sources.filter(note => note.name === leftNote.name && !affectedNote(note)).length !== 1
-        || sources.filter(note => note.name === rightNote.name && !affectedNote(note)).length !== 1) continue;
+      if (journal.view.people.filter(note => note.name === leftNote.name && !affectedNote(note)
+        && !repeatsPair(note, rightNote)).length !== 1
+        || journal.view.people.filter(note => note.name === rightNote.name && !affectedNote(note)
+          && !repeatsPair(note, leftNote)).length !== 1) continue;
       if (activePersonMerges(journal.view).some(link => link.left === leftId && link.right === rightId
         || link.left === rightId && link.right === leftId)) continue;
       pairs.push({ left: leftId, right: rightId, leftName: leftNote.name, rightName: rightNote.name,
