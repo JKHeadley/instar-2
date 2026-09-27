@@ -949,6 +949,24 @@ covers (`null` until the first summary, when every turn is still in full history
 The offline 200-turn regression recalls a fact from turn 5 at turn 190, across a
 restart, with flat non-model overhead.
 
+For a direct question about what the operator said on a day or date range, the
+same journal projection selects at most five original operator turns sent in
+that calendar range, most relevant first. It uses the runner's configured
+time zone for Telegram send dates and for relative days. Supported forms include
+"Tuesday", "yesterday", "3 days ago", "last week", an ISO date, a month name
+and day, a US numeric date, and two explicit dates in a range. A date with no
+year uses the current local year. The packet names the requested range and the
+number of eligible matches, and every quoted turn carries its send date. When
+full history fits, its turns also carry dates for this question; after
+summarization, the selected originals sit beside the summary. Forgotten source
+turns are excluded, and all remaining text uses the existing correction and
+redaction projection. The model answers from the in-range operator evidence,
+states each reported date, and treats a bounded miss as inconclusive. The
+ordinary Jev/full-context reply check and send intent still gate the answer.
+No index, call, store, service or new send route is added. See
+[recall-by-date-live-test.md](recall-by-date-live-test.md) for Justin's private
+chat procedure.
+
 **AFTER the reply:** a bounded rolling summary may use a separately reserved
 subscription call from the same attempt allowance. Original turns stay in the
 journal. Summary failure leaves originals and makes any later context overflow
