@@ -173,13 +173,17 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
 },30000);
 
 it.each([
-  ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/prose-wrapped': 1,
+  ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1,
     'reply-review/verdict/tolerated/fenced': 1 }, null, {}],
+  ['verdict-contradicted', { 'reply-review/verdict/malformed/prose-wrapped': 1 },
+    { role: 'reply-review', layer: 'verdict', shape: 'prose-wrapped' }, {}],
+  ['decision-contradicted', { 'reply-review/decision/malformed/prose-wrapped': 1 },
+    { role: 'reply-review', layer: 'decision', shape: 'prose-wrapped' }, {}],
   ['answer-two-objects', { 'answer/decision/malformed/multiple-objects': 1 },
     { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 1 }],
   ['verdict-trailing-object', { 'reply-review/verdict/malformed/multiple-objects': 1 },
     { role: 'reply-review', layer: 'verdict', shape: 'multiple-objects' }, {}],
-])('the real launcher tolerates one wrapped JSON object and says why it refused others (%s)', async (mode, counts, last, failures) => {
+])('the real launcher accepts a whole-response fence, holds on contradicting prose, and says why it refused others (%s)', async (mode, counts, last, failures) => {
   const world = successiveWorld(), root = join(world.directory, 'shape-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -195,13 +199,15 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const review=envelope.messages[0].content.startsWith('Judge this proposed reply');
   const verdict=JSON.stringify({verdict:'pass',ruleIds:[],reason:'The reply stays within the rules.'});
-  const value=!review ? 'Noted.' : mode === 'wrapped' ? 'Verdict:\\n\\u0060\\u0060\\u0060json\\n'+verdict+'\\n\\u0060\\u0060\\u0060'
+  const value=!review ? 'Noted.' : mode === 'wrapped' ? '\\u0060\\u0060\\u0060json\\n'+verdict+'\\n\\u0060\\u0060\\u0060'
+    : mode === 'verdict-contradicted' ? 'VIOLATION: the proposed reply exposes a credential. Do not send it. '+verdict
     : mode === 'verdict-trailing-object' ? verdict+' {"verdict":"violation"}' : verdict;
   const decision=JSON.stringify({type:'Decision',schemaVersion:1,id:'shape-answer',at:binding.at,by:binding.by,
     conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value,evidence:binding.evidence},
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
     floor:{allowed:binding.floor,chosen:binding.floor.default}});
-  const bytes=mode === 'wrapped' ? (review ? 'Here is my decision: '+decision+' Thanks.' : '\\u0060\\u0060\\u0060json\\n'+decision+'\\n\\u0060\\u0060\\u0060')
+  const bytes=mode === 'decision-contradicted' && review ? 'VIOLATION: this reply must not be sent. '+decision
+    : mode === 'wrapped' ? (review ? '\\u0060\\u0060\\u0060\\n'+decision+'\\n\\u0060\\u0060\\u0060' : '\\u0060\\u0060\\u0060json\\n'+decision+'\\n\\u0060\\u0060\\u0060')
     : mode === 'answer-two-objects' && !review ? decision+'\\n'+decision : decision;
   return {state:'complete',bytes,usage:{inputTokens:1,outputTokens:1}};
 }}});

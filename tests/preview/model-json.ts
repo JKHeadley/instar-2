@@ -1,11 +1,12 @@
-/** Tolerant extraction of exactly one JSON object from model text. With thinking
- * off the model sometimes wraps its JSON in a code fence or a sentence; this
- * accepts exactly one object when it is the whole text, the sole content of a
- * single ```json or ``` fence, or the sole balanced top-level object inside
- * prose. Anything else stays malformed. The returned shape is content-free, so
- * it may be counted in status without storing model text. Callers keep every
- * shape check they already apply after parsing. */
-export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped';
+/** Narrow extraction of exactly one JSON object from model text. With thinking
+ * off the model sometimes wraps its JSON in a code fence; this accepts one object
+ * only when it is the whole text or the sole content of one ```json or ``` fence
+ * that is itself the whole response (whitespace outside). Surrounding prose is
+ * never discarded: it may state a judgment that contradicts the object, so any
+ * other wrapper stays malformed and keeps its held outcome. The returned shape is
+ * content-free, so it may be counted in status without storing model text.
+ * Callers keep every shape check they already apply after parsing. */
+export type ModelJsonShape = 'bare' | 'fenced';
 export type ModelJsonMalformedShape = 'fenced' | 'prose-wrapped' | 'multiple-objects' | 'truncated' | 'not-json';
 export type ModelJsonResult =
   | { ok: true; value: Record<string, unknown>; shape: ModelJsonShape }
@@ -49,16 +50,19 @@ export function parseModelJson(text: string): ModelJsonResult {
   try { whole = JSON.parse(trimmed); } catch { whole = undefined; }
   if (isObject(whole)) return { ok: true, value: whole, shape: 'bare' };
   if (whole !== undefined) return { ok: false, shape: 'not-json' };
-  // One string-aware scan covers both wrappers, so a fence inside a JSON string
-  // (an answer quoting code) is data, never a wrapper boundary.
+  // A complete whole-response fence: its body must parse as one object on its own,
+  // so a fence inside a JSON string (an answer quoting code) stays data.
+  const fence = /^```(?:json)?[ \t]*\n([\s\S]*?)\n?[ \t]*```$/iu.exec(trimmed);
+  if (fence) {
+    let inner: unknown;
+    try { inner = JSON.parse((fence[1] ?? '').trim()); } catch { inner = undefined; }
+    if (isObject(inner)) return { ok: true, value: inner, shape: 'fenced' };
+  }
+  // Refused: classify content-free for diagnostics only; nothing here is accepted.
   const { spans, open } = topLevelObjects(trimmed);
   if (open) return { ok: false, shape: 'truncated' };
   if (spans.length > 1) return { ok: false, shape: 'multiple-objects' };
-  const span = spans[0];
-  const at = span === undefined ? -1 : trimmed.indexOf(span);
-  const fenced = span === undefined ? trimmed.includes('```')
-    : /```(?:json)?[ \t]*$/iu.test(trimmed.slice(0, at).trimEnd()) && trimmed.slice(at + span.length).trimStart().startsWith('```');
-  const value = span === undefined ? null : parseObject(span);
-  if (value) return { ok: true, value, shape: fenced ? 'fenced' : 'prose-wrapped' };
-  return { ok: false, shape: fenced ? 'fenced' : 'not-json' };
+  const outside = spans.reduce((rest, span) => rest.replace(span, ''), trimmed);
+  if (fence || outside.includes('```')) return { ok: false, shape: 'fenced' };
+  return { ok: false, shape: spans.length === 1 ? 'prose-wrapped' : 'not-json' };
 }

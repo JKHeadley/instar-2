@@ -1169,11 +1169,13 @@ bounded attempt, while an uncertain one stays pending across restart. `status` r
 `modelFailureClasses` and `modelResultStates`; `self` includes the same counts.
 Subscription reply reviews also record their returned provider state.
 Model JSON (the outer Decision and the inner reply-review or summary-review
-verdict) is accepted when it is exactly one object: the whole text, the sole
-content of one ```json or ``` fence, or the sole balanced object inside prose.
-Anything else stays malformed and every field check still applies. `status`
+verdict) is accepted when it is exactly one object: the whole text, or the sole
+content of one ```json or ``` fence that is itself the whole response. Prose
+around the JSON is never discarded, because it may state a judgment (such as a
+rejection) that contradicts the object; such text and every other wrapper stays
+malformed under the held outcome, and every field check still applies. `status`
 reports `modelJsonShapes`: content-free counts keyed `role/layer/outcome/shape`
-(shapes `fenced`, `prose-wrapped`, `multiple-objects`, `truncated`, `not-json`,
+(shapes `bare`, `fenced`, and for refusals `prose-wrapped`, `multiple-objects`, `truncated`, `not-json`,
 or `<wrapper>-wrong-fields` when the JSON parsed but failed its checks), plus the
 last malformed one, from a plaintext sidecar `model-json-shapes.json` outside
 the journal. It never holds model text and never feeds an outcome.
