@@ -1076,9 +1076,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       if ([...journal.view.memory, ...memory ?? []].some(change => summaryText.includes(change.quote))) {
-        journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
+        const reason = 'summary faithfulness: stale corrected or forgotten claim';
+        journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',reason,
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
+          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
+        const affected = journal.view.order.find(item => item.update === through);
+        if (affected) journal.append({kind:'hold',id:affected.id,reason,at:ports.now()});
+        return;
       }
       if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.limits.maxBytes / 4))) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',

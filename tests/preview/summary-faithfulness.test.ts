@@ -118,3 +118,26 @@ it('does not commit a Jev pass if the stop gate closes during the check', async 
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('holds a summary that repeats an already corrected exact claim with a reason', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-stale-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'My workshop code is 7319.', people: [] }) : 'Understood.',
+      summaryCheck: async () => jev(0.01), send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'My workshop code is 7319.')]); await worker.drain();
+    worker.intake([update(2, 'Actually, my workshop code is 4412.')]);
+    const source = journal.view.order[0]!, trigger = journal.view.order[1]!;
+    journal.append({ kind: 'summary-reserve', through: 2, at: 1790000000000 });
+    journal.append({ kind: 'summary', through: 2, text: 'The workshop code is 4412.', memoryFor: [trigger.id],
+      memory: [{ mode: 'correct', source: source.id, quote: 'My workshop code is 7319.',
+        trigger: trigger.id, replacement: 'my workshop code is 4412.' }], at: 1790000000000 });
+    worker.intake([update(3, 'Thank you.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.summaries).toHaveLength(1);
+    expect(journal.view.order[2]?.held).toBe('summary faithfulness: stale corrected or forgotten claim');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
