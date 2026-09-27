@@ -1108,11 +1108,23 @@ that `raise-caps` retries; any other failure is a `reply check unavailable`
 hold shown in `status`. New answers leave one shared call-budget
 slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
+Jev and fallback share a 30-second wall-clock budget beginning at Jev reservation.
+The Jev request and subscription review receive the remaining deadline. A late
+result cannot release the candidate; `status.holds` and `lastReplyCheck.reason`
+show `reply check budget exceeded`. Restart does not reset that budget.
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
 subscription review is not retried or charged again from this runner; the turn
 is held as `reply check unavailable` rather than sent unchecked.
 An interrupted Jev check escalates without repeating Jev.
+
+`status.replyTimings` reports per-update answer, Jev, fallback and send times
+in milliseconds, plus each stage's sample count, p50 and p95 (nearest-rank).
+Missing stages are `null` and do not enter a percentile. Answer, check and send
+measurements come from the existing encrypted journal; old turns have nulls.
+An attempted send is timed even when its Telegram outcome is UNKNOWN. These are
+runner wall times, not Telegram delivery times. For Justin's supervised check,
+see [reply-check-timing-live-test.md](reply-check-timing-live-test.md).
 
 Desk one-call connectivity check, after setting the host binding from the vault:
 

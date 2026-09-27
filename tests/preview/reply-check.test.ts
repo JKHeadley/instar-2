@@ -2,9 +2,11 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkReply, HOLDING_REPLY, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { checkReply, HOLDING_REPLY, REPLY_RULES, replyReviewContext, REPLY_CHECK_BUDGET_MS,
+  REPLY_CHECK_BUDGET_REASON } from './reply-check.js';
 import type { ReplyCheckResult } from './reply-check.js';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, replyTimings } from './journal.js';
+import type { JournalView } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const scores = (overrides: Record<string, number> = {}) => ({ model: 'jev-1.13.0', answers: Object.fromEntries(
@@ -60,6 +62,45 @@ it('keeps the turn pending, never sending unchecked, when Jev and the full-conte
   expect(records.at(-1)?.verdict).toBe('unavailable');
 });
 
+it('shares one budget across Jev and fallback, releasing only a verdict within it', async () => {
+  for (const late of [false, true]) {
+    let now = 1000, requestedDeadline = 0, reviews = 0;
+    const records: ReplyCheckResult[] = [];
+    const result = await checkReply('candidate', 'turn:1', {
+      now: () => now, deadlineAt: now + REPLY_CHECK_BUDGET_MS, elapsedMs: () => now,
+      jev: async (_text, timeout) => {
+        expect(timeout).toBe(REPLY_CHECK_BUDGET_MS);
+        now += 2000;
+        return { value: scores({ raw_path: 0.91 }), latencyMs: 2000 };
+      },
+      reserveEscalation: () => true,
+      escalate: async (_text, _id, _prompt, deadline) => {
+        reviews++; requestedDeadline = deadline ?? 0;
+        now += late ? REPLY_CHECK_BUDGET_MS : 1000;
+        return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: late ? REPLY_CHECK_BUDGET_MS : 1000 };
+      }, record: row => records.push(row),
+    });
+    expect(reviews).toBe(1);
+    expect(requestedDeadline).toBe(1000 + REPLY_CHECK_BUDGET_MS);
+    expect(result.outcome).toBe(late ? 'unavailable' : 'pass');
+    expect(records.at(-1)?.reason).toBe(late ? REPLY_CHECK_BUDGET_REASON : undefined);
+  }
+});
+
+it('does not reserve fallback after Jev consumes the entire budget', async () => {
+  let now = 1000, reviews = 0;
+  const records: ReplyCheckResult[] = [];
+  const result = await checkReply('candidate', 'turn:1', {
+    now: () => now, deadlineAt: now + REPLY_CHECK_BUDGET_MS, elapsedMs: () => now,
+    jev: async () => { now += REPLY_CHECK_BUDGET_MS; return { value: scores(), latencyMs: REPLY_CHECK_BUDGET_MS }; },
+    reserveEscalation: () => { reviews++; return true; },
+    escalate: async () => { throw Error('late review dispatched'); }, record: row => records.push(row),
+  });
+  expect(result.outcome).toBe('unavailable');
+  expect(reviews).toBe(0);
+  expect(records.at(-1)?.reason).toBe(REPLY_CHECK_BUDGET_REASON);
+});
+
 it('gives review the original audience, sources, history and operator message', () => {
   const context = { audience: { operator: 'verified' }, sources: [{ id: 'source:1' }],
     history: [{ update: 1, user: 'remember this' }], now: 1000 };
@@ -93,6 +134,104 @@ it('durably checks before intent, sends a holding reply on violation, and replay
     expect(replay.view.replyCheckCounts.violation).toBe(2);
     expect(replay.view.lastReplyCheck?.ruleIds).toEqual(['raw_path']);
     expect(replay.view.lastReplyCheck?.path).toBe('subscription');
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays answer, Jev, fallback and send times into status percentiles', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-times-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    let clock = 1000;
+    const worker = createJournalWorker(journal, { now: () => clock, stopped: () => false,
+      model: async () => { clock += 100; return 'candidate'; }, checkOutbound: () => {},
+      replyCheck: { elapsedMs: () => clock,
+        jev: async () => { clock += 200; return { value: scores({ raw_path: 0.91 }), latencyMs: 200 }; },
+        escalate: async () => { clock += 300; return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 300 }; } },
+      send: async () => { clock += 400; return 7; } });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'hello' } }]);
+    await worker.drain();
+    journal.close();
+    const replay = openPreviewJournal(path, key, undefined, undefined, true);
+    expect(replyTimings(replay.view)).toEqual({ budgetMs: REPLY_CHECK_BUDGET_MS,
+      perReply: [{ update: 1, answerMs: 100, jevMs: 200, fallbackMs: 300, sendMs: 400 }],
+      answer: { count: 1, p50Ms: 100, p95Ms: 100 }, jev: { count: 1, p50Ms: 200, p95Ms: 200 },
+      fallback: { count: 1, p50Ms: 300, p95Ms: 300 }, send: { count: 1, p50Ms: 400, p95Ms: 400 } });
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('computes nearest-rank p50/p95 from measured stages only', () => {
+  const view = { order: [
+    { accepted: true, update: 1, answerMs: 100, replyChecks: [], sendMs: 10 },
+    { accepted: true, update: 2, answerMs: 10, replyChecks: [], sendMs: 20 },
+    { accepted: true, update: 3, answerMs: 20, replyChecks: [], sendMs: 30 },
+    { accepted: true, update: 4 },
+  ] } as unknown as JournalView;
+  expect(replyTimings(view).answer).toEqual({ count: 3, p50Ms: 20, p95Ms: 100 });
+  expect(replyTimings(view).jev).toEqual({ count: 0, p50Ms: null, p95Ms: null });
+  expect(replyTimings(view).send).toEqual({ count: 3, p50Ms: 20, p95Ms: 30 });
+});
+
+it('retains send time for UNKNOWN without making the send repeatable', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-unknown-send-time-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    let clock = 1000;
+    const worker = createJournalWorker(journal, { now: () => clock, stopped: () => false,
+      model: async () => 'candidate', checkOutbound: () => {},
+      replyCheck: { elapsedMs: () => clock,
+        jev: async () => ({ value: scores(), latencyMs: 10 }),
+        escalate: async () => { throw Error('pass must not escalate'); } },
+      send: async () => { clock += 75; return null; } });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'hello' } }]);
+    await worker.drain();
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(replyTimings(replay.view).perReply[0]?.sendMs).toBe(75);
+    expect(replay.view.order[0]?.intent).toBe('PREVIEW — candidate');
+    expect(replay.view.order[0]?.sent).toBeUndefined();
+    const recovered = createJournalWorker(replay, { now: () => clock, stopped: () => false,
+      model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
+      send: async () => { throw Error('send repeated'); } });
+    await recovered.drain();
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('holds an expired reserved check after restart without another review or send', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-expired-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    journal.append({ kind: 'intake', id: 'turn:1', update: 1, text: 'hello', raw: '{}', accepted: true, cursor: 2, at: 1000 });
+    journal.append({ kind: 'reserve', id: 'turn:1', at: 1000 });
+    journal.append({ kind: 'answer', id: 'turn:1', text: 'candidate', at: 1000 });
+    journal.append({ kind: 'reply-jev-reserve', id: 'turn:1', at: 1000 });
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    let invoked = 0;
+    const worker = createJournalWorker(replay, { now: () => 1000 + REPLY_CHECK_BUDGET_MS,
+      stopped: () => false, model: async () => { throw Error('answer repeated'); }, checkOutbound: () => {},
+      replyCheck: { elapsedMs: () => 1000 + REPLY_CHECK_BUDGET_MS,
+        jev: async () => { throw Error('Jev repeated'); },
+        escalate: async () => { invoked++; throw Error('review repeated'); } },
+      send: async () => { invoked++; throw Error('send attempted'); } });
+    await worker.drain();
+    expect(invoked).toBe(0);
+    expect(replay.view.order[0]?.held).toBe(REPLY_CHECK_BUDGET_REASON);
+    expect(replay.view.lastReplyCheck?.reason).toBe(REPLY_CHECK_BUDGET_REASON);
+    expect(replay.view.order[0]?.intent).toBeUndefined();
     replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
