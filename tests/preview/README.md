@@ -2219,16 +2219,21 @@ trial or change any running root.
 ### Held-answer notice (journal runner)
 
 When an accepted operator turn remains held for `reply check unavailable`, `call cap`,
-or `memory correction pending` for more than ten minutes, the runner sends this
-fixed notice once: `PREVIEW — I'm holding my answer to your message from HH:MM; it will follow or I'll tell you why`.
-`HH:MM` is the Telegram message time in the configured `--time-zone`, or the
-durable intake time when Telegram supplied no date. The notice uses the same
+or `memory correction pending` for more than ten minutes, the runner sends at most
+one held notice in a rolling hour across the private chat. Its fixed text is
+`PREVIEW — I'm holding N answer(s), including your message from HH:MM; it will follow or I'll tell you why`.
+`N` counts accepted answers still held when the notice intent is recorded; the text
+uses `answer` for one and `answers` otherwise. `HH:MM` is the selected turn's
+Telegram message time in the configured `--time-zone`, or the durable intake time
+when Telegram supplied no date. The notice uses the same
 bound private chat, topic, stop, expiry, outbound-secret and reply-cap checks as
 an ordinary send. It uses no model call. At a model-call cap, the existing
 launcher waits, checking stop and expiry, until pending held notices are due.
 
 The encrypted journal records the original hold time and one separate exact
-notice intent before dispatch. An API-accepted result gets its own receipt;
+notice intent before dispatch. That intent starts the rolling-hour fence even
+if its send outcome is UNKNOWN. A later eligible turn can receive the next
+notice after the hour; each turn has at most one notice intent. An API-accepted result gets its own receipt;
 an interrupted or uncertain notice stays UNKNOWN and is never sent again.
 The notice consumes one reply-cap slot but does not settle the held answer.
 A later authorized cap raise or recovered check can still send that answer
