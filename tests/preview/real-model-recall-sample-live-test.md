@@ -25,10 +25,16 @@ miss also has the packet hash, size, summary frontier, relevant excerpts, and
 whether the expected or stale value was visible. Keep the generated JSON for
 desk review.
 
+Each answer must be exactly the current synthetic label, or `UNKNOWN` for a
+forgotten label. The journal's structured `{reply,memory}` response is scored
+from its extracted reply. The report also keeps the raw provider output so a
+malformed or ambiguous answer can be inspected; either counts as a miss.
+
 Without both `--live` and `--login-profile`, the command prints `SKIP` and
 opens no provider. If activation or the profile fails the existing validation,
 it refuses before the first question. The current subscription policy is used
 unchanged, including its output cap; output-cap rejections count as misses.
 The command reserves the report path before the first provider call. An
 interrupted run leaves a `started` artifact; treat it as incomplete and inspect
-it instead of rerunning the same sample.
+it instead of rerunning the same sample. SIGINT, SIGTERM, SIGHUP, or activation
+revocation stop further questions and cancel the local provider child.

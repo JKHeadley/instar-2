@@ -26,12 +26,12 @@ const update = (n: number, text: string) => ({ update_id: n, message: { chat: { 
   from: { id: Number(CHAT) }, text, date: Math.floor(NOW / 1000) - 3600 + n } });
 
 export interface RecallMiss { id: string; kind: string; expected: string | null; answer: string | null;
-  state: string; packet: { sha256: string; bytes: number; mode: string; summaryThrough: number | null;
+  rawOutput: string | null; state: string; packet: { sha256: string; bytes: number; mode: string; summaryThrough: number | null;
     expectedVisible: boolean; staleVisible: boolean; evidence: unknown; raw: string } }
 export interface RecallReport { fixture: { turns: number; facts: number; corrections: number; forgets: number;
   sha256: string }; model: string; calls: number; total: number; correct: number; accuracy: number;
   misses: RecallMiss[]; cases: Array<{ id: string; kind: string; expected: string | null; answer: string | null;
-    state: string; correct: boolean; packetSha256: string; packet: string;
+    rawOutput: string | null; state: string; correct: boolean; packetSha256: string; packet: string;
     usage: { inputTokens: number; outputTokens: number; charge: number | null } | null }> }
 
 function seed(journal: ReturnType<typeof openPreviewJournal>) {
@@ -73,11 +73,21 @@ function packetEvidence(packet: Record<string, unknown>, slotNumber: number) {
     .some(value => JSON.stringify(item).includes(value)));
 }
 
+/** Keep process signals observable until the physical provider has been reaped. */
+export function installRecallStopSignals() {
+  let signalled = false;
+  const signal = () => { signalled = true; };
+  process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
+  return { stopped: () => signalled, close: () => {
+    process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
+  } };
+}
+
 /** One fresh journal per run. No live journal path is accepted or opened. */
 export async function runRealModelRecallSample(model: string,
   invoke: (prepared: string, id: string) => Promise<{ state: 'complete' | 'rejected' | 'uncertain';
     text?: string; usage?: { inputTokens: number; outputTokens: number; charge: number | null } }>,
-  grant = 'grant:real-recall-sample'): Promise<RecallReport> {
+  grant = 'grant:real-recall-sample', stopped: () => boolean = () => false): Promise<RecallReport> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-real-recall-')));
   const path = join(root, 'journal.encrypted');
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: BOT, chat: CHAT, operator: CHAT,
@@ -90,22 +100,23 @@ export async function runRealModelRecallSample(model: string,
       summary: journal.view.summaries.at(-1)?.text })).digest('hex');
     journal.close(); journal = openPreviewJournal(path, key);
     let calls = 0;
-    const seen = new Map<string, { packet: string; state: string;
+    const seen = new Map<string, { packet: string; state: string; rawOutput: string | null;
       usage: { inputTokens: number; outputTokens: number; charge: number | null } | null }>();
-    const worker = createJournalWorker(journal, { now: Date.now, stopped: () => false,
+    const worker = createJournalWorker(journal, { now: Date.now, stopped,
       prepareModel: input => prepareJournalEnvelope(input, model, journal.view.genesis.grant, Date.now(), journal.view.limits.maxBytes),
       model: async input => {
         if (input.id.startsWith('summary:')) throw Error('recall sample: unexpected summary call');
         if (!input.prepared || calls >= 20 || seen.has(input.id)) throw Error('recall sample: call bound');
-        seen.set(input.id, { packet: input.context, state: 'reserved', usage: null });
+        seen.set(input.id, { packet: input.context, state: 'reserved', rawOutput: null, usage: null });
         calls++;
         try {
           const result = await invoke(input.prepared, input.id);
           seen.get(input.id)!.state = result.state;
+          seen.get(input.id)!.rawOutput = result.text ?? null;
           seen.get(input.id)!.usage = result.usage ?? null;
           if (result.state === 'uncertain') return { state: 'uncertain' as const };
           if (result.state === 'rejected') return { state: 'rejected' as const, failureClass: 'rejected' as const };
-          return JSON.stringify({ reply: result.text ?? '', memory: [] });
+          return result.text ?? '';
         } catch {
           seen.get(input.id)!.state = 'uncertain';
           return { state: 'uncertain' as const };
@@ -113,11 +124,13 @@ export async function runRealModelRecallSample(model: string,
       }, send: async () => 1, checkOutbound: () => {} });
     const rows: RecallReport['cases'] = [], misses: RecallMiss[] = [];
     for (let i = 0; i < RECALL_CASES.length; i++) {
+      if (stopped()) throw Error('recall sample: stopped; report remains incomplete');
       const item = RECALL_CASES[i]!;
-      const question = `What is the current catalog label for slot ${slot(item.slot)}? If forgotten, say you do not know the label.`;
+      const question = `What is the current catalog label for slot ${slot(item.slot)}? Reply with only the exact label, or UNKNOWN if the label was forgotten.`;
       const n = 121 + i, id = sourceId(n);
       worker.intake([update(n, question)]);
       await worker.drain();
+      if (stopped()) throw Error('recall sample: stopped; report remains incomplete');
       const observed = seen.get(id);
       if (!observed) throw Error(`recall sample: question ${item.id} had no model call`);
       const packet = JSON.parse(observed.packet) as Record<string, unknown>;
@@ -125,13 +138,11 @@ export async function runRealModelRecallSample(model: string,
       const answer = turn?.answer ?? null;
       const expected = item.expected;
       const stale = item.slot <= 8 ? oldValue(item.slot) : item.slot <= 13 ? oldValue(item.slot) : '';
-      const correct = observed.state === 'complete' && (expected === null
-        ? answer !== null && /(?:do not know|don't know|forgot|no longer have)/iu.test(answer) && !answer.includes(stale)
-        : answer !== null && answer.includes(expected) && (!stale || !answer.includes(stale)));
+      const correct = observed.state === 'complete' && answer?.trim() === (expected ?? 'UNKNOWN');
       const sha256 = createHash('sha256').update(observed.packet).digest('hex');
-      rows.push({ id: item.id, kind: item.kind, expected, answer, state: observed.state, correct,
+      rows.push({ id: item.id, kind: item.kind, expected, answer, rawOutput: observed.rawOutput, state: observed.state, correct,
         packetSha256: sha256, packet: observed.packet, usage: observed.usage });
-      if (!correct) misses.push({ id: item.id, kind: item.kind, expected, answer, state: observed.state,
+      if (!correct) misses.push({ id: item.id, kind: item.kind, expected, answer, rawOutput: observed.rawOutput, state: observed.state,
         packet: { sha256, bytes: Buffer.byteLength(observed.packet), mode: String(packet.historyMode),
           summaryThrough: (packet.summary as { through?: number } | undefined)?.through ?? null,
           expectedVisible: expected !== null && observed.packet.includes(expected),

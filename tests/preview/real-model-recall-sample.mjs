@@ -4,7 +4,7 @@ import { isAbsolute } from 'node:path';
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
-import { runRealModelRecallSample } from './real-model-recall-sample.ts';
+import { installRecallStopSignals, runRealModelRecallSample } from './real-model-recall-sample.ts';
 
 const flags = process.argv.slice(2);
 const live = flags.includes('--live');
@@ -35,36 +35,41 @@ if (!live || !profilePath) {
     sourceEvidence: [activation.reference], terminalEvidence: activation.reference, terminalReasonField: 'subtype',
     successfulFinalReplyReasons: ['success'], strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
     maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
-  const active = () => { try { return readFileSync(activationFile, 'utf8') === activationBytes; }
-    catch { return false; } };
-  const io = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => !active() });
-  const routeResult = createClaudeCodeSubscriptionRoute({ context,
-    credential: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: profile.reference },
-    profile, resolveProfile: () => profile, provider: 'anthropic', model, route: 'preview-subscription',
-    disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
-    io, now: Date.now, active, adapterEvidenceContract: contract });
-  if (routeResult.kind !== 'Success') throw Error('recall sample: subscription route refused');
-  // Reserve the report path before any paid invocation. An interrupted run
-  // leaves an explicit incomplete artifact instead of inviting a silent retry.
-  writeFileSync(output, `${JSON.stringify({ status: 'started', model,
-    note: 'Interrupted runs have unknown final call count; do not rerun automatically.' })}\n`,
-    { flag: 'wx', mode: 0o600 });
-  const report = await runRealModelRecallSample(model, async (prepared, id) => {
-    const result = await routeResult.value.invoke(prepared, { operation: id,
-      deadline: Math.min(activation.expiresAt, Date.now() + 180000), timeout: policy.timeout,
-      maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 });
-    const usage = result.usage ? { inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens, charge: null } : undefined;
-    if (result.state !== 'complete' || !result.bytes)
-      return { state: result.state === 'complete' ? 'rejected' : result.state, usage };
-    try {
-      const decision = JSON.parse(result.bytes);
-      if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string') return { state: 'rejected', usage };
-      return { state: 'complete', text: decision.conclusion.value, usage };
-    } catch { return { state: 'rejected', usage }; }
-  }, activation.trial);
-  writeFileSync(output, `${JSON.stringify({ status: 'complete', ...report }, null, 2)}\n`, { mode: 0o600 });
-  process.stdout.write(`Recall accuracy ${report.correct}/${report.total} (${(report.accuracy * 100).toFixed(1)}%); real calls ${report.calls}. Report: ${output}\n`);
-  for (const miss of report.misses) process.stdout.write(`${miss.id}: ${JSON.stringify(miss)}\n`);
+  const stop = installRecallStopSignals();
+  try {
+    const active = () => { if (stop.stopped()) return false;
+      try { return readFileSync(activationFile, 'utf8') === activationBytes; }
+      catch { return false; } };
+    const io = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => !active() });
+    const routeResult = createClaudeCodeSubscriptionRoute({ context,
+      credential: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: profile.reference },
+      profile, resolveProfile: () => profile, provider: 'anthropic', model, route: 'preview-subscription',
+      disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
+      io, now: Date.now, active, adapterEvidenceContract: contract });
+    if (routeResult.kind !== 'Success') throw Error('recall sample: subscription route refused');
+    // Reserve the report path before any paid invocation. An interrupted run
+    // leaves an explicit incomplete artifact instead of inviting a silent retry.
+    writeFileSync(output, `${JSON.stringify({ status: 'started', model,
+      note: 'Interrupted runs have unknown final call count; do not rerun automatically.' })}\n`,
+      { flag: 'wx', mode: 0o600 });
+    const report = await runRealModelRecallSample(model, async (prepared, id) => {
+      const result = await routeResult.value.invoke(prepared, { operation: id,
+        deadline: Math.min(activation.expiresAt, Date.now() + 180000), timeout: policy.timeout,
+        maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 });
+      const usage = result.usage ? { inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens, charge: null } : undefined;
+      if (result.state !== 'complete' || !result.bytes)
+        return { state: result.state === 'complete' ? 'rejected' : result.state, usage };
+      try {
+        const decision = JSON.parse(result.bytes);
+        if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
+          || typeof decision.conclusion.value !== 'string') return { state: 'rejected', usage };
+        return { state: 'complete', text: decision.conclusion.value, usage };
+      } catch { return { state: 'rejected', usage }; }
+    }, activation.trial, () => !active());
+    if (!active()) throw Error('recall sample: stopped; report remains incomplete');
+    writeFileSync(output, `${JSON.stringify({ status: 'complete', ...report }, null, 2)}\n`, { mode: 0o600 });
+    process.stdout.write(`Recall accuracy ${report.correct}/${report.total} (${(report.accuracy * 100).toFixed(1)}%); real calls ${report.calls}. Report: ${output}\n`);
+    for (const miss of report.misses) process.stdout.write(`${miss.id}: ${JSON.stringify(miss)}\n`);
+  } finally { stop.close(); }
 }
