@@ -658,6 +658,20 @@ read-only copy of the real journal and its sidecars and to check the first live
 answer after installation. Keep the current reader available for recovery; do
 not assume an older binary can read a journal after a newer writer appends.
 
+The offline memory continuity soak is `journal-memory-restart-soak.test.ts`.
+It appends 2,000 accepted fixture turns to an encrypted journal, reopens it
+every 20 turns, and compacts it every 100 turns. An uninterrupted control
+receives the same frames. The complete projected view is compared after each
+reopen. The read-only recall packet and deterministic answer are compared at
+each of the 19 summary checkpoints and at the end. Audit output is compared
+only for the final prepared answer, before and after its final replay, and
+must have no findings. The first divergent frame is named in the failed
+assertion. The requests at turns 501 and 1,001 are applied as fixture memory
+changes at summary frames 600 and 1,100. This test directly appends intake
+records; it does not exercise admission, draining, the safety gates, a model,
+or a Telegram send. Justin's supervised channel procedure is in
+[journal-memory-restart-soak-live-test.md](journal-memory-restart-soak-live-test.md).
+
 ### Offline recall benchmark
 
 `memory-scale-10k.test.ts` is the offline depth-at-scale check. It seeds the
