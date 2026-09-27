@@ -11,7 +11,7 @@ import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
+import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES } from './reply-check.js';
 import { parseDatedItem, dueState, type DatedItem } from './dated-memory.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics } from './reply-check.js';
@@ -20,6 +20,7 @@ import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJ
 
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, type StepCheckResult } from './step-check.js';
+
 
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
@@ -60,11 +61,20 @@ const heldNoticeReason = (reason: string | undefined) => reason === 'reply check
   || reason === 'call cap' || reason === 'memory correction pending';
 
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
-type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
+type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true };
+export type CallKind = 'answer' | 'summary' | 'replyCheck';
+export type TokenTotals = Record<CallKind, { calls: number; inputTokens: number; outputTokens: number; unknownCalls: number }>;
+type TokenReservation = { kind: CallKind; input: number; output: number; observedInput: boolean; observedOutput: boolean };
+const tokenKinds: CallKind[] = ['answer', 'summary', 'replyCheck'];
+const emptyTokenTotals = (): TokenTotals => Object.fromEntries(tokenKinds.map(kind =>
+  [kind, { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }])) as TokenTotals;
+const subscriptionOutputMaximum = 2048;
+const jevOutputMaximum = JEV_RESPONSE_MAX_BYTES;
 export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
   isError: boolean | null; outputTokens: number | null; promptBytes: number }
 type SummaryFaithfulness = { path: 'exact' | 'jev'; verdict: 'pass' | 'lost' | 'undecided'; score: number | null; usage?: ModelUsage };
+
 
 
 /** A person named in an earlier accepted message. The model only selects: the name
@@ -102,7 +112,8 @@ export type JournalRecord =
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
-  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; at: number }
+  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     memory?: MemoryChange[]; personMerges?: PersonMerge[]; memoryPending?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; unlabeledRecall?: boolean; usage?: ModelUsage; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
@@ -110,10 +121,11 @@ export type JournalRecord =
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
 
-  | { kind: 'reply-jev-reserve'; id: string; at: number }
-  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
-  | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; at: number }
+  | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
+
 
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
@@ -125,11 +137,12 @@ export type JournalRecord =
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
-  | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; at: number }
+  | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'summary-candidate'; through: number; state: string; usage?: ModelUsage; at: number }
   | { kind: 'summary-check'; through: number; result: SummaryCheckResult; faithfulness?: SummaryFaithfulness; at: number }
   | { kind: 'summary-review-reserve'; through: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; reason?: string; output?: string; evidence?: string; faithfulness?: SummaryFaithfulness; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
+
 
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain'; at: number }
@@ -156,8 +169,10 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
+  tokenTotals: TokenTotals; tokenCalls: TokenReservation[]; tokenCurrent: Map<string, number>;
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent';
     at: number; id?: string; through?: number; reason?: string }[];
+
   channelItems: Map<string, ChannelItem>;
   channelSources: Map<'telegram' | 'slack', ChannelSourceCursor>;
   channelSourceErrors: Map<'telegram' | 'slack', string>;
@@ -182,24 +197,51 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
+function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
+  if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
+  view.tokenCurrent.set(key, view.tokenCalls.length);
+  view.tokenCalls.push({ kind, input, output, observedInput: false, observedOutput: false });
+  const total = view.tokenTotals[kind];
+  total.calls++; total.inputTokens += input; total.outputTokens += output; total.unknownCalls++;
+}
+function settleTokens(view: JournalView, key: string, usage?: ModelUsage, jev = false): void {
+  const index = view.tokenCurrent.get(key);
+  if (index === undefined || !usage) return;
+  const call = view.tokenCalls[index]!;
+  const total = view.tokenTotals[call.kind];
+  for (const [field, measured, flag] of [
+    ['input', usage.inputTokens, 'observedInput'], ['output', usage.outputTokens, 'observedOutput']
+  ] as const) {
+    if (measured === null || !Number.isSafeInteger(measured) || measured < 0 || call[flag]
+      || field === 'input' && !jev && usage.inputComplete !== true) continue;
+    if (field === 'input') total.inputTokens += measured - call.input;
+    else total.outputTokens += measured - call.output;
+    call[field] = measured; call[flag] = true;
+  }
+  if (call.observedInput && call.observedOutput && view.tokenCurrent.has(key)) {
+    total.unknownCalls--; view.tokenCurrent.delete(key);
+  }
+}
+
 /** Keep the append-only confirmation, but stop using it once its source claim is corrected or forgotten. */
 export const activePersonMerges = (view: JournalView): PersonMerge[] => view.personMerges.filter(link =>
   !view.memory.some(change => change.source === link.trigger
     && (link.confirmation.includes(change.quote) || change.quote.includes(link.confirmation))));
+
 
 const frameLimit = 2 * 1024 * 1024;
 export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
 const snapshotChunkBytes = 256 * 1024;
 type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
 type SnapshotChunk = { kind: 'snapshot-chunk'; data: string };
-type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed'> & {
+type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent'> & {
   turns: [string, Turn][]; order: string[]; channelItems: [string, ChannelItem][]; summaryReservations: [number, number][];
   summaryFailures: [number, number][]; failureClasses: [ModelFailureClass, number][];
   providerStates: [string, number][]; closed: [number, CommitmentClosure][]; capReports: string[];
   stepChecks: [string, { output?: string; reserved?: true; result?: StepCheckResult }][];
   channelSources: ['telegram' | 'slack', ChannelSourceCursor][]; channelSourceErrors: ['telegram' | 'slack', string][];
   summaryRequired: number[]; summaryCandidates: [number, string][]; summaryChecks: [number, SummaryCheckResult[]][];
-  summaryReviews: number[]; callOutcomeCounts: [string, number][]; questionsReviewed: string[] };
+  summaryReviews: number[]; callOutcomeCounts: [string, number][]; questionsReviewed: string[]; tokenCurrent: [string, number][] };
   retained: JournalRecord[] };
 
 function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
@@ -209,7 +251,7 @@ function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
     capReports: [...view.capReports], stepChecks: [...view.stepChecks], channelSources: [...view.channelSources],
     channelSourceErrors: [...view.channelSourceErrors], summaryRequired: [...view.summaryRequired],
     summaryCandidates: [...view.summaryCandidates], summaryChecks: [...view.summaryChecks], summaryReviews: [...view.summaryReviews],
-    callOutcomeCounts: [...view.callOutcomeCounts], questionsReviewed: [...view.questionsReviewed] }, retained };
+    callOutcomeCounts: [...view.callOutcomeCounts], questionsReviewed: [...view.questionsReviewed], tokenCurrent: [...view.tokenCurrent] }, retained };
 }
 function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
   const saved = snapshot?.view;
@@ -219,14 +261,15 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   if (saved.order.length !== turns.size || new Set(saved.order).size !== saved.order.length
     || saved.order.some(id => !turns.has(id) || turns.get(id)?.id !== id))
     throw Error('preview journal: snapshot turn index differs');
-  const view: JournalView = { ...saved, turns, order: saved.order.map(id => turns.get(id)!), channelItems: new Map(saved.channelItems),
+  const view: JournalView = { ...saved, tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
+    turns, order: saved.order.map(id => turns.get(id)!), channelItems: new Map(saved.channelItems),
     summaryReservations: new Map(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
     failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed),
     capReports: new Set(saved.capReports ?? []), stepChecks: new Map(saved.stepChecks ?? []),
     channelSources: new Map(saved.channelSources ?? []), channelSourceErrors: new Map(saved.channelSourceErrors ?? []),
     summaryRequired: new Set(saved.summaryRequired ?? []), summaryCandidates: new Map(saved.summaryCandidates ?? []),
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
-    callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []) };
+    callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []) };
   verifyPendingEvidence(snapshot.retained, view);
   return view;
 }
@@ -495,7 +538,11 @@ function project(view: JournalView, row: JournalRecord): void {
     return;
   }
   if (row.kind === 'stop') { view.stop ??= row.reason; return; }
-  if (row.kind === 'legacy-call') { view.calls++; return; }
+  if (row.kind === 'legacy-call') {
+    // The old single-answer preview had no summary or reply-check model route.
+    reserveTokens(view, `legacy:${String(view.calls)}`, 'answer', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++; return;
+  }
   if (row.kind === 'legacy-reply') { view.replies++; return; }
   if (row.kind === 'call-outcome') {
     validateCallOutcome(view, row);
@@ -517,6 +564,8 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'summary-reserve') {
     if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
       || (view.summaryFailures.get(row.through) ?? 0) >= 2) throw Error('preview journal: repeated summary reservation');
+    reserveTokens(view, `summary:${String(row.through)}`, 'summary', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
     view.summaryCandidates.delete(row.through); view.summaryChecks.delete(row.through); view.summaryReviews.delete(row.through);
     view.summaryReservations.set(row.through, row.at); if (row.supervised) view.summaryRequired.add(row.through); view.calls++;
     view.lastPrompt = { kind: 'summary', through: row.through, prompt: row.prompt ?? null, memoryCount: view.memory.length,
@@ -546,6 +595,7 @@ function project(view: JournalView, row: JournalRecord): void {
     view.summaryCheckCounts[row.result.verdict]++; view.lastSummaryCheck = row.result; return;
 
 
+
   }
   if (row.kind === 'summary-failed') {
     if (!view.summaryReservations.delete(row.through)) throw Error('preview journal: failed summary without reservation');
@@ -554,11 +604,13 @@ function project(view: JournalView, row: JournalRecord): void {
       if (!trigger?.accepted || trigger.update > row.through) throw Error('preview journal: failed summary trigger absent');
       trigger.memoryPending = true;
     }
+    if (row.state !== 'uncertain') settleTokens(view, `summary:${String(row.through)}`, row.usage);
     const failures = (view.summaryFailures.get(row.through) ?? 0) + 1;
     view.summaryFailures.set(row.through, failures);
     if (view.stepCheckStarted && row.output !== undefined)
       view.stepChecks.set(`summary-failed:${row.through}:${failures}`, { output: row.output });
     view.lastSummaryFailure = row;
+
     return;
   }
   if (row.kind === 'summary-uncertain') {
@@ -572,6 +624,7 @@ function project(view: JournalView, row: JournalRecord): void {
       || !view.summaryChecks.get(row.through)?.some(check => check.verdict === 'pass')))
       throw Error('preview journal: unchecked summary');
     view.summaryReservations.delete(row.through);
+    settleTokens(view, `summary:${String(row.through)}`, row.usage);
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
     if (row.memory) { view.memory.push(...row.memory);
       for (const change of row.memory) operatorEvent(view, row.at, view.turns.get(change.trigger)?.update ?? 0,
@@ -630,10 +683,14 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'reply-jev-reserve') {
     if (replyCandidate === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
       throw Error('preview journal: Jev reservation order or cap');
+    reserveTokens(view, `jev:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? jevOutputMaximum);
     turn.jevReserved = true; view.jevChecks++; return;
   }
   if (row.kind === 'reply-review-reserve') {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
+    reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
     turn.reviewReserved = true; view.calls++; return;
   }
   if (row.kind === 'reply-review-state') {
@@ -641,12 +698,18 @@ function project(view: JournalView, row: JournalRecord): void {
       throw Error('preview journal: review state order');
     turn.reviewState = row.state;
     if (row.diagnostics) turn.reviewDiagnostics = row.diagnostics;
+    if (row.state !== 'uncertain') settleTokens(view, `review:${row.id}`, row.usage);
+
     return;
   }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
+    if (row.result.path === 'jev' && row.result.verdict !== 'unavailable')
+      settleTokens(view, `jev:${row.id}`, row.result.usage, true);
+    if (row.result.path === 'subscription' && row.result.verdict !== 'unavailable' && turn.reviewState !== 'uncertain')
+      settleTokens(view, `review:${row.id}`, row.result.usage);
     turn.replyChecks ??= []; turn.replyChecks.push(row.result);
     view.replyCheckCounts[row.result.verdict]++; view.replyCheckPaths[row.result.path]++;
     view.lastReplyCheck = row.result; return;
@@ -654,11 +717,15 @@ function project(view: JournalView, row: JournalRecord): void {
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held; delete turn.heldSince;
-  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
+  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation');
+    reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
+    turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
     if (hits) { turn.recallHits = hits.turns; turn.channelRecallHits = hits.channels; }
     view.calls++;
     view.lastPrompt = { kind: 'answer', id: turn.id, prompt: row.prompt ?? null, memoryCount: view.memory.length,
       summaryCount: view.summaries.length, closedCount: view.closed.size };
+
 
 
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
@@ -692,9 +759,11 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
+    settleTokens(view, `answer:${row.id}`, row.usage);
     turn.answer = row.text;
     if (row.unlabeledRecall) turn.unlabeledRecall = true;
     if (view.stepCheckStarted && !row.failureClass) view.stepChecks.set(`answer:${row.id}`, {});
+
     if (row.state) turn.modelState = row.state;
     if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
@@ -755,7 +824,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -783,6 +852,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         project(view, row);
       }
       offset = decoded.end;
+
     }
     if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
     if (offset < sealed.length && strictReadOnly) throw Error('preview journal: incomplete read-only frame');
@@ -824,7 +894,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -1949,7 +2020,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
           const { question, context, prepared, carried, dropped, grounding } = selected;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
-            corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes, at: ports.now() }); gate();
+            corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
+            maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
+
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
@@ -2061,7 +2134,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
-                  ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
+                  ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }),
+                  maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,
+                  at: ports.now() }); return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
             let checked: ReplyDecision;
             if (turn.jevReserved) {
@@ -2074,8 +2149,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
               checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             } else {
-              journal.append({ kind: 'reply-jev-reserve', id: turn.id, at: ports.now() });
+              journal.append({ kind: 'reply-jev-reserve', id: turn.id,
+                maxInputTokens: Buffer.byteLength(jevRequestBody(reply)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
               checked = await checkReply(reply, turn.id, checkPorts, reviewPrompt);
+
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
           }
@@ -2401,7 +2478,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory } = chosen;
       gate();
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
-        ...(ports.replyCheck ? { supervised: true as const } : {}),at:ports.now()});
+        ...(ports.replyCheck ? { supervised: true as const } : {}),
+        maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at:ports.now()});
+
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,
         context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }

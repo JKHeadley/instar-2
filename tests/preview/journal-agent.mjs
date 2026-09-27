@@ -14,7 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
@@ -44,6 +44,7 @@ import { memoryReport } from './memory-export.js';
 
 import { operatorDigest } from './operator-digest.js';
 import { stepQuestions } from './step-check.js';
+
 
 
 const parse = values => {
@@ -231,6 +232,11 @@ async function main() {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
         error: view.view.channelSourceErrors.get(source) ?? null }])),
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
+      tokens: view.view.tokenTotals,
+      tokenTotal: Object.values(view.view.tokenTotals).reduce((total, kind) => ({
+        calls: total.calls + kind.calls, inputTokens: total.inputTokens + kind.inputTokens,
+        outputTokens: total.outputTokens + kind.outputTokens, unknownCalls: total.unknownCalls + kind.unknownCalls }),
+      { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }),
       capAuthority: view.view.capAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
       sourceStop: view.view.sourceStop,
@@ -447,13 +453,17 @@ async function main() {
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
+    const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+      charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
     const invokeSubscription = async (prepared, id, reviewTurnId) => {
       const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
-        diagnostics: replyReviewDiagnostics(result.usage), at: Date.now() });
+        diagnostics: replyReviewDiagnostics(result.usage),
+        ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: Date.now() });
+
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
@@ -472,7 +482,7 @@ async function main() {
         headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
       if (!response.ok) throw Error('preview: Jev unavailable');
-      return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
+      return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
     };
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
@@ -483,16 +493,16 @@ async function main() {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const result = await invokeSubscription(prepared, id);
         if (result.state !== 'complete' || result.failureClass) return { ...result,
-          ...(result.usage ? { usage: { inputTokens: result.usage.inputTokens,
-            outputTokens: result.usage.outputTokens, charge: null } } : {}) };
+          ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
         return { state: 'complete', text: result.value,
-          usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+          usage: recordedUsage(result.usage) };
       },
       summaryCheck: async evidence => (await askJev(evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
         jev: (text, questions = jevQuestions) => askJev(text, questions),
         escalate: async (text, id, originalPrompt, reviewRules) => {
+
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
           const selectedRules = replyReviewRules(reviewRules ?? []);
@@ -508,7 +518,7 @@ async function main() {
 
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
-            usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+            usage: recordedUsage(result.usage) };
         },
         summaryReview: async (state, through) => {
           const start = performance.now();
@@ -519,6 +529,7 @@ async function main() {
           catch { return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start) }; }
           const result = await invokeSubscription(prepared, id);
           return interpretSummaryReview(result, Math.round(performance.now() - start));
+
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),

@@ -337,10 +337,16 @@ export function createClaudeCodeSubscriptionRoute(input:
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
         if (frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
-          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens))
-          reportedUsage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens,
-            charge: null,
+          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens)) {
+          const cacheComplete = integer(frame.usage.cache_creation_input_tokens)
+            && integer(frame.usage.cache_read_input_tokens);
+          const completeInput = cacheComplete ? frame.usage.input_tokens
+            + frame.usage.cache_creation_input_tokens + frame.usage.cache_read_input_tokens : null;
+          reportedUsage = { inputTokens: completeInput !== null && Number.isSafeInteger(completeInput) ? completeInput : null,
+            ...(completeInput !== null && Number.isSafeInteger(completeInput) ? { inputComplete: true as const } : {}),
+            outputTokens: frame.usage.output_tokens, charge: null,
             source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
+        }
         ensure(frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
           && typeof frame.subtype === 'string' && frame.subtype.length > 0
           && typeof frame.session_id === 'string'
@@ -348,6 +354,7 @@ export function createClaudeCodeSubscriptionRoute(input:
           && reportedUsage !== null
           && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
         const usage = reportedUsage;
+
         if (frame.is_error === true) return lastFailure.failureClass === 'limit' || lastFailure.failureClass === 'policy'
           ? uncertain() : { state: 'rejected', bytes: null, providerOperation: frame.session_id, usage, retryBlocked: false };
         if (typeof frame.result === 'string' && Buffer.byteLength(frame.result) > policy.maxOutputBytes)

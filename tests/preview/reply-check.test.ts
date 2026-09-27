@@ -2,7 +2,8 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkReply, HOLDING_REPLY, interpretJev, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict } from './reply-check.js';
+import { checkReply, HOLDING_REPLY, interpretJev, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, parseJevResponse, JEV_RESPONSE_MAX_BYTES } from './reply-check.js';
+
 
 import type { ReplyCheckResult } from './reply-check.js';
 import { redact } from '../../src/recall/redact.js';
@@ -14,6 +15,11 @@ const scores = (overrides: Record<string, number> = {}) => ({ model: 'jev-1.13.0
 const key = new Uint8Array(32).fill(3);
 // Memory holds the sent text without the PREVIEW surface marker.
 const HOLDING_TEXT = HOLDING_REPLY.replace(/^PREVIEW — /u, '');
+
+it('accepts a bounded Jev response and refuses an oversized one', () => {
+  expect(parseJevResponse(JSON.stringify(scores()))).toEqual(scores());
+  expect(() => parseJevResponse('x'.repeat(JEV_RESPONSE_MAX_BYTES + 1))).toThrow('Jev response too large');
+});
 
 it.each([
   ['pass', scores(), 'pass', true, false],

@@ -14,9 +14,10 @@ export type ReplyRule = keyof typeof REPLY_RULES;
 export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export type ReplyPath = 'jev' | 'subscription' | 'holding';
 export const JEV_MODEL = 'jev-1.13.0';
+export const JEV_RESPONSE_MAX_BYTES = 4096;
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
   path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string;
-  usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }
+  usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 /** The pinned JSON-result route reports total output usage, but no thinking blocks. */
 export interface ReplyReviewDiagnostics { outputTokens: number | null; thinkingPresent: 'unobservable' }
 export function replyReviewDiagnostics(usage: { outputTokens: number | null } | undefined): ReplyReviewDiagnostics {
@@ -24,12 +25,18 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
   return { outputTokens: typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null,
     thinkingPresent: 'unobservable' };
 }
+
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
 const rules = Object.keys(REPLY_RULES) as ReplyRule[];
 const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0.85,
   config_key: 0.85, credential: 0.70, api_endpoint: 0.85, quits_on_self: 0.70,
   claims_blocked: 0.85, parks_on_user: 0.85 };
 export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: REPLY_RULES[id] }]));
+export const jevRequestBody = (text: string): string => JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions });
+export function parseJevResponse(body: string): unknown {
+  if (Buffer.byteLength(body) > JEV_RESPONSE_MAX_BYTES) throw Error('preview: Jev response too large');
+  return JSON.parse(body);
+}
 
 /** Jev already cleared every omitted question. A failed Jev response supplies no
  * cleared questions, so its review still judges all eight. */
@@ -96,7 +103,8 @@ export interface ReplyCheckPorts {
   jev(text: string, questions?: Record<string, { type: string; instructions: string }>): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[]): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
 
-    usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }>;
+    usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
+
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   record(result: ReplyCheckResult): void;
   elapsedMs(): number;
