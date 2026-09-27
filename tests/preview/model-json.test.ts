@@ -9,6 +9,7 @@ it.each([
   ['a ```json fence', `\`\`\`json\n${text}\n\`\`\``, 'fenced'],
   ['a bare ``` fence', `\`\`\`\n${text}\n\`\`\``, 'fenced'],
   ['a whole-response fence with spaces outside', `  \`\`\`json\n${text}\n\`\`\`  `, 'fenced'],
+  ['a whole-response CRLF fence', `\`\`\`json\r\n${text}\r\n\`\`\``, 'fenced'],
 ])('accepts exactly one object as %s', (_name, input, shape) => {
   expect(parseModelJson(input)).toEqual({ ok: true, value: decision, shape });
 });
@@ -21,6 +22,7 @@ it.each([
   ['a pass object inside an unterminated array', `[{"verdict":"pass","ruleIds":[],"reason":"ok"}`, 'prose-wrapped'],
   ['a rejection fence followed by a JSON fence', `\`\`\`\nVIOLATION: do not send\n\`\`\`\n\`\`\`json\n{"verdict":"pass","ruleIds":[],"reason":"ok"}\n\`\`\``, 'fenced'],
   ['a JSON fence followed by a rejection', `\`\`\`json\n${text}\n\`\`\`\nVIOLATION: do not send this.`, 'fenced'],
+  ['a CRLF JSON fence followed by a rejection', `\`\`\`json\r\n${text}\r\n\`\`\`\r\nVIOLATION: do not send this.`, 'fenced'],
   ['two objects in prose', `First ${text} and second ${text}`, 'multiple-objects'],
   ['a trailing second object', `${text} {"type":"Decision"}`, 'multiple-objects'],
   ['two fences', `\`\`\`json\n${text}\n\`\`\`\n\`\`\`json\n${text}\n\`\`\``, 'multiple-objects'],
