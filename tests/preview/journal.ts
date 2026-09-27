@@ -709,11 +709,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const compact of [false, true]) {
       const summary = compact ? summaryFor(turn.update - 1) : undefined;
       if (compact && !summary) continue;
-      const recalled = summary && !period ? recallFor(turn, summary) : [];
-      const channels = period ? [] : channelFor(turn, summary?.text);
-      const named = summary && !period ? peopleFor(turn.text, summary.through) : [];
-      const open = summary ? openFor(summary.through, PREVIEW_COMMITMENT_LIMIT)
-        .filter(item => !period || inRequestedPeriod(sentAt(item.turn!), period)) : [];
+      const recalled = summary ? recallFor(turn, summary) : [];
+      const channels = channelFor(turn, summary?.text);
+      const named = summary ? peopleFor(turn.text, summary.through) : [];
+      const open = summary ? openFor(summary.through, PREVIEW_COMMITMENT_LIMIT) : [];
       const total = recalled.length + named.length + open.length;
       // Correction notes yield first. With a summary, recalled originals then the oldest
       // person notes and commitments give way; the summary still covers the history.
@@ -748,7 +747,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                       user: clean(redact(item.text).text, true, item.id),
                       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
                       outcome: outcome(item) })) },
-                  periodGuide: 'Answer the requested period using its dated turns and the rolling summary as background. The rolling summary also covers other dates. Mark open questions and commitments only when supported by this period or active commitment evidence; identify uncertain delivery. If period.omitted is positive, say the recap is partial. Do not infer that no other turns exist.' }) : ordinary;
+                  periodGuide: 'The calendar window is a candidate inferred from the question, not a decision about its meaning. Interpret the full question using all available evidence. For period claims use dated evidence; the rolling summary also covers other dates. Mark open questions and commitments only when supported by evidence; identify uncertain delivery. If period.omitted is positive, say the recap is partial. Do not infer that no other turns exist.' }) : ordinary;
                 if (Buffer.byteLength(context) > journal.view.limits.maxBytes) continue;
                 promptFit = true;
                 try {

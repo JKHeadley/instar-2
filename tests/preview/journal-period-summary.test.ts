@@ -2,7 +2,9 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { spawnSync } from 'node:child_process';
+import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 import { inRequestedPeriod, requestedPeriod } from './period-summary.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
@@ -27,6 +29,7 @@ it('uses the installed zone and complete calendar boundaries for supported recap
   expect(requestedPeriod('Summarize 2026-02-30 to 2026-03-03', now, zone)).toBeNull();
   expect(requestedPeriod('What about this week?', now, zone)).toBeNull();
   expect(requestedPeriod('Summarize the last 32 days', now, zone)).toBeNull();
+  expect(requestedPeriod('Summarize this week and last week', now, zone)).toBeNull();
   const week = requestedPeriod('What did we talk about this week?', now, zone)!;
   expect(inRequestedPeriod(Date.UTC(2026, 8, 21, 6), week)).toBe(false); // Sunday in Los Angeles.
   expect(inRequestedPeriod(Date.UTC(2026, 8, 21, 7), week)).toBe(true);
@@ -60,6 +63,7 @@ it('recaps compacted period turns with dates and an omission count, then sends t
       commitments?: { date: string; items: { quote: string }[] }[] }[] = [];
     let jev = 0, sends = 0;
     const worker = createJournalWorker(journal, { now: () => now, timeZone: zone, stopped: () => false,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', genesis.grant, now),
       model: async input => {
         const packet = JSON.parse(input.context); packets.push(packet);
         const commitment = packet.commitments?.[0]?.items?.[0]?.quote;
@@ -89,14 +93,72 @@ it('recaps compacted period turns with dates and an omission count, then sends t
     expect(packets[0]?.commitments?.[0]?.date).toBe('2026-09-23T18:00Z');
     expect(packets[0]?.period?.turns.some(turn => turn.user.includes('Previous week'))).toBe(false);
     expect(packets[0]?.period?.turns.every(turn => turn.date.startsWith('2026-'))).toBe(true);
+    expect(packets[0]?.periodGuide).toContain('candidate inferred from the question');
     expect(packets[0]?.periodGuide).toContain('Mark open questions and commitments');
     expect(packets[0]?.periodGuide).toContain('recap is partial');
     expect(jev).toBe(1); expect(sends).toBe(1);
     expect(journal.view.lastReplyCheck).toMatchObject({ path: 'jev', verdict: 'pass' });
     expect(journal.view.turns.get('telegram:12345678:update:19')?.intent).toContain('The launch-date commitment is open.');
     journal.close();
+    const inspected = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'inspect', '--root', root],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+      encoding: 'utf8', timeout: 20000 });
+    expect(inspected.status, inspected.stderr).toBe(0);
+    const inspectedPeriod = JSON.parse(inspected.stdout).last.period;
+    expect(inspectedPeriod).toMatchObject({ from: '2026-09-21', through: '2026-09-27', zone, total: 17,
+      omitted: packets[0]!.period!.omitted });
+    expect(inspectedPeriod.turns).toEqual(packets[0]!.period!.turns);
+    const prospective = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'inspect', '--root', root, '--text', query,
+      '--model', 'claude-opus-5-5', '--time-zone', zone],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+      encoding: 'utf8', timeout: 20000 });
+    expect(prospective.status, prospective.stderr).toBe(0);
+    expect(JSON.parse(prospective.stdout).next.period).toMatchObject({ zone, total: expect.any(Number),
+      omitted: expect.any(Number), turns: expect.any(Array) });
     const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(reopened.view.turns.get('telegram:12345678:update:19')?.sent).toBe(1);
     reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps imported email recall and ordinary recall when a period cue is only part of the request', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-period-recall-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const prior = update(1, 'The ferry docket is on the review agenda.', Date.UTC(2026, 8, 20, 18));
+    const id = 'telegram:12345678:update:1';
+    journal.append({ kind: 'intake', id, update: 1, text: prior.message.text, raw: JSON.stringify(prior),
+      accepted: true, cursor: 2, at: Date.UTC(2026, 8, 20, 18) });
+    journal.append({ kind: 'reserve', id, at: now });
+    journal.append({ kind: 'answer', id, text: 'The review remains open.', at: now });
+    journal.append({ kind: 'intent', id, text: 'PREVIEW — The review remains open.', chat: genesis.chat,
+      update: 1, grant: genesis.grant, at: now });
+    journal.append({ kind: 'sent', id, message: 1, at: now });
+    journal.append({ kind: 'summary-reserve', through: 1, at: now });
+    journal.append({ kind: 'summary', through: 1, text: 'A ferry review was mentioned.', at: now });
+    importChannelFixture(journal, [{ source: 'email', account: 'agent@example.test', id: 'email-1',
+      from: 'captain@example.test', at: Date.UTC(2026, 8, 26, 18), subject: 'Ferry docket',
+      text: 'The ferry docket ID is FERRY-Q7.' }], 'agent@example.test', now);
+    const worker = createJournalWorker(journal, { now: () => now, timeZone: zone, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    const probe = (question: string) => {
+      const result = worker.probe(question);
+      expect('reason' in result).toBe(false);
+      if ('reason' in result) throw Error(result.reason);
+      return JSON.parse(result.context) as { period?: { total: number }; channelMemory?: { quote: string }[];
+        recalled?: { user: string }[]; history?: { user: string }[] };
+    };
+    const ordinary = probe('Summarize the email about the ferry docket');
+    const dated = probe('Summarize the email about the ferry docket from this week');
+    expect(ordinary.channelMemory?.[0]?.quote).toContain('FERRY-Q7');
+    expect(dated.period?.total).toBe(0);
+    expect(dated.channelMemory?.[0]?.quote).toContain('FERRY-Q7');
+    expect([...(dated.recalled ?? []), ...(dated.history ?? [])].some(item => item.user.includes('ferry docket'))).toBe(true);
+    const conflicting = probe('Summarize this week and last week for the ferry docket');
+    expect(conflicting.period).toBeUndefined();
+    expect(conflicting.channelMemory?.[0]?.quote).toContain('FERRY-Q7');
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

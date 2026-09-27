@@ -954,16 +954,18 @@ restart, with flat non-model overhead.
 A verified operator can ask for a recap of this or last week, this or last
 month, today, yesterday, the past 1–31 days, or an explicit `YYYY-MM-DD to
 YYYY-MM-DD` range of at most 31 days. The runner interprets calendar
-days in its installed `--time-zone` and puts the exact window in the normal
-reply packet. It reads original accepted turns from the existing journal,
+days in its installed `--time-zone` and puts a candidate window in the normal
+reply packet. The model interprets the full request with ordinary recall still
+available. The runner reads original accepted turns from the existing journal,
 including compacted turns, and shows at most the twelve newest matching turns
 with their Telegram dates, conversation, sender when not the operator, actual
 sent reply and delivery state. The packet also carries the existing rolling
 summary as background. That summary spans other dates, so the model is told to
-base period claims on dated turns, mark supported open questions and commitments,
+base period claims on dated evidence, mark supported open questions and commitments,
 and say when the bounded set omitted turns. An absent match is not proof that
-nothing happened. Unsupported or ambiguous periods stay on the ordinary memory
-path; the model can ask for dates. No second store, model call or send path is
+nothing happened. Unsupported, ambiguous or conflicting periods stay on the ordinary memory
+path; the model can ask for dates. `inspect` shows the last packet's bounded
+`period` evidence when present. No second store, model call or send path is
 introduced. The same prompt bound trims the period quotes if needed, while
 retaining the original turns in the encrypted journal. The reply still passes
 the Jev check, outbound secret wall, cap, stop and exact send-intent gates.

@@ -10,6 +10,8 @@ export function requestedPeriod(message: string, now: number, zone: string): { f
   const shifted = (day: Date, count: number) => new Date(day.getTime() + count * 86_400_000);
   const text = message.toLowerCase();
   const absolute = /\b(20\d{2}-\d{2}-\d{2})\s+(?:to|through)\s+(20\d{2}-\d{2}-\d{2})\b/u.exec(text);
+  const relative = [...text.matchAll(/\b(?:this|last) (?:week|month)\b|\b(?:today|yesterday)\b|\b(?:past|last) \d{1,2} days?\b/gu)];
+  if (relative.length + Number(absolute !== null) !== 1) return null;
   if (absolute) {
     const start = new Date(`${absolute[1]}T00:00:00Z`), end = new Date(`${absolute[2]}T00:00:00Z`);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || key(start) !== absolute[1]
