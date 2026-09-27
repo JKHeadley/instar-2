@@ -711,6 +711,21 @@ several summary frontiers, the worker completes reachable frontiers before sendi
 later ordinary replies; an unresolved earlier turn holds later ordinary work with
 an explicit reason. Lost-answer notices retain their separate recovery path.
 
+Large encrypted frames use bounded Brotli encoding inside the existing authenticated
+journal frame; older JSON frames still replay. Reply-review reservations refer to the
+answer reservation's exact prepared packet by SHA-256 when they reuse it. Snapshot
+retention also omits answer-packet copies already held in its turn projection. Replay
+checks the reference, while the original packet stays available for audit, inspect and
+forgetting checks. The offline 37-turn growth fixture measures physical bytes by frame
+kind, then compacts and reopens the snapshot; run only
+`npx vitest run tests/preview/journal-growth.test.ts --configLoader=runner`.
+The supervised check is [journal-growth-live-test.md](journal-growth-live-test.md).
+
+Rollback after compact frames have been written must retain the latest journal and
+the new decoder. Revert only the writer. The active journal must keep all later
+intake, reservations, intents, receipts, corrections and stop records; a sealed
+pre-upgrade copy is forensic evidence, not a replacement for that history.
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own

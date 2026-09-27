@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createDecipheriv } from 'node:crypto';
+import { brotliDecompressSync } from 'node:zlib';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY } from './journal.js';
 import type { JournalRecord } from './journal.js';
 
@@ -46,7 +47,8 @@ function decodedRows(path: string): {kind: string; data?: string; retained?: Jou
     const length = sealed.readUInt32BE(offset), body = sealed.subarray(offset + 4, offset + 4 + length);
     const decipher = createDecipheriv('aes-256-gcm', key, body.subarray(0, 12));
     decipher.setAAD(Buffer.from(`preview-journal:${offset}`)); decipher.setAuthTag(body.subarray(12, 28));
-    rows.push(JSON.parse(Buffer.concat([decipher.update(body.subarray(28)), decipher.final()]).toString('utf8')));
+    const plain = Buffer.concat([decipher.update(body.subarray(28)), decipher.final()]);
+    rows.push(JSON.parse((plain[0] === 1 ? brotliDecompressSync(plain.subarray(1)) : plain).toString('utf8')));
     offset += 4 + length;
   }
   return rows;
@@ -57,6 +59,10 @@ function retainedRows(path: string): JournalRecord[] {
     {retained: JournalRecord[]};
   return snapshot.retained;
 }
+const withoutSnapshotPromptCopies = <T extends { kind: string }>(rows: T[]): T[] => rows.map(row => {
+  if (row.kind !== 'reserve') return row;
+  const stored = { ...row } as T & { prompt?: string }; delete stored.prompt; return stored;
+});
 
 it('compacts only above the threshold and bounds repeated hold writes without losing state', () => {
   const root = origin();
@@ -160,9 +166,9 @@ it('keeps UNKNOWN model usage and reply review preparation after its notice was 
     journal.append({kind:'sent',id:id(1),message:42,at:1008});
     const original = decodedRows(path).slice(1);
     journal.compact();
-    expect(retainedRows(path)).toEqual(original);
+    expect(retainedRows(path)).toEqual(withoutSnapshotPromptCopies(original));
     journal.compact(); journal.close();
-    expect(retainedRows(path)).toEqual(original);
+    expect(retainedRows(path)).toEqual(withoutSnapshotPromptCopies(original));
     const replay = read(root);
     expect(replay.view.order[0]).toMatchObject({modelState:'uncertain',sent:42,reviewState:'complete'});
     replay.close();
@@ -191,7 +197,7 @@ it('keeps completed call metering, failure details and completed summary prepara
       usage:{inputTokens:444,outputTokens:14,charge:null},at:1011});
     const original = decodedRows(path).slice(1);
     journal.compact(); journal.close();
-    expect(retainedRows(path)).toEqual(original);
+    expect(retainedRows(path)).toEqual(withoutSnapshotPromptCopies(original));
     const replay = read(root);
     expect(replay.view).toMatchObject({calls:4,summaries:[{text:'faithful summary'}]});
     replay.close();
