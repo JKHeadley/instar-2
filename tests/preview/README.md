@@ -1147,6 +1147,15 @@ different wording and sources remain. `status.withheld` and `inspect.withheld` s
 operator update IDs and why an item was withheld. They show a redacted old clause for corrections,
 but no clause for forgotten items; the model packet also receives no forgotten clause. If the shared attempt cap or summary route prevents a decision,
 `status.holds` shows `memory correction pending` and the intake remains durable.
+When a validated correction is present before its reply, that reply states the old
+clause and its replacement on one line. A validated forget reply confirms the
+request without quoting any part of the forgotten clause, because the clause
+does not identify a safe boundary between subject and value. Both use the
+accepted journal change rather than an
+unverified model acknowledgement and follow the existing reply check and send
+fences. The correction acknowledgement's old clause is withheld from later
+model packets. See [correction-ack-diff-live-test.md](correction-ack-diff-live-test.md)
+for Justin's private-chat procedure.
 
 ### Undo the last memory change
 

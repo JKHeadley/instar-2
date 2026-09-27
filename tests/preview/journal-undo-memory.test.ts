@@ -101,7 +101,9 @@ it.each([
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-undo-refusal-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    const ports = { now: () => start + spec.elapsed, stopped: () => false,
+    // Journal time never runs backward (clock floor), so the seed is written at its own time.
+    let now = start;
+    const ports = { now: () => now, stopped: () => false,
       model: async (input: { context: string }) => {
         const packet = JSON.parse(input.context);
         if (spec.case === 'wrong target') expect(packet.undoCandidate.change).toBe(0);
@@ -111,6 +113,7 @@ it.each([
     const worker = createJournalWorker(journal, ports);
     seed(journal, worker, 1, 'I like answers in complete sentences.', id => ({ memory: [{ mode: 'prefer', source: id,
       quote: 'I like answers in complete sentences.', trigger: id }] }));
+    now = start + spec.elapsed;
     worker.intake([update(2, 'Undo that.', spec.from)]); await worker.drain();
     expect(journal.view.undos).toHaveLength(0);
     expect(journal.view.memory.some(item => item.mode === 'prefer')).toBe(true);
@@ -147,14 +150,17 @@ it('accepts the exact ten-minute boundary', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-undo-boundary-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    const ports = { now: () => start + 600_000, stopped: () => false,
+    let now = start; // written at its own time: journal time never runs backward
+    const ports = { now: () => now, stopped: () => false,
       model: async (input: { context: string }) => JSON.stringify({ reply: 'Undone.', memory: [], dated: [],
         undo: { change: JSON.parse(input.context).undoCandidate.change } }),
       send: async () => 1, checkOutbound: () => {} };
     const worker = createJournalWorker(journal, ports);
     seed(journal, worker, 1, 'I like answers in complete sentences.', id => ({ memory: [{ mode: 'prefer', source: id,
       quote: 'I like answers in complete sentences.', trigger: id }] }));
+    now = start + 600_000;
     worker.intake([update(2, 'Undo that.')]); await worker.drain();
+    expect(journal.view.changeHistory[0]?.at).toBe(start);
     expect(journal.view.undos).toHaveLength(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -165,8 +171,9 @@ it('refuses an undo that expires while the model is answering and reopens the jo
   const path = join(root, 'journal.encrypted');
   try {
     let journal = openPreviewJournal(path, key, genesis);
-    let answered = false;
-    const worker = createJournalWorker(journal, { now: () => start + (answered ? 600_001 : 600_000), stopped: () => false,
+    let answered = false, seeded = false;
+    // Journal time never runs backward (clock floor), so the seed is written at its own time.
+    const worker = createJournalWorker(journal, { now: () => !seeded ? start : start + (answered ? 600_001 : 600_000), stopped: () => false,
       model: async input => {
         const candidate = JSON.parse(input.context).undoCandidate;
         expect(candidate.change).toBe(0);
@@ -175,6 +182,7 @@ it('refuses an undo that expires while the model is answering and reopens the jo
       }, send: async () => 1, checkOutbound: () => {} });
     seed(journal, worker, 1, 'I like answers in complete sentences.', id => ({ memory: [{ mode: 'prefer', source: id,
       quote: 'I like answers in complete sentences.', trigger: id }] }));
+    seeded = true;
     worker.intake([update(2, 'Undo that.')]); await worker.drain();
     expect(journal.view.undos).toEqual([]);
     expect(journal.view.order.at(-1)?.answer).toContain('could not undo');

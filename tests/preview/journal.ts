@@ -1916,8 +1916,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     : journal.view.memory.some(change => change.mode !== 'prefer' && (change.source === turn.id || change.replies?.includes(turn.id)
       || journal.view.commitments.some(note => [note, ...note.sources ?? []].some(item => item.source === turn.id)
         && [note, ...note.sources ?? []].some(item => item.source === change.source
-          && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))))
+          && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))))
+      || change.mode === 'correct' && change.trigger === turn.id)
       ? withheld : clean(redact(sentText(turn) ?? '').text, true, turn.id);
+  // Acknowledgements use accepted journal changes, not the model's claim that it changed memory.
+  const memoryAcknowledgement = (turn: Turn) => {
+    // int11's answer-correction path (in: 'reply') keeps the model's corrected answer.
+    const changes = journal.view.memory.filter(change => change.trigger === turn.id && change.mode !== 'prefer' && change.in !== 'reply');
+    // int11's undo path writes its own forget and keeps its own reply.
+    if (!changes.length || journal.view.undos.some(undo => undo.trigger === turn.id)) return undefined;
+    // A forgotten quote has no trusted boundary between subject and value.
+    const detail = changes.map(change => change.mode === 'correct'
+      ? `Changed ${change.quote.trim().replace(/\s+/gu, ' ')} → ${change.replacement!.trim().replace(/\s+/gu, ' ')}`
+      : 'Forgot the requested information').join('; ');
+    return `PREVIEW — ${detail}${/[.!?]$/u.test(detail) ? '' : '.'}`;
+  };
   /** A saved packet is evidence of what the model saw, not proof of which input it used.
    * Older journal frames may have only the prepared Seven envelope, or no packet at all. */
   const recordedPacket = (turn: Turn): Record<string, unknown> | null => {
@@ -2865,8 +2878,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // An invalid memory acknowledgement stays rejected even after a later summary settles it.
         let reply = turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE
           : turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
-          : turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
-          : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`;
+          : memoryAcknowledgement(turn) ?? (turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
+            : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
         const proposedBody = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
         if (Buffer.byteLength(proposedBody) > 4096 || Array.from(proposedBody).length > 4096)
           reply = TOO_LONG_REPLY_NOTICE;
