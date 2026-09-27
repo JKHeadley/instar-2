@@ -45,6 +45,8 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(w.journal.view.order.at(-1)!.held).toBe('call cap');
     let text = selfState(w.journal.view, readRuns(runs), clock, 'America/Los_Angeles', run2);
     expect(text).toContain('Operator messages received: 2 today, 4 in this trial');
+    expect(text).toContain("My memory: 4 accepted operator turns, 0 summaries and 0 validated memory changes in this trial's encrypted local journal.");
+    expect(text).toContain('It survives runner restarts and spans this trial\'s topics');
     expect(text).toContain('My replies Telegram accepted: 1 today, 3 in this trial');
     expect(text).toContain('Model attempts: 3 of 3 used, 0 left');
     expect(text).toContain('Held messages: 1 (call cap)');
@@ -65,6 +67,9 @@ it('derives an honest self-state from the journal and run log, correct across a 
     await w.worker.drain();
     expect(w.journal.view.order.every(turn => turn.sent === 7)).toBe(true);
     expect(probeState).toContain('Operator messages received: 3 today, 5 in this trial (including the one being answered now)');
+    expect(probeState).toContain('My memory: 5 accepted operator turns');
+    expect(probeState).toContain('The verified operator can ask me to correct or forget a recorded fact');
+    expect(probeState).toContain('original audit record remains in the journal');
     expect(probeState).toContain('My replies Telegram accepted: 2 today, 4 in this trial');
     expect(probeState).toContain('Messages exchanged today: 5');
     expect(probeState).toContain('Model attempts: 4 of 8 used, 4 left');

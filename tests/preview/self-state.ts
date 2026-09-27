@@ -126,6 +126,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
+    `My memory: ${String(incoming.total)} accepted operator turns, ${String(view.summaries.length)} summaries and ${String(view.memory.length)} validated memory changes in this trial's encrypted local journal. It survives runner restarts and spans this trial's topics; I can recall it while the trial is active. The verified operator can ask me to correct or forget a recorded fact. Later reply packets withhold the old claim, but the original audit record remains in the journal. This is not production or other-agent memory.`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     view.capAuthority === null ? 'Caps have not been raised since the trial began.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,

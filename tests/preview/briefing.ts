@@ -15,10 +15,12 @@ export const SOURCE_EXCERPTS = Object.freeze([
   Object.freeze({ id: 'purpose:coherency', path: 'docs/00-the-purpose.md', start: '**Value — coherency is the root,',
     end: 'Alignment held by memory is not alignment.', title: 'Coherency is the root' }),
 ]);
-export const CAPABILITY_NOTE_DATE = '2026-09-26';
+export const CAPABILITY_NOTE_DATE = '2026-09-27';
 export function capabilityNote(limits: { providerAttempts: number; expiresAt: number }) {
   return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. `
-    + 'It keeps this trial\'s complete original message history across all of them as one memory and attempts at most one plain-text reply per admitted message '
+    + 'It keeps accepted messages, summaries and validated memory changes in one encrypted local journal across restarts and topics for this trial. '
+    + 'The bound operator can directly ask it to correct or forget a recorded fact; later reply packets withhold the old claim, while the original audit record remains in the journal. '
+    + 'This memory is available to the preview while the trial is active, not to production or another agent. It attempts at most one plain-text reply per admitted message '
     + 'through a subscription model. It has no tools: it cannot browse, run code, schedule work, send extra messages or act outside this chat. '
     + `This trial allows at most ${limits.providerAttempts} model attempts, including any summaries, and ends at epoch millisecond ${limits.expiresAt}. `
     + 'Every reply is prefixed PREVIEW. Outcomes the system could not confirm (a model call or a delivery) are marked unknown, '

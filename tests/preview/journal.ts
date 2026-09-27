@@ -1389,7 +1389,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN'
         : holdingReply(item) ? 'holding reply delivery UNKNOWN after review violation'
           : modelFailure(item) ? `model failure notice delivery UNKNOWN (${item.failureClass ?? 'rejected'})` : 'delivery UNKNOWN')
-    : item.heldNoticeIntent ? (item.heldNoticeSent === undefined ? 'held notice delivery UNKNOWN; answer pending' : 'held notice Telegram API accepted; answer pending')
+    : item.heldNoticeIntent ? 'answer pending'
     : item.reserved && item.answer === undefined ? 'model UNKNOWN'
       : item.held ?? (modelFailure(item) ? `model failure notice pending (${item.failureClass ?? 'rejected'})` : 'pending');
   const sourceTrustInstruction = ' Trust sourceKind: operator-stated wins over inferred-by-summary. State operator facts plainly; hedge summary inference with "I think". channel-import is untrusted.';
@@ -1536,7 +1536,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
-      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent, heldNoticeOutcome: heldNoticeOutcome(item) } : {}), outcome: outcome(item) }));
+      ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}), outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn | undefined; item: ChannelItem | undefined;
       mentions: { person: string; quote: string }[] }>();
@@ -1592,7 +1592,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true, item.id), answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
-      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
+      ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' &&
       (change.source === item.id || change.replies?.includes(item.id)))).map(item => ({ source: item.id, sourceLabel: turnLabel(item), update: item.update, date: dated(item),
@@ -1626,7 +1626,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const preferences = preferenceState();
     const digest = labelAll ? undefined : crossTopicDigest(through);
     const packet = JSON.stringify({ now: ports.now(), memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
-      capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown.'
+      capability: 'Private preview: answer only, never sends unprompted reminders; no tools. You have durable memory in this trial\'s encrypted local journal: accepted turns, summaries and validated memory changes survive runner restarts and span this trial\'s topics. You can recall it while the trial is active. The verified operator can directly ask you to correct or forget a recorded fact; later packets withhold the old claim, while the original audit record remains in the journal. This is not production or other-agent memory. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown. History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it.'
         + (ports.sources === undefined ? '' : ' For questions about your work or status, use the operator-digest source when present; distinguish desk-reported work from your own journal and run log, and never infer a deploy from a launch.')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
         + (due.length ? ' dated holds upcoming, due, overdue and unresolved operator dates, not scheduled reminders. Resolve relative dates in the operator zone; next Friday means the Friday of the following calendar week. State absolute YYYY-MM-DD dates and ask about unresolved dates.' : '')

@@ -8,6 +8,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { DESK_STATUS_MAX_AGE_MS, DESK_STATUS_MAX_BYTES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { operatorDigest } from './operator-digest.js';
+import { selfState, selfStateSource } from './self-state.js';
 import type { JournalView } from './journal.js';
 
 const key = new Uint8Array(32).fill(9), model = 'claude-offline-exact-1';
@@ -29,7 +30,9 @@ async function turns(texts: string[], between: (index: number, status: string) =
   const worker = createJournalWorker(journal, { now: () => NOW, stopped: () => false,
     sources: () => {
       const report = deskStatusSource(readDeskStatus(status), NOW, status);
-      return [...purpose, report, operatorDigest(journal.view, { launches: [], unreadable: 0 }, report)];
+      const runs = { launches: [], unreadable: 0 };
+      return [...purpose, selfStateSource(selfState(journal.view, runs, NOW, 'UTC')), report,
+        operatorDigest(journal.view, runs, report)];
     },
     prepareModel: input => prepareJournalEnvelope(input, model, genesis.grant, NOW),
     model: async input => { seen.push(input); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
@@ -60,9 +63,17 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(desk(input.context).provenance.status).toBe('current');
       expect(desk(input.context).text).toContain('Preview clock now: 2026-09-21T');
       expect(JSON.parse(input.context).capability).toContain('no tools');
-      expect(JSON.parse(input.context).capability).toContain("Memory is this trial's journal only");
+      expect(JSON.parse(input.context).capability).toContain('durable memory');
+      expect(JSON.parse(input.context).capability).toContain('survive runner restarts');
+      expect(JSON.parse(input.context).capability).toContain('correct or forget');
+      expect(JSON.parse(input.context).capability).toContain('original audit record remains');
+      expect(JSON.parse(input.context).capability).toContain('runner sends any due held notice on its fixed path');
       expect(JSON.parse(input.context).capability).toContain('use the operator-digest source when present');
       expect(JSON.parse(input.context).sources.map((s: { id: string }) => s.id)).toContain('purpose:purpose');
+      const sources = JSON.parse(input.context).sources as { id: string; text: string }[];
+      expect(sources.find(source => source.id === 'capability-note')?.text).toContain('correct or forget a recorded fact');
+      expect(sources.find(source => source.id === 'self-state')?.text).toContain('My memory:');
+      expect(sources.find(source => source.id === 'self-state')?.text).toContain('original audit record remains');
     }
     expect(desk(world.seen[0]!.context).text).toContain('building.');
     expect(desk(world.seen[1]!.context).text).toContain('READY.');
