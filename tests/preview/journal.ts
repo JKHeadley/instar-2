@@ -1520,6 +1520,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
   const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
   let checkingSteps = false;
+  // One packet build tries many size variants over the same dated evidence; select once per input.
+  let datedMemo: { key: string; value: ReturnType<typeof selectDatedItems> } | undefined;
+  const datedSelection = (items: readonly DatedItem[], question: string, now: number, zone: string) => {
+    const key = JSON.stringify([question, now, zone, items.map(item => [item.source, item.quote, item.day, item.time, item.repeat])]);
+    if (datedMemo?.key !== key) datedMemo = { key, value: selectDatedItems(items, question, now, zone) };
+    return datedMemo.value;
+  };
   const elapsed = ports.elapsed ?? ports.now;
   const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
     [through, ports.elapsed ? elapsed() : at]));
@@ -2380,7 +2387,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))
       && clean(item.quote, true, item.source) === item.quote);
-    const selectedDated = selectDatedItems(activeDated, question?.text ?? '', ports.now(),
+    const selectedDated = datedSelection(activeDated, question?.text ?? '', ports.now(),
       ports.timeZone ?? 'America/Los_Angeles');
     const due = selectedDated.items.map(item => ({ ...item,
       quote: redact(item.quote).text, when: redact(item.when).text }));
@@ -2404,7 +2411,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const sourceList = allowGreeting ? suppliedSources : suppliedSources?.filter(source =>
       typeof source !== 'object' || source === null || !('id' in source) || source.id !== 'greeting-continuity');
     const packet = JSON.stringify({ now: ports.now(), memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
-      capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. Memory is this trial's journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
+      capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. Memory is this trial's journal only. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail. A similar name, event or date, a summary inference, your earlier reply, or the question's premise does not establish it. If the offered evidence does not support the requested detail, say "I don't know from this journal"; do not fill the gap with a likely answer or claim the operator never said it. Cite sourceLabel for supported remembered facts. Say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
         + (sourceList?.some(source => typeof source === 'object' && source !== null
           && 'id' in source && source.id === 'greeting-continuity')
           ? ' A greeting-continuity source quotes one earlier open operator request. Set continuity:true only if a brief reminder is useful and still true; otherwise false. Do not write that line yourself; the runner uses the exact quoted topic. Never invent a topic.' : '')

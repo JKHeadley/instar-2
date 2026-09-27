@@ -607,6 +607,29 @@ faithfulness audit, summary supervisor and reviewer, and read-only probes for
 the removed values. The private-channel procedure is
 [forget-completeness-live-test.md](forget-completeness-live-test.md).
 
+### Recall precision corpus
+
+`hallucinated-memory-rate.test.ts` scores an isolated nine-question corpus on
+the journal worker's actual answer packets: seven questions request a detail the
+operator never supplied (nearby objects, similar names, misattributed speech,
+shifted dates, an invented relationship or event, and an empty journal), and
+two ask for exact recorded facts. A deterministic premise-following answer stub
+shows the failure mode when the packet's recall-precision instruction is removed:
+7/7 unsupported answers invent a memory. With the instruction present, the
+same stub sends 0/7 invented memories, explicitly says it does not know for
+7/7 unsupported questions, and answers both supported questions. Invented-memory
+rate is unsupported answers asserting the corpus's tempting unsupported claim
+divided by the seven unsupported questions. This is an offline stub score, not a
+measured model or live Telegram rate. The instruction asks the existing answer
+model to require exact offered evidence for a remembered detail while avoiding
+the stronger, unsupported claim that an omitted detail was never said. It adds
+no call or store. Justin's supervised probe is
+[hallucinated-memory-rate-live-test.md](hallucinated-memory-rate-live-test.md).
+
+```sh
+npx vitest run tests/preview/hallucinated-memory-rate.test.ts --configLoader=runner
+```
+
 ### Offline recall benchmark
 
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
