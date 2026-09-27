@@ -234,7 +234,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
   clockFloor: number;
-  turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
+  /** Derived in-memory index; snapshots rebuild it from the recorded turns. */
+  turns: Map<string, Turn>; order: Turn[]; heldTurns: Set<Turn>; calls: number; replies: number; stop: string | null;
   tokenTotals: TokenTotals; tokenCalls: TokenReservation[]; tokenCurrent: Map<string, number>;
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent' | 'held-notice-intent';
     at: number; id?: string; through?: number; reason?: string }[];
@@ -422,7 +423,7 @@ export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
 const snapshotChunkBytes = 256 * 1024;
 type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
 type SnapshotChunk = { kind: 'snapshot-chunk'; data: string };
-type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryFaithfulness' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent' | 'peopleUse' | 'mentionedDates' | 'reminders'> & {
+type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'heldTurns' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryFaithfulness' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent' | 'peopleUse' | 'mentionedDates' | 'reminders'> & {
   turns: [string, Turn][]; order: string[]; channelItems: [string, ChannelItem][]; summaryReservations: [number, number][];
   summaryFailures: [number, number][]; failureClasses: [ModelFailureClass, number][];
   providerStates: [string, number][]; closed: [number, CommitmentClosure][]; capReports: string[];
@@ -433,7 +434,8 @@ type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'channelItems' | '
   retained: JournalRecord[] };
 
 function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
-  return { view: { ...view, turns: [...view.turns], order: view.order.map(turn => turn.id), channelItems: [...view.channelItems],
+  const { heldTurns: _heldTurns, ...saved } = view;
+  return { view: { ...saved, turns: [...view.turns], order: view.order.map(turn => turn.id), channelItems: [...view.channelItems],
     summaryReservations: [...view.summaryReservations], summaryFailures: [...view.summaryFailures],
     failureClasses: [...view.failureClasses], providerStates: [...view.providerStates], closed: [...view.closed],
     capReports: [...view.capReports], stepChecks: [...view.stepChecks], channelSources: [...view.channelSources],
@@ -454,7 +456,8 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   const view: JournalView = { ...saved, clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null,
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
-    turns, order: saved.order.map(id => turns.get(id)!), channelItems: new Map(saved.channelItems),
+    turns, order: saved.order.map(id => turns.get(id)!),
+    heldTurns: new Set([...turns.values()].filter(turn => turn.held !== undefined)), channelItems: new Map(saved.channelItems),
     summaryReservations: new Map(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
     failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed),
     capReports: new Set(saved.capReports ?? []), stepChecks: new Map(saved.stepChecks ?? []),
@@ -819,7 +822,9 @@ function project(view: JournalView, row: JournalRecord): void {
     checkCaps(view, row, 'replay');
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
     view.capAuthority = row.authority; view.capRaisedAt = row.at;
-    for (const turn of view.order) if (turn.held === 'call cap' || turn.held === 'reply cap') { delete turn.held; delete turn.heldSince; }
+    for (const turn of view.heldTurns) if (turn.held === 'call cap' || turn.held === 'reply cap') {
+      delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn);
+    }
     return;
   }
   if (row.kind === 'reminder-grant') {
@@ -1031,9 +1036,11 @@ function project(view: JournalView, row: JournalRecord): void {
       (note.sources ??= []).push({ source: link.source, quote: link.quote });
     }
     for (const closure of row.closed ?? []) if (closure.id < view.commitments.length && !view.closed.has(closure.id)) view.closed.set(closure.id, closure);
-    for (const turn of view.order) if (turn.held === 'prompt overflow' || turn.held === 'context overflow'
+    for (const turn of view.heldTurns) if (turn.held === 'prompt overflow' || turn.held === 'context overflow'
       || turn.update <= row.through && turn.held?.startsWith('summary faithfulness:')
-      || turn.update <= row.through && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) delete turn.held;
+      || turn.update <= row.through && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) {
+      delete turn.held; view.heldTurns.delete(turn);
+    }
     return;
   }
   if (row.kind === 'step-check-start') {
@@ -1117,7 +1124,9 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
-  if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held; delete turn.heldSince;
+  if (row.kind === 'reserve' || row.kind === 'intent') {
+    delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn);
+  }
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation');
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
@@ -1264,12 +1273,12 @@ function project(view: JournalView, row: JournalRecord): void {
       }
       turn.heldSince = since;
     } else delete turn.heldSince;
-    turn.held = row.reason; turn.wasHeld = true; operatorEvent(view, row.at, turn.update, `held (${row.reason})`);
+    turn.held = row.reason; view.heldTurns.add(turn); turn.wasHeld = true; operatorEvent(view, row.at, turn.update, `held (${row.reason})`);
   }
   if (row.kind === 'memory-undecided') {
     if (!turn.accepted || turn.memoryUndecided) throw Error('preview journal: memory undecided order');
     turn.memoryUndecided = true;
-    if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; }
+    if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); }
   }
 }
 
@@ -1303,7 +1312,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1380,7 +1389,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -2805,7 +2814,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             blockedEarlier = true;
             continue; // later eligible loss notices must still be reached
           }
-          if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; }
+          if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn); }
 
         }
         if (turn.held === 'memory correction pending' && (turn.noticeClass === 'too-long-input'
@@ -2823,7 +2832,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
           if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
-          delete turn.held; delete turn.heldSince;
+          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         if (turn.held) continue;
         gate();
@@ -2853,7 +2862,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const reason = journal.view.order.some(item => item.sent && item.update < turn.update)
               ? `summary unavailable: ${selected.reason}` : selected.reason;
             if (priorHold !== reason) journal.append({kind:'hold',id:turn.id,reason,at:ports.now()});
-            else turn.held = reason;
+            else { turn.held = reason; journal.view.heldTurns.add(turn); }
             break;
           }
           if (!('reason' in selected)) {
