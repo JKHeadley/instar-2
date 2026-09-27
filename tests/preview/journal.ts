@@ -186,7 +186,9 @@ export type JournalRecord =
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'summary-candidate'; through: number; state: string; usage?: ModelUsage; at: number }
   | { kind: 'summary-check'; through: number; result?: SummaryCheckResult; faithfulness?: SummaryFaithfulness; at: number }
+  | { kind: 'summary-faithfulness-reserve'; through: number; at: number }
   | { kind: 'summary-faithfulness'; through: number; result: SummaryFaithfulness; at: number }
+  | { kind: 'summary-integrity-reserve'; through: number; at: number }
   | { kind: 'summary-review-reserve'; through: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; reason?: string; output?: string; evidence?: string; faithfulness?: SummaryFaithfulness; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
 
@@ -280,6 +282,8 @@ function settleTokens(view: JournalView, key: string, usage?: ModelUsage, jev = 
     total.unknownCalls--; view.tokenCurrent.delete(key);
   }
 }
+const summaryJevTokenKey = (view: JournalView, kind: 'faithfulness' | 'integrity', through: number) =>
+  `summary-${kind}:${String(through)}:${String(view.summaryFailures.get(through) ?? 0)}`;
 
 /** Keep the append-only confirmation, but stop using it once its source claim is corrected or forgotten. */
 export const activePersonMerges = (view: JournalView): PersonMerge[] => view.personMerges.filter(link =>
@@ -769,13 +773,24 @@ function project(view: JournalView, row: JournalRecord): void {
     view.summaryCandidates.set(row.through, row.state);
     settleTokens(view, `summary:${String(row.through)}`, row.usage); return;
   }
+  if (row.kind === 'summary-faithfulness-reserve') {
+    const key = summaryJevTokenKey(view, 'faithfulness', row.through);
+    if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
+      || view.summaryFaithfulness.has(row.through)
+      || view.tokenCurrent.has(key))
+      throw Error('preview journal: summary faithfulness reservation order');
+    reserveTokens(view, key, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
+    return;
+  }
   if (row.kind === 'summary-faithfulness') {
+    const key = summaryJevTokenKey(view, 'faithfulness', row.through);
     if (!view.summaryReservations.has(row.through) || view.summaryFaithfulness.has(row.through)
       || row.result.path !== 'jev'
       || !['pass', 'lost', 'undecided'].includes(row.result.verdict))
       throw Error('preview journal: summary faithfulness without candidate');
-    reserveTokens(view, `summary-faithfulness:${String(row.through)}`, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
-    settleTokens(view, `summary-faithfulness:${String(row.through)}`, row.result.usage, true);
+    // Older journals recorded the reservation together with the completed result.
+    if (!view.tokenCurrent.has(key)) reserveTokens(view, key, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
+    settleTokens(view, key, row.result.usage, true);
     view.summaryFaithfulness.set(row.through, row.result); return;
   }
   if (row.kind === 'summary-review-reserve') {
@@ -785,6 +800,15 @@ function project(view: JournalView, row: JournalRecord): void {
       || view.calls >= view.limits.maxCalls) throw Error('preview journal: summary review reservation order or cap');
     reserveTokens(view, `summary-review:${String(row.through)}`, 'replyCheck', view.limits.maxBytes, subscriptionOutputMaximum);
     view.summaryReviews.add(row.through); view.calls++; return;
+  }
+  if (row.kind === 'summary-integrity-reserve') {
+    const key = summaryJevTokenKey(view, 'integrity', row.through);
+    if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
+      || view.summaryChecks.get(row.through)?.some(check => check.path === 'jev')
+      || view.tokenCurrent.has(key))
+      throw Error('preview journal: summary integrity reservation order');
+    reserveTokens(view, key, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
+    return;
   }
   if (row.kind === 'summary-check') {
     if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
@@ -797,9 +821,11 @@ function project(view: JournalView, row: JournalRecord): void {
       || row.result.path === 'subscription' && checks.some(check => check.path === 'subscription'))
       throw Error('preview journal: duplicate summary check');
     if (row.result.path === 'jev') {
-      reserveTokens(view, `summary-check:${String(row.through)}`, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
-      settleTokens(view, `summary-check:${String(row.through)}`, row.result.usage, true);
-    } else {
+      const key = summaryJevTokenKey(view, 'integrity', row.through);
+      // Preserve replay of results written before pre-dispatch reservations existed.
+      if (!view.tokenCurrent.has(key)) reserveTokens(view, key, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
+      settleTokens(view, key, row.result.usage, true);
+    } else if (row.result.verdict !== 'unavailable' || row.result.retryable) {
       settleTokens(view, `summary-review:${String(row.through)}`, row.result.usage);
     }
     checks.push(row.result); view.summaryChecks.set(row.through, checks);
@@ -3160,6 +3186,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           gate();
           if (Buffer.byteLength(evidence) > journal.view.limits.maxBytes) throw Error('summary audit context too large');
           if (ports.summaryCheck) {
+            journal.append({ kind: 'summary-faithfulness-reserve', through, at: ports.now() });
             const result = await ports.summaryCheck(evidence);
             verdict = interpretFaithfulnessJev(result);
             faithfulness = { path: 'jev', verdict, score: summaryJevScore(result), usage: summaryJevUsage(result) };
@@ -3191,6 +3218,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const state = supervisedState!;
         const started = ports.replyCheck.elapsedMs();
         let jev: SummaryCheckResult;
+        journal.append({ kind: 'summary-integrity-reserve', through, at: ports.now() });
         try {
           const answer = await ports.replyCheck.jev(state, SUMMARY_QUESTION);
           jev = interpretSummaryJev(answer.value, answer.latencyMs);

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
+import { interpretSummaryReview } from './summary-check.js';
 
 const key = new Uint8Array(32).fill(7);
 const usage = (inputTokens: number | null, outputTokens: number | null) => ({ inputTokens, outputTokens,
@@ -166,7 +167,7 @@ it('meters the worker answer and Jev check from their actual returned usage', as
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('meters a supervised summary and its three checks once through replay', async () => {
+it.each(['complete', 'uncertain'] as const)('meters a supervised summary and its three checks once through replay (%s review)', async reviewState => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-cost-')));
   const path = join(root, 'journal.encrypted');
   try {
@@ -199,6 +200,11 @@ it('meters a supervised summary and its three checks once through replay', async
         escalate: async () => { throw Error('unexpected reply review'); },
         summaryReview: async () => {
           invoked.push('summary review');
+          if (reviewState === 'uncertain') {
+            const review = interpretSummaryReview({ state: 'uncertain', usage: usage(9, 1) }, 2);
+            return { verdict: 'unavailable' as const, latencyMs: review.latencyMs,
+              ...(review.usage ? { usage: review.usage } : {}) };
+          }
           return { verdict: 'pass' as const, path: 'subscription' as const, latencyMs: 2,
             reason: 'faithful', usage: usage(300, 30) };
         } },
@@ -212,12 +218,70 @@ it('meters a supervised summary and its three checks once through replay', async
     const expected = {
       answer: { calls: 1, inputTokens: 100, outputTokens: 10, unknownCalls: 0 },
       summary: { calls: 1, inputTokens: 200, outputTokens: 20, unknownCalls: 0 },
-      replyCheck: { calls: 4, inputTokens: 390, outputTokens: 39, unknownCalls: 0 },
+      replyCheck: reviewState === 'uncertain'
+        ? { calls: 4, inputTokens: 32858, outputTokens: 2057, unknownCalls: 1 }
+        : { calls: 4, inputTokens: 390, outputTokens: 39, unknownCalls: 0 },
     };
     expect(journal.view.tokenTotals).toEqual(expected);
+    if (reviewState === 'uncertain') {
+      expect(journal.view.lastSummaryCheck?.usage).toEqual(usage(9, 1));
+      expect(journal.view.summaries).toHaveLength(0);
+    }
     journal.close();
     const reopened = openPreviewJournal(path, key);
     expect(reopened.view.tokenTotals).toEqual(expected);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('retains a timed-out faithfulness Jev attempt at its maximum through reopen', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-cost-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+    let attempts = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => ({ state: 'complete' as const,
+        text: input.id.startsWith('summary:')
+          ? JSON.stringify({ summary: 'The operator has a red bicycle.', people: [], memory: [] }) : 'Noted.',
+        usage: usage(input.id.startsWith('summary:') ? 200 : 100, input.id.startsWith('summary:') ? 20 : 10) }),
+      summaryCheck: async () => { attempts++; throw Error('timeout'); },
+      replyCheck: { elapsedMs: () => 10,
+        jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
+          .map(rule => [rule, { type: 'noul', noul: 0.01 }])), usage: { input_tokens: 20, output_tokens: 2 } }, latencyMs: 1 }),
+        escalate: async () => { throw Error('unexpected review'); } },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'My bicycle is red.' } }]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(attempts).toBe(1);
+    expect(journal.view.tokenTotals.replyCheck).toEqual({ calls: 2, inputTokens: 32788,
+      outputTokens: 4098, unknownCalls: 1 });
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    expect(reopened.view.tokenTotals.replyCheck).toEqual({ calls: 2, inputTokens: 32788,
+      outputTokens: 4098, unknownCalls: 1 });
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each(['faithfulness', 'integrity'] as const)('retains a %s Jev dispatch when the result is never appended', kind => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-cost-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 3, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 });
+    journal.append({ kind: 'summary-reserve', through: 1, supervised: true, at: 1000 });
+    journal.append({ kind: 'summary-candidate', through: 1, state: '{}', usage: usage(200, 20), at: 1001 });
+    journal.append({ kind: kind === 'faithfulness' ? 'summary-faithfulness-reserve' : 'summary-integrity-reserve',
+      through: 1, at: 1002 });
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    expect(reopened.view.tokenTotals.replyCheck).toEqual({ calls: 1, inputTokens: 32768,
+      outputTokens: 4096, unknownCalls: 1 });
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -245,8 +309,8 @@ it('retains an interrupted summary review at its reserved maximum on reopen', ()
       outputTokens: 2052, unknownCalls: 1 });
     reopened.append({ kind: 'summary-check', through: 1, result: { verdict: 'unavailable',
       path: 'subscription', latencyMs: 1, usage: usage(9, 1) }, at: 1004 });
-    expect(reopened.view.tokenTotals.replyCheck).toEqual({ calls: 2, inputTokens: 49,
-      outputTokens: 5, unknownCalls: 0 });
+    expect(reopened.view.tokenTotals.replyCheck).toEqual({ calls: 2, inputTokens: 32808,
+      outputTokens: 2052, unknownCalls: 1 });
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
