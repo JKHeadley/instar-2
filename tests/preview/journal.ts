@@ -1386,6 +1386,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * either statement is a correction and never writes a memory action. */
   const contradictionFor = (turn: Turn) => {
     if (!fromOperator(turn)) return [];
+    const currentFacts = statedFacts(redact(turn.text).text);
+    if (!currentFacts.length) return [];
     const older = journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < turn.update);
     const sources = [
       ...older.map(item => ({ id: item.id, imported: false, update: item.update as number | null, at: sentAt(item) ?? item.at, date: dated(item), from: speakerOf(item),
@@ -1394,7 +1396,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         from: `channel import: ${cleanMetadata(item.from)} (export metadata)`,
         text: clean(redact(item.text).text, true) }))
     ].sort((a, b) => a.at - b.at);
-    return statedFacts(redact(turn.text).text).flatMap(current => {
+    return currentFacts.flatMap(current => {
       const prior = sources.flatMap(source => statedFacts(source.text)
         .filter(fact => fact.subject === current.subject && (fact.subject.startsWith('the ') || !source.imported))
         .map(fact => ({ source, fact }))).at(-1);

@@ -54,6 +54,26 @@ it('keeps direct word matches first and caps the result', () => {
   expect(picked[0]).toBe(12);
 });
 
+it('puts full query coverage ahead of shorter repeated partial matches', () => {
+  const candidates = [
+    { text: 'Avery Stone project 01 venue is the west annex; the handoff notes cover suppliers and permits.', at: now - day },
+    ...Array.from({ length: 8 }, (_, index) => ({ text: `Avery Stone project venue ${index}: venue venue venue.`, at: now - day })),
+  ];
+  expect(selectRecall({ message: 'Avery Stone project 01 venue', candidates, now, limit: 1 })).toEqual([0]);
+  expect(selectRecall({ message: 'Avery Stone project venue', candidates, now, limit: 1 })).not.toEqual([0]);
+});
+
+it('keeps an exact compound project id distinct from its component numbers', () => {
+  const candidates = [
+    { text: 'Devon Stone person-10-project-09 venue is west annex 10-9.', at: now - day },
+    { text: 'Devon Stone person-10-project-10 venue is north hall 10-10.', at: now - day },
+    { text: 'Devon Stone person-10-project-1 venue is garden studio 10-1.', at: now - day },
+  ];
+  expect(selectRecall({ message: 'Devon Stone person-10-project-10 venue', candidates, now, limit: 1 })).toEqual([1]);
+  expect(selectRecall({ message: 'Devon Stone person-10-project-09 venue', candidates, now, limit: 1 })).toEqual([0]);
+  expect(selectRecall({ message: 'Devon Stone person-10-project-1 venue', candidates, now, limit: 1 })).toEqual([2]);
+});
+
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-sentinel-')));
   const key = new Uint8Array(32).fill(9), samples: number[] = [];

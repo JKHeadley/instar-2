@@ -61,11 +61,29 @@ export function selectRecall(input: SentinelInput): number[] {
   // Every message term is kept: a word that names a time may also be content
   // ("Night" the book, "Thursday" the band), so a named day only adds a boost.
   const message = terms(input.message);
+  // Preserve exact compound identifiers as a ranking signal. Splitting
+  // "project-10" into words loses which project an otherwise identical turn names.
+  const identifiers = [...new Set((input.message.toLowerCase().match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+/gu) ?? []))];
   const window = namedWindow(input.message, input.now);
   const documents = input.candidates.map(turn => terms(turn.text));
   const score = new Array<number>(documents.length).fill(0);
+  const coverage = new Array<number>(documents.length).fill(0);
+  const exact = identifiers.length ? input.candidates.map(turn => {
+    const text = turn.text.toLowerCase();
+    return identifiers.filter(id => {
+      for (let at = text.indexOf(id); at >= 0; at = text.indexOf(id, at + 1)) {
+        if (!/[\p{L}\p{N}-]/u.test(text[at - 1] ?? '')
+          && !/[\p{L}\p{N}-]/u.test(text[at + id.length] ?? '')) return true;
+      }
+      return false;
+    }).length;
+  })
+    : new Array<number>(documents.length).fill(0);
   const add = (query: readonly string[], weight: number) => {
-    for (const hit of bm25(query, documents)) score[hit.index]! += weight * hit.score;
+    for (const hit of bm25(query, documents)) {
+      score[hit.index]! += weight * hit.score;
+      if (weight === 1) coverage[hit.index] = hit.matched;
+    }
   };
   add(message, 1);
   add(input.previous ? terms(input.previous) : [], 0.5);
@@ -75,7 +93,9 @@ export function selectRecall(input: SentinelInput): number[] {
     if (turn.at >= window.from && turn.at <= window.to) score[index]! += 2;
   });
   return score.map((value, index) => ({ value, index })).filter(item => item.value > 0)
-    .sort((a, b) => b.value - a.value || b.index - a.index).slice(0, input.limit).map(item => item.index);
+    .sort((a, b) => coverage[b.index]! - coverage[a.index]!
+      || exact[b.index]! - exact[a.index]!
+      || b.value - a.value || b.index - a.index).slice(0, input.limit).map(item => item.index);
 }
 
 /** An exact subject/value overlap is only a packet signal. The model decides
