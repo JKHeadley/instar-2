@@ -61,6 +61,7 @@ export function selectRecall(input: SentinelInput): number[] {
   // Every message term is kept: a word that names a time may also be content
   // ("Night" the book, "Thursday" the band), so a named day only adds a boost.
   const message = terms(input.message);
+  const fullCoverage = new Set(message).size;
   // Preserve exact compound identifiers as a ranking signal. Splitting
   // "project-10" into words loses which project an otherwise identical turn names.
   const identifiers = [...new Set((input.message.toLowerCase().match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+/gu) ?? []))];
@@ -92,8 +93,11 @@ export function selectRecall(input: SentinelInput): number[] {
   if (window) input.candidates.forEach((turn, index) => {
     if (turn.at >= window.from && turn.at <= window.to) score[index]! += 2;
   });
+  // A complete direct match is a strong source signal. For partial matches,
+  // let previous-turn and summary evidence compete rather than losing by word count.
   return score.map((value, index) => ({ value, index })).filter(item => item.value > 0)
-    .sort((a, b) => coverage[b.index]! - coverage[a.index]!
+    .sort((a, b) => Number(fullCoverage > 0 && coverage[b.index] === fullCoverage)
+      - Number(fullCoverage > 0 && coverage[a.index] === fullCoverage)
       || exact[b.index]! - exact[a.index]!
       || b.value - a.value || b.index - a.index).slice(0, input.limit).map(item => item.index);
 }

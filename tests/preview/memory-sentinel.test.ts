@@ -22,6 +22,16 @@ it('resolves a pronoun through the turn it continues, which message-only word ma
   expect(selectRecall({ message, previous, candidates, now, limit: 5 })[0]).toBe(2);
   // Other side: with no earlier turn to continue, the same vague message recalls nothing.
   expect(selectRecall({ message, candidates, now, limit: 5 })).toEqual([]);
+  const competing = [
+    { text: 'My sister Maya loves ranunculus flowers. noted', at: now - 9 * day },
+    ...['wash the car', 'repaint the kitchen', 'organize my desk', 'repair the fence', 'buy new shoes']
+      .map(text => ({ text: `I want to ${text}.`, at: now - 9 * day })),
+  ];
+  const continued = "Maya's birthday is next Saturday and I'm stuck on a gift. My sister loves flowers.";
+  const picked = selectRecall({ message, previous: continued, candidates: competing, now, limit: 5 });
+  expect(picked).toHaveLength(5);
+  expect(picked).toContain(0);
+  expect(picked).not.toContain(5);
 });
 
 it('bridges a paraphrase through the summary sentence that still names the topic', () => {
