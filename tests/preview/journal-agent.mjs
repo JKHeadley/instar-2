@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, openQuestionCandidates, projectMemoryText, unansweredCue, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 
@@ -69,7 +69,8 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
-  people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  people: packet.people ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [],
+  channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -129,6 +130,10 @@ async function main() {
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
+      openQuestions: openQuestionCandidates(view.view).map(item => ({ update: view.view.turns.get(item.source)?.update,
+        question: projectMemoryText(view.view, redact(item.quote).text), reason: item.reason })),
+      pendingQuestionReviews: view.view.order.filter(t => t.accepted && t.intent && !view.view.questionsReviewed.has(t.id)
+        && unansweredCue(t.intent)).length,
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,

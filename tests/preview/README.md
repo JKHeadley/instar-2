@@ -1032,3 +1032,27 @@ durable check order, and the holding reply without network access.
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),
 never an unsent candidate.
+
+### Open questions across turns
+
+The journal runner keeps an unanswered operator turn visible after a hold, a lost-answer
+notice, or a definite failure. A reply that says "I don't know" (including the small
+uncertainty variants in `journal.ts`) is only a review cue: the existing capped rolling
+summary call reads the full conversation and returns `questions` with exact excerpts,
+or `[]`. A missing decision stays visible as `pendingQuestionReviews`; the cue alone
+never opens a question. No new store, model route, or uncapped call was added.
+
+Later packets select at most ten open items from the same journal: related lexical
+matches plus the two newest, with the model instructed to judge meaning and mention
+an item only when useful. A model reply may name listed IDs in `closedQuestions` only
+when it actually answers them; closure takes effect only after Telegram accepts that
+exact reply. A held, refused, or UNKNOWN send does not close the item. A corrected
+source excerpt is withheld by the existing memory projection; forgetting its source
+removes the open item. Originals and decisions remain encrypted and replayable.
+`status.openQuestions` reports open items and `inspect` shows the selected packet
+items. Held turns are candidates until the model reads them, so a held statement
+may appear in status; the packet says to judge it in context.
+
+For the supervised operator procedure, use
+[question-tracker-live-test.md](question-tracker-live-test.md). It does not grant a
+trial or change any running root.
