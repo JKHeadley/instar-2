@@ -9,6 +9,7 @@ import { readRuns, selfState, selfStateSource } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { spawnSync } from 'node:child_process';
 import { createDecipheriv } from 'node:crypto';
+import { brotliDecompressSync } from 'node:zlib';
 import type { JournalRecord } from './journal.js';
 
 const key = new Uint8Array(32).fill(31);
@@ -25,7 +26,8 @@ function records(path: string): JournalRecord[] {
     const length = bytes.readUInt32BE(offset), frame = bytes.subarray(offset + 4, offset + 4 + length);
     const decipher = createDecipheriv('aes-256-gcm', key, frame.subarray(0, 12));
     decipher.setAAD(Buffer.from(`preview-journal:${offset}`)); decipher.setAuthTag(frame.subarray(12, 28));
-    rows.push(JSON.parse(Buffer.concat([decipher.update(frame.subarray(28)), decipher.final()]).toString('utf8')) as JournalRecord);
+    const plain = Buffer.concat([decipher.update(frame.subarray(28)), decipher.final()]);
+    rows.push(JSON.parse((plain[0] === 1 ? brotliDecompressSync(plain.subarray(1)) : plain).toString('utf8')) as JournalRecord);
     offset += length + 4;
   }
   return rows;

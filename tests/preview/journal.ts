@@ -2,6 +2,7 @@
  * individually authenticated so replay reads the file once at boot; hot turns
  * append one frame and update only the in-memory projection. */
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { previewTurnId } from './state.js';
@@ -106,7 +107,7 @@ export type JournalRecord =
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
-  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
+  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; promptSha256?: string; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
@@ -225,7 +226,13 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
 function frame(row: JournalRecord | SnapshotStart | SnapshotChunk, key: Uint8Array, offset: number): Buffer {
   const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
   cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
-  const body = Buffer.concat([cipher.update(JSON.stringify(row), 'utf8'), cipher.final()]);
+  const plain = Buffer.from(JSON.stringify(row));
+  if (plain.length > frameLimit) throw Error('preview journal: record too large');
+  const packed = plain.length < 1024 ? plain : brotliCompressSync(plain,
+    { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } });
+  // The leading byte distinguishes new compressed frames from legacy JSON frames.
+  const encoded = packed.length + 1 < plain.length ? Buffer.concat([Buffer.from([1]), packed]) : plain;
+  const body = Buffer.concat([cipher.update(encoded), cipher.final()]);
   const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]);
   if (bytes.length > frameLimit) throw Error('preview journal: record too large');
   const prefix = Buffer.alloc(4); prefix.writeUInt32BE(bytes.length);
@@ -249,7 +256,9 @@ function decodeRow(sealed: Buffer, offset: number, key: Uint8Array): { row: Jour
   const bytes = sealed.subarray(offset + 4, offset + 4 + length);
   const cipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(0, 12));
   cipher.setAAD(Buffer.from(`preview-journal:${offset}`)); cipher.setAuthTag(bytes.subarray(12, 28));
-  return { row: JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString('utf8')) as JournalRecord | SnapshotStart | SnapshotChunk,
+  const plain = Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]);
+  const json = plain[0] === 1 ? brotliDecompressSync(plain.subarray(1), { maxOutputLength: frameLimit }) : plain;
+  return { row: JSON.parse(json.toString('utf8')) as JournalRecord | SnapshotStart | SnapshotChunk,
     end: offset + 4 + length };
 }
 function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalRecord[] {
@@ -259,9 +268,13 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
     if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
-    // The projection omits per-call usage, failure details, prepared review and
-    // summary prompts, and earlier cap authority. Keep the original causal and
-    // accounting records; only superseded hold observations are redundant.
+    if (row.kind === 'reserve' && row.prompt !== undefined && view.turns.get(row.id)?.prompt === row.prompt) {
+      // The snapshot turn already keeps the exact answer packet for inspect and audit.
+      // The retained reservation still proves the causal ordering of an UNKNOWN call.
+      const stored = { ...row }; delete stored.prompt; evidence.push(stored); continue;
+    }
+    // Keep per-call usage, failure details, review and summary prompts, and
+    // earlier cap authority; only superseded hold observations are redundant.
     evidence.push(row);
   }
   for (const turn of view.order) { const hold = holds.get(turn.id); if (hold) evidence.push(hold); }
@@ -626,6 +639,8 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'reply-review-reserve') {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
+    if (row.promptSha256 && (!turn.prompt || row.promptSha256 !== createHash('sha256').update(turn.prompt).digest('hex')))
+      throw Error('preview journal: reply review prompt reference differs');
     turn.reviewReserved = true; view.calls++; return;
   }
   if (row.kind === 'reply-review-state') {
@@ -796,6 +811,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (row.kind === 'caps') checkCaps(view!, row, 'new');
       if (row.kind === 'channel-source-cursor') checkChannelSourceCursor(view!, row);
       if (row.kind === 'call-outcome') validateCallOutcome(view!, row);
+      if (row.kind === 'reply-review-reserve' && row.promptSha256
+        && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
+        throw Error('preview journal: reply review prompt reference differs');
       if (view && ((row.kind === 'intake' && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve')
           && view.calls >= view.limits.maxCalls)
@@ -1999,7 +2017,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
-                  ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
+                  ...(originalPrompt === undefined ? {} : originalPrompt === turn.prompt
+                    ? { promptSha256: createHash('sha256').update(originalPrompt).digest('hex') }
+                    : { prompt: originalPrompt }), at: ports.now() }); return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
             let checked: ReplyDecision;
             if (turn.jevReserved) {

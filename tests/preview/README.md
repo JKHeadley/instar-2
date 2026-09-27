@@ -580,6 +580,16 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+Large encrypted frames use bounded Brotli encoding inside the existing authenticated
+journal frame; older JSON frames still replay. Reply-review reservations refer to the
+answer reservation's exact prepared packet by SHA-256 when they reuse it. Snapshot
+retention also omits answer-packet copies already held in its turn projection. Replay
+checks the reference, while the original packet stays available for audit, inspect and
+forgetting checks. The offline 37-turn growth fixture measures physical bytes by frame
+kind, then compacts and reopens the snapshot; run only
+`npx vitest run tests/preview/journal-growth.test.ts --configLoader=runner`.
+The supervised check is [journal-growth-live-test.md](journal-growth-live-test.md).
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
