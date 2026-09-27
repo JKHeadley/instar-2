@@ -1758,6 +1758,22 @@ The offline crash matrix is `journal-compaction.test.ts`. Justin's supervised
 test on an isolated copy of the actual preview journal is
 [journal-compaction-live-test.md](journal-compaction-live-test.md).
 
+### Build handoff on one journal
+
+`journal-handoff.test.ts` uses separate processes on one encrypted journal. It
+compares the complete selected conversation projection before and after each
+reopen, including cursor, pending and held turns, memory, open commitments and
+questions, summaries and the next packet. It also kills the first process after
+an exact send intent, then confirms the successor does not repeat that send or
+an orphaned model reservation. A later turn is answered after compaction and
+reopen. The test can load the `0c0b8617` journal module for its first process
+through `PREVIEW_OLD_JOURNAL_MODULE=file:///ABSOLUTE/OLD/tests/preview/journal.js`
+and the old read-only status command through
+`PREVIEW_OLD_LAUNCHER=/ABSOLUTE/OLD/tests/preview/journal-agent.mjs`. Archive
+`tests/preview`, `src` and `scripts` from that commit for the old tree. Without
+those settings it tests process handoff on the checked-out build. The
+supervised trial procedure is [journal-handoff-live-test.md](journal-handoff-live-test.md).
+
 ### Reply grounding audit
 
 Each answer-call reservation now includes a bounded index of the exact packet it
