@@ -14,6 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { stepQuestions } from './step-check.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -81,10 +82,17 @@ const withheldView = view => view.memory.map(change => ({
   operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
   reason: change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
+const stepCheckView = view => ({ total: view.stepChecks.size,
+  unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
+  verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
+    result: item.result ?? (item.reserved ? { verdict: 'unavailable', reason: 'Jev request outcome unknown' } : null) })) });
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture'].includes(command)) throw Error('preview: unknown command');
+  if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check']))
+    throw Error('preview: --step-check must be true or false');
+  const stepCheckEnabled = options['step-check'] === 'true';
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -137,6 +145,7 @@ async function main() {
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
       lastReplyCheck: view.view.lastReplyCheck,
+      ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
       people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
         note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
       launches: readRuns(runsPath).launches.slice(-3),
@@ -161,7 +170,8 @@ async function main() {
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
         ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}), withheld: withheldView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-        lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
+        lastReplyCheck: view.view.lastReplyCheck,
+        ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);
     } finally { view.close(); }
     return;
   }
@@ -270,6 +280,15 @@ async function main() {
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
+    const invokeJev = async (text, questions) => {
+      const start = performance.now();
+      const response = await fetch('https://api.typesafe.ai/v1/systemone', {
+        method: 'POST', signal: AbortSignal.timeout(2000),
+        headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
+      if (!response.ok) throw Error('preview: Jev unavailable');
+      return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
+    };
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined),
       prepareModel: modelEnvelope,
@@ -285,15 +304,7 @@ async function main() {
       },
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: async text => {
-          const start = performance.now();
-          const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-            method: 'POST', signal: AbortSignal.timeout(2000),
-            headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions }) });
-          if (!response.ok) throw Error('preview: Jev unavailable');
-          return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
-        },
+        jev: text => invokeJev(text, jevQuestions),
         escalate: async (text, id, originalPrompt) => {
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
@@ -314,6 +325,7 @@ async function main() {
             usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
         }
       },
+      ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
       send: async ({ text, expectedText, chat, thread }) => {
         if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
@@ -345,6 +357,7 @@ async function main() {
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
+    worker.startStepChecks();
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = Date.now();
@@ -359,14 +372,19 @@ async function main() {
         await delay(Math.min(100, until - Date.now()));
       return true;
     };
-    let summaryJob = null;
+    let summaryJob = null, stepJob = null;
+    const checkStepsLater = () => {
+      if (!stepCheckEnabled || stepJob) return;
+      stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
+    };
     const summarizeLater = () => {
       // After the reply: the deterministic coherence check records its findings for the next
       // packet. It makes no call and cannot hold the reply already attempted;
       // its synchronous journal write can slightly delay the next poll.
       try { worker.checkCoherence(); } catch { /* the unchecked reply is retried after the next drain */ }
+      checkStepsLater();
       if (summaryJob) return;
-      summaryJob = worker.summarizeIfNeeded().catch(() => {}).finally(() => { summaryJob = null; });
+      summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
     };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
@@ -394,6 +412,8 @@ async function main() {
       worker.intake(updates.result); await worker.drain(); summarizeLater();
     }
     await summaryJob;
+    await stepJob;
+    if (stepCheckEnabled) await worker.checkSteps();
     endReason ??= 'cycle limit reached';
     function modelRoute() {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');

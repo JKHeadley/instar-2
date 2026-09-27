@@ -13,6 +13,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/product
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
+import { interpretStepJev, type StepCheckResult } from './step-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
  * can later raise the finite counters without altering genesis or usage. */
@@ -71,11 +72,14 @@ export type JournalRecord =
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
-  | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
+  | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; output?: string; at: number }
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain'; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[]; memoryFor?: string[]; memory?: MemoryChange[];
     commitments?: CommitmentNote[]; closed?: CommitmentClosure[]; state?: 'complete'; usage?: ModelUsage; at: number }
+  | { kind: 'step-check-start'; at: number }
+  | { kind: 'step-check-reserve'; step: string; evidence: string; at: number }
+  | { kind: 'step-check'; step: string; result: StepCheckResult; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
   | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number };
 
@@ -95,6 +99,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[];
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
+  stepCheckStarted: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
@@ -170,7 +175,10 @@ function project(view: JournalView, row: JournalRecord): void {
       if (!trigger?.accepted || trigger.update > row.through) throw Error('preview journal: failed summary trigger absent');
       trigger.memoryPending = true;
     }
-    view.summaryFailures.set(row.through, (view.summaryFailures.get(row.through) ?? 0) + 1);
+    const failures = (view.summaryFailures.get(row.through) ?? 0) + 1;
+    view.summaryFailures.set(row.through, failures);
+    if (view.stepCheckStarted && row.output !== undefined)
+      view.stepChecks.set(`summary-failed:${row.through}:${failures}`, { output: row.output });
     return;
   }
   if (row.kind === 'summary-uncertain') {
@@ -182,12 +190,29 @@ function project(view: JournalView, row: JournalRecord): void {
       throw Error('preview journal: summary without reservation');
     view.summaryReservations.delete(row.through);
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
+    if (view.stepCheckStarted) view.stepChecks.set(`summary:${row.through}`, {});
     if (row.memory) view.memory.push(...row.memory);
     if (row.commitments) view.commitments.push(...row.commitments);
     for (const closure of row.closed ?? []) if (closure.id < view.commitments.length && !view.closed.has(closure.id)) view.closed.set(closure.id, closure);
     for (const turn of view.order) if (turn.held === 'prompt overflow' || turn.held === 'context overflow'
       || turn.update <= row.through && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) delete turn.held;
     return;
+  }
+  if (row.kind === 'step-check-start') {
+    if (view.stepCheckStarted) throw Error('preview journal: step check already started');
+    view.stepCheckStarted = true; return;
+  }
+  if (row.kind === 'step-check-reserve') {
+    const step = view.stepChecks.get(row.step);
+    if (!step || step.reserved || Buffer.byteLength(row.evidence) > 32768
+      || [...view.stepChecks.values()].filter(item => item.reserved).length >= view.limits.maxCalls)
+      throw Error('preview journal: step check reservation order or cap');
+    step.reserved = true; return;
+  }
+  if (row.kind === 'step-check') {
+    const step = view.stepChecks.get(row.step);
+    if (!step?.reserved || step.result) throw Error('preview journal: step check result order');
+    step.result = row.result; return;
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
@@ -246,6 +271,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
     turn.answer = row.text;
+    if (view.stepCheckStarted && !row.failureClass) view.stepChecks.set(`answer:${row.id}`, {});
     if (row.state) turn.modelState = row.state;
     if (row.memoryPending) turn.memoryPending = true;
     if (row.memory) view.memory.push(...row.memory); }
@@ -289,7 +315,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], stepCheckStarted: false, stepChecks: new Map(), jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -326,7 +352,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], stepCheckStarted: false, stepChecks: new Map(), jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -410,6 +436,7 @@ export interface PreviewPorts {
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'>;
+  stepCheck?: { jev(state: string): Promise<{ value: unknown; latencyMs: number }> };
   boundary?(stage: string): void;
 }
 
@@ -417,6 +444,7 @@ export interface PreviewPorts {
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
+  let checkingSteps = false;
   // An orphaned reservation may have completed at the provider. Never repeat it.
   const gate = () => {
     if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires)
@@ -1043,6 +1071,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'empty',
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
+      const redactedFailure = journal.view.stepCheckStarted ? redact(answered) : null;
+      const failedOutput = redactedFailure
+        ? { output: redactedFailure.count || Buffer.byteLength(answered) > 8192 ? '' : clean(redactedFailure.text, true) } : {};
       let summaryText = answered, people: PersonNote[] | undefined, commitments: CommitmentNote[] | undefined,
         closed: CommitmentClosure[] | undefined, memory: MemoryChange[] | undefined;
       let attemptedMemory = false, unresolvedMemory = false;
@@ -1064,17 +1095,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (unresolvedMemory || strictMemory && memory === undefined || attemptedMemory && memory === undefined) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger ? { memoryPendingFor: trigger.id } : {}),
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
+          ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       if ([...journal.view.memory, ...memory ?? []].some(change => summaryText.includes(change.quote))) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
+          ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.limits.maxBytes / 4))) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
+          ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       journal.append({kind:'summary',through,text:clean(redact(summaryText).text, true),
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
@@ -1104,13 +1135,68 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       journal.append({ kind: 'coherence', id: turn.id, findings, ...(failed ? { failed: true as const } : {}), at: ports.now() });
     }
   };
+  const startStepChecks = () => {
+    if (ports.stepCheck && !journal.view.stepCheckStarted)
+      journal.append({ kind: 'step-check-start', at: ports.now() });
+  };
+  /** Observe completed model steps after the send path. A reservation survives a crash;
+   * an interrupted Jev request becomes unavailable and is never dispatched twice. */
+  const checkSteps = async () => {
+    if (!ports.stepCheck || !journal.view.stepCheckStarted || checkingSteps) return;
+    checkingSteps = true;
+    try {
+      for (const [stepId, step] of journal.view.stepChecks) {
+        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires) return;
+        if (step.result) continue;
+        if (step.reserved) {
+          journal.append({ kind: 'step-check', step: stepId, result: { verdict: 'unavailable',
+            reason: 'Jev request interrupted; outcome unknown', score: null, latencyMs: 0 }, at: ports.now() });
+          continue;
+        }
+        if ([...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return;
+        const evidence = stepId.startsWith('answer:') ? (() => {
+          const turn = journal.view.turns.get(stepId.slice('answer:'.length))!;
+          return { step: stepId, modelOutput: turn.answer, journal: { answerRecorded: true,
+            memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
+            memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
+            replyIntent: turn.intent ?? null, delivery: turn.intent === undefined ? 'no send intent'
+              : turn.sent === undefined ? 'send outcome UNKNOWN' : 'Telegram API accepted' } };
+        })() : stepId.startsWith('summary-failed:') ? { step: stepId, modelOutput: step.output,
+          journal: { summaryRecorded: false, previousSummaryRetained: true, failureRecorded: true } } : (() => {
+          const summary = journal.view.summaries.find(item => `summary:${item.through}` === stepId)!;
+          return { step: stepId, modelOutput: summary.text, journal: { summaryRecorded: true,
+            through: summary.through, memoryChanges: summary.memory ?? [], people: summary.people ?? [],
+            commitments: summary.commitments ?? [], closed: summary.closed ?? [] } };
+        })();
+        const redacted = redact(JSON.stringify(evidence));
+        const state = redacted.text;
+        const unavailableReason = redacted.count ? 'secret detected in step evidence'
+          : stepId.startsWith('summary-failed:') && !step.output ? 'model answer unavailable for safe checking'
+            : Buffer.byteLength(state) > 32768 ? 'evidence exceeds bound' : null;
+        journal.append({ kind: 'step-check-reserve', step: stepId,
+          evidence: unavailableReason ? JSON.stringify({ step: stepId, error: unavailableReason }) : state,
+          at: ports.now() });
+        let result: StepCheckResult;
+        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires)
+          result = { verdict: 'unavailable', reason: 'preview stopped before Jev dispatch', score: null, latencyMs: 0 };
+        else if (unavailableReason) result = { verdict: 'unavailable', reason: unavailableReason, score: null, latencyMs: 0 };
+        else try {
+          const answer = await ports.stepCheck.jev(state);
+          result = interpretStepJev(answer.value, answer.latencyMs);
+        } catch {
+          result = { verdict: 'unavailable', reason: 'Jev unavailable or malformed result', score: null, latencyMs: 0 };
+        }
+        journal.append({ kind: 'step-check', step: stepId, result, at: ports.now() });
+      }
+    } finally { checkingSteps = false; }
+  };
   /** Read-only: the packet a next message with this text would get now. No append, no call. */
   const probe = (text: string) => {
     const last = journal.view.order.at(-1);
     return preparedFor({ id: 'probe', update: (last?.update ?? -1) + 1, text, raw: '', accepted: true,
       at: ports.now(), reserved: false });
   };
-  return { intake, drain, summarizeIfNeeded, checkCoherence, gate, pollGate, probe,
+  return { intake, drain, summarizeIfNeeded, checkCoherence, startStepChecks, checkSteps, gate, pollGate, probe,
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };
 }

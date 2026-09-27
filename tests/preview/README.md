@@ -1032,3 +1032,30 @@ durable check order, and the holding reply without network access.
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),
 never an unsent candidate.
+
+### Dark Jev step check
+
+The journal launcher accepts `--step-check true`; omission or `false` leaves it off.
+Off mode adds no journal frames and leaves model packets and send bytes unchanged.
+When enabled, a durable start marker makes only subsequent model answers eligible.
+After the ordinary reply path, Jev compares each completed answer and committed
+summary with its journal projection. A completed summary answer rejected by the
+existing summary validation is checked against the recorded failure too. The
+request contains the redacted model output and a bounded snapshot of recorded
+memory changes, reply intent and Telegram API result, or summary effects. It
+asks whether a claimed completed effect lacks journal support. Jev's result is
+`pass`, `violation`, `unsure`, or `unavailable`; the conclusion, score, reason,
+usage when returned, and redacted evidence reservation are encrypted in the
+same journal. `status.stepChecks` and `inspect.stepChecks` expose verdicts without
+the underlying text. An interrupted reservation replays as unavailable without
+repeating Jev. The number of checks is bounded by the existing model-call cap;
+an answer containing a detected secret, or an oversized answer or evidence, is
+recorded as unavailable without Jev disclosure. A stop prevents a
+new Jev dispatch. Verdicts never change a reply, memory decision, summary,
+hold, send, or future model packet. No extra service or store is involved.
+
+The live private-chat procedure is in
+[jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark
+observation's evaluation target is 2026-09-30: the desk can decide whether to
+keep it on after Justin's script produces a recorded trace. While off, it is
+not a live safety guard.
