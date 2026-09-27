@@ -11,6 +11,9 @@ account bound as `--operator-sender-id`; another sender does not exercise the re
    the test bot and its separate trial activation. The substitute returns
    `state: rejected` for the answer call and a PASS for a subscription reply
    review if Jev is unavailable. It sends no prompt to a model provider.
+   This proves the checked Telegram reply path for a definite failure. The
+   adapter's terminal-envelope versus bare-exit boundary is covered by the
+   focused offline provider test, not by this substitute.
 
    ```sh
    INSTAR_PREVIEW_SIMULATE_MODEL_FAILURE=1 node \
@@ -39,6 +42,10 @@ account bound as `--operator-sender-id`; another sender does not exercise the re
    Restart the isolated runner with the same root and check that no second reply
    appears. The original failed call still counts toward `calls`; a subscription
    reply review, if used, consumes an additional call.
+
+A bare exit, even code zero, or an invocation error with no validated `result`
+envelope stays UNKNOWN. It must produce no reply or summary retry on restart;
+do not use that case as the positive live probe.
 
 Do not use this loader with a real runner root or for ordinary service. This probe
 is prepared for the desk; this branch does not run it against Telegram.

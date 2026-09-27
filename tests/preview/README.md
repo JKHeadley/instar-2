@@ -681,15 +681,14 @@ caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import
 completion. After pausing the runner and verifying the operator's authority, the
 desk can raise all or some of the finite limits with:
 
-A terminal provider rejection, a completed model subprocess with no usable answer,
-or a complete but empty or malformed answer is recorded with its content-free
-failure class and provider state. The subprocess can end while the subscription
-route still reports `uncertain` spending liability; the preview records `terminal`
-as the answer failure class without changing that provider state. The counted call
-gets one fixed PREVIEW reply through the usual reply check, durable intent and send
-fences. An interrupted or timed-out call remains UNKNOWN and is never repeated. This also
+A validated terminal provider failure envelope, or a completed success envelope
+with empty or malformed answer content, is recorded with a bounded, content-free
+failure class and provider state. The counted call gets one fixed PREVIEW reply
+through the usual reply check, durable intent and send fences. A bare process
+exit (including zero), invocation error, timeout or interrupted call without a
+validated terminal result remains UNKNOWN and is never repeated. This also
 applies to summary reservations: a definite summary failure may use its remaining
-bounded attempt, while an uncertain one stays pending. `status` reports
+bounded attempt, while an uncertain one stays pending across restart. `status` reports
 `modelFailureClasses` and `modelResultStates`; `self` includes the same counts.
 Subscription reply reviews also record their returned provider state.
 The journal never stores the failed model's raw output. To exercise this path in

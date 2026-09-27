@@ -299,7 +299,8 @@ export function createClaudeCodeSubscriptionRoute(input:
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
           CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' });
-        const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number) => {
+        const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
+          allowFailureFrame = false) => {
           await new Promise<void>(resolve => setImmediate(resolve));
           check();
           ensure(Number.isSafeInteger(bounds.deadline) && config.now() + timeout <= bounds.deadline,
@@ -308,11 +309,12 @@ export function createClaudeCodeSubscriptionRoute(input:
             env, stdin, timeout, maxBytes });
           lastFailure = classifyProviderFailure({ ...result, now: config.now(), localClockResetAt: config.io.localClockResetAt,
             calendarResetAt: config.io.calendarResetAt });
-          ensure(!result.limited && result.code === 0 && result.stdoutBytes.byteLength <= maxBytes,
+          ensure(!result.limited && (result.code === 0 || (allowFailureFrame && Number.isSafeInteger(result.code)
+            && result.code !== null && result.code >= 0)) && result.stdoutBytes.byteLength <= maxBytes,
             'subscription physical command incomplete');
           const text = new TextDecoder('utf-8', { fatal: true }).decode(result.stdoutBytes);
           ensure(text === result.stdout, 'subscription stdout bytes differ');
-          return { text, raw: result.stdoutBytes };
+          return { text, raw: result.stdoutBytes, code: result.code };
         };
         const version = await command(['--version'], '', 5000, 1024);
         ensure(version.text.trim() === `${profile.version} (Claude Code)`, 'subscription version differs');
@@ -329,15 +331,22 @@ export function createClaudeCodeSubscriptionRoute(input:
           && status.projectsDirectory === `${profile.configDirectory}/projects`
           && (status.forcedLoginMethod === undefined || status.forcedLoginMethod === 'claudeai'),
         'subscription authentication status refused');
-        const returned = await command(policy.args, bytes, bounds.timeout, policy.maxRawTerminalBytes);
+        const returned = await command(policy.args, bytes, bounds.timeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
-        ensure(frame && frame.type === 'result' && frame.subtype === 'success' && frame.is_error === false
-          && frame.structured_output === undefined && typeof frame.result === 'string' && frame.result.length > 0
-          && Buffer.byteLength(frame.result) <= policy.maxOutputBytes && typeof frame.session_id === 'string'
+        ensure(frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
+          && typeof frame.subtype === 'string' && frame.subtype.length > 0
+          && typeof frame.session_id === 'string'
           && frame.session_id.length > 0 && frame.session_id.length <= 256
           && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens)
           && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
+        const usage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens, charge: null,
+          source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
+        if (frame.is_error === true) return { state: 'rejected', bytes: null, providerOperation: frame.session_id,
+          usage, retryBlocked: false };
+        ensure(returned.code === 0 && frame.subtype === 'success' && frame.is_error === false
+          && frame.structured_output === undefined && typeof frame.result === 'string'
+          && Buffer.byteLength(frame.result) <= policy.maxOutputBytes, 'subscription result refused');
         const draft: ProviderResponseEvidenceDraft = { eligibility: 'admitted', contract,
           basis: { sourceEvidence: approved.sourceEvidence, terminalEvidence: approved.terminalEvidence,
             terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] },
@@ -351,8 +360,7 @@ export function createClaudeCodeSubscriptionRoute(input:
             limited: false, errored: false, cancelled: false, timedOut: false, truncated: false, toolCall: false },
           answer: { extractionContract: 'claude-code-json-result:1', answerDigest: hashBytes(frame.result) } };
         return { state: 'complete', bytes: frame.result, providerOperation: frame.session_id,
-          usage: { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens, charge: null,
-            source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' },
+          usage,
           retryBlocked: false, responseEvidenceDraft: draft };
       } catch { return uncertain(); }
     } }));

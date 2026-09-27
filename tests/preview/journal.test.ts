@@ -244,20 +244,34 @@ it('sends one fixed checked reply for a definite failure and counts the spent ca
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('sends the fixed reply when the provider state is uncertain but the CLI ended with no usable answer', async () => {
+it('keeps an uncertain summary reservation across restart without another model call or reply', async () => {
   const root = origin();
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
-    let sends = 0;
-    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-      model: async () => ({ state: 'uncertain', failureClass: 'terminal' }), checkOutbound: () => {},
-      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); return 8; } });
-    worker.intake([update(1)]); await worker.drain(); await worker.drain();
-    expect(sends).toBe(1);
-    expect(Object.fromEntries(journal.view.failureClasses)).toEqual({ terminal: 1 });
-    expect(Object.fromEntries(journal.view.providerStates)).toEqual({ uncertain: 1 });
-    expect(journal.view.calls).toBe(1);
-    journal.close();
+    const path = join(root, 'journal.encrypted'), first = openPreviewJournal(path, key, genesis());
+    const id = 'telegram:12345678:update:1';
+    first.append({ kind: 'intake', id, update: 1, text: 'question', raw: JSON.stringify(update(1)),
+      accepted: true, cursor: 2, at: 1000 });
+    first.append({ kind: 'reserve', id, at: 1000 });
+    first.append({ kind: 'answer', id, text: 'answer', at: 1000 });
+    first.append({ kind: 'intent', id, text: 'PREVIEW — answer', chat: first.view.genesis.chat,
+      update: 1, grant: first.view.genesis.grant, at: 1000 });
+    first.append({ kind: 'sent', id, message: 1, at: 1000 });
+    let calls = 0, sends = 0;
+    const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => { calls++; return { state: 'uncertain' }; }, checkOutbound: () => {},
+      send: async () => { sends++; return 2; } });
+    await worker.summarizeIfNeeded(true);
+    expect({ calls, sends, spent: first.view.calls, pending: first.view.summaryReservations.has(1) })
+      .toEqual({ calls: 1, sends: 0, spent: 2, pending: true });
+    first.close();
+    const second = openPreviewJournal(path, key);
+    const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
+      model: async () => { calls++; return 'wrong'; }, checkOutbound: () => {},
+      send: async () => { sends++; return 3; } });
+    await resumed.summarizeIfNeeded(true); await resumed.drain();
+    expect({ calls, sends, spent: second.view.calls, pending: second.view.summaryReservations.has(1),
+      failures: second.view.summaryFailures.size }).toEqual({ calls: 1, sends: 0, spent: 2, pending: true, failures: 0 });
+    second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

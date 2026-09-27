@@ -20,7 +20,7 @@ it('invokes the existing subscription route with one bounded prepared journal en
     terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'], strength: 'attestation',
     maxMetadataBytes: policy.maxMetadataBytes, maxRawTerminalBytes: policy.maxRawTerminalBytes,
     maxCaptureBytes: policy.maxCaptureBytes };
-  let modelCalls = 0;
+  let modelCalls = 0, outcome = 'success';
   const io = { realpath: path => path,
     executableBytes: () => Buffer.from('offline executable bytes'),
     inspectSubscriptionProfile: profile => ({ loginProfileIdentity: profile.loginProfileIdentity,
@@ -37,11 +37,18 @@ it('invokes the existing subscription route with one bounded prepared journal en
         expect(command.stdin).toContain('early memory');
         const decision = { type: 'Decision', schemaVersion: 1, id: 'offline-journal-answer',
           conclusion: { subject: 'preview-stage2-answer', value: 'remembered' } };
-        stdout = JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
-          result: JSON.stringify(decision), session_id: 'journal-offline-call-1',
-          usage: { input_tokens: 8, output_tokens: 3 } });
+        if (outcome === 'throw') throw Error('invocation failed after dispatch');
+        stdout = outcome === 'failure' ? JSON.stringify({ type: 'result', subtype: 'success', is_error: true,
+          result: 'provider refusal text', session_id: 'journal-offline-failed-call',
+          usage: { input_tokens: 8, output_tokens: 0 } })
+          : outcome === 'empty' ? JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+            result: '', session_id: 'journal-offline-empty-call', usage: { input_tokens: 8, output_tokens: 0 } })
+          : outcome.startsWith('bare') ? '' : JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+            result: JSON.stringify(decision), session_id: 'journal-offline-call-1',
+            usage: { input_tokens: 8, output_tokens: 3 } });
       }
-      return { code: 0, limited: false, stdout, stdoutBytes: new Uint8Array(Buffer.from(stdout)) };
+      return { code: command.args.includes('--print') && (outcome === 'failure' || outcome === 'bare1') ? 1 : 0,
+        limited: false, stdout, stdoutBytes: new Uint8Array(Buffer.from(stdout)) };
     } };
   const route = createClaudeCodeSubscriptionRoute({ context, credential: { type: 'SecretRef', schemaVersion: 1,
     vault: 'preview', name: offlineProfile.reference }, profile: offlineProfile, resolveProfile: () => offlineProfile,
@@ -60,4 +67,20 @@ it('invokes the existing subscription route with one bounded prepared journal en
   expect(result.state).toBe('complete');
   expect(result.usage).toMatchObject({inputTokens:8,outputTokens:3,charge:null});
   expect(modelCalls).toBe(1);
+  outcome = 'failure';
+  expect(await route.value.invoke(bytes, {operation:'turn:2',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).toMatchObject({state:'rejected',bytes:null,
+      providerOperation:'journal-offline-failed-call',usage:{inputTokens:8,outputTokens:0,charge:null}});
+  outcome = 'empty';
+  expect(await route.value.invoke(bytes, {operation:'turn:empty',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).toMatchObject({state:'complete',bytes:''});
+  for (const [next, operation] of [['bare0','turn:3'],['bare1','turn:4'],['throw','turn:5']]) {
+    outcome = next;
+    expect((await route.value.invoke(bytes, {operation,deadline:now+180000,
+      timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+      maxCharge:0,automaticRetries:0})).state).toBe('uncertain');
+  }
+  expect(modelCalls).toBe(6);
 });

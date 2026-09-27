@@ -26,7 +26,7 @@ export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
-export type ModelFailureClass = 'rejected' | 'malformed' | 'empty' | 'terminal';
+export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
 
 /** A person named in an earlier accepted message. The model only selects: the name
@@ -326,7 +326,7 @@ export interface PreviewPorts {
   sources?: unknown;
   prepareModel?(input: { question: string; context: string; id: string }): string;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
-    usage: ModelUsage} | {state:'rejected' | 'complete' | 'uncertain'; failureClass:ModelFailureClass; usage?: ModelUsage}
+    usage: ModelUsage} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
@@ -540,13 +540,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
           catch { continue; } // reservation remains UNKNOWN
-          if (typeof answer !== 'string' && 'failureClass' in answer) {
+          if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
+            journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
+              ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), at: ports.now() }); continue;
+          } else if (typeof answer !== 'string' && 'failureClass' in answer) {
             journal.append({ kind: 'answer', id: turn.id, text: MODEL_FAILURE_REPLY,
               state: answer.state, failureClass: answer.failureClass,
               ...(answer.usage ? { usage: answer.usage } : {}), at: ports.now() });
-          } else if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
-            journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
-              ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), at: ports.now() }); continue;
           } else {
             const text = typeof answer === 'string' ? answer : answer.text;
             journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
@@ -752,13 +752,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       try { summary = await ports.model({ question: summaryQuestion,
         context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }
       catch { return; } // outcome UNKNOWN; preserve the reservation
-      if (typeof summary !== 'string' && 'failureClass' in summary) {
-        journal.append({kind:'summary-failed',through,state:summary.state,failureClass:summary.failureClass,
-          ...(summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
-      }
       if (typeof summary !== 'string' && 'state' in summary && summary.state === 'uncertain') {
         journal.append({kind:'summary-uncertain',through,state:'uncertain',
           ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
+      }
+      if (typeof summary !== 'string' && 'failureClass' in summary) {
+        journal.append({kind:'summary-failed',through,state:summary.state,failureClass:summary.failureClass,
+          ...(summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
       }
       const answered = typeof summary === 'string' ? summary : summary.text;
       if (!answered.trim()) {
