@@ -151,7 +151,8 @@ const withheldView = view => {
     ...(change.mode === 'correct' ? { quote: redact(change.quote).text } : {}),
     reason: preferenceKeys.has(JSON.stringify([change.source, change.quote]))
       ? change.mode === 'forget' ? 'verified operator removed this reply preference' : 'verified operator changed this reply preference'
-      : change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
+      : change.mode === 'forget' ? 'verified operator requested forgetting'
+        : change.historical ? 'newer verified operator statement updated this fact' : 'verified operator corrected this fact' }));
 };
 
 // Content-free counts of how model JSON arrived: malformed shapes (why a result was
