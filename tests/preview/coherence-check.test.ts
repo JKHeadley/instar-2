@@ -107,8 +107,9 @@ it('keeps a reply reachable when a correction cannot fit and retains the uncarri
     sample.worker.checkCoherence();
     const withNote = sample.worker.probe('Can I open it?');
     expect('context' in withNote).toBe(true);
-    const limit = 1300; // Fits the next reply while excluding its optional correction note.
-    expect(Buffer.byteLength(('context' in withNote ? withNote.context : ''))).toBeGreaterThan(limit);
+    const withNoteBytes = Buffer.byteLength('context' in withNote ? withNote.context : '');
+    const limit = 1900; // Fits the reply with fewer memory candidates, but excludes the optional note.
+    expect(withNoteBytes).toBeGreaterThan(limit);
     sample.journal.close();
 
     const trial = make('trial', limit);

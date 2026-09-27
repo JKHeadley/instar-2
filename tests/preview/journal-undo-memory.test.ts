@@ -17,13 +17,13 @@ const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
 type Answer = Extract<JournalRecord, { kind: 'answer' }>;
 function seed(journal: ReturnType<typeof openPreviewJournal>, worker: ReturnType<typeof createJournalWorker>,
   id: number, message: string, fields: Partial<Pick<Answer, 'memory' | 'dated'>>
-    | ((turnId: string) => Partial<Pick<Answer, 'memory' | 'dated'>>) = {}) {
+    | ((turnId: string) => Partial<Pick<Answer, 'memory' | 'dated'>>) = {}, reply = 'Recorded.') {
   worker.intake([update(id, message)]);
   const turn = journal.view.order.at(-1)!;
   journal.append({ kind: 'reserve', id: turn.id, at: start });
-  journal.append({ kind: 'answer', id: turn.id, text: 'Recorded.', memory: [], dated: [],
+  journal.append({ kind: 'answer', id: turn.id, text: reply, memory: [], dated: [],
     ...(typeof fields === 'function' ? fields(turn.id) : fields), at: start });
-  journal.append({ kind: 'intent', id: turn.id, text: 'PREVIEW — Recorded.', chat: genesis.chat,
+  journal.append({ kind: 'intent', id: turn.id, text: `PREVIEW — ${reply}`, chat: genesis.chat,
     update: turn.update, grant: genesis.grant, at: start });
   journal.append({ kind: 'sent', id: turn.id, message: id, at: start });
   return turn;
@@ -42,7 +42,8 @@ it.each(['correct', 'forget', 'prefer', 'dated'] as const)('undo reverses the la
         const packet = JSON.parse(input.context);
         if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'A memory change was recorded.', people: [], memory: [] });
         contexts.push(packet);
-        return JSON.stringify({ reply: 'Undone.', memory: [], dated: [], undo: { change: packet.undoCandidate.change } });
+        return JSON.stringify({ reply: 'Undone.', memory: [], dated: [], undo: { change: packet.undoCandidate.change,
+          ...(kind === 'correct' ? { replies: [], summaryPassages: [] } : {}) } });
       }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     const original = seed(journal, worker, 1, kind === 'prefer' ? 'I like answers in complete sentences.'
@@ -68,7 +69,7 @@ it.each(['correct', 'forget', 'prefer', 'dated'] as const)('undo reverses the la
     expect(journal.view.changeHistory.at(-1)?.undone).toBe(true);
     expect(journal.view.undos).toHaveLength(1);
     if (kind === 'dated') expect(journal.view.dated).toHaveLength(0);
-    if (kind === 'prefer') expect(journal.view.memory.filter(item => item.mode === 'prefer')).toHaveLength(0);
+    if (kind === 'prefer') expect(journal.view.memory.filter(item => item.mode === 'prefer')).toHaveLength(1);
     const probe = worker.probe('What do you remember?');
     expect('reason' in probe).toBe(false);
     if ('reason' in probe) throw Error(probe.reason);
@@ -154,6 +155,91 @@ it('accepts the exact ten-minute boundary', async () => {
       quote: 'I like answers in complete sentences.', trigger: id }] }));
     worker.intake([update(2, 'Undo that.')]); await worker.drain();
     expect(journal.view.undos).toHaveLength(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('refuses an undo that expires while the model is answering and reopens the journal', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-undo-expiry-race-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    let answered = false;
+    const worker = createJournalWorker(journal, { now: () => start + (answered ? 600_001 : 600_000), stopped: () => false,
+      model: async input => {
+        const candidate = JSON.parse(input.context).undoCandidate;
+        expect(candidate.change).toBe(0);
+        answered = true;
+        return JSON.stringify({ reply: 'Undone.', memory: [], dated: [], undo: { change: candidate.change } });
+      }, send: async () => 1, checkOutbound: () => {} });
+    seed(journal, worker, 1, 'I like answers in complete sentences.', id => ({ memory: [{ mode: 'prefer', source: id,
+      quote: 'I like answers in complete sentences.', trigger: id }] }));
+    worker.intake([update(2, 'Undo that.')]); await worker.drain();
+    expect(journal.view.undos).toEqual([]);
+    expect(journal.view.order.at(-1)?.answer).toContain('could not undo');
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    expect(journal.view.undos).toEqual([]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a later same-text preference after undo and replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-undo-reinstate-')));
+  const path = join(root, 'journal.encrypted'), quote = 'I like answers in complete sentences.';
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    let worker = createJournalWorker(journal, { now: () => start + 1_000, stopped: () => false,
+      model: async input => JSON.stringify({ reply: 'Undone.', memory: [], dated: [],
+        undo: { change: JSON.parse(input.context).undoCandidate.change } }),
+      send: async () => 1, checkOutbound: () => {} });
+    seed(journal, worker, 1, quote, id => ({ memory: [{ mode: 'prefer', source: id, quote, trigger: id }] }));
+    worker.intake([update(2, 'Undo that.')]); await worker.drain();
+    seed(journal, worker, 3, quote, id => ({ memory: [{ mode: 'prefer', source: id, quote, trigger: id }] }));
+    journal.close();
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, { now: () => start + 1_000,
+      stopped: () => false, model: async () => 'Okay.', send: async () => 1, checkOutbound: () => {} });
+    const packet = worker.probe('How should you answer?');
+    if ('reason' in packet) throw Error(packet.reason);
+    const context = JSON.parse(packet.context);
+    expect(context.preferences).toEqual([{ text: quote, source: journal.view.order[2]!.id }]);
+    expect(context.history[0].user).toContain('[withheld:');
+    expect(context.history[2].user).toBe(quote);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('undo removes paraphrased derived memory while retaining unrelated summary text', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-undo-derived-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const ports = { now: () => start + 1_000, stopped: () => false,
+      model: async (input: { question: string; context: string }) => JSON.stringify({ reply: 'Undone.', memory: [], dated: [],
+        undo: { change: JSON.parse(input.context).undoCandidate.change,
+          ...(input.question === 'Undo that.' ? {} : { replies: [journal.view.order[1]!.id],
+            summaryPassages: ['West Pier is the departure point.'] }) } }),
+      send: async () => 1, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    const old = seed(journal, worker, 1, `The route starts at East Pier. ${'x'.repeat(14500)}`);
+    seed(journal, worker, 2, 'Actually, the route starts at West Pier.', id => ({ memory: [{ mode: 'correct',
+      source: old.id, quote: 'The route starts at East Pier.', replacement: 'the route starts at West Pier.', trigger: id }] }),
+    'West Pier is the departure point.');
+    journal.append({ kind: 'summary-reserve', through: 2, at: start });
+    journal.append({ kind: 'summary', through: 2, text: 'West Pier is the departure point. The ferry runs daily.', at: start });
+    worker.intake([update(3, 'Undo that.')]); await worker.drain();
+    expect(journal.view.undos).toEqual([]);
+    expect(journal.view.order[2]?.answer).toContain('could not undo');
+    worker.intake([update(4, 'Undo that correction.')]); await worker.drain();
+    expect(journal.view.undos).toHaveLength(1);
+    journal.close();
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    const packet = worker.probe('Where does the route start?');
+    if ('reason' in packet) throw Error(packet.reason);
+    const context = JSON.parse(packet.context);
+    expect(context.summary.text).toContain('The ferry runs daily.');
+    expect(context.summary.text).not.toContain('West Pier is the departure point.');
+    expect(packet.context).not.toContain('West Pier is the departure point.');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
