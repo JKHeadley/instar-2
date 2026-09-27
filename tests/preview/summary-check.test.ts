@@ -113,6 +113,37 @@ it.each([0.05, 0.9, 0.5])('accepts only a passing Jev or full-context review (%s
   } finally { rmSync(run.root, { recursive: true, force: true }); }
 });
 
+it('redacts quoted summary secrets before serializing the supervisor payload and keeps ordinary prose', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-secret-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis());
+    const secret = 'fixture-secret-9283';
+    let supervised = '';
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: `The studio trial continues. password: "${secret}"`, people: [], memory: [], commitments: [] })
+        : 'The studio trial continues.',
+      summaryCheck: async () => ({ model: JEV_MODEL, answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
+      replyCheck: { elapsedMs: () => 100, jev: async (state, questions) => {
+        if (questions) { supervised = state; return { value: jevAnswer(0.05), latencyMs: 1 }; }
+        return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
+      }, escalate: async () => { throw Error('unexpected review'); } },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'Please continue the studio trial.' } }]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(supervised).toContain('The studio trial continues.');
+    expect(supervised).not.toContain(secret);
+    expect(JSON.parse(supervised).proposed.summary).not.toContain(secret);
+    expect(journal.view.summaryCandidates.get(1)).toBe(supervised);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(replay.view.summaryCandidates.get(1)).not.toContain(secret);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it.each([[0.9, 'violation'], ['unavailable', 'pass']])('keeps the prior frontier on %s / %s', async (score, review) => {
   const run = await caseRun(score as number | 'unavailable', review as 'pass' | 'violation');
   try {

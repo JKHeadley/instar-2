@@ -3570,9 +3570,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const auditChanges = [...journal.view.memory, ...memory ?? []];
       const safeAudit = (value: string) => projectModelEvidence(value, auditChanges);
       if (ports.replyCheck) {
-        supervisedState = redact(safeAudit(JSON.stringify({ packet: JSON.parse(packet) as object,
+        supervisedState = safeAudit(JSON.stringify({ packet: JSON.parse(packet) as object,
           proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
-            closed: closed ?? [], memory: memory ?? [] } }))).text;
+            closed: closed ?? [], memory: memory ?? [] } }, (_key, value: unknown) =>
+          typeof value === 'string' ? redact(value).text : value));
         journal.append({ kind: 'summary-candidate', through, state: supervisedState,
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
         gate();
