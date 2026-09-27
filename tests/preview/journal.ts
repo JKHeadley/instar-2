@@ -115,7 +115,7 @@ export type JournalRecord =
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
   | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }
-  | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; at: number }
+  | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; level?: 'near'; at: number }
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
@@ -341,7 +341,8 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
 }
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
-const capKey = (reason: 'calls' | 'replies' | 'turns' | 'bytes', limit: number) => `${reason}:${limit}`;
+const capKey = (reason: 'calls' | 'replies' | 'turns' | 'bytes', limit: number, level?: 'near') =>
+  level === 'near' ? `${reason}:80:${limit}` : `${reason}:${limit}`;
 /** Reservations spend once, even when their external outcome is unknown. */
 export function unknownCallCounts(view: JournalView) {
   const answers = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
@@ -362,18 +363,39 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
     || turn.held === 'summary unavailable: prompt overflow')) return { reason: 'bytes', limit: view.limits.maxBytes };
   return null;
 }
-/** The local operator line is durably fenced before output. It consumes no
- * reply slot and never sends a message after the reply allowance is spent. */
+/** Local operator lines are durably fenced before output. They consume no
+ * reply slot and never send a message after the reply allowance is spent. */
 export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>, at: number, writeLine: (line: string) => void): string | null {
+  for (const [reason, used, limit] of [['calls', journal.view.calls, journal.view.limits.maxCalls],
+    ['replies', journal.view.replies, journal.view.limits.maxReplies]] as const) {
+    if (used < limit - Math.floor(limit / 5) || journal.view.capReports.has(capKey(reason, limit, 'near'))) continue;
+    journal.append({ kind: 'cap-report', reason, limit, level: 'near', at });
+    writeLine(`PREVIEW — ${reason} trial cap at least 80% used (${used}/${limit}); ${Math.max(0, limit - used)} remain.\n`);
+  }
   const cap = reachedJournalCap(journal.view);
   if (!cap) return null;
-  if (!journal.view.capReports.has(capKey(cap.reason, cap.limit))) {
-    journal.append({ kind: 'cap-report', ...cap, at });
-    writeLine(`PREVIEW — ${cap.reason} cap reached; work paused. Check status for held work.\n`);
+  const caps = [cap];
+  for (const [reason, used, limit] of [['calls', journal.view.calls, journal.view.limits.maxCalls],
+    ['replies', journal.view.replies, journal.view.limits.maxReplies]] as const) {
+    if (used >= limit && !caps.some(item => item.reason === reason)) caps.push({ reason, limit });
+  }
+  for (const item of caps) {
+    if (journal.view.capReports.has(capKey(item.reason, item.limit))) continue;
+    journal.append({ kind: 'cap-report', ...item, at });
+    writeLine(`PREVIEW — ${item.reason} cap reached; work paused. Check status for held work.\n`);
   }
   return cap.reason === 'turns' ? 'update cap reached'
     : cap.reason === 'calls' ? 'model attempt cap reached'
       : cap.reason === 'replies' ? 'reply cap reached' : 'context byte cap reached';
+}
+function capReportAllowed(view: JournalView, row: Extract<JournalRecord, { kind: 'cap-report' }>): boolean {
+  const used = row.reason === 'calls' ? view.calls : row.reason === 'replies' ? view.replies : 0;
+  const limit = row.reason === 'calls' ? view.limits.maxCalls : row.reason === 'replies' ? view.limits.maxReplies : 0;
+  if (row.level === 'near') return limit > 0 && limit === row.limit && used >= limit - Math.floor(limit / 5);
+  if (row.level !== undefined) return false;
+  const reached = reachedJournalCap(view);
+  return reached?.reason === row.reason && reached.limit === row.limit
+    || limit > 0 && limit === row.limit && used >= limit;
 }
 const operatorEvent = (view: JournalView, at: number, update: number, detail: string) => {
   view.operatorEvents.push({ at, update, detail });
@@ -446,10 +468,9 @@ function project(view: JournalView, row: JournalRecord): void {
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
   if (row.kind === 'cap-report') {
-    const reached = reachedJournalCap(view);
-    if (reached?.reason !== row.reason || reached.limit !== row.limit) throw Error('preview journal: cap report without cap');
-    if (view.capReports.has(capKey(row.reason, row.limit))) throw Error('preview journal: repeated cap report');
-    view.capReports.add(capKey(row.reason, row.limit)); return;
+    if (!capReportAllowed(view, row)) throw Error('preview journal: cap report without cap');
+    if (view.capReports.has(capKey(row.reason, row.limit, row.level))) throw Error('preview journal: repeated cap report');
+    view.capReports.add(capKey(row.reason, row.limit, row.level)); return;
   }
   if (row.kind === 'caps') {
     checkCaps(view, row, 'replay');
@@ -803,9 +824,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
         throw Error('preview journal: capacity reached');
       if (row.kind === 'cap-report') {
-        const reached = reachedJournalCap(view!);
-        if (reached?.reason !== row.reason || reached.limit !== row.limit
-          || view!.capReports.has(capKey(row.reason, row.limit))) throw Error('preview journal: cap report order');
+        if (!capReportAllowed(view!, row)
+          || view!.capReports.has(capKey(row.reason, row.limit, row.level))) throw Error('preview journal: cap report order');
       }
       boundary?.(`before:${row.kind}`);
       size = writeFrame(fd, row, key, size); fsyncSync(fd);

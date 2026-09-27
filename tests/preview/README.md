@@ -591,14 +591,19 @@ oversized turn stays held with its original intake. A Telegram poll batch that
 fills the last turn slot leaves any further updates unrecorded and the cursor
 before them, so an authorized cap raise can fetch them again.
 
-When a cap stops this runner, it writes one fixed line to the local terminal:
+At 80% of the call or reply limit, the runner writes one plain local terminal
+line with the used and remaining slots. At a cap it writes a final line:
 `PREVIEW — calls|replies|turns|bytes cap reached; work paused. Check status for held work.`
-The encrypted journal fences one line per cap kind and limit across restarts;
-`status.capReports` shows those fences. It is a local operator notice, not a
-Telegram send, so reaching `maxReplies` cannot spend an extra reply. A crash
-between the durable fence and terminal output may leave the line absent; the
-durable `status` and run-end reason remain available. The supervised procedure
-is [spend-cap-live-test.md](spend-cap-live-test.md).
+The encrypted journal fences each 80% and final line per cap kind and limit
+across restarts; `status.capReports` shows those fences (for example
+`calls:80:16` and `calls:16`). If a single poll crosses 80% and reaches the
+cap, both lines appear. These local operator notices spend no Telegram reply
+slots. A crash between a durable fence and terminal output may leave that line
+absent; durable `status` and the run-end reason remain available. Cap-held
+questions keep their original intake and cursor. After an authorized raise,
+the ordinary drain answers each pending turn once; an UNKNOWN send intent is
+never retried. The supervised procedure is
+[cap-exhaustion-graceful-live-test.md](cap-exhaustion-graceful-live-test.md).
 
 The launcher uses the existing `INSTAR_SECRET_PREVIEW_STORAGE_KEY` and
 `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` host bindings, production storage lease,
