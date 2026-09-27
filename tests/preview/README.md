@@ -1257,6 +1257,21 @@ UNKNOWN and is never resent. Intake durability, update-ID deduplication, one sto
 one attempt cap and one reply cap are shared by every conversation. Journals
 written before this change replay unchanged; their turns belong to the main chat.
 
+Once the journal contains at least two conversations, every ordinary reply packet
+also carries `crossTopicDigest`, built from the replayed journal projection with no
+model call or separate store. It lists each included conversation's last activity
+date, up to two open commitment quotes from completed summaries, up to two
+unanswered questions marked by `?`, and up to two held or uncertain items. It
+uses the exact send/hold outcome and current commitment closure and memory
+withholding records; a lost-answer notice remains unanswered. The newest eight
+conversations are considered, the serialized digest is at most 4096 bytes, and
+`omittedConversations` reports any excluded by the bound. Empty lists are
+limited evidence: an unsummarized commitment or a question without `?` may not
+appear. The full journal and normal cross-conversation history remain available
+to the model. `inspect --text` exposes the same bounded digest for a read-only
+check. The private operator remains the only audience.
+Justin's live steps are in [cross-topic-digest-live.md](cross-topic-digest-live.md).
+
 The offline 60-turn assembled-path regression polls through the real Telegram
 bridge against a fake endpoint, uses the real subscription adapter with an
 immediate model substitute, builds the launcher prompt, times restarts, and checks

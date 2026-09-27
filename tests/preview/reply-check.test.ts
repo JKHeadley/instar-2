@@ -214,9 +214,11 @@ it('grounds history and summary in the holding reply actually sent', async () =>
     await worker.drain();
     const next = worker.probe('What did you send?');
     if (!('context' in next)) throw Error('expected a next-turn packet');
-    expect(JSON.parse(next.context).history[0]).toMatchObject({ answer: HOLDING_TEXT, outcome: 'Telegram API accepted' });
+    expect(JSON.parse(next.context).history[0]).toMatchObject({ answer: HOLDING_TEXT,
+      outcome: 'holding reply delivered after review violation' });
     await worker.summarizeIfNeeded(true);
-    expect(summaryPacket?.history[0]).toMatchObject({ answer: HOLDING_TEXT, outcome: 'Telegram API accepted' });
+    expect(summaryPacket?.history[0]).toMatchObject({ answer: HOLDING_TEXT,
+      outcome: 'holding reply delivered after review violation' });
     expect(journal.view.order[0]?.answer).toBe('candidate with /private/rejected/path');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -39,6 +39,8 @@ export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
 /** Most journal-derived inventory entries offered with an operator memory question. */
 export const PREVIEW_INVENTORY_LIMIT = 20;
 
+/** A small, deterministic overview beside the ordinary cross-conversation history. */
+export const PREVIEW_DIGEST_LIMIT = 8;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
@@ -114,7 +116,7 @@ export type JournalRecord =
  * (`thread`); every one has the operator as its only audience. */
 export interface PacketDrop { kind: string; source: string; reason: string }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
 
 
   checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
@@ -404,6 +406,7 @@ function project(view: JournalView, row: JournalRecord): void {
     turn.answer = row.text;
     if (row.unlabeledRecall) turn.unlabeledRecall = true;
     if (row.state) turn.modelState = row.state;
+    if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
     if (row.datedPending) turn.datedPending = true;
     if (row.memory) view.memory.push(...row.memory);
@@ -851,11 +854,54 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
   const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
+  const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
+    && (item.failureClass !== undefined || item.modelState === 'rejected');
+  const holdingReply = (item: Turn) => item.intent === HOLDING_REPLY
+    && item.replyChecks?.some(check => check.verdict === 'violation') === true;
+  const knownNonAnswer = (item: Turn) => item.noticeClass !== undefined || modelFailure(item) || holdingReply(item);
   const outcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
-      : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN' : 'Telegram API accepted')
+      : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
+        : holdingReply(item) ? 'holding reply delivered after review violation'
+          : modelFailure(item) ? `model failure notice delivered (${item.failureClass ?? 'rejected'})` : 'Telegram API accepted')
     : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
-      : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
-    : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending';
+      : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN'
+        : holdingReply(item) ? 'holding reply delivery UNKNOWN after review violation'
+          : modelFailure(item) ? `model failure notice delivery UNKNOWN (${item.failureClass ?? 'rejected'})` : 'delivery UNKNOWN')
+    : item.reserved && item.answer === undefined ? 'model UNKNOWN'
+      : item.held ?? (modelFailure(item) ? `model failure notice pending (${item.failureClass ?? 'rejected'})` : 'pending');
+  const crossTopicDigest = (through: number) => {
+    const groups = new Map<string, Turn[]>();
+    for (const turn of journal.view.order) {
+      if (!turn.accepted || turn.update > through) continue;
+      const name = conversationName(turn.thread);
+      const group = groups.get(name) ?? [];
+      group.push(turn); groups.set(name, group);
+    }
+    if (groups.size < 2) return undefined;
+    const all = [...groups].sort((a, b) => b[1].at(-1)!.update - a[1].at(-1)!.update
+      || a[0].localeCompare(b[0]));
+    const excerpt = (value: string) => { const text = clean(redact(value).text, true);
+      return text.length > 96 ? `${text.slice(0, 96)}…` : text; };
+    const conversations = all.slice(0, PREVIEW_DIGEST_LIMIT).map(([conversation, turns]) => {
+      const latest = turns.at(-1)!;
+      const open = journal.view.commitments.map((note, id) => ({ note, id, source: journal.view.turns.get(note.source) }))
+        .filter(item => item.source !== undefined && item.source.thread === latest.thread && item.source.update <= through
+          && !journal.view.closed.has(item.id) && !affectedNote(item.note))
+        .slice(-2).map(item => ({ id: item.id, date: dated(item.source!), quote: excerpt(item.note.quote), in: item.note.in }));
+      const unanswered = turns.filter(item => item.text.includes('?') &&
+        (item.sent === undefined || knownNonAnswer(item))).slice(-2)
+        .map(item => ({ date: dated(item), question: excerpt(item.text), outcome: outcome(item) }));
+      const held = turns.filter(item => item.held !== undefined || item.modelState === 'uncertain'
+        || item.intent !== undefined && item.sent === undefined || knownNonAnswer(item)).slice(-2)
+        .map(item => ({ date: dated(item), message: excerpt(item.text), status: item.held ?? outcome(item) }));
+      return { conversation, lastActivity: dated(latest), openCommitments: open,
+        unansweredQuestions: unanswered, heldItems: held };
+    });
+    const digest = () => ({ conversations, omittedConversations: all.length - conversations.length,
+      note: 'Exact journal evidence only. Commitments come from completed summaries; questions require a question mark. Empty lists do not prove none exist.' });
+    while (Buffer.byteLength(JSON.stringify(digest())) > 4096) conversations.pop();
+    return digest();
+  };
   /** A cue offers evidence; the model still decides what the operator meant. The
    * inventory never treats a lexical miss or a bounded selection as absence. */
   const inventoryFor = (turn: Turn) => {
@@ -1030,6 +1076,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const datedPending = pendingDates.slice(0, 3)
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
     const preferences = preferenceState();
+    const digest = labelAll ? undefined : crossTopicDigest(through);
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown.'
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
@@ -1068,6 +1115,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(preferences.active.size ? { preferences: [...preferences.active.values()].map(item => ({ text: clean(redact(item.quote).text, false, item.source), source: item.source })) } : {}),
       ...(inventory ? { inventory: { total: inventory.total, shown: inventory.items.length,
         truncated: inventory.items.length < inventory.total, items: inventory.items } } : {}),
+      ...(digest ? { crossTopicDigest: digest } : {}),
       ...(corrections.length ? { corrections } : {}), ...(contradictions.length ? { contradictions } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), ...(search ? { memorySearch: search } : {}), history });
 
     return packet;
