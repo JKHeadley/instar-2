@@ -539,7 +539,7 @@ it('resumes a durable definite failure after restart and sends exactly once', as
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('holds admitted work at the exact attempt cap and refuses another poll', async () => {
+it('holds ordinary work at the attempt cap while bounded intake stays open for status', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
@@ -550,7 +550,7 @@ it('holds admitted work at the exact attempt cap and refuses another poll', asyn
     worker.intake([update(1), update(2)]); await worker.drain();
     expect(calls).toBe(1);
     expect(journal.view.order[1]?.held).toBe('call cap');
-    expect(() => worker.pollGate()).toThrow('capacity');
+    expect(() => worker.pollGate()).not.toThrow();
     expect(journal.view.stop).toBeNull();
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }

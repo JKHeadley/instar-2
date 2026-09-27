@@ -15,11 +15,12 @@ export const SOURCE_EXCERPTS = Object.freeze([
   Object.freeze({ id: 'purpose:coherency', path: 'docs/00-the-purpose.md', start: '**Value — coherency is the root,',
     end: 'Alignment held by memory is not alignment.', title: 'Coherency is the root' }),
 ]);
-export const CAPABILITY_NOTE_DATE = '2026-09-26';
+export const CAPABILITY_NOTE_DATE = '2026-09-27';
 export function capabilityNote(limits: { providerAttempts: number; expiresAt: number; reminders?: boolean }) {
   return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. `
-    + 'It keeps this trial\'s complete original message history across all of them as one memory and attempts at most one plain-text reply per admitted message '
-    + 'through a subscription model. It has no tools: it cannot browse, run code or act outside this chat. '
+    + 'It keeps this trial\'s complete original message history across all of them as one memory and attempts at most one plain-text reply per admitted message. '
+    + 'Ordinary answers use a subscription model; exact status and how are you doing commands read the durable journal without answer generation. '
+    + 'It has no tools: it cannot browse, run code or act outside this chat. '
     + 'When a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; its mention is remembered across restarts. '
     + (limits.reminders ? 'A separate reminder grant allows one fixed morning batch per day and topic, inside the reply limit. '
       : 'It cannot schedule work, send extra messages or send an unprompted reminder. ')

@@ -676,6 +676,24 @@ disabled. The Justin live exercise is [channel-source-live-test.md](channel-sour
 
 ### What the preview knows about itself and 2.0
 
+An authenticated operator can send exactly `status` or `how are you doing` (case
+and a final punctuation mark are ignored) in their private chat. The journal
+worker replies in a fixed plain shape: today's accepted turns in the configured
+time zone, currently held replies with reasons, explicitly pending memory or
+date decisions, the next confirmed unforgotten dated item, and subscription
+attempts and Jev checks used against their durable caps. It also says that
+dollar spend and a dollar cap are not recorded in this subscription journal. No
+answer-generation call is made for these facts. The command is journaled as an
+accepted turn, its answer
+is fsynced before the usual reply check and exact send intent, and it consumes
+the ordinary reply cap. Jev or its existing bounded full-context review may
+still run at the send doorway. If that review needs a call but the call cap is
+full, the reply remains held. The call cap does not close bounded intake; other
+messages are accepted durably and held until caps are raised. The turn and reply
+caps, stop, expiry, verified audience, and UNKNOWN-send fence still apply. A
+status request never changes pending memory decisions. For an operator-channel
+check, use [status-command-live-test.md](status-command-live-test.md).
+
 Each model call's packet carries `now`, the audience, the conversation history,
 a `capability` line (capped preview, answers and fixed morning reminders, no tools, memory is this trial's
 journal only) and `sources`: the three pinned purpose excerpts, the dated

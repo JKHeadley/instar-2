@@ -63,6 +63,8 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(JSON.parse(input.context).capability).toContain("Memory is this trial's journal only");
       expect(JSON.parse(input.context).capability).toContain('use the operator-digest source when present');
       expect(JSON.parse(input.context).sources.map((s: { id: string }) => s.id)).toContain('purpose:purpose');
+      expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text)
+        .toContain('exact status or how are you doing commands read the durable journal');
     }
     expect(desk(world.seen[0]!.context).text).toContain('building.');
     expect(desk(world.seen[1]!.context).text).toContain('READY.');
