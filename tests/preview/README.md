@@ -939,6 +939,26 @@ operator update IDs and why an item was withheld. They show a redacted old claus
 but no clause for forgotten items; the model packet also receives no forgotten clause. If the shared attempt cap or summary route prevents a decision,
 `status.holds` shows `memory correction pending` and the intake remains durable.
 
+### Edited Telegram messages
+
+The journal runner explicitly polls for both `message` and `edited_message`. An edit from the
+bound operator in the bound private chat is accepted only when its Telegram chat, sender,
+topic and `message_id` match an earlier accepted message. It is an encrypted, fsynced revision
+linked to that original and advances the cursor only after the append. A foreign or unlinked
+edit is retained as refused intake. Redelivery of an edit update does not append again.
+
+An edit never opens a reply. If it arrives before the original message has a send intent, the
+original is visibly held as `superseded by edit` so an answer to stale text cannot be sent.
+The existing capped summary call compares the latest revision with the preceding one and
+decides whether a stated fact changed. Its validated correction uses the same memory
+withholding path as a direct operator correction; the old revision and earlier replies stay in
+the journal, while later model packets show the latest revision and withhold the superseded
+fact. A wording-only edit can record an empty memory decision. If the model cannot settle the
+edit, later ordinary replies are held as `memory correction pending`; no second send route is
+created. Revisions consume the existing intake and model-call caps. The journal and writer
+remain machine-local. See [message-edit-live-test.md](message-edit-live-test.md) for the
+supervised private-channel test.
+
 ### Dated memory (preview)
 
 The private journal runner records dated events and deadlines from the verified operator in the
