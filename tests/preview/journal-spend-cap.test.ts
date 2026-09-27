@@ -26,7 +26,7 @@ it('stops a multi-update poll at maxTurns without poisoning replay or advancing 
     const counts = { calls: 0, sends: 0 }, first = worker(journal, counts);
     const lines: string[] = [];
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBeNull();
-    expect(first.intake([update(1), update(2)])).toBe(2);
+    expect(first.intake([update(2), update(1)])).toBe(2);
     expect(journal.view.order.map(turn => turn.update)).toEqual([1]);
     expect(() => journal.append({ kind: 'intake', id: id(2), update: 2, text: 'question 2',
       raw: JSON.stringify(update(2)), accepted: true, cursor: 3, at: 1000 })).toThrow('capacity');
@@ -80,6 +80,7 @@ it('counts each UNKNOWN answer, summary, review and Jev check once across restar
     expect(() => raiseJournalCaps(journal, { maxCalls: 4, maxReplies: 4, maxTurns: 4,
       authority: 'Justin recorded raise', at: 1001 })).toThrow('UNKNOWN');
     expect(() => journal.append({ kind: 'reserve', id: id(2), at: 1000 })).toThrow('capacity');
+    expect(() => journal.append({ kind: 'summary-reserve', through: 3, at: 1000 })).toThrow('capacity');
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

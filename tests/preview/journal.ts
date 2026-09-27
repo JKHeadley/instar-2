@@ -482,7 +482,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const intake = (updates: readonly TelegramUpdate[]) => {
     gate();
-    for (const update of updates) {
+    for (const update of [...updates].sort((a, b) => a.update_id - b.update_id)) {
       const parsed = admittedUpdate(journal.view.genesis, update), prior = journal.view.turns.get(parsed.id);
       if (prior) continue;
       // A poll may return more than one update even when one slot was left.
