@@ -581,10 +581,12 @@ An intent without a durable Telegram result is **UNKNOWN** and is never sent aga
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
 `status.holds` and the self-state text show a fixed plain sentence for each held
-reply: safety check unavailable, possible secret, spend limit, or stopped. Each
-says resending will not help, because the original operator message remains in
-the encrypted journal. The precise cause stays in the journal; the read-only
-notice does not make a second send or consume a reply slot. Follow
+reply. A reviewer outage says a new message may work after recovery: the held
+original stays held, even though its intake is durable. Stop and unchanged spend
+caps say resending will not help. Replies too long to send, conversation overflow,
+pending memory corrections, and summary failures have their own plain wording;
+unknown causes get a neutral hold sentence. The precise cause stays in the
+journal; the read-only notice does not make a second send or consume a reply slot. Follow
 [hold-reason-plain-live-test.md](hold-reason-plain-live-test.md) for Justin's
 operator-channel check.
 
@@ -752,7 +754,8 @@ new fact is carried as `memory`. A forget carries only a withholding reason. Sim
 different wording and sources remain. `status.withheld` and `inspect.withheld` show the redacted
 old clause, the source update or channel ID, the operator update ID, and why it was withheld; the model packet does not
 receive the forgotten clause. If the shared attempt cap or summary route prevents a decision,
-`status.holds` shows the plain safety-check hold notice and the intake remains durable.
+`status.holds` says whether a spend limit was reached or a memory correction remains
+unresolved, and the intake remains durable.
 
 ### Dated memory (preview)
 

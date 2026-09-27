@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
+import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 import { appendRun, heldNotices, holdNotice, readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(4);
@@ -18,16 +19,24 @@ const update = (id: number, text: string, at: number) => ({ update_id: id,
 
 it('gives every held reply one fixed plain reason and truthful resend advice', () => {
   const cases = [
-    ['reply check unavailable', 'a safety check is unavailable'],
-    ['outbound secret refused', 'it may contain a secret'],
-    ['call cap', 'the spend limit was reached'],
-    ['reply cap', 'the spend limit was reached'],
-    ['memory correction pending', 'a safety check is unavailable'],
+    ['reply check unavailable', 'This reply is held because a safety check is unavailable; trying again after it recovers may help.'],
+    ['outbound secret refused', 'This reply is held because it may contain a secret; this held reply will not be sent.'],
+    ['call cap', 'This reply is held because the spend limit was reached; resending will not help while the limit remains in place.'],
+    ['reply cap', 'This reply is held because the spend limit was reached; resending will not help while the limit remains in place.'],
+    ['reply size', 'This reply is held because it is too long to send; asking again for a shorter answer may help.'],
+    ['encoded reply size', 'This reply is held because it is too long to send; asking again for a shorter answer may help.'],
+    ['context overflow', 'This reply is held because the conversation is too large to process right now; a summary may let it resume.'],
+    ['prompt overflow', 'This reply is held because the conversation is too large to process right now; a summary may let it resume.'],
+    ['summary unavailable: prompt overflow', 'This reply is held because the conversation is too large to process right now; a summary may let it resume.'],
+    ['memory correction pending', 'This reply is held while a memory correction is unresolved.'],
+    ['summary oversized turn', 'This reply is held because its conversation summary is too large to prepare.'],
+    ['summary preflight unavailable', 'This reply is held because its conversation summary could not be prepared.'],
+    ['review needed', 'This reply is held because it could not be completed.'],
   ];
-  for (const [reason, words] of cases) {
+  for (const [reason, expected] of cases) {
     const notice = holdNotice(reason!);
-    expect(notice).toBe(`This reply is held because ${words}; resending will not help.`);
-    expect(notice).not.toMatch(/(?:credential|cap|correction|check unavailable|rule[_-]|\bNF-\d+\b)/iu);
+    expect(notice).toBe(expected);
+    expect(notice).not.toMatch(/(?:credential|\bcap\b|check unavailable|rule[_-]|\bNF-\d+\b)/iu);
   }
   expect(holdNotice('call cap', true)).toBe('This reply is held because the trial is stopped; resending will not help.');
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-notice-')));
@@ -71,6 +80,59 @@ it('gives every held reply one fixed plain reason and truthful resend advice', (
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+const jevPass = { model: JEV_MODEL, answers: Object.fromEntries(
+  Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0.01 }])) };
+
+it('reports an oversized reply after a healthy safety check as too long', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-size-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    let checks = 0, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => 'x'.repeat(4100), send: async () => { sends++; return 1; }, checkOutbound: () => {},
+      replyCheck: { jev: async () => { checks++; return { value: jevPass, latencyMs: 1 }; },
+        escalate: async () => { throw Error('unexpected review'); }, elapsedMs: () => 0 } });
+    worker.intake([update(1, 'one', NOON)]); await worker.drain();
+    expect(checks).toBe(1);
+    expect(sends).toBe(0);
+    expect(journal.view.order[0]?.held).toBe('reply size');
+    expect(heldNotices(journal.view)).toEqual([{ update: 1, notice: holdNotice('reply size') }]);
+    expect(selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC'))
+      .toContain('Held messages: 1 — This reply is held because it is too long to send');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('explains that a new update may work after a reviewer outage recovers', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-recover-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 8 });
+    let recovered = false, calls = 0, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => { calls++; return 'safe answer'; },
+      send: async () => { sends++; return sends; }, checkOutbound: () => {},
+      replyCheck: { jev: async () => { if (!recovered) throw Error('Jev unavailable');
+          return { value: jevPass, latencyMs: 1 }; },
+        escalate: async () => { throw Error('review unavailable'); }, elapsedMs: () => 0 } });
+    worker.intake([update(1, 'one', NOON)]); await worker.drain();
+    expect(journal.view.order[0]?.held).toBe('reply check unavailable');
+    expect(heldNotices(journal.view)[0]?.notice).toContain('trying again after it recovers may help');
+    recovered = true;
+    await worker.drain();
+    expect(journal.view.order[0]?.sent).toBeUndefined();
+    worker.intake([update(2, 'one', NOON)]); await worker.drain();
+    expect(calls).toBe(2);
+    expect(sends).toBe(1);
+    expect(journal.view.order[0]?.sent).toBeUndefined();
+    expect(journal.view.order[1]?.sent).toBe(1);
+    expect(heldNotices(journal.view)).toEqual([{ update: 1, notice: holdNotice('reply check unavailable') }]);
+    journal.close();
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
+    expect(reopened.view.order.map(turn => turn.update)).toEqual([1, 2]);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('derives an honest self-state from the journal and run log, correct across a restart and a raised cap', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-self-')));
   const path = join(root, 'journal.encrypted'), runs = join(root, 'runs.jsonl');
@@ -101,7 +163,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(text).toContain('Operator messages received: 2 today, 4 in this trial');
     expect(text).toContain('My replies Telegram accepted: 1 today, 3 in this trial');
     expect(text).toContain('Model attempts: 3 of 3 used, 0 left');
-    expect(text).toContain('Held messages: 1 — This reply is held because the spend limit was reached; resending will not help.');
+    expect(text).toContain(`Held messages: 1 — ${holdNotice('call cap')}`);
     expect(text).toContain('Caps have not been raised');
     expect(text).toContain('Last restart: 2026-09-26 08:00 PDT. The run before it started 2026-09-25 16:00 PDT and ended 2026-09-25 16:01 PDT: paused by signal SIGTERM.');
     w.journal.close(); // Run 2 dies without recording an end (crash).

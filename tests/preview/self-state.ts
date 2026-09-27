@@ -77,10 +77,22 @@ export const messageTime = (turn: Turn): number | null => {
 export function holdNotice(reason: string, stopped = false): string {
   if (stopped) return 'This reply is held because the trial is stopped; resending will not help.';
   if (reason === 'outbound secret refused')
-    return 'This reply is held because it may contain a secret; resending will not help.';
+    return 'This reply is held because it may contain a secret; this held reply will not be sent.';
   if (reason === 'call cap' || reason === 'reply cap')
-    return 'This reply is held because the spend limit was reached; resending will not help.';
-  return 'This reply is held because a safety check is unavailable; resending will not help.';
+    return 'This reply is held because the spend limit was reached; resending will not help while the limit remains in place.';
+  if (reason === 'reply check unavailable')
+    return 'This reply is held because a safety check is unavailable; trying again after it recovers may help.';
+  if (reason === 'reply size' || reason === 'encoded reply size')
+    return 'This reply is held because it is too long to send; asking again for a shorter answer may help.';
+  if (reason === 'prompt overflow' || reason === 'context overflow' || reason.startsWith('summary unavailable:'))
+    return 'This reply is held because the conversation is too large to process right now; a summary may let it resume.';
+  if (reason === 'memory correction pending')
+    return 'This reply is held while a memory correction is unresolved.';
+  if (reason === 'summary oversized turn')
+    return 'This reply is held because its conversation summary is too large to prepare.';
+  if (reason === 'summary preflight unavailable')
+    return 'This reply is held because its conversation summary could not be prepared.';
+  return 'This reply is held because it could not be completed.';
 }
 
 export function heldNotices(view: JournalView, stopped = false) {

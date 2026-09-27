@@ -9,16 +9,18 @@ JSON output and a screenshot of the operator chat.
 
 1. As Justin, send an ordinary question while the desk makes both reply checks
    unavailable. Confirm that `status.holds` shows exactly one sentence saying a
-   safety check is unavailable and that resending will not help. Confirm that
-   the original message remains in the journal and no reply was sent.
+   safety check is unavailable and trying again after recovery may help. Confirm
+   that the original message remains in the journal and no reply was sent. Restore
+   Jev, send the same question as a new update, and confirm the new checked reply
+   can send while the original stays held.
 2. With the checks restored, use a harmless desk test credential pattern that
    the outbound secret wall recognizes in a controlled candidate. Confirm the
-   held notice says the reply may contain a secret and resending will not help.
+   held notice says the reply may contain a secret and that held reply will not send.
    Do not put a real credential into the chat or the fixture.
 3. On a separate admitted turn, let the trial reach its recorded call or reply
    cap. Confirm that the notice says the spend limit was reached and resending
-   will not help. Confirm that a cap raise through the existing recorded
-   authority releases the original held turn without sending the operator
+   will not help while the limit remains in place. Confirm that a cap raise
+   through the existing recorded authority releases the original held turn without sending the operator
    message again.
 4. Stop the isolated trial using its existing stop command. Confirm that every
    unsent admitted turn's notice says the trial is stopped and resending will
