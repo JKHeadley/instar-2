@@ -572,8 +572,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const activePreferences = () => [...preferenceState().active.values()];
   const replyFor = (turn: Turn) => turn.noticeClass ? clean(redact(sentText(turn) ?? '').text, true, turn.id)
-    : journal.view.memory.some(change => change.mode !== 'prefer' && (change.source === turn.id || change.replies?.includes(turn.id)))
+    : journal.view.memory.some(change => change.mode !== 'prefer' && (change.source === turn.id || change.replies?.includes(turn.id))
+      || change.mode === 'correct' && change.trigger === turn.id)
       ? withheld : clean(redact(sentText(turn) ?? '').text, true, turn.id);
+  // Acknowledgements use accepted journal changes, not the model's claim that it changed memory.
+  const memoryAcknowledgement = (turn: Turn) => {
+    const changes = journal.view.memory.filter(change => change.trigger === turn.id && change.mode !== 'prefer');
+    if (!changes.length) return undefined;
+    const subject = (quote: string) => {
+      const credential = /\b(?:(?:access|recovery) phrase|code|password|passphrase|token|secret|pin|key|credential)\b/iu.exec(quote);
+      if (!credential) return quote.trim().replace(/\s+/gu, ' ');
+      const prefix = quote.slice(0, credential.index + credential[0].length);
+      return /^(?:my|the|your|our)\s+[\p{L}\s-]{0,80}$/iu.test(prefix)
+        ? prefix.trim().replace(/\s+/gu, ' ') : `your ${credential[0].toLowerCase()}`;
+    };
+    const detail = changes.map(change => change.mode === 'correct'
+      ? `Changed ${change.quote.trim().replace(/\s+/gu, ' ')} → ${change.replacement!.trim().replace(/\s+/gu, ' ')}`
+      : `Forgot ${subject(change.quote)}`).join('; ');
+    return `PREVIEW — ${detail}${/[.!?]$/u.test(detail) ? '' : '.'}`;
+  };
   const affectedNote = (note: { source: string; quote: string; in?: 'message' | 'reply' }) => journal.view.memory.some(change =>
     change.mode !== 'prefer' && (note.in === 'reply' && (note.source === change.source || change.replies?.includes(note.source))
     || note.source === change.source && (change.quote.includes(note.quote) || note.quote.includes(change.quote))
@@ -851,8 +868,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (journal.view.replies >= journal.view.limits.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
         // An invalid memory acknowledgement stays rejected even after a later summary settles it.
         let reply = turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
-          : turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
-          : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`;
+          : memoryAcknowledgement(turn) ?? (turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
+            : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
         if (ports.replyCheck) {
           const previous = turn.replyChecks?.at(-1);
           // Only a completed PASS releases the candidate; an unavailable or interrupted

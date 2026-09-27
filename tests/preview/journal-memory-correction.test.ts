@@ -391,6 +391,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(w.journal.view.order.at(-1)?.answer).toBe('Your gym locker code is 3310.');
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Changed My gym locker code is 3310 → my gym locker code is 4412.');
     w.journal.close(); w = world(root);
     await w.say(id++, question);
     const corrected = JSON.parse(w.prompts.get(question)!);
@@ -404,6 +405,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     if (!('reason' in sam)) expect(JSON.parse(sam.context).people).toBeUndefined();
     await w.say(id++, 'Forget my gym locker code.');
     expect(w.journal.view.memory).toHaveLength(2);
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Forgot my gym locker code.');
     w.journal.append({ kind: 'coherence', id: w.journal.view.order.at(-1)!.id,
       findings: [{ rule: 96, check: 'possible stale quote', excerpt: 'My gym locker code is 3310' }],
       at: 1790000000000 });
