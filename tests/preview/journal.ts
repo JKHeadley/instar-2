@@ -1634,6 +1634,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // bounded so unrelated older turns cannot dominate the current question.
     const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).slice(-3)
       .map(item => `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`).join(' ');
+    // A sequence of near-identical updates can fill every lexical slot with recent
+    // values. An explicit earliest question needs the oldest matching source too.
+    // This only offers evidence; the reply model still judges what "first" means.
+    const topic = terms(turn.text).filter(term => !['first', 'earliest', 'oldest', 'original'].includes(term));
+    const earliest = /\b(?:first|earliest|oldest|original)\b/iu.test(turn.text) && topic.length
+      ? older.find(item => {
+        const words = new Set(terms(clean(item.text, true, item.id)));
+        return topic.every(term => words.has(term));
+      }) : undefined;
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
       ...(previous ? { previous } : {}),
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`,
@@ -1642,7 +1651,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // A nearby date is useful context, but five unrelated dates must not hide
     // the source that actually matches the question.
     const dated = asksForUpcoming(turn.text) ? older.filter(item => dueSoon(clean(item.text, true))).at(-1) : undefined;
-    return [...new Map([...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
+    return [...new Map([...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
       .slice(0, PREVIEW_RECALL_LIMIT);
   };
   /** Imported items use the existing sentinel but never become executable turns. */

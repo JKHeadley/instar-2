@@ -780,6 +780,30 @@ semantic correctness of a model answer. A broad upcoming-plans neighbor
 checks that dated context remains available when it is requested. The live
 operator procedure is [packet-selection-quality-live-test.md](live-tests-archive/packet-selection-quality-live-test.md).
 
+`recall-scorecard.ts` is the focused live-shaped packet scorecard for the
+`3695117d` journal build. Its fixed 80-turn synthetic private-chat journal has
+eight successive project markers, a cofounder, two different Sams, gym and bike
+codes, an October dentist visit, and an operator correction to the gym code.
+It writes and reopens a temporary encrypted journal, then scores nine read-only
+`worker.probe` packets by active clause visibility and stale-clause exclusion.
+The deterministic summary names topics but omits exact facts to measure whether
+the original sources survive bounded recall. No provider, Telegram, or live
+journal is used. Run the same corpus and rubric with:
+
+```sh
+node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/recall-scorecard.mjs /ABSOLUTE/SCORECARD.json
+npx vitest run tests/preview/recall-scorecard.test.ts --configLoader=runner --testTimeout=120000
+```
+
+The measured baseline on the frozen build was 8/9: markers 1/2, cofounders
+1/1, two Sams 2/2, codes 2/2, dentist 1/1, corrections 1/1. The first marker
+was absent after seven later marker values filled the five lexical recall
+slots. The earliest-source candidate for an explicit first/earliest question
+raises the same corpus to 9/9; ordinary latest-marker recall remains present.
+This measures evidence in packets, not how a real model interprets it or what
+Telegram delivers. Justin's supervised channel procedure is
+[recall-scorecard-live-test.md](live-tests-archive/recall-scorecard-live-test.md).
+
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
 2000-turn private-chat histories. It uses the real encrypted preview journal,
 summary scheduling, replay, channel fixture import, memory correction/forget
