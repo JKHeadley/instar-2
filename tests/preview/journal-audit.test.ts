@@ -165,8 +165,10 @@ it('verifies memorySummary beside the compact summary and after replay', async (
     const path = join(root, 'journal.encrypted');
     let journal = openPreviewJournal(path, key, genesis);
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
-      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
-        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      prepareModel: input => { const packet = JSON.parse(input.context);
+        if (input.id.endsWith(':update:2') && packet.historyMode === 'complete') throw Error('complete prompt overflow');
+        return JSON.stringify({ messages: [{ role: 'user', content: input.question },
+          { role: 'context', content: JSON.stringify({ packet }) }] }); },
       model: async input => input.id.startsWith('summary:')
         ? JSON.stringify({ summary: 'Sam likes tea.', people: [], commitments: [], closed: [] }) : 'Noted.',
       send: async () => 1, checkOutbound: () => {} });

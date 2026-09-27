@@ -62,6 +62,9 @@ it('records a compact summary and omits a duplicate memory summary under fitting
     const contexts = new Map<string, string>();
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       prepareModel: input => {
+        if ((input.id === id(2) || input.id === id(3))
+          && (JSON.parse(input.context) as { historyMode: string }).historyMode === 'complete')
+          throw Error('complete prompt overflow');
         if (input.id === id(3) && (JSON.parse(input.context) as { memoryCandidates?: unknown[] }).memoryCandidates?.length)
           throw Error('prompt overflow');
         return input.context;
