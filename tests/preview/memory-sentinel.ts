@@ -46,6 +46,86 @@ export function namedWindow(message: string, now: number): { from: number; to: n
   return null;
 }
 
+/** Calendar days for a question about what the operator said. The runner's
+ * configured zone gives relative words and journal send times the same clock. */
+export function saidDateRange(message: string, now: number, timeZone = 'UTC'): { from: string; to: string } | null {
+  if (!/\b(?:what|which|anything|remember|recall)\b[\s\S]*\b(?:i|we)\b[\s\S]*\b(?:said|say|told|tell|asked|ask|wrote|sent|send|mentioned|mention)\b/iu.test(message)) return null;
+  const dayOf = (at: number) => {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(at);
+    const part = (type: string) => parts.find(item => item.type === type)!.value;
+    return `${part('year')}-${part('month')}-${part('day')}`;
+  };
+  const shifted = (day: string, count: number) => new Date(Date.parse(`${day}T00:00:00Z`) + count * 86_400_000).toISOString().slice(0, 10);
+  const valid = (value: string) => /^\d{4}-\d{2}-\d{2}$/u.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  const explicit = [...message.matchAll(/\b\d{4}-\d{2}-\d{2}\b/gu)].map(match => match[0]!);
+  const lower = message.toLowerCase();
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const today = dayOf(now);
+  const namedDates = [...lower.matchAll(/\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gu)]
+    .map(match => `${match[3] ?? today.slice(0, 4)}-${String(months.indexOf(match[1]!.slice(0, 3)) + 1).padStart(2, '0')}-${match[2]!.padStart(2, '0')}`);
+  const numericDates = [...lower.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/gu)]
+    .map(match => `${match[3]}-${match[1]!.padStart(2, '0')}-${match[2]!.padStart(2, '0')}`);
+  const ago = /\b(\d{1,2}|one|two|three|four|five|six|seven) days? ago\b/u.exec(lower);
+  const yesterday = /\b(yesterday|last night)\b/u.test(lower);
+  const todayWord = /\b(today|tonight|this morning|this afternoon|this evening)\b/u.test(lower);
+  const lastWeek = /\blast week\b/u.test(lower);
+  const namedWeekdays = weekdays.filter(name => new RegExp(`\\b(?:on |last )?${name}\\b`, 'u').test(lower));
+  // A date in the subject can compete with the date of speech. Never turn a
+  // mixed or partially parsed question into a restrictive evidence filter.
+  if ([explicit.length > 0, namedDates.length > 0, numericDates.length > 0, !!ago,
+    yesterday, todayWord, lastWeek, namedWeekdays.length > 0].filter(Boolean).length > 1
+    || namedWeekdays.length > 1) return null;
+  if (/\b(?:between|from)\b/iu.test(message)
+    && explicit.length + namedDates.length + numericDates.length + namedWeekdays.length < 2) return null;
+  if (explicit.length) {
+    if (explicit.length > 2 || explicit.some(day => !valid(day))) return null;
+    const [from, to = from] = explicit;
+    return from! <= to! ? { from: from!, to: to! } : null;
+  }
+  if (namedDates.length) {
+    if (namedDates.length > 2 || namedDates.some(day => !valid(day))) return null;
+    const [from, to = from] = namedDates;
+    return from! <= to! ? { from: from!, to: to! } : null;
+  }
+  if (numericDates.length) {
+    if (numericDates.length > 2 || numericDates.some(day => !valid(day))) return null;
+    const [from, to = from] = numericDates;
+    return from! <= to! ? { from: from!, to: to! } : null;
+  }
+  if (ago) { const n = counts[ago[1]!] ?? Number(ago[1]); const day = shifted(today, -n); return { from: day, to: day }; }
+  if (yesterday) { const day = shifted(today, -1); return { from: day, to: day }; }
+  if (todayWord) return { from: today, to: today };
+  if (lastWeek) {
+    const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+    const from = shifted(today, -(weekday === 0 ? 6 : weekday - 1) - 7);
+    return { from, to: shifted(from, 6) };
+  }
+  const named = weekdays.indexOf(namedWeekdays[0] ?? '');
+  if (named < 0) return null;
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  const back = (weekday - named + 7) % 7 || 7, day = shifted(today, -back);
+  return { from: day, to: day };
+}
+
+/** In-range original turns, relevant text first and then most recent. A miss
+ * stays a bounded search result, never a claim that nothing was said. */
+export function selectSaidTurns(message: string, candidates: readonly SentinelTurn[], now: number, timeZone: string, limit: number) {
+  const range = saidDateRange(message, now, timeZone);
+  if (!range) return null;
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const dated = candidates.flatMap((turn, index) => {
+    if (!Number.isFinite(turn.at) || turn.at <= 0) return [];
+    const parts = formatter.formatToParts(turn.at), part = (type: string) => parts.find(item => item.type === type)!.value;
+    const day = `${part('year')}-${part('month')}-${part('day')}`;
+    return day >= range.from && day <= range.to ? [{ index, at: turn.at }] : [];
+  });
+  const scores = bm25(terms(message), dated.map(item => terms(candidates[item.index]!.text)));
+  const byIndex = new Map(scores.map(item => [dated[item.index]!.index, item.score]));
+  dated.sort((a, b) => (byIndex.get(b.index) ?? 0) - (byIndex.get(a.index) ?? 0) || b.at - a.at);
+  return { ...range, matched: dated.length, indices: dated.slice(0, limit).map(item => item.index) };
+}
+
 /** Summary sentences sharing a content term with the message; at most three, most overlap first. */
 function bridge(summary: string | undefined, query: ReadonlySet<string>): string[] {
   if (!summary || !query.size) return [];
