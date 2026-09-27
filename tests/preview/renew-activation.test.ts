@@ -75,6 +75,43 @@ it('writes a profile successor only for a new reference and refuses a different 
     observation, now: NOW })).toThrow('not older');
 });
 
+const OLD_POLICY_DIGEST = 'sha256:557a62fa7c65c0a8a5982f34f8d96236231d21082bef4b441ea7847be58cb833';
+const policyPredecessor = { ...current, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY,
+  invocationPolicyDigest: OLD_POLICY_DIGEST };
+const policyPredecessorBytes = JSON.stringify(policyPredecessor, null, 2);
+const policySuccessor = (input: object = {}) => renewActivation({ current: policyPredecessor,
+  currentBytes: policyPredecessorBytes, profile, observation, now: NOW, policySuccessor: true, ...input });
+
+it('issues a policy successor with only the fresh observation and policy evidence changed', () => {
+  const { record, profile: nextProfile } = policySuccessor();
+  expect(nextProfile).toBeNull();
+  expect(record).toEqual({ ...policyPredecessor, ...observation,
+    invocationPolicyDigest: encoded(subscriptionConversationPolicy(model)).hash,
+    previousInvocationPolicyDigest: OLD_POLICY_DIGEST,
+    predecessor: { reference: policyPredecessor.reference,
+      digest: `sha256:${createHash('sha256').update(policyPredecessorBytes).digest('hex')}` } });
+  expect(record.expiresAt).toBe(policyPredecessor.expiresAt);
+  expect(() => conversation(record)).not.toThrow();
+  expect(() => conversation(policyPredecessor)).toThrow('artifact or policy differs');
+});
+
+it('refuses a policy successor without a policy change or with a changed binding', () => {
+  const sameDigest = { ...policyPredecessor, invocationPolicyDigest: encoded(subscriptionConversationPolicy(model)).hash };
+  expect(() => policySuccessor({ current: sameDigest })).toThrow('digest unchanged');
+  expect(() => policySuccessor({ observation: { ...observation, observedAccount: 'other@example.invalid' } }))
+    .toThrow('observed account differs');
+  expect(() => policySuccessor({ observation: { ...observation, model: 'claude-haiku-5' } }))
+    .toThrow('field model not renewable');
+  expect(() => policySuccessor({ observation: { ...observation, reference: 'another-activation' } }))
+    .toThrow('would change profile');
+  expect(() => policySuccessor({ profile: { ...profile, executable: '/tmp/other.exe' } }))
+    .toThrow('artifact or policy differs');
+  expect(() => policySuccessor({ current: { ...policyPredecessor, expiresAt: PRIOR_EXPIRY } }))
+    .toThrow('would change expiry');
+  expect(() => policySuccessor({ current: { ...policyPredecessor, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY + 1 } }))
+    .toThrow('would change expiry');
+});
+
 const key = new Uint8Array(32).fill(9);
 const genesis = (expires: number) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: current.trial, configurationDigest: current.baseConfigurationDigest, expires,
@@ -169,6 +206,45 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     expect(expires()).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 90_000);
+
+it('the policy-successor flag creates only a new valid record and never replaces an output', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-policy-successor-')));
+  const file = (name: string, value: unknown) => { const path = join(root, name);
+    writeFileSync(path, typeof value === 'string' ? value : JSON.stringify(value)); return path; };
+  const currentPath = file('current.json', policyPredecessorBytes);
+  const profilePath = file('profile.json', profile);
+  const observationPath = file('observation.json', observation);
+  const out = join(root, 'successor.json');
+  const run = (args: string[] = []) => node(['tests/preview/renew-activation.mjs', '--policy-successor',
+    '--current', currentPath, '--profile', profilePath, '--observation', observationPath, '--out', out, ...args]);
+  try {
+    const result = run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(() => conversation(JSON.parse(readFileSync(out, 'utf8')))).not.toThrow();
+    expect(run().stderr).toContain('EEXIST');
+    expect(readFileSync(currentPath, 'utf8')).toBe(policyPredecessorBytes);
+    expect(run(['--profile-out', join(root, 'unused-profile.json')]).stderr).toContain('no profile successor is needed');
+    expect(existsSync(join(root, 'unused-profile.json'))).toBe(false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('the build with the previous conversation policy refuses the policy successor', async () => {
+  const oldSource = spawnSync('git', ['show', '0a61aaf8:src/assembly/production-provider.ts'],
+    { cwd: process.cwd(), encoding: 'utf8' });
+  expect(oldSource.status, oldSource.stderr).toBe(0);
+  const provider = join(process.cwd(), `src/assembly/.old-policy-provider-${String(process.pid)}.ts`);
+  try {
+    writeFileSync(provider, oldSource.stdout);
+    const old = await import(provider);
+    expect(encoded(old.subscriptionConversationPolicy(model)).hash).toBe(OLD_POLICY_DIGEST);
+    expect(old.SUBSCRIPTION_PREVIEW_EXPIRY).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
+    expect(() => old.validateSubscriptionActivation(policyPredecessor, profile, model, NOW,
+      SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
+    const { record } = policySuccessor();
+    expect(() => old.validateSubscriptionActivation(record, profile, model, NOW,
+      SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow('artifact or policy differs');
+  } finally { if (existsSync(provider)) unlinkSync(provider); }
+}, 30_000);
 
 const prior = spawnSync('git', ['cat-file', '-e', `${PRIOR_COMMIT}^{commit}`], { cwd: process.cwd() }).status === 0;
 it.runIf(prior)('the prior live build refuses the renewed record (unconditional) and an uncompacted renewed journal; after compaction the prior reader accepts the snapshot with the genesis expiry (accepted residue)', async () => {
