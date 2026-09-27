@@ -14,6 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
+import { greetingContinuity } from './greeting-continuity.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 import { dueState } from './dated-memory.js';
 
@@ -68,14 +69,16 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
     const now = Date.now(), log = runs();
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
+    const continuity = turn && greetingContinuity(view, log, now, turn, current());
     return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk,
-      ...(digest ? [awayDigestSource(digest)] : [])];
+      ...(digest ? [awayDigestSource(digest)] : []), ...(continuity ? [continuity] : [])];
   };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
+  greetingContinuity: packet.sources?.some(source => source?.id === 'greeting-continuity') ?? false,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,

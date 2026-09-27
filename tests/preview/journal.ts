@@ -596,7 +596,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
-    open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn) => {
+    open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn,
+    allowGreeting = true) => {
     const summary = compact ? summaryFor(through) : undefined;
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
       && (!summary || item.update > summary.through));
@@ -657,8 +658,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const datedPending = pendingDates.slice(0, 3)
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
     const preferences = preferenceState();
+    const suppliedSources = ports.sources === undefined ? undefined : typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources;
+    const sourceList = allowGreeting ? suppliedSources : suppliedSources?.filter(source => typeof source !== 'object' || source === null
+      || !('id' in source) || source.id !== 'greeting-continuity');
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns.'
+        + (sourceList?.some(source => typeof source === 'object' && source !== null
+          && 'id' in source && source.id === 'greeting-continuity')
+          ? ' The greeting-continuity source quotes one earlier open operator request. On this first reply after a restart or long gap, you may add one short line naming only that topic if useful; omit it if settled, irrelevant, or uncertain. Never invent a topic.' : '')
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
@@ -672,7 +679,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
         operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current) }) },
-      ...(ports.sources === undefined ? {} : { sources: typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources }),
+      ...(sourceList === undefined ? {} : { sources: sourceList }),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { through: summary.through, text: clean(redact(summary.text).text, true, summary.through) } }
         : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
@@ -701,7 +708,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const preferenceCandidates = activePreferences().map(item => ({ id: item.source,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
     let promptFit = false;
-    for (const compact of [false, true]) {
+    for (const allowGreeting of [true, false]) for (const compact of [false, true]) {
       const summary = compact ? summaryFor(turn.update - 1) : undefined;
       if (compact && !summary) continue;
       const recalled = summary ? recallFor(turn, summary) : [];
@@ -718,7 +725,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const promised = Math.min(open.length, kept), people = Math.min(named.length, kept - promised);
             const base = packetFor(turn.update - 1, compact, recalled.slice(0, kept - promised - people),
               named.slice(named.length - people), open.slice(open.length - promised), turn.thread, false, flagged,
-              channels.slice(0, channelCount), fromOperator(turn), turn);
+              channels.slice(0, channelCount), fromOperator(turn), turn, allowGreeting);
             const offered = [...preferenceCandidates, ...candidates, ...channels.slice(0, channelCount).map(item => ({
               id: channelMemoryId(item), source: 'channel-import',
               message: clean(redact(`${item.subject ?? ''} ${item.text}`).text, true).slice(0, 1000), reply: '' }))];

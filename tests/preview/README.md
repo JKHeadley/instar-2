@@ -662,6 +662,25 @@ unreadable report data is never invented. The digest is rebuilt on each attempt
 from existing records, capped at 640 characters, and uses no model call, daemon,
 or additional store. See `away-digest-live-test.md` for the operator-channel proof.
 
+### Greeting continuity after a restart or long gap
+
+On the first ordinary reply after a recorded restart, or when the previous verified
+operator message is more than six hours old, the runner may offer one earlier open
+topic to the model. It takes the newest still-open operator request whose quote
+was validated against the original message, then redacts it for the packet.
+Closed, corrected, forgotten, missing or
+oversized quotes produce no hint. An exact six-hour gap produces none. The packet
+asks the model to add at most one short “Last time we were on …” line only when
+useful and still true; it must name only that quoted topic. The hint is data under
+the existing private-chat audience, not a new instruction or authority. A
+recorded send intent, including UNKNOWN delivery, consumes the restart's first
+reply opportunity. `inspect` reports `greetingContinuity: true` when the saved
+answer packet carried the hint, without printing its source text. There is no
+new store, model call, service or unprompted send. If the hint would exhaust
+the packet bound, it yields and the ordinary answer still proceeds. See
+[greeting-continuity-live-test.md](greeting-continuity-live-test.md) for Justin's
+supervised check.
+
 ### Remembering people
 
 When the rolling summary runs (after a reply, sharing the same attempt cap), the
