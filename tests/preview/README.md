@@ -670,9 +670,11 @@ recalled turns, person notes, and the oldest open items. `status` reports `commi
 
 When a later complete quoted request or promise repeats an active one, the summary
 projection keeps one open item and attaches the later source message to it. The
-bounded match removes only an introductory “remember” request, final sentence
-punctuation and spacing; the remaining clause must match exactly, including its
+bounded match removes only an introductory “remember” request and outer spacing;
+the remaining clause must match exactly, including punctuation, internal spacing,
 value and letter case, and the authenticated speaker and quoted side must agree.
+Each item admits at most 49 additional sources, including links queued by the
+current summary; a second quotation of the same source adds no link.
 Partial quotes and less certain paraphrases stay separate for the model to judge.
 Both original turns remain in the encrypted journal. A correction of a grouped
 claim withholds both old source quotes, while a changed value remains a distinct

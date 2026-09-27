@@ -511,7 +511,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // different key; semantic near-matches remain separate for the model to judge.
   const commitmentKey = (note: Pick<CommitmentNote, 'in' | 'quote'>) => JSON.stringify([note.in,
     note.quote.replace(/^\s*(?:(?:please\s+)?remember\b(?:\s+that)?\s*[:,]?\s*)/iu, '')
-      .trim().replace(/[.!?]+$/u, '').replace(/\s+/gu, ' ')]);
+      .trim()]);
   const fullCommitment = (note: CommitmentNote) => {
     const source = journal.view.turns.get(note.source);
     return source !== undefined && (note.in === 'message' ? redact(source.text).text : redact(sentText(source) ?? '').text).trim() === note.quote.trim();
@@ -907,17 +907,24 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const identity = commitmentKey({ in: side, quote });
       const complete = (side === 'message' ? redact(source.text).text : redact(sentText(source) ?? '').text).trim() === quote.trim();
       const existing = complete ? journal.view.commitments.findIndex((note, id) => !journal.view.closed.has(id) && !closing.has(id)
+        && !closures.some(closure => closure.id === id)
         && !affectedNote(note) && fullCommitment(note) && commitmentKey(note) === identity
-        && speakerOf(journal.view.turns.get(note.source)!) === speakerOf(source)
-        && (note.sources?.length ?? 0) < 49) : -1;
+        && speakerOf(journal.view.turns.get(note.source)!) === speakerOf(source)) : -1;
       const fresh = complete ? notes.findIndex((note, index) => !closures.some(closure => closure.id === journal.view.commitments.length + index)
         && fullCommitment(note) && commitmentKey(note) === identity
-        && speakerOf(journal.view.turns.get(note.source)!) === speakerOf(source)
-        && (note.sources?.length ?? 0) < 49) : -1;
-      const id = existing >= 0 ? existing : fresh >= 0 ? journal.view.commitments.length + fresh
+        && speakerOf(journal.view.turns.get(note.source)!) === speakerOf(source)) : -1;
+      if (existing >= 0 && (journal.view.commitments[existing]!.source === source.id
+        || journal.view.commitments[existing]!.sources?.some(item => item.source === source.id)
+        || links.some(link => link.id === existing && link.source === source.id))) continue;
+      if (fresh >= 0 && (notes[fresh]!.source === source.id
+        || notes[fresh]!.sources?.some(item => item.source === source.id))) continue;
+      const existingRoom = existing >= 0 && (journal.view.commitments[existing]!.sources?.length ?? 0)
+        + links.filter(link => link.id === existing).length < 49;
+      const freshRoom = fresh >= 0 && (notes[fresh]!.sources?.length ?? 0) < 49;
+      const id = existingRoom ? existing : freshRoom ? journal.view.commitments.length + fresh
         : journal.view.commitments.length + notes.length;
-      if (existing >= 0) links.push({ id, source: source.id, quote });
-      else if (fresh >= 0) (notes[fresh]!.sources ??= []).push({ source: source.id, quote });
+      if (existingRoom) links.push({ id, source: source.id, quote });
+      else if (freshRoom) (notes[fresh]!.sources ??= []).push({ source: source.id, quote });
       else notes.push({ in: side, source: source.id, quote });
       // Made and settled within this same stretch: closed only by a later message the operator verifiably sent.
       const closer = typeof closedBy === 'string' && Buffer.byteLength(closedBy) <= 1000 && terms(closedBy).length

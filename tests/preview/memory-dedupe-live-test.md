@@ -11,7 +11,7 @@ Telegram replies and `status`/`inspect` JSON as the trace.
    five calls, four replies, and four turns; the desk may use its already recorded
    `raise-caps` authority if needed. Do not reset the root.
 2. As Justin, send `Please remember that my gym locker code is 3310.` Wait for its
-   reply. Then send `Remember: my gym locker code is 3310!` and wait for its reply.
+   reply. Then send `Remember: my gym locker code is 3310.` and wait for its reply.
    These are two source messages for one complete quoted request.
 3. Wait for a covering summary and `summaryPending: 0`. If necessary, send
    unrelated ordinary turns until `inspect --root ROOT --text "What code did I ask

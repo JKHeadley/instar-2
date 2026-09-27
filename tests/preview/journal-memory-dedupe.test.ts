@@ -15,7 +15,7 @@ it.each(['first', 'repeat'] as const)('keeps one restated item and withholds bot
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-dedupe-')));
   const path = join(root, 'journal.encrypted');
   const first = 'Please remember that my gym locker code is 3310.';
-  const repeat = 'Remember: my gym locker code is 3310!';
+  const repeat = 'Remember: my gym locker code is 3310.';
   const changed = 'Please remember that my gym locker code is 4412.';
   const targetQuote = target === 'first' ? first : repeat;
   let journal = openPreviewJournal(path, key, genesis);
@@ -73,6 +73,110 @@ it.each(['first', 'repeat'] as const)('keeps one restated item and withholds bot
     expect(current.commitments[0]!.message).toBe(changed);
     expect(current.recalled.filter(item => item.user.includes('remember')).every(item => !item.user.includes('3310'))).toBe(true);
     expect(current.recalled.filter(item => item.user.includes('[withheld:'))).toHaveLength(2);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each(['existing', 'fresh'] as const)('records one source when an %s item has two quoted forms in one summary', async target => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-source-batch-')));
+  const path = join(root, 'journal.encrypted');
+  const request = ' Remember: my locker code is 3310. ';
+  let journal = openPreviewJournal(path, key, genesis);
+  const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+    prepareModel: input => input.context,
+    model: async input => {
+      if (!input.id.startsWith('summary:')) return 'Noted.';
+      const packet = JSON.parse(input.context) as { history: { user: string }[] };
+      return JSON.stringify({ summary: 'The locker code was remembered.', people: [], memory: [], closed: [],
+        commitments: packet.history.flatMap(turn => turn.user === request
+          ? [{ in: 'message', quote: request }, { in: 'message', quote: request.trim() }] : []) });
+    }, send: async () => 1, checkOutbound: () => {} });
+  try {
+    if (target === 'existing') {
+      worker.intake([update(1, request)]); await worker.drain(); await worker.summarizeIfNeeded(true);
+    }
+    worker.intake([update(target === 'existing' ? 2 : 1, request)]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(journal.view.commitments).toHaveLength(1);
+    expect(journal.view.commitments[0]!.sources ?? []).toHaveLength(target === 'existing' ? 1 : 0);
+    journal.close();
+    journal = openPreviewJournal(path, key, genesis);
+    expect(journal.view.commitments).toHaveLength(1);
+    expect(journal.view.commitments[0]!.sources ?? []).toHaveLength(target === 'existing' ? 1 : 0);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('counts pending links against the 49-source limit', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-source-limit-')));
+  const path = join(root, 'journal.encrypted');
+  const request = 'Remember: my locker code is 3310.';
+  let journal = openPreviewJournal(path, key, { ...genesis, maxCalls: 70, maxReplies: 70, maxTurns: 70, maxBytes: 30000 });
+  const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+    prepareModel: input => input.context,
+    model: async input => {
+      if (!input.id.startsWith('summary:')) return 'Noted.';
+      const packet = JSON.parse(input.context) as { history: { user: string }[] };
+      return JSON.stringify({ summary: 'The locker code was remembered.', people: [], memory: [], closed: [],
+        commitments: packet.history.filter(turn => turn.user === request).map(() => ({ in: 'message', quote: request })) });
+    }, send: async () => 1, checkOutbound: () => {} });
+  try {
+    worker.intake(Array.from({ length: 49 }, (_, index) => update(index + 1, request)));
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(journal.view.commitments[0]!.sources).toHaveLength(48);
+    worker.intake([update(50, request), update(51, request)]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(journal.view.commitments[0]!.sources).toHaveLength(49);
+    expect(journal.view.commitments[1]).toMatchObject({ source: 'telegram:12345678:update:51', quote: request });
+    journal.close();
+    journal = openPreviewJournal(path, key, genesis);
+    expect(journal.view.commitments[0]!.sources).toHaveLength(49);
+    expect(journal.view.commitments).toHaveLength(2);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps punctuation that is the remembered value distinct', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-punctuation-')));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+    prepareModel: input => input.context,
+    model: async input => {
+      if (!input.id.startsWith('summary:')) return 'Noted.';
+      const packet = JSON.parse(input.context) as { history: { user: string }[] };
+      return JSON.stringify({ summary: 'The required suffix was remembered.', people: [], memory: [], closed: [],
+        commitments: packet.history.map(turn => ({ in: 'message', quote: turn.user })) });
+    }, send: async () => 1, checkOutbound: () => {} });
+  try {
+    for (const [index, suffix] of ['!', '?'].entries()) {
+      worker.intake([update(index + 1, `Please remember that my required suffix is ${suffix}`)]);
+      await worker.drain(); await worker.summarizeIfNeeded(true);
+    }
+    expect(journal.view.commitments.map(note => note.quote)).toEqual([
+      'Please remember that my required suffix is !', 'Please remember that my required suffix is ?']);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a renewed request active after an earlier closure in the same summary', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-same-summary-renewal-')));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const first = 'Please remember that I need to return the book.';
+  const repeat = 'Remember: I need to return the book.';
+  const done = 'I returned the book, so that request is done.';
+  const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+    prepareModel: input => input.context,
+    model: async input => {
+      if (!input.id.startsWith('summary:')) return 'Noted.';
+      const packet = JSON.parse(input.context) as { history: { user: string }[] };
+      return JSON.stringify({ summary: 'The book request was discussed.', people: [], memory: [], closed: [],
+        commitments: packet.history.filter(turn => turn.user === first || turn.user === repeat)
+          .map(turn => ({ in: 'message', quote: turn.user, ...(turn.user === repeat ? { closedBy: done } : {}) })) });
+    }, send: async () => 1, checkOutbound: () => {} });
+  try {
+    worker.intake([update(1, first)]); await worker.drain(); await worker.summarizeIfNeeded(true);
+    worker.intake([update(2, repeat), update(3, done), update(4, repeat)]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(journal.view.commitments).toHaveLength(2);
+    expect(journal.view.closed.has(0)).toBe(true);
+    expect(journal.view.closed.has(1)).toBe(false);
+    expect(journal.view.commitments[1]).toMatchObject({ source: 'telegram:12345678:update:4', quote: repeat });
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
