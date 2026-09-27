@@ -461,7 +461,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return [...new Map([...dated, ...ranked].map(item => [item.id, item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
   };
   /** Imported items use the existing sentinel but never become executable turns. */
-  const channelFor = (turn: Turn, summary?: string) => {
+  const channelFor = (turn: Turn, summary?: string, prioritizeDates = true) => {
     const items = [...journal.view.channelItems.values()];
     const previous = journal.view.order.filter(item => item.accepted && item.update < turn.update).at(-1);
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT,
@@ -469,10 +469,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(previous ? { previous: `${clean(previous.text, true)} ${clean(sentText(previous) ?? '', true)}` } : {}),
       candidates: items.map(item => ({ text: clean(`${item.subject ?? ''} ${item.text}`, true), at: item.at })) })
       .map(index => items[index]!);
-    const dated = items.filter(item => dueSoon(clean(`${item.subject ?? ''} ${item.text}`, true))).slice(-PREVIEW_RECALL_LIMIT).reverse();
+    const dated = prioritizeDates
+      ? items.filter(item => dueSoon(clean(`${item.subject ?? ''} ${item.text}`, true))).slice(-PREVIEW_RECALL_LIMIT).reverse() : [];
     return [...new Map([...dated, ...ranked].map(item => [channelMemoryId(item), item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
   };
-  const channelCandidates = (turn: Turn, summary?: string) => channelFor(turn, summary).map(item => ({
+  // A correction needs the target source; reply-only date priority must not crowd it out.
+  const channelCandidates = (turn: Turn, summary?: string) => channelFor(turn, summary, false).map(item => ({
     id: channelMemoryId(item), source: 'channel-import', message: clean(redact(`${item.subject ?? ''} ${item.text}`).text, true), reply: '' }));
   /** Notes sharing any name term with the new message ("Sam" also finds "Sam Ruiz"), from
    * turns a summary already covers. Candidate selection only: identity is the model's judgment. */
@@ -646,6 +648,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         > journal.view.limits.maxBytes) continue;
       const recalled = summary ? recallFor(turn, summary) : [];
       const channels = channelFor(turn, summary?.text);
+      const candidateChannels = channelFor(turn, summary?.text, false);
       const named = summary ? peopleFor(turn.text, summary.through) : [];
       const open = summary ? openFor(summary.through, PREVIEW_COMMITMENT_LIMIT) : [];
       type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'recent' | 'candidate';
@@ -671,7 +674,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
       candidates.forEach((item, index) => optional.push({ kind: 'candidate', key: item.id, rank: 5,
         match: 0, recent: index, index }));
-      channels.forEach((item, index) => optional.push({ kind: 'candidate', key: channelMemoryId(item), rank: 5,
+      candidateChannels.forEach((item, index) => optional.push({ kind: 'candidate', key: channelMemoryId(item), rank: 5,
         match: 0, recent: item.at, index: candidates.length + index }));
       // Lowest priority, weaker query match and older evidence go first.
       const dropOrder = optional.sort((a, b) => b.rank - a.rank || a.match - b.match
@@ -685,8 +688,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const base = packetFor(turn.update - 1, compact, selectedRecall,
           named.filter((_, index) => has('person', index)), open.filter((_, index) => has('commitment', index)),
           turn.thread, false, flagged, selectedChannels);
-        const offered = [...candidates.filter((_, index) => has('candidate', index)), ...selectedChannels.filter(item =>
-          has('candidate', candidates.length + channels.indexOf(item))).map(item => ({
+        const offered = [...candidates.filter((_, index) => has('candidate', index)), ...candidateChannels.filter((_, index) =>
+          has('candidate', candidates.length + index)).map(item => ({
           id: channelMemoryId(item), source: 'channel-import',
           message: clean(redact(`${item.subject ?? ''} ${item.text}`).text, true).slice(0, 1000), reply: '' }))];
         const context = JSON.stringify({ ...JSON.parse(base) as object,

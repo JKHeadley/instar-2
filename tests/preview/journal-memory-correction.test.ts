@@ -57,6 +57,82 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
+it('forgets a relevant import despite five unrelated near-term dated imports and drains the next turn', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-dated-imports-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes: 32768 });
+    const now = Date.parse('2026-09-26T12:00:00Z');
+    const account = 'agent@example.test';
+    const target = 'The archive access phrase is silver crane.';
+    importChannelFixture(journal, [
+      { source: 'email', account, id: 'archive-1', from: 'operator@example.test', at: now - 86_400_000,
+        subject: 'Archive access', text: target },
+      ...Array.from({ length: 5 }, (_, index) => ({ source: 'email' as const, account,
+        id: `event-${index}`, from: 'operator@example.test', at: now,
+        subject: 'Ordinary event', text: `Ordinary event ${index} on 2026-09-29.` }))
+    ], account, now);
+    const summarySources: string[][] = [], sends: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async input => {
+        if (input.id.startsWith('summary:')) {
+          const packet = JSON.parse(input.context);
+          summarySources.push(packet.memoryCandidates.map((item: { id: string }) => item.id));
+          const source = packet.memoryCandidates.find((item: { message: string }) => item.message.includes(target));
+          return source
+            ? JSON.stringify({ summary: 'The operator asked to forget an archive phrase.', people: [],
+              memory: [{ mode: 'forget', source: source.id, quote: target }] })
+            : JSON.stringify({ summary: 'An archive correction remains unresolved.', people: [],
+              memory: [], memoryDisposition: 'unresolved' });
+        }
+        return 'Understood.';
+      }, send: async input => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
+    worker.intake([update(1, `Actually, forget this fact: ${target}`)]);
+    await worker.drain();
+    worker.intake([update(2, 'Hello again')]);
+    await worker.drain();
+    expect(summarySources).toHaveLength(1);
+    expect(summarySources[0]).toContain(journal.view.memory[0]?.source);
+    expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: target }]);
+    expect(sends).toHaveLength(2);
+    expect(journal.view.order.map(turn => turn.held)).toEqual([undefined, undefined]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
+it('offers the relevant import to an uncued direct forget even when reply evidence favors dates', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-uncued-import-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes: 32768 });
+    const now = Date.parse('2026-09-26T12:00:00Z');
+    const account = 'agent@example.test', target = 'The archive access phrase is silver crane.';
+    importChannelFixture(journal, [
+      { source: 'email', account, id: 'archive-1', from: 'operator@example.test', at: now - 86_400_000,
+        subject: 'Archive access', text: target },
+      ...Array.from({ length: 5 }, (_, index) => ({ source: 'email' as const, account,
+        id: `event-${index}`, from: 'operator@example.test', at: now,
+        subject: 'Ordinary event', text: `Ordinary event ${index} on 2026-09-29.` }))
+    ], account, now);
+    const sends: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async input => {
+        if (input.id.startsWith('summary:')) throw Error('unexpected summary');
+        if (input.question === 'Hello again') return 'Understood.';
+        const packet = JSON.parse(input.context);
+        const source = packet.memoryCandidates?.find((item: { message: string }) => item.message.includes(target));
+        return source ? JSON.stringify({ reply: 'Done.', memory: [{ mode: 'forget', source: source.id, quote: target }] })
+          : JSON.stringify({ reply: 'I cannot identify the source.', memory: [], memoryDisposition: 'unresolved' });
+      }, send: async input => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
+    worker.intake([update(1, `Please stop remembering this fact: ${target}`)]);
+    await worker.drain();
+    worker.intake([update(2, 'Hello again')]);
+    await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: target }]);
+    expect(sends).toHaveLength(2);
+    expect(journal.view.order.map(turn => turn.held)).toEqual([undefined, undefined]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
 it('keeps a correction beside a delivered lost-answer notice across replay', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-loss-notice-')));
   const path = join(root, 'journal.encrypted');
