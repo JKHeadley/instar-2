@@ -52,9 +52,11 @@ it.each(['first', 'repeat'] as const)('keeps one restated item and withholds bot
     }
     expect('reason' in remembered).toBe(false);
     if ('reason' in remembered) throw Error(remembered.reason);
-    const packet = JSON.parse(remembered.context) as { commitments: { items: { sources?: { message: string }[] }[] }[] };
+    const packet = JSON.parse(remembered.context) as { capability: string;
+      commitments: { items: { sources?: { message: string }[] }[] }[] };
     expect(packet.commitments).toHaveLength(1);
     expect(packet.commitments[0]!.items[0]!.sources?.[0]?.message).toBe(repeat);
+    expect(packet.capability).toContain('one request or promise repeated across those later messages');
 
     await say(nextId++, changed);
     expect(journal.view.commitments).toHaveLength(2);
