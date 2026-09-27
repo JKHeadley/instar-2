@@ -42,7 +42,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     expect('reason' in next).toBe(false);
     if ('reason' in next) throw Error(next.reason);
     const packet = JSON.parse(next.context);
-    expect(packet.memory).toMatchObject([{ mode: 'forgotten' }]);
+    expect(packet.memory).toMatchObject([{ sourceKind: 'operator-stated', mode: 'forgotten' }]);
     expect(next.context).not.toContain('silver crane');
     expect(packet.channelMemory?.[0]?.quote).toContain('[withheld: operator correction or forgetting]');
     expect(journal.view.channelItems.size).toBe(1);
@@ -86,7 +86,7 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
     expect('reason' in next).toBe(false);
     if ('reason' in next) throw Error(next.reason);
     const packet = JSON.parse(next.context);
-    expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'the cedar trail starts at West Pier.' }]);
+    expect(packet.memory).toMatchObject([{ sourceKind: 'operator-stated', mode: 'corrected', replacement: 'the cedar trail starts at West Pier.' }]);
     expect(next.context).not.toContain('East Pier');
     const lost = packet.history.find((item: { notice?: string }) => item.notice === UNKNOWN_ANSWER_NOTICE);
     expect(lost).toMatchObject({ answer: null, notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });

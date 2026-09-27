@@ -91,10 +91,10 @@ it('recalls every note about a named person after compaction, keeps the operator
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
     expect(packet.people).toEqual([
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
+      { sourceKind: 'operator-stated', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
         message: 'My cofounder Sam thinks the launch should slip to November.',
         mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
-      { from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
+      { sourceKind: 'operator-stated', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
         message: 'Priya said she disagrees with Sam about the launch date.',
         mentions: [{ person: 'Sam', quote: 'Priya said she disagrees with Sam about the launch date.' }] }]);
     expect(packet.capability).toContain('did not say it unless from is that person');
@@ -169,7 +169,7 @@ it('renders the whole source message, so an excerpt can never drop the context t
     const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
-    expect(packet.people).toEqual([{ from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+    expect(packet.people).toEqual([{ sourceKind: 'operator-stated', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
       mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
     expect(packet.capability).toContain('Read a quote only within its whole message');
     w.journal.close();
