@@ -963,6 +963,16 @@ procedure, see [memory-dedupe-live-test.md](memory-dedupe-live-test.md).
 
 ### Correcting and forgetting memory
 
+For “What do you remember about me?”, the capped answer model can request
+`memoryList:true`. The runner then renders active saved items from the journal,
+newest first, with at most 20 entries. It includes open operator memory
+requests, dates, active reply preferences and corrected replacements, while
+excluding closed, forgotten and corrected-away clauses. A byte bound may show
+fewer items; the reply counts omitted active items. This list covers explicit
+saved memory in the preview journal, not every raw conversation fact. The
+ordinary reply check, secret wall, stop, cap, durable intent and UNKNOWN fence
+still apply. See the [supervised memory-list script](memory-list-live-test.md).
+
 A direct operator correction of the agent's answer uses the encrypted journal memory
 decision. A recent actual send intent is offered even when a short correction shares no
 words with the earlier question. The model marks an answer correction with `in:"reply"`,
