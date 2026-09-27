@@ -274,7 +274,11 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs rene
 
 It validates the new record with this build and records its byte digest and the authority.
 `status` then reports `expires` and `expiryAuthority`. Afterwards the runner accepts only the
-new record; the prior build refuses the renewed journal and the new record.
+new record. The prior build always refuses the new record; that is the unconditional fail-closed
+protection for a mismatched switch. The prior build also refuses an uncompacted renewed journal
+(the expiry frame is an orphan effect to it), but after compaction it accepts the snapshot and uses
+the original genesis expiry — accepted compatibility residue: a full rollback of code and record can
+read a compacted journal but cannot run past the original expiry.
 
 ## Unanswered turns and host recovery
 

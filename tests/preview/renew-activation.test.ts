@@ -171,7 +171,7 @@ it('the desk script writes new files only and the renew-expiry command binds tha
 }, 90_000);
 
 const prior = spawnSync('git', ['cat-file', '-e', `${PRIOR_COMMIT}^{commit}`], { cwd: process.cwd() }).status === 0;
-it.runIf(prior)('the prior live build refuses the renewed record and the renewed journal, so a mismatched switch fails closed', async () => {
+it.runIf(prior)('the prior live build refuses the renewed record (unconditional) and an uncompacted renewed journal; after compaction the prior reader accepts the snapshot with the genesis expiry (accepted residue)', async () => {
   const show = (path: string) => spawnSync('git', ['show', `${PRIOR_COMMIT}:${path}`], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
   const provider = join(process.cwd(), `src/assembly/.prior-production-provider-${String(process.pid)}.ts`);
   const journalModule = join(process.cwd(), `tests/preview/.prior-journal-${String(process.pid)}.ts`);
