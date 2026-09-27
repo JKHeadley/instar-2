@@ -230,18 +230,21 @@ it('audits a recorded preference beside an imported source after replay', async 
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-preference-')));
   const path = join(root, 'journal.encrypted');
   try {
-    let journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 16000 });
+    const g = { ...genesis, maxBytes: 32768 };
+    let journal = openPreviewJournal(path, key, g);
+    const rawPackets: object[] = [];
     importChannelFixture(journal, [{ source: 'email', account: 'agent@example.test', id: 'mail-1',
       from: 'sam@example.test', at: 1789999000000, subject: 'Studio', text: 'The studio opens Friday.' }],
     'agent@example.test', 1790000000000);
     const ports = { now: () => 1790000000000, stopped: () => false,
       prepareModel: (input: { question: string; context: string; id: string }) =>
-        prepareJournalEnvelope(input, 'offline-model', genesis.grant, 1790000000000, 16000),
+        prepareJournalEnvelope(input, 'claude-opus-5-5', g.grant, 1790000000000, g.maxBytes),
       model: async (input: { id: string; question: string; context: string }) => input.id.startsWith('summary:')
         ? JSON.stringify({ summary: 'The operator prefers brief replies.', people: [],
           memory: [{ mode: 'prefer', source: JSON.parse(input.context).memoryRequest.id,
             quote: 'Please keep your replies brief.' }] })
-        : input.question === 'Please keep your replies brief.' ? 'Okay.' : 'The studio opens Friday.',
+        : (rawPackets.push(JSON.parse(input.context)),
+          input.question === 'Please keep your replies brief.' ? 'Okay.' : 'The studio opens Friday.'),
       send: async () => 1, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Please keep your replies brief.')]); await worker.drain();
@@ -254,10 +257,22 @@ it('audits a recorded preference beside an imported source after replay', async 
     expect(auditJournal(journal.view).findings).toEqual([]);
     const turn = journal.view.order.at(-1)!;
     const packet = JSON.parse(JSON.parse(turn.prompt!).messages[1].content).packet;
+    expect(auditPacket(journal.view, turn, rawPackets.at(-1)).findings).toEqual([]);
+    expect(Object.keys(packet.preferences[0])).toEqual(['source', 'text']);
     const tampered = structuredClone(packet);
     tampered.preferences[0].text = 'invented preference';
     expect(auditPacket(journal.view, turn, tampered).findings.map((item: { code: string }) => item.code))
       .toContain('preference-source');
+    const missing = structuredClone(packet);
+    missing.preferences = [];
+    expect(auditPacket(journal.view, turn, missing).findings.map((item: { code: string }) => item.code))
+      .toContain('preference-source');
     journal.close();
+    const cli = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'audit', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(cli.status, cli.stderr).toBe(0);
+    expect(JSON.parse(cli.stdout).findings).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

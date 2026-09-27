@@ -6,7 +6,8 @@ import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionConversationPolicy,
   SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
-  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_THINKING_ENV, subscriptionPolicyFor,
+  validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -92,12 +93,40 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
   expect(commands[2].args[commands[2].args.indexOf('--system-prompt') + 1]).toBe(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT);
   expect(commands[2].stdin).toBe('{"exact":"question 世界"}');
   expect(Object.keys(f.launched[2]!).sort()).toEqual(['PATH', 'HOME', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_MAX_RETRIES',
-    'CLAUDE_CODE_MAX_OUTPUT_TOKENS', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'].sort());
+    'CLAUDE_CODE_MAX_OUTPUT_TOKENS', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'MAX_THINKING_TOKENS'].sort());
   expect(Object.keys(commands[2].env).filter(key => key !== '__CF_USER_TEXT_ENCODING').sort()).toEqual(Object.keys(f.launched[2]!).sort());
   expect(commands[0].env).toEqual(commands[2].env); expect(commands[1].env).toEqual(commands[2].env);
   expect(commands[2].args).not.toContain('--max-budget-usd'); expect(commands[2].args).not.toContain('--bare');
 });
 
+// Live 2026-09-27: answer calls reached 8192 output tokens (thinking included) and
+// were held. MAX_THINKING_TOKENS=0 is the pinned CLI's env-only thinking-off control.
+const RECORDED_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:557a62fa7c65c0a8a5982f34f8d96236231d21082bef4b441ea7847be58cb833' } as const;
+for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
+  const f = fixture({ conversation });
+  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
+  const model = f.commands().filter(row => row.args.includes('--print'));
+  expect(model).toHaveLength(1);
+  expect(model[0].env.MAX_THINKING_TOKENS).toBe('0'); expect(f.launched.at(-1)!.MAX_THINKING_TOKENS).toBe('0');
+  expect(model[0].env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('2048');
+  expect(model[0].args).toEqual((conversation ? subscriptionConversationPolicy : subscriptionInvocationPolicy)(f.input.model).args);
+  expect(model[0].args.some((arg: string) => /thinking|effort/iu.test(arg))).toBe(false);
+});
+it('keeps both recorded activation policy digests; a policy-borne thinking field would void the activation', () => {
+  const f = fixture({ conversation: true }), model = 'claude-sonnet-5';
+  for (const [framing, digest] of Object.entries(RECORDED_DIGESTS)) {
+    const { policy } = subscriptionPolicyFor(model, framing as keyof typeof RECORDED_DIGESTS);
+    expect(hash(policy)).toBe(digest);
+    expect(Object.keys(policy)).not.toContain('MAX_THINKING_TOKENS');
+    expect(hash({ ...policy, ...SUBSCRIPTION_THINKING_ENV })).not.toBe(digest);
+  }
+  const live = { ...f.input.activation, model, invocationPolicyDigest: RECORDED_DIGESTS[SUBSCRIPTION_CONVERSATION_FRAMING] };
+  expect(() => validateSubscriptionActivation(live, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
+  const moved = { ...live, invocationPolicyDigest: hash({ ...subscriptionConversationPolicy(model), ...SUBSCRIPTION_THINKING_ENV }) };
+  expect(() => validateSubscriptionActivation(moved, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING))
+    .toThrow(/policy differs/u);
+});
 it('requires recorded cap authority to dispatch a conversation prompt above 32 KB', async () => {
   const f = fixture({ conversation: true }), bytes = 'x'.repeat(40000);
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke(bytes, f.bounds)).state).toBe('uncertain');

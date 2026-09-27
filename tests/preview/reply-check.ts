@@ -50,7 +50,7 @@ export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, 
 
 export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
   const scope = ruleIds.length && ruleIds.length < rules.length ? ' Jev cleared the other rules.' : '';
-  return `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(replyReviewRules(ruleIds))}.${scope} Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach; uncertainty is PASS. Use only listed rule IDs. No other text.`;
+  return `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(replyReviewRules(ruleIds))}.${scope} Return only one JSON object inside conclusion.value: {"verdict":"pass"|"violation","ruleIds":string[],"reason":string}. A violation requires an actual breach; uncertainty is pass. A pass has no rule IDs; a violation names only listed rule IDs. Give one short reason, at most 160 characters, on one line. No other text.`;
 }
 
 /** Reuse the exact packet that grounded the proposed answer, including its

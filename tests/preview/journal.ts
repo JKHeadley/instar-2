@@ -9,7 +9,7 @@ import { redact } from '../../src/recall/redact.js';
 import { selectRecall, selectSaidTurns, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
-import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS } from './reply-check.js';
 import { parseDatedItem, dueState, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
@@ -178,13 +178,14 @@ export type JournalRecord =
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
   | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }
+  | { kind: 'expiry'; genesisHash: string; expires: number; activation: string; authority: string; at: number }
   | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; at: number }
   | { kind: 'legacy-call'; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'summary-candidate'; through: number; state: string; usage?: ModelUsage; at: number }
-  | { kind: 'summary-check'; through: number; result: SummaryCheckResult; faithfulness?: SummaryFaithfulness; at: number }
+  | { kind: 'summary-check'; through: number; result?: SummaryCheckResult; faithfulness?: SummaryFaithfulness; at: number }
   | { kind: 'summary-faithfulness'; through: number; result: SummaryFaithfulness; at: number }
   | { kind: 'summary-review-reserve'; through: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; reason?: string; output?: string; evidence?: string; faithfulness?: SummaryFaithfulness; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
@@ -227,6 +228,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   channelSources: Map<'telegram' | 'slack', ChannelSourceCursor>;
   channelSourceErrors: Map<'telegram' | 'slack', string>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
+  /** Effective trial end: genesis.expires until an `expiry` renewal frame extends it. */
+  expires: number; expiryAuthority: string | null;
   capReports: Set<string>;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Map<number, number>; // frontier -> durable reservation time
   summaryRequired: Set<number>; summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
@@ -343,7 +346,8 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   if (saved.order.length !== turns.size || new Set(saved.order).size !== saved.order.length
     || saved.order.some(id => !turns.has(id) || turns.get(id)?.id !== id))
     throw Error('preview journal: snapshot turn index differs');
-  const view: JournalView = { ...saved, tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
+  const view: JournalView = { ...saved, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null,
+    tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
     turns, order: saved.order.map(id => turns.get(id)!), channelItems: new Map(saved.channelItems),
     summaryReservations: new Map(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
@@ -593,6 +597,18 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
   if (unknown)
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
+/** A renewal extends the trial end, never shortens it, and only while the
+ * trial is still live. A new renewal must name exactly the reviewed build's
+ * activation expiry; replay accepts any earlier monotonic renewal. */
+function checkExpiry(view: JournalView, row: Extract<JournalRecord, {kind:'expiry'}>, admission: 'new' | 'replay'): void {
+  if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
+    || !Number.isSafeInteger(row.at) || row.at <= 0 || row.at >= view.expires
+    || !Number.isSafeInteger(row.expires) || row.expires <= view.expires
+    || admission === 'new' && row.expires !== SUBSCRIPTION_PREVIEW_EXPIRY
+    || typeof row.activation !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(row.activation)
+    || typeof row.authority !== 'string' || !row.authority.trim() || Buffer.byteLength(row.authority) > 1024)
+    throw Error('preview journal: expiry renewal refused');
+}
 function checkChannelSourceCursor(view: JournalView, row: Extract<JournalRecord, {kind:'channel-source-cursor'}>): void {
   const c = row.cursor, prior = view.channelSources.get(row.source);
   if (!['telegram', 'slack'].includes(row.source) || !c || !Number.isSafeInteger(c.offset) || c.offset < 0
@@ -644,6 +660,10 @@ function project(view: JournalView, row: JournalRecord): void {
     if (view.capReports.has(capKey(row.reason, row.limit))) throw Error('preview journal: repeated cap report');
     view.capReports.add(capKey(row.reason, row.limit)); return;
   }
+  if (row.kind === 'expiry') {
+    checkExpiry(view, row, 'replay');
+    view.expires = row.expires; view.expiryAuthority = row.authority; return;
+  }
   if (row.kind === 'caps') {
     checkCaps(view, row, 'replay');
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
@@ -656,7 +676,7 @@ function project(view: JournalView, row: JournalRecord): void {
       || row.surface !== 'telegram-private-chat' || row.scope !== 'initiated-dated-reminders'
       || row.custodian !== view.genesis.operator || row.recovery !== 'unknown-never-retry'
       || typeof row.reference !== 'string' || !row.reference.trim() || Buffer.byteLength(row.reference) > 1024
-      || !Number.isSafeInteger(row.at) || row.at <= 0 || row.at >= view.genesis.expires)
+      || !Number.isSafeInteger(row.at) || row.at <= 0 || row.at >= view.expires)
       throw Error('preview journal: reminder grant refused');
     view.reminderGrant = row.reference; return;
   }
@@ -768,8 +788,10 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'summary-check') {
     if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
-      || row.result.path === 'subscription' && !view.summaryReviews.has(row.through))
+      || !row.result && !row.faithfulness
+      || row.result?.path === 'subscription' && !view.summaryReviews.has(row.through))
       throw Error('preview journal: summary check without reservation');
+    if (!row.result) return; // Completed faithfulness evidence precedes the next supervisor call.
     const checks = view.summaryChecks.get(row.through) ?? [];
     if (row.result.path === 'jev' && checks.some(check => check.path === 'jev')
       || row.result.path === 'subscription' && checks.some(check => check.path === 'subscription'))
@@ -1077,7 +1099,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1132,6 +1154,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const append = (row: JournalRecord) => {
       if (readOnly || closed) throw Error('preview journal: reader cannot append');
       if (row.kind === 'caps') checkCaps(view!, row, 'new');
+      if (row.kind === 'expiry') checkExpiry(view!, row, 'new');
       if (row.kind === 'channel-source-cursor') checkChannelSourceCursor(view!, row);
       if (row.kind === 'call-outcome') validateCallOutcome(view!, row);
       if (view && ((row.kind === 'intake' && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns)
@@ -1149,10 +1172,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
-
-
-
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -1244,7 +1264,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
  * Replaying the export after a crash resumes at the first missing source id. */
 export function importChannelFixture(journal: ReturnType<typeof openPreviewJournal>, rows: readonly unknown[], agentAccount: string, now: number,
   stopped: () => boolean = () => false, origin?: 'stored-log') {
-  if (journal.readOnly || journal.view.stop || stopped() || now >= journal.view.genesis.expires) throw Error('preview journal: channel import stopped');
+  if (journal.readOnly || journal.view.stop || stopped() || now >= journal.view.expires) throw Error('preview journal: channel import stopped');
   if (!agentAccount.trim() || rows.length > 2000) throw Error('preview journal: channel import scope or capacity');
   const clean = (value: unknown, max: number) => {
     if (typeof value !== 'string' || !value.trim() || Buffer.byteLength(value) > max) throw Error('preview journal: malformed channel item');
@@ -1293,6 +1313,18 @@ export function raiseJournalCaps(journal: ReturnType<typeof openPreviewJournal>,
     maxBytes: input.maxBytes ?? journal.view.limits.maxBytes });
 }
 
+/** The run and renewal paths both require the activation to name this journal's trial,
+ * configuration and effective expiry. */
+export function activationMatchesJournal(view: JournalView, activation: { trial: string; baseConfigurationDigest: string; expiresAt: number }, expires = view.expires): boolean {
+  return activation.trial === view.genesis.grant && activation.baseConfigurationDigest === view.genesis.configurationDigest
+    && activation.expiresAt === expires;
+}
+/** Extends the trial end to a validated activation's expiry. */
+export function renewJournalExpiry(journal: ReturnType<typeof openPreviewJournal>, input: {
+  expires: number; activation: string; authority: string; at: number }) {
+  journal.append({ kind: 'expiry', genesisHash: genesisHash(journal.view.genesis), ...input });
+}
+
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
   timeZone?: string;
@@ -1322,7 +1354,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   let checkingSteps = false;
   // An orphaned reservation may have completed at the provider. Never repeat it.
   const gate = () => {
-    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires)
+    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires)
       throw Error('preview stopped');
   };
   const pollGate = () => {
@@ -3152,6 +3184,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
       }
       if (ports.replyCheck) {
+        if (faithfulness.path === 'jev')
+          journal.append({ kind: 'summary-check', through, faithfulness, at: ports.now() });
+        const recordedFaithfulness: SummaryFaithfulness = { path: faithfulness.path,
+          verdict: faithfulness.verdict, score: faithfulness.score };
         const state = supervisedState!;
         const started = ports.replyCheck.elapsedMs();
         let jev: SummaryCheckResult;
@@ -3161,14 +3197,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         } catch {
           jev = { verdict: 'unavailable', path: 'jev', latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - started) };
         }
-        journal.append({ kind: 'summary-check', through, result: jev, faithfulness, at: ports.now() });
+        journal.append({ kind: 'summary-check', through, result: jev, faithfulness: recordedFaithfulness, at: ports.now() });
         if (jev.verdict === 'unavailable') {
-          journal.append({ kind: 'summary-failed', through, faithfulness,
+          journal.append({ kind: 'summary-failed', through, faithfulness: recordedFaithfulness,
             ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
         }
         if (jev.verdict !== 'pass') {
           if (journal.view.calls >= journal.view.limits.maxCalls || !ports.replyCheck.summaryReview) {
-            journal.append({ kind: 'summary-failed', through, faithfulness,
+            journal.append({ kind: 'summary-failed', through, faithfulness: recordedFaithfulness,
               ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
           }
           gate();
@@ -3185,13 +3221,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'summary-check', through, result: review, at: ports.now() });
           if (review.verdict === 'unavailable' && !review.retryable) return; // paid outcome may be UNKNOWN
           if (review.verdict !== 'pass') {
-            journal.append({ kind: 'summary-failed', through, faithfulness,
+            journal.append({ kind: 'summary-failed', through, faithfulness: recordedFaithfulness,
               ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
           }
         }
         gate();
       }
-      journal.append({kind:'summary',through,text:candidate,faithfulness,
+      journal.append({kind:'summary',through,text:candidate,faithfulness: ports.replyCheck
+        ? { path: faithfulness.path, verdict: faithfulness.verdict, score: faithfulness.score } : faithfulness,
 
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
         ...(memory ? { memory } : {}),
@@ -3234,7 +3271,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     checkingSteps = true;
     try {
       for (const [stepId, step] of journal.view.stepChecks) {
-        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires) return;
+        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
         if (step.result) continue;
         if (step.reserved) {
           journal.append({ kind: 'step-check', step: stepId, result: { verdict: 'unavailable',
@@ -3272,7 +3309,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           evidence: unavailableReason ? JSON.stringify({ step: stepId, error: unavailableReason }) : state,
           at: ports.now() });
         let result: StepCheckResult;
-        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires)
+        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires)
           result = { verdict: 'unavailable', reason: 'preview stopped before Jev dispatch', score: null, latencyMs: 0 };
         else if (unavailableReason) result = { verdict: 'unavailable', reason: unavailableReason, score: null, latencyMs: 0 };
         else try {

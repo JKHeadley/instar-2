@@ -136,7 +136,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const reminders = [...view.reminders.values()].filter(item => item.sent !== undefined);
   const remindersToday = reminders.filter(item => isToday(item.sentAt)).length;
   const holds = new Map<string, number>();
-  for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.genesis.expires))
+  for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.expires))
     holds.set(notice, (holds.get(notice) ?? 0) + 1);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = view.summaryReservations.size;
@@ -168,7 +168,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     holds.size ? `Held messages: ${[...holds].map(([notice, n]) => `${String(n)} — ${notice}`).join(' ')}` : 'Held messages: none.',
     `Held-answer notices attempted: ${String(heldNoticeCount)} (one per held turn; Telegram acceptance is not human receipt).`,
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
-    `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.genesis.expires)}.`,
+    `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.expires)}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',
     view.genesis.importSource !== undefined ? 'This journal was imported from an earlier preview root; imported turns keep their original content, and their times may be unknown.' : '',
   ];

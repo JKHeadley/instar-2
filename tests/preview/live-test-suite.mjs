@@ -43,7 +43,7 @@ const snapshot = (root, key) => {
         .map(event => event.kind === 'hold' ? event.reason : holdingReason(turns.get(event.id))),
       limits: journal.view.limits, calls: journal.view.calls, replies: journal.view.replies,
       stop: existsSync(join(root, 'preview-stop.json')) || journal.view.stop !== null,
-      expires: journal.view.genesis.expires,
+      expires: journal.view.expires,
     };
   } finally { journal.close(); }
 };

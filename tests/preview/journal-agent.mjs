@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
+import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
@@ -11,13 +12,13 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
-
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { greetingContinuity } from './greeting-continuity.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
+import { failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
 
@@ -32,7 +33,7 @@ const importSource = (journal, state, source, stopped) => {
       journal.append({ kind: 'channel-source-error', source, error: null, at: Date.now() });
     return result;
   } catch (error) {
-    if (!stopped() && !journal.view.stop && Date.now() < journal.view.genesis.expires
+    if (!stopped() && !journal.view.stop && Date.now() < journal.view.expires
       && journal.view.channelSourceErrors.get(source) !== 'import refused')
       journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: Date.now() });
     throw error;
@@ -103,10 +104,9 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
   const readSources = reminders => sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires, reminders }).sources;
+    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, reminders }).sources;
   const ordinarySources = readSources(false);
   let reminderSources;
-
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = Date.now(), log = runs();
@@ -177,6 +177,23 @@ const withheldView = view => {
         : change.in === 'reply' ? 'verified operator corrected this answer' : 'verified operator corrected this fact' }));
 };
 
+// Content-free counts of how model JSON arrived: malformed shapes (why a result was
+// refused) and tolerated wrappers. Diagnostics only: never model text, never an outcome input.
+const readShapes = path => {
+  try { const saved = JSON.parse(readFileSync(path, 'utf8')); return saved.version === 1 ? saved : null; }
+  catch { return null; }
+};
+const recordShape = (path, role, layer, outcome, shape) => {
+  try {
+    const saved = readShapes(path) ?? { version: 1, counts: {}, last: null };
+    const key = `${role}/${layer}/${outcome}/${shape}`;
+    saved.counts[key] = (saved.counts[key] ?? 0) + 1;
+    if (outcome === 'malformed') saved.last = { role, layer, shape, at: Date.now() };
+    durablePreviewWrite(path, saved);
+  } catch { /* a diagnostics write never changes a model outcome */ }
+};
+const roleOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
+
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 const lastReplyReview = view => {
   const turn = view.order.filter(item => item.reviewState !== undefined).at(-1);
@@ -200,7 +217,7 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -209,6 +226,7 @@ async function main() {
   const journalPath = join(root, 'journal.encrypted');
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
+  const shapesPath = join(root, 'model-json-shapes.json');
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
@@ -259,6 +277,7 @@ async function main() {
         outputTokens: total.outputTokens + kind.outputTokens, unknownCalls: total.unknownCalls + kind.unknownCalls }),
       { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }),
       capAuthority: view.view.capAuthority,
+      expires: view.view.expires, expiryAuthority: view.view.expiryAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
       sourceStop: view.view.sourceStop,
       importComplete: importMarker
@@ -280,7 +299,7 @@ async function main() {
       withheld: withheldView(view.view),
       undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
         change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
-      holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null || Date.now() >= view.view.genesis.expires),
+      holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null || Date.now() >= view.view.expires),
       tooLong: view.view.order.filter(t => t.noticeClass === 'too-long-input' || t.intent === TOO_LONG_REPLY_NOTICE)
         .map(t => ({ update: t.update, kind: t.noticeClass === 'too-long-input' ? 'input' : 'reply',
           delivery: t.sent ? (t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE
@@ -294,6 +313,7 @@ async function main() {
       capReports: [...view.view.capReports],
 
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
+      modelJsonShapes: readShapes(shapesPath),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
@@ -443,12 +463,31 @@ async function main() {
     } finally { fixtureJournal?.close(); storage.close(); }
     return;
   }
+  if (command === 'renew-expiry') {
+    // Extends a live trial to a new reviewed activation's expiry under the exclusive writer lease.
+    let renewJournal;
+    try {
+      if (existsSync(stopPath)) throw Error('preview: stop latched');
+      renewJournal = openPreviewJournal(journalPath, key());
+      const now = Date.now();
+      if (now >= renewJournal.view.expires) throw Error('preview: expired');
+      const bytes = readFileSync(required(options, 'activation-record'), 'utf8');
+      const activation = JSON.parse(bytes);
+      const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+      validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+      if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
+        throw Error('preview: activation differs from journal');
+      renewJournalExpiry(renewJournal, { expires: activation.expiresAt, authority: required(options, 'authority'), at: now,
+        activation: `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}` });
+    } finally { renewJournal?.close(); storage.close(); }
+    return;
+  }
   if (command === 'raise-caps') {
     let capJournal;
     try {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       capJournal = openPreviewJournal(journalPath, key());
-      if (Date.now() >= capJournal.view.genesis.expires) throw Error('preview: expired');
+      if (Date.now() >= capJournal.view.expires) throw Error('preview: expired');
       raiseJournalCaps(capJournal, { maxCalls: number(options['max-calls'] ?? String(capJournal.view.limits.maxCalls), 'max-calls'),
         maxReplies: number(options['max-replies'] ?? String(capJournal.view.limits.maxReplies), 'max-replies'),
         maxTurns: number(options['max-turns'] ?? String(capJournal.view.limits.maxTurns), 'max-turns'),
@@ -495,7 +534,7 @@ async function main() {
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt) => {
       const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
-      const deadline = Math.min(g.expires, deadlineAt ?? Date.now() + 180000);
+      const deadline = Math.min(journal.view.expires, deadlineAt ?? Date.now() + 180000);
       if (deadline - Date.now() <= 100) throw Error('preview: reply check budget exceeded');
       const result = await route.invoke(prepared, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
@@ -508,10 +547,13 @@ async function main() {
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      let decision;
-      try { decision = JSON.parse(result.bytes); } catch { return { state: 'complete', failureClass: 'malformed', usage: result.usage }; }
+      const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
       if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string') return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+        || typeof decision.conclusion.value !== 'string') {
+        recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
+        return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+      }
+      if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
@@ -552,10 +594,18 @@ async function main() {
             context: replyReviewContext(originalPrompt, text, reviewRules), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
-          const parsed = parseReplyReviewVerdict(result.value);
-          if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule)))
+          const extracted = parseModelJson(result.value), parsed = extracted.ok ? extracted.value : null;
+          if (!parsed || !['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
+            || parsed.ruleIds.some(rule => typeof rule !== 'string' || !Object.hasOwn(selectedRules, rule))
+            || new Set(parsed.ruleIds).size !== parsed.ruleIds.length
+            || (parsed.verdict === 'pass' && parsed.ruleIds.length !== 0)
+            || (parsed.verdict === 'violation' && parsed.ruleIds.length === 0)
+            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 160
+            || /[\r\n]/u.test(parsed.reason)) {
+            recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', failureShapeOf(extracted));
             throw Error('preview: review malformed');
-
+          }
+          if (extracted.shape !== 'bare') recordShape(shapesPath, 'reply-review', 'verdict', 'tolerated', extracted.shape);
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             usage: recordedUsage(result.usage) };
@@ -568,13 +618,13 @@ async function main() {
           try { prepared = modelEnvelope({ question, context: state, id }); }
           catch { return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start) }; }
           const result = await invokeSubscription(prepared, id);
-          return interpretSummaryReview(result, Math.round(performance.now() - start));
-
+          return interpretSummaryReview(result, Math.round(performance.now() - start),
+            shape => recordShape(shapesPath, 'summary-review', 'verdict', 'malformed', shape));
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
       send: async ({ text, expectedText, chat, thread }) => {
-        if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;
+        if (workerStop.value || existsSync(stopPath) || Date.now() >= journal.view.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
           body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }) },
           timeoutMs: 30000 }, token());
@@ -591,8 +641,7 @@ async function main() {
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), Date.now(), SUBSCRIPTION_CONVERSATION_FRAMING);
-    if (activation.trial !== g.grant || activation.baseConfigurationDigest !== g.configurationDigest || activation.expiresAt !== g.expires)
-      throw Error('preview: activation differs from journal');
+    if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     if (options['reminder-grant-reference']) {
       if (journal.view.reminderGrant === null) journal.append({ kind: 'reminder-grant',
         reference: options['reminder-grant-reference'], trial: g.grant, surface: 'telegram-private-chat',
@@ -648,9 +697,9 @@ async function main() {
     const waitHeldNotices = async () => {
       let due;
       while ((due = worker.nextHeldNoticeAt()) !== null) {
-        while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, g.expires))
-          await delay(Math.min(1000, due - Date.now(), g.expires - Date.now()));
-        if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= g.expires) break;
+        while (!signalled && !workerStop.value && !existsSync(stopPath) && Date.now() < Math.min(due, journal.view.expires))
+          await delay(Math.min(1000, due - Date.now(), journal.view.expires - Date.now()));
+        if (signalled || workerStop.value || existsSync(stopPath) || Date.now() >= journal.view.expires) break;
         await worker.drain(); summarizeLater();
       }
     };
@@ -673,8 +722,7 @@ async function main() {
       }
       worker.gate(); await worker.drain(); await worker.sendReminders(); summarizeLater(); worker.gate();
       if (await stopAtCap()) break;
-
-      if (existsSync(stopPath) || Date.now() >= g.expires) break;
+      if (existsSync(stopPath) || Date.now() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {
         if (!await stopAtCap()) endReason = 'cap reached';
         break;
@@ -725,7 +773,7 @@ async function main() {
   finally {
     if (launchedAt !== null) {
       const reason = signalName ? `paused by signal ${signalName}` : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched'
-        : journal && Date.now() >= journal.view.genesis.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
+        : journal && Date.now() >= journal.view.expires ? 'trial expired' : endReason ?? 'error (details suppressed)';
       try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: Date.now(), reason }); } catch { /* the next launch reports an unrecorded end */ }
     }
     journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal); }
