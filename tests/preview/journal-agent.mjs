@@ -136,8 +136,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   replyTo: packet.replyTo ?? null,
   ...(packet.period ? { period: packet.period, periodGuide: packet.periodGuide } : {}),
   people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
-
-  dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
+  dated: packet.dated ?? [], datedScope: packet.datedScope ?? null, moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],
   openConflicts: packet.openConflicts ?? [],
@@ -352,7 +351,7 @@ async function main() {
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
 
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
-        time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, wallNow()) })),
+        time: item.time ?? null, repeat: item.repeat ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, wallNow()) })),
       datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,

@@ -1,6 +1,6 @@
 /** Calendar interpretation for the preview's operator-authored dated clauses. */
 export interface DatedItem { source: string; quote: string; when: string; zone: string;
-  day?: string; time?: string; ambiguity?: string }
+  day?: string; time?: string; ambiguity?: string; repeat?: 'weekly' }
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -28,7 +28,7 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
   const date = timed?.[1] ?? expression;
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/u.exec(date);
   const named = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?$/iu.exec(date);
-  const weekday = /^(?:(this|next)\s+)?(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/iu.exec(date);
+  const weekday = /^(?:(this|next|every)\s+)?(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/iu.exec(date);
   if (/\b(?:or|between|through)\b/iu.test(date)) ambiguity = 'multiple possible dates';
   else if (iso) {
     const year = Number(iso[1]), month = Number(iso[2]), date = Number(iso[3]);
@@ -67,12 +67,19 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
     else ambiguity = ambiguity ?? 'AM or PM unspecified';
   }
   return { source, quote, when: phrase, zone, ...(day ? { day } : {}), ...(time ? { time } : {}),
+    ...(weekday?.[1]?.toLowerCase() === 'every' && day ? { repeat: 'weekly' as const } : {}),
     ...(ambiguity ? { ambiguity } : {}) };
 }
 
 export function dueState(item: DatedItem, now: number): 'upcoming' | 'due' | 'overdue' | 'ambiguous' {
   if (!item.day) return 'ambiguous';
   const local = localParts(now, item.zone), today = dayKey(local.year, local.month, local.day);
+  if (item.repeat === 'weekly' && item.day <= today) {
+    const elapsed = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${item.day}T00:00:00Z`)) / 86_400_000);
+    if (elapsed % 7 !== 0) return 'upcoming';
+    if (item.time && !item.ambiguity && item.time < `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`) return 'overdue';
+    return 'due';
+  }
   if (item.day < today) return 'overdue';
   if (item.day > today) return 'upcoming';
   if (item.time && !item.ambiguity && item.time < `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`) return 'overdue';
@@ -107,4 +114,100 @@ export function withinNext48Hours(item: DatedItem, now: number): boolean {
     return at >= now && at <= end && dayKey(parts.year, parts.month, parts.day) === item.day
       && parts.hour === hour && parts.minute === minute;
   });
+}
+
+const addDay = (day: string, days: number) => new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000)
+  .toISOString().slice(0, 10);
+const localDay = (at: number, zone: string) => {
+  const local = localParts(at, zone);
+  return dayKey(local.year, local.month, local.day);
+};
+
+/** Convert an exact source-zone wall time for travel queries; a DST gap stays on its source day. */
+const queryDay = (item: DatedItem, zone: string) => {
+  if (!item.day || !item.time || item.ambiguity || item.zone === zone) return item.day;
+  const target = Date.parse(`${item.day}T${item.time}:00Z`);
+  let instant = target;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const local = localParts(instant, item.zone);
+    const shown = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+    instant += target - shown;
+  }
+  const source = localParts(instant, item.zone);
+  if (dayKey(source.year, source.month, source.day) !== item.day
+    || `${String(source.hour).padStart(2, '0')}:${String(source.minute).padStart(2, '0')}` !== item.time)
+    return item.day;
+  return localDay(instant, zone);
+};
+
+/** This is a packet-selection hint. The model still interprets the question. */
+export function datedQuestionWindow(question: string, now: number, zone: string) {
+  const local = localParts(now, zone), today = dayKey(local.year, local.month, local.day);
+  const starts: string[] = [], ends: string[] = [];
+  if (/\btoday\b/iu.test(question)) { starts.push(today); ends.push(today); }
+  if (/\btomorrow\b/iu.test(question)) { starts.push(addDay(today, 1)); ends.push(addDay(today, 1)); }
+  if (/\bnext week\b/iu.test(question)) {
+    const weekday = new Date(Date.parse(`${today}T00:00:00Z`)).getUTCDay();
+    const monday = addDay(today, 8 - (weekday || 7));
+    starts.push(monday); ends.push(addDay(monday, 6));
+  }
+  if (!starts.length) return undefined;
+  return { start: starts.sort()[0]!, end: ends.sort().at(-1)!, zone };
+}
+
+export function selectDatedItems(items: readonly DatedItem[], question: string, now: number, zone: string, limit = 32) {
+  const window = datedQuestionWindow(question, now, zone);
+  const today = localDay(now, zone);
+  const candidates: Array<DatedItem & { state: ReturnType<typeof dueState>; queryDay?: string }> = [];
+  for (const item of items) {
+    if (!item.day) {
+      candidates.push({ ...item, state: 'ambiguous' });
+      continue;
+    }
+    if (item.repeat === 'weekly') {
+      const first = window ? addDay(window.start, -2) : localDay(now, item.zone);
+      const elapsed = Math.max(0, Math.ceil((Date.parse(`${first}T00:00:00Z`) - Date.parse(`${item.day}T00:00:00Z`)) / (7 * 86_400_000)));
+      const end = window ? addDay(window.end, 2) : item.day > addDay(first, 6) ? item.day : addDay(first, 6);
+      for (let day = addDay(item.day, elapsed * 7); day <= end; day = addDay(day, 7)) {
+        const { repeat: _repeat, ...once } = item;
+        const occurrence = { ...once, day }, shownDay = queryDay(occurrence, zone);
+        if (day >= first)
+          candidates.push({ ...item, day, ...(shownDay && shownDay !== day ? { queryDay: shownDay } : {}),
+            state: dueState(occurrence, now) });
+      }
+    } else {
+      const shownDay = queryDay(item, zone);
+      candidates.push({ ...item, ...(shownDay && shownDay !== item.day ? { queryDay: shownDay } : {}),
+        state: dueState(item, now) });
+    }
+  }
+  candidates.sort((a, b) => {
+    if (window) {
+      const rank = (item: typeof a) => {
+        const day = item.queryDay ?? item.day;
+        if (!day) return [2, Number.MAX_SAFE_INTEGER, 0] as const;
+        if (day >= window.start && day <= window.end) return [0, 0, 0] as const;
+        const after = day > window.end;
+        const edge = after ? window.end : window.start;
+        return [1, Math.abs(Date.parse(`${day}T00:00:00Z`) - Date.parse(`${edge}T00:00:00Z`)), after ? 0 : 1] as const;
+      };
+      const left = rank(a), right = rank(b);
+      return left[0] - right[0] || left[1] - right[1] || left[2] - right[2]
+        || (a.queryDay ?? a.day ?? '').localeCompare(b.queryDay ?? b.day ?? '')
+        || (a.time ?? '').localeCompare(b.time ?? '') || a.source.localeCompare(b.source);
+    }
+    const distance = (item: typeof a) => item.day
+      ? Math.abs(Date.parse(`${item.queryDay ?? item.day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) : Number.MAX_SAFE_INTEGER;
+    return distance(a) - distance(b) || (a.day ?? '').localeCompare(b.day ?? '') || a.source.localeCompare(b.source);
+  });
+  if (!window) return { items: candidates.slice(0, limit), omitted: Math.max(0, candidates.length - limit), window };
+  const inWindow = (item: (typeof candidates)[number]) => {
+    const day = item.queryDay ?? item.day;
+    return day !== undefined && day >= window.start && day <= window.end;
+  };
+  const matched = candidates.filter(inWindow), fallback = candidates.filter(item => !inWindow(item));
+  const shown = matched.slice(0, Math.max(0, limit));
+  const fallbackLimit = Math.min(4, fallback.length, Math.max(0, limit - shown.length));
+  const selected = [...shown, ...fallback.slice(0, fallbackLimit)];
+  return { items: selected, omitted: Math.max(0, candidates.length - selected.length), window };
 }

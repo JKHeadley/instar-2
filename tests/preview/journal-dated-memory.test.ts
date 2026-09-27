@@ -7,7 +7,7 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { HOLDING_REPLY, JEV_MODEL, REPLY_RULES } from './reply-check.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { readFileSync } from 'node:fs';
-import { dueState, parseDatedItem, withinNext48Hours } from './dated-memory.js';
+import { datedQuestionWindow, dueState, parseDatedItem, selectDatedItems, withinNext48Hours } from './dated-memory.js';
 
 const key = new Uint8Array(32).fill(23);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -67,6 +67,31 @@ it('resolves tomorrow and next Friday from the operator civil day across midnigh
   expect(parse('tomorrow', Date.UTC(2026, 2, 8, 10, 30))).toBe('2026-03-09');
   expect(parse('tomorrow', Date.UTC(2026, 10, 1, 8, 30))).toBe('2026-11-02');
   expect(parse('tomorrow', Date.UTC(2026, 10, 1, 9, 30))).toBe('2026-11-02');
+});
+
+it('keeps weekly dates in their source zone and scopes next week by the current travel zone', () => {
+  const monday = parseDatedItem('weekly', 'Planning is every Monday.', 'every Monday',
+    Date.UTC(2026, 8, 27, 18), 'America/Los_Angeles');
+  expect(monday).toMatchObject({ day: '2026-09-28', repeat: 'weekly', zone: 'America/Los_Angeles' });
+  expect(dueState(monday, Date.UTC(2026, 9, 5, 18))).toBe('due');
+  expect(dueState(monday, Date.UTC(2026, 9, 6, 18))).toBe('upcoming');
+  expect(parseDatedItem('monthly', 'Billing is every month.', 'every month', start,
+    'America/Los_Angeles')).toMatchObject({ ambiguity: 'date expression unresolved' });
+  const instant = Date.UTC(2026, 8, 27, 18);
+  expect(datedQuestionWindow('What is next week?', instant, 'America/Los_Angeles'))
+    .toEqual({ start: '2026-09-28', end: '2026-10-04', zone: 'America/Los_Angeles' });
+  expect(datedQuestionWindow('What is next week?', instant, 'Asia/Tokyo'))
+    .toEqual({ start: '2026-10-05', end: '2026-10-11', zone: 'Asia/Tokyo' });
+  const lateLA = parseDatedItem('late', 'Call on 2026-10-05 at 23:30.', '2026-10-05 at 23:30',
+    instant, 'America/Los_Angeles');
+  expect(selectDatedItems([lateLA], 'What is today?', Date.UTC(2026, 9, 4, 18), 'Asia/Tokyo').items)
+    .toMatchObject([{ day: '2026-10-05', queryDay: '2026-10-06', zone: 'America/Los_Angeles' }]);
+  expect(selectDatedItems([lateLA], 'What is tomorrow?', Date.UTC(2026, 9, 4, 18), 'Asia/Tokyo').items)
+    .toMatchObject([{ day: '2026-10-05', queryDay: '2026-10-06', zone: 'America/Los_Angeles' }]);
+  const earlyTokyo = parseDatedItem('early', 'Call on 2026-10-06 at 00:30.', '2026-10-06 at 00:30',
+    instant, 'Asia/Tokyo');
+  expect(selectDatedItems([earlyTokyo], 'What is today?', Date.UTC(2026, 9, 5, 18), 'America/Los_Angeles').items)
+    .toMatchObject([{ day: '2026-10-06', queryDay: '2026-10-05', zone: 'Asia/Tokyo' }]);
 });
 
 it('stores the Telegram turn-time date in the default operator zone and sends its absolute date once', async () => {
