@@ -12,7 +12,7 @@
  * continues and the summary sentences it touches, plus any day it names. */
 import { bm25, terms } from '../../src/recall/lexical.js';
 
-export interface SentinelTurn { readonly text: string; readonly at: number }
+export interface SentinelTurn { readonly text: string; readonly at: number; readonly measurementText?: string }
 export interface SentinelInput {
   readonly message: string;
   /** The accepted turn immediately before the new one (user text and answer). */
@@ -27,6 +27,9 @@ export interface SentinelInput {
 const hour = 3_600_000, day = 24 * hour;
 const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const counts: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 };
+// This is only a ranking signal. The quoted original, not this pattern, is the fact.
+const measuredNumber = /\b\d[\d,]*(?:\.\d+)?\s*[\p{L}µμ°%]{1,20}(?![\p{L}\p{N}])/iu;
+const quantityQuestion = /\b(?:how\s+(?:much|many|far|long|heavy)|amount|dose|dosage|distance|weight|measurement|quantity)\b/iu;
 
 /** A window of send times named by the message. The operator's time zone is not
  * known, so every window is widened by at least half a day either side. */
@@ -70,6 +73,12 @@ export function selectRecall(input: SentinelInput): number[] {
   add(message, 1);
   add(input.previous ? terms(input.previous) : [], 0.5);
   add(bridge(input.summary, new Set(message)), 0.5);
+  // Prefer a relevant original measurement over several topical but numberless
+  // turns. Zero-overlap candidates stay out: a generic quantity question is not
+  // authority to surface an unrelated measurement.
+  if (quantityQuestion.test(input.message)) input.candidates.forEach((turn, index) => {
+    if (score[index]! > 0 && measuredNumber.test(turn.measurementText ?? turn.text)) score[index]! += 3;
+  });
   // A named day counts like one strong matching term, so it ranks alongside content.
   if (window) input.candidates.forEach((turn, index) => {
     if (turn.at >= window.from && turn.at <= window.to) score[index]! += 2;

@@ -471,7 +471,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const previous = journal.view.order.filter(item => item.accepted && item.update < turn.update).at(-1);
     return selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
       ...(previous ? { previous: `${clean(previous.text, true, previous.id)} ${clean(sentText(previous) ?? '', true, previous.id)}` } : {}),
-      candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`, at: sentAt(item) ?? 0 })) })
+      candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`,
+        measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) })
       .map(index => older[index]!);
   };
   /** Imported items use the existing sentinel but never become executable turns. */
@@ -659,6 +660,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const preferences = preferenceState();
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns.'
+        + ' When recalling a measured fact, copy its exact number and unit from an original history, recalled, or channelMemory quote. Do not round, convert, omit, or invent the unit. If only a summary gives an approximate value, say the exact value is unknown.'
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
@@ -1025,6 +1027,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
+      + 'Copy each quantitative fact you retain with its original number and unit exactly; do not round, convert, or drop the unit. '
       + 'Make your answer text one JSON object: {"summary": <the summary>, "memory": [{"mode": "prefer", "source": <memoryRequest.id>, "quote": <exact durable reply preference clause from memoryRequest.message>} or {"mode": "correct" or "forget", '
       + '"source": <id from memoryCandidates>, "quote": <the complete old factual clause, exactly quoted from that source>, '
       + '"replacement": <for correct only, the corrected factual clause exactly quoted from memoryRequest.message>}], '
