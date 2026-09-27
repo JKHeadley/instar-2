@@ -1758,6 +1758,46 @@ The offline crash matrix is `journal-compaction.test.ts`. Justin's supervised
 test on an isolated copy of the actual preview journal is
 [journal-compaction-live-test.md](journal-compaction-live-test.md).
 
+### Journal reopen scaling
+
+`journal-reopen-benchmark.mjs` creates a throwaway encrypted journal with 1,000,
+10,000 or 50,000 accepted turns. Every turn has a call reservation, answer,
+exact send intent and accepted send; every fourth turn has a summary reservation
+and completed summary. It measures one raw replay, compacts through the real
+writer, then measures one snapshot reopen and checks the final cursor, summary
+frontier and send receipt. The synthetic writer does not fsync each fixture
+frame; the measured reader and compactor are the production preview functions.
+No provider, Telegram endpoint, live root or live key is used.
+
+```sh
+node --expose-gc --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-reopen-benchmark.mjs 1000
+node --expose-gc --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-reopen-benchmark.mjs 10000
+node --expose-gc --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-reopen-benchmark.mjs 50000
+npx vitest run tests/preview/journal-reopen-scaling.test.ts --configLoader=runner
+```
+
+The explicit 10k reopen bounds are **under 2,000 ms** for both raw and compacted
+forms and **under 128 MiB additional JS heap** for each. The targeted test
+enforces them. On the shared builder host (2026-09-27), representative results
+were:
+
+| Turns | Raw bytes | Raw replay | Raw heap increase | Compacted bytes | Snapshot reopen | Snapshot heap increase |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | 1.0 MB | 28 ms | 4 MiB | 2.1 MB | 7 ms | 9 MiB |
+| 10,000 | 10.3 MB | 197 ms | 16 MiB | 21.9 MB | 57 ms | 43 MiB |
+| 50,000 | 52.6 MB | 1.7–3.4 s | 96–98 MiB | 112.1 MB | 0.36–0.42 s | 148–167 MiB |
+
+Heap increases are measured around each reopen after forced GC; `peakRssMb`
+is the whole fixture process, including construction and compaction, and reached
+roughly 1.8–2.0 GiB at 50k. It is not an open-only memory reading. CPU profiles
+(`JOURNAL_PROFILE_DIR=/private/tmp/...` with an existing private directory) showed
+the raw replay's inclusive `project` samples fall from 189/424 to 63/280 after
+the summary path iterated only held turns. Compaction's native file writes and
+snapshot verification remain the largest measured costs at 50k. This is a
+machine-local preview with an existing 20-turn live cap; the synthetic sizes
+exercise long-run growth and do not expand that cap. Justin's host procedure is
+[journal-reopen-scaling-live-test.md](journal-reopen-scaling-live-test.md).
+
 ### Reply grounding audit
 
 Each answer-call reservation now includes a bounded index of the exact packet it
