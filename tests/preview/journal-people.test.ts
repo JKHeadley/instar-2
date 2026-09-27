@@ -90,7 +90,7 @@ it('recalls every note about a named person after compaction, keeps the operator
     const packet = JSON.parse(w.asked.get(question)!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
-    expect(packet.people).toEqual([
+    expect(packet.people).toMatchObject([
       { from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
         message: 'My cofounder Sam thinks the launch should slip to November.',
         mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
@@ -123,6 +123,9 @@ it('says who really spoke: a person\'s own authenticated message is theirs, a re
     expect(people.map((note: { from: string; message: string }) => [note.from, note.message])).toEqual([
       ['the operator (verified sender)', 'Sam thinks the budget is fine.'],
       ['Telegram user 555 (authenticated sender, not the operator)', 'Sam here: the budget is too small.']]);
+    expect(people.map((note: { sourceLabel: string }) => note.sourceLabel)).toEqual([
+      'conversation:operator/main chat/2026-09-21T14:14Z/#1',
+      'conversation:other sender/main chat/2026-09-21T14:15Z/#2']);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -169,7 +172,7 @@ it('renders the whole source message, so an excerpt can never drop the context t
     const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
-    expect(packet.people).toEqual([{ from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+    expect(packet.people).toMatchObject([{ from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
       mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
     expect(packet.capability).toContain('Read a quote only within its whole message');
     w.journal.close();

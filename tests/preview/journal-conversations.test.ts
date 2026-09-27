@@ -41,12 +41,12 @@ it('knows in a topic what the operator said in the main chat, labelled with wher
     w.worker.intake([update(2, 'What is my sister called?', 7)]); await w.worker.drain();
     const packet = JSON.parse(w.seen[1]!.context);
     expect(packet.audience).toMatchObject({ surface: 'telegram-private-chat', chat: '7654321', conversation: 'topic 7' });
-    expect(packet.history).toEqual([{ conversation: 'main chat', date: '2026-09-21T14:13Z', user: 'My sister is called Wren.',
+    expect(packet.history).toMatchObject([{ sourceLabel: 'conversation:operator/main chat/2026-09-21T14:13Z/#1', conversation: 'main chat', date: '2026-09-21T14:13Z', user: 'My sister is called Wren.',
       answer: 'noted', outcome: 'Telegram API accepted' }]);
     expect(packet.capability).toContain('another conversation of this private chat');
     expect(w.sent).toEqual([{ chat: '7654321', update: 1 }, { chat: '7654321', thread: 7, update: 2 }]);
     expect(w.journal.view.turns.get('telegram:12345678:update:2')).toMatchObject({ thread: 7, sent: 2 });
-    // A single-conversation packet is unchanged: no labels and no cross-conversation note.
+    // A single-conversation packet needs no extra cross-conversation note.
     const first = JSON.parse(w.seen[0]!.context);
     expect(first.audience.conversation).toBeUndefined();
     expect(first.capability).not.toContain('another conversation');
@@ -137,8 +137,9 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
     const packet = JSON.parse(asked!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.audience.conversation).toBe('main chat');
-    expect(packet.recalled).toContainEqual({ date: '2026-09-21T14:17Z', conversation: 'topic 7', user: fact,
-      answer: 'noted', outcome: 'Telegram API accepted' });
+    expect(packet.recalled).toContainEqual(expect.objectContaining({ sourceLabel: 'conversation:operator/topic 7/2026-09-21T14:17Z/#4',
+      date: '2026-09-21T14:17Z', conversation: 'topic 7', user: fact,
+      answer: 'noted', outcome: 'Telegram API accepted' }));
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
     const first = p95(samples.slice(0, 10)), last = p95(samples.slice(80));

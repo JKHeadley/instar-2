@@ -116,7 +116,7 @@ it('brings open items back after compaction with who said them and when, says it
     const packet = JSON.parse(w.asked.get(question)!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === LOCKER || turn.user === DENTIST)).toBe(false);
-    expect(packet.commitments).toEqual([
+    expect(packet.commitments).toMatchObject([
       { from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 0, quote: LOCKER }] },
       { from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 1, quote: DENTIST }] },
       { from: 'you, in your own earlier reply', date: '2026-09-21T14:15Z', reply: `Noted. ${PROMISE}`, answering: DENTIST,

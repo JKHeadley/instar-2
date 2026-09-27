@@ -1152,9 +1152,10 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     const packet = JSON.parse(asked!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.summary.through).toBeGreaterThan(5);
+    expect(packet.summary.sourceLabel).toMatch(/^summary:all conversations\/.+\/through #\d+$/u);
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('QUASAR'))).toBe(false);
-    expect(packet.recalled).toContainEqual({ date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
-      outcome: 'Telegram API accepted' });
+    expect(packet.recalled).toContainEqual(expect.objectContaining({ date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
+      outcome: 'Telegram API accepted' }));
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a,b) => a-b)[Math.ceil(values.length * .95)-1]!;
     const first = p95(samples.slice(0, 10)), last = p95(samples.slice(190));
@@ -1193,7 +1194,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
       model: async input => { contexts.push(input.context); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(10, 'Which pier does the ferry leave from?')]); await worker.drain();
     const packet = JSON.parse(contexts[0]!);
-    expect(packet.recalled).toEqual([{ date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
+    expect(packet.recalled).toMatchObject([{ date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
     limit = Buffer.byteLength(contexts[0]!) - 1;
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();

@@ -25,6 +25,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
         if (input.id.startsWith('summary:')) {
           const packet = JSON.parse(input.context);
           const source = packet.memoryCandidates.find((item: { message: string }) => item.message.includes('silver crane'));
+          expect(source.sourceLabel).toMatch(/^import:email\/unknown conversation\/.+\/[a-f0-9]{12}$/u);
           return JSON.stringify({ summary: 'The operator asked to forget an imported archive phrase.', people: [],
             memory: [{ mode: 'forget', source: source.id, quote: 'The archive access phrase is silver crane.' }] });
         }
@@ -43,6 +44,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     if ('reason' in next) throw Error(next.reason);
     const packet = JSON.parse(next.context);
     expect(packet.memory).toMatchObject([{ mode: 'forgotten' }]);
+    expect(packet.memory[0].sourceLabel).toMatch(/^correction:operator\/main chat\/.+\/#\d+$/u);
     expect(next.context).not.toContain('silver crane');
     expect(packet.channelMemory?.[0]?.quote).toContain('[withheld: operator correction or forgetting]');
     expect(journal.view.channelItems.size).toBe(1);
@@ -87,6 +89,7 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
     if ('reason' in next) throw Error(next.reason);
     const packet = JSON.parse(next.context);
     expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'the cedar trail starts at West Pier.' }]);
+    expect(packet.memory[0].sourceLabel).toMatch(/^correction:operator\/main chat\/.+\/#\d+$/u);
     expect(next.context).not.toContain('East Pier');
     const lost = packet.history.find((item: { notice?: string }) => item.notice === UNKNOWN_ANSWER_NOTICE);
     expect(lost).toMatchObject({ answer: null, notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
@@ -443,6 +446,8 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
       'verified operator corrected this fact', 'verified operator requested forgetting']);
     expect(JSON.parse(status.stdout).people).toEqual(['Riley']);
     expect(JSON.parse(inspect.stdout).withheld).toHaveLength(2);
+    expect(JSON.parse(inspect.stdout).last.sourceLabels.memory).toEqual([
+      expect.stringMatching(/^correction:operator\//u)]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
