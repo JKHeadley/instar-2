@@ -13,6 +13,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/product
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
+import { exactSummaryFaithfulness, interpretSummaryJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
  * can later raise the finite counters without altering genesis or usage. */
@@ -30,6 +31,7 @@ export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memor
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
+type SummaryFaithfulness = { path: 'exact' | 'jev'; verdict: 'pass' | 'lost' | 'undecided'; score: number | null; usage?: ModelUsage };
 
 /** A person named in an earlier accepted message. The model only selects: the name
  * and quote are exact substrings of the source turn's own text, and who said the
@@ -71,10 +73,12 @@ export type JournalRecord =
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
-  | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
+  | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; reason?: string;
+    evidence?: string; faithfulness?: SummaryFaithfulness; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain'; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[]; memoryFor?: string[]; memory?: MemoryChange[];
+    faithfulness?: SummaryFaithfulness;
     commitments?: CommitmentNote[]; closed?: CommitmentClosure[]; state?: 'complete'; usage?: ModelUsage; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
   | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number };
@@ -90,7 +94,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
-  summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
+  summaryFailures: Map<number, number>; lastSummaryFailure: Extract<JournalRecord, {kind:'summary-failed'}> | null;
+  failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[];
   /** Flagged replies whose correction note no later model call has carried yet. */
@@ -171,6 +176,7 @@ function project(view: JournalView, row: JournalRecord): void {
       trigger.memoryPending = true;
     }
     view.summaryFailures.set(row.through, (view.summaryFailures.get(row.through) ?? 0) + 1);
+    view.lastSummaryFailure = row;
     return;
   }
   if (row.kind === 'summary-uncertain') {
@@ -186,6 +192,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.commitments) view.commitments.push(...row.commitments);
     for (const closure of row.closed ?? []) if (closure.id < view.commitments.length && !view.closed.has(closure.id)) view.closed.set(closure.id, closure);
     for (const turn of view.order) if (turn.held === 'prompt overflow' || turn.held === 'context overflow'
+      || turn.update <= row.through && turn.held?.startsWith('summary faithfulness:')
       || turn.update <= row.through && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) delete turn.held;
     return;
   }
@@ -289,7 +296,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), lastSummaryFailure: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -326,7 +333,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), lastSummaryFailure: null, failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -410,6 +417,8 @@ export interface PreviewPorts {
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'>;
+  /** Uses the same pinned Jev route as reply supervision, only after exact preservation cannot decide. */
+  summaryCheck?(evidence: string): Promise<unknown>;
   boundary?(stage: string): void;
 }
 
@@ -1076,7 +1085,37 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
-      journal.append({kind:'summary',through,text:clean(redact(summaryText).text, true),
+      const candidate = clean(redact(summaryText).text, true);
+      let faithfulness: SummaryFaithfulness = { path: 'exact', verdict: 'pass', score: null };
+      if (exactSummaryFaithfulness(packet, candidate, memory ?? []) === 'undecided') {
+        let verdict: 'pass' | 'lost' | 'undecided' = 'undecided';
+        faithfulness = { path: 'jev', verdict, score: null };
+        const evidence = summaryFaithfulnessEvidence(packet, candidate, memory ?? []);
+        try {
+          gate();
+          if (ports.summaryCheck) {
+            const result = await ports.summaryCheck(evidence);
+            verdict = interpretSummaryJev(result);
+            faithfulness = { path: 'jev', verdict, score: summaryJevScore(result), usage: summaryJevUsage(result) };
+          }
+          gate();
+        } catch {
+          // A stop after Jev answered still refuses the pending summary commit.
+          verdict = 'undecided';
+          faithfulness = { ...faithfulness, path: 'jev', verdict };
+        }
+        if (verdict !== 'pass') {
+          const reason = verdict === 'lost' ? 'summary faithfulness: active memory item lost'
+            : 'summary faithfulness: undecided';
+          journal.append({ kind: 'summary-failed', through, reason, evidence, faithfulness, state: 'complete',
+            ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
+            ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
+          const affected = journal.view.order.find(item => item.update === through);
+          if (affected) journal.append({ kind: 'hold', id: affected.id, reason, at: ports.now() });
+          return;
+        }
+      }
+      journal.append({kind:'summary',through,text:candidate,faithfulness,
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
         ...(memory ? { memory } : {}),
         ...(commitments ? { commitments } : {}), ...(closed?.length ? { closed } : {}),

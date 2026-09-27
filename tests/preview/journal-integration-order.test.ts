@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal.js';
+import { createJournalWorker, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
 // Astra int6 MUST-FIX 1: a pending memory correction held on an EARLIER ordinary turn

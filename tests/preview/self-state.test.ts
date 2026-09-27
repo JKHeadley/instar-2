@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
 import { appendRun, readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(4);

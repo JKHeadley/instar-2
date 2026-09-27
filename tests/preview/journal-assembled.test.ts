@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { createProductionTelegramIO } from '../../scripts/production-boot-io.mjs';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
-import { openPreviewJournal, createJournalWorker } from './journal.js';
+import { openPreviewJournal, createJournalWorker } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { offlineProfile, OFFLINE_STORAGE_KEY, successiveWorld } from './successive-fixture.js';

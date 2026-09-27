@@ -845,6 +845,22 @@ for the next reply. The journal and stop latch are deliberately machine-local.
 The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
 
+Before replacing a rolling summary, the runner checks that the candidate keeps
+the still-active facts in the prior summary and newly covered turns, including
+open commitments and correction or forgetting decisions. Verbatim coverage
+passes deterministically. A paraphrase or missing decision is undecided by that
+exact check, so the runner asks the existing pinned Jev route with the prior
+summary, covered turns, recorded decisions and candidate. Only a confident Jev
+pass commits it. A lost or undecidable item records the candidate and evidence
+in the encrypted journal, keeps the prior summary, and leaves a visible
+`summary faithfulness: active memory item lost` or `summary faithfulness:
+undecided` hold. The existing two-attempt summary bound and shared subscription
+call cap remain. `status.lastSummaryCheck` shows the path, verdict and score
+without showing memory text. This adds a Jev request only when exact preservation
+cannot decide; its 2-second timeout uses the existing TypeSafe host binding.
+Justin's supervised procedure is in
+[summary-faithfulness-live-test.md](summary-faithfulness-live-test.md).
+
 ### One memory across conversations
 
 The runner serves every conversation in the operator's own private chat: the main
