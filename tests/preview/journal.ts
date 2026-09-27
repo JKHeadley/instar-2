@@ -50,6 +50,7 @@ export const SUMMARY_MAX_TURNS = 4;
 export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
 /** Most journal-derived inventory entries offered with an operator memory question. */
 export const PREVIEW_INVENTORY_LIMIT = 20;
+export const PREVIEW_MEMORY_BUDGET_BYTES = 8192;
 
 /** A small, deterministic overview beside the ordinary cross-conversation history. */
 export const PREVIEW_DIGEST_LIMIT = 8;
@@ -122,7 +123,7 @@ export type JournalRecord =
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
-  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; peopleUsed?: number[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; maxInputTokens?: number; maxOutputTokens?: number; at: number }
 
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     memory?: MemoryChange[]; personMerges?: PersonMerge[]; memoryPending?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; undo?: UndoTarget; unlabeledRecall?: boolean; usage?: ModelUsage; latencyMs?: number; at: number }
@@ -209,7 +210,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
     | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number } | null;
 
   sourceStop: string | null; imported: boolean;
-  operatorEvents: { at: number; update: number; detail: string }[]; people: PersonNote[]; personMerges: PersonMerge[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[]; mentionedDates: Set<string>;
+  operatorEvents: { at: number; update: number; detail: string }[]; people: PersonNote[]; peopleUse: Map<number, number>; personMerges: PersonMerge[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[]; mentionedDates: Set<string>;
   reminders: Map<string, { items: ReminderRef[]; text: string; day: string; at: number; sent?: number; sentAt?: number }>;
   reminderGrant: string | null; questions: OpenQuestion[]; questionsReviewed: Set<string>;
   changeHistory: RecordedChange[]; undos: { change: number; trigger: string; at: number }[];
@@ -405,6 +406,43 @@ const reminderBatchKey = (day: string, thread?: number) => JSON.stringify([day, 
 export const activeDated = (view: JournalView) => view.dated.filter(item => !view.memory.some(change =>
   change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
   && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
+/** Active inferred notes fit a replay-stable budget; all originals stay in the journal. */
+export function projectMemoryBudget(view: JournalView) {
+  const preferences = new Map<string, string>();
+  const preferenceLineage = new Set<string>();
+  for (const change of view.memory) {
+    const key = JSON.stringify([change.source, change.quote]);
+    if (change.mode === 'prefer') { preferences.set(key, change.quote); preferenceLineage.add(key); }
+    else if (preferences.delete(key) && change.mode === 'correct') {
+      const next = JSON.stringify([change.trigger, change.replacement]);
+      preferences.set(next, change.replacement!); preferenceLineage.add(next);
+    }
+  }
+  const affected = (note: { source: string; quote: string; in?: 'message' | 'reply'; sources?: { source: string; quote: string }[] }) =>
+    [note, ...note.sources ?? []].some(item => view.memory.some(change => change.mode !== 'prefer'
+      && (note.in === 'reply' && (item.source === change.source || change.replies?.includes(item.source))
+        || change.in !== 'reply' && item.source === change.source
+          && (change.quote.includes(item.quote) || item.quote.includes(change.quote))
+        || change.mode === 'correct' && item.source === change.trigger
+          && (change.replacement!.includes(item.quote) || item.quote.includes(change.replacement!)))));
+  const pinned = [...preferences.values(), ...activeDated(view).map(item => item.quote),
+    ...view.commitments.flatMap((note, index) => view.closed.has(index) || affected(note) ? [] : [note.quote]),
+    ...view.memory.flatMap((change, index) => change.mode === 'correct'
+      && !preferenceLineage.has(JSON.stringify([change.source, change.quote]))
+      && !view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!))
+      ? [change.replacement!] : [])];
+  const pinnedBytes = pinned.reduce((total, value) => total + Buffer.byteLength(value), 0);
+  let remaining = Math.max(0, PREVIEW_MEMORY_BUDGET_BYTES - pinnedBytes);
+  const ranked = view.people.flatMap((note, index) => affected(note) ? []
+    : [{ index, bytes: Buffer.byteLength(JSON.stringify(note)), used: view.peopleUse.get(index) ?? -1 }])
+    .sort((a, b) => b.used - a.used || b.index - a.index);
+  const active = new Set<number>();
+  for (const note of ranked) if (note.bytes <= remaining) { active.add(note.index); remaining -= note.bytes; }
+  return { budgetBytes: PREVIEW_MEMORY_BUDGET_BYTES, pinnedBytes,
+    active: [...active].sort((a, b) => a - b),
+    archived: ranked.map(item => item.index).filter(index => !active.has(index)).sort((a, b) => a - b),
+    activeBytes: Math.max(PREVIEW_MEMORY_BUDGET_BYTES, pinnedBytes) - remaining };
+}
 const reminderText = (item: DatedItem) => `PREVIEW reminder: ${item.quote} today at ${item.time ?? 'time unspecified'}`;
 const reminderBody = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const reminderMorning = (item: DatedItem, now: number) => {
@@ -836,6 +874,11 @@ function project(view: JournalView, row: JournalRecord): void {
 
 
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
+    if (row.peopleUsed) for (const index of row.peopleUsed) {
+      if (!Number.isSafeInteger(index) || index < 0 || index >= view.people.length)
+        throw Error('preview journal: invalid person use');
+      view.peopleUse.set(index, view.calls); // Journal call order, immune to a backward wall clock.
+    }
     if (row.corrections === undefined) view.corrections = [];
     else {
       if (row.corrections.some(id => !view.corrections.includes(id))) throw Error('preview journal: uncarried correction');
@@ -979,7 +1022,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1051,7 +1094,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], peopleUse: new Map(), personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
 
 
 
@@ -1326,18 +1369,34 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * and what an imported item means; name matching only chooses bounded evidence. */
   const peopleFor = (question: string, through: number) => {
     const asked = new Set(terms(question));
-    const notes = journal.view.people.filter(note => {
+    const budget = projectMemoryBudget(journal.view);
+    const searchArchive = /^\s*(?:search|find|look up)\s+(?:my\s+)?(?:archived\s+)?memor(?:y|ies)\b/iu.test(question);
+    const allowed = new Set(budget.active);
+    if (searchArchive) {
+      const archived = budget.archived.filter(index => {
+        const note = journal.view.people[index]!;
+        const turn = journal.view.turns.get(note.source);
+        return turn !== undefined && turn.update <= through && !affectedNote(note);
+      });
+      const matches = selectRecall({ message: question, now: ports.now(), limit: PREVIEW_PEOPLE_LIMIT,
+        candidates: archived.map(index => { const note = journal.view.people[index]!;
+          return { text: `${note.name} ${clean(note.quote, true, note.source)}`,
+            at: sentAt(journal.view.turns.get(note.source)!) ?? 0 }; }) });
+      for (const index of matches) allowed.add(archived[index]!);
+    }
+    const notes = journal.view.people.filter((note, index) => {
       const turn = journal.view.turns.get(note.source);
-      return turn !== undefined && turn.update <= through
+      return allowed.has(index) && turn !== undefined && turn.update <= through
         && !affectedNote(note)
-        && terms(note.name).some(term => asked.has(term));
+        && (terms(note.name).some(term => asked.has(term)) || searchArchive && budget.archived.includes(index));
     });
     for (const link of activePersonMerges(journal.view)) {
       const left = journal.view.people[link.left], right = journal.view.people[link.right];
       if (!left || !right || !notes.includes(left) && !notes.includes(right)) continue;
       for (const note of [left, right]) {
         const source = journal.view.turns.get(note.source);
-        if (source && source.update <= through && !affectedNote(note) && !notes.includes(note)) notes.push(note);
+        if (source && source.update <= through && allowed.has(journal.view.people.indexOf(note))
+          && !affectedNote(note) && !notes.includes(note)) notes.push(note);
       }
     }
     const known = new Set(notes.map(note => note.name));
@@ -1920,6 +1979,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const digest = labelAll ? undefined : crossTopicDigest(through);
     const packet = JSON.stringify({ now: ports.now(), memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. Memory is this trial's journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
+        + (journal.view.people.length ? ' Inferred person notes use an active memory budget. Search memory NAME reads archived notes. A missing match does not prove absence.' : '')
         + (ports.sources === undefined ? '' : ' For questions about your work or status, use the operator-digest source when present; distinguish desk-reported work from your own journal and run log, and never infer a deploy from a launch.')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
         + (due.length ? ' dated holds upcoming, due, overdue and unresolved operator dates, not scheduled reminders. Resolve relative dates in the operator zone; next Friday means the Friday of the following calendar week. State absolute YYYY-MM-DD dates and ask about unresolved dates.' : '')
@@ -2056,7 +2116,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     let promptFit = false;
     let measuredPromptOverflow = false;
     let preparationUnavailable = false;
-    for (const compact of [false, true]) {
+    const memoryBudgetFirst = journal.view.people.length > 0 && summaryFor(turn.update - 1) !== undefined;
+    for (const compact of memoryBudgetFirst ? [true, false] : [false, true]) {
       if (!compact && /\b(?:promise|promised|commitment|commitments|anything open|what(?:'s| is) open)\b/iu.test(turn.text)
         && summaryFor(turn.update - 1)) continue;
       if (!compact && completeTooLarge) continue;
@@ -2178,7 +2239,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               || (packet.people?.length ?? 0) !== grounding.people.length || (packet.commitments?.reduce((n, item) => n + item.items.length, 0) ?? 0) !== grounding.commitments.length
               || (packet.channelMemory?.length ?? 0) !== grounding.channelItems.length || (packet.memory?.length ?? 0) !== grounding.memoryChanges.length)
               throw Error('preview journal: grounding differs from packet');
-            return { question, context, prepared, carried: flagged.map(item => item.id), dropped, grounding };
+            return { question, context, prepared, carried: flagged.map(item => item.id), dropped, grounding,
+              peopleUsed: shownPeople.map(note => journal.view.people.indexOf(note)).filter(index => index >= 0) };
           } catch (error) {
             if (error instanceof Error && error.message === 'preview: complete prompt overflow')
               measuredPromptOverflow = true;
@@ -2265,9 +2327,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
-          const { question, context, prepared, carried, dropped, grounding } = selected;
+          const { question, context, prepared, carried, dropped, grounding, peopleUsed } = selected;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
-            corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
+            corrections: carried, peopleUsed, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
 
           let answer: Awaited<ReturnType<PreviewPorts['model']>>;

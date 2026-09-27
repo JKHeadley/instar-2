@@ -11,7 +11,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -144,6 +144,9 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
       : packet[part] ? [packet[part]] : []).map(item => item.sourceLabel ?? null)])),
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
+const budgetView = view => { const budget = projectMemoryBudget(view); return {
+  budgetBytes: budget.budgetBytes, pinnedBytes: budget.pinnedBytes, activeBytes: budget.activeBytes,
+  activeInferred: budget.active.length, archivedInferred: budget.archived.length }; };
 const withheldView = view => {
   const preferenceKeys = new Set();
   for (const change of view.memory) {
@@ -294,6 +297,7 @@ async function main() {
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
+      memoryBudget: budgetView(view.view),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       mentionedDates: view.view.mentionedDates.size,
       reminders: { intents: view.view.reminders.size,
@@ -365,7 +369,7 @@ async function main() {
         ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
           outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
-        ...(next ? { next } : {}), withheld: withheldView(view.view),
+        ...(next ? { next } : {}), withheld: withheldView(view.view), memoryBudget: budgetView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,

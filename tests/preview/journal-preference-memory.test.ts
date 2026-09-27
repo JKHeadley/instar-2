@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { projectMemoryBudget } from './journal.js';
 
 const key = new Uint8Array(32).fill(29);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -39,18 +40,21 @@ it('keeps a direct reply preference in every later packet, then supersedes and f
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Shorter please.')]); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote: 'Shorter please.' }]);
+    expect(projectMemoryBudget(journal.view).pinnedBytes).toBe(Buffer.byteLength('Shorter please.'));
     const first = JSON.parse(seen.at(-1)!);
     expect(first.preferences).toEqual([{ text: 'Shorter please.', source: journal.view.order[0]!.id }]);
     journal.close();
     journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     worker.intake([update(2, 'Use detailed answers instead of shorter replies.')]); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct']);
+    expect(projectMemoryBudget(journal.view).pinnedBytes).toBe(Buffer.byteLength('Use detailed answers instead of shorter replies.'));
     const second = JSON.parse(seen.at(-1)!);
     expect(second.preferences).toEqual([{ text: 'Use detailed answers instead of shorter replies.', source: journal.view.order[1]!.id }]);
     journal.close();
     journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     worker.intake([update(3, 'Forget my answer style preference.')]); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct', 'forget']);
+    expect(projectMemoryBudget(journal.view).pinnedBytes).toBe(0);
     worker.intake([update(4, 'How was your day?')]); await worker.drain();
     expect(JSON.parse(seen.at(-1)!).preferences).toBeUndefined();
     expect(journal.view.order).toHaveLength(4);

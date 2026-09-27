@@ -785,6 +785,21 @@ A plain-text summary keeps no notes; `status` lists each summary's note count
 (`null` = none recorded), `summaryPending` (unresolved reservations, including UNKNOWN) and the
 known names.
 
+### Bounded active memory
+
+The encrypted journal retains every original and extracted note. The active
+inferred-person projection has an 8,192-byte budget. Verified operator reply
+preferences, dates, open commitments and current corrections are pinned; status
+reports an overage if they alone exceed the budget. Inferred person notes use
+the remaining bytes, ordered by durable model-call use and then recency. A use
+is recorded only when a note fits in a reserved packet, so replay is stable
+even if the host clock changes. Ordinary name matching uses active notes.
+`Search memory NAME` also searches archived notes with bounded recall and
+preserves each original source, sender and date. A miss does not prove absence.
+Status and inspect expose `memoryBudget` counts and bytes. Archiving never
+deletes encrypted evidence or advances intake. See the
+[supervised memory-budget script](memory-budget-live-test.md).
+
 When the operator asks about a known person, `people` is also the short dated
 timeline for that person. Each entry carries its journal `sourceId`, whole source
 message, date, actual sender and the matched mention. Entries are ordered by source
