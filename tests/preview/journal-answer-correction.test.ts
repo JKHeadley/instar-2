@@ -59,6 +59,49 @@ it('learns a corrected answer from the actual sent reply while preserving the qu
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
+it.each(['Monday.', 'Wednesday.'])('learns the complete short answer %s and drains the next turn', async answer => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-short-answer-correction-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const sends: string[] = [];
+    const ports = { now: () => 1790000000000, stopped: () => false,
+      model: async (input: { id: string; question: string; context: string }) => {
+        const packet = JSON.parse(input.context);
+        if (input.id.startsWith('summary:')) {
+          const source = packet.memoryCandidates.find((item: { reply: string }) => item.reply === answer);
+          expect(source).toBeDefined();
+          return JSON.stringify({ summary: 'The review was Tuesday.', people: [], memory: [{
+            mode: 'correct', in: 'reply', source: source.id, quote: answer, replacement: 'it was Tuesday.' }] });
+        }
+        if (input.question === 'When was the review?') return answer;
+        if (input.question.startsWith('No,')) return JSON.stringify({ reply: 'Thanks, I will use Tuesday.', memory: [] });
+        return packet.memory?.some((item: { replacement?: string }) => item.replacement === 'it was Tuesday.')
+          ? 'Tuesday.' : answer;
+      }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'When was the review?')]); await worker.drain();
+    worker.intake([update(2, 'No, that’s wrong, it was Tuesday.')]); await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'correct', in: 'reply', quote: answer,
+      replacement: 'it was Tuesday.' }]);
+    expect(sends).toHaveLength(2);
+    journal.close();
+
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    const next = worker.probe('When was the review again?');
+    expect('reason' in next).toBe(false);
+    if ('reason' in next) throw Error(next.reason);
+    expect(next.context).not.toContain(answer);
+    expect(JSON.parse(next.context).history[0]).toMatchObject({
+      user: 'When was the review?', answer: '[withheld: operator correction or forgetting]' });
+    worker.intake([update(3, 'When was the review again?')]); await worker.drain();
+    expect(journal.view.order[2]?.held).toBeUndefined();
+    expect(sends).toEqual([`PREVIEW — ${answer}`, 'PREVIEW — Thanks, I will use Tuesday.', 'PREVIEW — Tuesday.']);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
 it('rejects a purported reply correction when the quoted clause was only in the operator question', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-answer-wrong-side-')));
   const path = join(root, 'journal.encrypted');

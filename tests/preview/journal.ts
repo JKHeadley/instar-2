@@ -997,8 +997,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || mode !== 'prefer' && !offered.has(source as string)
         || original !== undefined && original.update >= trigger.update && mode !== 'prefer'
         || channel !== undefined && (channelMemoryId(channel) !== source || channel.at >= trigger.at)
-        || typeof quote !== 'string' || quote.length < 8
-        || Buffer.byteLength(quote) > 1000 || terms(quote).length < 2
+        || typeof quote !== 'string' || !quote.trim() || Buffer.byteLength(quote) > 1000
+        || (quote.length < 8 || terms(quote).length < 2)
+          && !(side === 'reply' && original && quote === redact(sentText(original) ?? '').text)
         || !(original && (side === 'reply'
           ? original.intent !== undefined && original.noticeClass === undefined
             && redact(sentText(original) ?? '').text.includes(quote)

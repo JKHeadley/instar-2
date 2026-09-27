@@ -690,7 +690,8 @@ it('uses a current summary when the full packet fits but the complete prompt doe
     worker.intake([update(3,'what was first?')]); await worker.drain();
     expect(full).toBeGreaterThan(32000);
     expect(full).toBeLessThanOrEqual(32768);
-    expect(compact).toBeLessThan(8000);
+    expect(compact).toBeLessThan(full);
+    expect(compact + 2870).toBeLessThanOrEqual(32768);
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);
     journal.append({kind:'hold',id:'telegram:12345678:update:2',reason:'review needed',at:1000});
@@ -1219,11 +1220,14 @@ it('recalls imported old-root turns with their original Telegram dates and drops
     const packet = JSON.parse(contexts[0]!);
     expect(packet.recalled).toEqual([{ date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
-    limit = Buffer.byteLength(contexts[0]!) - 1;
+    // A narrower provider envelope still fits recall, after optional candidates yield.
+    limit = 2300;
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();
     expect(journal.view.order.at(-1)?.sent).toBe(1);
     // The optional memory-decision candidates now yield before useful recalled history.
     expect(JSON.parse(contexts[1]!).recalled).toEqual(packet.recalled);
+    expect(packet.memoryCandidates?.length).toBeGreaterThan(0);
+    expect(Buffer.byteLength(contexts[1]!)).toBeLessThanOrEqual(limit);
     expect(JSON.parse(contexts[1]!).memoryCandidates).toBeUndefined();
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
