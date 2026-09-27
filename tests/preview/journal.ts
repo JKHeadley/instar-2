@@ -110,11 +110,43 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
-/** Keep historical conflicts in the journal, but never reuse a source clause the operator retired. */
+const withheld = '[withheld: operator correction or forgetting]';
+const readPreferenceState = (view: JournalView) => {
+  const active = new Map<string, { source: string; quote: string }>();
+  const lineage = new Set<string>();
+  for (const change of view.memory) {
+    const key = JSON.stringify([change.source, change.quote]);
+    if (change.mode === 'prefer') { active.set(key, { source: change.source, quote: change.quote }); lineage.add(key); }
+    else if (active.delete(key) && change.mode === 'correct') {
+      const replacementKey = JSON.stringify([change.trigger, change.replacement]);
+      active.set(replacementKey, { source: change.trigger, quote: change.replacement! });
+      lineage.add(replacementKey);
+    }
+  }
+  return { active, lineage };
+};
+// Ordinary facts project across occurrences; retired preferences belong only to their source.
+const projectMemoryText = (view: JournalView, value: string, source?: string | number) => {
+  const lineage = readPreferenceState(view).lineage;
+  return view.memory.filter(change => {
+    if (change.mode === 'prefer') return false;
+    if (!lineage.has(JSON.stringify([change.source, change.quote]))) return true;
+    if (typeof source === 'string') return source === change.source;
+    if (typeof source === 'number') {
+      const original = view.turns.get(change.source), trigger = view.turns.get(change.trigger);
+      return original !== undefined && trigger !== undefined && original.update <= source && source < trigger.update;
+    }
+    return false;
+  }).reduce((text, change) => {
+    let projected = text.replaceAll(change.quote, withheld);
+    for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, withheld);
+    return projected;
+  }, value);
+};
+
+/** Keep historical conflicts in the journal, but expose only clauses present in the memory projection. */
 export const activeMemoryConflicts = (view: JournalView) => view.conflicts.filter(item =>
-  [item.first, item.second].every(part => !view.memory.some(change => change.mode !== 'prefer'
-    && change.source === part.source && (part.quote.includes(change.quote)
-      || change.summaryPassages?.some(passage => part.quote.includes(passage))))));
+  [item.first, item.second].every(part => projectMemoryText(view, part.quote, part.source) === part.quote));
 
 const frameLimit = 2 * 1024 * 1024;
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
@@ -569,36 +601,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return items;
   };
-  const withheld = '[withheld: operator correction or forgetting]';
-  // Preference retirement belongs to its source clause, not identical words in a later turn.
-  const clean = (value: string, _derived = false, source?: string | number) => journal.view.memory.filter(change => {
-    if (change.mode === 'prefer') return false;
-    if (!preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))) return true;
-    if (typeof source === 'string') return source === change.source;
-    if (typeof source === 'number') {
-      const original = journal.view.turns.get(change.source), trigger = journal.view.turns.get(change.trigger);
-      return original !== undefined && trigger !== undefined && original.update <= source && source < trigger.update;
-    }
-    return false;
-  }).reduce((text, change) => {
-    let projected = text.replaceAll(change.quote, withheld);
-    for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, withheld);
-    return projected;
-  }, value);
-  const preferenceState = () => {
-    const active = new Map<string, { source: string; quote: string }>();
-    const lineage = new Set<string>();
-    for (const change of journal.view.memory) {
-      const key = JSON.stringify([change.source, change.quote]);
-      if (change.mode === 'prefer') { active.set(key, { source: change.source, quote: change.quote }); lineage.add(key); }
-      else if (active.delete(key) && change.mode === 'correct') {
-        const replacementKey = JSON.stringify([change.trigger, change.replacement]);
-        active.set(replacementKey, { source: change.trigger, quote: change.replacement! });
-        lineage.add(replacementKey);
-      }
-    }
-    return { active, lineage };
-  };
+  const clean = (value: string, _derived = false, source?: string | number) => projectMemoryText(journal.view, value, source);
+  const preferenceState = () => readPreferenceState(journal.view);
   const activePreferences = () => [...preferenceState().active.values()];
   const activeConflicts = () => activeMemoryConflicts(journal.view);
   const conflictFrom = (proposed: unknown, trigger: Turn, offered: ReadonlySet<string>) => {

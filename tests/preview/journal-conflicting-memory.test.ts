@@ -130,6 +130,55 @@ it('forgets one conflict without exposing it after replay and retains an unrelat
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it.each(['asked', 'held'] as const)('forgets a repeated fact before a %s conflict can resurface', async state => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-conflict-repeated-')));
+  const path = join(root, 'journal.encrypted');
+  const march = 'My birthday is March 2.', april = 'My birthday is April 4.';
+  const sends: string[] = [], contexts: string[] = [];
+  let journal = openPreviewJournal(path, key, genesis);
+  const ports = { now: () => 1790000000000, stopped: () => false,
+    model: async (input: { id: string; question: string; context: string }) => {
+      contexts.push(input.context);
+      if (input.question === april) return JSON.stringify({ reply: 'I should check.', memory: [], dated: [], conflict: {
+        first: { source: journal.view.order[1]!.id, quote: march }, second: { source: input.id, quote: april } } });
+      if (input.question === 'Erase my March birthday from memory.') return JSON.stringify({ reply: 'Removed.', dated: [],
+        memory: [{ mode: 'forget', source: journal.view.order[0]!.id, quote: march }] });
+      return JSON.stringify({ reply: 'Okay.', memory: [], dated: [] });
+    }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
+  try {
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, march), update(2, march)]); await worker.drain();
+    worker.intake([update(3, april)]);
+    if (state === 'held') {
+      const turn = journal.view.order[2]!;
+      journal.append({ kind: 'reserve', id: turn.id, at: 1790000000000 });
+      journal.append({ kind: 'answer', id: turn.id, text: 'question candidate', state: 'complete', at: 1790000000000,
+        conflict: { first: { source: journal.view.order[1]!.id, quote: march },
+          second: { source: turn.id, quote: april } } });
+      journal.append({ kind: 'intent', id: turn.id, text: 'PREVIEW — holding reply', chat: genesis.chat,
+        update: turn.update, grant: genesis.grant, at: 1790000000000 });
+      journal.append({ kind: 'sent', id: turn.id, message: 3, at: 1790000000000 });
+    } else await worker.drain();
+    expect(activeMemoryConflicts(journal.view)).toHaveLength(1);
+    worker.intake([update(4, 'Erase my March birthday from memory.')]); await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'forget', source: journal.view.order[0]!.id }]);
+    expect(journal.view.conflicts).toHaveLength(1); // Audit history remains encrypted and intact.
+    expect(activeMemoryConflicts(journal.view)).toEqual([]);
+    journal.close();
+
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    expect(activeMemoryConflicts(journal.view)).toEqual([]);
+    const before = sends.length;
+    worker.intake([update(5, 'What is my birthday?')]); await worker.drain();
+    const packet = JSON.parse(contexts.at(-1)!);
+    expect(packet.openConflicts).toBeUndefined();
+    expect(contexts.at(-1)).not.toContain(march);
+    expect(sends.slice(before).join(' ')).not.toContain(march);
+    expect(sends.slice(before).join(' ')).not.toContain('Which is right?');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 it('does not create a conflict from unrelated facts or unverified source IDs', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-no-conflict-')));
   try {
