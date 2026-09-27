@@ -71,9 +71,9 @@ function summarize(context: string): string {
 }
 
 export interface RecallCaseResult { id: string; kind: string; packetBytes: number; containsWanted: boolean | null;
-  excludesAbsent: boolean | null; answer: string; historyMode: string; packetMs: number }
+  excludesAbsent: boolean | null; answer: string; historyMode: string; probePreparationMs: number }
 export interface RecallSetResult { turns: number; recall: number; precision: number; packetBytesMean: number;
-  packetBytesMax: number; nonModelMs: number; cases: RecallCaseResult[]; summaries: number; journalBytes: number }
+  packetBytesMax: number; historyBuildNonModelMs: number; cases: RecallCaseResult[]; summaries: number; journalBytes: number }
 
 export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetResult> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), `preview-recall-${turns}-`)));
@@ -83,7 +83,7 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
     maxCalls: turns * 3, maxReplies: turns + cases.length + 4, maxTurns: turns + cases.length + 4,
     maxBytes: 12000, cursor: 0 };
   let journal = openPreviewJournal(path, key, genesis);
-  let nonModelMs = 0;
+  let historyBuildNonModelMs = 0;
   let stubModelMs = 0;
   const packets = new Map<string, string>();
   const ports = { now: () => now, stopped: () => false,
@@ -128,7 +128,7 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
       }
       if (id % 32 === 0 || text.startsWith('Actually,') || text.startsWith('Forget '))
         await worker.summarizeIfNeeded(true);
-      nonModelMs += performance.now() - started - (stubModelMs - modelBefore);
+      historyBuildNonModelMs += performance.now() - started - (stubModelMs - modelBefore);
     }
     await worker.summarizeIfNeeded(true);
     // Reopen the real journal: questions must use replayed state, not a live fixture cache.
@@ -139,7 +139,7 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
       const started = performance.now();
       const probe = worker.probe(item.question);
       if ('reason' in probe) throw Error(`packet ${item.id}: ${probe.reason}`);
-      const packetMs = performance.now() - started;
+      const probePreparationMs = performance.now() - started;
       // The scored packet is the one actually handed to the stub model.
       worker.intake([update(turns + index + 1, item.question)]);
       await worker.drain();
@@ -149,14 +149,15 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
       results.push({ id: item.id, kind: item.kind, packetBytes: Buffer.byteLength(context),
         containsWanted: item.wanted === undefined ? null : context.includes(item.wanted),
         excludesAbsent: item.absent === undefined ? null : !context.includes(item.absent),
-        answer, historyMode: (JSON.parse(context) as { historyMode: string }).historyMode, packetMs });
+        answer, historyMode: (JSON.parse(context) as { historyMode: string }).historyMode, probePreparationMs });
     }
     const wanted = results.filter(item => item.containsWanted !== null);
     const absent = results.filter(item => item.excludesAbsent !== null);
     const output = { turns, recall: wanted.filter(item => item.containsWanted).length / wanted.length,
       precision: absent.filter(item => item.excludesAbsent).length / absent.length,
       packetBytesMean: Math.round(results.reduce((sum, item) => sum + item.packetBytes, 0) / results.length),
-      packetBytesMax: Math.max(...results.map(item => item.packetBytes)), nonModelMs: Math.round(nonModelMs),
+      packetBytesMax: Math.max(...results.map(item => item.packetBytes)),
+      historyBuildNonModelMs: Math.round(historyBuildNonModelMs),
       cases: results, summaries: journal.view.summaries.length, journalBytes: statSync(path).size };
     journal.close(); return output;
   } finally { try { journal.close(); } catch { /* already closed */ } rmSync(root, { recursive: true, force: true }); }
