@@ -670,7 +670,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
       { ...genesis(), maxBytes: 32768 });
-    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(25800),
+    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(25500),
       raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
     journal.append({kind:'reserve',id:'telegram:12345678:update:1',at:1000});
     journal.append({kind:'answer',id:'telegram:12345678:update:1',text:'old answer',at:1000});
@@ -736,7 +736,8 @@ it('uses rolling summaries only after replies, shares the attempt cap, and retai
     const initial = { ...genesis(), maxBytes: 1100 };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-      model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.' : 'ok',
+      model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
+        : JSON.stringify({ reply: 'ok', memory: [], dated: [] }),
       send: async () => 1, checkOutbound: () => {} });
     for (let i = 0; i < 12; i++) {
       worker.intake([update(i + 1, i === 0 ? 'ORCHID is the first unique memory.' : `turn ${i} ${'a'.repeat(45)}`)]);
