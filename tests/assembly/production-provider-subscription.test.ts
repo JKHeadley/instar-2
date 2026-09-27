@@ -207,6 +207,23 @@ it('refuses a changed auth account, parent-environment injection, or insufficien
   } finally { if (previous === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = previous; }
 });
 
+it('spends preflight time inside the reply-review deadline and dispatches only with time left', async () => {
+  for (const preflightMs of [101, 1000, 29950]) {
+    const f = fixture({ conversation: true });
+    let clock = 1000;
+    const input = { ...f.input, now: () => clock, io: { ...f.input.io,
+      execute: async (command: any) => {
+        const result = await f.input.io.execute(command);
+        if (command.args[0] === 'auth') clock += preflightMs;
+        return result;
+      } } };
+    const route = value(createClaudeCodeSubscriptionRoute(input));
+    const result = await route.invoke('request', { ...f.bounds, deadline: 31000, timeout: 29900 });
+    expect(result.state).toBe(preflightMs < 29950 ? 'complete' : 'uncertain');
+    expect(f.commands()).toHaveLength(preflightMs < 29950 ? 3 : 2);
+  }
+});
+
 it('refuses cached remote/server policy and orphan signature files before any child', async () => {
   for (const name of ['remote-settings.json', 'remote-settings.json.signature.json', 'policy-limits.json.signature-iat.json']) {
     const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));

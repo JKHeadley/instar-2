@@ -331,7 +331,11 @@ export function createClaudeCodeSubscriptionRoute(input:
           && status.projectsDirectory === `${profile.configDirectory}/projects`
           && (status.forcedLoginMethod === undefined || status.forcedLoginMethod === 'claudeai'),
         'subscription authentication status refused');
-        const returned = await command(policy.args, bytes, bounds.timeout, policy.maxRawTerminalBytes, true);
+        // Preflight consumes the same absolute deadline. Give the model only the time
+        // still available after version and auth, retaining a small dispatch margin.
+        const modelTimeout = Math.min(bounds.timeout, bounds.deadline - config.now() - 100);
+        ensure(modelTimeout > 0, 'subscription owner deadline exhausted before model command');
+        const returned = await command(policy.args, bytes, modelTimeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
         ensure(frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'

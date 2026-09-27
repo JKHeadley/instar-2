@@ -177,6 +177,19 @@ it('computes nearest-rank p50/p95 from measured stages only', () => {
   expect(replyTimings(view).send).toEqual({ count: 3, p50Ms: 20, p95Ms: 30 });
 });
 
+it('excludes legacy recovery zeros but retains measured zero durations', () => {
+  const check = (verdict: 'unavailable' | 'pass', durationMeasured?: true) => ({
+    path: 'jev' as const, verdict, ruleIds: [], confidence: null, latencyMs: 0,
+    ...(durationMeasured ? { durationMeasured } : {}) });
+  const view = { order: [
+    { accepted: true, update: 1, replyChecks: [check('unavailable')] },
+    { accepted: true, update: 2, replyChecks: [check('unavailable', true)] },
+    { accepted: true, update: 3, replyChecks: [check('pass')] },
+  ] } as unknown as JournalView;
+  expect(replyTimings(view).perReply.map(reply => reply.jevMs)).toEqual([null, 0, 0]);
+  expect(replyTimings(view).jev).toEqual({ count: 2, p50Ms: 0, p95Ms: 0 });
+});
+
 it('retains send time for UNKNOWN without making the send repeatable', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-unknown-send-time-')));
   const path = join(root, 'journal.encrypted');
@@ -340,6 +353,8 @@ it('escalates an interrupted Jev check without repeating Jev after restart', asy
     expect(second.view.jevChecks).toBe(1);
     expect(second.view.calls).toBe(2);
     expect(second.view.order[0]?.sent).toBe(7);
+    expect(replyTimings(second.view).perReply[0]?.jevMs).toBeNull();
+    expect(replyTimings(second.view).jev).toEqual({ count: 0, p50Ms: null, p95Ms: null });
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -377,6 +392,8 @@ it('does not repeat an interrupted paid review and holds the candidate instead o
     expect(second.view.order[0]?.intent).toBeUndefined();
     expect(second.view.order[0]?.answer).toBe('candidate');
     expect(second.view.order[0]?.held).toBe('reply check unavailable');
+    expect(replyTimings(second.view).perReply[0]?.fallbackMs).toBeNull();
+    expect(replyTimings(second.view).fallback).toEqual({ count: 0, p50Ms: null, p95Ms: null });
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

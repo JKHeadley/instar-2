@@ -105,10 +105,18 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
 /** Read-only timing projection from the same durable frames as the reply state. */
 export function replyTimings(view: JournalView) {
+  const duration = (check: ReplyCheckResult | undefined): number | null => {
+    if (check?.latencyMs === undefined) return null;
+    // Older crash-recovery frames used zero for an unknown duration. A new
+    // measured zero carries an explicit marker when its shape is ambiguous.
+    if (check.latencyMs === 0 && check.verdict === 'unavailable' && !check.durationMeasured
+      && check.reason === undefined && check.usage === undefined && check.scores === undefined) return null;
+    return check.latencyMs;
+  };
   const perReply = view.order.filter(turn => turn.accepted).map(turn => ({ update: turn.update,
     answerMs: turn.answerMs ?? null,
-    jevMs: turn.replyChecks?.find(check => check.path === 'jev')?.latencyMs ?? null,
-    fallbackMs: turn.replyChecks?.find(check => check.path === 'subscription')?.latencyMs ?? null,
+    jevMs: duration(turn.replyChecks?.find(check => check.path === 'jev')),
+    fallbackMs: duration(turn.replyChecks?.find(check => check.path === 'subscription')),
     sendMs: turn.sendMs ?? null }));
   const distribution = (field: 'answerMs' | 'jevMs' | 'fallbackMs' | 'sendMs') => {
     const values = perReply.map(reply => reply[field]).filter((value): value is number => value !== null)
@@ -895,7 +903,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           else if (turn.reviewReserved) {
             // A failed or interrupted paid review is UNKNOWN: never repeat it, never send unchecked.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
-              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0 }, at: ports.now() });
+              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription' }, at: ports.now() });
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
@@ -905,13 +913,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
                   ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
-              record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
+              record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
+                result: result.latencyMs === 0 && result.verdict === 'unavailable'
+                  ? { ...result, durationMeasured: true } : result, at: ports.now() }) };
             let checked: ReplyDecision;
             if (turn.jevReserved) {
-              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
+              if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: {
+                verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev' }, at: ports.now() });
               checked = await reviewReply(reply, turn.id, checkPorts, previous?.ruleIds ?? [], turn.prompt);
             } else if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
-              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
+              if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: {
+                verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding' }, at: ports.now() });
               checked = await reviewReply(reply, turn.id, checkPorts, [], turn.prompt);
             } else {
               journal.append({ kind: 'reply-jev-reserve', id: turn.id, at: ports.now() });
