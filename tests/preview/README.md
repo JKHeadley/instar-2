@@ -300,6 +300,13 @@ protection for a mismatched switch. The prior build also refuses an uncompacted 
 the original genesis expiry — accepted compatibility residue: a full rollback of code and record can
 read a compacted journal but cannot run past the original expiry.
 
+`journal-renewal-continuity.test.ts` checks a fact recorded before renewal against one and two
+monotonic expiry frames, then replays, compacts twice and reopens the encrypted journal. It compares
+the recall selection and answer, memory, self-state, full read-only `status` and effective expiry;
+stale or earlier frames are refused both on append and replay. The two-frame fixture represents an
+earlier reviewed build: this build still admits only its pinned expiry for a new renewal. Justin's
+supervised live check is [renewal-continuity-live-test.md](renewal-continuity-live-test.md).
+
 ## Unanswered turns and host recovery
 
 Stage 2 persists a closed provider failure class and, for usage limits, a spend-only
