@@ -1543,6 +1543,14 @@ control. Changing the CLI effort arguments would need a new activation.
 Desk live check for this compact path: [reviewer-compact-call-live-test.md](reviewer-compact-call-live-test.md).
 
 
+`status` and `inspect` also expose `lastReplyReview`: its result state and
+`diagnostics.outputTokens` from the subscription CLI's reported usage. The
+pinned JSON-result invocation does not expose thinking blocks, so
+`diagnostics.thinkingPresent` is `unobservable`, never a guessed yes or no.
+The output-token cap remains 2048. See
+[reviewer-thinking-bound-live-test.md](reviewer-thinking-bound-live-test.md)
+for Justin's bounded live check of the next review hold.
+
 Desk one-call connectivity check, after setting the host binding from the vault:
 
 ```sh

@@ -14,12 +14,13 @@ import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding }
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
 import { parseDatedItem, dueState, type DatedItem } from './dated-memory.js';
 import { messageTime, zoneFormatter } from './self-state.js';
-import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
+import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, type StepCheckResult } from './step-check.js';
+
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
  * can later raise the finite counters without altering genesis or usage. */
@@ -107,8 +108,9 @@ export type JournalRecord =
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
-  | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
+  | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
+
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
@@ -145,7 +147,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics }
+
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent';
@@ -629,7 +632,9 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'reply-review-state') {
     if (!turn.reviewReserved || turn.reviewState !== undefined || turn.intent !== undefined)
       throw Error('preview journal: review state order');
-    turn.reviewState = row.state; return;
+    turn.reviewState = row.state;
+    if (row.diagnostics) turn.reviewDiagnostics = row.diagnostics;
+    return;
   }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');

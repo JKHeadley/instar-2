@@ -14,9 +14,10 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
+
 
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
@@ -154,6 +155,10 @@ const withheldView = view => {
 };
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
+const lastReplyReview = view => {
+  const turn = view.order.filter(item => item.reviewState !== undefined).at(-1);
+  return turn ? { update: turn.update, state: turn.reviewState, diagnostics: turn.reviewDiagnostics ?? null } : null;
+};
 const packetStatus = view => {
   const last = view.order.filter(turn => turn.reserved).at(-1);
   if (!last) return null;
@@ -166,6 +171,7 @@ const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
     reserved: item.reserved === true, result: item.result ?? null })) });
+
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
@@ -286,6 +292,7 @@ async function main() {
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
       lastReplyCheck: view.view.lastReplyCheck,
+      lastReplyReview: lastReplyReview(view.view),
       lastReplyTiming: lastSent ? { update: lastSent.update,
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
@@ -296,6 +303,7 @@ async function main() {
       personMerges: activePersonMerges(view.view).map(link => ({ left: view.view.people[link.left]?.name,
         leftSource: view.view.people[link.left]?.source, right: view.view.people[link.right]?.name,
         rightSource: view.view.people[link.right]?.source, triggerUpdate: view.view.turns.get(link.trigger)?.update })),
+
       launches: readRuns(runsPath).launches.slice(-3),
       digest: operatorDigest(view.view, log, desk).text,
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`);
@@ -325,8 +333,9 @@ async function main() {
           outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
         ...(next ? { next } : {}), withheld: withheldView(view.view),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-        lastReplyCheck: view.view.lastReplyCheck,
+        lastReplyCheck: view.view.lastReplyCheck, lastReplyReview: lastReplyReview(view.view),
         ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);
+
     } finally { view.close(); }
     return;
   }
@@ -435,7 +444,8 @@ async function main() {
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
-      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: Date.now() });
+      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
+        diagnostics: replyReviewDiagnostics(result.usage), at: Date.now() });
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');

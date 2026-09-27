@@ -288,8 +288,9 @@ export function createClaudeCodeSubscriptionRoute(input:
       maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
     const route = take(createProviderSubscriptionCustodian({ ...config, submit: async (_profile, bytes, bounds) => {
       let lastFailure = classifyProviderFailure({ code: null, limited: false, stdout: '', now: config.now() });
+      let reportedUsage: ProviderObservation['usage'] | null = null;
       const uncertain = (): ProviderObservation => ({ state: 'uncertain', bytes: null, providerOperation: null, failure: lastFailure,
-        usage: { inputTokens: null, outputTokens: null, charge: null,
+        usage: reportedUsage ?? { inputTokens: null, outputTokens: null, charge: null,
           source: 'Subscription preview: charge and quiescence unknown; no retry or fallback' }, retryBlocked: false });
       try {
         ensure(bounds.automaticRetries === 0 && bounds.maxCharge === 0 && bounds.timeout > 0 && bounds.timeout <= policy.timeout
@@ -335,22 +336,26 @@ export function createClaudeCodeSubscriptionRoute(input:
         const returned = await command(policy.args, bytes, bounds.timeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+        if (frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
+          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens))
+          reportedUsage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens,
+            charge: null,
+            source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
         ensure(frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
           && typeof frame.subtype === 'string' && frame.subtype.length > 0
           && typeof frame.session_id === 'string'
           && frame.session_id.length > 0 && frame.session_id.length <= 256
-          && typeof frame.is_error === 'boolean'
-          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens), 'subscription result refused');
-        const usage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens, charge: null,
-          source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
-        // A validated result frame proves the CLI ended. Reject an unusable
-        // terminal answer without exposing it or treating it as an unknown call.
-        if (returned.code !== 0 || frame.subtype !== 'success' || frame.is_error
-          || frame.structured_output !== undefined || typeof frame.result !== 'string'
-          || frame.usage.output_tokens > policy.maxTokens
-          || Buffer.byteLength(frame.result) > policy.maxOutputBytes)
-          return { state: 'rejected', bytes: null, providerOperation: frame.session_id,
-            failure: lastFailure, usage, retryBlocked: false };
+          && reportedUsage !== null
+          && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
+        const usage = reportedUsage;
+        if (frame.is_error === true) return lastFailure.failureClass === 'limit' || lastFailure.failureClass === 'policy'
+          ? uncertain() : { state: 'rejected', bytes: null, providerOperation: frame.session_id, usage, retryBlocked: false };
+        if (typeof frame.result === 'string' && Buffer.byteLength(frame.result) > policy.maxOutputBytes)
+          return { state: 'rejected', bytes: null, providerOperation: frame.session_id, usage, retryBlocked: false };
+        ensure(returned.code === 0 && frame.subtype === 'success' && frame.is_error === false
+          && frame.structured_output === undefined && typeof frame.result === 'string'
+          && Buffer.byteLength(frame.result) <= policy.maxOutputBytes, 'subscription result refused');
+
         const draft: ProviderResponseEvidenceDraft = { eligibility: 'admitted', contract,
           basis: { sourceEvidence: approved.sourceEvidence, terminalEvidence: approved.terminalEvidence,
             terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] },

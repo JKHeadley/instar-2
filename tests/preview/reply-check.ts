@@ -17,6 +17,13 @@ export const JEV_MODEL = 'jev-1.13.0';
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
   path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }
+/** The pinned JSON-result route reports total output usage, but no thinking blocks. */
+export interface ReplyReviewDiagnostics { outputTokens: number | null; thinkingPresent: 'unobservable' }
+export function replyReviewDiagnostics(usage: { outputTokens: number | null } | undefined): ReplyReviewDiagnostics {
+  const count = usage?.outputTokens;
+  return { outputTokens: typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null,
+    thinkingPresent: 'unobservable' };
+}
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
 const rules = Object.keys(REPLY_RULES) as ReplyRule[];
 const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0.85,
