@@ -20,12 +20,17 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     let journal = openPreviewJournal(path, key, genesis);
     const account = 'agent@example.test';
     importChannelFixture(journal, [{ source: 'email', account, id: 'archive-1', from: 'operator@example.test',
-      at: 1789999000000, subject: 'Archive access', text: 'The archive access phrase is silver crane.' }], account, 1790000000000);
+      at: 1789999000000, subject: 'Archive access', conversation: 'The archive access phrase is silver crane.',
+      text: 'The archive access phrase is silver crane.' },
+    { source: 'email', account, id: 'archive-2', from: 'operator@example.test',
+      at: 1789999000000, subject: 'Archive access', conversation: 'Other archive',
+      text: 'The archive access phrase for the other account is cedar brook.' }], account, 1790000000000);
     const ports = { now: () => 1790000000000, stopped: () => false,
       model: async (input: { id: string; question: string; context: string }) => {
         if (input.id.startsWith('summary:')) {
           const packet = JSON.parse(input.context);
           const source = packet.memoryCandidates.find((item: { message: string }) => item.message.includes('silver crane'));
+          expect(source.sourceLabel).toMatch(/^import:email\/The archive access phrase is silver cra.+\/[a-f0-9]{12}$/u);
           return JSON.stringify({ summary: 'The operator asked to forget an imported archive phrase.', people: [],
             memory: [{ mode: 'forget', source: source.id, quote: 'The archive access phrase is silver crane.' }] });
         }
@@ -35,7 +40,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     worker.intake([update(1, 'Actually, forget this fact: The archive access phrase is silver crane.')]);
     await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: 'The archive access phrase is silver crane.' }]);
-    expect(journal.view.channelItems.size).toBe(1);
+    expect(journal.view.channelItems.size).toBe(2);
     journal.close();
     journal = openPreviewJournal(path, key);
     worker = createJournalWorker(journal, ports);
@@ -48,7 +53,11 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
       at: 1790000000000, reserved: false }, packet).findings).toEqual([]);
     expect(next.context).not.toContain('silver crane');
     expect(packet.channelMemory?.[0]?.quote).toContain('[withheld: operator correction or forgetting]');
-    expect(journal.view.channelItems.size).toBe(1);
+    expect(packet.channelMemory?.[0]?.sourceLabel).toMatch(/^import:email\/\[withheld: operator correction or forget\/.+\/[a-f0-9]{12}$/u);
+    expect(packet.channelMemory?.[1]).toMatchObject({ conversation: 'Other archive',
+      quote: 'The archive access phrase for the other account is cedar brook.' });
+    expect(packet.channelMemory?.[1]?.sourceLabel).toMatch(/^import:email\/Other archive\/.+\/[a-f0-9]{12}$/u);
+    expect(journal.view.channelItems.size).toBe(2);
     journal.close();
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
@@ -166,6 +175,7 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
     if ('reason' in next) throw Error(next.reason);
     const packet = JSON.parse(next.context);
     expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'the cedar trail starts at West Pier.' }]);
+    expect(packet.memory[0].sourceLabel).toMatch(/^correction:operator\/main chat\/.+\/#\d+$/u);
     expect(next.context).not.toContain('East Pier');
     const lost = packet.history.find((item: { notice?: string }) => item.notice === UNKNOWN_ANSWER_NOTICE);
     expect(lost).toMatchObject({ answer: null, notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });

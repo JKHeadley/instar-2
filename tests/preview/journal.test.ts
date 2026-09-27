@@ -1387,6 +1387,7 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     const packet = JSON.parse(asked!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.summary.through).toBeGreaterThan(5);
+    expect(packet.summary.sourceLabel).toMatch(/^summary:all conversations\/.+\/through #\d+$/u);
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('QUASAR'))).toBe(false);
     expect(packet.recalled).toContainEqual({ id: 'telegram:12345678:update:5', date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
       outcome: 'Telegram API accepted' });

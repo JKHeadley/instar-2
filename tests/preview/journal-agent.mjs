@@ -107,7 +107,7 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
-/** Only the recall-relevant parts of a packet, never sources or history text. */
+/** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
@@ -117,6 +117,9 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
 
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
+  sourceLabels: Object.fromEntries(['summary', 'memorySummary', 'history', 'recalled', 'people', 'commitments',
+    'channelMemory', 'memory', 'memoryCandidates'].map(part => [part, (Array.isArray(packet[part]) ? packet[part]
+      : packet[part] ? [packet[part]] : []).map(item => item.sourceLabel ?? null)])),
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
 const withheldView = view => {
@@ -225,6 +228,8 @@ async function main() {
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
+      answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
+        && t.answer !== undefined && t.intent === `PREVIEW — ${t.answer}`).length },
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),

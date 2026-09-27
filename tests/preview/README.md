@@ -1483,3 +1483,29 @@ omitted counts. Originals remain in the encrypted journal. The command does not
 make a new root or advance any cursor. Follow
 [memory-export-live-test.md](memory-export-live-test.md) for Justin's supervised
 private-chat check.
+
+### Answer provenance in the journal runner
+
+Every remembered packet entry has a `sourceLabel`: conversation turns, recalled
+turns, person and commitment notes, channel imports, corrections, and summaries.
+The label gives its origin, conversation, date, and stable update number or
+import-ID digest. The capability line asks the model to cite `sourceLabel` when
+it recalls a fact. A channel label describes an export fixture, not independently
+verified mail provenance; a summary label dates the summary record, not each
+fact it compresses. Labels are data and confer no authority.
+
+`status.answerProvenance.unlabeledRecallReplies` counts exact sent or
+delivery-UNKNOWN reply intents whose model answer reused four adjacent words
+from remembered material that lacked a `sourceLabel` in its packet. The signal
+is journaled with the answer and reconstructed after restart. It never holds a
+reply. It is deliberately conservative: paraphrases and short facts can escape
+the check, and an exact phrase can be coincidental. The check reports missing
+packet provenance, not whether the model actually cited a label in its prose.
+Replies recorded before this change are not retroactively scored.
+No new store, model call, or notification is involved. This preview's journal
+and counter are deliberately machine-local under its existing exclusive writer.
+`inspect` exposes the labels of the last and proposed packet under `sourceLabels`
+without exposing full history text.
+
+For the supervised operator procedure, see
+[answer-provenance-live-test.md](answer-provenance-live-test.md).

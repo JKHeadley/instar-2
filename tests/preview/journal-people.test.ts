@@ -125,6 +125,9 @@ it('says who really spoke: a person\'s own authenticated message is theirs, a re
     expect(people.map((note: { from: string; message: string }) => [note.from, note.message])).toEqual([
       ['the operator (verified sender)', 'Sam thinks the budget is fine.'],
       ['Telegram user 555 (authenticated sender, not the operator)', 'Sam here: the budget is too small.']]);
+    expect(people.map((note: { sourceLabel: string }) => note.sourceLabel)).toEqual([
+      'conversation:operator/main chat/2026-09-21T14:14Z/#1',
+      'conversation:other sender/main chat/2026-09-21T14:15Z/#2']);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -46,7 +46,7 @@ it('knows in a topic what the operator said in the main chat, labelled with wher
     expect(packet.capability).toContain('another conversation of this private chat');
     expect(w.sent).toEqual([{ chat: '7654321', update: 1 }, { chat: '7654321', thread: 7, update: 2 }]);
     expect(w.journal.view.turns.get('telegram:12345678:update:2')).toMatchObject({ thread: 7, sent: 2 });
-    // A single-conversation packet is unchanged: no labels and no cross-conversation note.
+    // A single-conversation packet needs no extra cross-conversation note.
     const first = JSON.parse(w.seen[0]!.context);
     expect(first.audience.conversation).toBeUndefined();
     expect(first.capability).not.toContain('another conversation');

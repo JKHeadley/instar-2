@@ -17,6 +17,7 @@ import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-c
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
+import { unlabeledRecall } from './answer-provenance.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
  * can later raise the finite counters without altering genesis or usage. */
@@ -78,7 +79,7 @@ export type JournalRecord =
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; packetDropped?: PacketDrop[]; packetLimit?: number; at: number }
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
-    memory?: MemoryChange[]; memoryPending?: true; dated?: DatedItem[]; datedPending?: true; usage?: ModelUsage; at: number }
+    memory?: MemoryChange[]; memoryPending?: true; dated?: DatedItem[]; datedPending?: true; unlabeledRecall?: boolean; usage?: ModelUsage; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer'; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
@@ -116,7 +117,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
 
 
-  checked?: CoherenceFinding[]; checkFailed?: true;
+  checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
@@ -401,6 +402,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
     turn.answer = row.text;
+    if (row.unlabeledRecall) turn.unlabeledRecall = true;
     if (row.state) turn.modelState = row.state;
     if (row.memoryPending) turn.memoryPending = true;
     if (row.datedPending) turn.datedPending = true;
@@ -629,6 +631,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * holding reply), without the surface marker; never an unsent candidate. */
   const sentText = (turn: Turn) => turn.intent?.replace(/^PREVIEW — /u, '');
   const dated = (turn: Turn) => { const at = sentAt(turn); return at === null ? 'date unknown' : isoMinute(at); };
+  const turnLabel = (turn: Turn) =>
+    `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${conversationName(turn.thread)}/${dated(turn)}/#${turn.update}`;
+  const channelLabel = (item: ChannelItem) =>
+    `import:${item.source}/${clean(redact(item.conversation ?? 'unknown conversation').text, true).replace(/\s+/gu, ' ').slice(0, 40)}/${isoMinute(item.at)}/${createHash('sha256').update(channelKey(item)).digest('hex').slice(0, 12)}`;
+  const summaryLabel = (summary: Extract<JournalRecord, {kind:'summary'}>) =>
+    `summary:all conversations/${isoMinute(summary.at)}/through #${summary.through}`;
+  const memoryLabel = (change: MemoryChange) => {
+    const trigger = journal.view.turns.get(change.trigger)!;
+    return `correction:operator/${conversationName(trigger.thread)}/${dated(trigger)}/#${trigger.update}`;
+  };
   /** Original turns the summary already covers, chosen by the memory sentinel
    * for the new message: its words, the turn it continues, the summary
    * sentences it touches and any day it names. Best first; empty when nothing relates. */
@@ -904,7 +916,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
-    const history = earlier.map(item => ({ id: item.id, ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
+    const history = earlier.map(item => ({ id: item.id, sourceLabel: turnLabel(item), ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true, item.id),
 
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
@@ -916,7 +928,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       entry.mentions.push({ person: note.name, quote: note.quote }); sources.set(note.source, entry);
     }
     const people = [...sources.values()].sort((a, b) => a.turn.update - b.turn.update).map(({ turn, mentions }) =>
-      ({ source: turn.id, from: speakerOf(turn), date: dated(turn),
+      ({ source: turn.id, sourceLabel: turnLabel(turn), from: speakerOf(turn), date: dated(turn),
       ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
       message: clean(redact(turn.text).text, true, turn.id), mentions: mentions.map(mention => ({ ...mention, quote: clean(mention.quote, true, turn.id) })) }));
     // Each commitment renders the whole message or reply it was quoted from, and who said it.
@@ -926,7 +938,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       entry.items.push({ id, quote: note.quote }); promised.set(slot, entry);
     }
     const commitments = [...promised.values()].sort((a, b) => a.turn.update - b.turn.update || (a.side === 'message' ? -1 : 1))
-      .map(({ turn, side, items }) => ({ source: turn.id, from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn),
+      .map(({ turn, side, items }) => ({ source: turn.id, sourceLabel: turnLabel(turn), from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn),
         ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
         ...(side === 'message' ? { message: clean(redact(turn.text).text, true, turn.id) }
           : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true, turn.id), delivery: outcome(turn) }),
@@ -934,7 +946,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const note = journal.view.commitments[item.id]!;
           return { ...item, quote: clean(item.quote, true, turn.id), ...(note.sources?.length ? { sources: note.sources.map(source => {
             const original = journal.view.turns.get(source.source)!;
-            return { from: note.in === 'message' ? speakerOf(original) : 'you, in your own earlier reply',
+            return { sourceLabel: turnLabel(original), from: note.in === 'message' ? speakerOf(original) : 'you, in your own earlier reply',
               date: dated(original), ...(original.thread === current ? {} : { conversation: conversationName(original.thread) }),
               ...(note.in === 'message' ? { message: clean(redact(original.text).text, true, original.id) }
                 : { reply: replyFor(original), delivery: outcome(original) }), quote: clean(source.quote, true, original.id) };
@@ -942,7 +954,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }) }));
     const cited = new Set([...sources.keys(), ...[...promised.values()].flatMap(entry =>
       [entry.turn.id, ...entry.items.flatMap(item => journal.view.commitments[item.id]?.sources?.map(source => source.source) ?? [])])]);
-    const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ id: item.id, date: dated(item),
+    const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ id: item.id, sourceLabel: turnLabel(item), date: dated(item),
 
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
@@ -950,12 +962,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' &&
-      (change.source === item.id || change.replies?.includes(item.id)))).map(item => ({ source: item.id, update: item.update, date: dated(item),
+      (change.source === item.id || change.replies?.includes(item.id)))).map(item => ({ source: item.id, sourceLabel: turnLabel(item), update: item.update, date: dated(item),
 
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
       findings: correctionNote(item.checked ?? []).map(finding => ({ ...finding,
         possibleProblem: clean(finding.possibleProblem, true, item.id), inYourReply: clean(finding.inYourReply, true, item.id) })) }));
-    const channelMemory = channels.map(item => ({ source: item.source, account: clean(redact(item.account).text, true),
+    const channelMemory = channels.map(item => ({ sourceLabel: channelLabel(item), source: item.source, account: clean(redact(item.account).text, true),
       sourceId: clean(redact(item.id).text, true), from: clean(redact(item.from).text, true), date: isoMinute(item.at),
       origin: item.origin ?? 'fixture',
 
@@ -975,7 +987,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true).slice(0, 500) }));
     const preferences = preferenceState();
     const packet = JSON.stringify({ now: ports.now(), purpose: 'Make coherence something an AI cannot lose.',
-      capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns.'
+      capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns. Cite sourceLabel for remembered facts; say when the source is unknown.'
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
@@ -993,16 +1005,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
         operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current) }) },
       ...(ports.sources === undefined ? {} : { sources: typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources }),
-      ...(summary ? { historyMode: 'summary-plus-recent', summary: { through: summary.through, text: clean(redact(summary.text).text, true, summary.through) } }
+      ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through) } }
         : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
-        Array<{ mode: string; source: string; trigger: string; reason?: string; replacement?: string }> => {
+        Array<{ mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
         if (change.mode === 'prefer' || preferences.lineage.has(JSON.stringify([change.source, change.quote]))) return [];
-        if (change.mode === 'forget') return [{ mode: 'forgotten', source: publicMemoryId(change.source), trigger: change.trigger,
+        if (change.mode === 'forget') return [{ mode: 'forgotten', source: publicMemoryId(change.source), sourceLabel: memoryLabel(change), trigger: change.trigger,
           reason: 'verified operator requested forgetting' }];
 
         const later = journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!));
-        return later ? [] : [{ mode: 'corrected', source: publicMemoryId(change.source), trigger: change.trigger,
+        return later ? [] : [{ mode: 'corrected', source: publicMemoryId(change.source), sourceLabel: memoryLabel(change), trigger: change.trigger,
           replacement: clean(redact(change.replacement!).text) }];
       }) } : {}),
       ...(dateQuestion ? { datedDecision: 'dated:[] if none; else [{quote:exact event clause,when:exact date phrase}]. Leave uncertainty unresolved.' } : {}),
@@ -1023,7 +1035,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: 5,
       summary: summaryFor(turn.update - 1)?.text ?? '',
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) });
-    const candidates = ranked.map(index => ({ id: older[index]!.id,
+    const candidates = ranked.map(index => ({ id: older[index]!.id, sourceLabel: turnLabel(older[index]!),
       message: clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
     const preferenceCandidates = activePreferences().map(item => ({ id: item.source,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
@@ -1207,6 +1219,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(memory === undefined ? {} : { memory }), ...(dated === undefined ? {} : { dated }),
               ...(fromOperator(turn) && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
+              ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
               ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: ports.now() });
             if (invalidMemory && !turn.memoryUndecided) {
               journal.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: ports.now() });
@@ -1482,7 +1495,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // including when prompt overflow sends selection to a smaller prefix.
         if ([...unknown.keys()].some(frontier => through <= frontier)) continue;
         if ((journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
-        const closable = openFor(through, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
+        const closable = openFor(through, 50).map(({ id, note, turn: source }) => ({ id, sourceLabel: turnLabel(source!), in: note.in, quote: note.quote }));
         const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item) && !item.memoryUndecided
           && (memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
           && item.update > previous && item.update <= through);
