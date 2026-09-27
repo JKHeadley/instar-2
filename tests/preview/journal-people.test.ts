@@ -164,6 +164,40 @@ it('keeps same-name people apart for the model and gives an unknown person nothi
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('recalls an older cofounder by role or nickname without letting newer neighbours crowd out that Sam', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { names: ['Sam'], bad: false, maxBytes: 16000 });
+    await w.say(1, 'My cofounder Sam goes by Sammy and chose the October launch.');
+    for (let id = 2; id <= 14; id++) await w.say(id, `My neighbour Sam lent me garden tool ${id}.`);
+    let next = 15;
+    for (; next < 80; next++) {
+      const probe = w.worker.probe('What did my cofounder choose?');
+      if (!('reason' in probe) && JSON.parse(probe.context).historyMode === 'summary-plus-recent') break;
+      await w.say(next, filler(next));
+    }
+    expect(next).toBeLessThan(80);
+    const sources = (question: string) => {
+      const probe = w.worker.probe(question);
+      if ('reason' in probe) throw Error(probe.reason);
+      return (JSON.parse(probe.context).people ?? []) as { source: string; message: string }[];
+    };
+    expect(sources('What did my cofounder choose?').map(item => item.source))
+      .toContain('telegram:12345678:update:1');
+    expect(sources('What did Sammy choose?').map(item => item.source))
+      .toContain('telegram:12345678:update:1');
+    expect(sources('What did cofounder Sam choose?').map(item => item.source))
+      .toContain('telegram:12345678:update:1');
+    const unnamed = sources('What did Sam do?');
+    expect(unnamed.map(item => item.source)).toContain('telegram:12345678:update:1');
+    expect(unnamed.some(item => item.message.includes('neighbour Sam'))).toBe(true);
+    expect(sources('What did neighbour Sam lend?').some(item => item.message.includes('neighbour Sam'))).toBe(true);
+    expect(sources('What did Oliver choose?')).toEqual([]);
+    expect(w.journal.view.personMerges).toEqual([]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 30000);
+
 it.each(['forget', 'correct'] as const)('links only the confirmed pair across replay, then withdraws it on %s', async mode => {
   const root = origin();
   const summarize = (context: string) => {
