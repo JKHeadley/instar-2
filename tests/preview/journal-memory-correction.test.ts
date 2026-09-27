@@ -12,7 +12,7 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: from }, text, date: 1790000000 + id * 60 } });
 
-function world(root: string, malformedMemory = false) {
+function world(root: string, malformedMemory: false | 'missing' | 'invalid' | 'unresolved' | 'normal-summary' = false) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
   const prompts = new Map<string, string>();
   const summaryPrompts: string[] = [];
@@ -23,7 +23,16 @@ function world(root: string, malformedMemory = false) {
       if (input.id.startsWith('summary:')) {
         summaryPrompts.push(input.context);
         const request = packet.memoryRequest?.message as string | undefined;
-        if (request && malformedMemory) return JSON.stringify({ summary: 'No decision recorded.', people: [] });
+        if (request && malformedMemory === 'missing') return JSON.stringify({ summary: 'No decision recorded.', people: [] });
+        if (request && malformedMemory === 'invalid') return JSON.stringify({ summary: 'No decision recorded.', people: [],
+          memory: [{ mode: 'forget', source: 'not-offered', quote: 'My gym locker code is 3310' }] });
+        if (request && malformedMemory === 'unresolved') return JSON.stringify({ summary: 'No decision recorded.', people: [],
+          memory: [], memoryDisposition: 'unresolved' });
+        if (request === 'Please stop remembering my gym locker code.' && malformedMemory === 'normal-summary') {
+          const old = (packet.memoryCandidates ?? []).find((item: { message: string }) => item.message.includes('My gym locker code is 3310'));
+          return JSON.stringify({ summary: 'The operator asked to withhold a locker code.', people: [],
+            memory: old ? [{ mode: 'forget', source: old.id, quote: 'My gym locker code is 3310' }] : [] });
+        }
         if (request?.includes('Sam is my cousin')) {
           const old = (packet.memoryCandidates ?? []).find((item: { message: string }) => item.message.includes('Sam is my cofounder'));
           return JSON.stringify({ summary: 'Sam is the operator\'s cousin.', people: [], commitments: [], closed: [],
@@ -31,11 +40,12 @@ function world(root: string, malformedMemory = false) {
         }
         const candidate = (packet.memoryCandidates ?? []).find((item: { message: string }) =>
           request?.includes('4412') ? item.message.includes('My gym locker code is 3310')
-            : item.message.includes('my gym locker code is 4412'));
+            : item.message.includes('my gym locker code is 4412') || item.message.includes('My gym locker code is 3310'));
         const memory = request && candidate ? [request.includes('4412')
           ? { mode: 'correct', source: candidate.id, quote: 'My gym locker code is 3310',
             replacement: 'my gym locker code is 4412' }
-          : { mode: 'forget', source: candidate.id, quote: 'my gym locker code is 4412' }] : [];
+          : { mode: 'forget', source: candidate.id, quote: candidate.message.includes('4412')
+            ? 'my gym locker code is 4412' : 'My gym locker code is 3310' }] : [];
         const summary = request?.includes('Forget') || packet.memory?.some((item: { mode: string }) => item.mode === 'forgotten')
           ? "Riley's gym locker code is 3310."
           : request?.includes('4412') || packet.memory?.some((item: { mode: string }) => item.mode === 'corrected')
@@ -43,13 +53,22 @@ function world(root: string, malformedMemory = false) {
             : "The operator said My gym locker code is 3310. Riley's gym locker code is 3310.";
         return JSON.stringify({ summary,
           people: [{ name: 'Sam', quote: 'Sam knows My gym locker code is 3310.' },
-            { name: 'Riley', quote: "Riley's gym locker code is 3310." }], commitments: [], closed: [], memory });
+            { name: 'Riley', quote: "Riley's gym locker code is 3310." }],
+          commitments: [{ in: 'message', quote: 'locker code is 3310' }], closed: [], memory });
       }
       prompts.set(input.question, input.context);
+      if (malformedMemory === 'normal-summary') return 'Acknowledged.';
+      if (input.question === 'Please stop remembering my gym locker code.') {
+        const old = (packet.memoryCandidates ?? []).find((item: { message: string }) => item.message.includes('My gym locker code is 3310'));
+        return JSON.stringify({ reply: 'I will stop using that code.', memory: old
+          ? [{ mode: 'forget', source: old.id, quote: 'My gym locker code is 3310' }] : [] });
+      }
       if (input.question.includes('Who is Sam')) return packet.memory?.some((item: { replacement?: string }) =>
         item.replacement?.includes('Sam is my cousin')) ? 'Sam is your cousin.' : 'I do not know.';
-      return packet.memory?.some((item: { mode: string; replacement?: string }) => item.mode === 'corrected'
-        && item.replacement?.includes('4412')) ? 'Your gym locker code is 4412.' : 'I do not have that code.';
+      return packet.memory?.some((item: { mode: string }) => item.mode === 'forgotten') ? 'I do not have that code.'
+        : packet.memory?.some((item: { mode: string; replacement?: string }) => item.mode === 'corrected'
+          && item.replacement?.includes('4412')) ? 'Your gym locker code is 4412.'
+          : input.question === 'What is my gym locker code?' ? 'Your gym locker code is 3310.' : 'I do not have that code.';
     }, send: async () => 1, checkOutbound: () => {} });
   const say = async (id: number, text: string, from?: number) => {
     worker.intake([update(id, text, from)]); await worker.drain(); await worker.summarizeIfNeeded();
@@ -66,14 +85,18 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     let id = 3;
     while (!w.journal.view.summaries.length && id < 20) await w.say(id++, `Filler ${id}: ${'garden '.repeat(500)}`);
     expect(w.journal.view.summaries.length).toBeGreaterThan(0);
+    const question = 'What is my gym locker code?';
+    await w.say(id++, question);
+    expect(w.journal.view.order.at(-1)?.answer).toBe('Your gym locker code is 3310.');
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
     w.journal.close(); w = world(root);
-    const question = 'What is my gym locker code?';
     await w.say(id++, question);
     const corrected = JSON.parse(w.prompts.get(question)!);
     expect(w.journal.view.order.at(-1)?.answer).toBe('Your gym locker code is 4412.');
     expect(JSON.stringify(corrected)).not.toContain('My gym locker code is 3310');
+    expect(JSON.stringify(corrected)).not.toContain('Your gym locker code is 3310');
+    expect(JSON.stringify(corrected)).not.toContain('"quote":"locker code is 3310"');
     expect(JSON.stringify(corrected)).toContain("Riley's gym locker code is 3310");
     const sam = w.worker.probe('What does Sam know?');
     expect('reason' in sam).toBe(false);
@@ -89,6 +112,9 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(w.journal.view.order.at(-1)?.answer).toBe('I do not have that code.');
     expect(JSON.stringify(forgotten)).not.toContain('my gym locker code is 4412');
     expect(JSON.stringify(forgotten)).not.toContain('My gym locker code is 3310');
+    expect(JSON.stringify(forgotten)).not.toContain('Your gym locker code is 3310');
+    expect(JSON.stringify(forgotten)).not.toContain('Your gym locker code is 4412');
+    expect(JSON.stringify(forgotten)).not.toContain('"quote":"locker code is 3310"');
     expect(JSON.stringify(forgotten)).toContain("Riley's gym locker code is 3310");
     const samAfterForget = w.worker.probe('What does Sam know?');
     expect('reason' in samAfterForget).toBe(false);
@@ -98,6 +124,9 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     const laterSummaryInput = w.summaryPrompts.at(-1)!;
     expect(laterSummaryInput).not.toContain('my gym locker code is 4412');
     expect(laterSummaryInput).not.toContain('My gym locker code is 3310');
+    expect(laterSummaryInput).not.toContain('Your gym locker code is 3310');
+    expect(laterSummaryInput).not.toContain('Your gym locker code is 4412');
+    expect(laterSummaryInput).not.toContain('"quote":"locker code is 3310"');
     expect(laterSummaryInput).toContain("Riley's gym locker code is 3310");
     expect(w.journal.view.order[0]?.text).toBe('Sam knows My gym locker code is 3310.');
     expect(w.journal.view.memory.map(change => change.mode)).toEqual(['correct', 'forget']);
@@ -159,7 +188,7 @@ it('ignores nonoperator claims and quoted operator text', async () => {
 it('holds a later answer when the capped summary path cannot record a memory decision', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-pending-')));
   try {
-    const w = world(root, true);
+    const w = world(root, 'missing');
     await w.say(1, 'My gym locker code is 3310.');
     await w.say(2, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toEqual([]);
@@ -168,5 +197,84 @@ it('holds a later answer when the capped summary path cannot record a memory dec
     expect(w.journal.view.order.at(-1)?.reserved).toBe(false);
     expect(w.journal.view.order[0]?.text).toBe('My gym locker code is 3310.');
     w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not turn an invalid attempted forget into an empty successful decision', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-invalid-')));
+  try {
+    const w = world(root, 'invalid');
+    await w.say(1, 'My gym locker code is 3310.');
+    await w.say(2, 'Forget my gym locker code.');
+    expect(w.journal.view.memory).toEqual([]);
+    expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
+    expect(w.journal.view.order[1]?.intent).toBeUndefined();
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an unresolved target pending rather than recording no request', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-unresolved-')));
+  try {
+    const w = world(root, 'unresolved');
+    await w.say(1, 'My gym locker code is 3310.');
+    await w.say(2, 'Forget my gym locker code.');
+    expect(w.journal.view.memory).toEqual([]);
+    expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
+    expect(w.journal.view.order[1]?.intent).toBeUndefined();
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('honors an uncued direct request but treats a quoted neighbor as data', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-uncued-')));
+  try {
+    const w = world(root);
+    await w.say(1, 'My gym locker code is 3310.');
+    await w.say(2, 'The imported note says: "Please stop remembering my gym locker code."');
+    expect(w.journal.view.memory).toEqual([]);
+    await w.say(3, 'Please stop remembering my gym locker code.');
+    expect(w.journal.view.memory).toHaveLength(1);
+    await w.say(4, 'What is my gym locker code?');
+    expect(w.prompts.get('What is my gym locker code?')).not.toContain('3310');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('accepts an uncued direct request from an ordinary bounded summary call', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-normal-summary-')));
+  try {
+    const w = world(root, 'normal-summary');
+    await w.say(1, 'My gym locker code is 3310.');
+    await w.say(2, 'Please stop remembering my gym locker code.');
+    expect(w.journal.view.memory).toEqual([]);
+    await w.worker.summarizeIfNeeded(true);
+    expect(w.journal.view.memory).toHaveLength(1);
+    const inspected = w.worker.probe('What is my gym locker code?');
+    expect('reason' in inspected).toBe(false);
+    if (!('reason' in inspected)) expect(inspected.context).not.toContain('3310');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('continues past a legacy summary whose frontier ends on an old cue', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-legacy-')));
+  try {
+    const w = world(root);
+    w.journal.append({ kind: 'intake', id: 'telegram:12345678:update:1', update: 1,
+      text: 'Actually I prefer tea.', raw: JSON.stringify(update(1, 'Actually I prefer tea.')),
+      accepted: true, cursor: 2, at: 1790000000000 });
+    w.journal.append({ kind: 'summary-reserve', through: 1, at: 1790000000000 });
+    w.journal.append({ kind: 'summary', through: 1, text: 'The operator prefers tea.', at: 1790000000000 });
+    w.journal.close();
+    const reopened = world(root);
+    await reopened.say(2, 'Hello.');
+    expect(reopened.journal.view.order[1]?.sent).toBe(1);
+    expect(reopened.journal.view.order[1]?.held).toBeUndefined();
+    await reopened.say(3, 'My gym locker code is 3310.');
+    await reopened.say(4, 'Forget my gym locker code.');
+    expect(reopened.journal.view.memory).toHaveLength(1);
+    expect(reopened.journal.view.order[3]?.sent).toBe(1);
+    reopened.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

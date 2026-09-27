@@ -670,20 +670,26 @@ recalled turns, person notes, and the oldest open items. `status` reports `commi
 
 ### Correcting and forgetting memory
 
-A direct correction or forget request from the bound Telegram operator schedules the existing
-rolling summary before its reply. A small text cue only schedules that model judgment;
-it cannot itself supersede anything. The summary call sees up to five older candidate turns and
-returns `memory` entries with the exact old factual clause and its source turn ID. A correction
+A direct correction or forget request from the bound Telegram operator can be judged in the existing
+rolling summary before its reply. A small text cue schedules that call early;
+it cannot itself supersede anything. The ordinary capped reply call can also return a memory
+decision when the cue misses, using optional older candidates that yield before recall or
+commitment context under the prompt bound. An ordinary later summary may also record a direct
+request its model identifies without a cue. Both paths return `memory` entries with the exact old
+factual clause and its source turn ID. A correction
 also quotes the replacement from the operator's own message. The runner keeps an entry only if
 the old clause occurs verbatim in an earlier accepted operator turn and the replacement occurs
 verbatim in the authenticated correcting turn. Claimed instructions inside quotes, forwards or
-imports have no authority. A summary that omits the required `memory` decision, or repeats an
-exact superseded clause, fails visibly; the current and later answers wait while the decision is pending.
+imports have no authority. An invalid proposed entry or an explicitly unresolved target never
+becomes an empty successful decision. The request stays visible as pending under the existing bounded summary retry path. New summary
+frames name the request they decided; old frames without that field keep their historical frontier
+settled, so an upgrade can continue draining later turns.
 
 The original turns and previous summaries stay in the encrypted append-only journal. Replay
-rebuilds the superseding records from summary frames. Every later packet filters superseded
-clauses from history, summary text, recalled originals, earlier answers, commitments and person
-notes. A person or commitment note whose quoted claim was superseded is omitted; a correction's
+rebuilds the superseding records from summary or answer frames. Every later packet filters
+superseded claims from history, summary text, recalled originals, earlier answers, commitments and person
+notes. It also withholds ordinary phrasing changes in derived answers and overlapping note excerpts;
+an unrelated person's similarly numbered fact remains. A person or commitment note whose quoted claim was superseded is omitted; a correction's
 new fact is carried as `memory`. A forget carries only a withholding reason. Similar facts with
 different wording and sources remain. `status.withheld` and `inspect.withheld` show the redacted
 old clause, source and operator update IDs, and why it was withheld; the model packet does not
