@@ -643,6 +643,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const candidates = ranked.map(index => ({ id: older[index]!.id,
       message: clean(redact(older[index]!.text).text, true).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
     let promptFit = false;
+    let measuredPromptOverflow = false;
+    let preparationUnavailable = false;
     for (const compact of [false, true]) {
       const summary = compact ? summaryFor(turn.update - 1) : undefined;
       if (compact && !summary) continue;
@@ -675,13 +677,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               try {
                 const prepared = ports.prepareModel?.({ question, context, id: turn.id });
                 return { question, context, prepared, carried: flagged.map(item => item.id) };
-              } catch { /* Try fewer candidates or optional notes before summary recovery. */ }
+              } catch (error) {
+                if (error instanceof Error && error.message === 'preview: complete prompt overflow')
+                  measuredPromptOverflow = true;
+                else preparationUnavailable = true;
+                // Try fewer candidates or optional notes before summary recovery.
+              }
             }
           }
         }
       }
     }
-    return { reason: promptFit ? 'prompt overflow' : 'context overflow' };
+    return { reason: promptFit ? 'prompt overflow' : 'context overflow',
+      measuredPromptOverflow: measuredPromptOverflow && !preparationUnavailable };
   };
   const drain = async () => {
     if (working) throw Error('preview journal: second worker refused');
@@ -730,7 +738,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             selected = preparedFor(turn);
           }
           if ('reason' in selected) {
-            if (selected.reason === 'context overflow') {
+            if (selected.reason === 'context overflow' || selected.measuredPromptOverflow) {
               // The full turn is already durable. A failed context fit must be
               // visible in chat; no model reservation or clipping follows it.
               journal.append({ kind: 'notice', id: turn.id, noticeClass: 'too-long-input', at: ports.now() });

@@ -811,8 +811,9 @@ most eight attempts under the same call cap. An oversized single turn is shown
 as a content-free too-long notice in the operator chat, with its original still
 in the encrypted journal. A context that still cannot fit after summary recovery
 gets the same notice. `status.tooLong` shows its update and Telegram acceptance
-or UNKNOWN delivery; UNKNOWN is never resent. A prompt preparation failure stays
-held for recovery. Earlier overflow holds from old journals still retry in order
+or UNKNOWN delivery; UNKNOWN is never resent. An exact complete-envelope size
+overflow gets the notice too; a different prompt preparation failure stays held
+for recovery. Earlier overflow holds from old journals still retry in order
 when a summary covers their preceding turns. A too-long message is represented
 in later model history by an explicit omission marker, never a silently clipped
 quote; its original remains in the journal. Telegram may split a pasted message

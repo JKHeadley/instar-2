@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { replyReviewContext } from './reply-check.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(19);
 const update = (id: number, text: string) => ({ update_id: id,
@@ -86,6 +87,22 @@ it('retains Telegram split parts as distinct updates and answers or explains eac
     expect(replay.view.order).toHaveLength(2);
     expect(replay.view.replies).toBe(2);
     replay.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('distinguishes a measured complete-envelope overflow from a temporary preparation failure', async () => {
+  const dir = root();
+  try {
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
+    let calls = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', 'grant:preview', 1000, 4096),
+      model: async () => { calls++; return 'should never run'; }, send: async () => 7, checkOutbound: () => {} });
+    worker.intake([update(1, 'x'.repeat(1800))]); await worker.drain();
+    expect(calls).toBe(0);
+    expect(journal.view.order[0]?.intent).toBe(TOO_LONG_INPUT_NOTICE);
+    expect(journal.view.order[0]?.text).toBe('x'.repeat(1800));
+    journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
