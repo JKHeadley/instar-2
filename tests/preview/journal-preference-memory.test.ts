@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(29);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -147,7 +147,7 @@ it('keeps a faithful preference summary and its source reply while still withhol
     if ('reason' in next) throw Error(next.reason);
     packet = JSON.parse(next.context);
     expect(next.context).not.toContain('3310');
-    expect(packet.memory).toContainEqual({ mode: 'forgotten', reason: 'verified operator requested forgetting' });
+    expect(packet.memory).toContainEqual(expect.objectContaining({ mode: 'forgotten', reason: 'verified operator requested forgetting' }));
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

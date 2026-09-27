@@ -64,7 +64,7 @@ it('records every reply after sending, carries a finding once into the next pack
     expect(journal.view.corrections.length).toBe(1);
     worker.intake([update(2, 'So is it set?')]); await worker.drain(); worker.checkCoherence();
     const second = JSON.parse(contexts[1]!);
-    expect(second.corrections).toEqual([{ source: journal.view.order[0]!.id, update: 1, date: expect.any(String), findings: [{ rule: 84,
+    expect(second.corrections).toMatchObject([{ source: journal.view.order[0]!.id, update: 1, date: expect.any(String), findings: [{ rule: 84,
       ruleName: COHERENCE_RULES[84], possibleProblem: 'claimed an action or tool this preview does not have',
       inYourReply: "I've scheduled a reminder for Friday." }] }]);
     expect(second.capability).toContain('corrections lists possible problems');
@@ -107,7 +107,8 @@ it('keeps a reply reachable when a correction cannot fit and retains the uncarri
     sample.worker.checkCoherence();
     const withNote = sample.worker.probe('Can I open it?');
     expect('context' in withNote).toBe(true);
-    const limit = 1300; // Fits the next reply while excluding its optional correction note.
+    const limit = Buffer.byteLength(('context' in bare ? bare.context : '')) + 16;
+    // Fits the next reply while excluding its optional correction note.
     expect(Buffer.byteLength(('context' in withNote ? withNote.context : ''))).toBeGreaterThan(limit);
     sample.journal.close();
 

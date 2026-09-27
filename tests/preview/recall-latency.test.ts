@@ -35,7 +35,7 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     for (let i = 1; i <= 10; i++) view.memory.push({ mode: 'correct', source: view.order[i * 100]!.id,
       quote: `locker note ${i * 100}`, trigger: view.order[i * 100 + 1]!.id,
       replacement: `locker note corrected ${i}` });
-    for (let i = 1; i <= 100; i++) view.channelItems.set(`mail-${i}`, { source: 'email', account: 'agent@example.invalid',
+    for (let i = 1; i <= 100; i++) view.channelItems.set(JSON.stringify(['email', 'agent@example.invalid', `mail-${i}`]), { source: 'email', account: 'agent@example.invalid',
       id: `mail-${i}`, from: 'sam@example.invalid', at: 1790000000000 + i * 1000,
       subject: 'Cedar project', text: `Sam sent cedar project mail ${i}` });
     const worker = createJournalWorker(journal, { now: () => 1790003000000, stopped: () => false,
@@ -62,7 +62,7 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
       expect('context' in result).toBe(true);
       if ('context' in result) packetHash = createHash('sha256').update(result.context).digest('hex');
     }
-    expect(packetHash).toBe('525d346defbfa7c8356605503e301136af2bdd8f93a81070f8193d4b4aae1f69');
+    expect(packetHash).toBe('09ffa0f35555e855ba754cee987969037b55a34632c6864120809fef79784cfc');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

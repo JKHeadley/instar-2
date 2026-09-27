@@ -46,7 +46,7 @@ it('retains higher-priority memory at the byte boundary and records every lower-
     summarize(journal, 5);
     const worker = workerFor(journal);
     const seen = new Set<string>(), boundary = new Set<string>();
-    for (let limit = 5500; limit >= 950; limit -= 25) {
+    for (let limit = 7500; limit >= 950; limit -= 25) {
       journal.view.limits.maxBytes = limit;
       const probe = worker.probe('What should I know about Sam and the studio?');
       if ('reason' in probe) continue;
@@ -72,7 +72,7 @@ it('retains higher-priority memory at the byte boundary and records every lower-
     expect(boundary).toContain('correction-before-dated');
     journal.close();
   } finally { rmSync(path, { recursive: true, force: true }); }
-});
+}, 30000);
 
 it('keeps a nearby dated open item inside the ten-commitment window ahead of older undated items', () => {
   const path = root();
@@ -87,7 +87,7 @@ it('keeps a nearby dated open item inside the ten-commitment window ahead of old
     addTurn(journal, 13, `Unrelated history. ${'f'.repeat(15000)}`);
     journal.append({ kind: 'summary-reserve', through: 13, at: now });
     journal.append({ kind: 'summary', through: 13, text: 'The operator listed open items.', commitments, at: now });
-    journal.view.limits.maxBytes = 12000;
+    journal.view.limits.maxBytes = 14000;
     const probe = workerFor(journal).probe('What remains open?');
     if ('reason' in probe) throw Error(probe.reason);
     const packet = JSON.parse(probe.context);

@@ -18,6 +18,7 @@ const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Arr
 });
 const worker = createJournalWorker(journal, {
   now: () => 1790000000000, stopped: () => false,
+  summaryCheck: async () => ({ model: JEV_MODEL, answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
   model: async input => {
     appendFileSync(join(root, 'models.log'), `${input.id}\n`);
     if (input.id.startsWith('summary:')) return JSON.stringify({
@@ -29,7 +30,7 @@ const worker = createJournalWorker(journal, {
   },
   replyCheck: {
     jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(
-      Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 0 }),
+      [...Object.keys(REPLY_RULES), 'summary_integrity'].map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 0 }),
     escalate: async () => { throw Error('unexpected escalation'); }, elapsedMs: () => 0,
   },
   send: async input => {

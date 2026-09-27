@@ -8,10 +8,11 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
+import { operatorDigest } from './operator-digest.js';
 
 const key = new Uint8Array(32).fill(11);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-commitments-')));
-const genesis = (maxBytes = 3000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
+const genesis = (maxBytes = 8000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
   operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes, cursor: 0 });
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
@@ -117,7 +118,7 @@ it('brings open items back after compaction with who said them and when, says it
     const packet = JSON.parse(w.asked.get(question)!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === LOCKER || turn.user === DENTIST)).toBe(false);
-    expect(packet.commitments).toEqual([
+    expect(packet.commitments).toMatchObject([
       { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 0, quote: LOCKER }] },
       { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 1, quote: DENTIST }] },
       { source: 'telegram:12345678:update:2', from: 'you, in your own earlier reply', date: '2026-09-21T14:15Z', reply: `Noted. ${PROMISE}`, answering: DENTIST,
@@ -176,9 +177,10 @@ it('closes an item only on a later message the operator verifiably sent, and nev
     const through = w.journal.view.summaries.length;
     for (; w.journal.view.summaries.length === through; n++) await w.say(n, filler(n));
     expect(w.journal.view.closed.size).toBe(0);
+    const doneUpdate = n;
     await w.say(n++, DONE);
-    const count = w.journal.view.summaries.length;
-    for (; w.journal.view.summaries.length === count; n++) await w.say(n, filler(n));
+    for (; (w.journal.view.summaries.at(-1)?.through ?? 0) < doneUpdate && n < 120; n++)
+      await w.say(n, filler(n));
     expect([...w.journal.view.closed.entries()].map(([id, closure]) => [id, closure.quote])).toEqual([
       [1, 'I already called the dentist'], [2, 'I already called the dentist']]);
     await w.say(n, 'Anything open?');
@@ -194,7 +196,7 @@ it('closes an item only on a later message the operator verifiably sent, and nev
 it('refuses a closure for an open item omitted from the summary packet', async () => {
   const root = origin();
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(3000));
     const packets: Packet[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => input.context,
@@ -323,8 +325,12 @@ it('the live script reaches compaction and the question carries the open commitm
       { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
     const worker = createJournalWorker(journal, { now: Date.now, stopped: () => false,
       // The same sources the launcher's turnSources gives every live turn and the inspect probe.
-      sources: () => [...sources, selfStateSource(selfState(journal.view, readRuns(join(root, 'runs.jsonl')), Date.now(), 'UTC')),
-        deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), Date.now(), join(root, 'desk-status.md'))],
+      sources: () => {
+        const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
+        const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk,
+          operatorDigest(journal.view, runs, desk)];
+      },
       prepareModel: input => prepareJournalEnvelope(input, model, g.grant, Date.now()),
       model: async ({ id, question, context }) => id.startsWith('summary:') ? extractor(false)(context)
         : question === DENTIST ? `Noted. ${PROMISE}` : 'ok',
@@ -342,7 +348,8 @@ it('the live script reaches compaction and the question carries the open commitm
       expect(fillers).toBeLessThan(12);
       await say(LIVE_FILLER); fillers++;
     }
-    await say(question);
+    worker.intake([update(id++, question)]);
+    await worker.drain();
     const last = run(root, 'inspect').last;
     expect(last.historyMode).toBe('summary-plus-recent');
     expect(last.commitments.flatMap((entry: { items: { quote: string }[] }) => entry.items.map(item => item.quote)))

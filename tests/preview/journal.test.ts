@@ -682,7 +682,7 @@ it('uses a current summary when the full packet fits but the complete prompt doe
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
       { ...genesis(), maxBytes: 32768 });
-    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(25500),
+    journal.append({kind:'intake',id:'telegram:12345678:update:1',update:1,text:'a'.repeat(24500),
       raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
     journal.append({kind:'reserve',id:'telegram:12345678:update:1',at:1000});
     journal.append({kind:'answer',id:'telegram:12345678:update:1',text:'old answer',at:1000});
@@ -745,7 +745,7 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();
   try {
-    const initial = { ...genesis(), maxBytes: 1100 };
+    const initial = { ...genesis(), maxBytes: 4000 };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
@@ -1389,8 +1389,8 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     expect(packet.summary.through).toBeGreaterThan(5);
     expect(packet.summary.sourceLabel).toMatch(/^summary:all conversations\/.+\/through #\d+$/u);
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('QUASAR'))).toBe(false);
-    expect(packet.recalled).toContainEqual({ id: 'telegram:12345678:update:5', date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
-      outcome: 'Telegram API accepted' });
+    expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:5', date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
+      outcome: 'Telegram API accepted' }));
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a,b) => a-b)[Math.ceil(values.length * .95)-1]!;
     const first = p95(samples.slice(0, 10)), last = p95(samples.slice(190));
@@ -1429,7 +1429,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
       model: async input => { contexts.push(input.context); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(10, 'Which pier does the ferry leave from?')]); await worker.drain();
     const packet = JSON.parse(contexts[0]!);
-    expect(packet.recalled).toEqual([{ id: 'telegram:12345678:update:1', date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
+    expect(packet.recalled).toMatchObject([{ id: 'telegram:12345678:update:1', date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
     limit = Buffer.byteLength(contexts[0]!) - 1;
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();

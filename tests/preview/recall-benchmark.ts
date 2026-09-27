@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(63);
 const now = 1_790_000_000_000;
@@ -81,7 +81,7 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
     grant: 'grant:offline-recall', configurationDigest: 'sha256:offline-recall', expires: now + 1_000_000,
     maxCalls: turns * 3, maxReplies: turns + cases.length + 4, maxTurns: turns + cases.length + 4,
-    maxBytes: 12000, cursor: 0 };
+    maxBytes: 24000, cursor: 0 };
   let journal = openPreviewJournal(path, key, genesis);
   let historyBuildNonModelMs = 0;
   let stubModelMs = 0;

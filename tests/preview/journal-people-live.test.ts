@@ -7,6 +7,7 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
+import { operatorDigest } from './operator-digest.js';
 
 const key = new Uint8Array(32).fill(7);
 const operator = 7654321, model = 'claude-opus-5-5';
@@ -33,8 +34,12 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
       { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
     const worker = createJournalWorker(journal, { now: Date.now, stopped: () => false,
       // The same sources the launcher's turnSources gives every live turn and the inspect probe.
-      sources: () => [...sources, selfStateSource(selfState(journal.view, readRuns(join(root, 'runs.jsonl')), Date.now(), 'UTC')),
-        deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), Date.now(), join(root, 'desk-status.md'))],
+      sources: () => {
+        const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
+        const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk,
+          operatorDigest(journal.view, runs, desk)];
+      },
       prepareModel: input => prepareJournalEnvelope(input, model, g.grant, Date.now()),
       model: async ({ id, context }) => {
         if (!id.startsWith('summary:')) return 'ok';
@@ -74,7 +79,10 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
       await say(LIVE_FILLER); fillers++;
     }
     expect(summaryButComplete).toBe(true);
-    await say(question);
+    worker.intake([{ update_id: update, message: { chat: { id: operator, type: 'private' }, from: { id: operator },
+      text: question, date: 1790000000 + update * 60 } }]);
+    update++;
+    await worker.drain();
     const last = inspect().last;
     expect(last.update).toBe(update - 1);
     expect(last.historyMode).toBe('summary-plus-recent');

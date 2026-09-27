@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { auditPacket } from './journal-audit.mjs';
 
@@ -103,7 +104,7 @@ it('forgets a relevant import despite five unrelated near-term dated imports and
     worker.intake([update(2, 'Hello again')]);
     await worker.drain();
     expect(summarySources).toHaveLength(1);
-    expect(summarySources[0]).toContain(journal.view.memory[0]?.source);
+    expect(summarySources[0]).toContain(`channel-ref:${createHash('sha256').update(journal.view.memory[0]!.source).digest('hex')}`);
     expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: target }]);
     expect(sends).toHaveLength(2);
     expect(journal.view.order.map(turn => turn.held)).toEqual([undefined, undefined]);

@@ -121,7 +121,24 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     }
   }
   for (const [n, item] of list(packet.people, 'people').entries()) {
-    const at = `people[${n}]`, found = source(item?.source, at);
+    const at = `people[${n}]`;
+    if (typeof item?.sourceId === 'string' && item.sourceId.startsWith('channel-ref:')) {
+      const imported = [...view.channelItems.values()].find(candidate => {
+        const id = `channel:${JSON.stringify([candidate.source, candidate.account, candidate.id])}`;
+        return `channel-ref:${createHash('sha256').update(id).digest('hex')}` === item.sourceId;
+      });
+      if (!imported || item.source !== imported.source || item.date !== isoMinute(imported.at)
+        || item.from !== `${redact(imported.from).text} (export sender metadata, unverified)`
+        || item.message !== clean(`${imported.subject ?? ''} ${imported.text}`.trim())) fault('people-import-source', at);
+      for (const [m, mention] of list(item?.mentions, `${at}.mentions`).entries()) {
+        if (!imported || mention?.quote !== clean(`${imported.subject ?? ''} ${imported.text}`.trim()))
+          fault('people-note-source', `${at}.mentions[${m}]`);
+      }
+      if (imported) add('people-note', at, [{ kind: 'channel-import', source: imported.source,
+        ref: `sha256:${createHash('sha256').update(JSON.stringify([imported.source, imported.account, imported.id])).digest('hex')}` }]);
+      continue;
+    }
+    const found = source(item?.source, at);
     if (found && item.from !== speaker(found)) fault('people-attribution', at);
     if (found && item.message !== clean(found.text)) fault('people-message-source', at);
     if (found && item.date !== dated(found)) fault('people-date-source', at);

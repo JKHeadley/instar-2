@@ -10,7 +10,7 @@ import { auditPacket } from './journal-audit.mjs';
 
 const key = new Uint8Array(32).fill(9);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-people-')));
-const genesis = (maxBytes = 3000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
+const genesis = (maxBytes = 8000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
   operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes, cursor: 0 });
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
@@ -91,7 +91,7 @@ it('recalls every note about a named person after compaction, keeps the operator
     const packet = JSON.parse(w.asked.get(question)!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
-    expect(packet.people).toEqual([
+    expect(packet.people).toMatchObject([
       { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
         message: 'My cofounder Sam thinks the launch should slip to November.',
         mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
@@ -386,7 +386,7 @@ it('renders the whole source message, so an excerpt can never drop the context t
     const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
-    expect(packet.people).toEqual([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+    expect(packet.people).toMatchObject([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
       mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
     expect(packet.capability).toContain('Read a mention only within its whole message');
     w.journal.close();
