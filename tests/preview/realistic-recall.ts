@@ -37,10 +37,10 @@ function update(id: number, text: string) {
 }
 
 export interface RealisticCase {
-  id: string; topic: string; cause: 'selection' | 'summary loss' | 'correction chain' | 'pronoun' | 'date';
+  id: string; topic: string; scenarioCategory: 'named question' | 'reworded follow-up' | 'correction chain' | 'pronoun' | 'date';
   question: string; expectedCurrentAnswer: string; sourceTurn: number; correctionTurn?: number;
   packetBytes: number; neededPresent: boolean | null; staleAbsent: boolean | null; actualVisibleAnswer: string;
-  missCause: string | null; historyMode: string;
+  observedMiss: 'needed clause absent' | 'stale clause present' | null; historyMode: string;
 }
 export interface RealisticResult { turns: number; questions: number; positiveCases: number; neededPresent: number;
   exclusionCases: number; staleAbsent: number;
@@ -92,17 +92,15 @@ export async function runRealisticRecall(): Promise<RealisticResult> {
           history?: { user: string }[]; memory?: unknown[] };
         const neededPresent = scene.forget ? null : context.includes(scene.fact);
         const staleAbsent = scene.old ? !context.includes(scene.old) : scene.forget ? !context.includes(scene.fact) : null;
-        const missCause = staleAbsent === false ? 'correction chain'
-          : neededPresent === false ? scene.old ? 'correction chain' : variant === 1 && /\b(she|her|him|his|that|those)\b/iu.test(question)
-            ? 'pronoun' : scene.topic === 'date' ? 'date' : packet.summary?.text.includes(scene.fact)
-              ? 'selection' : 'summary loss' : null;
+        const observedMiss = staleAbsent === false ? 'stale clause present'
+          : neededPresent === false ? 'needed clause absent' : null;
         cases.push({ id: `${scene.id}/${variant + 1}`, topic: scene.topic,
-          cause: scene.old || scene.forget ? 'correction chain' : variant === 1 && /\b(she|her|him|his|that|those)\b/iu.test(question)
-            ? 'pronoun' : scene.topic === 'date' ? 'date' : variant === 1 ? 'selection' : 'summary loss',
+          scenarioCategory: scene.old || scene.forget ? 'correction chain' : variant === 1 && /\b(she|her|him|his|that|those)\b/iu.test(question)
+            ? 'pronoun' : scene.topic === 'date' ? 'date' : variant === 1 ? 'reworded follow-up' : 'named question',
           question, expectedCurrentAnswer: scene.answer, sourceTurn: index * 10 + 1,
           ...(scene.old || scene.forget ? { correctionTurn: index * 10 + 8 } : {}),
           packetBytes: Buffer.byteLength(context), neededPresent, staleAbsent,
-          actualVisibleAnswer: neededPresent ? scene.fact : 'UNKNOWN', missCause,
+          actualVisibleAnswer: neededPresent ? scene.fact : 'UNKNOWN', observedMiss,
           historyMode: packet.historyMode });
         if (variant === 0) {
           // The follow-up is elliptical. Preserve the first question as a real
@@ -121,7 +119,7 @@ export async function runRealisticRecall(): Promise<RealisticResult> {
         }
       }
     }
-    const misses = cases.filter(item => item.missCause !== null);
+    const misses = cases.filter(item => item.observedMiss !== null);
     const result = { turns: updates.length, questions: cases.length,
       positiveCases: cases.filter(item => item.neededPresent !== null).length,
       neededPresent: cases.filter(item => item.neededPresent === true).length,

@@ -584,7 +584,9 @@ deterministic summary keeps only six recent exact facts, so older detail must
 be selected from retained original turns. This measures packet visibility and
 stale exclusion under a deliberately lossy summary, not real-model comprehension.
 The JSON lists every question, packet byte count, source turn, expected answer,
-miss and cause. Generate it with:
+scenario category and observed packet miss. Categories describe the fixture, not
+the cause of a miss. A baseline comparison can test the antecedent-selection
+change; narrower attribution remains unmeasured. Generate it with:
 
 ```sh
 node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/realistic-recall.mjs /ABSOLUTE/OFFLINE_RESULT.json
