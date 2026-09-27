@@ -12,7 +12,7 @@ import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
-import { parseDatedItem, dueState, type DatedItem } from './dated-memory.js';
+import { parseDatedItem, dueState, withinNext48Hours, type DatedItem } from './dated-memory.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision } from './reply-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
@@ -63,7 +63,7 @@ export type JournalRecord =
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
-  | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
+  | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number }
@@ -95,7 +95,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   sourceStop: string | null; imported: boolean;
-  people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[];
+  people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[]; dated: DatedItem[]; mentionedDates: Set<string>;
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
@@ -104,6 +104,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 const frameLimit = 2 * 1024 * 1024;
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
+const datedKey = (item: DatedItem) => JSON.stringify([item.source, item.quote, item.when]);
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
 function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
@@ -258,7 +259,8 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.datedPending) turn.datedPending = true;
     if (row.memory) view.memory.push(...row.memory);
     if (row.dated) view.dated.push(...row.dated); }
-  if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
+  if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
+    for (const key of row.mentionedDates ?? []) view.mentionedDates.add(key); }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') turn.held = row.reason;
   if (row.kind === 'memory-undecided') {
@@ -298,7 +300,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], mentionedDates: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -335,7 +337,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], dated: [], mentionedDates: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -853,22 +855,41 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         let reply = turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
           : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`;
+        const imminent = journal.view.dated.filter(item => item.source !== turn.id
+          && !journal.view.mentionedDates.has(datedKey(item)) && withinNext48Hours(item, ports.now())
+          && !journal.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+            && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
+        // Keep the automatic aside short. Any remaining items stay eligible for
+        // the next reply, and an unsent or UNKNOWN intent cannot repeat one.
+        const mentioned = imminent.slice(0, 3);
+        if (mentioned.length) {
+          const labels = mentioned.filter(item => !reply.includes(item.quote)).map(item => {
+            const quote = redact(item.quote).text;
+            return `${quote.length > 80 ? `${quote.slice(0, 79)}…` : quote} (${item.day}${item.time ? ` ${item.time}` : ''})`;
+          });
+          if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
+        }
         if (ports.replyCheck) {
-          const previous = turn.replyChecks?.at(-1);
+          const candidateDigest = createHash('sha256').update(reply).digest('hex');
+          const last = turn.replyChecks?.at(-1);
+          // A window edge may move while a checked send waits on stop or a cap.
+          // Never reuse a verdict for a different final candidate.
+          const previous = last?.candidateDigest === candidateDigest
+            || last?.candidateDigest === undefined && !mentioned.length ? last : undefined;
           // Only a completed PASS releases the candidate; an unavailable or interrupted
           // check keeps the turn pending with its intake, candidate and reservations.
           let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact secret wall runs before provider disclosure on every replay.
           if (redact(reply).count) {
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
-              ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0 }, at: ports.now() });
+              ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
           } else if (previous && previous.path !== 'jev' && previous.verdict === 'violation') decision = 'violation';
           else if (previous && previous.path !== 'holding' && previous.verdict === 'pass') decision = 'pass';
           else if (turn.reviewReserved) {
             // A failed or interrupted paid review is UNKNOWN: never repeat it, never send unchecked.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
-              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0 }, at: ports.now() });
+              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck,
@@ -877,7 +898,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
                 journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
                   ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
-              record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
+              record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
+                result: { ...result, candidateDigest }, at: ports.now() }) };
             let checked: ReplyDecision;
             if (turn.jevReserved) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
@@ -908,6 +930,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread,
+          ...(reply === HOLDING_REPLY || !mentioned.length ? {} : { mentionedDates: mentioned.map(datedKey) }),
           update: turn.update, grant: journal.view.genesis.grant, at: ports.now() });
         gate();
         try { const message = await ports.send({ text: body, expectedText: reply, chat: journal.view.genesis.chat, ...thread, update: turn.update });

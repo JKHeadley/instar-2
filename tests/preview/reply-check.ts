@@ -15,7 +15,7 @@ export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export type ReplyPath = 'jev' | 'subscription' | 'holding';
 export const JEV_MODEL = 'jev-1.13.0';
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
-  path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string;
+  path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string; candidateDigest?: string;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
 const rules = Object.keys(REPLY_RULES) as ReplyRule[];
