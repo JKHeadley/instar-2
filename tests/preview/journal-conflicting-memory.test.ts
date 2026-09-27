@@ -329,9 +329,19 @@ it('asks on a later turn if the first checked send carried a holding reply inste
     const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(replay.view.memory).toMatchObject([{ mode: 'prefer' }]);
     worker = createJournalWorker(replay, { now: () => 1790000000000, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'March 2 is right.', memory: [], dated: [] }),
-      send: async input => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
-    worker.intake([update(4, 'What is my birthday?')]); await worker.drain();
+      model: async input => {
+        const open = JSON.parse(input.context).openConflicts as { asked: boolean; first: unknown; second: unknown }[];
+        expect(open).toMatchObject([{ asked: false }]);
+        // The model reads the unasked conflict as data and chooses to ask only when the message concerns it.
+        return input.question === 'What is two plus two?' ? JSON.stringify({ reply: 'Four.', memory: [], dated: [] })
+          : JSON.stringify({ reply: 'March 2 is right.', memory: [], dated: [],
+            conflict: { first: open[0]!.first, second: open[0]!.second } });
+      }, send: async input => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
+    worker.intake([update(4, 'What is two plus two?')]); await worker.drain();
+    expect(sends.at(-1)).toContain('Four.');
+    expect(sends.at(-1)).not.toContain('Which is right?');
+    expect(replay.view.conflicts[0]?.asked).toBe(false);
+    worker.intake([update(5, 'What is my birthday?')]); await worker.drain();
     expect(sends.at(-1)).toContain('Which is right?');
     expect(replay.view.conflicts).toHaveLength(1);
     expect(replay.view.conflicts[0]?.asked).toBe(true);
