@@ -57,7 +57,9 @@ function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes
   checkOutbound?: (text: string) => void } = {}) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(options.maxBytes));
   const asked = new Map<string, string>();
-  const clock = { now: 1790172860000 };
+  // Near the fixture's message dates: a gap of a day or more is a long-gap resume, which
+  // deliberately surfaces every open item (long-gap-resume contract).
+  const clock = { now: 1790014400000 };
   const worker = createJournalWorker(journal, { now: options.now ?? (() => clock.now), stopped: () => false,
     prepareModel: input => input.context,
     model: async input => {
@@ -309,6 +311,7 @@ it('surfaces only BM25-related open items with age, while an unrelated turn gets
     expect(packet('What about the dentist crown?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
       .toEqual([2, 0]);
     expect(packet('How are the garden tomatoes?').commitments).toBeUndefined();
+    w.clock.now = 1790172860000;
     expect(packet('What about my gym locker code?').commitments[0].age).toBe('2 days');
     expect(packet('What open commitments do you have?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
       .toEqual([1, 2, 0]);
@@ -357,7 +360,7 @@ it('closes an item only on a later message the operator verifiably sent, and nev
 it('refuses a closure for an open item omitted from the summary packet', async () => {
   const root = origin();
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(3000));
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(3500));
     const packets: Packet[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => { const packet = JSON.parse(input.context) as Packet;

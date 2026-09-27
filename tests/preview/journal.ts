@@ -1838,9 +1838,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       return Number.isFinite(at) && at >= start && at <= end;
     });
   };
-  const relatedOpenFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>) => {
+  const relatedOpenFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>, resumed: boolean) => {
     const open = openFor(summary.through, journal.view.commitments.length);
-    if (/\b(?:anything open|what(?:'s| is| remains) (?:still )?(?:open|pending)|what open commitments|what did i ask you to (?:remember|do)|what (?:did you|have you) (?:promise|commit)|list (?:my|your|our|the) (?:open )?(?:commitments|promises|reminders))\b/iu.test(turn.text))
+    if (resumed || /\b(?:anything open|what(?:'s| is| remains) (?:still )?(?:open|pending)|what open commitments|what did i ask you to (?:remember|do)|what (?:did you|have you) (?:promise|commit)|list (?:my|your|our|the) (?:open )?(?:commitments|promises|reminders))\b/iu.test(turn.text))
       return openFor(summary.through, PREVIEW_COMMITMENT_LIMIT);
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_COMMITMENT_LIMIT,
       candidates: open.map(({ note, turn: source }) => ({ text: clean(note.quote, true), at: sentAt(source!) ?? 0 })) });
@@ -1850,6 +1850,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try { const raw = JSON.parse(turn.raw) as TelegramUpdate;
       return String((raw.edited_message ?? raw.message)?.from?.id) === journal.view.genesis.operator; }
     catch { return false; }
+  };
+  const resumeGap = (turn: Turn) => {
+    if (!fromOperator(turn)) return null;
+    const previous = journal.view.order.filter(item => item.accepted && item.update < turn.update && fromOperator(item)).at(-1);
+    const at = previous && messageTime(previous);
+    const elapsed = at === null || at === undefined ? null : ports.now() - at;
+    return elapsed !== null && elapsed >= 86_400_000 ? { previous: previous!.id, elapsedHours: Math.floor(elapsed / 3_600_000) } : null;
   };
   // Conservative identity for an exact restatement. A different value keeps a
   // different key; semantic near-matches remain separate for the model to judge.
@@ -2460,11 +2467,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const preferences = preferenceState();
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
     const digest = labelAll ? undefined : crossTopicDigest(through);
+    const now = ports.now(), zone = ports.timeZone ?? 'America/Los_Angeles';
+    const local = localParts(now, zone), resume = awayFor && resumeGap(awayFor);
+    const localDay = `${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
     const suppliedSources = ports.sources === undefined ? undefined
       : typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources;
     const sourceList = allowGreeting ? suppliedSources : suppliedSources?.filter(source =>
       typeof source !== 'object' || source === null || !('id' in source) || source.id !== 'greeting-continuity');
-    const packet = JSON.stringify({ now: ports.now(), memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
+    const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
+      time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
+      weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
+      ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
+        guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
+      memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       capability: `Private preview: ${journal.view.reminderGrant ? 'separately granted one morning reminder batch per day and topic' : 'answer only; no initiated reminders are granted'}; no tools. Memory is this trial's journal only. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail. A similar name, event or date, a summary inference, your earlier reply, or the question's premise does not establish it. If the offered evidence does not support the requested detail, say "I don't know from this journal"; do not fill the gap with a likely answer or claim the operator never said it. Cite sourceLabel for supported remembered facts. Say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
         + (sourceList?.some(source => typeof source === 'object' && source !== null
           && 'id' in source && source.id === 'greeting-continuity')
@@ -2630,7 +2645,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const channels = channelFor(turn, summary?.text);
       const candidateChannels = channelFor(turn, summary?.text, false);
       const named = peopleFor(turn.text, summary?.through ?? -1);
-      const baseOpen = summary ? period ? openFor(summary.through, PREVIEW_COMMITMENT_LIMIT) : relatedOpenFor(turn, summary) : [];
+      const baseOpen = summary ? period ? openFor(summary.through, PREVIEW_COMMITMENT_LIMIT) : relatedOpenFor(turn, summary, resumeGap(turn) !== null) : [];
       const topicTerms = (value: string) => terms(value).filter(term => term.length >= 4
         && !['what', 'about', 'your', 'mine', 'this', 'that', 'have', 'promise', 'promised', 'remind', 'keep', 'when', 'will', 'please'].includes(term));
       const asked = new Set(topicTerms(turn.text));
