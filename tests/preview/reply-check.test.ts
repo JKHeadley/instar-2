@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkReply, HOLDING_REPLY, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { checkReply, HOLDING_REPLY, interpretJev, REPLY_RULES, replyReviewContext } from './reply-check.js';
 import type { ReplyCheckResult } from './reply-check.js';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -15,9 +15,10 @@ const HOLDING_TEXT = HOLDING_REPLY.replace(/^PREVIEW — /u, '');
 
 it.each([
   ['pass', scores(), 'pass', true, false],
-  ['confirmed violation', scores({ raw_path: 0.91 }), 'violation', false, true],
+  ['ordinary reply at 0.31', scores({ parks_on_user: 0.31 }), 'pass', true, false],
+  ['confirmed violation', scores({ raw_path: 0.85 }), 'violation', false, true],
   ['Jev false alarm', scores({ raw_path: 0.91 }), 'pass', true, true],
-  ['unsure', scores({ parks_on_user: 0.5 }), 'pass', true, true],
+  ['unsure at 0.55', scores({ parks_on_user: 0.55 }), 'pass', true, true],
   ['timeout', null, 'violation', false, true],
 ] as const)('%s: Jev and escalation choose the recorded reply path', async (_name, jev, expected, sendOriginal, escalate) => {
   const records: ReplyCheckResult[] = [];
@@ -36,6 +37,17 @@ it.each([
   expect(records.at(-1)?.verdict).toBe(expected);
   expect(records[0]?.path).toBe('jev');
   if (escalate) expect(records.at(-1)?.path).toBe('subscription');
+});
+
+it.each([
+  ['below the uncertainty line', { parks_on_user: 0.49 }, 'pass', []],
+  ['at the uncertainty line', { parks_on_user: 0.5 }, 'unsure', ['parks_on_user']],
+  ['above the uncertainty line', { parks_on_user: 0.55 }, 'unsure', ['parks_on_user']],
+  ['at the ordinary positive line', { parks_on_user: 0.85 }, 'violation', ['parks_on_user']],
+  ['credential escalation band', { credential: 0.55 }, 'unsure', ['credential']],
+  ['at the credential positive line', { credential: 0.70 }, 'violation', ['credential']],
+] as const)('%s has the calibrated Jev verdict', (_name, values, verdict, ruleIds) => {
+  expect(interpretJev(scores(values), 170)).toMatchObject({ verdict, ruleIds, path: 'jev' });
 });
 
 it('keeps the turn pending, never sending unchecked, when review cannot be reserved', async () => {

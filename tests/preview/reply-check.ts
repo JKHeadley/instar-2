@@ -53,7 +53,7 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
   const flagged = rules.filter((id, index) => probabilities[index]! >= positiveLine[id]);
   if (flagged.length) return { verdict: 'violation', ruleIds: flagged,
     confidence: Math.max(...flagged.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage };
-  const uncertain = rules.filter((id, index) => probabilities[index]! > 0.15);
+  const uncertain = rules.filter((id, index) => probabilities[index]! >= 0.5);
   return uncertain.length
     ? { verdict: 'unsure', ruleIds: uncertain, confidence: Math.max(...uncertain.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage }
     : { verdict: 'pass', ruleIds: [], confidence: 1 - Math.max(...probabilities), path: 'jev', latencyMs, scores: scoreMap, usage };
