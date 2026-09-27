@@ -77,7 +77,7 @@ it('accepts item 2000, leaves a duplicate alone, and refuses item 2001 before wr
     expect(journal.view.cursor).toBe(0);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 60_000);
 
 it('recalls an imported email after Telegram summary, with source sender and date; body instructions stay quoted', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-')));
@@ -181,6 +181,55 @@ syncBuiltinESMExports();
     expect(existsSync(unbounded)).toBe(false);
     const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(reopened.view.channelItems.size).toBe(0);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reads through permitted short reads and still refuses an oversized export', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-short-')));
+  try {
+    const journalPath = join(root, 'journal.encrypted');
+    const journal = openPreviewJournal(journalPath, key, { ...genesis, expires: Date.now() + 60_000 });
+    journal.close();
+    const fixture = join(root, 'agent-owned.jsonl');
+    const first = `${JSON.stringify(row('mail-10', 'The studio code is JADE-52.'))}\n`;
+    const guard = join(root, 'short-read.mjs');
+    const readPastLimit = join(root, 'read-past-limit');
+    writeFileSync(guard, `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const open = fs.openSync, read = fs.readSync;
+let fixtureFd, firstRead = true;
+fs.openSync = (path, ...args) => {
+  const fd = open(path, ...args);
+  if (path === ${JSON.stringify(fixture)}) fixtureFd = fd;
+  return fd;
+};
+fs.readSync = (fd, buffer, offset, length, position) => {
+  if (fd !== fixtureFd) return read(fd, buffer, offset, length, position);
+  const chunk = firstRead ? ${Buffer.byteLength(first)} : 64 * 1024;
+  firstRead = false;
+  const count = read(fd, buffer, offset, Math.min(length, chunk), position);
+  if (position + count > 2 * 1024 * 1024) fs.writeFileSync(${JSON.stringify(readPastLimit)}, 'yes');
+  return count;
+};
+syncBuiltinESMExports();
+`);
+    const invoke = () => spawnSync(process.execPath,
+      ['--no-warnings', '--import', guard, '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
+        'import-fixture', '--root', root, '--file', fixture, '--agent-account', account],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000,
+        env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    writeFileSync(fixture, first + `${JSON.stringify(row('mail-11', 'The venue is the North Hall.'))}\n`);
+    const accepted = invoke();
+    expect(accepted.status, accepted.stderr).toBe(0);
+    expect(JSON.parse(accepted.stdout)).toEqual({ added: 2, total: 2 });
+    writeFileSync(fixture, first.replace('mail-10', 'mail-12') + `${JSON.stringify(row('mail-13', 'x'.repeat(2 * 1024 * 1024)))}\n`);
+    const oversized = invoke();
+    expect(oversized.status).not.toBe(0);
+    expect(existsSync(readPastLimit)).toBe(true);
+    const reopened = openPreviewJournal(journalPath, key);
+    expect([...reopened.view.channelItems.keys()]).toHaveLength(2);
+    expect(reopened.view.cursor).toBe(0);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

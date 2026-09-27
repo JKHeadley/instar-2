@@ -176,7 +176,12 @@ async function main() {
       try {
         if (!fstatSync(fd).isFile()) throw Error('preview: substituted fixture');
         const buffer = Buffer.alloc(2 * 1024 * 1024 + 1);
-        const length = readSync(fd, buffer, 0, buffer.length, 0);
+        let length = 0;
+        while (length < buffer.length) {
+          const count = readSync(fd, buffer, length, buffer.length - length, length);
+          if (count === 0) break;
+          length += count;
+        }
         if (length > 2 * 1024 * 1024) throw Error('preview: fixture capacity');
         bytes = buffer.subarray(0, length);
       } finally { closeSync(fd); }
