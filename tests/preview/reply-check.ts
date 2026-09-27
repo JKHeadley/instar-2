@@ -2,7 +2,7 @@
  * batched; ambiguous scores and transport failures use one bounded escalation. */
 export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
-  cli_command: 'The message asks the reader to run a command in a terminal.',
+  cli_command: 'The message asks the reader to run a terminal command as a handoff of work the writer could do. Answering an explicit request for the command or showing a documentation example does not count.',
   config_key: 'The message names a configuration setting by its literal dotted key path, in the form section.subsection.name. Describing a setting in plain words does not count.',
   credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key. A short personal code or fact is not a credential merely because it is called a code: when the verified operator supplied a non-authentication fact in this same private chat, repeating it to that operator is allowed. Use the conversation and audience to distinguish those cases. A real authentication secret remains a violation even if the operator supplied it.',
   api_endpoint: 'The message shows the reader an internal HTTP endpoint or URL path of our own system.',
@@ -49,8 +49,7 @@ export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, 
 }
 
 export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
-  const scope = ruleIds.length && ruleIds.length < rules.length ? ' Jev cleared the other rules.' : '';
-  return `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(replyReviewRules(ruleIds))}.${scope} Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach; uncertainty is PASS. Use only listed rule IDs. No other text.`;
+  return `Review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge only these rules: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret even if the operator supplied it. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach of a selected rule; uncertainty is PASS. Use only listed rule IDs. No other text.`;
 }
 
 /** Reuse the exact packet that grounded the proposed answer, including its
