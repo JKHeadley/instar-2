@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { replyReviewContext } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(41);
 const base = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -30,7 +31,7 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
     let id = 1;
     const oldSaved = `ORBIT${seed}X`, newSaved = `NOVA${seed}Y`, oldImport = `EMBER${seed}Z`, otherImport = `CEDAR${seed}Q`;
     const savedClause = `My archive code is ${oldSaved}.`;
-    const importedClause = `The archive key is ${oldImport}.`;
+    const importedClause = seed === 1 ? `I keep the archive key ${oldImport}.` : `The archive key is ${oldImport}.`;
     const check = (surface: string, value: string) => {
       seen.add(surface);
       for (const token of stale) expect(value, `seed ${seed}, ${surface}, stale ${token}`).not.toContain(token);
@@ -124,3 +125,67 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }
 }, 60000);
+
+it('projects a committed correction before reply escalation, including after recovery', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-forget-reply-review-')));
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, base);
+  const reviewed: string[] = [];
+  const ports = { now: () => 1790000000000, stopped: () => false,
+    prepareModel: (input: { question: string; context: string }) => JSON.stringify({ messages: [
+      { role: 'user', content: input.question }, { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+    model: async (input: { id: string; question: string; context: string }) => {
+      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The archive record was updated.', people: [], memory: [] });
+      if (input.question.includes('NOVA4826')) {
+        const source = JSON.parse(input.context).memoryCandidates.find((item: { message: string }) => item.message.includes('ORBIT7319'));
+        return JSON.stringify({ reply: 'Understood.', memory: [{ mode: 'correct', source: source.id,
+          quote: 'My archive code is ORBIT7319.', replacement: 'My archive code is NOVA4826.' }] });
+      }
+      return 'Understood.';
+    },
+    replyCheck: { elapsedMs: () => 1,
+      jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+        Object.keys(replyPass.answers).map(rule => [rule, { type: 'noul', noul: 0.6 }])) }, latencyMs: 1 }),
+      escalate: async (text: string, _id: string, prompt?: string) => {
+        if (journal.view.memory.some(change => change.mode === 'correct')) reviewed.push(replyReviewContext(prompt!, text));
+        return { verdict: 'pass' as const, ruleIds: [], confidence: 1, latencyMs: 1 };
+      } },
+    send: async () => 1, checkOutbound: () => {} };
+  try {
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'My archive code is ORBIT7319.')]); await worker.drain();
+    journal.close(); journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    worker.intake([update(2, 'Please update my archive record: My archive code is NOVA4826.')]); await worker.drain();
+    expect(journal.view.memory).toMatchObject([{ mode: 'correct' }]);
+    expect(reviewed).toHaveLength(1);
+    expect(reviewed[0]).not.toContain('ORBIT7319');
+    expect(reviewed[0]).toContain('NOVA4826');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a newly saved preference visible to summary supervision', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-forget-preference-')));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, base);
+  const supervised: string[] = [];
+  const quote = 'I like answers in complete sentences.';
+  try {
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: quote, people: [], memory: [] })
+        : JSON.stringify({ reply: 'Understood.', memory: [{ mode: 'prefer', source: input.id, quote }] }),
+      summaryCheck: async () => jevPass,
+      replyCheck: { elapsedMs: () => 1, jev: async (state, questions) => {
+        if (questions) supervised.push(state);
+        return { value: { model: 'jev-1.13.0', answers: questions
+          ? { summary_integrity: { type: 'noul', noul: 0.01 } } : replyPass.answers }, latencyMs: 1 };
+      }, escalate: async () => ({ verdict: 'pass' as const, ruleIds: [], confidence: 1, latencyMs: 1 }) },
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, quote)]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote }]);
+    expect(supervised.length).toBeGreaterThan(0);
+    expect(supervised.at(-1)).toContain(quote);
+    expect(supervised.at(-1)).not.toContain('[withheld: operator correction or forgetting]');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});

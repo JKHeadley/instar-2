@@ -1,7 +1,6 @@
 import { redact } from '../../src/recall/redact.js';
 import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
-import { statedFacts } from './memory-sentinel.js';
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
@@ -66,11 +65,9 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       next = next.replaceAll(passage, '[withheld: operator correction or forgetting]');
     return next;
   }, redact(value).text);
-  const metadata = value => activeChanges.filter(change => change.mode !== 'prefer')
-    .flatMap(change => statedFacts(change.quote).map(fact => fact.value))
-    .filter(value => value.length >= 4)
-    .reduce((text, term) => text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'giu'),
-      '[withheld: operator correction or forgetting]'), clean(value));
+  const metadata = (value, imported) => imported && activeChanges.some(change => change.mode !== 'prefer'
+    && change.source === `channel:${JSON.stringify([imported.source, imported.account, imported.id])}`)
+    ? '[withheld: operator correction or forgetting]' : clean(value);
   const replyFor = found => {
     const sent = found.intent?.replace(/^PREVIEW — /u, '');
     if (found.noticeClass) return clean(sent ?? '');
@@ -137,8 +134,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         return `channel-ref:${createHash('sha256').update(id).digest('hex')}` === item.sourceId;
       });
       if (!imported || item.source !== imported.source || item.date !== isoMinute(imported.at)
-        || item.from !== `${metadata(imported.from)} (export sender metadata, unverified)`
-        || item.message !== clean(`${imported.subject ?? ''} ${imported.text}`.trim())) fault('people-import-source', at);
+        || item.from !== `${metadata(imported.from, imported)} (export sender metadata, unverified)`
+        || item.message !== `${imported.subject ? `${metadata(imported.subject, imported)} ` : ''}${clean(imported.text)}`.trim()) fault('people-import-source', at);
       for (const [m, mention] of list(item?.mentions, `${at}.mentions`).entries()) {
         if (!imported || mention?.quote !== clean(`${imported.subject ?? ''} ${imported.text}`.trim()))
           fault('people-note-source', `${at}.mentions[${m}]`);
@@ -183,15 +180,15 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const found = channel(item?.sourceRef ?? displayedId, at);
     if (found) {
       const rawId = `channel:${JSON.stringify([found.source, found.account, found.id])}`;
-      const needsRef = metadata(found.account) !== found.account
-        || metadata(found.id) !== found.id;
+      const needsRef = metadata(found.account, found) !== found.account
+        || metadata(found.id, found) !== found.id;
       if (item.sourceRef !== (needsRef ? publicSource(rawId) : undefined)) fault('channel-reference-source', at);
-      if (metadata(found.account) !== item.account || metadata(found.id) !== item.sourceId
-        || metadata(found.from) !== item.from || found.at === undefined) fault('channel-attribution', at);
+      if (metadata(found.account, found) !== item.account || metadata(found.id, found) !== item.sourceId
+        || metadata(found.from, found) !== item.from || found.at === undefined) fault('channel-attribution', at);
       if (item.quote !== clean(found.text)) fault('channel-text-source', at);
       if (item.date !== isoMinute(found.at)
-        || item.subject !== (found.subject === undefined ? undefined : metadata(found.subject))
-        || item.conversation !== (found.conversation === undefined ? undefined : metadata(found.conversation)))
+        || item.subject !== (found.subject === undefined ? undefined : metadata(found.subject, found))
+        || item.conversation !== (found.conversation === undefined ? undefined : metadata(found.conversation, found)))
         fault('channel-metadata-source', at);
       add('channel-import', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(rawId) }]);
     }
@@ -200,8 +197,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `memoryCandidates[${n}]`;
     if ((item?.id?.startsWith?.('channel:') || item?.id?.startsWith?.('channel-ref:'))) {
       const found = channel(item.id, at);
-      if (found && item.message !== clean(`${found.subject ?? ''} ${found.text}`).slice(0, 1000)
-        && item.message !== clean(`${found.subject ?? ''} ${found.text}`))
+      const projected = found ? `${metadata(found.subject ?? '', found)} ${clean(found.text)}`.trim() : '';
+      if (found && item.message !== projected.slice(0, 1000) && item.message !== projected)
         fault('candidate-text-source', at);
       if (found && item.reply !== '') fault('candidate-reply-source', at);
       if (found) add('memory-candidate', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(item.id) }]);
