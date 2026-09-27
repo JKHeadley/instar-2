@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Supervised coordinator for the existing private-chat live procedures.
 // It reads the journal; only Justin and the already approved runner can send.
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, watch } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
@@ -89,22 +89,26 @@ async function main() {
       process.stdout.write('Follow the procedure as Justin. The coordinator sends nothing.\n');
       let pending = true;
       let holdReason = '';
-      const watcher = setInterval(() => {
+      const end = reason => { holdReason = reason; pending = false; input.write(`\n${reason}\n`); input.close(); };
+      const watcher = watch(join(root, 'journal.encrypted'), () => {
         if (!pending) return;
         try {
           const result = resultSince(before, snapshot(root, key));
-          if (result.held) { holdReason = result.reason; pending = false; input.write(`\nHELD: ${holdReason}\n`); input.close(); }
-        } catch { holdReason = 'journal read failed'; pending = false; input.close(); }
-      }, 1000);
+          if (result.held) end(`HELD: ${result.reason}`);
+        } catch { end('journal read failed'); }
+      });
+      watcher.on('error', () => { if (pending) end('journal watch failed'); });
+      const expiryTimer = setTimeout(() => { if (pending) end('trial expired'); },
+        Math.min(Math.max(0, before.expires - Date.now()), 2_147_483_647));
       let verdict = '';
       try { verdict = (await input.question('After checking the actual reply and inspect evidence, enter PASS or FAIL with a reason: ')).trim(); }
       catch { /* A detected hold closes the prompt. */ }
-      finally { pending = false; clearInterval(watcher); }
+      finally { pending = false; watcher.close(); clearTimeout(expiryTimer); }
       let after;
       try { after = snapshot(root, key); }
       catch { after = before; holdReason ||= 'journal read failed'; }
       const result = resultSince(before, after);
-      const reason = holdReason || result.reason;
+      const reason = holdReason.replace(/^HELD: /u, '') || result.reason;
       const passed = !reason && result.answered >= minimumAnswers && result.unresolved === 0 && /^PASS$/iu.test(verdict);
       rows.push({ name, result: passed ? 'PASS' : 'FAIL', answered: result.answered,
         held: result.held, reason: reason || (passed ? '' : result.unresolved ? 'reply pending or UNKNOWN'
