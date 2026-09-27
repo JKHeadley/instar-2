@@ -851,6 +851,19 @@ the new decoder. Revert only the writer. The active journal must keep all later
 intake, reservations, intents, receipts, corrections and stop records; a sealed
 pre-upgrade copy is forensic evidence, not a replacement for that history.
 
+The recall sentinel gives extra weight to a candidate with uniquely strongest
+question-word coverage. Words shared by several candidates receive less weight, so
+the previous turn and touching summary can still surface a contextual source.
+This preserves both directly named facts and facts reached through conversation.
+`memory-sentinel.test.ts` measures source-item and packet-answer inconsistency
+for two saved facts, five paraphrases each: 0/10 before summary, 0/10 after
+summary, and 0/10 after journal replay in the fixed offline fixture. It scores
+the exact packet that `probe` prepares; a deterministic answer stub reads only
+selected source text. It does not measure a real model's answer quality. The
+same test checks that a contextual flower fact survives five incidental birthday
+matches in a summary-covered packet, alongside a quiet-history neighbor. The
+private-chat procedure is [recall-paraphrase-consistency-live-test.md](recall-paraphrase-consistency-live-test.md).
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
@@ -1972,8 +1985,9 @@ Telegram split parts remain distinct durable updates. See
 When a summary covers earlier turns, a **memory sentinel**
 (`memory-sentinel.ts`) picks which of those original journal turns are quoted
 verbatim beside the summary as `recalled`, before the model call. It is one
-deterministic step using the core BM25 scorer (`src/recall/lexical.ts`). Its query
-is the new message, plus at half weight the accepted turn it continues (so "what
+deterministic step using the core BM25 scorer (`src/recall/lexical.ts`). It scores
+the new message, boosting a turn with uniquely strongest question-word coverage,
+plus at half weight the accepted turn it continues (so "what
 would she want?" finds the earlier turn about the person named just before) and
 the summary sentences that share a word with it (so "the code for my gym cabinet"
 reaches a turn about a "locker combination" the summary still names). A day the

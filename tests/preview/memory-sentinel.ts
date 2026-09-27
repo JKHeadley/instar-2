@@ -190,9 +190,14 @@ export function selectRecall(input: SentinelInput): number[] {
       if (weight === 1) coverage[hit.index] = hit.matched;
     }
   };
-  // Keep complementary direct evidence and bridged paraphrases eligible even
-  // when another source shares more words with the question.
-  for (const hit of direct) { score[hit.index]! += hit.score; coverage[hit.index] = hit.matched; }
+  // Keep complementary direct evidence and bridged paraphrases eligible even when another
+  // source shares more words; boost a direct hit only when its coverage is distinctive.
+  const mostMatched = direct.reduce((max, hit) => Math.max(max, hit.matched), 0);
+  const leaders = direct.filter(hit => hit.matched === mostMatched).length;
+  for (const hit of direct) {
+    score[hit.index]! += (leaders === 1 && hit.matched === mostMatched ? 4 : 1) * hit.score;
+    coverage[hit.index] = hit.matched;
+  }
   add(input.previous ? terms(input.previous) : [], 0.5);
   add(bridge(input.summary, new Set(message)), 0.5);
   // Prefer a relevant original measurement over several topical but numberless
