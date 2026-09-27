@@ -42,6 +42,9 @@ export const SUMMARY_UNKNOWN_RECOVERY_MS = 60_000;
 export const SUMMARY_MAX_PROMPT_BYTES = 24 * 1024;
 export const SUMMARY_MAX_TURNS = 4;
 export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
+// Leave room for the candidate reply and review question when Jev needs the
+// existing full-context subscription review. The answer packet is its input.
+const REPLY_REVIEW_HEADROOM_BYTES = 8192;
 /** Most journal-derived inventory entries offered with an operator memory question. */
 export const PREVIEW_INVENTORY_LIMIT = 20;
 
@@ -1841,6 +1844,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           promptFit = true;
           try {
             const prepared = ports.prepareModel?.({ question, context, id: turn.id });
+            if (ports.replyCheck && prepared !== undefined
+              && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT)
+                + Math.min(REPLY_REVIEW_HEADROOM_BYTES,
+                Math.floor(journal.view.limits.maxBytes / 4)) > journal.view.limits.maxBytes)
+              throw Error('preview: reply review headroom');
             const packet = JSON.parse(context) as { summary?: { through: number }; memorySummary?: { text: string }; history?: unknown[];
               recalled?: unknown[]; people?: unknown[]; commitments?: { items: { id: number }[] }[];
               channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[]; memoryCandidates?: { id: string }[] };
