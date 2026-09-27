@@ -451,7 +451,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const turnLabel = (turn: Turn) =>
     `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${conversationName(turn.thread)}/${dated(turn)}/#${turn.update}`;
   const channelLabel = (item: ChannelItem) =>
-    `import:${item.source}/${(item.conversation ?? 'unknown conversation').replace(/\s+/gu, ' ').slice(0, 40)}/${isoMinute(item.at)}/${createHash('sha256').update(channelKey(item)).digest('hex').slice(0, 12)}`;
+    `import:${item.source}/${clean(redact(item.conversation ?? 'unknown conversation').text, true).replace(/\s+/gu, ' ').slice(0, 40)}/${isoMinute(item.at)}/${createHash('sha256').update(channelKey(item)).digest('hex').slice(0, 12)}`;
   const summaryLabel = (summary: Extract<JournalRecord, {kind:'summary'}>) =>
     `summary:all conversations/${isoMinute(summary.at)}/through #${summary.through}`;
   const memoryLabel = (change: MemoryChange) => {
