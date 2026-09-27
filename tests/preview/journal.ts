@@ -775,8 +775,7 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'summary-faithfulness-reserve') {
     const key = summaryJevTokenKey(view, 'faithfulness', row.through);
-    if (!view.summaryReservations.has(row.through) || !view.summaryCandidates.has(row.through)
-      || view.summaryFaithfulness.has(row.through)
+    if (!view.summaryReservations.has(row.through) || view.summaryFaithfulness.has(row.through)
       || view.tokenCurrent.has(key))
       throw Error('preview journal: summary faithfulness reservation order');
     reserveTokens(view, key, 'replyCheck', view.limits.maxBytes, jevOutputMaximum);
