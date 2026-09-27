@@ -59,7 +59,7 @@ export type JournalRecord =
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
-  | { kind: 'summary-failed'; through: number; at: number }
+  | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[]; memoryFor?: string[];
     commitments?: CommitmentNote[]; closed?: CommitmentClosure[]; memory?: MemoryChange[];
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number }
@@ -138,6 +138,11 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'summary-failed') {
     if (!view.summaryReservations.delete(row.through)) throw Error('preview journal: failed summary without reservation');
+    if (row.memoryPendingFor !== undefined) {
+      const trigger = view.turns.get(row.memoryPendingFor);
+      if (!trigger?.accepted || trigger.update > row.through) throw Error('preview journal: failed summary trigger absent');
+      trigger.memoryPending = true;
+    }
     view.summaryFailures.set(row.through, (view.summaryFailures.get(row.through) ?? 0) + 1);
     return;
   }
@@ -405,7 +410,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
-      || summary.memoryFor === undefined && summary.through >= turn.update));
+      || summary.memoryFor === undefined && !turn.memoryPending && summary.through >= turn.update));
   const withheld = '[withheld: operator correction or forgetting]';
   const clean = (value: string, _derived = false) => journal.view.memory.reduce((text, change) => {
     let projected = text.replaceAll(change.quote, withheld);
@@ -890,13 +895,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
         } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
       if (unresolvedMemory || strictMemory && memory === undefined || attemptedMemory && memory === undefined) {
-        journal.append({kind:'summary-failed',through,at:ports.now()}); return;
+        journal.append({kind:'summary-failed',through,
+          ...(trigger ? { memoryPendingFor: trigger.id } : {}),at:ports.now()}); return;
       }
       if ([...journal.view.memory, ...memory ?? []].some(change => summaryText.includes(change.quote))) {
-        journal.append({kind:'summary-failed',through,at:ports.now()}); return;
+        journal.append({kind:'summary-failed',through,
+          ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),at:ports.now()}); return;
       }
       if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.limits.maxBytes / 4))) {
-        journal.append({kind:'summary-failed',through,at:ports.now()}); return;
+        journal.append({kind:'summary-failed',through,
+          ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),at:ports.now()}); return;
       }
       journal.append({kind:'summary',through,text:clean(redact(summaryText).text, true),
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),

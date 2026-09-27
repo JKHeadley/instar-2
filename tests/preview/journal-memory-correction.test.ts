@@ -170,7 +170,7 @@ it.each([
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
-it('keeps an uncued unresolved ordinary summary pending', async () => {
+it('keeps an uncued unresolved ordinary summary pending through restart and the next summary', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-ordinary-unresolved-')));
   try {
     const w = world(root, 'normal-summary-unresolved');
@@ -180,7 +180,37 @@ it('keeps an uncued unresolved ordinary summary pending', async () => {
     expect(w.journal.view.summaries).toHaveLength(0);
     expect(w.journal.view.summaryFailures.size).toBe(1);
     expect(w.journal.view.memory).toEqual([]);
+    expect(w.journal.view.order[1]?.memoryPending).toBe(true);
     w.journal.close();
+    const resumed = world(root, 'normal-summary-unresolved');
+    expect(resumed.journal.view.order[1]?.memoryPending).toBe(true);
+    await resumed.say(3, 'Hello again.');
+    expect(resumed.summaryPrompts.some(packet => JSON.parse(packet).memoryRequest?.message
+      === 'Please stop remembering my gym locker code.')).toBe(true);
+    expect(resumed.journal.view.order[1]?.memoryPending).toBe(true);
+    expect(resumed.journal.view.summaries).toHaveLength(0);
+    resumed.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
+it('settles an uncued resolved ordinary summary across restart', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-ordinary-resolved-')));
+  try {
+    const w = world(root, 'normal-summary');
+    await w.say(1, 'My gym locker code is 3310.');
+    await w.say(2, 'Please stop remembering my gym locker code.');
+    await w.worker.summarizeIfNeeded(true);
+    expect(w.journal.view.summaries.at(-1)?.memoryFor).toEqual([w.journal.view.order[1]?.id]);
+    expect(w.journal.view.order[1]?.memoryPending).toBeUndefined();
+    w.journal.close();
+    const resumed = world(root, 'normal-summary');
+    expect(resumed.journal.view.order[1]?.memoryPending).toBeUndefined();
+    await resumed.say(3, 'Hello again.');
+    await resumed.worker.summarizeIfNeeded(true);
+    expect(resumed.summaryPrompts.length).toBeGreaterThan(0);
+    expect(resumed.summaryPrompts.every(packet => JSON.parse(packet).memoryRequest === undefined)).toBe(true);
+    expect(resumed.journal.view.order[1]?.memoryPending).toBeUndefined();
+    resumed.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
