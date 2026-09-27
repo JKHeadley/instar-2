@@ -101,6 +101,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     view.capAuthority === null ? 'Caps have not been raised since the trial began.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
     `Unknown outcomes (never retried): ${String(unknownCalls)} model call(s), ${String(unknownSends)} send(s).`,
+    `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
     holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
     `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.genesis.expires)}.`,

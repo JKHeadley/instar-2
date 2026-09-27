@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
@@ -216,6 +216,111 @@ it('holds stop, call allowance and secret egress; unknown model calls are not re
     next.worker.stop('operator');
     expect(() => next.worker.intake([update(3)])).toThrow('stopped');
     next.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('sends one fixed checked reply for a definite failure and counts the spent call', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let checks = 0, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => ({ state: 'rejected', failureClass: 'rejected' }),
+      checkOutbound: text => { checks++; expect(text).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); },
+      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); return 7; } });
+    worker.intake([update(1, 'Reply with an exact path')]); await worker.drain(); await worker.drain();
+    expect({ checks, sends, calls: journal.view.calls, replies: journal.view.replies }).toEqual({ checks: 1, sends: 1, calls: 1, replies: 1 });
+    expect(Object.fromEntries(journal.view.failureClasses)).toEqual({ rejected: 1 });
+    expect(Object.fromEntries(journal.view.providerStates)).toEqual({ rejected: 1 });
+    expect(journal.view.order[0]?.sent).toBe(7);
+    journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8', timeout: 10000 });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({ calls: 1, replies: 1, unknownCalls: 0,
+      modelFailureClasses: { rejected: 1 }, modelResultStates: { rejected: 1 } });
+    expect(JSON.parse(status.stdout).self).toContain('"rejected":1');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('never repeats an UNKNOWN call or sends a reply after restart', async () => {
+  const root = origin();
+  try {
+    const first = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('connection lost during call'); },
+      checkOutbound: () => {}, send: async () => { throw Error('must not send'); } });
+    worker.intake([update(1)]); await worker.drain(); first.close();
+    const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    let calls = 0, sends = 0;
+    const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
+      model: async () => { calls++; return 'wrong'; }, checkOutbound: () => {},
+      send: async () => { sends++; return 1; } });
+    await resumed.drain();
+    expect({ calls, sends, spent: second.view.calls, answer: second.view.order[0]?.answer }).toEqual({ calls: 0, sends: 0, spent: 1, answer: undefined });
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('records an uncertain returned state without retrying or replying', async () => {
+  const root = origin();
+  try {
+    const first = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => ({ state: 'uncertain' }), checkOutbound: () => {},
+      send: async () => { throw Error('must not send'); } });
+    worker.intake([update(1)]); await worker.drain(); first.close();
+    const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(Object.fromEntries(second.view.providerStates)).toEqual({ uncertain: 1 });
+    expect(second.view.order[0]?.answer).toBeUndefined();
+    expect(second.view.calls).toBe(1);
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays a content-free subscription review state after its reservation', () => {
+  const root = origin();
+  try {
+    const path = join(root, 'journal.encrypted');
+    const first = openPreviewJournal(path, key, genesis());
+    const id = 'telegram:12345678:update:1';
+    first.append({ kind: 'intake', id, update: 1, text: 'question', raw: JSON.stringify(update(1)),
+      accepted: true, cursor: 2, at: 1000 });
+    first.append({ kind: 'reserve', id, at: 1000 });
+    first.append({ kind: 'answer', id, text: MODEL_FAILURE_REPLY, state: 'rejected', failureClass: 'rejected', at: 1000 });
+    first.append({ kind: 'reply-review-reserve', id, candidate: `PREVIEW — ${MODEL_FAILURE_REPLY}`, at: 1000 });
+    first.append({ kind: 'reply-review-state', id, state: 'complete', at: 1000 });
+    first.close();
+    const second = openPreviewJournal(path, key);
+    expect(Object.fromEntries(second.view.providerStates)).toEqual({ rejected: 1, complete: 1 });
+    expect(second.view.calls).toBe(2);
+    expect(second.view.order[0]?.reviewState).toBe('complete');
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('resumes a durable definite failure after restart and sends exactly once', async () => {
+  const root = origin();
+  try {
+    let tripped = false, sends = 0, calls = 0;
+    const first = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(), stage => {
+      if (stage === 'after:answer' && !tripped) { tripped = true; throw Error('crash after durable failure'); }
+    });
+    const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => { calls++; return { state: 'complete', failureClass: 'malformed' }; },
+      checkOutbound: () => {}, send: async () => { sends++; return 1; } });
+    worker.intake([update(1)]); await expect(worker.drain()).rejects.toThrow('crash after durable failure'); first.close();
+    const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
+      model: async () => { calls++; return 'wrong'; }, checkOutbound: () => {},
+      send: async () => { sends++; return 9; } });
+    await resumed.drain(); await resumed.drain();
+    expect({ calls, sends, spent: second.view.calls, failures: Object.fromEntries(second.view.failureClasses) })
+      .toEqual({ calls: 1, sends: 1, spent: 1, failures: { malformed: 1 } });
+    expect(second.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
+    expect(second.view.order[0]?.sent).toBe(9);
+    second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -559,7 +664,7 @@ it('shows an oversized historical turn and clears that marker after an authorize
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('closes a lost summary after restart and spends at most one recovery attempt at that frontier', async () => {
+it('keeps a lost summary UNKNOWN after restart and never repeats it', async () => {
   const root = origin(), path = join(root, 'journal.encrypted');
   try {
     const first = openPreviewJournal(path, key, { ...genesis(4), maxBytes: 32768 });
@@ -572,20 +677,19 @@ it('closes a lost summary after restart and spends at most one recovery attempt 
     const worker = createJournalWorker(journal, { now: () => 1001, stopped: () => false,
       model: async input => { if (input.id.startsWith('summary:')) { summaries++; throw Error('timeout'); } return 'ok'; },
       send: async () => 2, checkOutbound: () => {} });
-    expect(journal.view.summaryReservations.size).toBe(0);
-    expect(journal.view.summaryFailures.get(1)).toBe(1);
+    expect(journal.view.summaryReservations.size).toBe(1);
+    expect(journal.view.summaryFailures.get(1)).toBeUndefined();
     await worker.summarizeIfNeeded(); // under the background threshold
     await worker.summarizeIfNeeded(true);
     await worker.summarizeIfNeeded(true);
-    expect(summaries).toBe(1);
-    expect(journal.view.calls).toBe(3);
-    expect(journal.view.summaryFailures.get(1)).toBe(2);
-    expect(journal.view.summaryReservations.size).toBe(0);
+    expect(summaries).toBe(0);
+    expect(journal.view.calls).toBe(2);
+    expect(journal.view.summaryReservations.size).toBe(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('recovers a pending summary and retries an overflow-held turn automatically', async () => {
+it('retries a definitely failed summary and an overflow-held turn automatically', async () => {
   const root = origin(), path = join(root, 'journal.encrypted');
   try {
     const first = openPreviewJournal(path, key, { ...genesis(4), maxBytes: 32768 });
@@ -597,6 +701,7 @@ it('recovers a pending summary and retries an overflow-held turn automatically',
       update:1,grant:first.view.genesis.grant,at:1000});
     first.append({kind:'sent',id,message:1,at:1000});
     first.append({kind:'summary-reserve',through:1,at:1000});
+    first.append({kind:'summary-failed',through:1,state:'rejected',failureClass:'rejected',at:1000});
     first.append({kind:'intake',id:'telegram:12345678:update:2',update:2,text:'What was the name?',
       raw:JSON.stringify(update(2)),accepted:true,cursor:3,at:1000});
     first.append({kind:'hold',id:'telegram:12345678:update:2',reason:'summary unavailable: prompt overflow',at:1000});
@@ -655,7 +760,7 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-
       model: async input => { seen.push(input);
         if (input.id.startsWith('summary:')) {
           summaryAttempts++;
-          if (route === 'failed' && summaryAttempts === 1) throw Error('timeout');
+          if (route === 'failed' && summaryAttempts === 1) return { state: 'rejected', failureClass: 'rejected' } as const;
           return 'Earlier the operator named ORCHID.';
         }
         return 'answer'; },

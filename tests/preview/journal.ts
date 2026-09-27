@@ -25,6 +25,9 @@ export const PREVIEW_PEOPLE_LIMIT = 10;
 export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
+export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
+export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
+type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
 
 /** A person named in an earlier accepted message. The model only selects: the name
  * and quote are exact substrings of the source turn's own text, and who said the
@@ -42,9 +45,12 @@ export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number }
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
-  | { kind: 'answer'; id: string; text: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number }
+  | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected'; failureClass?: ModelFailureClass;
+    usage?: ModelUsage; at: number }
+  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
+  | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
@@ -55,23 +61,25 @@ export type JournalRecord =
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
-  | { kind: 'summary-failed'; through: number; at: number }
+  | { kind: 'summary-failed'; through: number; state?: 'complete' | 'rejected'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
+  | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[];
-    commitments?: CommitmentNote[]; closed?: CommitmentClosure[]; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number }
+    commitments?: CommitmentNote[]; closed?: CommitmentClosure[]; state?: 'complete'; usage?: ModelUsage; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
   | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number };
 
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string;
+  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string;
   checked?: CoherenceFinding[]; checkFailed?: true;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean }
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
-  summaryFailures: Map<number, number>; sourceStop: string | null; imported: boolean;
+  summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
+  sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>;
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
@@ -99,6 +107,9 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
 function project(view: JournalView, row: JournalRecord): void {
+  if ('state' in row && row.state) view.providerStates.set(row.state, (view.providerStates.get(row.state) ?? 0) + 1);
+  if ('failureClass' in row && row.failureClass)
+    view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
   if (row.kind === 'caps') {
     checkCaps(view, row);
@@ -136,6 +147,10 @@ function project(view: JournalView, row: JournalRecord): void {
     view.summaryFailures.set(row.through, (view.summaryFailures.get(row.through) ?? 0) + 1);
     return;
   }
+  if (row.kind === 'summary-uncertain') {
+    if (!view.summaryReservations.has(row.through)) throw Error('preview journal: uncertain summary without reservation');
+    return;
+  }
   if (row.kind === 'summary') {
     if (!view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
@@ -157,6 +172,11 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'reply-review-reserve') {
     if (turn.answer === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
     turn.reviewReserved = true; view.calls++; return;
+  }
+  if (row.kind === 'reply-review-state') {
+    if (!turn.reviewReserved || turn.reviewState !== undefined || turn.intent !== undefined)
+      throw Error('preview journal: review state order');
+    turn.reviewState = row.state; return;
   }
   if (row.kind === 'reply-check') {
     if (turn.answer === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
@@ -182,7 +202,14 @@ function project(view: JournalView, row: JournalRecord): void {
     turn.checked = row.findings; if (row.failed) turn.checkFailed = true;
     if (row.findings.length) view.corrections.push(turn.id);
   }
-  if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined) throw Error('preview journal: answer order'); turn.answer = row.text; }
+  if (row.kind === 'model-uncertain') {
+    if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: uncertain model order');
+    turn.modelState = row.state;
+  }
+  if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
+    if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
+    turn.answer = row.text;
+    if (row.state) turn.modelState = row.state; }
   if (row.kind === 'intent') { if (turn.answer === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') turn.held = row.reason;
@@ -218,7 +245,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -255,7 +282,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -298,8 +325,9 @@ export interface PreviewPorts {
   /** Static sources, or a function read at each turn (for the desk's report). */
   sources?: unknown;
   prepareModel?(input: { question: string; context: string; id: string }): string;
-  model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {text:string;
-    usage: {inputTokens:number|null;outputTokens:number|null;charge:null}} >;
+  model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
+    usage: ModelUsage} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
+    | {state:'uncertain'; usage?: ModelUsage}>;
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'>;
@@ -310,10 +338,7 @@ export interface PreviewPorts {
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
-  // Summary output is derivative. A prior process cannot still own its call under
-  // this journal's exclusive writer, so close an orphan before admitting work.
-  if (!journal.readOnly) for (const through of [...journal.view.summaryReservations])
-    journal.append({ kind: 'summary-failed', through, at: ports.now() });
+  // An orphaned reservation may have completed at the provider. Never repeat it.
   const gate = () => {
     if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.genesis.expires)
       throw Error('preview stopped');
@@ -515,8 +540,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
           catch { continue; } // reservation remains UNKNOWN
-          journal.append({ kind: 'answer', id: turn.id, text: typeof answer === 'string' ? answer : answer.text,
-            ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: ports.now() });
+          if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
+            journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
+              ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), at: ports.now() }); continue;
+          }
+          if (typeof answer !== 'string' && 'failureClass' in answer) {
+            journal.append({ kind: 'answer', id: turn.id, text: MODEL_FAILURE_REPLY,
+              state: answer.state, failureClass: answer.failureClass,
+              ...(answer.usage ? { usage: answer.usage } : {}), at: ports.now() });
+          } else {
+            const text = typeof answer === 'string' ? answer : answer.text;
+            journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
+              state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
+              ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: ports.now() });
+          }
         }
         gate();
         if (journal.view.replies >= journal.view.limits.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
@@ -645,6 +682,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const runSummary = async (force: boolean) => {
     const last = journal.view.order.filter(turn => turn.sent).at(-1);
     if (!last) return;
+    if (journal.view.summaryReservations.size) return; // an uncertain prior call is never repeated
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
@@ -714,8 +752,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,
         context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }
-      catch { journal.append({kind:'summary-failed',through,at:ports.now()}); return; }
+      catch { return; } // outcome UNKNOWN; preserve the reservation
+      if (typeof summary !== 'string' && 'state' in summary && summary.state === 'uncertain') {
+        journal.append({kind:'summary-uncertain',through,state:'uncertain',
+          ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
+      }
+      if (typeof summary !== 'string' && 'failureClass' in summary) {
+        journal.append({kind:'summary-failed',through,state:summary.state,failureClass:summary.failureClass,
+          ...(summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
+      }
       const answered = typeof summary === 'string' ? summary : summary.text;
+      if (!answered.trim()) {
+        journal.append({kind:'summary-failed',through,state:'complete',failureClass:'empty',
+          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
+      }
       let summaryText = answered, people: PersonNote[] | undefined, commitments: CommitmentNote[] | undefined,
         closed: CommitmentClosure[] | undefined;
       try { const parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { summary?: unknown; people?: unknown;
@@ -729,11 +779,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
         } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
       if (Buffer.byteLength(summaryText) > Math.min(8192, Math.floor(journal.view.limits.maxBytes / 4))) {
-        journal.append({kind:'summary-failed',through,at:ports.now()}); return;
+        journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
+          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       journal.append({kind:'summary',through,text:redact(summaryText).text,...(people ? { people } : {}),
         ...(commitments ? { commitments } : {}), ...(closed?.length ? { closed } : {}),
-        ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
+        ...(typeof summary === 'string' ? {} : { usage: summary.usage }),state:'complete',at:ports.now()});
     }
   };
   let summaryJob: Promise<void> | null = null;

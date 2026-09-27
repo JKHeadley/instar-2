@@ -111,7 +111,9 @@ async function main() {
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
-      unknownCalls: view.view.order.filter(t => t.reserved && !t.answer).length,
+      unknownCalls: view.view.order.filter(t => t.reserved && t.answer === undefined).length,
+      modelFailureClasses: Object.fromEntries(view.view.failureClasses),
+      modelResultStates: Object.fromEntries(view.view.providerStates),
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0 })),
@@ -208,16 +210,22 @@ async function main() {
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
-    const invokeSubscription = async (prepared, id) => {
+    const invokeSubscription = async (prepared, id, reviewTurnId) => {
       const route = modelRoute(), policy = subscriptionConversationPolicy(required(options, 'model'));
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
-      if (result.state !== 'complete' || !result.bytes) throw Error('preview: model UNKNOWN');
-      const decision = JSON.parse(result.bytes);
-      if (decision.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string') throw Error('preview: model answer malformed');
-      return { value: decision.conclusion.value, usage: result.usage };
+      if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state, at: Date.now() });
+      if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
+      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
+      if (result.state !== 'complete') throw Error('preview: model outcome unknown');
+      if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
+      let decision;
+      try { decision = JSON.parse(result.bytes); } catch { return { state: 'complete', failureClass: 'malformed', usage: result.usage }; }
+      if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
+        || typeof decision.conclusion.value !== 'string') return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+      if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
+      return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined),
@@ -226,7 +234,9 @@ async function main() {
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const result = await invokeSubscription(prepared, id);
-        return { text: result.value,
+        if (result.state !== 'complete' || result.failureClass) return { ...result,
+          usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+        return { state: 'complete', text: result.value,
           usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
       },
       replyCheck: {
@@ -246,7 +256,8 @@ async function main() {
           const question = `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(REPLY_RULES)}. Return ONLY compact JSON {"verdict":"pass"|"violation","ruleIds":string[],"reason":string}. A violation requires an actual breach; uncertainty is a pass under the reachability fail direction. Give a short reason for either verdict.`;
           const prepared = modelEnvelope({ question,
             context: replyReviewContext(originalPrompt, text), id: `${id}:reply-review` });
-          const result = await invokeSubscription(prepared, `${id}:reply-review`);
+          const result = await invokeSubscription(prepared, `${id}:reply-review`, id);
+          if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           const parsed = JSON.parse(result.value);
           if (!['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
             || parsed.ruleIds.some(rule => !Object.hasOwn(REPLY_RULES, rule))
