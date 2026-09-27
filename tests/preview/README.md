@@ -795,6 +795,21 @@ the fact is absent. The offline 200/1000/2000-turn benchmark is in
 `journal-packet-priority.test.ts`; Justin's live script is in
 `packet-priority-live-test.md`.
 
+When a later complete quoted request or promise repeats an active one, the summary
+projection keeps one open item and attaches the later source message to it. The
+bounded match removes only an introductory “remember” request and outer spacing;
+the remaining clause must match exactly, including punctuation, internal spacing,
+value and letter case, and the authenticated speaker and quoted side must agree.
+Each item admits at most 49 additional sources, including links queued by the
+current summary; a second quotation of the same source adds no link.
+Partial quotes and less certain paraphrases stay separate for the model to judge.
+Both original turns remain in the encrypted journal. A correction of a grouped
+claim withholds both old source quotes, while a changed value remains a distinct
+item. `inspect` shows the additional source inside the open item's `sources`; the
+existing finite packet bound can omit optional commitments. For the operator
+procedure, see [memory-dedupe-live-test.md](memory-dedupe-live-test.md).
+
+
 ### Correcting and forgetting memory
 
 A direct correction or forget request from the bound Telegram operator can be judged in the existing
