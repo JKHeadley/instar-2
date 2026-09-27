@@ -340,7 +340,13 @@ export function createClaudeCodeSubscriptionRoute(input:
           && frame.session_id.length > 0 && frame.session_id.length <= 256
           && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens)
           && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
-        const usage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens, charge: null,
+        const cacheComplete = integer(frame.usage.cache_creation_input_tokens)
+          && integer(frame.usage.cache_read_input_tokens);
+        const completeInput = cacheComplete ? frame.usage.input_tokens
+          + frame.usage.cache_creation_input_tokens + frame.usage.cache_read_input_tokens : null;
+        const usage = { inputTokens: completeInput !== null && Number.isSafeInteger(completeInput) ? completeInput : null,
+          ...(completeInput !== null && Number.isSafeInteger(completeInput) ? { inputComplete: true as const } : {}),
+          outputTokens: frame.usage.output_tokens, charge: null,
           source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
         // A usage-limit or policy result keeps the existing uncertain path, whose failure
         // record drives the durable limit hold; other terminal error frames are rejected.

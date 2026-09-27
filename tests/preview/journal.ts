@@ -29,7 +29,7 @@ export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Pleas
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
-type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
+type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true };
 export type CallKind = 'answer' | 'summary' | 'replyCheck';
 export type TokenTotals = Record<CallKind, { calls: number; inputTokens: number; outputTokens: number; unknownCalls: number }>;
 type TokenReservation = { kind: CallKind; input: number; output: number; observedInput: boolean; observedOutput: boolean };
@@ -114,7 +114,7 @@ function reserveTokens(view: JournalView, key: string, kind: CallKind, input: nu
   const total = view.tokenTotals[kind];
   total.calls++; total.inputTokens += input; total.outputTokens += output; total.unknownCalls++;
 }
-function settleTokens(view: JournalView, key: string, usage?: ModelUsage): void {
+function settleTokens(view: JournalView, key: string, usage?: ModelUsage, jev = false): void {
   const index = view.tokenCurrent.get(key);
   if (index === undefined || !usage) return;
   const call = view.tokenCalls[index]!;
@@ -122,7 +122,8 @@ function settleTokens(view: JournalView, key: string, usage?: ModelUsage): void 
   for (const [field, measured, flag] of [
     ['input', usage.inputTokens, 'observedInput'], ['output', usage.outputTokens, 'observedOutput']
   ] as const) {
-    if (measured === null || !Number.isSafeInteger(measured) || measured < 0 || call[flag]) continue;
+    if (measured === null || !Number.isSafeInteger(measured) || measured < 0 || call[flag]
+      || field === 'input' && !jev && usage.inputComplete !== true) continue;
     if (field === 'input') total.inputTokens += measured - call.input;
     else total.outputTokens += measured - call.output;
     call[field] = measured; call[flag] = true;
@@ -259,7 +260,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
     if (row.result.path === 'jev' && row.result.verdict !== 'unavailable')
-      settleTokens(view, `jev:${row.id}`, row.result.usage);
+      settleTokens(view, `jev:${row.id}`, row.result.usage, true);
     if (row.result.path === 'subscription' && row.result.verdict !== 'unavailable' && turn.reviewState !== 'uncertain')
       settleTokens(view, `review:${row.id}`, row.result.usage);
     turn.replyChecks ??= []; turn.replyChecks.push(row.result);

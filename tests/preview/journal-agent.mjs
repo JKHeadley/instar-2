@@ -258,14 +258,15 @@ async function main() {
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
+    const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+      charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
     const invokeSubscription = async (prepared, id, reviewTurnId) => {
       const route = modelRoute(), policy = subscriptionConversationPolicy(required(options, 'model'));
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
-        ...(result.usage ? { usage: { inputTokens: result.usage.inputTokens,
-          outputTokens: result.usage.outputTokens, charge: null } } : {}), at: Date.now() });
+        ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: Date.now() });
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
@@ -285,10 +286,9 @@ async function main() {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const result = await invokeSubscription(prepared, id);
         if (result.state !== 'complete' || result.failureClass) return { ...result,
-          ...(result.usage ? { usage: { inputTokens: result.usage.inputTokens,
-            outputTokens: result.usage.outputTokens, charge: null } } : {}) };
+          ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
         return { state: 'complete', text: result.value,
-          usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+          usage: recordedUsage(result.usage) };
       },
       replyCheck: {
         elapsedMs: () => performance.now(),
@@ -318,7 +318,7 @@ async function main() {
             throw Error('preview: review malformed');
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
-            usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+            usage: recordedUsage(result.usage) };
         }
       },
       send: async ({ text, expectedText, chat, thread }) => {

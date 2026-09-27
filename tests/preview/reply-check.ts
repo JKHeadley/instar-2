@@ -17,7 +17,7 @@ export const JEV_MODEL = 'jev-1.13.0';
 export const JEV_RESPONSE_MAX_BYTES = 4096;
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
   path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string;
-  usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }
+  usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
 const rules = Object.keys(REPLY_RULES) as ReplyRule[];
 const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0.85,
@@ -68,7 +68,7 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 export interface ReplyCheckPorts {
   jev(text: string): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
-    usage?: { inputTokens: number | null; outputTokens: number | null; charge: null } }>;
+    usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   record(result: ReplyCheckResult): void;
   elapsedMs(): number;

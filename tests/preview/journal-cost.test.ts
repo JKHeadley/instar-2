@@ -7,7 +7,8 @@ import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(7);
-const usage = (inputTokens: number | null, outputTokens: number | null) => ({ inputTokens, outputTokens, charge: null as null });
+const usage = (inputTokens: number | null, outputTokens: number | null) => ({ inputTokens, outputTokens,
+  charge: null as null, inputComplete: true as const });
 const turn = (update: number) => `telegram:12345678:update:${String(update)}`;
 
 it('projects observed and reserved-maximum tokens by call kind into read-only status across restart', () => {
@@ -75,6 +76,39 @@ it('counts an older unmetered reservation at the current durable maximum', () =>
     journal.close();
     const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(reopened.view.tokenTotals.answer).toEqual({ calls: 2, inputTokens: 65536, outputTokens: 4096, unknownCalls: 2 });
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps historical subscription input uncertain when cached tokens were not recorded', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-cost-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    journal.append({ kind: 'intake', id: turn(1), update: 1, text: 'hello', raw: '{}', accepted: true,
+      cursor: 2, at: 1000 });
+    journal.append({ kind: 'reserve', id: turn(1), maxInputTokens: 32768, maxOutputTokens: 2048, at: 1000 });
+    journal.append({ kind: 'answer', id: turn(1), text: 'old answer', state: 'complete',
+      usage: { inputTokens: 8, outputTokens: 3, charge: null }, at: 1000 });
+    journal.append({ kind: 'summary-reserve', through: 1, maxInputTokens: 32768,
+      maxOutputTokens: 2048, at: 1000 });
+    journal.append({ kind: 'summary', through: 1, text: 'old summary', state: 'complete',
+      usage: { inputTokens: 8, outputTokens: 3, charge: null }, at: 1000 });
+    journal.append({ kind: 'reply-review-reserve', id: turn(1), candidate: 'old answer',
+      maxInputTokens: 32768, maxOutputTokens: 2048, at: 1000 });
+    journal.append({ kind: 'reply-review-state', id: turn(1), state: 'complete',
+      usage: { inputTokens: 8, outputTokens: 3, charge: null }, at: 1000 });
+    expect(journal.view.tokenTotals.answer).toEqual({ calls: 1, inputTokens: 32768,
+      outputTokens: 3, unknownCalls: 1 });
+    expect(journal.view.tokenTotals.summary).toEqual({ calls: 1, inputTokens: 32768,
+      outputTokens: 3, unknownCalls: 1 });
+    expect(journal.view.tokenTotals.replyCheck).toEqual({ calls: 1, inputTokens: 32768,
+      outputTokens: 3, unknownCalls: 1 });
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    expect(reopened.view.tokenTotals).toEqual(journal.view.tokenTotals);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

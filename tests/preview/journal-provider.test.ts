@@ -1,9 +1,13 @@
 // @ts-nocheck -- the subscription IO is replaced only in this offline contract test.
 import { expect, it } from 'vitest';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { encoded } from './stage2-provider.js';
+import { openPreviewJournal } from './journal.js';
 
 it('invokes the existing subscription route with one bounded prepared journal envelope and UNKNOWN charge', async () => {
   const world = successiveWorld(), model = world.model, policy = subscriptionConversationPolicy(model);
@@ -20,7 +24,7 @@ it('invokes the existing subscription route with one bounded prepared journal en
     terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'], strength: 'attestation',
     maxMetadataBytes: policy.maxMetadataBytes, maxRawTerminalBytes: policy.maxRawTerminalBytes,
     maxCaptureBytes: policy.maxCaptureBytes };
-  let modelCalls = 0, outcome = 'success';
+  let modelCalls = 0, outcome = 'success', cacheCreation = 0, cacheRead = 0;
   const io = { realpath: path => path,
     executableBytes: () => Buffer.from('offline executable bytes'),
     inspectSubscriptionProfile: profile => ({ loginProfileIdentity: profile.loginProfileIdentity,
@@ -40,12 +44,16 @@ it('invokes the existing subscription route with one bounded prepared journal en
         if (outcome === 'throw') throw Error('invocation failed after dispatch');
         stdout = outcome === 'failure' ? JSON.stringify({ type: 'result', subtype: 'success', is_error: true,
           result: 'provider refusal text', session_id: 'journal-offline-failed-call',
-          usage: { input_tokens: 8, output_tokens: 0 } })
+          usage: { input_tokens: 8, cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+            output_tokens: 0 } })
           : outcome === 'empty' ? JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
-            result: '', session_id: 'journal-offline-empty-call', usage: { input_tokens: 8, output_tokens: 0 } })
+            result: '', session_id: 'journal-offline-empty-call', usage: { input_tokens: 8,
+              cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 } })
           : outcome.startsWith('bare') ? '' : JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
             result: JSON.stringify(decision), session_id: 'journal-offline-call-1',
-            usage: { input_tokens: 8, output_tokens: 3 } });
+            usage: { input_tokens: 8, output_tokens: 3,
+              ...(outcome === 'missing-cache' ? {} : { cache_creation_input_tokens: cacheCreation,
+                cache_read_input_tokens: cacheRead }) } });
       }
       return { code: command.args.includes('--print') && (outcome === 'failure' || outcome === 'bare1') ? 1 : 0,
         limited: false, stdout, stdoutBytes: new Uint8Array(Buffer.from(stdout)) };
@@ -65,8 +73,44 @@ it('invokes the existing subscription route with one bounded prepared journal en
     timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
     maxCharge:0,automaticRetries:0});
   expect(result.state).toBe('complete');
-  expect(result.usage).toMatchObject({inputTokens:8,outputTokens:3,charge:null});
+  expect(result.usage).toMatchObject({inputTokens:8,outputTokens:3,charge:null,inputComplete:true});
   expect(modelCalls).toBe(1);
+  cacheCreation = 12; cacheRead = 100;
+  const cached = await route.value.invoke(bytes, {operation:'turn:cached',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0});
+  expect(cached.usage).toMatchObject({inputTokens:120,outputTokens:3,inputComplete:true});
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-cached-usage-')));
+  const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(7);
+  try {
+    const journal = openPreviewJournal(path, key, { kind:'genesis', bot:'12345678', chat:'7654321',
+      operator:'7654321', grant:'grant:preview', configurationDigest:'sha256:offline',
+      expires:9999999999999, maxCalls:2, maxReplies:2, maxTurns:2, maxBytes:32768, cursor:0 });
+    journal.append({ kind:'intake', id:'telegram:12345678:update:1', update:1, text:'question',
+      raw:'{}', accepted:true, cursor:2, at:1000 });
+    journal.append({ kind:'reserve', id:'telegram:12345678:update:1', maxInputTokens:32768,
+      maxOutputTokens:2048, at:1000 });
+    journal.append({ kind:'answer', id:'telegram:12345678:update:1', text:'answer', state:'complete',
+      usage:{ inputTokens:cached.usage.inputTokens, outputTokens:cached.usage.outputTokens,
+        charge:null, inputComplete:cached.usage.inputComplete }, at:1000 });
+    expect(journal.view.tokenTotals.answer).toEqual({calls:1,inputTokens:120,outputTokens:3,unknownCalls:0});
+    journal.append({ kind:'intake', id:'telegram:12345678:update:2', update:2, text:'question two',
+      raw:'{}', accepted:true, cursor:3, at:1000 });
+    journal.append({ kind:'reserve', id:'telegram:12345678:update:2', maxInputTokens:32768,
+      maxOutputTokens:2048, at:1000 });
+    journal.append({ kind:'answer', id:'telegram:12345678:update:2', text:'answer two', state:'complete',
+      usage:{ inputTokens:result.usage.inputTokens, outputTokens:result.usage.outputTokens,
+        charge:null, inputComplete:result.usage.inputComplete }, at:1000 });
+    expect(journal.view.tokenTotals.answer).toEqual({calls:2,inputTokens:128,outputTokens:6,unknownCalls:0});
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    expect(reopened.view.tokenTotals.answer).toEqual({calls:2,inputTokens:128,outputTokens:6,unknownCalls:0});
+    reopened.close();
+  } finally { rmSync(root,{recursive:true,force:true}); }
+  outcome = 'missing-cache';
+  expect((await route.value.invoke(bytes, {operation:'turn:missing-cache',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).usage).toMatchObject({inputTokens:null,outputTokens:3});
   outcome = 'failure';
   expect(await route.value.invoke(bytes, {operation:'turn:2',deadline:now+180000,
     timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
@@ -82,5 +126,5 @@ it('invokes the existing subscription route with one bounded prepared journal en
       timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
       maxCharge:0,automaticRetries:0})).state).toBe('uncertain');
   }
-  expect(modelCalls).toBe(6);
+  expect(modelCalls).toBe(8);
 });
