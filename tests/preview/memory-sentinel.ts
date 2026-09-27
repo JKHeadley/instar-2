@@ -64,18 +64,25 @@ export function selectRecall(input: SentinelInput): number[] {
   const window = namedWindow(input.message, input.now);
   const documents = input.candidates.map(turn => terms(turn.text));
   const score = new Array<number>(documents.length).fill(0);
+  const direct = bm25(message, documents);
+  const directByIndex = new Map(direct.map(hit => [hit.index, hit]));
   const add = (query: readonly string[], weight: number) => {
     for (const hit of bm25(query, documents)) score[hit.index]! += weight * hit.score;
   };
-  add(message, 1);
   add(input.previous ? terms(input.previous) : [], 0.5);
   add(bridge(input.summary, new Set(message)), 0.5);
   // A named day counts like one strong matching term, so it ranks alongside content.
   if (window) input.candidates.forEach((turn, index) => {
     if (turn.at >= window.from && turn.at <= window.to) score[index]! += 2;
   });
-  return score.map((value, index) => ({ value, index })).filter(item => item.value > 0)
-    .sort((a, b) => b.value - a.value || b.index - a.index).slice(0, input.limit).map(item => item.index);
+  return score.map((context, index) => ({ context, index, direct: directByIndex.get(index) }))
+    .filter(item => item.direct || item.context > 0)
+    // A current-question match outranks merely continuing the previous turn.
+    // Context still resolves ellipsis and paraphrases with no direct match.
+    .sort((a, b) => (b.direct?.matched ?? 0) - (a.direct?.matched ?? 0)
+      || (b.direct?.score ?? 0) - (a.direct?.score ?? 0)
+      || b.context - a.context || b.index - a.index)
+    .slice(0, input.limit).map(item => item.index);
 }
 
 /** An exact subject/value overlap is only a packet signal. The model decides

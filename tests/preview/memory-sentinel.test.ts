@@ -54,6 +54,86 @@ it('keeps direct word matches first and caps the result', () => {
   expect(picked[0]).toBe(12);
 });
 
+it('keeps the directly named memory ahead of an unrelated previous turn in five phrasings', () => {
+  const candidates = [
+    { text: 'The observatory access color is cobalt.', at: now - 9 * day },
+    { text: 'Mira Patel prefers the north entrance.', at: now - 8 * day },
+    { text: 'Lunch planning includes lentils, salads, berries, soup, bread, tea and coffee.', at: now - day },
+  ];
+  const previous = candidates[2]!.text;
+  const questions = [
+    'What is the observatory access color?',
+    'Which hue did I set for the observatory?',
+    'At the observatory, what shade opens the door?',
+    'Which tint did the observatory use?',
+    "What was the observatory's assigned hue?",
+  ];
+  expect(questions.map(message => selectRecall({ message, previous, candidates, now, limit: 1 })[0]))
+    .toEqual([0, 0, 0, 0, 0]);
+  expect(selectRecall({ message: 'What did we plan for lunch?', previous, candidates, now, limit: 1 })).toEqual([2]);
+});
+
+it('offers the same source facts to five paraphrases before and after summary replay', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'recall-paraphrase-')));
+  const path = join(root, 'journal.encrypted');
+  const key = new Uint8Array(32).fill(44);
+  const facts = [
+    { id: 'telegram:12345678:update:1', text: 'The observatory access color is cobalt.', answer: 'cobalt',
+      extract: /observatory access color is ([^.]+)\./u, questions: [
+      'What is the observatory access color?', 'Which hue did I set for the observatory?',
+      'At the observatory, what shade opens the door?', 'Which tint did the observatory use?',
+      "What was the observatory's assigned hue?",
+    ] },
+    { id: 'telegram:12345678:update:2', text: 'Mira Patel prefers the north entrance.', answer: 'north',
+      extract: /Mira Patel prefers the ([^.]+) entrance\./u, questions: [
+      'Which entrance does Mira Patel prefer?', "What doorway is Mira Patel's choice?",
+      'Where does Mira Patel like to enter?', 'Which entry does Mira Patel favor?',
+      "Remind me of Mira Patel's preferred entrance.",
+    ] },
+  ];
+  const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 8192, cursor: 0 };
+  const add = (journal: ReturnType<typeof openPreviewJournal>, id: number, value: string) => {
+    const raw = JSON.stringify({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: value, date: Math.floor(now / 1000) - 86400 + id } });
+    journal.append({ kind: 'intake', id: `telegram:12345678:update:${id}`, update: id, text: value,
+      raw, accepted: true, cursor: id + 1, at: now });
+  };
+  const measure = (journal: ReturnType<typeof openPreviewJournal>, expectedMode: string) => {
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    let inconsistent = 0;
+    for (const fact of facts) for (const question of fact.questions) {
+      const result = worker.probe(question);
+      if ('reason' in result) throw Error(result.reason);
+      const packet = JSON.parse(result.context) as { historyMode: string;
+        history?: { id: string; user: string }[]; recalled?: { id: string; user: string }[] };
+      expect(packet.historyMode).toBe(expectedMode);
+      const offered = [...(packet.history ?? []), ...(packet.recalled ?? [])];
+      const selected = offered.filter(item => item.id === fact.id && item.user.includes(fact.text));
+      const answer = selected.length === 1 ? fact.extract.exec(selected[0]!.user)?.[1] ?? 'UNKNOWN' : 'UNKNOWN';
+      if (answer !== fact.answer || selected.length !== 1) inconsistent++;
+    }
+    return inconsistent;
+  };
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    add(journal, 1, facts[0]!.text);
+    add(journal, 2, facts[1]!.text);
+    expect(measure(journal, 'complete')).toBe(0);
+    for (let id = 3; id <= 18; id++) add(journal, id, `Routine lunch turn ${id}: ${'z'.repeat(800)}`);
+    journal.append({ kind: 'summary-reserve', through: 18, at: now });
+    journal.append({ kind: 'summary', through: 18,
+      text: 'The operator discussed observatory access and Mira Patel, then lunch plans.', at: now });
+    expect(measure(journal, 'summary-plus-recent')).toBe(0);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    expect(measure(journal, 'summary-plus-recent')).toBe(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-sentinel-')));
   const key = new Uint8Array(32).fill(9), samples: number[] = [];

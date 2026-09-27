@@ -621,6 +621,17 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+The recall sentinel ranks a direct match to the current question ahead of words
+in the previous turn or a touching summary sentence. The latter still bridge
+pronouns and paraphrases when the question has no direct match. This prevents an
+unrelated recent turn from displacing a saved fact named by several phrasings.
+`memory-sentinel.test.ts` measures source-item and packet-answer inconsistency
+for two saved facts, five paraphrases each: 0/10 before summary, 0/10 after
+summary, and 0/10 after journal replay in the fixed offline fixture. It scores
+the exact packet that `probe` prepares; a deterministic answer stub reads only
+selected source text. It does not measure a real model's answer quality. The
+private-chat procedure is [recall-paraphrase-consistency-live-test.md](recall-paraphrase-consistency-live-test.md).
+
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
 Telegram send intent consumes one `maxReplies` slot. Jev checks have their own
