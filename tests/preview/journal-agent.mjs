@@ -111,7 +111,7 @@ async function main() {
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
-      unknownCalls: view.view.order.filter(t => t.reserved && t.answer === undefined).length,
+      unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,

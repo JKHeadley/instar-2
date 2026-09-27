@@ -26,6 +26,7 @@ export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
+export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
 
@@ -48,6 +49,7 @@ export type JournalRecord =
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     usage?: ModelUsage; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; at: number }
+  | { kind: 'notice'; id: string; noticeClass: 'unknown-answer'; at: number }
   | { kind: 'reply-jev-reserve'; id: string; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
@@ -71,7 +73,7 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string;
+  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string;
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
@@ -102,7 +104,7 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     || row.maxCalls === view.limits.maxCalls && row.maxReplies === view.limits.maxReplies
       && row.maxTurns === view.limits.maxTurns && maxBytes === view.limits.maxBytes)
     throw Error('preview journal: cap authority or monotonic bounds refused');
-  if (view.order.some(turn => turn.reserved && turn.answer === undefined)
+  if (view.order.some(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
     || [...view.summaryReservations].some(through => !view.summaries.some(item => item.through === through)))
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
@@ -164,13 +166,14 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
+  const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? UNKNOWN_ANSWER_NOTICE : undefined);
   if (row.kind === 'reply-jev-reserve') {
-    if (turn.answer === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
+    if (replyCandidate === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
       throw Error('preview journal: Jev reservation order or cap');
     turn.jevReserved = true; view.jevChecks++; return;
   }
   if (row.kind === 'reply-review-reserve') {
-    if (turn.answer === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
+    if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
     turn.reviewReserved = true; view.calls++; return;
   }
   if (row.kind === 'reply-review-state') {
@@ -179,7 +182,7 @@ function project(view: JournalView, row: JournalRecord): void {
     turn.reviewState = row.state; return;
   }
   if (row.kind === 'reply-check') {
-    if (turn.answer === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
+    if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
     turn.replyChecks ??= []; turn.replyChecks.push(row.result);
@@ -205,12 +208,21 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'model-uncertain') {
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: uncertain model order');
     turn.modelState = row.state;
+    // This durable observation of the local invocation ending is also the notice due time.
+    turn.noticeDueAt = row.at;
+  }
+  if (row.kind === 'notice') {
+    if (row.noticeClass !== 'unknown-answer' || !turn.accepted || turn.modelState !== 'uncertain'
+      || turn.answer !== undefined || turn.noticeClass !== undefined
+      || turn.intent !== undefined || turn.noticeDueAt === undefined || row.at < turn.noticeDueAt)
+      throw Error('preview journal: notice order');
+    turn.noticeClass = row.noticeClass;
   }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
     turn.answer = row.text;
     if (row.state) turn.modelState = row.state; }
-  if (row.kind === 'intent') { if (turn.answer === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
+  if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant) throw Error('preview journal: intent order'); turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++; }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined) throw Error('preview journal: receipt order'); turn.sent = row.message; turn.sentAt = row.at; }
   if (row.kind === 'hold') turn.held = row.reason;
 }
@@ -412,7 +424,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return String(from) === journal.view.genesis.operator ? 'the operator (verified sender)'
       : `Telegram user ${String(from)} (authenticated sender, not the operator)`;
   };
-  const outcome = (item: Turn) => item.sent ? 'Telegram API accepted' : item.intent ? 'delivery UNKNOWN'
+  const outcome = (item: Turn) => item.sent ? (item.noticeClass ? 'loss notice delivered; model UNKNOWN' : 'Telegram API accepted')
+    : item.intent ? (item.noticeClass ? 'loss notice delivery UNKNOWN; model UNKNOWN' : 'delivery UNKNOWN')
     : item.reserved && item.answer === undefined ? 'model UNKNOWN' : item.held ?? 'pending';
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
@@ -423,7 +436,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ ...elsewhere(item), user: redact(item.text).text,
-      answer: item.intent === undefined ? null : redact(sentText(item)!).text, outcome: outcome(item) }));
+      answer: item.noticeClass || item.intent === undefined ? null : redact(sentText(item)!).text,
+      ...(item.noticeClass && item.intent ? { notice: redact(sentText(item)!).text } : {}), outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn; mentions: { person: string; quote: string }[] }>();
     if (summary) for (const note of named) {
@@ -449,7 +463,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const cited = new Set([...sources.keys(), ...[...promised.values()].map(entry => entry.turn.id)]);
     const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
-      user: redact(item.text).text, answer: item.intent === undefined ? null : redact(sentText(item)!).text,
+      user: redact(item.text).text, answer: item.noticeClass || item.intent === undefined ? null : redact(sentText(item)!).text,
+      ...(item.noticeClass && item.intent ? { notice: redact(sentText(item)!).text } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.map(item => ({ update: item.update, date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }), findings: correctionNote(item.checked ?? []) }));
@@ -512,8 +527,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
         if (turn.held) continue;
         gate();
-        if (turn.answer === undefined) {
-          if (turn.reserved) continue;
+        if (turn.answer === undefined && !turn.reserved) {
           // Leave a shared-budget slot for a full-context review if Jev cannot pass.
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
@@ -542,7 +556,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           catch { continue; } // reservation remains UNKNOWN
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
-              ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), at: ports.now() }); continue;
+              ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), at: ports.now() });
           } else if (typeof answer !== 'string' && 'failureClass' in answer) {
             journal.append({ kind: 'answer', id: turn.id, text: MODEL_FAILURE_REPLY,
               state: answer.state, failureClass: answer.failureClass,
@@ -554,9 +568,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: ports.now() });
           }
         }
+        if (turn.answer === undefined) {
+          if (turn.modelState !== 'uncertain' || turn.noticeDueAt === undefined || ports.now() < turn.noticeDueAt) continue;
+          gate();
+          if (!turn.noticeClass) journal.append({ kind: 'notice', id: turn.id, noticeClass: 'unknown-answer', at: ports.now() });
+        }
         gate();
         if (journal.view.replies >= journal.view.limits.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
-        let reply = `PREVIEW — ${turn.answer!}`;
+        let reply = `PREVIEW — ${turn.answer ?? UNKNOWN_ANSWER_NOTICE}`;
         if (ports.replyCheck) {
           const previous = turn.replyChecks?.at(-1);
           // Only a completed PASS releases the candidate; an unavailable or interrupted

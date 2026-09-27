@@ -44,8 +44,21 @@ account bound as `--operator-sender-id`; another sender does not exercise the re
    reply review, if used, consumes an additional call.
 
 A bare exit, even code zero, or an invocation error with no validated `result`
-envelope stays UNKNOWN. It must produce no reply or summary retry on restart;
-do not use that case as the positive live probe.
+envelope stays UNKNOWN. The adapter test establishes that boundary; the following
+separate substitute probe exercises the ended UNKNOWN answer notice, not provider
+classification.
+
+4. With another empty isolated root and the same test-only loader, set
+   `INSTAR_PREVIEW_SIMULATE_UNKNOWN_ANSWER=1` instead of the definite-failure
+   variable. Justin sends one private message. The substitute returns an ended
+   `uncertain` answer outcome and a PASS for subscription reply review if needed.
+   Check that the only reply is exactly
+   `PREVIEW — I lost my answer to that message. Please send it again.`
+   Status must show `unknownCalls: 1`, `modelResultStates.uncertain: 1`, no new
+   `modelFailureClasses`, and one reply. Restart with the same root; there must
+   be no second send or model call. The reservation remains charged. An
+   in-flight call with no returned outcome has no notice and must never be
+   retried. Do not use this substitute with the live runner or journal.
 
 Do not use this loader with a real runner root or for ordinary service. This probe
 is prepared for the desk; this branch does not run it against Telegram.

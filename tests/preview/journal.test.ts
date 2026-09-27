@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
@@ -294,19 +294,141 @@ it('never repeats an UNKNOWN call or sends a reply after restart', async () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('records an uncertain returned state without retrying or replying', async () => {
+it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNKNOWN accounting', async () => {
   const root = origin();
   try {
     const first = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let calls = 0, sends = 0, checks = 0;
+    const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => { calls++; return { state: 'uncertain' }; },
+      checkOutbound: text => { checks++; expect(text).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`); },
+      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`); return 7; } });
+    worker.intake([update(1)]); await worker.drain(); await worker.drain(); first.close();
+    const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
+      model: async () => { calls++; return 'wrong'; }, checkOutbound: () => { checks++; },
+      send: async () => { sends++; return 8; } });
+    await resumed.drain();
+    expect({ calls, sends, checks, spent: second.view.calls, replies: second.view.replies })
+      .toEqual({ calls: 1, sends: 1, checks: 1, spent: 1, replies: 1 });
+    expect(Object.fromEntries(second.view.providerStates)).toEqual({ uncertain: 1 });
+    expect(Object.fromEntries(second.view.failureClasses)).toEqual({});
+    expect(second.view.order[0]?.answer).toBeUndefined();
+    expect(second.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeDueAt: 1000,
+      noticeClass: 'unknown-answer', intent: `PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`, sent: 7 });
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8', timeout: 10000 });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({ unknownCalls: 1, modelResultStates: { uncertain: 1 },
+      modelFailureClasses: {}, replies: 1 });
+    expect(JSON.parse(status.stdout).self).toContain('1 model call(s)');
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('resumes after durable ended UNKNOWN before notice and never repeats the model call', async () => {
+  const root = origin();
+  try {
+    const path = join(root, 'journal.encrypted');
+    let crashed = false, calls = 0, sends = 0;
+    const first = openPreviewJournal(path, key, genesis(), stage => {
+      if (stage === 'after:model-uncertain' && !crashed) { crashed = true; throw Error('crash after ended call'); }
+    });
+    const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => { calls++; return { state: 'uncertain' }; }, checkOutbound: () => {},
+      send: async () => { sends++; return 1; } });
+    worker.intake([update(1)]); await expect(worker.drain()).rejects.toThrow('crash after ended call'); first.close();
+    const second = openPreviewJournal(path, key);
+    const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
+      model: async () => { calls++; return 'wrong'; }, checkOutbound: () => {},
+      send: async () => { sends++; return 9; } });
+    await resumed.drain(); await resumed.drain();
+    expect({ calls, sends, due: second.view.order[0]?.noticeDueAt, sent: second.view.order[0]?.sent })
+      .toEqual({ calls: 1, sends: 1, due: 1000, sent: 9 });
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('never redispatches an UNKNOWN notice send after restart', async () => {
+  const root = origin();
+  try {
+    const path = join(root, 'journal.encrypted'), first = openPreviewJournal(path, key, genesis());
+    let sends = 0;
     const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
       model: async () => ({ state: 'uncertain' }), checkOutbound: () => {},
-      send: async () => { throw Error('must not send'); } });
+      send: async () => { sends++; return null; } });
     worker.intake([update(1)]); await worker.drain(); first.close();
-    const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
-    expect(Object.fromEntries(second.view.providerStates)).toEqual({ uncertain: 1 });
-    expect(second.view.order[0]?.answer).toBeUndefined();
-    expect(second.view.calls).toBe(1);
+    const second = openPreviewJournal(path, key);
+    const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
+      model: async () => { throw Error('must not call'); }, checkOutbound: () => {},
+      send: async () => { sends++; return 8; } });
+    await resumed.drain();
+    expect({ sends, replies: second.view.replies, sent: second.view.order[0]?.sent,
+      intent: second.view.order[0]?.intent }).toEqual({ sends: 1, replies: 1, sent: undefined,
+        intent: `PREVIEW — ${UNKNOWN_ANSWER_NOTICE}` });
     second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('holds an ended UNKNOWN notice while stop is active', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let stopped = false, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => stopped,
+      model: async () => { stopped = true; return { state: 'uncertain' }; }, checkOutbound: () => {},
+      send: async () => { sends++; return 1; } });
+    worker.intake([update(1)]); await expect(worker.drain()).rejects.toThrow('stopped');
+    expect({ sends, notice: journal.view.order[0]?.noticeClass, state: journal.view.order[0]?.modelState })
+      .toEqual({ sends: 0, notice: undefined, state: 'uncertain' });
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not notify while the model invocation is still in flight', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let finish!: (value: { state: 'uncertain' }) => void, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: () => new Promise(resolve => { finish = resolve; }), checkOutbound: () => {},
+      send: async () => { sends++; return 1; } });
+    worker.intake([update(1)]);
+    const draining = worker.drain();
+    expect(journal.view.order[0]?.reserved).toBe(true);
+    expect(journal.view.order[0]?.answer).toBeUndefined();
+    expect(journal.view.order[0]?.noticeClass).toBeUndefined();
+    expect(sends).toBe(0);
+    finish({ state: 'uncertain' }); await draining;
+    expect({ sends, notice: journal.view.order[0]?.noticeClass }).toEqual({ sends: 1, notice: 'unknown-answer' });
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reviews the UNKNOWN notice and distinguishes it from an answer in later history', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let context = '', reviews = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async input => {
+        if (input.id.endsWith(':1')) return { state: 'uncertain' };
+        context = input.context; return 'second answer';
+      },
+      replyCheck: { jev: async () => { throw Error('Jev unavailable'); },
+        escalate: async () => { reviews++; return { verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 }; },
+        elapsedMs: () => 0 },
+      checkOutbound: () => {}, send: async () => 1 });
+    worker.intake([update(1)]); await worker.drain();
+    worker.intake([update(2)]); await worker.drain();
+    const history = JSON.parse(context).history;
+    expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
+      notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
+    expect(reviews).toBe(2);
+    expect(journal.view.calls).toBe(4); // two answers, two separately reserved reply reviews
+    expect(Object.fromEntries(journal.view.providerStates)).toEqual({ uncertain: 1, complete: 1 });
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
