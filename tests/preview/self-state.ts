@@ -88,7 +88,10 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   for (const turn of view.order) if (turn.held) holds.set(turn.held, (holds.get(turn.held) ?? 0) + 1);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = [...view.summaryReservations].filter(through => !view.summaries.some(item => item.through === through)).length;
-  const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined).length;
+  const unknownSends = view.order.reduce((count, turn) => count
+    + Number(turn.intent !== undefined && turn.sent === undefined)
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0);
+  const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const refused = view.order.length - accepted.length;
   const when = (ms: number) => parts(format, ms).text;
   const left = (limit: number, used: number) => `${String(used)} of ${String(limit)} used, ${String(Math.max(0, limit - used))} left`;
@@ -103,6 +106,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Unknown outcomes (never retried): ${String(unknownCalls)} model call(s), ${String(unknownSends)} send(s).`,
     `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
     holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
+    `Held-answer notices attempted: ${String(heldNotices)} (one per held turn; Telegram acceptance is not human receipt).`,
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
     `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.genesis.expires)}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',

@@ -1148,3 +1148,26 @@ never an unsent candidate.
 
 For the one-marker reply formatting check in the approved private chat, follow
 [marker-dup-live-test.md](marker-dup-live-test.md).
+
+### Held-answer notice (journal runner)
+
+When an accepted operator turn remains held for `reply check unavailable`, `call cap`,
+or `memory correction pending` for more than ten minutes, the runner sends this
+fixed notice once: `PREVIEW — I'm holding my answer to your message from HH:MM; it will follow or I'll tell you why`.
+`HH:MM` is the Telegram message time in the configured `--time-zone`, or the
+durable intake time when Telegram supplied no date. The notice uses the same
+bound private chat, topic, stop, expiry, outbound-secret and reply-cap checks as
+an ordinary send. It uses no model call. At a model-call cap, the existing
+launcher waits, checking stop and expiry, until pending held notices are due.
+
+The encrypted journal records the original hold time and one separate exact
+notice intent before dispatch. An API-accepted result gets its own receipt;
+an interrupted or uncertain notice stays UNKNOWN and is never sent again.
+The notice consumes one reply-cap slot but does not settle the held answer.
+A later authorized cap raise or recovered check can still send that answer
+through its own one-shot intent. `status.heldNotices` reports each attempt and
+whether Telegram accepted it; model history also labels the notice as separate
+from the answer. This remains a deliberately machine-local preview under its
+existing exclusive writer, with no new store, service, or multi-machine claim.
+See [held-reply-notice-live-test.md](held-reply-notice-live-test.md) for the
+supervised private-chat proof as Justin.
