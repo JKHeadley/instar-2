@@ -596,8 +596,46 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --expires-at 2026-09-28T20:40:00Z --activation-record /ABSOLUTE/activation.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
   --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768 \
-  --time-zone America/Los_Angeles
+  --time-zone America/Los_Angeles \
+  --agent-state-dir /ABSOLUTE/AGENT/.instar
 ```
+
+`--agent-state-dir` enables read-only live channel memory from this agent's
+`telegram-messages.jsonl` and, when present, `slack-messages.jsonl`. The path must
+be the canonical absolute path of the agent's own `.instar` directory. The preview
+reads at most 256 KiB and 64 complete lines from each source per poll cycle; it
+never modifies either log or asks for another credential. Telegram imports only
+authenticated user rows with a session bound to this agent (in the row or the
+server's `topic-session-registry.json`), a numeric Telegram sender ID and a
+topic other than the preview chat. Slack imports only user rows
+with a platform user ID in a channel bound to this agent by
+`slack-channel-registry.json`. Agent, automation, unbound, malformed-identity and
+preview-chat rows are skipped. Imported text is redacted and fsynced as a
+`channel-item`; only then does a source offset advance in the same encrypted
+journal. Replaying after a crash dedupes by platform, conversation and message ID.
+
+| Preview source | Stored sender | Participation evidence | Status field |
+|---|---|---|---|
+| Telegram | `telegramUserId` | Row session or topic registry | `channelSources.telegram` |
+| Slack | `platformUserId` | Slack channel registry | `channelSources.slack` |
+| Mail | None | None | Dark |
+
+An incomplete JSONL line waits for the server to finish it. A malformed complete
+line, missing required Slack registry, capacity refusal or source read error leaves
+the cursor at its last durable point and appears as `channelSources.SOURCE.error`
+in `status`; Telegram polling continues. Each source has a durable byte offset,
+scanned/imported/skipped counts and a short content anchor so an in-place rewrite
+restarts at zero and dedupes retained messages. The current journal limit of 2,000
+channel items remains in force. The source log may itself rotate or purge before
+the preview reads it; this preview reports the resulting cursor state and cannot
+recover messages the server has already discarded.
+
+For one bounded pass while the runner is paused, use `import-store --root
+/ABSOLUTE/NEW_ROOT --agent-state-dir /ABSOLUTE/AGENT/.instar`. `status --root
+/ABSOLUTE/NEW_ROOT` shows `channelSources.telegram` and `channelSources.slack`
+without opening those logs. The source is machine-local by design, using the same
+exclusive preview journal writer and no new service or credential. Live mail stays
+disabled. The Justin live exercise is [channel-source-live-test.md](channel-source-live-test.md).
 
 ### What the preview knows about itself and 2.0
 
