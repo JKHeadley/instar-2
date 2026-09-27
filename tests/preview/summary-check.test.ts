@@ -61,6 +61,18 @@ async function caseRun(score: number | 'unavailable', review: 'pass' | 'violatio
   return { root, journal, worker, get summaryChecks() { return summaryChecks; }, get reviews() { return reviews; }, get observed() { return observed; } };
 }
 
+it('accepts one wrapped summary verdict and reports why a wrapped one was refused, without its text', () => {
+  const shapes: string[] = [];
+  const review = (value: string) => interpretSummaryReview({ state: 'complete', value, usage: reviewUsage }, 30, shape => shapes.push(shape));
+  expect(review('```json\n{"verdict":"pass","reason":"All turns covered."}\n```')).toMatchObject({ verdict: 'pass', reason: 'All turns covered.' });
+  expect(review('Here it is: {"verdict":"violation","reason":"A commitment is missing."} Done.')).toMatchObject({ verdict: 'violation' });
+  expect(shapes).toEqual([]);
+  expect(review('{"verdict":"pass","reason":"a"} {"verdict":"violation","reason":"b"}')).toMatchObject({ verdict: 'unavailable', retryable: true });
+  expect(review('{"verdict":"pass","reason":"cut')).toMatchObject({ verdict: 'unavailable', retryable: true });
+  expect(review('```json\n{"verdict":"maybe","reason":"x"}\n```')).toMatchObject({ verdict: 'unavailable', retryable: true });
+  expect(shapes).toEqual(['multiple-objects', 'truncated', 'fenced-wrong-fields']);
+});
+
 it('classifies Jev pass, violation, uncertainty and malformed output', () => {
   expect(interpretSummaryJev(jevAnswer(0.1), 1).verdict).toBe('pass');
   expect(interpretSummaryJev(jevAnswer(0.9), 1).verdict).toBe('violation');

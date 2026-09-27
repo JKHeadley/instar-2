@@ -1168,6 +1168,15 @@ applies to summary reservations: a definite summary failure may use its remainin
 bounded attempt, while an uncertain one stays pending across restart. `status` reports
 `modelFailureClasses` and `modelResultStates`; `self` includes the same counts.
 Subscription reply reviews also record their returned provider state.
+Model JSON (the outer Decision and the inner reply-review or summary-review
+verdict) is accepted when it is exactly one object: the whole text, the sole
+content of one ```json or ``` fence, or the sole balanced object inside prose.
+Anything else stays malformed and every field check still applies. `status`
+reports `modelJsonShapes`: content-free counts keyed `role/layer/outcome/shape`
+(shapes `fenced`, `prose-wrapped`, `multiple-objects`, `truncated`, `not-json`,
+or `<wrapper>-wrong-fields` when the JSON parsed but failed its checks), plus the
+last malformed one, from a plaintext sidecar `model-json-shapes.json` outside
+the journal. It never holds model text and never feeds an outcome.
 The journal never stores the failed model's raw output. To exercise this path in
 an isolated trial, follow [journal-model-failure-live-test.md](journal-model-failure-live-test.md).
 

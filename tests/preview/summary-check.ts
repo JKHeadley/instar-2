@@ -1,3 +1,5 @@
+import { failureShapeOf, parseModelJson, type ModelJsonFailureShape } from './model-json.js';
+
 /** One bounded Jev signal for a proposed rolling summary. The complete packet
  * and proposed notes are data for the check; no model output grants authority. */
 export const SUMMARY_QUESTION = {
@@ -22,16 +24,19 @@ export function interpretSummaryJev(value: unknown, latencyMs: number): SummaryC
 
 /** Preserve a completed review's metering even when its outcome cannot authorize a summary. */
 export function interpretSummaryReview(result: { state: string; value?: string; failureClass?: string;
-  usage?: { inputTokens: number | null; outputTokens: number | null } }, latencyMs: number): SummaryCheckResult {
+  usage?: { inputTokens: number | null; outputTokens: number | null } }, latencyMs: number,
+  onMalformed?: (shape: ModelJsonFailureShape) => void): SummaryCheckResult {
   const usage = result.usage && { ...result.usage, charge: null as null };
   if (result.state === 'uncertain')
     return { verdict: 'unavailable', path: 'subscription', latencyMs, ...(usage ? { usage } : {}) };
   if (result.state !== 'complete' || result.failureClass)
     return { verdict: 'unavailable', path: 'subscription', retryable: true, latencyMs, ...(usage ? { usage } : {}) };
-  let parsed: { verdict?: unknown; reason?: unknown } | null;
-  try { parsed = JSON.parse(result.value ?? ''); } catch { parsed = null; }
+  const extracted = parseModelJson(result.value ?? '');
+  const parsed: { verdict?: unknown; reason?: unknown } | null = extracted.ok ? extracted.value : null;
   if ((parsed?.verdict !== 'pass' && parsed?.verdict !== 'violation')
-    || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
+    || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000) {
+    onMalformed?.(failureShapeOf(extracted));
     return { verdict: 'unavailable', path: 'subscription', retryable: true, latencyMs, ...(usage ? { usage } : {}) };
+  }
   return { verdict: parsed.verdict, path: 'subscription', reason: parsed.reason, latencyMs, ...(usage ? { usage } : {}) };
 }

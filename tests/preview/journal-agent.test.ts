@@ -171,3 +171,72 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         coherence:{checked:2,unchecked:0,failed:0}});
   } finally { endpoint.kill('SIGTERM'); }
 },30000);
+
+it.each([
+  ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/prose-wrapped': 1,
+    'reply-review/verdict/tolerated/fenced': 1 }, null, {}],
+  ['answer-two-objects', { 'answer/decision/malformed/multiple-objects': 1 },
+    { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 1 }],
+  ['verdict-trailing-object', { 'reply-review/verdict/malformed/multiple-objects': 1 },
+    { role: 'reply-review', layer: 'verdict', shape: 'multiple-objects' }, {}],
+])('the real launcher tolerates one wrapped JSON object and says why it refused others (%s)', async (mode, counts, last, failures) => {
+  const world = successiveWorld(), root = join(world.directory, 'shape-journal');
+  const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
+  const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
+  const provider = join(world.directory, 'provider.mjs'), loader = join(world.directory, 'loader.mjs');
+  writeFileSync(activation, JSON.stringify(world.activation()));
+  writeFileSync(profile, JSON.stringify(offlineProfile));
+  const chat = Number(world.configuration.chatId), operator = Number(world.configuration.operatorSenderId);
+  writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:chat,type:'private'},from:{id:operator},text:'Remember this.'}}]));
+  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
+  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+const mode = ${JSON.stringify(mode)};
+export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
+  const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
+  const review=envelope.messages[0].content.startsWith('Judge this proposed reply');
+  const verdict=JSON.stringify({verdict:'pass',ruleIds:[],reason:'The reply stays within the rules.'});
+  const value=!review ? 'Noted.' : mode === 'wrapped' ? 'Verdict:\\n\\u0060\\u0060\\u0060json\\n'+verdict+'\\n\\u0060\\u0060\\u0060'
+    : mode === 'verdict-trailing-object' ? verdict+' {"verdict":"violation"}' : verdict;
+  const decision=JSON.stringify({type:'Decision',schemaVersion:1,id:'shape-answer',at:binding.at,by:binding.by,
+    conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value,evidence:binding.evidence},
+    reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
+    floor:{allowed:binding.floor,chosen:binding.floor.default}});
+  const bytes=mode === 'wrapped' ? (review ? 'Here is my decision: '+decision+' Thanks.' : '\\u0060\\u0060\\u0060json\\n'+decision+'\\n\\u0060\\u0060\\u0060')
+    : mode === 'answer-two-objects' && !review ? decision+'\\n'+decision : decision;
+  return {state:'complete',bytes,usage:{inputTokens:1,outputTokens:1}};
+}}});
+`);
+  writeFileSync(loader, `export async function resolve(specifier,context,next) {
+  if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier.endsWith('/production-provider.js'))
+    return {url:${JSON.stringify(pathToFileURL(provider).href)},shortCircuit:true};
+  return next(specifier,context);
+}\n`);
+  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates],
+    {stdio:['ignore','pipe','pipe']});
+  try {
+    const port = await new Promise((done, fail) => {
+      endpoint.stdout.once('data', data => done(Number(String(data).trim()))); endpoint.once('error', fail);
+    });
+    const trial = world.state().read().trial;
+    const env = {...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+      INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
+      INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`};
+    const run = spawnSync(process.execPath,['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','--loader',loader,
+      'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
+      '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
+      '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
+      '--activation-record',activation,'--login-profile',profile,'--model',world.model,
+      '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
+      {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
+    expect(run.status,run.stderr).toBe(0);
+    const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
+    expect(sends.some(send => send.text === 'PREVIEW — Noted.')).toBe(mode === 'wrapped');
+    const status = JSON.parse(spawnSync(process.execPath,
+      ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
+      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);
+    expect(status.modelJsonShapes).toEqual({ version: 1, counts, last: last && { ...last, at: expect.any(Number) } });
+    expect(status.modelFailureClasses).toEqual(failures);
+    expect(readFileSync(join(root, 'model-json-shapes.json'), 'utf8')).not.toMatch(/Noted|rules|Decision/u);
+  } finally { endpoint.kill('SIGTERM'); }
+},30000);

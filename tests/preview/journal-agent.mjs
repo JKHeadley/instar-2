@@ -17,6 +17,7 @@ import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfS
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
+import { failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
@@ -153,6 +154,23 @@ const withheldView = view => {
       : change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
 };
 
+// Content-free counts of how model JSON arrived: malformed shapes (why a result was
+// refused) and tolerated wrappers. Diagnostics only: never model text, never an outcome input.
+const readShapes = path => {
+  try { const saved = JSON.parse(readFileSync(path, 'utf8')); return saved.version === 1 ? saved : null; }
+  catch { return null; }
+};
+const recordShape = (path, role, layer, outcome, shape) => {
+  try {
+    const saved = readShapes(path) ?? { version: 1, counts: {}, last: null };
+    const key = `${role}/${layer}/${outcome}/${shape}`;
+    saved.counts[key] = (saved.counts[key] ?? 0) + 1;
+    if (outcome === 'malformed') saved.last = { role, layer, shape, at: Date.now() };
+    durablePreviewWrite(path, saved);
+  } catch { /* a diagnostics write never changes a model outcome */ }
+};
+const roleOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
+
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 const packetStatus = view => {
   const last = view.order.filter(turn => turn.reserved).at(-1);
@@ -180,6 +198,7 @@ async function main() {
   const journalPath = join(root, 'journal.encrypted');
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
+  const shapesPath = join(root, 'model-json-shapes.json');
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
@@ -251,6 +270,7 @@ async function main() {
       unknownCallBreakdown: unknownCallCounts(view.view),
       capReports: [...view.view.capReports],
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
+      modelJsonShapes: readShapes(shapesPath),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
@@ -460,10 +480,13 @@ async function main() {
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      let decision;
-      try { decision = JSON.parse(result.bytes); } catch { return { state: 'complete', failureClass: 'malformed', usage: result.usage }; }
+      const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
       if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string') return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+        || typeof decision.conclusion.value !== 'string') {
+        recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
+        return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+      }
+      if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
@@ -503,13 +526,16 @@ async function main() {
             context: replyReviewContext(originalPrompt, text), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
-          const parsed = JSON.parse(result.value);
-          if (!['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
+          const extracted = parseModelJson(result.value), parsed = extracted.ok ? extracted.value : null;
+          if (!parsed || !['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
             || parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))
             || (parsed.verdict === 'pass' && parsed.ruleIds.length !== 0)
             || (parsed.verdict === 'violation' && parsed.ruleIds.length === 0)
-            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
+            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000) {
+            recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', failureShapeOf(extracted));
             throw Error('preview: review malformed');
+          }
+          if (extracted.shape !== 'bare') recordShape(shapesPath, 'reply-review', 'verdict', 'tolerated', extracted.shape);
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
@@ -522,7 +548,8 @@ async function main() {
           try { prepared = modelEnvelope({ question, context: state, id }); }
           catch { return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start) }; }
           const result = await invokeSubscription(prepared, id);
-          return interpretSummaryReview(result, Math.round(performance.now() - start));
+          return interpretSummaryReview(result, Math.round(performance.now() - start),
+            shape => recordShape(shapesPath, 'summary-review', 'verdict', 'malformed', shape));
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
