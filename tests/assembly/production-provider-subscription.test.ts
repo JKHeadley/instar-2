@@ -155,7 +155,7 @@ it('bounds a pending physical child and never retries', async () => {
 for (const size of [16384, 16385]) it(`checks extracted Decision ${size} at the byte boundary independently of schema`, async () => {
   const f = fixture({ resultBytes: size });
   const observation = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
-  expect(observation.state).toBe(size === 16384 ? 'complete' : 'uncertain');
+  expect(observation.state).toBe(size === 16384 ? 'complete' : 'rejected');
   if (size === 16384) { expect(Buffer.byteLength(observation.bytes!)).toBe(size); expect(JSON.parse(observation.bytes!).type).toBe('Decision'); }
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
 });
@@ -168,7 +168,7 @@ for (const size of [65536, 65537]) it(`checks complete raw terminal ${size} with
 });
 for (const tokens of [2048, 2049]) it(`enforces ${tokens} observed output tokens`, async () => {
   const f = fixture({ tokens });
-  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe(tokens === 2048 ? 'complete' : 'uncertain');
+  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe(tokens === 2048 ? 'complete' : 'rejected');
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
 });
 it('refuses invalid UTF-8 and malformed auth JSON with bounded uncertain outcomes', async () => {

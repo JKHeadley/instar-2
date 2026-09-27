@@ -17,7 +17,8 @@ export interface ProductionProviderIO {
   executableBytes(path: string): Uint8Array;
   execute(input: Readonly<{ executable: string; args: readonly string[]; cwd: string;
     env: Readonly<Record<string, string>>; stdin: string; timeout: number; maxBytes: number }>):
-    Promise<Readonly<{ code: number | null; limited: boolean; stdout: string; stdoutBytes: Uint8Array }>>;
+    Promise<Readonly<{ code: number | null; limited: boolean; localLimit?: 'timeout' | 'size' | null;
+      stdout: string; stdoutBytes: Uint8Array }>>;
 }
 
 export interface ProviderAdapterEvidenceContract {
@@ -338,17 +339,18 @@ export function createClaudeCodeSubscriptionRoute(input:
           && typeof frame.subtype === 'string' && frame.subtype.length > 0
           && typeof frame.session_id === 'string'
           && frame.session_id.length > 0 && frame.session_id.length <= 256
-          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens)
-          && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
+          && typeof frame.is_error === 'boolean'
+          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens), 'subscription result refused');
         const usage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens, charge: null,
           source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
-        // A usage-limit or policy result keeps the existing uncertain path, whose failure
-        // record drives the durable limit hold; other terminal error frames are rejected.
-        if (frame.is_error === true) return lastFailure.failureClass === 'limit' || lastFailure.failureClass === 'policy'
-          ? uncertain() : { state: 'rejected', bytes: null, providerOperation: frame.session_id, usage, retryBlocked: false };
-        ensure(returned.code === 0 && frame.subtype === 'success' && frame.is_error === false
-          && frame.structured_output === undefined && typeof frame.result === 'string'
-          && Buffer.byteLength(frame.result) <= policy.maxOutputBytes, 'subscription result refused');
+        // A validated result frame proves the CLI ended. Reject an unusable
+        // terminal answer without exposing it or treating it as an unknown call.
+        if (returned.code !== 0 || frame.subtype !== 'success' || frame.is_error
+          || frame.structured_output !== undefined || typeof frame.result !== 'string'
+          || frame.usage.output_tokens > policy.maxTokens
+          || Buffer.byteLength(frame.result) > policy.maxOutputBytes)
+          return { state: 'rejected', bytes: null, providerOperation: frame.session_id,
+            failure: lastFailure, usage, retryBlocked: false };
         const draft: ProviderResponseEvidenceDraft = { eligibility: 'admitted', contract,
           basis: { sourceEvidence: approved.sourceEvidence, terminalEvidence: approved.terminalEvidence,
             terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] },

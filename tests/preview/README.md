@@ -859,6 +859,21 @@ Subscription reply reviews also record their returned provider state.
 The journal never stores the failed model's raw output. To exercise this path in
 an isolated trial, follow [journal-model-failure-live-test.md](journal-model-failure-live-test.md).
 
+Each actual subscription CLI model invocation (answer, summary, or reply review)
+now appends one content-free physical outcome to the same encrypted journal before
+the adapter classifies it. `status.callOutcomeCounts` gives totals by role and
+physical result; `status.lastCallOutcomes` gives the last ten. Each row has the
+call ID and role, exit code, local limit (`timeout`, raw/answer `size`, or
+`output-cap`), elapsed milliseconds, normalized result type/subtype/error flag
+when parseable, usage output tokens, and stdin prompt bytes. Unrecognized frame
+subtypes become `other`; provider prose and model text never enter these rows.
+An in-flight or preflight-failed reservation has no physical outcome row and
+remains visible through the existing UNKNOWN counters. A validated terminal
+result that exceeds the 2048-token or answer-byte cap is a definite rejected
+call whose answer is discarded; a local 120-second timeout stays UNKNOWN and
+is never repeated. The operator procedure is
+[call-diagnostics-live-test.md](call-diagnostics-live-test.md).
+
 ```sh
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs raise-caps \
   --root /ABSOLUTE/NEW_ROOT --max-calls 64 --max-replies 64 --max-turns 80 \

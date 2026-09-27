@@ -197,7 +197,7 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
         }
         const captured = checked('CaptureProviderReturn', () => {
           ensure(['complete', 'rejected', 'uncertain'].includes(observation.state), 'invalid provider state');
-          if (observation.failure) ensure(observation.state === 'uncertain'
+          if (observation.failure) ensure(observation.state !== 'complete'
             && ['limit', 'policy', 'timeout', 'transport', 'unknown'].includes(observation.failure.failureClass)
             && (observation.failure.resetHint === null || /^\d{1,2}:\d{2}(?:am|pm)$/.test(observation.failure.resetHint))
             && (observation.failure.resetAt === null || Number.isSafeInteger(observation.failure.resetAt) && observation.failure.resetAt >= 0), 'invalid provider failure code');

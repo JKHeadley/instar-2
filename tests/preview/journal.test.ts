@@ -161,8 +161,17 @@ it('falls back to killing the child when process-group kill gets EPERM on timeou
       args: ['-e', 'setInterval(() => {}, 1000)'], cwd: process.cwd(), env: process.env,
       stdin: '', timeout: 20, maxBytes: 1024 });
     expect(result.limited).toBe(true);
+    expect(result.localLimit).toBe('timeout');
     expect(group.mock.calls.some(([pid]) => pid < 0)).toBe(true);
   } finally { group.mockRestore(); }
+});
+
+it('reports a raw stdout size limit separately from timeout', async () => {
+  const result = await productionProviderIO.execute({ executable: process.execPath,
+    args: ['-e', "process.stdout.write('x'.repeat(2048))"], cwd: process.cwd(), env: process.env,
+    stdin: '', timeout: 5000, maxBytes: 32 });
+  expect(result.limited).toBe(true);
+  expect(result.localLimit).toBe('size');
 });
 
 it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'before:answer', 'after:answer',
@@ -631,7 +640,7 @@ it('the cap command requires the exclusive writer lease and reports the recorded
     expect(JSON.parse(command('status').stdout).limits.maxBytes).toBe(1048576);
   } finally { journal.close(); if (lease.kind === 'Success' && !leaseClosed) lease.value.close();
     rmSync(root,{recursive:true,force:true}); }
-});
+}, 30000);
 
 it('holds a prepared answer when the reply cap is exhausted', async () => {
   const root = origin();
