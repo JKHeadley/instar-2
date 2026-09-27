@@ -839,9 +839,9 @@ notes. Source-linked replies are withheld without a phrase test; the model ident
 affected replies and summary passages by meaning. Exact old clauses and overlapping note excerpts are withheld;
 an unrelated person's similarly numbered fact remains. A person or commitment note whose quoted claim was superseded is omitted; a correction's
 new fact is carried as `memory`. A forget carries only a withholding reason. Similar facts with
-different wording and sources remain. `status.withheld` and `inspect.withheld` show the redacted
-old clause, the source update or channel ID, the operator update ID, and why it was withheld; the model packet does not
-receive the forgotten clause. If the shared attempt cap or summary route prevents a decision,
+different wording and sources remain. `status.withheld` and `inspect.withheld` show source and
+operator update IDs and why an item was withheld. They show a redacted old clause for corrections,
+but no clause for forgotten items; the model packet also receives no forgotten clause. If the shared attempt cap or summary route prevents a decision,
 `status.holds` shows `memory correction pending` and the intake remains durable.
 
 ### Dated memory (preview)
@@ -947,8 +947,9 @@ and resumes the one runner on its existing root:
 4. Send `Forget my gym locker code.` Wait for its reply and summary. Check `status.withheld`
    adds `verified operator requested forgetting`. Ask `What is my gym locker code?` The reply
    must decline to recall either code. `inspect` must show a forgotten marker and no corrected
-   value in its `memory` block. Record the actual replies, status and inspect outputs as the
-   live trace; a missing summary decision or exhausted cap is a visible incomplete result.
+   value in its `memory` block. Status and inspect show the forgotten item only as a
+   withheld record without its old quote. Record the actual replies, status and inspect
+   outputs as the live trace; a missing summary decision or exhausted cap is a visible incomplete result.
 
 `inspect --root ROOT` is read-only: it prints the last persisted model prompt's
 `historyMode`, summary coverage and `people` block, redacted, and never sources or
@@ -980,6 +981,25 @@ described in [journal-audit-live-test.md](journal-audit-live-test.md).
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs audit \
   --root /ABSOLUTE/EXISTING_ROOT
 ```
+
+### Asking what the preview remembers
+
+A verified operator can ask in ordinary language what the preview remembers about a
+topic or person. The existing journal worker ranks up to five relevant operator
+turns and imported channel items for the next packet. Each visible item carries its
+source turn or exported source ID and send date. A corrected item shows the current
+replacement and the correction turn/date. Matching forgotten items contribute only
+to a count; their text is withheld from the search packet and reply. The model
+decides whether the question is a memory request and which cited items answer it.
+The normal Jev reply check and one-send journal fence still govern the answer.
+
+This is bounded preview recall: selection uses the existing memory sentinel and
+summary bridge, and a missing item does not prove the journal lacks it. If the
+prompt bound drops ranked items, `memorySearch.truncated` marks the citation list
+incomplete. `inspect --text "What do you remember about Sam?" --model MODEL`
+shows the proposed search evidence without a model call or send. For the supervised
+operator proof, follow [memory-search-live-test.md](memory-search-live-test.md).
+
 
 `status --root /ABSOLUTE/NEW_ROOT` is a read-only pull view and lists current
 caps, counters, UNKNOWN calls and sends, held update IDs and reasons, and import

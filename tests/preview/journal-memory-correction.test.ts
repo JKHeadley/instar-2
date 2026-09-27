@@ -520,8 +520,10 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(inspect.status).toBe(0);
     expect(JSON.parse(status.stdout).withheld.map((item: { reason: string }) => item.reason)).toEqual([
       'verified operator corrected this fact', 'verified operator requested forgetting']);
+    expect(JSON.parse(status.stdout).withheld[1].quote).toBeUndefined();
     expect(JSON.parse(status.stdout).people).toEqual(['Riley']);
     expect(JSON.parse(inspect.stdout).withheld).toHaveLength(2);
+    expect(JSON.parse(inspect.stdout).withheld[1].quote).toBeUndefined();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -114,6 +114,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],
   inventory: packet.inventory ?? null,
+  memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
 
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
@@ -130,11 +131,13 @@ const withheldView = view => {
       ? { channelSource: view.channelItems.get(change.source.slice('channel:'.length))?.source,
         channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
       : { sourceUpdate: view.turns.get(change.source)?.update }),
-    operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
+    operatorUpdate: view.turns.get(change.trigger)?.update,
+    ...(change.mode === 'correct' ? { quote: redact(change.quote).text } : {}),
     reason: preferenceKeys.has(JSON.stringify([change.source, change.quote]))
       ? change.mode === 'forget' ? 'verified operator removed this reply preference' : 'verified operator changed this reply preference'
       : change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
 };
+
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 const packetStatus = view => {
   const last = view.order.filter(turn => turn.reserved).at(-1);
