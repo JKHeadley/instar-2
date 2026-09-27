@@ -1944,6 +1944,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const changes = journal.view.memory.filter(change => change.trigger === turn.id && change.mode !== 'prefer' && change.in !== 'reply');
     // int11's undo path writes its own forget and keeps its own reply.
     if (!changes.length || journal.view.undos.some(undo => undo.trigger === turn.id)) return undefined;
+    // int11's memory list already reports the post-change state and must not repeat the old clause.
+    if (turn.answer !== undefined && (/^Here are \d+ active memory items I have about you/u.test(turn.answer)
+      || turn.answer.startsWith('I have no active saved memory items'))) return undefined;
     // A forgotten quote has no trusted boundary between subject and value.
     const detail = changes.map(change => change.mode === 'correct'
       ? `Changed ${change.quote.trim().replace(/\s+/gu, ' ')} → ${change.replacement!.trim().replace(/\s+/gu, ' ')}`

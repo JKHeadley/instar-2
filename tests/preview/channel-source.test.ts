@@ -30,7 +30,7 @@ function world(maxBytes = genesis.maxBytes) {
 }
 
 it('imports only agent-participating Telegram user rows with the stored authenticated sender ID', () => {
-  const w = world(4000);
+  const w = world(5000); // int12: room for the conflict and fact-update reply instructions
   try {
     const path = join(w.statePath, 'telegram-messages.jsonl');
     const original = lines([

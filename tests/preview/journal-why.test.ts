@@ -91,7 +91,7 @@ it('reports a missing historical packet instead of inventing a reason', async ()
 it('keeps answering honestly when the old packet cannot fit the reply bound', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-why-bound-'))), path = join(root, 'journal.encrypted');
   try {
-    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 3200 });
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 4000 }); // int12: reply instructions grew
     const seen: Record<string, unknown>[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       sources: [{ id: 'source:large', text: 'x'.repeat(450) }],

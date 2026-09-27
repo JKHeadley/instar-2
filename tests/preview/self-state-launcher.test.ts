@@ -85,7 +85,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt[0]).toContain('That is the first recorded launch');
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
-    expect(prompt[0]).toContain('Operator messages received: 1 today, 1 in this trial');
+    // The burst intake admits every waiting update before reply work, so both are already received.
+    expect(prompt[0]).toContain('Operator messages received: 2 today, 2 in this trial');
     expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 in this trial');
     expect(prompt[1]).toContain('Model attempts: 1 of 3 used, 2 left');
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
@@ -107,9 +108,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
     expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
-    expect(now).toContain('Operator messages received: 3 today, 3 in this trial (including the one being answered now)');
+    expect(now).toContain('Operator messages received: 4 today, 4 in this trial (including the one being answered now)');
     expect(now).toContain('My replies Telegram accepted: 2 today, 2 in this trial');
-    expect(now).toContain('Messages exchanged today: 5');
+    expect(now).toContain('Messages exchanged today: 6');
     expect(now).toContain('Model attempts: 2 of 6 used, 4 left');
     expect(now).toContain('on the authority "Justin, offline test"');
     expect(now).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
