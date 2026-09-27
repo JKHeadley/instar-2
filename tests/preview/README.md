@@ -848,7 +848,8 @@ independently failing replica.
 Before replacing a rolling summary, the runner checks that the candidate keeps
 the still-active facts in the prior summary and newly covered turns, including
 open commitments and correction or forgetting decisions. Verbatim coverage
-passes deterministically. A paraphrase or missing decision is undecided by that
+without a recorded memory change passes deterministically. A paraphrase or any
+correction or forgetting decision is undecided by that
 exact check, so the runner asks the existing pinned Jev route with the prior
 summary, covered turns, recorded decisions and candidate. Only a confident Jev
 pass commits it. A lost or undecidable item records the candidate and evidence
