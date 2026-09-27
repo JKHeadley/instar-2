@@ -14,6 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { agentState, importStorePass } from './channel-source.mjs';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -84,7 +85,7 @@ const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.r
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
-  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'inspect', 'import-fixture', 'import-store'].includes(command)) throw Error('preview: unknown command');
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
@@ -111,6 +112,9 @@ async function main() {
     }
     try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
+      channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
+        ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
+        error: view.view.channelSourceErrors.get(source) ?? null }])),
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       capAuthority: view.view.capAuthority,
       stop: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : view.view.stop,
@@ -175,6 +179,17 @@ async function main() {
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
     key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+  if (command === 'import-store') {
+    let storeJournal;
+    try {
+      if (options['live-mail'] !== undefined && options['live-mail'] !== 'false') throw Error('preview: live mail source is disabled');
+      const state = agentState(required(options, 'agent-state-dir'));
+      storeJournal = openPreviewJournal(journalPath, key());
+      const results = ['telegram', 'slack'].map(source => importStorePass(storeJournal, state, source, Date.now(), () => existsSync(stopPath)));
+      process.stdout.write(`${JSON.stringify({ results, channelItems: storeJournal.view.channelItems.size })}\n`);
+    } finally { storeJournal?.close(); storage.close(); }
+    return;
+  }
   if (command === 'import-fixture') {
     let fixtureJournal;
     try {
@@ -360,6 +375,7 @@ async function main() {
       return true;
     };
     let summaryJob = null;
+    const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
     const summarizeLater = () => {
       // After the reply: the deterministic coherence check records its findings for the next
       // packet. It makes no call and cannot hold the reply already attempted;
@@ -371,6 +387,16 @@ async function main() {
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
+      if (sourceState) for (const source of ['telegram', 'slack']) {
+        try {
+          importStorePass(journal, sourceState, source, Date.now(), () => workerStop.value || existsSync(stopPath));
+          if (journal.view.channelSourceErrors.has(source)) journal.append({ kind: 'channel-source-error', source, error: null, at: Date.now() });
+        } catch {
+          if (workerStop.value || existsSync(stopPath)) break;
+          if (journal.view.channelSourceErrors.get(source) !== 'import refused')
+            journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: Date.now() });
+        }
+      }
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch {
