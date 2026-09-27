@@ -1,10 +1,12 @@
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { openPreviewJournal } from './journal.js';
 
+const execFileAsync = promisify(execFile);
 const key = new Uint8Array(32).fill(7);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-scale-test-')));
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -39,11 +41,10 @@ it('replays held turns through a snapshot and clears only eligible holds after a
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('opens 10k compacted turns below the declared time and heap bounds', () => {
-  const result = spawnSync(process.execPath, ['--expose-gc', '--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+it('opens 10k compacted turns below the declared time and heap bounds', async () => {
+  const { stdout } = await execFileAsync(process.execPath, ['--expose-gc', '--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-reopen-benchmark.mjs', '10000'], { cwd: process.cwd(), encoding: 'utf8', timeout: 120000 });
-  expect(result.status, result.stderr).toBe(0);
-  const metric = JSON.parse(result.stdout) as { turns: number; rawMs: number; openMs: number;
+  const metric = JSON.parse(stdout) as { turns: number; rawMs: number; openMs: number;
     rawHeapDeltaMb: number; heapDeltaMb: number };
   expect(metric.turns).toBe(10000);
   expect(metric.rawMs).toBeLessThan(2000);
