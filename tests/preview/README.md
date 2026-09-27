@@ -1377,6 +1377,43 @@ cannot decide; its 2-second timeout uses the existing TypeSafe host binding.
 Justin's supervised procedure is in
 [summary-faithfulness-live-test.md](summary-faithfulness-live-test.md).
 
+### Long-summary fact drift
+
+The offline `summary-drift-long.test.ts` runs 65 successive summary transitions
+twice with the same deterministic model and existing faithfulness check. It
+plants three exact operator clauses, then makes later summary prose change their
+details while a deterministic Jev stub passes the semantic check. Exact survival
+in the latest summary is **0/3 without references** and **3/3 with references**.
+Each clause is checked separately, including after encrypted journal replay.
+This fixture measures exact wording, not a real model's semantic recall.
+
+A summary can now carry up to 20 `memoryItems` with a source turn ID and an exact
+operator quote of at most 300 bytes. Newly proposed items must match an accepted
+operator turn in that summary's covered history. The runner copies prior items
+by source into the next summary without asking the model to reword them. Recorded
+corrections replace the old item with the exact operator replacement; forgetting
+removes it. The active items appear alongside summary prose in later compact
+packets, with source labels. The prior prose, covered turns, decisions and
+candidate items still pass through the existing faithfulness check; source
+references do not grant a model proposal authority. A model that fails to select
+an important new item can still lose it if the faithfulness judge misses it.
+Original turns remain in the encrypted journal, and all existing summary, call,
+stop and send bounds apply. This preview remains machine-local under its one
+writer. Justin's supervised procedure is in
+[summary-drift-long-live-test.md](summary-drift-long-live-test.md).
+
+The `recall-from-summary-only.test.ts` corpus carries four ordinary operator
+facts, including an exact dated event, through 32 summary generations and a
+recorded date correction. Its later question is prepared in compact mode: the
+original fact clauses are absent from history and recalled turns, so the score
+reads only the summary region of the actual answer packet. The same lossy
+summary prose scores **0/4** before exact source items and **4/4** after them;
+the superseded date is absent and the corrected date retains its original source
+label after replay. This is offline packet visibility with a deterministic model
+and faithfulness stub, not a claim about live model answer quality. Justin's
+private-chat procedure is in
+[recall-from-summary-only-live-test.md](recall-from-summary-only-live-test.md).
+
 
 ### One memory across conversations
 
