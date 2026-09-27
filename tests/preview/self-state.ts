@@ -137,3 +137,28 @@ export function selfStateSource(text: string) {
       + `state it as fact when asked, and say plainly which parts it marks unknown.\n${text}`,
     provenance: { path: 'journal.encrypted + runs.jsonl', derived: 'tests/preview/self-state.ts#selfState' } };
 }
+
+/** A launch-time snapshot for the first reply after a recorded restart. It reports
+ * only journal metadata: categories may overlap, and no message body is copied. */
+export function restartHandoff(view: JournalView, runs: RunLog, launch: number) {
+  const index = runs.launches.findIndex(run => run.at === launch);
+  if (index < 1) return null;
+  const previous = runs.launches[index - 1]!;
+  const pending = view.order.filter(turn => turn.accepted && turn.sent === undefined && turn.intent === undefined);
+  const held = pending.filter(turn => turn.held !== undefined);
+  const unknownCalls = pending.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined));
+  const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined && turn.sent === undefined);
+  const noticesDue = pending.filter(turn => turn.modelState === 'uncertain' && turn.noticeDueAt !== undefined
+    && turn.noticeDueAt <= launch);
+  const ids = (turns: readonly Turn[]) => `${String(turns.length)}${turns.length
+    ? ` (updates ${turns.slice(0, 3).map(turn => String(turn.update)).join(', ')}${turns.length > 3 ? ', …' : ''})` : ''}`;
+  const safeReason = redact(previous.reason ?? 'reason unknown').text;
+  const reason = safeReason.length > 80 ? `${safeReason.slice(0, 80)}…` : safeReason;
+  const text = `At restart, the durable journal showed pending turns ${ids(pending)}; held items ${ids(held)}; `
+    + `UNKNOWN model outcomes ${ids(unknownCalls)}; UNKNOWN sends ${ids(unknownSends)}; `
+    + `lost-answer notices due ${ids(noticesDue)}. Categories may overlap. `
+    + `The prior run ${previous.exit === undefined ? 'has no recorded end' : `ended: ${reason}`}. `
+    + 'This describes the launch snapshot; later processing may have changed these states. Acknowledge a gap only if relevant to this reply.';
+  return { id: 'restart-handoff', title: 'Work found at the last runner restart', text,
+    provenance: { path: 'journal.encrypted + runs.jsonl', derived: 'tests/preview/self-state.ts#restartHandoff' } };
+}

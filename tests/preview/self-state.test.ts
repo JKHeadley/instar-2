@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
-import { appendRun, readRuns, selfState, selfStateSource } from './self-state.js';
+import { appendRun, readRuns, restartHandoff, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(4);
 // 2026-09-26 19:00 UTC = 12:00 PDT.
@@ -102,6 +102,50 @@ it('says uptime and restarts are unknown when no launch was recorded, and marks 
     expect(text).toContain('Run history: no launch has been recorded, so uptime and restarts are unknown.');
     expect(text).toContain('Unknown outcomes (never retried): 1 model call(s), 0 send(s).');
     expect(() => selfState(journal.view, readRuns(join(root, 'runs.jsonl')), NOON, 'Mars/Olympus')).toThrow(RangeError);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reports the bounded durable work snapshot only after a recorded restart', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-handoff-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    for (let i = 1; i <= 6; i++) worker.intake([update(i, `private text ${String(i)}`, NOON)]);
+    const turns = journal.view.order;
+    journal.append({ kind: 'hold', id: turns[0]!.id, reason: 'call cap', at: NOON });
+    journal.append({ kind: 'reserve', id: turns[1]!.id, at: NOON });
+    journal.append({ kind: 'model-uncertain', id: turns[1]!.id, state: 'uncertain', at: NOON });
+    journal.append({ kind: 'notice', id: turns[1]!.id, noticeClass: 'unknown-answer', at: NOON });
+    journal.append({ kind: 'reserve', id: turns[2]!.id, at: NOON });
+    journal.append({ kind: 'answer', id: turns[2]!.id, text: 'done', at: NOON });
+    journal.append({ kind: 'intent', id: turns[2]!.id, text: 'PREVIEW — done', chat: genesis.chat,
+      update: 3, grant: genesis.grant, at: NOON });
+    journal.append({ kind: 'reserve', id: turns[3]!.id, at: NOON }); // No terminal result: UNKNOWN, but no notice due time.
+    const runs = join(root, 'runs.jsonl');
+    appendRun(runs, { v: 1, launch: NOON - 60_000, pid: 1 });
+    expect(restartHandoff(journal.view, readRuns(runs), NOON - 60_000)).toBeNull();
+    appendRun(runs, { v: 1, launch: NOON, pid: 2 });
+    const note = restartHandoff(journal.view, readRuns(runs), NOON)!;
+    expect(note.id).toBe('restart-handoff');
+    expect(note.text).toContain('pending turns 5 (updates 1, 2, 4, …)');
+    expect(note.text).toContain('held items 1 (updates 1)');
+    expect(note.text).toContain('UNKNOWN model outcomes 2 (updates 2, 4)');
+    expect(note.text).toContain('UNKNOWN sends 1 (updates 3)');
+    expect(note.text).toContain('lost-answer notices due 1 (updates 2)');
+    expect(note.text).toContain('prior run has no recorded end');
+    expect(note.text).not.toContain('private text');
+    expect(Buffer.byteLength(note.text)).toBeLessThan(500);
+    appendRun(runs, { v: 1, launch: NOON, exit: NOON + 1000, reason: 'paused by signal SIGTERM' });
+    appendRun(runs, { v: 1, launch: NOON + 2000, pid: 3 });
+    expect(restartHandoff(journal.view, readRuns(runs), NOON + 2000)?.text)
+      .toContain('prior run ended: paused by signal SIGTERM');
+    appendRun(runs, { v: 1, launch: NOON + 2000, exit: NOON + 3000, reason: 'x'.repeat(1000) });
+    appendRun(runs, { v: 1, launch: NOON + 4000, pid: 4 });
+    const bounded = restartHandoff(journal.view, readRuns(runs), NOON + 4000)!;
+    expect(bounded.text).toContain(`${'x'.repeat(80)}…`);
+    expect(Buffer.byteLength(bounded.text)).toBeLessThan(500);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

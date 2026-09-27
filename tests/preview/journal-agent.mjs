@@ -12,7 +12,7 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
-import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { appendRun, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 
 const parse = values => {
@@ -58,18 +58,22 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
 /** The exact sources every live turn carries; shared by run and the read-only inspect probe.
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
-const turnSources = (root, options, view, runs, current = () => undefined) => {
+const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
   const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
-  return () => [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current())),
-    deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
+  return () => {
+    const note = handoff();
+    return [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current())),
+      ...(note ? [note] : []), deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
+  };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
-/** Only the recall-relevant parts of a packet, never sources or history text. */
+/** Bounded read-only packet view, including only the restart note from sources. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -221,6 +225,7 @@ async function main() {
     return;
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
+  let handoff = null, reservedAtLaunch = new Set();
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -271,7 +276,8 @@ async function main() {
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
-      sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined),
+      sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
+        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
@@ -350,6 +356,8 @@ async function main() {
     launchedAt = Date.now();
     appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid });
     runs = readRuns(runsPath);
+    handoff = restartHandoff(journal.view, runs, launchedAt);
+    reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
     let failedPolls = 0;
     const pollFailure = async () => {
       failedPolls++;

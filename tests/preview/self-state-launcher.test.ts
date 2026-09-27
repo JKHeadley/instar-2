@@ -67,8 +67,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       return performance.now() - start;
     };
     const status = () => JSON.parse(agent('status', '--root', root, '--time-zone', 'America/Los_Angeles').stdout);
-    const selfOf = line => JSON.parse(JSON.parse(JSON.parse(line)).messages.find(m => m.role === 'context').content)
-      .packet.sources.find(source => source.id === 'self-state').text;
+    const packetOf = line => JSON.parse(JSON.parse(JSON.parse(line)).messages.find(m => m.role === 'context').content).packet;
+    const selfOf = line => packetOf(line).sources.find(source => source.id === 'self-state').text;
     // Run 1: two messages fill the reply cap; one call slot stays available for review.
     writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second')]));
     const firstLaunch = run(4);
@@ -84,31 +84,38 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(prompt[0]).toContain('Operator messages received: 1 today, 1 in this trial');
     expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 in this trial');
     expect(prompt[1]).toContain('Model attempts: 1 of 3 used, 2 left');
+    expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
+      !packetOf(line).sources.some(source => source.id === 'restart-handoff'))).toBe(true);
     // The operator raises caps; run 2 answers a third message and knows its own restart and why.
-    const raised = agent('raise-caps', '--root', root, '--max-calls', '5', '--max-replies', '4', '--max-turns', '6',
+    const raised = agent('raise-caps', '--root', root, '--max-calls', '6', '--max-replies', '5', '--max-turns', '6',
       '--authority', 'Justin, offline test');
     expect(raised.status, raised.stderr).toBe(0);
     writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second'),
-      message(3, 'how many messages have we exchanged today and when did you last restart?')]));
-    const secondLaunch = run(3);
+      message(3, 'how many messages have we exchanged today and when did you last restart?'),
+      message(4, 'one more question')]));
+    const secondLaunch = run(4);
     s = status();
-    prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
-    expect(prompt).toHaveLength(3);
+    const lines = readFileSync(prompts, 'utf8').trim().split('\n');
+    prompt = lines.map(selfOf);
+    expect(prompt).toHaveLength(4);
+    expect(packetOf(lines[2]).sources.find(source => source.id === 'restart-handoff').text)
+      .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
+    expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
     expect(now).toContain('Operator messages received: 3 today, 3 in this trial (including the one being answered now)');
     expect(now).toContain('My replies Telegram accepted: 2 today, 2 in this trial');
     expect(now).toContain('Messages exchanged today: 5');
-    expect(now).toContain('Model attempts: 2 of 5 used, 3 left');
+    expect(now).toContain('Model attempts: 2 of 6 used, 4 left');
     expect(now).toContain('on the authority "Justin, offline test"');
     expect(now).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: reply cap reached\./u);
     expect(now).toContain('Launches recorded: 2');
     expect(s.launches).toHaveLength(2);
     expect(s.launches[1].reason).toBe('cycle limit reached');
-    // Status, read afterwards, agrees: one more reply (the answer just sent) and the same restart.
-    expect(s.self).toContain('Operator messages received: 3 today, 3 in this trial');
-    expect(s.self).toContain('My replies Telegram accepted: 3 today, 3 in this trial');
-    expect(s.self).toContain('Messages exchanged today: 6');
+    // Status, read afterwards, agrees on the same restart and includes the fourth reply.
+    expect(s.self).toContain('Operator messages received: 4 today, 4 in this trial');
+    expect(s.self).toContain('My replies Telegram accepted: 4 today, 4 in this trial');
+    expect(s.self).toContain('Messages exchanged today: 8');
     expect(s.self).toContain(now.match(/Last restart: [^.]*\./u)[0]);
     expect(s.self).toContain('ended'); // the latest launch has recorded its end
     process.stdout.write(`launcher runs: first=${firstLaunch.toFixed(0)} ms, restarted=${secondLaunch.toFixed(0)} ms\n`);

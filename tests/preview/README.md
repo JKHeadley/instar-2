@@ -596,6 +596,17 @@ extra read), and `status` prints the same text as `self` plus the last three
 `launches`, so an answer can be checked against it (status, read after the reply,
 counts that reply too).
 
+On a recorded restart, the first reply packet also carries a short `restart-handoff`
+source made once at launch from the replayed journal and `runs.jsonl`. It lists
+pending accepted turns, holds, UNKNOWN model calls and sends, and lost-answer
+notices due, with at most three update IDs in each category and no message bodies.
+Counts can overlap. It states whether the previous run recorded an end. Prompt
+size checks can rebuild the packet without consuming the note; a summary packet
+does not consume it. Once the first reply call is durably reserved, later packets
+omit it. No new journal record, call, send or file is involved. `inspect` exposes
+only this note from the persisted prompt as `restartHandoff` for a live check;
+see [session-handoff-live-test.md](session-handoff-live-test.md).
+
 The desk report is optional: a plain file the desk maintains about other 2.0 work, re-read at every turn
 (default `ROOT/desk-status.md`; override with `--desk-status /ABSOLUTE/PATH`).
 It enters the packet as the `desk-status` source, labelled as the desk's report,
@@ -721,8 +732,8 @@ and resumes the one runner on its existing root:
    live trace; a missing summary decision or exhausted cap is a visible incomplete result.
 
 `inspect --root ROOT` is read-only: it prints the last persisted model prompt's
-`historyMode`, summary coverage and `people` block, redacted, and never sources or
-history text. Add `--text "<message>" --model MODEL` to see what a next message
+`historyMode`, summary coverage, `people` block and restart handoff note, redacted,
+and never other sources or history text. Add `--text "<message>" --model MODEL` to see what a next message
 with that text would get now. It makes no model call, send or journal write.
 Recall is proven only when a question's own persisted prompt shows
 `summary-plus-recent` with its people. A summary alone is not enough, because
