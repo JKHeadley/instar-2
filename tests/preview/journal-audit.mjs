@@ -359,7 +359,7 @@ export function auditActiveMemory(view) {
   for (const [n, note] of view.people.entries()) {
     if (!active(note.source, note.quote)) continue;
     const at = `stored-people[${n}]`, link = operator(note.source, at);
-    if (!link || !view.turns.get(note.source).text.includes(note.quote) || !note.quote.includes(note.name))
+    if (!link || !redact(view.turns.get(note.source).text).text.includes(note.quote) || !note.quote.includes(note.name))
       fault('stored-people-note-unattributed', at);
     else add('people-note', at, [link]);
   }
@@ -375,13 +375,14 @@ export function auditActiveMemory(view) {
     if (view.closed.has(n) || !active(note.source, note.quote)) continue;
     const at = `commitment[${n}]`, link = operator(note.source, at);
     const turn = view.turns.get(note.source);
-    if (!link || note.in === 'message' && !turn.text.includes(note.quote)
-      || note.in === 'reply' && !turn.intent?.replace(/^PREVIEW — /u, '').includes(note.quote)) fault('commitment-unattributed', at);
+    if (!link || note.in === 'message' && !redact(turn.text).text.includes(note.quote)
+      || note.in === 'reply' && !redact(turn.intent?.replace(/^PREVIEW — /u, '') ?? '').text.includes(note.quote))
+      fault('commitment-unattributed', at);
     else {
       const chain = [link];
       for (const extra of note.sources ?? []) {
         const source = operator(extra.source, at);
-        if (!source || !view.turns.get(extra.source).text.includes(extra.quote)) fault('commitment-merge-unattributed', at);
+        if (!source || !redact(view.turns.get(extra.source).text).text.includes(extra.quote)) fault('commitment-merge-unattributed', at);
         else chain.push(source);
       }
       add('commitment', at, chain);
@@ -404,11 +405,12 @@ export function auditActiveMemory(view) {
       if (!summary) fault('memory-summary-passage-absent', at);
       return summary && { kind: 'summary', through: summary.through };
     }).filter(Boolean);
-    if (!source || !trigger || typeof change.quote !== 'string' || !original?.includes(change.quote)
+    if (!source || !trigger || typeof change.quote !== 'string' || !redact(original ?? '').text.includes(change.quote)
       || change.mode !== 'prefer' && (change.source.startsWith('channel:')
         ? view.channelItems.get(change.source.slice(8)).at >= view.turns.get(change.trigger).at
         : view.turns.get(change.source).update >= view.turns.get(change.trigger).update)
-      || change.mode === 'correct' && (!change.replacement || !view.turns.get(change.trigger).text.includes(change.replacement))
+      || change.mode === 'correct' && (!change.replacement
+        || !redact(view.turns.get(change.trigger).text).text.includes(change.replacement))
       || change.mode === 'prefer' && change.trigger !== change.source)
       fault('memory-change-unattributed', at);
     else add(change.mode === 'prefer' ? 'preference' : change.mode === 'forget' ? 'forgetting' : 'correction', at,
@@ -424,7 +426,7 @@ export function auditActiveMemory(view) {
   for (const [n, item] of view.questions.entries()) {
     if (!active(item.source, item.quote)) continue;
     const at = `question[${n}]`, link = operator(item.source, at);
-    if (!link || !view.turns.get(item.source).text.includes(item.quote)) fault('question-unattributed', at);
+    if (!link || !redact(view.turns.get(item.source).text).text.includes(item.quote)) fault('question-unattributed', at);
     else add('open-question', at, [link]);
   }
   const summary = view.summaries.at(-1);

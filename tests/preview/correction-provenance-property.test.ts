@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditActiveMemory, auditJournal } from './journal-audit.mjs';
 import { openPreviewJournal } from './journal-test-worker.js';
+import { redact } from '../../src/recall/redact.js';
 
 const key = new Uint8Array(32).fill(73);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -137,3 +138,27 @@ it('traces every active item through random correction, merge, summary and compa
       'preference', 'correction', 'dated', 'open-question', 'summary']));
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120000);
+
+it('accepts a validated redacted excerpt and rejects a quote absent from that source view', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-redacted-provenance-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const text = 'Please remember Sam password=fixturevalue123.';
+    const quote = redact(text).text;
+    expect(quote).not.toContain('fixturevalue123');
+    journal.append({ kind: 'intake', id: 'turn-1', update: 1, text, raw: raw(1, text), accepted: true,
+      cursor: 2, at: 1790000000000 });
+    journal.append({ kind: 'summary-reserve', through: 1, at: 1790000000000 });
+    journal.append({ kind: 'summary', through: 1, text: 'Sam was mentioned.',
+      people: [{ name: 'Sam', source: 'turn-1', quote }],
+      commitments: [{ in: 'message', source: 'turn-1', quote }], at: 1790000000001 });
+    const report = auditActiveMemory(journal.view);
+    expect(report.findings).toEqual([]);
+    expect(JSON.stringify(report)).not.toContain('fixturevalue123');
+    const forged = structuredClone(journal.view);
+    forged.people[0]!.quote = 'Sam remembers an invented value.';
+    expect(auditActiveMemory(forged).findings.map((item: { code: string }) => item.code))
+      .toContain('stored-people-note-unattributed');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
