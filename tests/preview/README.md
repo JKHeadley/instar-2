@@ -656,6 +656,21 @@ that turn's redacted operator text and actual sent reply, each limited to
 target is labelled unavailable; embedded Telegram reply text is never used as
 journal evidence. Ordinary messages have no `replyTo` field. Inspect shows the
 reference. See the [supervised thread-reference script](thread-reference-live-test.md).
+Before preview-deploy, the desk runs the offline review-layer canary from the repository
+root:
+
+```sh
+./node_modules/.bin/vitest run tests/preview/review-layers-canary.test.ts --configLoader=runner --testTimeout=120000
+```
+
+Its passing fixture drives one answer, full-context reply review, summary and summary
+review through the real launcher. A one-line `PASS | reason` reply verdict and a
+whole-response fenced JSON summary verdict pass; contradicting prose keeps a reply unsent
+or a summary uncommitted. The subscription
+route and Jev are stubbed, Telegram uses a loopback fixture, and no live call or live
+journal is involved. A summary-review refusal can invoke the existing bounded second
+attempt. After integration, Justin's supervised channel check is
+[review-layers-canary-live-test.md](review-layers-canary-live-test.md).
 
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
