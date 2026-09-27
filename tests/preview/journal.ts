@@ -27,6 +27,7 @@ export const PREVIEW_COMMITMENT_LIMIT = 10;
 /** Most flagged earlier replies whose correction notes one packet carries. */
 export const PREVIEW_CORRECTION_LIMIT = 3;
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
+export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export const HELD_NOTICE_AFTER_MS = 600_000;
 const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable'
@@ -78,6 +79,7 @@ export type JournalRecord =
   | { kind: 'summary-reserve'; through: number; prompt?: string; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
+  | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain'; at: number }
   | { kind: 'summary'; through: number; text: string; people?: PersonNote[]; memoryFor?: string[]; memory?: MemoryChange[];
     commitments?: CommitmentNote[]; closed?: CommitmentClosure[]; state?: 'complete'; usage?: ModelUsage; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
@@ -86,7 +88,7 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true;
+  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true; memoryUndecided?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
@@ -275,6 +277,11 @@ function project(view: JournalView, row: JournalRecord): void {
       else delete turn.heldSince;
     }
     turn.held = row.reason;
+  }
+  if (row.kind === 'memory-undecided') {
+    if (!turn.accepted || turn.memoryUndecided) throw Error('preview journal: memory undecided order');
+    turn.memoryUndecided = true;
+    if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; }
   }
 }
 
@@ -532,7 +539,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (/^\s*(?:imported|forwarded|pasted|quoted)\b/iu.test(direct)) return false;
     return /^\s*(?:actually\b|(?:please\s+)?forget\b|no longer true\b)|,\s*not\s+(?:my|the|a)\b/iu.test(direct);
   };
-  const pendingMemory = () => journal.view.order.find(turn => turn.accepted && fromOperator(turn)
+  const pendingMemory = () => journal.view.order.find(turn => turn.accepted && fromOperator(turn) && !turn.memoryUndecided
     && (memoryCue(turn) || turn.memoryPending || turn.held === 'memory correction pending')
     && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)
       // Old summary frames had no request disposition. Their covered turns are
@@ -710,6 +717,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // even if a later correction still holds ordinary answers.
         if (pendingMemory() && turn.modelState !== 'uncertain') {
           await summarizeIfNeeded(true);
+          // No summary can ever run again while an UNKNOWN summary reservation stands
+          // (it is never repeated), so a pending request is settled as undecided and gets
+          // one honest reply, instead of holding every later answer forever.
+          for (let request = pendingMemory(); request && journal.view.summaryReservations.size > 0; request = pendingMemory())
+            journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-uncertain', at: ports.now() });
           if (pendingMemory()) {
             if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
             continue; // later eligible loss notices must still be reached
@@ -777,7 +789,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(typeof answer === 'string' ? {} : { usage: answer.usage }), at: ports.now() });
-            if (invalidMemory) {
+            if (invalidMemory && !turn.memoryUndecided) {
               journal.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: ports.now() });
               continue;
             }
@@ -791,7 +803,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         gate();
         if (journal.view.replies >= journal.view.limits.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
         // An invalid memory acknowledgement stays rejected even after a later summary settles it.
-        let reply = turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
+        let reply = turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
+          : turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
           : `PREVIEW — ${turn.answer ?? UNKNOWN_ANSWER_NOTICE}`;
         if (ports.replyCheck) {
           const previous = turn.replyChecks?.at(-1);
@@ -1027,7 +1040,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const through = turn.update;
         if (journal.view.summaryReservations.has(through) || (journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
         const closable = openFor(through, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
-        const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item)
+        const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item) && !item.memoryUndecided
           && (memoryCue(item) || item.memoryPending || item.held === 'memory correction pending')
           && item.update > previous && item.update <= through);
         const trigger = strictTrigger ?? journal.view.order.filter(item => item.accepted && fromOperator(item)

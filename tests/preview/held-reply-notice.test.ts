@@ -20,7 +20,11 @@ for (const reason of ['reply check unavailable', 'call cap', 'memory correction 
       const journal = openPreviewJournal(path, key, genesis());
       let now = 1_000, sends = 0;
       const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'UTC',
-        model: async () => { throw Error('held answer ran'); }, checkOutbound: () => {},
+        model: async input => {
+          if (reason === 'memory correction pending' && input.id.startsWith('summary:'))
+            return { state: 'rejected' as const, failureClass: 'rejected' as const };
+          throw Error('held answer ran');
+        }, checkOutbound: () => {},
         send: async input => { sends++; expect(input.expectedText).toBe("PREVIEW — I'm holding my answer to your message from 12:26; it will follow or I'll tell you why");
           return 12; } });
       worker.intake([update(1)]);

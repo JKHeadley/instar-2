@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, importChannelFixture, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal.js';
+import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal.js';
 
 const key = new Uint8Array(32).fill(17);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -604,3 +604,111 @@ it('continues past a legacy summary whose frontier ends on an old cue', async ()
     reopened.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// Live defect 2026-09-26 21:23 PDT: the correction's deciding summary returned UNKNOWN,
+// which is never repeated, so the request stayed pending and held every later answer.
+it('settles an undecidable correction with one honest reply and keeps answering later messages', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-undecided-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
+    const sends: string[] = [];
+    let answers = 0;
+    const ports = { now: () => 1790000000000, stopped: () => false,
+      model: async (input: { id: string; question: string; context: string }) => {
+        if (input.id.startsWith('summary:')) return { state: 'uncertain' as const };
+        answers++;
+        if (input.question.startsWith('Actually')) return JSON.stringify({ reply: 'Noted.', memory: 'not-an-array' });
+        return 'Plain answer.';
+      },
+      send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
+    let worker = createJournalWorker(journal, ports as never);
+    worker.intake([update(1, 'My gym locker code is 3310.')]);
+    await worker.drain();
+    worker.intake([update(2, 'Actually my gym locker code is 4412, not 3310.')]);
+    await worker.drain();
+    worker.intake([update(3, 'What should I cook tonight?')]);
+    await worker.drain(); await worker.drain();
+    expect(sends).toHaveLength(3);
+    expect(sends[1]).toBe(MEMORY_UNDECIDED_REPLY);
+    expect(sends[2]).toBe('PREVIEW — Plain answer.');
+    expect(journal.view.order.every(turn => turn.held === undefined)).toBe(true);
+    expect(journal.view.summaryReservations.size).toBe(1); // the UNKNOWN summary is never repeated
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports as never);
+    await worker.drain();
+    expect(sends).toHaveLength(3); // restart sends nothing more
+    expect(journal.view.order[1]?.memoryUndecided).toBe(true);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 20000);
+
+it('still holds later answers while a correction can be decided by a summary that has not run', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-decidable-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
+    const sends: string[] = [];
+    let summaries = 0;
+    const ports = { now: () => 1790000000000, stopped: () => false,
+      model: async (input: { id: string; question: string; context: string }) => {
+        if (input.id.startsWith('summary:')) {
+          summaries++;
+          const packet = JSON.parse(input.context);
+          const source = packet.memoryCandidates?.find((item: { message: string }) => item.message.includes('3310'));
+          return JSON.stringify({ summary: 'The operator corrected the locker code.', people: [],
+            memory: source ? [{ mode: 'correct', source: source.id, quote: 'My gym locker code is 3310.', value: 'My gym locker code is 4412.' }] : [] });
+        }
+        return 'Plain answer.';
+      },
+      send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
+    const worker = createJournalWorker(journal, ports as never);
+    worker.intake([update(1, 'My gym locker code is 3310.')]);
+    await worker.drain();
+    worker.intake([update(2, 'Actually my gym locker code is 4412, not 3310.')]);
+    await worker.drain();
+    expect(summaries).toBeGreaterThan(0);
+    expect(journal.view.order.some(turn => turn.memoryUndecided)).toBe(false);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 20000);
+
+// Astra hotfix-mu MUST-FIX 1: an already-sent request that an ordinary summary later
+// found unresolved must replay when marked undecided, and later work must resume.
+it('replays an undecided mark on an already-sent pending request and resumes later answers', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-undecided-sent-')));
+  const path = join(root, 'journal.encrypted');
+  let journal: ReturnType<typeof openPreviewJournal> | undefined;
+  try {
+    let summaries = 0;
+    const sends: { update: number; text: string }[] = [];
+    const ports = { now: () => 1790000000000, stopped: () => false, checkOutbound: () => {},
+      send: async (input: { update: number; text: string }) => { sends.push(input); return sends.length; },
+      model: async (input: { id: string; question: string; context: string }) => {
+        if (input.id.startsWith('summary:')) {
+          summaries++;
+          return summaries === 1
+            ? JSON.stringify({ summary: 'Unresolved memory request.', people: [], memory: [], memoryDisposition: 'unresolved' })
+            : { state: 'uncertain' as const };
+        }
+        return 'Acknowledged.';
+      } };
+    journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
+    let worker = createJournalWorker(journal, ports as never);
+    worker.intake([update(1, 'My gym locker code is 3310.')]); await worker.drain();
+    worker.intake([update(2, 'Please stop remembering my gym locker code.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.order[1]?.memoryPending).toBe(true);
+    expect(journal.view.order[1]?.sent).toBe(2);
+    journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports as never);
+    worker.intake([update(3, 'What is my gym locker code?')]);
+    await worker.drain();
+    expect(journal.view.order[1]?.memoryUndecided).toBe(true);
+    expect(sends.map(item => item.update)).toEqual([1, 2, 3]); // later work resumed; turn 2 not repeated
+    journal.close(); journal = openPreviewJournal(path, key); // replay succeeds
+    expect(journal.view.order[1]?.memoryUndecided).toBe(true);
+    worker = createJournalWorker(journal, ports as never); await worker.drain();
+    expect(sends).toHaveLength(3);
+  } finally { journal?.close(); rmSync(root, { recursive: true, force: true }); }
+}, 20000);
