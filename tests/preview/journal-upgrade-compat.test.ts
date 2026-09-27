@@ -45,12 +45,25 @@ it('opens the frozen14 journal and answers identically; frozen13 refuses the ren
     const baseStatus = status(base, seed), nextStatus = status(current, seed);
     expect(baseStatus.status, baseStatus.stderr).toBe(0);
     expect(nextStatus.status, nextStatus.stderr).toBe(0);
-    expect(JSON.parse(nextStatus.stdout)).toEqual(JSON.parse(baseStatus.stdout));
+    const nextView = JSON.parse(nextStatus.stdout), baseView = JSON.parse(baseStatus.stdout);
+    // int11/int12 add status fields and plainer wording; the replayed journal state is unchanged.
+    const { holds: nextHolds, self: nextSelf, ...nextState } = nextView;
+    const { holds: baseHolds, self: baseSelf, ...baseState } = baseView;
+    expect(nextState).toMatchObject(baseState);
+    expect(nextHolds.map((item: { update: number }) => item.update)).toEqual(baseHolds.map((item: { update: number }) => item.update));
+    for (const line of ['Operator messages received: 3 today, 3 in this trial', 'My replies Telegram accepted: 2 today, 2 in this trial'])
+      expect([baseSelf, nextSelf].every(text => text.includes(line))).toBe(true);
     const baseAnswer = fixtureRun('exercise', base, baseRoot);
     const nextAnswer = fixtureRun('exercise', current, nextRoot);
     expect(baseAnswer.status, baseAnswer.stderr).toBe(0);
     expect(nextAnswer.status, nextAnswer.stderr).toBe(0);
-    expect(JSON.parse(nextAnswer.stdout)).toEqual(JSON.parse(baseAnswer.stdout));
+    // The probe packet carries int11/int12 instructions and projections; the replayed state,
+    // the answer and the single send must match the frozen14 build exactly.
+    const { probe: nextProbe, ...nextRun } = JSON.parse(nextAnswer.stdout);
+    const { probe: baseProbe, ...baseRun } = JSON.parse(baseAnswer.stdout);
+    expect(nextRun).toEqual(baseRun);
+    expect(nextProbe.memory).toEqual(baseProbe.memory);
+    expect(nextProbe.historyMode).toBe(baseProbe.historyMode);
     expect(JSON.parse(nextAnswer.stdout)).toMatchObject({
       before: { cursor: 4, calls: 3, replies: 2, held: [[3, 'reply check unavailable']],
         expires: 1791232800000, shapes: { version: 1, counts: { 'answer/decision/tolerated/fenced': 1 } } },
