@@ -934,11 +934,21 @@ history within its envelope. When that cannot fit, it first tries a bounded
 summary synchronously. If summarization fails, the turn stays held with a
 visible reason until a covering summary succeeds. The full-history choice
 uses the complete system, packet and prepared prompt bound.
-When the whole summary input exceeds that bound, the worker summarizes the
-oldest prefix that fits, then extends from the saved summary. One pass makes at
-most eight attempts under the same call cap. An oversized single turn is shown
-as a hold in `status`, with its original still in the journal. Earlier overflow
-holds retry in order when a summary covers their preceding turns.
+Each summary covers at most four oldest unsummarized turns. Its exact prepared
+stdin plus the subscription system prompt must fit 24 KiB, leaving 8 KiB below
+the provider's 32 KiB prompt policy. The request asks for a complete JSON result
+within 1024 output tokens, half the provider's 2048-token cap. The worker tries
+shorter prefixes when optional memory fields or envelope framing use the room,
+then extends from the saved summary. The 24 KiB threshold also starts background
+summarization after a reply when a raised general context limit is larger.
+One pass makes at most eight attempts under the same call cap. An oversized single
+turn is shown as a hold in `status`, with its original still in the journal.
+Earlier overflow holds retry in order when a summary covers their preceding turns.
+The offline regression measures exact prepared prompt bytes and the substitute
+provider's reported output-token usage; Justin's live procedure is
+[summary-size-live-test.md](summary-size-live-test.md). When the call-diagnostics
+branch is integrated, its content-free `role:summary` rows supply actual prompt
+bytes, output tokens, elapsed time and local limit classification for the live check.
 
 When a summary covers earlier turns, a **memory sentinel**
 (`memory-sentinel.ts`) picks which of those original journal turns are quoted

@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
-  SUMMARY_UNKNOWN_RECOVERY_MS } from './journal.js';
+  SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
 // @ts-ignore no declaration for the host script
@@ -764,6 +765,102 @@ it('uses rolling summaries only after replies, shares the attempt cap, and retai
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('bounds each rolling chunk by measured prepared prompt bytes and reported output tokens', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(64), maxBytes: 131072, maxTurns: 30 });
+    for (let n = 1; n <= 20; n++) {
+      const id = `telegram:12345678:update:${n}`, message = `turn ${n}: ${'a'.repeat(1600)}`;
+      journal.append({ kind: 'intake', id, update: n, text: message, raw: JSON.stringify(update(n, message)),
+        accepted: true, cursor: n + 1, at: 1000 });
+      journal.append({ kind: 'reserve', id, at: 1000 });
+      journal.append({ kind: 'answer', id, text: `answer ${n}`, at: 1000 });
+      journal.append({ kind: 'intent', id, text: `PREVIEW — answer ${n}`, chat: journal.view.genesis.chat,
+        update: n, grant: journal.view.genesis.grant, at: 1000 });
+      journal.append({ kind: 'sent', id, message: n, at: 1000 });
+    }
+    const measurements: { promptBytes: number; historyTurns: number; outputTokens: number }[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', journal.view.genesis.grant,
+        1000, journal.view.limits.maxBytes),
+      model: async input => {
+        expect(input.question).toContain(`${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens`);
+        const promptBytes = Buffer.byteLength(input.prepared!) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+        const historyTurns = (JSON.parse(input.context) as { history: unknown[] }).history.length;
+        const outputTokens = 800; // the offline provider's reported usage
+        measurements.push({ promptBytes, historyTurns, outputTokens });
+        return { state: 'complete' as const, text: JSON.stringify({ summary: 'Earlier turns remain in the journal.', people: [] }),
+          usage: { inputTokens: 4000, outputTokens, charge: null } };
+      }, send: async () => 1, checkOutbound: () => {} });
+    await worker.summarizeIfNeeded();
+    expect(journal.view.summaries.length).toBeGreaterThan(0); // raised reply cap must not defer all summaries
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.summaries.at(-1)?.through).toBe(20);
+    expect(measurements.length).toBeGreaterThan(1);
+    expect(measurements.every(item => item.historyTurns <= SUMMARY_MAX_TURNS
+      && item.promptBytes <= SUMMARY_MAX_PROMPT_BYTES && item.outputTokens <= SUMMARY_TARGET_OUTPUT_TOKENS)).toBe(true);
+    expect(Math.max(...measurements.map(item => item.promptBytes))).toBeLessThan(subscriptionConversationPolicy('claude-opus-5-5').maxPromptBytes);
+    expect(journal.view.summaries.map(item => item.usage?.outputTokens)).toEqual(measurements.map(item => item.outputTokens));
+    expect(journal.view.order[0]?.text).toContain('turn 1:');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('holds a single turn beyond the summary budget before reserving a provider call', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(4), maxBytes: 131072 });
+    const id = 'telegram:12345678:update:1', message = `ORCHID ${'x'.repeat(SUMMARY_MAX_PROMPT_BYTES)}`;
+    journal.append({ kind: 'intake', id, update: 1, text: message, raw: JSON.stringify(update(1, message)),
+      accepted: true, cursor: 2, at: 1000 });
+    journal.append({ kind: 'reserve', id, at: 1000 });
+    journal.append({ kind: 'answer', id, text: 'old answer', at: 1000 });
+    journal.append({ kind: 'intent', id, text: 'PREVIEW — old answer', chat: journal.view.genesis.chat,
+      update: 1, grant: journal.view.genesis.grant, at: 1000 });
+    journal.append({ kind: 'sent', id, message: 1, at: 1000 });
+    let calls = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => { calls++; return 'summary'; }, send: async () => 2, checkOutbound: () => {} });
+    await worker.summarizeIfNeeded(true);
+    expect(calls).toBe(0);
+    expect(journal.view.order[0]?.held).toBe('summary oversized turn');
+    expect(journal.view.order[0]?.text).toBe(message);
+    expect(journal.view.summaryReservations.size).toBe(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('uses a smaller prefix when prepared framing exceeds the summary budget', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(6), maxBytes: 131072 });
+    for (let n = 1; n <= 2; n++) {
+      const id = `telegram:12345678:update:${n}`;
+      journal.append({ kind: 'intake', id, update: n, text: `turn ${n}`, raw: JSON.stringify(update(n)),
+        accepted: true, cursor: n + 1, at: 1000 });
+      journal.append({ kind: 'reserve', id, at: 1000 });
+      journal.append({ kind: 'answer', id, text: 'answer', at: 1000 });
+      journal.append({ kind: 'intent', id, text: 'PREVIEW — answer', chat: journal.view.genesis.chat,
+        update: n, grant: journal.view.genesis.grant, at: 1000 });
+      journal.append({ kind: 'sent', id, message: n, at: 1000 });
+    }
+    const called: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => input.id === 'summary:2' ? 'x'.repeat(SUMMARY_MAX_PROMPT_BYTES) : input.context,
+      model: async input => { called.push(input.id); return 'Earlier turns retained.'; },
+      send: async () => 3, checkOutbound: () => {} });
+    await worker.summarizeIfNeeded(true);
+    expect(called).toEqual(['summary:1']);
+    expect(journal.view.summaries.map(item => item.through)).toEqual([1]);
+    expect(journal.view.summaryReservations.size).toBe(0);
+    expect(journal.view.order[1]?.text).toBe('turn 2');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('rolls an unsummarized live-shaped history forward and drains older overflow holds in order', async () => {
   const root = origin();
   try {
@@ -1010,7 +1107,7 @@ it('retries a definitely failed summary and an overflow-held turn automatically'
   try {
     const first = openPreviewJournal(path, key, { ...genesis(4), maxBytes: 32768 });
     const id = 'telegram:12345678:update:1';
-    first.append({kind:'intake',id,update:1,text:'ORCHID '+ 'a'.repeat(29000),
+    first.append({kind:'intake',id,update:1,text:'ORCHID '+ 'a'.repeat(19000),
       raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
     first.append({kind:'reserve',id,at:1000}); first.append({kind:'answer',id,text:'old answer',at:1000});
     first.append({kind:'intent',id,text:'PREVIEW — old answer',chat:first.view.genesis.chat,
@@ -1025,7 +1122,7 @@ it('retries a definitely failed summary and an overflow-held turn automatically'
     const journal = openPreviewJournal(path, key);
     const seen: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1001, stopped: () => false,
-      prepareModel: input => { if (Buffer.byteLength(input.context) + (input.id.startsWith('summary:') ? 500 : 3800) > 32768)
+      prepareModel: input => { if (Buffer.byteLength(input.context) + (input.id.startsWith('summary:') ? 500 : 16000) > 32768)
         throw Error('prompt overflow'); return input.context; },
       model: async input => { seen.push(input.id); return input.id.startsWith('summary:') ? 'Earlier the operator named ORCHID.' : 'answer'; },
       send: async () => 2, checkOutbound: () => {} });
@@ -1055,7 +1152,7 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
       { ...genesis(route === 'last-call' ? 2 : 4), maxBytes: 32768 });
     const id = 'telegram:12345678:update:1';
-    journal.append({kind:'intake',id,update:1,text:'ORCHID '+ 'a'.repeat(29000),
+    journal.append({kind:'intake',id,update:1,text:'ORCHID '+ 'a'.repeat(19000),
       raw:JSON.stringify(update(1)),accepted:true,cursor:2,at:1000});
     journal.append({kind:'reserve',id,at:1000});
     journal.append({kind:'answer',id,text:'old answer',at:1000});
@@ -1070,7 +1167,7 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-
           summaryPrepares++;
           if (route === 'preflight') throw Error('summary prompt unavailable');
         }
-        const extra = input.id.startsWith('summary:') ? 500 : 3800;
+        const extra = input.id.startsWith('summary:') ? 500 : 16000;
         if (Buffer.byteLength(input.context) + extra > 32768) throw Error('prompt overflow');
         return input.context; },
       model: async input => { seen.push(input);
@@ -1127,7 +1224,7 @@ it('summarizes and answers with pending corrections and a commitment before any 
     const request = 'Please remember that my dentist appointment is Friday.';
     const prior = [
       { update: 1, text: request, answer: 'Noted.' },
-      { update: 2, text: `A longer conversation about my plans: ${'a'.repeat(29000)}`,
+      { update: 2, text: `A longer conversation about my plans: ${'a'.repeat(19000)}`,
         answer: "I've scheduled a reminder for Friday." },
     ];
     for (const turn of prior) {
@@ -1143,7 +1240,7 @@ it('summarizes and answers with pending corrections and a commitment before any 
     const seen: { id: string; context: string }[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       prepareModel: input => {
-        if (Buffer.byteLength(input.context) + (input.id.startsWith('summary:') ? 500 : 3800) > 32768)
+        if (Buffer.byteLength(input.context) + (input.id.startsWith('summary:') ? 500 : 16000) > 32768)
           throw Error('prompt overflow');
         return input.context;
       },
