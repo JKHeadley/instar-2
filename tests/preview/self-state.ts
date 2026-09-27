@@ -85,7 +85,8 @@ export function memoryHealthLine(view: JournalView): string {
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0);
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0)
+    + [...view.reminders.values()].filter(item => item.sent === undefined).length;
   const sum = (field: 'recallHits' | 'channelRecallHits') => measured.reduce((total, turn) => total + (turn[field] ?? 0), 0);
   return `Memory health: ${String(view.order.filter(turn => turn.held).length)} journal turns currently held; `
     + `${String(view.summaries.length)} summaries, ${String(covered)} accepted operator turns covered by latest summary`
@@ -110,13 +111,17 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
   const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
+  const reminders = [...view.reminders.values()].filter(item => item.sent !== undefined);
+  const remindersToday = reminders.filter(item => isToday(item.sentAt)).length;
   const holds = new Map<string, number>();
   for (const turn of view.order) if (turn.held) holds.set(turn.held, (holds.get(turn.held) ?? 0) + 1);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = view.summaryReservations.size;
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0);
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0)
+    + [...view.reminders.values()].filter(item => item.sent === undefined).length;
+
 
   const refused = view.order.length - accepted.length;
   const when = (ms: number) => parts(format, ms).text;
@@ -125,11 +130,13 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `As of ${when(now)} (time zone ${timeZone}; "today" means ${today} there).`,
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
+    `Morning reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; separate grant ${view.reminderGrant === null ? 'absent' : 'recorded'}.`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     `Model tokens by call kind (input/output; missing usage counts at its reservation): ${Object.entries(view.tokenTotals)
       .map(([kind, total]) => `${kind} ${String(total.inputTokens)}/${String(total.outputTokens)} (${String(total.calls)} calls, ${String(total.unknownCalls)} unmeasured)`)
       .join('; ')}.`,
+
 
     view.capAuthority === null ? 'Caps have not been raised since the trial began.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,

@@ -13,6 +13,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { appendRun, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
@@ -100,11 +101,15 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
-  const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
+  const readSources = reminders => sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+    { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires, reminders }).sources;
+  const ordinarySources = readSources(false);
+  let reminderSources;
+
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = Date.now(), log = runs();
+    const sources = view.reminderGrant === null ? ordinarySources : (reminderSources ??= readSources(true));
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
     const note = handoff();
@@ -117,6 +122,7 @@ const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Lo
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
   people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],
@@ -273,18 +279,25 @@ async function main() {
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
-      unknownSends: view.view.order.reduce((count, t) => count + Number(t.intent !== undefined && t.sent === undefined) + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined), 0),
+      unknownSends: view.view.order.reduce((count, t) => count + Number(t.intent !== undefined && t.sent === undefined) + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined), 0)
+        + [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
       replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
         unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
         && t.answer !== undefined && t.intent === `PREVIEW — ${t.answer}`).length },
+
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       mentionedDates: view.view.mentionedDates.size,
+      reminders: { intents: view.view.reminders.size,
+        accepted: [...view.view.reminders.values()].filter(item => item.sent !== undefined).length,
+        unknown: [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
+        grant: view.view.reminderGrant },
       dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
+
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
         time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
       datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.id))
@@ -554,6 +567,13 @@ async function main() {
     validateSubscriptionActivation(activation, profile, required(options, 'model'), Date.now(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (activation.trial !== g.grant || activation.baseConfigurationDigest !== g.configurationDigest || activation.expiresAt !== g.expires)
       throw Error('preview: activation differs from journal');
+    if (options['reminder-grant-reference']) {
+      if (journal.view.reminderGrant === null) journal.append({ kind: 'reminder-grant',
+        reference: options['reminder-grant-reference'], trial: g.grant, surface: 'telegram-private-chat',
+        scope: 'initiated-dated-reminders', custodian: g.operator, recovery: 'unknown-never-retry', at: Date.now() });
+      else if (journal.view.reminderGrant !== options['reminder-grant-reference'])
+        throw Error('preview: reminder grant differs from journal');
+    }
     const captures = new Map();
     const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
     if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
@@ -625,8 +645,9 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      worker.gate(); await worker.drain(); await worker.sendReminders(); summarizeLater(); worker.gate();
       if (await stopAtCap()) break;
+
       if (existsSync(stopPath) || Date.now() >= g.expires) break;
       try { worker.pollGate(); } catch {
         if (!await stopAtCap()) endReason = 'cap reached';
@@ -645,8 +666,9 @@ async function main() {
       try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure()) break; continue; }
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
       failedPolls = 0;
-      worker.intake(updates.result); await worker.drain(); summarizeLater();
+      worker.intake(updates.result); await worker.drain(); await worker.sendReminders(); summarizeLater();
       if (await stopAtCap()) break;
+
     }
     await summaryJob;
     await stepJob;

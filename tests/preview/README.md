@@ -657,10 +657,11 @@ without opening those logs. The source is machine-local by design, using the sam
 exclusive preview journal writer and no new service or credential. Live mail stays
 disabled. The Justin live exercise is [channel-source-live-test.md](channel-source-live-test.md).
 
+
 ### What the preview knows about itself and 2.0
 
 Each model call's packet carries `now`, the audience, the conversation history,
-a `capability` line (capped preview, answer only, no tools, memory is this trial's
+a `capability` line (capped preview, answers and fixed morning reminders, no tools, memory is this trial's
 journal only) and `sources`: the three pinned purpose excerpts, the dated
 capability note, the preview's **own self-state**, and the **desk's report** on
 other work.
@@ -730,8 +731,9 @@ Updating the file needs no restart. Sample:
 ```md
 # Instar 2.0 — desk report
 What 2.0 is: Instar rebuilt so coherence is something an agent cannot lose.
-This preview: a private, capped Telegram trial. It answers only; it has no tools,
-cannot act, browse or schedule. Its memory is this trial's journal.
+This preview: a private, capped Telegram trial. It answers and sends fixed morning
+reminders for settled dated items; it has no tools and cannot browse. Its memory
+is this trial's journal.
 Lanes:
 - preview-awareness: built, awaiting gate.
 - production speed work: in progress.
@@ -983,9 +985,9 @@ An unresolved date gets a clarification. Later answer packets carry those absolu
 dates and ask the model to state them when relevant. The exact reply still passes the existing
 reply check and send intent.
 
-The capability line says plainly: this preview **answers only and never sends unprompted
-reminders**. An item in memory is not a scheduled notification; the runner has no scheduler or
-tools. It can mention a due or overdue item in a reply to the operator's next message.
+By default, the capability line says plainly: this preview **answers only and has no grant to send
+unprompted reminders**. An item in memory is not a scheduled notification; the runner has no
+external scheduler or tools. It can mention a due or overdue item in a reply to the operator's next message.
 For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
 
 ### Upcoming date mention
@@ -1006,6 +1008,17 @@ even an UNKNOWN send cannot repeat the clause after replay. `status.mentionedDat
 counts these durable intent markers. This is a reply aside, never an unprompted
 reminder or scheduled action. For the supervised private-chat procedure, see
 [upcoming-date-mention-live-test.md](upcoming-date-mention-live-test.md).
+
+### Separately granted morning reminders
+
+The `--reminder-grant-reference` launch option records a separate operator grant for initiated
+dated reminders in this private trial. Without that record, `sendReminders()` sends nothing.
+With it, the runner can send one fixed, bounded morning batch per local day and topic for
+settled dated items, within the same reply cap and secret check. It fsyncs a send intent
+before dispatch. A send with unknown outcome consumes its slot and is never retried.
+Forgotten or corrected clauses and unsettled memory requests hold or exclude reminders.
+See [dated-reminder-live-test.md](dated-reminder-live-test.md).
+
 ### How the operator likes answers
 
 The same capped summary or reply decision can record a durable reply preference from the
