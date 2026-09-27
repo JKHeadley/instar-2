@@ -1191,6 +1191,27 @@ earlier turn. No second send route is created. Revisions consume the existing in
 remain machine-local. See [message-edit-live-test.md](message-edit-live-test.md) for the
 supervised private-channel test.
 
+### Conflicting active memories (preview)
+
+The existing capped answer call judges whether two active factual clauses about the same
+subject disagree. It proposes their source IDs and exact quotes; the worker checks both
+against accepted verified-operator turns or selected channel imports, and rejects a
+source already superseded by a correction. A valid new pair produces one plain question
+quoting both claims. The answer frame records the pair before the checked send doorway;
+the exact send intent marks the question as asked, including an UNKNOWN Telegram outcome.
+A later proposal of the same pair does not ask it again.
+
+The next direct answer from the verified operator can choose either recorded source.
+The same answer frame durably records the choice and supersedes the other exact clause
+through the existing memory projection. Replay restores the open question or its answer;
+`status.conflicts` and `inspect --text` show the state. An unrelated message, an invented
+source or winner, and an unaccepted sender cannot resolve it. The model decides meaning
+inside these exact evidence bounds; this preview does not claim a semantic conflict
+detector that can discover a pair absent from the bounded packet. No extra model call,
+store, scheduler, or outbound path is added. Follow
+[conflicting-memory-live-test.md](conflicting-memory-live-test.md) for Justin's supervised
+private-chat procedure.
+
 ### Dated memory (preview)
 
 The private journal runner records dated events and deadlines from the verified operator in the

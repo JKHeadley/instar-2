@@ -229,7 +229,7 @@ it('keeps an older due agent promise visible when the ten-item packet limit is r
 it('surfaces a fresh promise made after the latest summary', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 4000, answer: question => question === 'Promise'
+    const w = world(root, { maxBytes: 6000, answer: question => question === 'Promise'
       ? 'I’ll check the report tomorrow.' : 'Okay.' });
     let id = 1;
     for (; !w.journal.view.summaries.length && id < 60; id++) await w.say(id, filler(id));
@@ -455,10 +455,10 @@ it('keeps a plain summary and reports the missing commitment record in status', 
 it('keeps per-turn non-model overhead flat through 200 turns with commitments and a restart', async () => {
   const root = origin(), samples: number[] = [];
   try {
-    let w = world(root, { bad: false, maxBytes: 6000 });
+    let w = world(root, { bad: false, maxBytes: 8192 });
     for (let i = 1; i <= 200; i++) {
-      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 6000 }); }
-      const text = i % 10 === 1 ? `Please remember item ${i} for the review.` : i === 199 ? 'What did I ask you to remember?' : filler(i);
+      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 8192 }); }
+      const text = i % 10 === 1 ? `Please remember item ${i} for the review.` : i === 199 ? 'What did I ask you to remember?' : `${filler(i)} ${'x'.repeat(250)}`;
       const start = performance.now();
       await w.say(i, text);
       samples.push(performance.now() - start);

@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, PREVIEW_LIVE_LIMITS, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, projectMemoryBudget, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -140,6 +140,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],
+  openConflicts: packet.openConflicts ?? [],
   inventory: packet.inventory ?? null,
   memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
 
@@ -306,6 +307,10 @@ async function main() {
       memoryHealth: memoryHealthLine(view.view),
 
       withheld: withheldView(view.view),
+      conflicts: activeMemoryConflicts(view.view).map(item => ({ askedByUpdate: view.view.turns.get(item.askedBy)?.update,
+        asked: item.asked, answeredByUpdate: item.answeredBy ? view.view.turns.get(item.answeredBy)?.update : null,
+        first: { source: item.first.source, quote: redact(item.first.quote).text },
+        second: { source: item.second.source, quote: redact(item.second.quote).text }, winner: item.winner ?? null })),
       undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
         change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
       holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null || wallNow() >= view.view.expires),
