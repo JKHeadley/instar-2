@@ -14,6 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { dueState } from './dated-memory.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -65,11 +66,13 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
   return () => [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current())),
     deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
 };
-/** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
-const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
+/** The operator's IANA time zone; an unknown zone refuses. */
+const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   people: packet.people ?? [], commitments: packet.commitments ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
+  dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
+  datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -129,6 +132,12 @@ async function main() {
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
+      dated: view.view.dated.filter(item => !view.view.memory.some(change => change.source === item.source
+        && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
+        quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
+        time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
+      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.source === item.id))
+        .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: [...view.view.summaryReservations].filter(through => !view.view.summaries.some(s => s.through === through)).length,
       coherence: { checked: view.view.order.filter(t => t.checked).length,
         unchecked: view.view.order.filter(t => t.intent !== undefined && !t.checked).length,
@@ -153,7 +162,7 @@ async function main() {
       let next;
       if (options.text !== undefined) {
         const refuse = () => { throw Error('preview: inspect never calls or sends'); };
-        const probe = createJournalWorker(view, { now: Date.now, stopped: () => true, sources: turnSources(root, options, view.view, () => readRuns(runsPath)),
+        const probe = createJournalWorker(view, { now: Date.now, stopped: () => true, timeZone: timeZoneOf(options), sources: turnSources(root, options, view.view, () => readRuns(runsPath)),
           prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, Date.now(), view.view.limits.maxBytes),
           model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
@@ -270,7 +279,7 @@ async function main() {
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
-    worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
+    worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },

@@ -587,7 +587,7 @@ failure, cycle limit, or error). A launch with no end line is reported as ended
 without recording why (crash, kill or power loss); a torn line is counted, never
 guessed at. From it the self-state gives this run's start and uptime, the last
 restart, how the run before it ended, and launches today. "Today" is the local date
-in `--time-zone` (an IANA zone, default `UTC`; an unknown zone refuses start), and
+in `--time-zone` (an IANA zone, default `America/Los_Angeles`; an unknown zone refuses start), and
 the zone is stated in the text. The counts include the message being answered; its
 own reply is not yet sent. Imported turns from an older root may have unknown
 times. Launches before this change were not recorded, and the text says so. It is
@@ -701,6 +701,47 @@ different wording and sources remain. `status.withheld` and `inspect.withheld` s
 old clause, the source update or channel ID, the operator update ID, and why it was withheld; the model packet does not
 receive the forgotten clause. If the shared attempt cap or summary route prevents a decision,
 `status.holds` shows `memory correction pending` and the intake remains durable.
+
+### Dated memory (preview)
+
+The private journal runner records dated events and deadlines from the verified operator in the
+same encrypted append-only journal. The ordinary capped reply call selects an exact clause and
+date phrase from the operator's message; the runner checks both against that message and parses
+the phrase deterministically in `--time-zone` (default `America/Los_Angeles`) at the
+Telegram message timestamp, falling back to the durable intake timestamp. It stores the interpreted local day, optional
+24-hour time, original phrase, zone and any ambiguity in the answer frame. No extra model call,
+store, service or scheduler is added. Every verified operator reply packet asks the model for a
+dated decision, including `dated:[]` when there is no event or deadline. Up to three items can be
+recorded from one turn. A malformed proposed item is not recorded; the runner retains a pending
+date decision and sends a checked, truthful clarification instead of the model's false save claim.
+If the model omits the structured date decision, the original turn stays durable and
+`datedPending` names it in `status` and the next packet. That is an unconfirmed missing decision,
+never a due item; the preview must not claim it saved a deadline from that evidence alone.
+
+`tomorrow` means the following local calendar day, including across DST changes. `next Friday`
+means Friday in the following Monday–Sunday calendar week; the same rule applies to other
+`next` weekdays. An unqualified weekday means its next occurrence (the same weekday today is ambiguous). A
+month and day without a year means the next occurrence on or after the message's local day.
+`this` weekday, multiple dates, invalid dates, unsupported modifiers, numeric dates and
+other relative phrases retain their ambiguity. A bare hour such as “at 3:30” has a known day but no
+settled time. Day-only and ambiguous-hour items become
+due on their local date and overdue the next local day. A precise time becomes overdue after
+that local time. Items without a resolved day are shown as ambiguous. The packet of the next
+operator message includes up to ten upcoming, due, overdue or ambiguous active items, with a count of
+additional ones. `status` reports all active items and their current states; `inspect --text`
+shows the next packet's dated block. Corrections and forgetting use the existing validated
+memory change: an affected old item is withheld, and a corrected date is recorded only when
+the operator's replacement clause is selected and validated in its own turn.
+
+For a validated dated item, the immediate reply states its absolute `YYYY-MM-DD` day and zone;
+an unresolved expression gets a clarification. Later answer packets carry those absolute
+dates and ask the model to state them when relevant. The exact reply still passes the existing
+reply check and send intent.
+
+The capability line says plainly: this preview **answers only and never sends unprompted
+reminders**. An item in memory is not a scheduled notification; the runner has no scheduler or
+tools. It can mention a due or overdue item in a reply to the operator's next message.
+For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
 
 Live script for Justin in the existing private preview chat, after the desk lands this revision
 and resumes the one runner on its existing root:

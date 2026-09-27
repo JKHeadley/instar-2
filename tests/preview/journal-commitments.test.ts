@@ -11,7 +11,7 @@ import { readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(11);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-commitments-')));
-const genesis = (maxBytes = 3000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
+const genesis = (maxBytes = 4500) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
   operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes, cursor: 0 });
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
@@ -159,7 +159,7 @@ it('closes an item only on a later message the operator verifiably sent, and nev
 it('refuses a closure for an open item omitted from the summary packet', async () => {
   const root = origin();
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(3000));
     const packets: Packet[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => input.context,
