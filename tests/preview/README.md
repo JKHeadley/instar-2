@@ -2215,6 +2215,27 @@ The offline crash matrix is `journal-compaction.test.ts`. Justin's supervised
 test on an isolated copy of the actual preview journal is
 [journal-compaction-live-test.md](journal-compaction-live-test.md).
 
+### Active memory provenance audit
+
+`journal-agent.mjs audit --root ROOT` also traces the entire active memory
+projection, even when an item was omitted from the latest bounded model packet
+or no model packet exists. It reports source IDs and import digests without
+message bodies. Person notes, confirmed person merges, open commitments and
+their merged sources, correction and forgetting decisions, preferences, dated
+items, open questions, the current rolling summary, and imported channel items
+must each link to an accepted private-chat operator update or a journaled
+channel import. A correction must link both its old source and its later
+operator trigger. The command exits nonzero for any broken link. It reads the
+existing encrypted journal only and does not call a model or send a reply.
+
+This is a lineage check, not a semantic verdict on paraphrased summary prose.
+The existing summary faithfulness review decides that question. An imported
+item's chain proves the journaled import, while its sender metadata retains the
+fixture's stated trust limit. The property test creates varied correction,
+merge, summary and snapshot histories, reopens each journal, and breaks links
+to confirm the audit fails. Justin's supervised procedure is
+[correction-provenance-audit-live-test.md](correction-provenance-audit-live-test.md).
+
 ### Reply grounding audit
 
 Each answer-call reservation now includes a bounded index of the exact packet it

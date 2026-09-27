@@ -15,6 +15,162 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string) => ({ update_id: id, message: {
   chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 
+it('checks every ordinary accepted turn with and without a latest packet', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-turns-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'First ordinary message.')]); await worker.drain();
+    worker.intake([update(2, 'Second ordinary message.')]); await worker.drain();
+    for (const noPacket of [false, true]) {
+      const clean = structuredClone(journal.view);
+      if (noPacket) clean.lastPrompt = null;
+      expect(auditJournal(clean).findings).toEqual([]);
+      expect(auditJournal(clean).items.filter((item: { kind: string }) => item.kind === 'conversation-turn')).toHaveLength(2);
+      const forged = structuredClone(clean);
+      const first = forged.turns.get(forged.order[0]!.id)!;
+      const raw = JSON.parse(first.raw);
+      raw.message.text = 'A different message.';
+      first.raw = JSON.stringify(raw);
+      expect(auditJournal(forged).findings.map((item: { code: string }) => item.code))
+        .toContain('memory-operator-source-absent');
+    }
+    journal.close();
+    const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(auditJournal(replay.view).findings).toEqual([]);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('attributes merged reply commitments to each recorded reply', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-reply-merge-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const promise = "I'll remember your request.";
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'The request was remembered.', people: [],
+          commitments: [{ in: 'reply', quote: promise }], closed: [] }) : promise,
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Remember the first thing.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    worker.intake([update(2, 'Please also remember our conversation.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.commitments).toHaveLength(1);
+    expect(journal.view.commitments[0]!.sources).toHaveLength(1);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    const forged = structuredClone(journal.view);
+    forged.commitments[0]!.sources![0]!.quote = forged.order[1]!.text;
+    expect(auditJournal(forged).findings.map((item: { code: string }) => item.code))
+      .toContain('commitment-merge-unattributed');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('accepts a summary completed after intake only when offered to the correction decision', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-summary-order-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    let now = 1790000000000;
+    const worker = createJournalWorker(journal, { now: () => now++, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => {
+        if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Sam likes cedar tea.', people: [] });
+        if (input.question.startsWith('Please correct')) {
+          const packet = JSON.parse(input.context);
+          const old = packet.memoryCandidates.find((item: { message: string }) => item.message === 'Sam likes cedar tea.');
+          return JSON.stringify({ reply: 'Updated.', memory: [{ mode: 'correct', source: old.id,
+            quote: 'Sam likes cedar tea.', replacement: 'Sam likes mint tea.', summaryPassages: ['Sam likes cedar tea.'] }] });
+        }
+        return 'Noted.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Sam likes cedar tea.')]); await worker.drain();
+    worker.intake([update(2, 'Please correct Sam likes cedar tea. Sam likes mint tea.')]);
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.summaries[0]!.at).toBeGreaterThan(journal.view.order[1]!.at);
+    await worker.drain();
+    expect(journal.view.memory[0]!.summaryPassages).toEqual(['Sam likes cedar tea.']);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    const unoffered = structuredClone(journal.view);
+    const turn = unoffered.turns.get(unoffered.memory[0]!.trigger)!;
+    const prompt = JSON.parse(turn.prompt!);
+    const context = prompt.messages.find((message: { role: string }) => message.role === 'context');
+    const packet = JSON.parse(context.content);
+    delete packet.packet.memorySummary;
+    delete packet.packet.summary;
+    context.content = JSON.stringify(packet);
+    turn.prompt = JSON.stringify(prompt);
+    expect(auditJournal(unoffered).findings.map((item: { code: string }) => item.code))
+      .toContain('memory-summary-passage-absent');
+    const late = structuredClone(journal.view);
+    const reservation = late.awayEvents.find(event => event.kind === 'reserve' && event.id === late.memory[0]!.trigger)!;
+    late.summaries[0]!.at = reservation.at + 1;
+    expect(auditJournal(late).findings.map((item: { code: string }) => item.code))
+      .toContain('memory-summary-passage-absent');
+    journal.close();
+    const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(auditJournal(replay.view).findings).toEqual([]);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps correction lineage valid when a later background summary completes', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-later-summary-')));
+  try {
+    const path = join(root, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
+    let now = 1790000000000;
+    let releaseSummary!: () => void;
+    let summaryStarted!: () => void;
+    const started = new Promise<void>(resolve => { summaryStarted = resolve; });
+    const held = new Promise<void>(resolve => { releaseSummary = resolve; });
+    const worker = createJournalWorker(journal, { now: () => now++, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => {
+        if (input.id === 'summary:2') { summaryStarted(); await held; }
+        if (input.id.startsWith('summary:')) return JSON.stringify({
+          summary: input.id === 'summary:1' ? 'Sam likes cedar tea.' : 'Sam discussed tea. The sky is blue.',
+          people: [], commitments: [], closed: [] });
+        if (input.question.startsWith('Please correct')) {
+          const packet = JSON.parse(input.context);
+          const old = packet.memoryCandidates.find((item: { message: string }) => item.message === 'Sam likes cedar tea.');
+          return JSON.stringify({ reply: 'Updated.', memory: [{ mode: 'correct', source: old.id,
+            quote: 'Sam likes cedar tea.', replacement: 'Sam likes mint tea.', summaryPassages: ['Sam likes cedar tea.'] }] });
+        }
+        return 'Noted.';
+      }, send: async () => 1, checkOutbound: () => {} });
+    worker.intake([update(1, 'Sam likes cedar tea.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    worker.intake([update(2, 'The sky is blue.')]); await worker.drain();
+    const background = worker.summarizeIfNeeded(true);
+    await started;
+    worker.intake([update(3, 'Please correct Sam likes cedar tea. Sam likes mint tea.')]);
+    await worker.drain();
+    expect(journal.view.memory[0]!.summaryPassages).toEqual(['Sam likes cedar tea.']);
+    const correction = journal.view.turns.get(journal.view.memory[0]!.trigger)!;
+    const offered = JSON.parse(JSON.parse(correction.prompt!).messages[1].content).packet.memorySummary;
+    expect(offered.text).toContain('Sam likes cedar tea.');
+    expect(offered.through).toBeUndefined();
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    releaseSummary(); await background;
+    const reservation = journal.view.awayEvents.find(event => event.kind === 'reserve'
+      && event.id === journal.view.memory[0]!.trigger)!;
+    expect(journal.view.summaries[1]!.at).toBeGreaterThan(reservation.at);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(auditJournal(replay.view).findings).toEqual([]);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('audits the recorded packet without emitting bodies and refuses lost provenance or leaked claims', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-')));
   try {
