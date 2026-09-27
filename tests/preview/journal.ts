@@ -156,15 +156,17 @@ function decodeRow(sealed: Buffer, offset: number, key: Uint8Array): { row: Jour
   return { row: JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString('utf8')) as JournalRecord | SnapshotStart | SnapshotChunk,
     end: offset + 4 + length };
 }
-function pendingEvidence(rows: JournalRecord[], view: JournalView): JournalRecord[] {
+function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalRecord[] {
   const open = new Set(view.order.filter(turn => turn.held !== undefined
     || turn.accepted && (turn.intent === undefined || turn.sent === undefined)).map(turn => turn.id));
-  const summaries = view.summaryReservations;
   const evidence: JournalRecord[] = [];
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
     if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
-    if ('id' in row && open.has(row.id) || 'through' in row && summaries.has(row.through)) evidence.push(row);
+    // The projection omits per-call usage, failure details, prepared review and
+    // summary prompts, and earlier cap authority. Keep the original causal and
+    // accounting records; only superseded hold observations are redundant.
+    evidence.push(row);
   }
   for (const turn of view.order) { const hold = holds.get(turn.id); if (hold) evidence.push(hold); }
   return evidence;
@@ -178,7 +180,8 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
     if (row.kind === 'summary-reserve') summaries.add(row.through);
   }
   for (const turn of view.order) {
-    if (!(turn.held !== undefined || turn.accepted && (turn.intent === undefined || turn.sent === undefined))) continue;
+    if (!(turn.held !== undefined || turn.modelState === 'uncertain'
+      || turn.accepted && (turn.intent === undefined || turn.sent === undefined))) continue;
     const found = kinds.get(turn.id);
     const required = ['intake', ...(turn.reserved ? ['reserve'] : []),
       ...(turn.modelState === 'uncertain' ? ['model-uncertain'] : []),
@@ -454,7 +457,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
           if (row.kind !== 'genesis' && row.kind !== 'snapshot-start' && row.kind !== 'snapshot-chunk') rows.push(row);
           at = decoded.end;
         }
-        const kept = pendingEvidence(rows, view);
+        const kept = retainedEvidence(rows, view);
         verifyPendingEvidence(kept, view);
         const bytes = Buffer.from(JSON.stringify(snapshotOf(view, kept)));
         const chunks = Math.ceil(bytes.length / snapshotChunkBytes);

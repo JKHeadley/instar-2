@@ -1038,11 +1038,11 @@ never an unsent candidate.
 After an append takes the journal past 8 MiB, the same exclusive writer folds its
 authenticated records into a snapshot of the full in-memory projection. Original
 turns, imported channel items, summaries, memory corrections, counters, stop,
-cursor and exact send state remain in that projection. The snapshot also retains
-the causal records for open turns, including UNKNOWN calls and sends, holds,
-reply-check reservations and pending summary reservations. Repeated holds retain
-their latest record. A completed effect's older frames are folded into projection
-state; the journal is still the single encrypted store.
+cursor and exact send state remain in that projection. The snapshot retains the
+original non-hold records too, including completed call usage, failure details,
+review and summary prompts, and all UNKNOWN call and send evidence. A delivered
+lost-answer notice does not close its UNKNOWN model call. Repeated holds retain
+only the latest still-active record. The journal remains the single encrypted store.
 
 Snapshot data uses bounded encrypted frames. The writer fsyncs a temporary file,
 reopens it through the normal journal reader, compares its projection, atomically

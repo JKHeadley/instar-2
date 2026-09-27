@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
+import { createDecipheriv } from 'node:crypto';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY } from './journal.js';
+import type { JournalRecord } from './journal.js';
 
 const key = new Uint8Array(32).fill(7);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-compact-')));
@@ -38,6 +40,23 @@ function seed(root: string) {
   return path;
 }
 function read(root: string) { return openPreviewJournal(join(root, 'journal.encrypted'), key); }
+function decodedRows(path: string): {kind: string; data?: string; retained?: JournalRecord[]}[] {
+  const sealed = readFileSync(path), rows = [];
+  for (let offset = 0; offset < sealed.length;) {
+    const length = sealed.readUInt32BE(offset), body = sealed.subarray(offset + 4, offset + 4 + length);
+    const decipher = createDecipheriv('aes-256-gcm', key, body.subarray(0, 12));
+    decipher.setAAD(Buffer.from(`preview-journal:${offset}`)); decipher.setAuthTag(body.subarray(12, 28));
+    rows.push(JSON.parse(Buffer.concat([decipher.update(body.subarray(28)), decipher.final()]).toString('utf8')));
+    offset += 4 + length;
+  }
+  return rows;
+}
+function retainedRows(path: string): JournalRecord[] {
+  const chunks = decodedRows(path).filter(row => row.kind === 'snapshot-chunk');
+  const snapshot = JSON.parse(Buffer.concat(chunks.map(row => Buffer.from(row.data!, 'base64'))).toString('utf8')) as
+    {retained: JournalRecord[]};
+  return snapshot.retained;
+}
 
 it('compacts only above the threshold and bounds repeated hold writes without losing state', () => {
   const root = origin();
@@ -118,6 +137,63 @@ it('reopens a verified snapshot with pending effects and appends after replaceme
     expect(replay.view.order).toHaveLength(4);
     expect(replay.view.order[1]?.sent).toBeUndefined();
     expect(replay.view.order[3]?.answer).toBeUndefined();
+    replay.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('keeps UNKNOWN model usage and reply review preparation after its notice was sent', () => {
+  const root = origin();
+  try {
+    const path = join(root, 'journal.encrypted'), journal = openPreviewJournal(path, key, genesis);
+    journal.append({kind:'intake',id:id(1),update:1,text:'question 1',raw:raw(1),accepted:true,cursor:2,at:1000});
+    journal.append({kind:'reserve',id:id(1),prompt:'original prepared prompt',at:1001});
+    journal.append({kind:'model-uncertain',id:id(1),state:'uncertain',
+      usage:{inputTokens:12345,outputTokens:67,charge:null},at:1002});
+    journal.append({kind:'notice',id:id(1),noticeClass:'unknown-answer',at:1003});
+    journal.append({kind:'reply-review-reserve',id:id(1),candidate:UNKNOWN_ANSWER_NOTICE,
+      prompt:'unique review prompt',at:1004});
+    journal.append({kind:'reply-review-state',id:id(1),state:'complete',at:1005});
+    journal.append({kind:'reply-check',id:id(1),result:{verdict:'pass',ruleIds:[],confidence:1,
+      path:'subscription',latencyMs:1},at:1006});
+    journal.append({kind:'intent',id:id(1),text:UNKNOWN_ANSWER_NOTICE,chat:genesis.chat,
+      update:1,grant:genesis.grant,at:1007});
+    journal.append({kind:'sent',id:id(1),message:42,at:1008});
+    const original = decodedRows(path).slice(1);
+    journal.compact();
+    expect(retainedRows(path)).toEqual(original);
+    journal.compact(); journal.close();
+    expect(retainedRows(path)).toEqual(original);
+    const replay = read(root);
+    expect(replay.view.order[0]).toMatchObject({modelState:'uncertain',sent:42,reviewState:'complete'});
+    replay.close();
+  } finally { rmSync(root, {recursive:true,force:true}); }
+});
+
+it('keeps completed call metering, failure details and completed summary preparation', () => {
+  const root = origin();
+  try {
+    const path = join(root, 'journal.encrypted'), journal = openPreviewJournal(path, key, genesis);
+    journal.append({kind:'intake',id:id(1),update:1,text:'question 1',raw:raw(1),accepted:true,cursor:2,at:1000});
+    journal.append({kind:'reserve',id:id(1),prompt:'call one prompt',at:1001});
+    journal.append({kind:'answer',id:id(1),text:'answer 1',state:'complete',
+      usage:{inputTokens:111,outputTokens:12,charge:null},at:1002});
+    journal.append({kind:'intent',id:id(1),text:'answer 1',chat:genesis.chat,update:1,grant:genesis.grant,at:1003});
+    journal.append({kind:'sent',id:id(1),message:41,at:1004});
+    journal.append({kind:'intake',id:id(2),update:2,text:'question 2',raw:raw(2),accepted:true,cursor:3,at:1005});
+    journal.append({kind:'reserve',id:id(2),prompt:'call two prompt',at:1006});
+    journal.append({kind:'answer',id:id(2),text:MODEL_FAILURE_REPLY,state:'rejected',failureClass:'rejected',
+      usage:{inputTokens:222,outputTokens:0,charge:null},at:1007});
+    journal.append({kind:'summary-reserve',through:2,prompt:'summary attempt one',at:1008});
+    journal.append({kind:'summary-failed',through:2,state:'rejected',failureClass:'rejected',
+      usage:{inputTokens:333,outputTokens:0,charge:null},at:1009});
+    journal.append({kind:'summary-reserve',through:2,prompt:'summary attempt two',at:1010});
+    journal.append({kind:'summary',through:2,text:'faithful summary',state:'complete',
+      usage:{inputTokens:444,outputTokens:14,charge:null},at:1011});
+    const original = decodedRows(path).slice(1);
+    journal.compact(); journal.close();
+    expect(retainedRows(path)).toEqual(original);
+    const replay = read(root);
+    expect(replay.view).toMatchObject({calls:4,summaries:[{text:'faithful summary'}]});
     replay.close();
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
