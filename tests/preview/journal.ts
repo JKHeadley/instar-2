@@ -1561,7 +1561,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // A cue only schedules the existing capped model judgment; it never creates a preference.
   const preferenceCue = (turn: Turn) => fromOperator(turn)
-    && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
+    && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:please\s+)?(?:more|less)\s+detail\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
   const pendingMemory = () => journal.view.order.find(turn => turn.accepted && fromOperator(turn) && !turn.memoryUndecided
     && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
     && (memoryCue(turn) || preferenceCue(turn) || turn.memoryPending)
@@ -2812,19 +2812,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const original = typeof rawSource === 'string' ? journal.view.turns.get(rawSource) : undefined;
       const channel = channelAlias ?? (typeof rawSource === 'string' && rawSource.startsWith('channel:')
         ? journal.view.channelItems.get(rawSource.slice('channel:'.length)) : undefined);
+      const activePreference = preferences.active.has(JSON.stringify([rawSource, quote]));
       if ((mode !== 'correct' && mode !== 'forget' && mode !== 'prefer')
         || side !== undefined && (side !== 'reply' || mode !== 'correct')
         || mode === 'prefer' && (source !== trigger.id || typeof quote !== 'string'
-          || quote.length < 8 || Buffer.byteLength(quote) > 1000 || terms(quote).length < 2
+          || quote.length < 8 || Buffer.byteLength(quote) > 1000
           || !redact(trigger.text).text.includes(quote) || replacement !== undefined
-          || replies !== undefined || summaryPassages !== undefined)
+          || replies !== undefined && (!Array.isArray(replies) || replies.length > 0)
+          || summaryPassages !== undefined && (!Array.isArray(summaryPassages) || summaryPassages.length > 0))
         || mode !== 'prefer' && (!original?.accepted && !channel)
         || original !== undefined && !fromOperator(original)
         || mode !== 'prefer' && !offered.has(source as string)
         || original !== undefined && original.update >= trigger.update && mode !== 'prefer'
         || channel !== undefined && (channelMemoryId(channel) !== rawSource || channel.at >= trigger.at)
         || typeof quote !== 'string' || !quote.trim() || Buffer.byteLength(quote) > 1000
-        || (quote.length < 8 || terms(quote).length < 2)
+        || (quote.length < 8 || terms(quote).length < (mode === 'prefer' || activePreference ? 1 : 2))
           && !(side === 'reply' && original && quote === redact(sentText(original) ?? '').text)
         || !(original && (side === 'reply'
           ? original.intent !== undefined && original.noticeClass === undefined
@@ -2848,8 +2850,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       changes.push({ mode, source: rawSource as string, quote, trigger: trigger.id,
         ...(side === 'reply' ? { in: 'reply' as const } : {}),
         ...(mode === 'correct' ? { replacement: replacement as string } : {}),
-        ...(replies === undefined ? {} : { replies: replies as string[] }),
-        ...(summaryPassages === undefined ? {} : { summaryPassages: summaryPassages as string[] }) });
+        ...(mode === 'prefer' || replies === undefined ? {} : { replies: replies as string[] }),
+        ...(mode === 'prefer' || summaryPassages === undefined ? {} : { summaryPassages: summaryPassages as string[] }) });
     }
     return changes;
   };
