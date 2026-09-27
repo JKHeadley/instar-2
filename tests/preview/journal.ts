@@ -809,8 +809,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       message: clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
     const preferenceCandidates = activePreferences().map(item => ({ id: item.source,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
+    // Minimum complete-history fields alone can exceed the packet cap.
+    const minimumHistoryItemBytes = Buffer.byteLength('{"user":"","answer":"","outcome":""}');
+    const completeTooLarge = journal.view.order.reduce((count, item) => count + Number(item.accepted && item.update < turn.update), 0)
+      * minimumHistoryItemBytes > journal.view.limits.maxBytes;
+
     let promptFit = false;
     for (const compact of [false, true]) {
+      if (!compact && completeTooLarge) continue;
       const summary = compact ? summaryFor(turn.update - 1) : undefined;
       if (compact && !summary) continue;
       // Optional evidence cannot make the complete unsummarized history smaller.
