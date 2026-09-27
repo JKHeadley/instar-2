@@ -80,7 +80,7 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
-  reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true;
+  reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
@@ -99,6 +99,20 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 const frameLimit = 2 * 1024 * 1024;
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
+/** The already-durable model packet is the evidence for what recall actually offered.
+ * A legacy reservation without a prepared prompt has unknown hit counts. */
+function promptRecallHits(prompt: string | undefined): { turns: number; channels: number } | null {
+  if (prompt === undefined) return null;
+  try {
+    const envelope = JSON.parse(prompt) as { messages?: { role?: string; content?: string }[] };
+    const content = envelope.messages?.find(message => message.role === 'context')?.content;
+    if (typeof content !== 'string') return null;
+    const packet = (JSON.parse(content) as { packet?: { recalled?: unknown; channelMemory?: unknown } }).packet;
+    if (!packet || packet.recalled !== undefined && !Array.isArray(packet.recalled)
+      || packet.channelMemory !== undefined && !Array.isArray(packet.channelMemory)) return null;
+    return { turns: packet.recalled?.length ?? 0, channels: packet.channelMemory?.length ?? 0 };
+  } catch { return null; }
+}
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
 const limitsOf = (genesis: JournalView['genesis']) => ({ maxCalls: genesis.maxCalls, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, maxBytes: genesis.maxBytes });
 function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>): void {
@@ -215,7 +229,10 @@ function project(view: JournalView, row: JournalRecord): void {
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
-  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; view.calls++;
+  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation'); turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt;
+    const hits = promptRecallHits(row.prompt);
+    if (hits) { turn.recallHits = hits.turns; turn.channelRecallHits = hits.channels; }
+    view.calls++;
     // Older reservations cleared the pending list on replay. New ones name only notes actually fitted.
     if (row.corrections === undefined) view.corrections = [];
     else {

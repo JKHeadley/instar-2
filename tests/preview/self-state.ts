@@ -72,6 +72,30 @@ export const messageTime = (turn: Turn): number | null => {
   return turn.at > 0 ? turn.at : null;
 };
 
+/** One bounded, content-free line. Every count comes from the journal projection;
+ * absent legacy prompts are named as unmeasured, never silently counted as misses. */
+export function memoryHealthLine(view: JournalView): string {
+  const latest = view.summaries.at(-1);
+  const covered = latest === undefined ? 0 : view.order.filter(turn => turn.accepted && turn.update <= latest.through).length;
+  const measured = view.order.filter(turn => turn.reserved && turn.recallHits !== undefined);
+  const unmeasured = view.order.filter(turn => turn.reserved && turn.recallHits === undefined).length;
+  const resolved = new Set(view.summaries.flatMap(summary => summary.memoryFor ?? []));
+  const unresolved = view.order.filter(turn => turn.memoryPending
+    && !resolved.has(turn.id)).length;
+  const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
+  const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined).length;
+  const sum = (field: 'recallHits' | 'channelRecallHits') => measured.reduce((total, turn) => total + (turn[field] ?? 0), 0);
+  return `Memory health: ${String(view.order.filter(turn => turn.held).length)} journal turns currently held; `
+    + `${String(view.summaries.length)} summaries, ${String(covered)} accepted operator turns covered by latest summary`
+    + ` (through Telegram update ${latest === undefined ? 'none' : String(latest.through)}); `
+    + `${String(sum('recallHits'))} original-turn recall-sentinel hits and ${String(sum('channelRecallHits'))} channel-item recall-sentinel hits`
+    + ` in ${String(measured.length)} recorded model prompts (${String(unmeasured)} unmeasured legacy prompts); `
+    + `${String(view.memory.length)} old-claim items withheld; ${String(unresolved)} unresolved operator memory corrections; `
+    + `0 channel-import cursors recorded (${String(view.channelItems.size)} imported channel items; fixture import has no source cursor); `
+    + `${String(unknownCalls)} turn-model calls and ${String(view.summaryReservations.size)} summary-model calls without a durable result (in flight or UNKNOWN); `
+    + `${String(unknownSends)} Telegram sends without a durable result (in flight or UNKNOWN).`;
+}
+
 /** Plain facts about this preview, computed from the journal and run log at `now`.
  * `current` is the launch this process recorded; absent for a read-only status view. */
 export function selfState(view: JournalView, runs: RunLog, now: number, timeZone: string, current?: number) {
@@ -86,9 +110,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
   const holds = new Map<string, number>();
   for (const turn of view.order) if (turn.held) holds.set(turn.held, (holds.get(turn.held) ?? 0) + 1);
-  const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = [...view.summaryReservations].filter(through => !view.summaries.some(item => item.through === through)).length;
-  const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined).length;
   const refused = view.order.length - accepted.length;
   const when = (ms: number) => parts(format, ms).text;
   const left = (limit: number, used: number) => `${String(used)} of ${String(limit)} used, ${String(Math.max(0, limit - used))} left`;
@@ -100,7 +122,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (replies and summaries share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     view.capAuthority === null ? 'Caps have not been raised since the trial began.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
-    `Unknown outcomes (never retried): ${String(unknownCalls)} model call(s), ${String(unknownSends)} send(s).`,
+    memoryHealthLine(view),
     `Definite model/summary failures: ${JSON.stringify(Object.fromEntries(view.failureClasses))}. Provider result states: ${JSON.stringify(Object.fromEntries(view.providerStates))}.`,
     holds.size ? `Held messages: ${[...holds].map(([reason, n]) => `${String(n)} (${reason})`).join(', ')}.` : 'Held messages: none.',
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
