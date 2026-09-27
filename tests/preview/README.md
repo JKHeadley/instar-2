@@ -669,9 +669,10 @@ operator message is more than six hours old, the runner may offer one earlier op
 topic to the model. It takes the newest still-open operator request whose quote
 was validated against the original message, then redacts it for the packet.
 Closed, corrected, forgotten, missing or
-oversized quotes produce no hint. An exact six-hour gap produces none. The packet
-asks the model to add at most one short “Last time we were on …” line only when
-useful and still true; it must name only that quoted topic. The hint is data under
+oversized quotes produce no hint. An exact six-hour gap produces none. The model
+decides whether a reminder is useful and still true by returning `continuity:true`
+or `false`; the runner constructs at most one short “Last time we were on …” line
+from the validated quote. A model opt-in without a topic produces no line. The hint is data under
 the existing private-chat audience, not a new instruction or authority. A
 recorded send intent, including UNKNOWN delivery, consumes the restart's first
 reply opportunity. `inspect` reports `greetingContinuity: true` when the saved

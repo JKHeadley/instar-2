@@ -49,7 +49,7 @@ it('offers the exact open topic only beyond six hours, and leaves a fresh or exa
     const current = long.append(2, 'Hello', start + 6 * hour + 1000);
     const hint = greetingContinuity(long.journal.view, { launches: [], unreadable: 0 }, start + 6 * hour + 1000, current);
     expect(hint?.text).toContain(quote);
-    expect(hint?.text).toContain('one short');
+    expect(hint?.text).toContain('continuity:true');
   } finally { long.close(); }
 });
 
@@ -112,7 +112,7 @@ it('puts a grounded optional source in the ordinary model packet, with no extra 
       },
       prepareModel: input => input.context,
       model: async input => { calls.push(input.id); packet = JSON.parse(input.context) as typeof packet;
-        return `Last time we were on: ${quote}\nHello.`; },
+        return JSON.stringify({ reply: 'Last time we were on: an invented launch.\nHello.', memory: [], dated: [], continuity: true }); },
       send: async input => { sent.push(input.expectedText); return 11; }, checkOutbound: () => {} });
     worker.intake([update(2, 'Hi', currentAt)]);
     await worker.drain();
@@ -122,6 +122,10 @@ it('puts a grounded optional source in the ordinary model packet, with no extra 
     expect(calls).toEqual(['telegram:8:update:2']);
     expect(w.journal.view.replies).toBe(2);
     expect(sent).toEqual([`PREVIEW — Last time we were on: ${quote}\nHello.`]);
+    worker.intake([update(3, 'Hi again', currentAt + 1000)]);
+    await worker.drain();
+    expect(packet?.sources?.some(source => source.id === 'greeting-continuity')).toBe(false);
+    expect(sent.at(-1)).toBe('PREVIEW — Hello.'); // A model opt-in alone cannot invent a topic.
   } finally { w.close(); }
 });
 
@@ -149,5 +153,26 @@ it('drops the optional hint before letting it cause a prompt hold', () => {
     const packet = JSON.parse(fitted.context) as { sources?: { id: string }[]; capability: string };
     expect(packet.sources?.some(item => item.id === 'greeting-continuity')).toBe(false);
     expect(packet.capability).not.toContain('Never invent a topic');
+  } finally { w.close(); }
+});
+
+it('lets the model decline a grounded line when the current message closes the topic', async () => {
+  const w = world();
+  try {
+    const now = start + 7 * hour;
+    w.journal.append({ kind: 'reserve', id: w.previous.id, at: start + 3 });
+    w.journal.append({ kind: 'answer', id: w.previous.id, text: 'Noted.', at: start + 4 });
+    w.journal.append({ kind: 'intent', id: w.previous.id, text: 'PREVIEW — Noted.', chat: '7', update: 1,
+      grant: 'trial', at: start + 5 });
+    w.journal.append({ kind: 'sent', id: w.previous.id, message: 10, at: start + 6 });
+    const sent: string[] = [];
+    const worker = createJournalWorker(w.journal, { now: () => now, stopped: () => false,
+      sources: turn => turn ? [greetingContinuity(w.journal.view, { launches: [], unreadable: 0 }, now, turn)!] : [],
+      prepareModel: input => input.context,
+      model: async () => JSON.stringify({ reply: 'Glad the garden plan is settled.', memory: [], dated: [], continuity: false }),
+      send: async input => { sent.push(input.expectedText); return 11; }, checkOutbound: () => {} });
+    worker.intake([update(2, 'The garden plan is settled now.', now)]);
+    await worker.drain();
+    expect(sent).toEqual(['PREVIEW — Glad the garden plan is settled.']);
   } finally { w.close(); }
 });

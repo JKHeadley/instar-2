@@ -665,7 +665,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       capability: 'Private preview: answer only, never sends unprompted reminders; no tools. Memory is this trial\'s journal only. Summary covers earlier turns; history has later turns.'
         + (sourceList?.some(source => typeof source === 'object' && source !== null
           && 'id' in source && source.id === 'greeting-continuity')
-          ? ' The greeting-continuity source quotes one earlier open operator request. On this first reply after a restart or long gap, you may add one short line naming only that topic if useful; omit it if settled, irrelevant, or uncertain. Never invent a topic.' : '')
+          ? ' The greeting-continuity source quotes one earlier open operator request. Set continuity:true in your JSON answer only if a brief reminder is useful and still true; otherwise set false. Do not write that line yourself. The runner will use the exact quoted topic. Never invent a topic.' : '')
         + (due.length ? ' dated holds operator dates, not scheduled reminders. Mention relevant due items; ask about uncertain dates.' : '')
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
         + ([...earlier, ...recalled].some(item => !fromOperator(item))
@@ -821,14 +821,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const output = typeof answer === 'string' ? answer : answer.text;
             let text = output, memory: MemoryChange[] | undefined, dated: DatedItem[] | undefined,
               invalidMemory = false, invalidDate = false;
+            const decision = JSON.parse(context) as { memoryCandidates?: { id: string }[];
+              memorySummary?: { text: string }; summary?: { text: string };
+              sources?: { id?: unknown; topic?: unknown }[] };
+            const topic = decision.sources?.find(source => source.id === 'greeting-continuity')?.topic;
+            const groundedTopic = typeof topic === 'string' && topic.trim() && Array.from(topic).length <= 140 ? topic : undefined;
+            let includeContinuity = false;
             if (output.trim()) try {
-              const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown };
+              const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown;
+                dated?: unknown; continuity?: unknown };
               if (parsed && typeof parsed.reply === 'string') {
                 text = parsed.reply;
+                includeContinuity = parsed.continuity === true;
                 if (parsed.dated !== undefined) dated = datedFrom(parsed.dated, turn);
                 if (parsed.dated !== undefined && dated === undefined) invalidDate = true;
-                const decision = JSON.parse(context) as { memoryCandidates?: { id: string }[];
-                  memorySummary?: { text: string }; summary?: { text: string } };
                 const offered = new Set(decision.memoryCandidates?.map(item => item.id) ?? []);
                 if (Array.isArray(parsed.memory)) memory = journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
                   ? [] : memoryFrom(parsed.memory, turn, offered, decision.memorySummary?.text ?? decision.summary?.text);
@@ -837,6 +843,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             } catch { /* Legacy plain reply. */ }
             if (invalidMemory) { memory = undefined; dated = undefined; }
             if (invalidDate && !invalidMemory) text = 'I could not verify the date you gave. Please restate it; I have not saved a dated item.';
+            if (groundedTopic || includeContinuity)
+              text = text.replace(/^\s*Last time we were on[^\n]*(?:\n|$)/iu, '').trimStart();
+            if (groundedTopic && includeContinuity && !invalidMemory && !invalidDate && text.trim())
+              text = `Last time we were on: ${groundedTopic}\n${text.trim()}`;
             journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(dated === undefined ? {} : { dated }),
