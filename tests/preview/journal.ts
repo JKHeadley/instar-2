@@ -2924,6 +2924,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (Array.isArray(parsed.memory)) memory = journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
                   ? [] : memoryFrom(parsed.memory, turn, offered, decision.memorySummary?.text ?? decision.summary?.text,
                     updateEvidence);
+                // A missing optional decision on an ordinary reply is an empty
+                // decision. Direct correction/preference requests still require
+                // a decision unless the earlier summary already settled them.
+                if (parsed.memory === undefined && !turn.memoryUndecided
+                  && (!(memoryCue(turn) || preferenceCue(turn))
+                    || journal.view.summaries.some(item => item.memoryFor?.includes(turn.id)))) memory = [];
                 if (Array.isArray(parsed.personMerges)) personMerges = personMergesFrom(parsed.personMerges, turn,
                   decision.personMergeCandidates ?? []);
                 if (memory === undefined || parsed.memoryDisposition === 'unresolved'

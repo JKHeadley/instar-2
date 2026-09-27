@@ -1491,6 +1491,22 @@ send. No new store, index or model call is used.
 
 The supervised operator procedure is [memory-inventory-live-test.md](memory-inventory-live-test.md).
 
+### Offline held-reply corpus
+
+`hold-rate-corpus.test.ts` drives the encrypted journal worker through 18 ordinary
+chat, code-like, personal-note and memory-question turns. The stubbed Jev scores
+flag two technical answers; the full-context reviewer passes both. The answer
+stub sometimes omits the optional `memory` array, as a structured reply can do
+when it proposes no memory change. The test prints first-attempt held share,
+reason counts and category counts. The target for this fixed corpus is at most
+10% held, with all explicit invalid memory actions and unresolved direct forget
+requests still held. On the frozen base, the first omitted array produced a
+`memory correction pending` hold that carried into all 18 turns (18/18); after
+the ordinary-reply decision fix, 0/18 were held and two subscription reviews
+passed. This is an offline reliability measure, not a live hold-rate estimate or
+a model-quality result. The supervised operator check is
+[hold-rate-corpus-live-test.md](hold-rate-corpus-live-test.md).
+
 
 Live script for Justin in the existing private preview chat, after the desk lands this revision
 and resumes the one runner on its existing root:
