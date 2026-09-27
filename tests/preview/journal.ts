@@ -275,7 +275,8 @@ function project(view: JournalView, row: JournalRecord): void {
     turn.sent = row.message; turn.sentAt = row.at;
     for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id)
       && note.source !== turn.id && view.turns.get(note.source)!.update < turn.update
-      && (!note.agentPromise.due || dueState(note.agentPromise.due, row.at) !== 'upcoming')
+      && (!note.agentPromise.due || dueState(note.agentPromise.due, row.at) === 'due'
+        || dueState(note.agentPromise.due, row.at) === 'overdue')
       && fulfillsReminder(note.agentPromise, turn.intent)) view.closed.set(id, { id, source: turn.id, quote: turn.intent });
   }
   if (row.kind === 'hold') turn.held = row.reason;

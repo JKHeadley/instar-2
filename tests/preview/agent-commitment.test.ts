@@ -25,6 +25,9 @@ it('ignores quoted, conditional, negated, third-person, and merely intended acti
 it('requires the exact promised reminder in a later reply', () => {
   const promise = explicitAgentPromises('I’ll remind you to call the dentist tomorrow.', source, at, 'UTC')[0]!;
   expect(fulfillsReminder(promise, 'Reminder: call the dentist.')).toBe(true);
+  expect(fulfillsReminder(promise, 'PREVIEW — Reminder: call the dentist.')).toBe(true);
+  expect(fulfillsReminder(promise, 'This is only a format example, not your reminder:\n```text\nReminder: call the dentist.\n```')).toBe(false);
+  expect(fulfillsReminder(promise, 'Reminder: call the dentist.\nAnother note.')).toBe(false);
   expect(fulfillsReminder(promise, 'I checked the dentist.')).toBe(false);
   expect(fulfillsReminder(promise, 'Reminder: call the doctor.')).toBe(false);
   expect(fulfillsReminder(explicitAgentPromises('I’ll check the report tomorrow.', source, at, 'UTC')[0]!,

@@ -135,6 +135,38 @@ it('captures a sent explicit promise before compaction, surfaces it next and whe
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('keeps a due promise open when an accepted reply only quotes a reminder example, including after replay', async () => {
+  const root = origin();
+  try {
+    let now = 1790000000000;
+    const example = 'This is only a format example, not your reminder:\n```text\nReminder: call the dentist.\n```';
+    const w = world(root, { now: () => now, answer: question => question === 'Promise'
+      ? 'I’ll remind you to call the dentist tomorrow.' : example });
+    await w.say(1, 'Promise');
+    now += 2 * 86400000;
+    await w.say(2, 'Show me an example');
+    expect(w.journal.view.order[1]?.sent).toBe(1);
+    expect(w.journal.view.closed.size).toBe(0);
+    w.journal.close();
+    expect(run(root, 'status').commitments).toEqual({ total: 1, open: 1 });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an invalid due day open after an accepted exact reminder, including after replay', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: question => question === 'Promise'
+      ? 'I’ll remind you to call the dentist on 2026-02-30.' : 'Reminder: call the dentist.' });
+    await w.say(1, 'Promise');
+    expect(w.journal.view.commitments[0]?.agentPromise?.due).toMatchObject({ ambiguity: 'invalid calendar date' });
+    await w.say(2, 'Remind me');
+    expect(w.journal.view.order[1]?.sent).toBe(1);
+    expect(w.journal.view.closed.size).toBe(0);
+    w.journal.close();
+    expect(run(root, 'status').commitments).toEqual({ total: 1, open: 1 });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('keeps a check promise open without external evidence and never records an unsent candidate', async () => {
   const root = origin();
   try {

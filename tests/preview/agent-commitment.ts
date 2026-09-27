@@ -32,7 +32,7 @@ export function fulfillsReminder(promise: AgentPromise, reply: string): boolean 
   const target = /^(?:I’ll|I'll|I will) remind you to\s+(.+?)(?:[.!?])?$/iu.exec(promise.quote)?.[1]
     ?.replace(/\s+(?:tomorrow|today|on \d{4}-\d{2}-\d{2})\s*$/iu, '').replace(/[.!?]+$/u, '').trim();
   if (!target) return false;
-  const reminder = /^Reminder:\s*(.+?)(?:[.!?])?$/imu.exec(reply.replace(/^PREVIEW — /u, ''))?.[1]
+  const reminder = /^Reminder:[ \t]+(.+?)(?:[.!?])?$/iu.exec(reply.replace(/^PREVIEW — /u, '').trim())?.[1]
     ?.replace(/[.!?]+$/u, '').trim();
   return reminder?.toLowerCase() === target.toLowerCase();
 }
