@@ -119,6 +119,90 @@ it('suppresses a forgotten item before its morning and keeps the original journa
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('holds reminders through replay for an undecided forget, but sends unrelated items after a settled forget', async () => {
+  for (const settled of [false, true]) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-memory-')));
+    const path = join(root, 'journal.encrypted');
+    try {
+      let now = start;
+      const sent: string[] = [];
+      const ports = { now: () => now, stopped: () => false, checkOutbound: () => {},
+        send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length; },
+        model: async (input: { id: string; question: string; context: string }) => {
+          if (input.id.startsWith('summary:')) {
+            if (!settled) throw Error('summary unavailable');
+            const source = JSON.parse(input.context).memoryCandidates.find((item: { message: string }) =>
+              item.message.includes('Dentist tomorrow.'));
+            return JSON.stringify({ summary: 'The operator withdrew an appointment.', people: [],
+              memory: [{ mode: 'forget', source: source.id, quote: 'Dentist tomorrow.' }] });
+          }
+          if (input.question.startsWith('Forget')) return JSON.stringify({ reply: 'Noted.', memory: [],
+            memoryDisposition: settled ? 'settled' : 'unresolved' });
+          return JSON.stringify({ reply: 'Recorded.', memory: [], dated: [
+            { quote: 'Dentist tomorrow.', when: 'tomorrow' }, { quote: 'Invoice tomorrow.', when: 'tomorrow' }] });
+        } };
+      let journal = openPreviewJournal(path, key, genesis);
+      journal.append(reminderGrant(start));
+      let worker = createJournalWorker(journal, ports);
+      worker.intake([update(1, 'Dentist tomorrow. Invoice tomorrow.')]); await worker.drain();
+      worker.intake([update(2, 'Forget the dentist item.')]); await worker.drain();
+      expect(journal.view.order[1]?.memoryUndecided === true).toBe(!settled);
+      expect(journal.view.memory.length).toBe(settled ? 1 : 0);
+      now = morning;
+      await worker.sendReminders();
+      expect(sent).toHaveLength(settled ? 3 : 2);
+      if (settled) expect(sent[2]).toBe('PREVIEW reminder: Invoice tomorrow. today at time unspecified');
+      journal.close();
+      journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+      await worker.sendReminders();
+      expect(sent).toHaveLength(settled ? 3 : 2);
+      expect(journal.view.reminders.size).toBe(settled ? 1 : 0);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('withholds a repeated forgotten clause while reminding an unrelated item after replay', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-repeat-forget-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let now = start;
+    const sent: string[] = [];
+    const ports = { now: () => now, stopped: () => false, checkOutbound: () => {},
+      send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length; },
+      model: async (input: { id: string; question: string; context: string }) => {
+        if (input.id.startsWith('summary:')) {
+          const source = JSON.parse(input.context).memoryCandidates.find((item: { message: string }) =>
+            item.message.includes('Dentist tomorrow.'));
+          return JSON.stringify({ summary: 'The operator withdrew an appointment.', people: [],
+            memory: [{ mode: 'forget', source: source.id, quote: 'Dentist tomorrow.' }] });
+        }
+        if (input.question.startsWith('Forget')) return JSON.stringify({ reply: 'Forgotten.', memory: [] });
+        return JSON.stringify({ reply: 'Recorded.', memory: [], dated: [{ quote: input.question, when: 'tomorrow' }] });
+      } };
+    let journal = openPreviewJournal(path, key, { ...genesis, maxReplies: 6 });
+    journal.append(reminderGrant(start));
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'Dentist tomorrow.'), update(2, 'Dentist tomorrow.'), update(3, 'Invoice tomorrow.')]);
+    await worker.drain();
+    worker.intake([update(4, 'Forget the dentist item.')]); await worker.drain();
+    expect(journal.view.dated).toHaveLength(3);
+    expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: 'Dentist tomorrow.' }]);
+    journal.close();
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    now = morning;
+    await worker.sendReminders();
+    expect(sent).toHaveLength(5);
+    expect(sent[4]).toBe('PREVIEW reminder: Invoice tomorrow. today at time unspecified');
+    journal.close();
+    journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    await worker.sendReminders();
+    expect(sent).toHaveLength(5);
+    expect(journal.view.reminders.size).toBe(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('holds ambiguous dates and a latched stop while a settled day-only item uses an honest time', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-bounds-')));
   try {

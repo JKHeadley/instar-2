@@ -576,6 +576,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
       || summary.memoryFor === undefined && !turn.memoryPending && summary.through >= turn.update));
+  // An undecided request releases ordinary replies, but it has not settled what
+  // may be sent proactively. Only a recorded decision for that request clears it.
+  const unresolvedReminderMemory = () => pendingMemory() !== undefined || journal.view.order.some(turn =>
+    turn.accepted && fromOperator(turn) && turn.memoryUndecided
+    && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)));
   const datedFrom = (proposed: unknown, turn: Turn): DatedItem[] | undefined => {
     if (!Array.isArray(proposed) || proposed.length > 3 || !turn.accepted || !fromOperator(turn)) return undefined;
     const items: DatedItem[] = [];
@@ -1252,9 +1257,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try {
       gate();
       if (journal.view.reminderGrant === null) return;
-      if (pendingMemory()) return;
+      if (unresolvedReminderMemory()) return;
       const groups = new Map<string, { day: string; thread?: number; items: DatedItem[] }>();
       for (const item of activeDated(journal.view)) {
+        if (clean(item.quote) !== item.quote) continue;
         if (!reminderMorning(item, ports.now())) continue;
         const source = journal.view.turns.get(item.source);
         if (!source?.accepted || !fromOperator(source)) continue;
@@ -1271,7 +1277,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) continue;
         try { ports.checkOutbound(body); } catch { continue; }
         gate();
-        if (pendingMemory()) return;
+        if (unresolvedReminderMemory()) return;
         const thread = group.thread === undefined ? {} : { thread: group.thread };
         journal.append({ kind: 'reminder-intent', items: group.items.map(item => ({ source: item.source, quote: item.quote, when: item.when })),
           day: group.day, text, body, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant,
