@@ -86,7 +86,9 @@ it('review thinking overflow: a 3617-token review outcome holds the candidate wi
 it('wrapped Decision JSON: a malformed wrapped answer cannot be sent as raw model syntax', async () => {
   await withJournal(async journal => {
     const sent: string[] = [];
-    const wrapped = '```json\n' + answer('The journal remembers this trial.') + '\n```';
+    const wrapped = '```json\n' + JSON.stringify({ type: 'Decision', schemaVersion: 1,
+      id: 'live-wrapped-answer', conclusion: { subject: 'preview-stage2-answer',
+        value: answer('The journal remembers this trial.') } }) + '\n```';
     const worker = createJournalWorker(journal, { ...basePorts(async input => input.id.endsWith(':1')
       ? wrapped : answer('The journal remembers this trial.'), sent),
       replyCheck: { jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
