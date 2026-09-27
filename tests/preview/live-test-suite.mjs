@@ -90,12 +90,16 @@ async function main() {
       let pending = true;
       let holdReason = '';
       const end = reason => { holdReason = reason; pending = false; input.write(`\n${reason}\n`); input.close(); };
-      const watcher = watch(join(root, 'journal.encrypted'), () => {
+      let changeTimer;
+      const checkChange = () => {
         if (!pending) return;
         try {
           const result = resultSince(before, snapshot(root, key));
           if (result.held) end(`HELD: ${result.reason}`);
         } catch { end('journal read failed'); }
+      };
+      const watcher = watch(join(root, 'journal.encrypted'), () => {
+        if (!changeTimer) changeTimer = setTimeout(() => { changeTimer = undefined; checkChange(); }, 1000);
       });
       watcher.on('error', () => { if (pending) end('journal watch failed'); });
       const expiryTimer = setTimeout(() => { if (pending) end('trial expired'); },
@@ -103,7 +107,7 @@ async function main() {
       let verdict = '';
       try { verdict = (await input.question('After checking the actual reply and inspect evidence, enter PASS or FAIL with a reason: ')).trim(); }
       catch { /* A detected hold closes the prompt. */ }
-      finally { pending = false; watcher.close(); clearTimeout(expiryTimer); }
+      finally { pending = false; watcher.close(); clearTimeout(changeTimer); clearTimeout(expiryTimer); }
       let after;
       try { after = snapshot(root, key); }
       catch { after = before; holdReason ||= 'journal read failed'; }
