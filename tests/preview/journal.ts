@@ -702,10 +702,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         for (let channelCount = channels.length; channelCount >= 0; channelCount--) {
           for (let kept = total; kept >= (noteCount === 0 ? 0 : total); kept--) {
             const promised = Math.min(open.length, kept), people = Math.min(named.length, kept - promised);
-            for (let inventoryCount = inventory ? inventory.items.length : 0; inventoryCount >= 0; inventoryCount--) {
+            // The inventory is optional: after its entries yield, let its empty wrapper
+            // and capability text yield too so an ordinary reply can still fit.
+            for (let inventoryCount = inventory ? inventory.items.length : 0;
+              inventoryCount >= (inventory ? -1 : 0); inventoryCount--) {
               const base = packetFor(turn.update - 1, compact, recalled.slice(0, kept - promised - people),
                 named.slice(named.length - people), open.slice(open.length - promised), turn.thread, false, flagged,
-                channels.slice(0, channelCount), inventory ? { total: inventory.total,
+                channels.slice(0, channelCount), inventory && inventoryCount >= 0 ? { total: inventory.total,
                   items: inventory.items.slice(inventory.items.length - inventoryCount) } : undefined);
               const offered = [...candidates, ...channels.slice(0, channelCount)
                 .filter(item => clean(item.id, true) === item.id).map(item => ({

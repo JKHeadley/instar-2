@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(31);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -129,6 +130,35 @@ it('does not expose forgotten content encoded in imported metadata or candidate 
     expect(JSON.stringify(packet)).not.toContain('silver crane');
     expect(packet.channelMemory?.[0]?.sourceId).toContain('[withheld: operator correction or forgetting]');
     expect(packet.memoryCandidates?.some((entry: { id: string }) => entry.id.includes('silver crane'))).not.toBe(true);
+    journal.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+it('drains an accepted memory question when the ordinary envelope fits but even empty inventory does not', async () => {
+  const directory = root();
+  try {
+    const g = { ...genesis, maxBytes: 4096 };
+    const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
+    const question = 'What do you know about me? Context: '.padEnd(1024, 'x');
+    const full = workerFor(journal).probe(question);
+    if ('reason' in full) throw Error(full.reason);
+    expect(JSON.parse(full.context).inventory).toMatchObject({ total: 0, shown: 0 });
+    expect(() => prepareJournalEnvelope({ question, context: full.context, id: 'telegram:12345678:update:1' },
+      'claude-opus-5-5', g.grant, 1790000000000, g.maxBytes)).toThrow('overflow');
+    const contexts: string[] = [], sent: number[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => { const prepared = prepareJournalEnvelope(input,
+        'claude-opus-5-5', g.grant, 1790000000000, g.maxBytes);
+        contexts.push(input.context); return prepared; },
+      model: async () => 'Understood.', send: async () => { sent.push(1); return 1; }, checkOutbound: () => {} });
+    worker.intake([update(1, question)]);
+    await worker.drain();
+    expect(contexts).toHaveLength(1);
+    expect(JSON.parse(contexts[0]!).inventory).toBeUndefined();
+    expect(JSON.parse(contexts[0]!).capability).not.toContain('inventory is a bounded');
+    expect(journal.view.turns.get('telegram:12345678:update:1')).toMatchObject({ sent: 1 });
+    expect(journal.view.calls).toBe(1);
+    expect(sent).toHaveLength(1);
     journal.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
