@@ -30,7 +30,7 @@ export function stem(word: string): string {
   }
   if (/(?:x|ch|sh)es$/.test(w)) w = w.slice(0, -2);
   else if (w.endsWith('s') && !/(?:ss|us|is)$/.test(w) && w.length > 3) w = w.slice(0, -1);
-  if (w.endsWith('e') && w.length > 4) w = w.slice(0, -1);
+  if (w.endsWith('e') && w.length > 3) w = w.slice(0, -1);
   return w;
 }
 export function terms(text: string, max = Number.MAX_SAFE_INTEGER): string[] {

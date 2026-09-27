@@ -34,6 +34,15 @@ it('bridges a paraphrase through the summary sentence that still names the topic
   expect(selectRecall({ message, summary: 'Ordinary chat about weather.', candidates, now, limit: 5 })).toEqual([]);
 });
 
+it('does not let one incidental direct word suppress a summary paraphrase', () => {
+  const candidates = [{ text: 'The office code is 1111.', at: now - day },
+    { text: 'The locker combination is QUASAR-7731.', at: now - day }];
+  const picked = selectRecall({ message: "What's the cabinet code at the gym?",
+    summary: 'The gym cabinet code is the locker combination.', candidates, now, limit: 5 });
+  expect(picked).toContain(1);
+  expect(picked).toContain(0); // The weaker code match remains visible for model judgment.
+});
+
 it('selects turns sent on the day the message names and nothing outside it', () => {
   const candidates = [{ text: 'Parked on level 4, row K. noted', at: now - 30 * hour },
     { text: 'The dentist moved to Thursday. noted', at: now - 5 * day }, filler(2)];
@@ -46,12 +55,12 @@ it('selects turns sent on the day the message names and nothing outside it', () 
   expect(Math.floor(now / day) * day - (saturday.from + 12 * hour)).toBe(2 * day);
 });
 
-it('keeps direct word matches first and caps the result', () => {
+it('keeps only the strongest direct word matches, within the cap', () => {
   const candidates = Array.from({ length: 12 }, (_, i) => ({ text: `tomato note ${i}`, at: now - day }));
   candidates.push({ text: 'Tomato seedlings go in the north bed. noted', at: now - day });
   const picked = selectRecall({ message: 'where do the tomato seedlings go', candidates, now, limit: 5 });
-  expect(picked).toHaveLength(5);
-  expect(picked[0]).toBe(12);
+  expect(picked).toEqual([12]);
+  expect(selectRecall({ message: 'unrelated subject', candidates, now, limit: 5 })).toEqual([]);
 });
 
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {
@@ -116,4 +125,10 @@ it('keeps content words that also name a time, so a title or band name is still 
   expect(wordMatch('What did I say about Night?', candidates)).toContain(1);
   expect(selectRecall({ message: 'What did I say about Night?', candidates, now, limit: 5 })).toEqual([1]);
   expect(selectRecall({ message: 'What did I say about Thursday?', candidates, now, limit: 5 })).toEqual([2]);
+});
+
+it('matches a short verb with its past tense without selecting a same-name neighbor', () => {
+  const candidates = [{ text: 'Mira likes ranunculus flowers.', at: now - day },
+    { text: 'Mira moved to the west side of town.', at: now - day }];
+  expect(selectRecall({ message: 'Where did Mira move?', candidates, now, limit: 5 })).toEqual([1]);
 });
