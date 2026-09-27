@@ -71,7 +71,7 @@ export type JournalRecord =
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; at: number }
-  | { kind: 'summary-candidate'; through: number; state: string; at: number }
+  | { kind: 'summary-candidate'; through: number; state: string; usage?: ModelUsage; at: number }
   | { kind: 'summary-check'; through: number; result: SummaryCheckResult; at: number }
   | { kind: 'summary-review-reserve'; through: number; at: number }
   | { kind: 'summary-failed'; through: number; memoryPendingFor?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
@@ -125,7 +125,9 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
 function project(view: JournalView, row: JournalRecord): void {
-  if ('state' in row && row.state) view.providerStates.set(row.state, (view.providerStates.get(row.state) ?? 0) + 1);
+  if (row.kind !== 'summary-candidate' && 'state' in row
+    && (row.state === 'complete' || row.state === 'rejected' || row.state === 'uncertain'))
+    view.providerStates.set(row.state, (view.providerStates.get(row.state) ?? 0) + 1);
   if ('failureClass' in row && row.failureClass)
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
@@ -1103,7 +1105,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const state = redact(JSON.stringify({ packet: JSON.parse(packet) as object,
           proposed: { summary: summaryText, people: people ?? [], commitments: commitments ?? [],
             closed: closed ?? [], memory: memory ?? [] } })).text;
-        journal.append({ kind: 'summary-candidate', through, state, at: ports.now() });
+        journal.append({ kind: 'summary-candidate', through, state,
+          ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
         const started = ports.replyCheck.elapsedMs();
         let jev: SummaryCheckResult;
         try {
@@ -1146,7 +1149,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
         ...(memory ? { memory } : {}),
         ...(commitments ? { commitments } : {}), ...(closed?.length ? { closed } : {}),
-        ...(typeof summary === 'string' ? {} : { usage: summary.usage }),state:'complete',at:ports.now()});
+        ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}),state:'complete',at:ports.now()});
     }
   };
   let summaryJob: Promise<void> | null = null;

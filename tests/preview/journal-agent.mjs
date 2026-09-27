@@ -14,6 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { interpretSummaryReview } from './summary-check.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -325,17 +326,7 @@ async function main() {
           try { prepared = modelEnvelope({ question, context: state, id }); }
           catch { return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start) }; }
           const result = await invokeSubscription(prepared, id);
-          if (result.state === 'uncertain') throw Error('preview: summary review uncertain');
-          const usage = { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null };
-          if (result.state !== 'complete' || result.failureClass)
-            return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start), usage };
-          let parsed;
-          try { parsed = JSON.parse(result.value); } catch { parsed = null; }
-          if ((parsed?.verdict !== 'pass' && parsed?.verdict !== 'violation')
-            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
-            return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start), usage };
-          return { verdict: parsed.verdict, reason: parsed.reason, latencyMs: Math.round(performance.now() - start),
-            usage };
+          return interpretSummaryReview(result, Math.round(performance.now() - start));
         }
       },
       send: async ({ text, expectedText, chat, thread }) => {

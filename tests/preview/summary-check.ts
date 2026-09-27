@@ -19,3 +19,19 @@ export function interpretSummaryJev(value: unknown, latencyMs: number): SummaryC
     usage: { inputTokens: typeof response.usage?.input_tokens === 'number' ? response.usage.input_tokens : null,
       outputTokens: typeof response.usage?.output_tokens === 'number' ? response.usage.output_tokens : null, charge: null } };
 }
+
+/** Preserve a completed review's metering even when its outcome cannot authorize a summary. */
+export function interpretSummaryReview(result: { state: string; value?: string; failureClass?: string;
+  usage?: { inputTokens: number | null; outputTokens: number | null } }, latencyMs: number): SummaryCheckResult {
+  const usage = result.usage && { ...result.usage, charge: null as null };
+  if (result.state === 'uncertain')
+    return { verdict: 'unavailable', path: 'subscription', latencyMs, ...(usage ? { usage } : {}) };
+  if (result.state !== 'complete' || result.failureClass)
+    return { verdict: 'unavailable', path: 'subscription', retryable: true, latencyMs, ...(usage ? { usage } : {}) };
+  let parsed: { verdict?: unknown; reason?: unknown } | null;
+  try { parsed = JSON.parse(result.value ?? ''); } catch { parsed = null; }
+  if ((parsed?.verdict !== 'pass' && parsed?.verdict !== 'violation')
+    || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
+    return { verdict: 'unavailable', path: 'subscription', retryable: true, latencyMs, ...(usage ? { usage } : {}) };
+  return { verdict: parsed.verdict, path: 'subscription', reason: parsed.reason, latencyMs, ...(usage ? { usage } : {}) };
+}

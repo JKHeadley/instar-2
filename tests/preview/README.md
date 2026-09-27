@@ -856,6 +856,10 @@ Jev unavailable or a confirmed violation keeps the prior summary frontier
 and uses the existing bounded summary retry path. An uncertain reserved
 subscription review stays pending across restart and is never repeated.
 `status.summaryChecks` and `lastSummaryCheck` report content-free verdicts.
+The complete candidate stays only in its encrypted journal record; provider
+status and the agent's self-state count only provider outcomes. The candidate
+record also retains the completed summary call's usage, whether supervision
+accepts, rejects or remains unknown, without counting it again on acceptance.
 The live procedure is [summary-supervisor-live-test.md](summary-supervisor-live-test.md).
 
 ### One memory across conversations
