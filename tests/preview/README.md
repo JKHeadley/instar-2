@@ -995,6 +995,13 @@ that `raise-caps` retries; any other failure is a `reply check unavailable`
 hold shown in `status`. New answers leave one shared call-budget
 slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
+The `credential` reviewer question distinguishes a live authentication secret
+from a short non-authentication personal fact the verified operator supplied in
+this private chat. A real key, token, password, login PIN, or sign-in code stays
+in scope even if the operator supplied it. The full-context review sees the
+original message and audience when Jev flags or cannot decide. The existing
+deterministic secret-format wall is unchanged. The operator trial is in
+[credential-false-positive-live-test.md](credential-false-positive-live-test.md).
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
 subscription review is not retried or charged again from this runner; the turn

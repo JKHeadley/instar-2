@@ -2,8 +2,9 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkReply, HOLDING_REPLY, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { checkReply, HOLDING_REPLY, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 import type { ReplyCheckResult } from './reply-check.js';
+import { redact } from '../../src/recall/redact.js';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -67,6 +68,49 @@ it('gives review the original audience, sources, history and operator message', 
     'claude-sonnet-4-5', 'grant:test', 1000);
   expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate'))).toEqual({
     ...context, operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate' });
+});
+
+it('asks both reviewers to distinguish operator-supplied personal facts from authentication secrets', () => {
+  expect(jevQuestions.credential?.instructions).toBe(REPLY_RULES.credential);
+  expect(REPLY_RULES.credential).toMatch(/short personal code or fact.*not a credential/u);
+  expect(REPLY_RULES.credential).toMatch(/same private chat/u);
+  expect(REPLY_RULES.credential).toMatch(/authentication secret remains a violation even if the operator supplied it/u);
+});
+
+it('sends an operator-supplied personal code after a full-context false-positive review', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-personal-code-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
+      chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 4, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    let sent = '', reviewed = false, answers = 0;
+    let reviewContext: Record<string, unknown> | undefined;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => ++answers === 1 ? 'Got it.' : 'Your gym locker code is 3310.',
+      checkOutbound: text => { if (redact(text).count) throw Error('outbound secret refused'); },
+      replyCheck: { elapsedMs: () => 100,
+        jev: async text => ({ value: scores(text.includes('3310') ? { credential: 0.8 } : {}), latencyMs: 170 }),
+        escalate: async (text, _id, originalPrompt) => {
+          reviewContext = JSON.parse(replyReviewContext(originalPrompt!, text));
+          reviewed = true;
+          return { verdict: 'pass', ruleIds: [] as [], confidence: null, latencyMs: 500 };
+        } },
+      send: async input => { sent = input.expectedText; return 8; } });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'My gym locker code is 3310.' } },
+    { update_id: 2, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'What is my gym locker code?' } }]);
+    await worker.drain();
+    expect(reviewed).toBe(true);
+    expect(reviewContext).toMatchObject({ operatorMessage: 'What is my gym locker code?',
+      candidateReply: 'PREVIEW — Your gym locker code is 3310.' });
+    expect(JSON.stringify(reviewContext?.history)).toContain('My gym locker code is 3310.');
+    expect(sent).toBe('PREVIEW — Your gym locker code is 3310.');
+    expect(journal.view.lastReplyCheck).toMatchObject({ verdict: 'pass', path: 'subscription' });
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it('durably checks before intent, sends a holding reply on violation, and replays counts', async () => {
@@ -157,7 +201,8 @@ it('refuses a detected credential before Jev can receive it', async () => {
       expires: 9999999999999, maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
     let sent = '';
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-      model: async () => 'Here is sk-AAAAAAAAAAAAAAAAAAAAAAAA', checkOutbound: () => {},
+      model: async () => 'Your API key is sk-AAAAAAAAAAAAAAAAAAAAAAAA',
+      checkOutbound: text => { if (redact(text).count) throw Error('outbound secret refused'); },
       replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('secret reached Jev'); },
         escalate: async () => { throw Error('secret reached review'); } },
       send: async input => { sent = input.expectedText; return 8; } });
