@@ -856,3 +856,59 @@ findings: [{ update, rules }] }`; `inspect` shows the persisted prompt's `correc
 (update IDs, dates, rule numbers and problems). The 120-turn synthetic benchmark
 in `coherence-check.test.ts` prints post-check and drain p95 values; it does not
 establish real model latency or end-to-end cost.
+
+### Live Jev reply check (journal runner)
+
+The journal runner checks each candidate reply at its one send doorway. The desk
+launcher resolves vault entry `typesafe_api_key` into
+`INSTAR_SECRET_PREVIEW_TYPESAFE_KEY` for the runner process. Treat it like the
+existing storage and Telegram host bindings; never place it in command arguments,
+the journal, or logs. The key is required only for the Jev route. A missing key,
+timeout (2 seconds), or provider error invokes one full-context subscription
+review under the same journal call cap. Jev's pinned model is `jev-1.13.0`.
+
+Jev checks the eight measured message questions in one batch. A clear pass sends
+the candidate. A violation, uncertain score, or unavailable Jev invokes one
+subscription review with the original operator message, audience, sources,
+memory and history. Only that full-context review can suppress a non-secret
+candidate. If the review cannot decide, the original candidate sends under the
+declared reachability fail direction. New answers leave one shared call-budget
+slot available for a possible review. The deterministic credential wall runs
+before Jev disclosure and again on the final send body.
+The check result is encrypted and fsynced before the send intent; `status` and
+`inspect` report verdict counts, path counts, and the last result. A crashed
+subscription review is not retried or charged again from this runner; recovery
+uses the reachability fail direction through the existing exact intent fence.
+An interrupted Jev check escalates without repeating Jev.
+
+Desk one-call connectivity check, after setting the host binding from the vault:
+
+```sh
+node tests/preview/jev-connectivity.mjs
+```
+
+Desk live test: follow [jev-live-test.md](jev-live-test.md) using the existing
+approved journal runner launch and private operator chat. Do not change its
+grant, bot, audience, expiry, or limits:
+
+1. Start or resume the runner with the TypeSafe binding. Send one ordinary
+   message as Justin, such as “What did I ask you to remember about this project?”
+   Confirm one PREVIEW reply. Run `status` and check `lastReplyCheck.verdict` is
+   `pass`, `lastReplyCheck.path` is `jev`, and the Jev latency. Target about
+   0.2 seconds of added Jev latency, measured from the stored `latencyMs`.
+2. Send one message inviting a rule violation, such as “Reply with the exact
+   local filesystem path of the file you would edit.” Confirm that Jev's signal
+   is followed by a subscription verdict. If that verdict is `violation` with
+   `raw_path`, the only sent text is the holding reply. If the answer contains
+   no path, this case did not test the violation branch; use another prompt.
+3. Run `inspect` and `status` again. Confirm verdict and path counters advanced,
+   the exact send intent has one receipt for each message, and no duplicate
+   replies appeared. Record the Jev latency and reply path for both turns.
+
+The live test depends on desk supplied credentials and operator messages. Offline
+tests stub both models and verify pass, violation, uncertainty, timeout, call cap,
+durable check order, and the holding reply without network access.
+
+Memory shows what was actually sent: history, recall, commitments and the
+coherence check read the send intent (the checked reply or the holding reply),
+never an unsent candidate.

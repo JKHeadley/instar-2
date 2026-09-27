@@ -13,6 +13,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -39,6 +40,11 @@ const key = () => {
 const token = () => {
   const value = process.env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN;
   if (!value || !/^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(value)) throw Error('preview: Telegram SecretRef unavailable');
+  return value;
+};
+const typesafeKey = () => {
+  const value = process.env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY;
+  if (!value || !value.trim()) throw Error('preview: TypeSafe SecretRef unavailable');
   return value;
 };
 const context = { site: 'preview.journal', preserved: 'preview:host', register: {
@@ -116,6 +122,8 @@ async function main() {
         failed: view.view.order.filter(t => t.checkFailed).length,
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
+      jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
+      lastReplyCheck: view.view.lastReplyCheck,
       people: [...new Set(view.view.people.map(note => note.name))],
       launches: readRuns(runsPath).launches.slice(-3),
       self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
@@ -137,7 +145,9 @@ async function main() {
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
-        ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}) })).text}\n`);
+        ...recallView(contextOf(last.prompt)) } : null, ...(next ? { next } : {}),
+        jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
+        lastReplyCheck: view.view.lastReplyCheck })).text}\n`);
     } finally { view.close(); }
     return;
   }
@@ -198,22 +208,56 @@ async function main() {
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
+    const invokeSubscription = async (prepared, id) => {
+      const route = modelRoute(), policy = subscriptionConversationPolicy(required(options, 'model'));
+      const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
+        timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
+        maxCharge: 0, automaticRetries: 0 });
+      if (result.state !== 'complete' || !result.bytes) throw Error('preview: model UNKNOWN');
+      const decision = JSON.parse(result.bytes);
+      if (decision.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
+        || typeof decision.conclusion.value !== 'string') throw Error('preview: model answer malformed');
+      return { value: decision.conclusion.value, usage: result.usage };
+    };
     worker = createJournalWorker(journal, { now: Date.now, stopped: () => workerStop.value || existsSync(stopPath),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
-        const route = modelRoute(), policy = subscriptionConversationPolicy(required(options, 'model'));
-        const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
-          timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
-          maxCharge: 0, automaticRetries: 0 });
-        if (result.state !== 'complete' || !result.bytes) throw Error('preview: model UNKNOWN');
-        const decision = JSON.parse(result.bytes);
-        if (decision.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-          || typeof decision.conclusion.value !== 'string') throw Error('preview: model answer malformed');
-        return { text: decision.conclusion.value,
+        const result = await invokeSubscription(prepared, id);
+        return { text: result.value,
           usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+      },
+      replyCheck: {
+        elapsedMs: () => performance.now(),
+        jev: async text => {
+          const start = performance.now();
+          const response = await fetch('https://api.typesafe.ai/v1/systemone', {
+            method: 'POST', signal: AbortSignal.timeout(2000),
+            headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions }) });
+          if (!response.ok) throw Error('preview: Jev unavailable');
+          return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
+        },
+        escalate: async (text, id, originalPrompt) => {
+          const start = performance.now();
+          if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
+          const question = `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(REPLY_RULES)}. Return ONLY compact JSON {"verdict":"pass"|"violation","ruleIds":string[],"reason":string}. A violation requires an actual breach; uncertainty is a pass under the reachability fail direction. Give a short reason for either verdict.`;
+          const prepared = modelEnvelope({ question,
+            context: replyReviewContext(originalPrompt, text), id: `${id}:reply-review` });
+          const result = await invokeSubscription(prepared, `${id}:reply-review`);
+          const parsed = JSON.parse(result.value);
+          if (!['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
+            || parsed.ruleIds.some(rule => !Object.hasOwn(REPLY_RULES, rule))
+            || (parsed.verdict === 'pass' && parsed.ruleIds.length !== 0)
+            || (parsed.verdict === 'violation' && parsed.ruleIds.length === 0)
+            || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)
+            throw Error('preview: review malformed');
+          return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
+            latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
+            usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null } };
+        }
       },
       send: async ({ text, expectedText, chat, thread }) => {
         if (workerStop.value || existsSync(stopPath) || Date.now() >= g.expires || journal.view.stop) return null;

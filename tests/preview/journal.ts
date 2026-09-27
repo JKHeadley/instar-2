@@ -10,7 +10,9 @@ import { selectRecall } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
-import { checkReply, correctionNote, type CoherenceFinding } from './coherence-check.js';
+import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
+import { checkReply, reviewReply, HOLDING_REPLY } from './reply-check.js';
+import type { ReplyCheckResult, ReplyCheckPorts } from './reply-check.js';
 
 /** Genesis starts with these live limits; an operator-referenced journal frame
  * can later raise the finite counters without altering genesis or usage. */
@@ -41,6 +43,9 @@ export type JournalRecord =
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number }
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
   | { kind: 'answer'; id: string; text: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null }; at: number }
+  | { kind: 'reply-jev-reserve'; id: string; at: number }
+  | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
+  | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
@@ -60,7 +65,8 @@ export type JournalRecord =
  * (`thread`); every one has the operator as its only audience. */
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
   reserved: boolean; prompt?: string; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string;
-  checked?: CoherenceFinding[]; checkFailed?: true }
+  checked?: CoherenceFinding[]; checkFailed?: true;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
@@ -68,7 +74,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   summaryFailures: Map<number, number>; sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>;
   /** Flagged replies whose correction note no later model call has carried yet. */
-  corrections: string[] }
+  corrections: string[];
+  jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
+  replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
 const frameLimit = 2 * 1024 * 1024;
 const genesisHash = (genesis: JournalView['genesis']) => createHash('sha256').update(JSON.stringify(genesis)).digest('hex');
@@ -141,6 +149,23 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
+  if (row.kind === 'reply-jev-reserve') {
+    if (turn.answer === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
+      throw Error('preview journal: Jev reservation order or cap');
+    turn.jevReserved = true; view.jevChecks++; return;
+  }
+  if (row.kind === 'reply-review-reserve') {
+    if (turn.answer === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
+    turn.reviewReserved = true; view.calls++; return;
+  }
+  if (row.kind === 'reply-check') {
+    if (turn.answer === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
+    if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
+    if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
+    turn.replyChecks ??= []; turn.replyChecks.push(row.result);
+    view.replyCheckCounts[row.result.verdict]++; view.replyCheckPaths[row.result.path]++;
+    view.lastReplyCheck = row.result; return;
+  }
   // The worker reserves or records an intent only for a turn it has released from any hold,
   // so either row durably ends an earlier hold: `held` names only a hold still in force.
   if (row.kind === 'reserve' || row.kind === 'intent') delete turn.held;
@@ -193,7 +218,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [] };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -230,7 +255,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [] };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -277,6 +302,7 @@ export interface PreviewPorts {
     usage: {inputTokens:number|null;outputTokens:number|null;charge:null}} >;
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
+  replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'>;
   boundary?(stage: string): void;
 }
 
@@ -327,8 +353,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const older = journal.view.order.filter(item => item.accepted && item.update <= summary.through);
     const previous = journal.view.order.filter(item => item.accepted && item.update < turn.update).at(-1);
     return selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
-      ...(previous ? { previous: `${previous.text} ${previous.answer ?? ''}` } : {}),
-      candidates: older.map(item => ({ text: `${item.text} ${item.answer ?? ''}`, at: sentAt(item) ?? 0 })) })
+      ...(previous ? { previous: `${previous.text} ${previous.intent ?? ''}` } : {}),
+      candidates: older.map(item => ({ text: `${item.text} ${item.intent ?? ''}`, at: sentAt(item) ?? 0 })) })
       .map(index => older[index]!);
   };
   /** Notes sharing any name term with the new message ("Sam" also finds "Sam Ruiz"), from
@@ -369,7 +395,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ ...elsewhere(item), user: redact(item.text).text,
-      answer: item.answer === undefined ? null : redact(item.answer).text, outcome: outcome(item) }));
+      answer: item.intent === undefined ? null : redact(item.intent).text, outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn; mentions: { person: string; quote: string }[] }>();
     if (summary) for (const note of named) {
@@ -390,12 +416,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(({ turn, side, items }) => ({ from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn),
         ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
         ...(side === 'message' ? { message: redact(turn.text).text }
-          : { reply: redact(turn.answer ?? '').text, answering: redact(turn.text).text, delivery: outcome(turn) }),
+          : { reply: redact(turn.intent ?? '').text, answering: redact(turn.text).text, delivery: outcome(turn) }),
         items }));
     const cited = new Set([...sources.keys(), ...[...promised.values()].map(entry => entry.turn.id)]);
     const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
-      user: redact(item.text).text, answer: item.answer === undefined ? null : redact(item.answer).text,
+      user: redact(item.text).text, answer: item.intent === undefined ? null : redact(item.intent).text,
       outcome: outcome(item) })) : [];
     const corrections = flagged.map(item => ({ update: item.update, date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }), findings: correctionNote(item.checked ?? []) }));
@@ -460,7 +486,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         gate();
         if (turn.answer === undefined) {
           if (turn.reserved) continue;
-          if (journal.view.calls >= journal.view.limits.maxCalls) { journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue; }
+          // Leave a shared-budget slot for a full-context review if Jev cannot pass.
+          if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+            journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
+          }
           let selected = preparedFor(turn);
           if ('reason' in selected) {
             await summarizeIfNeeded(true);
@@ -473,7 +502,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             else turn.held = reason;
             break;
           }
-          if (journal.view.calls >= journal.view.limits.maxCalls) {
+          if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
           const { question, context, prepared, carried } = selected;
@@ -488,7 +517,48 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
         gate();
         if (journal.view.replies >= journal.view.limits.maxReplies) { journal.append({kind:'hold',id:turn.id,reason:'reply cap',at:ports.now()}); continue; }
-        const reply = `PREVIEW — ${turn.answer!}`;
+        let reply = `PREVIEW — ${turn.answer!}`;
+        if (ports.replyCheck) {
+          const previous = turn.replyChecks?.at(-1);
+          // The exact secret wall runs before provider disclosure on every replay.
+          if (redact(reply).count) {
+            if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
+              ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0 }, at: ports.now() });
+            reply = HOLDING_REPLY;
+          } else if (previous?.path === 'holding') {
+            if (previous.verdict === 'violation') reply = HOLDING_REPLY;
+          }
+          else if (previous?.path === 'subscription') {
+            if (previous.verdict === 'violation') reply = HOLDING_REPLY;
+          } else if (previous?.path === 'jev' && previous.verdict === 'pass') { /* Checked pass. */ }
+          else if (turn.reviewReserved) {
+            // An interrupted paid review is UNKNOWN, so never repeat it.
+            journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
+              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0 }, at: ports.now() });
+          } else {
+            const checkPorts = { ...ports.replyCheck,
+              reserveEscalation: (candidate: string, originalPrompt?: string) => {
+                gate();
+                if (journal.view.calls >= journal.view.limits.maxCalls) return false;
+                journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
+                  ...(originalPrompt === undefined ? {} : { prompt: originalPrompt }), at: ports.now() }); return true; },
+              record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id, result, at: ports.now() }) };
+            if (turn.jevReserved) {
+              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
+              const checked = await reviewReply(reply, turn.id, checkPorts, previous?.ruleIds ?? [], turn.prompt);
+              if (!checked.sendOriginal) reply = HOLDING_REPLY;
+            } else if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
+              checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
+              const checked = await reviewReply(reply, turn.id, checkPorts, [], turn.prompt);
+              if (!checked.sendOriginal) reply = HOLDING_REPLY;
+            } else {
+              journal.append({ kind: 'reply-jev-reserve', id: turn.id, at: ports.now() });
+              const checked = await checkReply(reply, turn.id, checkPorts, turn.prompt);
+              if (!checked.sendOriginal) reply = HOLDING_REPLY;
+            }
+          }
+        }
+        gate();
         if (Buffer.byteLength(reply) > 4096 || Array.from(reply).length > 4096) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
         const body = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
@@ -535,7 +605,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const { in: side, quote, closedBy } = (item ?? {}) as { in?: unknown; quote?: unknown; closedBy?: unknown };
       if (side !== 'message' && side !== 'reply' || typeof quote !== 'string' || Buffer.byteLength(quote) > 1000 || !terms(quote).length) continue;
       const source = shown.find(turn => side === 'message' ? redact(turn.text).text.includes(quote)
-        : turn.answer !== undefined && redact(turn.answer).text.includes(quote));
+        : turn.intent !== undefined && redact(turn.intent).text.includes(quote));
       const key = JSON.stringify([side, source?.id, quote]);
       if (!source || seen.has(key)) continue;
       seen.add(key); notes.push({ in: side, source: source.id, quote });
@@ -675,7 +745,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (turn.intent === undefined || turn.checked !== undefined || turn.answer === undefined) continue;
       const earlier = journal.view.order.filter(item => item.accepted && item.update < turn.update).map(item => item.text);
       let findings: CoherenceFinding[], failed = false;
-      try { findings = checkReply({ reply: turn.answer, earlier }); } catch { findings = []; failed = true; }
+      try { findings = checkCoherenceOf({ reply: turn.intent.replace(/^PREVIEW — /u, ''), earlier }); } catch { findings = []; failed = true; }
       journal.append({ kind: 'coherence', id: turn.id, findings, ...(failed ? { failed: true as const } : {}), at: ports.now() });
     }
   };
