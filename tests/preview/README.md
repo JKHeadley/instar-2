@@ -964,18 +964,38 @@ never a due item; the preview must not claim it saved a deadline from that evide
 means Friday in the following Monday–Sunday calendar week; the same rule applies to other
 `next` weekdays. An unqualified weekday means its next occurrence (the same weekday today is ambiguous). A
 month and day without a year means the next occurrence on or after the message's local day.
-`this` weekday, multiple dates, invalid dates, unsupported modifiers, numeric dates and
+`every` weekday records a weekly occurrence beginning on the next matching local day; it
+has no scheduler and is projected only into answer packets. `this` weekday, multiple dates, invalid dates, unsupported modifiers, numeric dates and
 other relative phrases retain their ambiguity. A bare hour such as “at 3:30” has a known day but no
 settled time. Day-only and ambiguous-hour items become
 due on their local date and overdue the next local day. A precise time becomes overdue after
-that local time. Items without a resolved day are shown as ambiguous. The packet of the next
-operator message includes up to ten upcoming, due, overdue or ambiguous active items. The existing
-byte fitting can show fewer, including zero, and reports the omitted count. It likewise fits up to
+that local time. Weekly items become due on each matching weekday and return to upcoming
+between occurrences. Items without a resolved day are shown as ambiguous. For questions
+containing `today`, `tomorrow`, or `next week`, the packet selects matching calendar days
+in the current `--time-zone` and labels that window as `datedScope`; next week means the
+following Monday through Sunday. Each item retains the zone in which its date was recorded.
+An item with an exact time is converted into the query zone for window selection; its
+packet keeps the source day and shows `queryDay` when travel moves it to another day.
+Day-only items remain civil dates in their recorded zone, with no invented instant.
+Unresolved dates remain visible after matching dated entries in a scoped packet so
+the model cannot infer certainty from their absence.
+Other questions select the nearest dated items. Up to 32 occurrences fit before the existing
+byte cap; `moreDated` counts matching items omitted by either bound. The model is told not to
+claim a complete list when that count is positive. The packet likewise fits up to
 three pending date decisions. Full records remain in the journal. `status` reports all active items
 and their current states; `inspect --text`
-shows the next packet's dated block. Corrections and forgetting use the existing validated
+shows the next packet's dated block and scope. Corrections and forgetting use the existing validated
 memory change: an affected old item is withheld, and a corrected date is recorded only when
 the operator's replacement clause is selected and validated in its own turn.
+
+`journal-dated-soak.test.ts` replays 200 dated records, a correction and a cancellation
+through the encrypted journal, then asks today, tomorrow and next week on each of 60
+simulated days. It changes the query zone from Los Angeles to Tokyo halfway through.
+Its answer stub lists only packet entries and compares them with an independent calendar
+oracle, reporting old first-ten misses, current misses, false positives and truncation.
+This is packet and stub-answer evidence, not a real-model accuracy claim. A crowded-day
+neighbor proves the 32-item limit is disclosed. Run only that focused file with Vitest;
+Justin's supervised real-model spot-check is [dated-items-soak-live-test.md](dated-items-soak-live-test.md).
 
 For a validated dated item, the immediate reply keeps the substantive answer and adds its absolute
 `YYYY-MM-DD` day and zone; an unresolved time remains explicit beside any model clarification.

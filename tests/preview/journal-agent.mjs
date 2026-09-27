@@ -113,7 +113,7 @@ const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Lo
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
   people: packet.people ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
-  dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
+  dated: packet.dated ?? [], datedScope: packet.datedScope ?? null, moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],
   inventory: packet.inventory ?? null,
@@ -264,7 +264,7 @@ async function main() {
       dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
-        time: item.time ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
+        time: item.time ?? null, repeat: item.repeat ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, Date.now()) })),
       datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,
