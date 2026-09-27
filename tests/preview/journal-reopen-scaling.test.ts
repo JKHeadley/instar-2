@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { openPreviewJournal } from './journal.js';
+// Scale evidence: run with INSTAR_PREVIEW_SCALE=1 for journal, retrieval or compaction changes and
+// release validation; ordinary edits skip it (README "Scale checks").
+const scale = process.env.INSTAR_PREVIEW_SCALE === '1';
 
 const execFileAsync = promisify(execFile);
 const key = new Uint8Array(32).fill(7);
@@ -41,7 +44,7 @@ it('replays held turns through a snapshot and clears only eligible holds after a
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('opens 10k compacted turns below the declared time and heap bounds', async () => {
+it.runIf(scale)('opens 10k compacted turns below the declared time and heap bounds', async () => {
   const { stdout } = await execFileAsync(process.execPath, ['--expose-gc', '--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-reopen-benchmark.mjs', '10000'], { cwd: process.cwd(), encoding: 'utf8', timeout: 300000 });
   const metric = JSON.parse(stdout) as { turns: number; rawMs: number; openMs: number;

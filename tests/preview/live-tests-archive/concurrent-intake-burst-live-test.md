@@ -3,7 +3,7 @@
 Use a **new, isolated** private-chat journal preview trial with its own approved activation,
 empty root, and at least 20 turn slots, 40 call slots and 20 reply slots. Keep the frozen
 live runner and its journal untouched. The desk starts this trial with the
-`journal-agent.mjs run` command in [README.md](README.md#structural-journal-runner-rounds-1013)
+`journal-agent.mjs run` command in [README.md](../README.md#structural-journal-runner-rounds-1013)
 and records its PID, root, starting `status`, Telegram chat and starting cursor.
 
 1. As Justin, send ten Telegram updates within five seconds. Use nine short messages and

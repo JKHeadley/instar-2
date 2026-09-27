@@ -19,13 +19,14 @@ const read = (root: string) => openPreviewJournal(join(root, 'journal.encrypted'
 
 const baselineRoot = rootFor();
 let cuts: string[];
+let points: string[];
 let baselineMemory: string | undefined;
 let baselinePeople: string;
 let baselineCommitments: string;
 try {
   const baseline = run(baselineRoot);
   if (baseline.status !== 0) throw Error(`baseline failed: ${baseline.stderr}`);
-  const points = lines(baselineRoot, 'points.log');
+  points = lines(baselineRoot, 'points.log');
   if (new Set(points).size !== points.length) throw Error('duplicate crash labels');
   const first = points.indexOf('journal:before:summary-reserve:1');
   const compacted = points.indexOf('journal:compact:after-reopen:1');
@@ -33,7 +34,13 @@ try {
   const sent = points.indexOf('journal:after:sent:2');
   if (first < 0 || compacted <= first || review <= compacted || sent <= review)
     throw Error('summary or reply review did not run');
-  cuts = [...points.slice(first, compacted + 1), ...points.slice(review, sent + 1)];
+  // A kill at a model call's return, or just before a frame that directly follows another frame or
+  // a return, leaves the same journal bytes and send log as the preceding point, so only distinct
+  // durable states run. A send's return is kept: its send log differs from the send's entry.
+  const distinct = (range: string[]) => range.filter((point, index) => index === 0
+    || !(/:returning:/.test(point) && !point.startsWith('send:') || point.startsWith('journal:before:')
+      && /^journal:after:|:returning:/.test(range[index - 1]!)));
+  cuts = [...distinct(points.slice(first, compacted + 1)), ...distinct(points.slice(review, sent + 1))];
   for (const expected of ['summary:call:entered:summary:1:1', 'summary:faithfulness:entered:1',
     'summary:jev:entered:1', 'summary:review:entered:1', 'journal:after:summary:1',
     'journal:compact:after-rename:1', 'reply:review:entered:1', 'journal:after:reply-check:3']) {
@@ -76,7 +83,7 @@ it.each(cuts)('recovers from %s', cut => {
     try {
       expect(interrupted.view.order.map(item => item.update), cut).toEqual([1, 2]);
       expect(interrupted.view.order[1]?.accepted, cut).toBe(true);
-      if (cuts.indexOf(cut) <= cuts.indexOf('journal:compact:after-reopen:1'))
+      if (points.indexOf(cut) <= points.indexOf('journal:compact:after-reopen:1'))
         expect(interrupted.view.order[1]?.sent, cut).toBeUndefined();
     } finally { interrupted.close(); }
     const recovered = run(root, 'none', 'resume');
@@ -84,10 +91,10 @@ it.each(cuts)('recovers from %s', cut => {
     const sends = lines(root, 'sends.log').map(line => JSON.parse(line) as { update: number; text: string });
     // int11's reply-check budget runs from the durable Jev reservation, so a restart after it
     // finds the budget spent and holds the reply rather than repeating the check.
-    const interruptedReview = cuts.indexOf(cut) >= cuts.indexOf('journal:after:reply-jev-reserve:2')
-      && cuts.indexOf(cut) <= cuts.indexOf('journal:before:reply-check:3');
-    const uncertainSend = cuts.indexOf(cut) >= cuts.indexOf('journal:after:intent:2')
-      && cuts.indexOf(cut) < cuts.indexOf('journal:after:sent:2');
+    const interruptedReview = points.indexOf(cut) >= points.indexOf('journal:after:reply-jev-reserve:2')
+      && points.indexOf(cut) <= points.indexOf('journal:before:reply-check:3');
+    const uncertainSend = points.indexOf(cut) >= points.indexOf('journal:after:intent:2')
+      && points.indexOf(cut) < points.indexOf('journal:after:sent:2');
     if (!interruptedReview && !uncertainSend) expect(sends.filter(item => item.update === 2), cut).toEqual([
       { update: 2, text: 'PREVIEW — Maya has the ORCHID key 731.' },
     ]);
@@ -112,11 +119,11 @@ it.each(cuts)('recovers from %s', cut => {
         expect(view.order[1]?.held || view.order[1]?.intent, cut).toBeTruthy();
       }
       expect([...view.summaryReservations.keys()].every(through => through < 2), cut).toBe(true);
-      const reserved = cuts.indexOf(cut) >= cuts.indexOf('journal:after:summary-reserve:1')
-        && cuts.indexOf(cut) <= cuts.indexOf('journal:before:summary:1');
+      const reserved = points.indexOf(cut) >= points.indexOf('journal:after:summary-reserve:1')
+        && points.indexOf(cut) <= points.indexOf('journal:before:summary:1');
       if (reserved) expect(view.summaryReservations.has(1), cut).toBe(true);
-      if (cuts.indexOf(cut) >= cuts.indexOf('journal:after:summary:1')
-        && cuts.indexOf(cut) <= cuts.indexOf('journal:compact:after-reopen:1'))
+      if (points.indexOf(cut) >= points.indexOf('journal:after:summary:1')
+        && points.indexOf(cut) <= points.indexOf('journal:compact:after-reopen:1'))
         expect(frontiers, cut).toContain(1);
       if (interruptedReview) {
         expect(['reply check unavailable', 'reply check budget exceeded'], cut).toContain(view.order[1]?.held);

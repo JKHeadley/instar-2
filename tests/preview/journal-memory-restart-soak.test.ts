@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditJournal } from './journal-audit.mjs';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
+// Scale evidence: run with INSTAR_PREVIEW_SCALE=1 for journal, retrieval or compaction changes and
+// release validation; ordinary edits skip it (README "Scale checks").
+const scale = process.env.INSTAR_PREVIEW_SCALE === '1';
 
 const key = new Uint8Array(32).fill(53);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -43,7 +46,7 @@ const recall = (journal: ReturnType<typeof openPreviewJournal>) => {
   return { packet: probe.context, ...answerFrom(probe.context) };
 };
 
-it('keeps memory projection, recall answers and audit bytes across 100 restarts and 20 compactions', async () => {
+it.runIf(scale)('keeps memory projection, recall answers and audit bytes across 100 restarts and 20 compactions', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-restart-soak-')));
   const steadyPath = join(root, 'steady.encrypted'), restartPath = join(root, 'restart.encrypted');
   let steady = openPreviewJournal(steadyPath, key, genesis);

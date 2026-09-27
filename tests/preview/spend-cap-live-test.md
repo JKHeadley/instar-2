@@ -13,7 +13,7 @@ Start the same root once more without changing its bounds; it must make no
 new call or send and must not print the final cap line again. `status.capReports`
 must retain the cap fence. Calls and replies also have a separately fenced 80%
 line; exercise both stages with the
-[cap-exhaustion-graceful live test](cap-exhaustion-graceful-live-test.md). The
+[cap-exhaustion-graceful live test](live-tests-archive/cap-exhaustion-graceful-live-test.md). The
 fixed lines have no message text or credential.
 
 1. **Calls:** set `--max-calls 2 --max-replies 3 --max-turns 4`. Send two

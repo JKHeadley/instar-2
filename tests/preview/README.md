@@ -305,7 +305,7 @@ monotonic expiry frames, then replays, compacts twice and reopens the encrypted 
 the recall selection and answer, memory, self-state, full read-only `status` and effective expiry;
 stale or earlier frames are refused both on append and replay. The two-frame fixture represents an
 earlier reviewed build: this build still admits only its pinned expiry for a new renewal. Justin's
-supervised live check is [renewal-continuity-live-test.md](renewal-continuity-live-test.md).
+supervised live check is [renewal-continuity-live-test.md](live-tests-archive/renewal-continuity-live-test.md).
 
 ## Unanswered turns and host recovery
 
@@ -607,12 +607,19 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSO
 
 ## Structural journal runner (rounds 10–13)
 
+**Core operator journey.** The one live procedure for this runner is
+[core-journey-live-test.md](core-journey-live-test.md): talk, recall, correct and forget,
+restart, a held answer, and a requested summary or reminder, in the existing private chat.
+Per-feature procedures added in rounds 11–12 live in
+[live-tests-archive/](live-tests-archive/) with their scenario cases and recorded results;
+use one only when a change touches a scenario the journey does not cover.
+
 `journal-forget-property.test.ts` uses twelve reproducible generated histories to
 vary save/import order, correction/forget order, summary timing and restart
 placement. It checks every later model packet and summary model call, the
 faithfulness audit, summary supervisor and reviewer, and read-only probes for
 the removed values. The private-channel procedure is
-[forget-completeness-live-test.md](forget-completeness-live-test.md).
+[forget-completeness-live-test.md](live-tests-archive/forget-completeness-live-test.md).
 
 ### Recall precision corpus
 
@@ -631,7 +638,7 @@ measured model or live Telegram rate. The instruction asks the existing answer
 model to require exact offered evidence for a remembered detail while avoiding
 the stronger, unsupported claim that an omitted detail was never said. It adds
 no call or store. Justin's supervised probe is
-[hallucinated-memory-rate-live-test.md](hallucinated-memory-rate-live-test.md).
+[hallucinated-memory-rate-live-test.md](live-tests-archive/hallucinated-memory-rate-live-test.md).
 
 ```sh
 npx vitest run tests/preview/hallucinated-memory-rate.test.ts --configLoader=runner
@@ -660,7 +667,7 @@ provider, Telegram send, live root, or production secret is used. This is a
 format and answer-path compatibility check, not a live quality measurement.
 
 Before each live switch, run this focused test on the candidate tree, then use
-[journal-upgrade-live-test.md](journal-upgrade-live-test.md) to compare a
+[journal-upgrade-live-test.md](live-tests-archive/journal-upgrade-live-test.md) to compare a
 read-only copy of the real journal and its sidecars and to check the first live
 answer after installation. Keep the current reader available for recovery; do
 not assume an older binary can read a journal after a newer writer appends.
@@ -677,7 +684,7 @@ assertion. The requests at turns 501 and 1,001 are applied as fixture memory
 changes at summary frames 600 and 1,100. This test directly appends intake
 records; it does not exercise admission, draining, the safety gates, a model,
 or a Telegram send. Justin's supervised channel procedure is in
-[journal-memory-restart-soak-live-test.md](journal-memory-restart-soak-live-test.md).
+[journal-memory-restart-soak-live-test.md](live-tests-archive/journal-memory-restart-soak-live-test.md).
 
 ### Offline recall benchmark
 
@@ -704,7 +711,7 @@ npx vitest run tests/preview/memory-scale-10k.test.ts --configLoader=runner --te
 The synthetic fixture uses offline stubs and cannot establish semantic recall
 quality, provider latency or Telegram delivery. Its 10,000 facts are written
 only to a temporary journal that is removed after the run. Justin's bounded
-live check is [memory-scale-10k-live-test.md](memory-scale-10k-live-test.md).
+live check is [memory-scale-10k-live-test.md](live-tests-archive/memory-scale-10k-live-test.md).
 
 `packet-selection-quality.test.ts` is a separate labelled selection corpus:
 12 ordinary follow-up questions, 12 answer sources, six nearby but unrelated
@@ -717,7 +724,7 @@ original turns as false positives; the rolling summary and other packet fields
 remain in the measured byte total. The fixed corpus tests selection, not the
 semantic correctness of a model answer. A broad upcoming-plans neighbor
 checks that dated context remains available when it is requested. The live
-operator procedure is [packet-selection-quality-live-test.md](packet-selection-quality-live-test.md).
+operator procedure is [packet-selection-quality-live-test.md](live-tests-archive/packet-selection-quality-live-test.md).
 
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
 2000-turn private-chat histories. It uses the real encrypted preview journal,
@@ -752,7 +759,7 @@ clarifying question for ambiguous cases and copies only visible clauses for
 detailed cases. It does not measure semantic retrieval, answer quality from a real
 model, provider latency or a live Telegram path. For the supervised human
 check, use [recall-benchmark-live-test.md](recall-benchmark-live-test.md) and
-[overlapping-names-recall-live-test.md](overlapping-names-recall-live-test.md).
+[overlapping-names-recall-live-test.md](live-tests-archive/overlapping-names-recall-live-test.md).
 
 ### Real model recall sample
 
@@ -765,7 +772,7 @@ before opening a provider. Each question reserves once and invokes at most
 once; rejected and uncertain outcomes count as misses. The JSON report gives
 answer accuracy and the complete packet for every miss. This measures model
 answers; the offline benchmark above measures packet visibility. See
-[real-model-recall-sample-live-test.md](real-model-recall-sample-live-test.md)
+[real-model-recall-sample-live-test.md](live-tests-archive/real-model-recall-sample-live-test.md)
 for Justin's exact command and review steps.
 
 `realistic-recall-fixture.ts` defines a fictional 300-turn operator diary across
@@ -793,7 +800,7 @@ Original-turn recall now uses up to three immediately preceding accepted turns
 as its bounded antecedent. That lets a short interruption leave the
 named subject available for an elliptical follow-up; the model still judges
 meaning. The supervised operator procedure is
-[realistic-recall-live-test.md](realistic-recall-live-test.md).
+[realistic-recall-live-test.md](live-tests-archive/realistic-recall-live-test.md).
 
 `journal-agent.mjs` is a separate private-chat preview path. It keeps one encrypted,
 append-only local journal and one exclusive writer. At boot it replays the journal once;
@@ -809,7 +816,7 @@ still remains held with durable intake. Stop and unchanged spend caps say
 resending will not help. Reply size, conversation overflow, pending memory
 corrections and summary failures have separate wording. The precise cause
 stays in the journal. This read-only view makes no send. See the
-[supervised hold-reason script](hold-reason-plain-live-test.md).
+[supervised hold-reason script](live-tests-archive/hold-reason-plain-live-test.md).
 
 When the operator uses Telegram Reply, `replyTo` identifies the referenced
 message from an earlier accepted turn in the same private topic. It carries
@@ -817,7 +824,7 @@ that turn's redacted operator text and actual sent reply, each limited to
 1,200 characters, even if a summary covers the turn. An unknown or cross-topic
 target is labelled unavailable; embedded Telegram reply text is never used as
 journal evidence. Ordinary messages have no `replyTo` field. Inspect shows the
-reference. See the [supervised thread-reference script](thread-reference-live-test.md).
+reference. See the [supervised thread-reference script](live-tests-archive/thread-reference-live-test.md).
 Before preview-deploy, the desk runs the offline review-layer canary from the repository
 root:
 
@@ -832,7 +839,7 @@ or a summary uncommitted. The subscription
 route and Jev are stubbed, Telegram uses a loopback fixture, and no live call or live
 journal is involved. A summary-review refusal can invoke the existing bounded second
 attempt. After integration, Justin's supervised channel check is
-[review-layers-canary-live-test.md](review-layers-canary-live-test.md).
+[review-layers-canary-live-test.md](live-tests-archive/review-layers-canary-live-test.md).
 Each poll requests up to the remaining durable turn slots, capped at Telegram's
 100-update batch limit. The worker fsyncs every returned update in `update_id` order
 before it starts reply work. If a crash interrupts a batch, replay starts at the
@@ -851,7 +858,7 @@ checks the reference, while the original packet stays available for audit, inspe
 forgetting checks. The offline 37-turn growth fixture measures physical bytes by frame
 kind, then compacts and reopens the snapshot; run only
 `npx vitest run tests/preview/journal-growth.test.ts --configLoader=runner`.
-The supervised check is [journal-growth-live-test.md](journal-growth-live-test.md).
+The supervised check is [journal-growth-live-test.md](live-tests-archive/journal-growth-live-test.md).
 
 Rollback after compact frames have been written must retain the latest journal and
 the new decoder. Revert only the writer. The active journal must keep all later
@@ -869,7 +876,7 @@ the exact packet that `probe` prepares; a deterministic answer stub reads only
 selected source text. It does not measure a real model's answer quality. The
 same test checks that a contextual flower fact survives five incidental birthday
 matches in a summary-covered packet, alongside a quiet-history neighbor. The
-private-chat procedure is [recall-paraphrase-consistency-live-test.md](recall-paraphrase-consistency-live-test.md).
+private-chat procedure is [recall-paraphrase-consistency-live-test.md](live-tests-archive/recall-paraphrase-consistency-live-test.md).
 
 Each accepted update consumes one `maxTurns` slot, each subscription answer,
 summary or reply review reservation consumes one `maxCalls` slot, and each exact
@@ -894,7 +901,7 @@ absent; durable `status` and the run-end reason remain available. Cap-held
 questions keep their original intake and cursor. After an authorized raise,
 the ordinary drain answers each pending turn once; an UNKNOWN send intent is
 never retried. The supervised procedure is
-[cap-exhaustion-graceful-live-test.md](cap-exhaustion-graceful-live-test.md).
+[cap-exhaustion-graceful-live-test.md](live-tests-archive/cap-exhaustion-graceful-live-test.md).
 
 The launcher uses the existing `INSTAR_SECRET_PREVIEW_STORAGE_KEY` and
 `INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN` host bindings, production storage lease,
@@ -972,7 +979,7 @@ full, the reply remains held. The call cap does not close bounded intake; other
 messages are accepted durably and held until caps are raised. The turn and reply
 caps, stop, expiry, verified audience, and UNKNOWN-send fence still apply. A
 status request never changes pending memory decisions. For an operator-channel
-check, use [status-command-live-test.md](status-command-live-test.md).
+check, use [status-command-live-test.md](live-tests-archive/status-command-live-test.md).
 
 Each model call's packet carries `now`, the audience, the conversation history,
 a `capability` line (capped preview, answers and fixed morning reminders, no tools, memory is this trial's
@@ -1092,7 +1099,7 @@ existing dated-item states, even for a broad catch-up question. Closed commitmen
 stay out. The next ordinary reply has no `resume` field. The encrypted journal and
 existing prompt limits remain the sources and bounds; no timer or extra call runs.
 The injected-clock fixtures are in `journal-long-gap.test.ts`; Justin's supervised
-private-chat procedure is in [long-gap-resume-live-test.md](long-gap-resume-live-test.md).
+private-chat procedure is in [long-gap-resume-live-test.md](live-tests-archive/long-gap-resume-live-test.md).
 
 Every reply packet also carries `operator-digest`: the first 700 characters of the
 redacted desk source, its freshness label, the last three recorded runner launches,
@@ -1141,7 +1148,7 @@ questions can still show several people, and the model must judge identity.
 40 summaries and journal replay: 48/48 complete and 0/48 contaminated after
 the fix versus 6/48 complete and 14/48 contaminated at the frozen base. It does
 not measure a real model's answer quality or prove the live runner has this code.
-Justin's supervised check is [people-facts-through-summaries-live-test.md](people-facts-through-summaries-live-test.md).
+Justin's supervised check is [people-facts-through-summaries-live-test.md](live-tests-archive/people-facts-through-summaries-live-test.md).
 
 When the operator asks about a known person, `people` is also the short dated
 timeline for that person. Each entry carries its journal `sourceId`, whole source
@@ -1185,7 +1192,7 @@ uses a distinguishing name or detail, and answers directly when the question
 identifies one item. This judgment uses the existing reply call, source messages
 and correction/forgetting projection. The focused offline fixture checks prompt
 wiring, source visibility and the reply path. Justin's real-model check is
-[ambiguous-recall-live-test.md](ambiguous-recall-live-test.md).
+[ambiguous-recall-live-test.md](live-tests-archive/ambiguous-recall-live-test.md).
 
 ### Short follow-up about the last named person
 
@@ -1198,7 +1205,7 @@ the model resolve a short follow-up such as “and her birthday?”; the model s
 judges the reference and asks when it is unclear. An unsupported selection or a
 previous turn without a selected name supplies no cue; an older name is not reused.
 The runner adds no call or send; `inspect` exposes the saved cue and a read-only
-next-message probe. See [follow-up-question-live-test.md](follow-up-question-live-test.md)
+next-message probe. See [follow-up-question-live-test.md](live-tests-archive/follow-up-question-live-test.md)
 for Justin's supervised private-chat test.
 
 ### People attributes over time
@@ -1225,7 +1232,7 @@ older event into a current one. Correction and forgetting filter affected
 events without erasing their journal evidence. Forgetting a newer value keeps
 its predecessor historical; the current value remains unknown until a surviving
 newer report supports it. No new store, call or service is
-used. See [people-attribute-history-live-test.md](people-attribute-history-live-test.md)
+used. See [people-attribute-history-live-test.md](live-tests-archive/people-attribute-history-live-test.md)
 for Justin's supervised check after integration.
 
 ### Remembering commitments
@@ -1250,7 +1257,7 @@ early or unreceipted send does not.
 Promises to check, send, or perform external work remain open until the verified operator
 reports completion or withdrawal through the existing summary closure path. No bare claim
 of having checked the world counts as evidence. For the supervised operator-channel check,
-see [agent-commitment-live-test.md](agent-commitment-live-test.md).
+see [agent-commitment-live-test.md](live-tests-archive/agent-commitment-live-test.md).
 
 The same summary call also lists what the operator asked the agent to remember or do
 (`in: "message"`, quoted from their message) and what the agent said in its own reply that
@@ -1320,7 +1327,7 @@ the runner; the packet byte limit, model route and send path are unchanged. The
 fixture seeds the 5,000 synthetic turns in memory and checks each signal both
 present and absent. It does not measure journal write or replay time.
 Justin's private-chat procedure is
-[packet-pressure-value-live-test.md](packet-pressure-value-live-test.md).
+[packet-pressure-value-live-test.md](live-tests-archive/packet-pressure-value-live-test.md).
 
 When a later complete quoted request or promise repeats an active one, the summary
 projection keeps one open item and attaches the later source message to it. The
@@ -1347,7 +1354,7 @@ excluding closed, forgotten and corrected-away clauses. A byte bound may show
 fewer items; the reply counts omitted active items. This list covers explicit
 saved memory in the preview journal, not every raw conversation fact. The
 ordinary reply check, secret wall, stop, cap, durable intent and UNKNOWN fence
-still apply. See the [supervised memory-list script](memory-list-live-test.md).
+still apply. See the [supervised memory-list script](live-tests-archive/memory-list-live-test.md).
 
 A direct operator correction of the agent's answer uses the encrypted journal memory
 decision. A recent actual send intent is offered even when a short correction shares no
@@ -1357,7 +1364,7 @@ quoted from the operator's correction. Validation rejects a clause found only in
 the operator's question or an unsent candidate. Later packets withhold that answer,
 keep the original question, and carry the corrected clause. Invalid decisions stay
 pending under the existing bounded path. Source-fact corrections omit `in`.
-The [supervised answer-correction script](answer-correction-live-test.md) is for the
+The [supervised answer-correction script](live-tests-archive/answer-correction-live-test.md) is for the
 approved private runner; offline tests do not claim a live Telegram result.
 
 An authenticated operator statement in the narrow form `my/the SUBJECT is VALUE`
@@ -1384,7 +1391,7 @@ source; other quotation forms can still produce a candidate. The signal alone
 never writes a memory change. An imported earlier claim cannot authorize an
 automatic update. If the prompt bound cannot hold the signal, it yields before
 accepted intake or reply can be blocked. `inspect`
-shows any signal in the persisted reply packet. The [live test for Justin](fact-update-without-correction-live-test.md)
+shows any signal in the persisted reply packet. The [live test for Justin](live-tests-archive/fact-update-without-correction-live-test.md)
 exercises the private preview chat after the desk lands this revision.
 
 A direct correction or forget request from the bound Telegram operator can be judged in the existing
@@ -1425,7 +1432,7 @@ does not identify a safe boundary between subject and value. Both use the
 accepted journal change rather than an
 unverified model acknowledgement and follow the existing reply check and send
 fences. The correction acknowledgement's old clause is withheld from later
-model packets. See [correction-ack-diff-live-test.md](correction-ack-diff-live-test.md)
+model packets. See [correction-ack-diff-live-test.md](live-tests-archive/correction-ack-diff-live-test.md)
 for Justin's private-chat procedure.
 
 ### Undo the last memory change
@@ -1446,7 +1453,7 @@ evidence or reaches back to an earlier action after an undo. `status.undos` and
 shows the next packet without a forgotten clause. An ineligible proposal gets a
 truthful checked reply through the usual send path. The existing call, reply,
 stop, secret and UNKNOWN-send bounds remain in force. For Justin's supervised
-private-channel procedure, see [undo-memory-live-test.md](undo-memory-live-test.md).
+private-channel procedure, see [undo-memory-live-test.md](live-tests-archive/undo-memory-live-test.md).
 ### Edited Telegram messages
 
 The journal runner explicitly polls for both `message` and `edited_message`. An edit from the
@@ -1468,7 +1475,7 @@ edit within the existing bounded attempts, the journal records it as undecided
 and later replies see both redacted revisions with an uncertainty instruction.
 While that decision is pending, later ordinary replies are held behind the
 earlier turn. No second send route is created. Revisions consume the existing intake and model-call caps. The journal and writer
-remain machine-local. See [message-edit-live-test.md](message-edit-live-test.md) for the
+remain machine-local. See [message-edit-live-test.md](live-tests-archive/message-edit-live-test.md) for the
 supervised private-channel test.
 
 ### Conflicting active memories (preview)
@@ -1479,7 +1486,10 @@ against accepted verified-operator turns or selected channel imports, and reject
 source already superseded by a correction. A valid new pair produces one plain question
 quoting both claims. The answer frame records the pair before the checked send doorway;
 the exact send intent marks the question as asked, including an UNKNOWN Telegram outcome.
-A later proposal of the same pair does not ask it again.
+A later proposal of the same pair does not ask it again. A recorded pair whose question
+was never sent (for example, a held reply carried it) is offered to later answers as data
+with `asked:false`; the model asks it only when the current message concerns it, so an
+unrelated question still gets its ordinary answer.
 
 The next direct answer from the verified operator can choose either recorded source.
 The same answer frame durably records the choice and supersedes the other exact clause
@@ -1489,7 +1499,7 @@ source or winner, and an unaccepted sender cannot resolve it. The model decides 
 inside these exact evidence bounds; this preview does not claim a semantic conflict
 detector that can discover a pair absent from the bounded packet. No extra model call,
 store, scheduler, or outbound path is added. Follow
-[conflicting-memory-live-test.md](conflicting-memory-live-test.md) for Justin's supervised
+[conflicting-memory-live-test.md](live-tests-archive/conflicting-memory-live-test.md) for Justin's supervised
 private-chat procedure.
 
 Successive corrections may quote a shorter clause from the immediately prior correction turn.
@@ -1498,7 +1508,7 @@ The packet retires that prior replacement by its source link, while the journal 
 corrected value ending in `1` does not suppress a later value ending in `10` during projection
 or summary validation. The ten-correction restart and isolated compaction regression is in
 `journal-memory-correction.test.ts`; Justin's supervised procedure is
-[correction-chain-restart-live-test.md](correction-chain-restart-live-test.md).
+[correction-chain-restart-live-test.md](live-tests-archive/correction-chain-restart-live-test.md).
 
 ### Dated memory (preview)
 
@@ -1557,7 +1567,7 @@ Its answer stub lists only packet entries and compares them with an independent 
 oracle, reporting old first-ten misses, current misses, false positives and truncation.
 This is packet and stub-answer evidence, not a real-model accuracy claim. A crowded-day
 neighbor proves the 32-item limit is disclosed. Run only that focused file with Vitest;
-Justin's supervised real-model spot-check is [dated-items-soak-live-test.md](dated-items-soak-live-test.md).
+Justin's supervised real-model spot-check is [dated-items-soak-live-test.md](live-tests-archive/dated-items-soak-live-test.md).
 
 For a validated dated item, the immediate reply keeps the substantive answer and adds its absolute
 `YYYY-MM-DD` day and zone; an unresolved time remains explicit beside any model clarification.
@@ -1587,7 +1597,7 @@ holding reply records none. The intent is fsynced before Telegram dispatch, so
 even an UNKNOWN send cannot repeat the clause after replay. `status.mentionedDates`
 counts these durable intent markers. This is a reply aside, never an unprompted
 reminder or scheduled action. For the supervised private-chat procedure, see
-[upcoming-date-mention-live-test.md](upcoming-date-mention-live-test.md).
+[upcoming-date-mention-live-test.md](live-tests-archive/upcoming-date-mention-live-test.md).
 
 ### Separately granted morning reminders
 
@@ -1597,7 +1607,7 @@ With it, the runner can send one fixed, bounded morning batch per local day and 
 settled dated items, within the same reply cap and secret check. It fsyncs a send intent
 before dispatch. A send with unknown outcome consumes its slot and is never retried.
 Forgotten or corrected clauses and unsettled memory requests hold or exclude reminders.
-See [dated-reminder-live-test.md](dated-reminder-live-test.md).
+See [dated-reminder-live-test.md](live-tests-archive/dated-reminder-live-test.md).
 ### Host clock corrections
 
 The journal launcher samples wall time through one process clock that also advances with
@@ -1612,7 +1622,7 @@ message timestamp remains the source for interpreting an operator's relative dat
 intake timestamp is its fallback. The journal remains machine-local, with no new service or
 store. A host reboot while its wall clock is still wrong cannot establish elapsed downtime from
 the local journal alone; the recorded floor prevents regression but does not claim an external
-time authority. The supervised exercise is [clock-jump-live-test.md](clock-jump-live-test.md).
+time authority. The supervised exercise is [clock-jump-live-test.md](live-tests-archive/clock-jump-live-test.md).
 
 
 ### Exact numbers and units
@@ -1628,7 +1638,7 @@ summary call receives the same exactness instruction. No new store, call or
 notification is added. The cue is only a retrieval signal; it does not decide
 what the operator meant or authorize a send. The existing correction/forgetting
 projection withholds superseded quotes. A real-model answer still needs the
-supervised check in [numbers-and-units-live-test.md](numbers-and-units-live-test.md).
+supervised check in [numbers-and-units-live-test.md](live-tests-archive/numbers-and-units-live-test.md).
 
 ### How the operator likes answers
 
@@ -1656,7 +1666,7 @@ memory decision path; one-word-style clauses with one significant search term ca
 be stored as reply preferences without relaxing factual correction validation.
 Changing this bound prompt requires a matching preview activation before the runner
 can start. The supervised check is
-[reply-length-preference-live-test.md](reply-length-preference-live-test.md).
+[reply-length-preference-live-test.md](live-tests-archive/reply-length-preference-live-test.md).
 
 Live script for Justin in the existing private preview chat, after the desk lands this
 revision and resumes the one runner on its existing root:
@@ -1707,7 +1717,7 @@ requests still held. On the frozen base, the first omitted array produced a
 the ordinary-reply decision fix, 0/18 were held and two subscription reviews
 passed. This is an offline reliability measure, not a live hold-rate estimate or
 a model-quality result. The supervised operator check is
-[hold-rate-corpus-live-test.md](hold-rate-corpus-live-test.md).
+[hold-rate-corpus-live-test.md](live-tests-archive/hold-rate-corpus-live-test.md).
 
 
 Live script for Justin in the existing private preview chat, after the desk lands this revision
@@ -1856,7 +1866,7 @@ response above its ceiling.
 The same numbers are in the journal-derived `self` text. Old journal records
 without explicit token maxima replay at the then-current prompt ceiling and
 route output maximum. Unattributed imported calls from the older single-answer
-preview count as UNKNOWN answers at those maxima. See [summary-cost-accounting-live-test.md](summary-cost-accounting-live-test.md)
+preview count as UNKNOWN answers at those maxima. See [summary-cost-accounting-live-test.md](live-tests-archive/summary-cost-accounting-live-test.md)
 for the supervised operator check.
 
 The command takes the exclusive writer lease, refuses UNKNOWN model calls,
@@ -1933,7 +1943,7 @@ Later packets use an explicit omission marker for that turn. A reply that exceed
 Telegram's 4096-byte or character limit after HTML escaping also gets one short
 notice through the existing intent fence, with no prefix of the answer sent.
 Telegram split parts remain distinct durable updates. See
-[long-message-live-test.md](long-message-live-test.md) for the live trial.
+[long-message-live-test.md](live-tests-archive/long-message-live-test.md) for the live trial.
 
 
 When a summary covers earlier turns, a **memory sentinel**
@@ -1981,7 +1991,7 @@ answers from in-range operator evidence, states each reported date, and treats
 a bounded miss as inconclusive. The
 ordinary Jev/full-context reply check and send intent still gate the answer.
 No index, call, store, service or new send route is added. See
-[recall-by-date-live-test.md](recall-by-date-live-test.md) for Justin's private
+[recall-by-date-live-test.md](live-tests-archive/recall-by-date-live-test.md) for Justin's private
 chat procedure.
 
 **AFTER the reply:** a bounded rolling summary may use a separately reserved
@@ -2002,7 +2012,7 @@ and synchronous overflow fallback remain in force. The offline
 with pinned briefing and a near-limit desk report: all 40 receive replies with
 a faithful summary stub; a rejected summary leaves the overflowing turn visibly
 held with its original intake. Justin's private-chat procedure is
-[long-conversation-headroom-live-test.md](long-conversation-headroom-live-test.md).
+[long-conversation-headroom-live-test.md](live-tests-archive/long-conversation-headroom-live-test.md).
 
 An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
 It is never retried at its recorded update frontier. After 60 seconds of actual elapsed
@@ -2099,7 +2109,7 @@ an important new item can still lose it if the faithfulness judge misses it.
 Original turns remain in the encrypted journal, and all existing summary, call,
 stop and send bounds apply. This preview remains machine-local under its one
 writer. Justin's supervised procedure is in
-[summary-drift-long-live-test.md](summary-drift-long-live-test.md).
+[summary-drift-long-live-test.md](live-tests-archive/summary-drift-long-live-test.md).
 
 The `recall-from-summary-only.test.ts` corpus carries four ordinary operator
 facts, including an exact dated event, through 32 summary generations and a
@@ -2111,7 +2121,7 @@ the superseded date is absent and the corrected date retains its original source
 label after replay. This is offline packet visibility with a deterministic model
 and faithfulness stub, not a claim about live model answer quality. Justin's
 private-chat procedure is in
-[recall-from-summary-only-live-test.md](recall-from-summary-only-live-test.md).
+[recall-from-summary-only-live-test.md](live-tests-archive/recall-from-summary-only-live-test.md).
 
 
 ### One memory across conversations
@@ -2328,7 +2338,7 @@ invocation policy digest. Its Claude CLI process gets that ceiling through
 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`; the fixed arguments have no per-call thinking
 control. Changing the CLI effort arguments would need a new activation.
 
-Desk live check for this compact path: [reviewer-compact-call-live-test.md](reviewer-compact-call-live-test.md).
+Desk live check for this compact path: [reviewer-compact-call-live-test.md](live-tests-archive/reviewer-compact-call-live-test.md).
 
 
 `status` and `inspect` also expose `lastReplyReview`: its result state and
@@ -2336,7 +2346,7 @@ Desk live check for this compact path: [reviewer-compact-call-live-test.md](revi
 pinned JSON-result invocation does not expose thinking blocks, so
 `diagnostics.thinkingPresent` is `unobservable`, never a guessed yes or no.
 The output-token cap remains 2048. See
-[reviewer-thinking-bound-live-test.md](reviewer-thinking-bound-live-test.md)
+[reviewer-thinking-bound-live-test.md](live-tests-archive/reviewer-thinking-bound-live-test.md)
 for Justin's bounded live check of the next review hold.
 
 `status.replyTimings` reports per-update answer, Jev, fallback and send times
@@ -2346,7 +2356,7 @@ measurements come from the existing encrypted journal; old turns have nulls.
 Send time rides on the durable `sent` receipt, so an UNKNOWN or failed attempt
 has a null send time; older journals' separate `send-timing` frames are still
 read. These are runner wall times, not Telegram delivery times. For Justin's supervised check,
-see [reply-check-timing-live-test.md](reply-check-timing-live-test.md).
+see [reply-check-timing-live-test.md](live-tests-archive/reply-check-timing-live-test.md).
 
 Desk one-call connectivity check, after setting the host binding from the vault:
 
@@ -2530,7 +2540,7 @@ describe the same memory scope: encrypted local journal records persist across
 runner restarts and topics, are available to this preview during its active
 trial, and can be corrected or forgotten by a direct verified operator request.
 The original audit record remains after withholding an old claim from later
-packets. See [memory-self-description-live-test.md](memory-self-description-live-test.md)
+packets. See [memory-self-description-live-test.md](live-tests-archive/memory-self-description-live-test.md)
 for Justin's supervised check of the answer and held-notice behavior.
 
 ### Dark Jev step check
@@ -2607,7 +2617,7 @@ item's chain proves the journaled import, while its sender metadata retains the
 fixture's stated trust limit. The property test creates varied correction,
 merge, summary and snapshot histories, reopens each journal, and breaks links
 to confirm the audit fails. Justin's supervised procedure is
-[correction-provenance-audit-live-test.md](correction-provenance-audit-live-test.md).
+[correction-provenance-audit-live-test.md](live-tests-archive/correction-provenance-audit-live-test.md).
 
 ### Build handoff on one journal
 
@@ -2624,7 +2634,7 @@ and the old read-only status command through
 `PREVIEW_OLD_LAUNCHER=/ABSOLUTE/OLD/tests/preview/journal-agent.mjs`. Archive
 `tests/preview`, `src` and `scripts` from that commit for the old tree. Without
 those settings it tests process handoff on the checked-out build. The
-supervised trial procedure is [journal-handoff-live-test.md](journal-handoff-live-test.md).
+supervised trial procedure is [journal-handoff-live-test.md](live-tests-archive/journal-handoff-live-test.md).
 
 ### Journal reopen scaling
 
@@ -2641,7 +2651,7 @@ No provider, Telegram endpoint, live root or live key is used.
 node --expose-gc --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-reopen-benchmark.mjs 1000
 node --expose-gc --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-reopen-benchmark.mjs 10000
 node --expose-gc --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-reopen-benchmark.mjs 50000
-npx vitest run tests/preview/journal-reopen-scaling.test.ts --configLoader=runner
+INSTAR_PREVIEW_SCALE=1 npx vitest run tests/preview/journal-reopen-scaling.test.ts --configLoader=runner
 ```
 
 The explicit 10k reopen bounds are **under 2,000 ms** for both raw and compacted
@@ -2664,7 +2674,24 @@ the summary path iterated only held turns. Compaction's native file writes and
 snapshot verification remain the largest measured costs at 50k. This is a
 machine-local preview with an existing 20-turn live cap; the synthetic sizes
 exercise long-run growth and do not expand that cap. Justin's host procedure is
-[journal-reopen-scaling-live-test.md](journal-reopen-scaling-live-test.md).
+[journal-reopen-scaling-live-test.md](live-tests-archive/journal-reopen-scaling-live-test.md).
+
+### Scale checks
+
+The 10k reopen bound above, the 10,000-fact recall scale (`memory-scale-10k.test.ts`) and the
+100-restart memory soak (`journal-memory-restart-soak.test.ts`) generate thousands of fsynced
+turns. They are explicit scale evidence, not per-edit checks: ordinary runs skip them, and a
+change to the journal, retrieval or compaction, or a release validation, runs them with
+
+```sh
+INSTAR_PREVIEW_SCALE=1 npx vitest run --configLoader runner tests/preview/journal-reopen-scaling.test.ts tests/preview/memory-scale-10k.test.ts tests/preview/journal-memory-restart-soak.test.ts
+```
+
+Their thresholds are unchanged. The small held-turn replay case in the reopen file stays in
+every run. `journal-summary-crash.test.ts` kills the process at each distinct durable state
+of a summary and a reviewed reply; a model call's return, or the point just before a frame
+that directly follows another frame, leaves the same bytes on disk as the point before it
+and is not run twice.
 
 ### Reply grounding audit
 
@@ -2732,7 +2759,7 @@ twelve dated original turns, with an omission count, beside ordinary recall and
 the rolling summary. The calendar window is a candidate for the model to judge;
 ambiguous or conflicting periods use ordinary recall. `inspect` exposes the
 same bounded period evidence. Existing prompt, review, secret, cap, stop and
-send-intent gates apply. See [week-summary-request-live-test.md](week-summary-request-live-test.md).
+send-intent gates apply. See [week-summary-request-live-test.md](live-tests-archive/week-summary-request-live-test.md).
 
 ### Summary and reply-review restart continuity
 
@@ -2749,4 +2776,4 @@ npx vitest run tests/preview/journal-summary-crash.test.ts --configLoader=runner
 ```
 
 Justin's supervised private-chat procedure is
-[crash-during-summary-live-test.md](crash-during-summary-live-test.md).
+[crash-during-summary-live-test.md](live-tests-archive/crash-during-summary-live-test.md).

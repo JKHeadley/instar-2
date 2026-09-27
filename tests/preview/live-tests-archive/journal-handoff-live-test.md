@@ -3,7 +3,7 @@
 Run this only on a newly reviewed, isolated private-chat trial with its own bot,
 activation, finite caps and root. Keep the frozen live runner and its journal
 untouched. The desk records the exact old and candidate build commit IDs and uses
-the `journal-agent.mjs run` command in [README.md](README.md#structural-journal-runner-rounds-1013)
+the `journal-agent.mjs run` command in [README.md](../README.md#structural-journal-runner-rounds-1013)
 with the same trial root, activation, model, caps and storage-key binding for each
 start. The candidate must keep the existing invocation policy digest inputs.
 
@@ -26,7 +26,7 @@ start. The candidate must keep the existing invocation policy digest inputs.
    one physical Telegram send per update, including the interrupted update.
 4. Stop the trial candidate and wait for its lease to exit. Make a private copy
    of its quiescent journal, mark that copy `.journal-compaction-clone`, and run
-   [journal-compaction-probe.mjs](journal-compaction-probe.mjs) on the copy with
+   [journal-compaction-probe.mjs](../journal-compaction-probe.mjs) on the copy with
    the same host storage-key binding. Require `result: "verified"`. Compare the
    copied projection with the source `status`; retain both before and after byte
    counts. While the isolated trial stays stopped, copy the verified compacted

@@ -1,7 +1,7 @@
 # Justin's private-chat morning reminder test
 
 Use only the separately authorized, isolated **journal runner** trial described in
-the [Structural journal runner](README.md#structural-journal-runner-rounds-1013)
+the [Structural journal runner](../README.md#structural-journal-runner-rounds-1013)
 section. The trial grant must name initiated reminders to Justin's verified
 private chat and its topics. Keep the approved bot, root, activation, model,
 expiry, limits and secret bindings. This script does not authorize a new trial.
