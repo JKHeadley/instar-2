@@ -234,6 +234,56 @@ it('escalates an interrupted Jev check without repeating Jev after restart', asy
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('reviews every rule after reopening a pre-upgrade mixed Jev verdict', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-legacy-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    const intake = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('model must not run'); }, checkOutbound: () => {},
+      send: async () => { throw Error('send must not run'); } });
+    intake.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'hello' } }]);
+    const id = first.view.order[0]!.id;
+    const prompt = prepareJournalEnvelope({ question: 'hello',
+      context: JSON.stringify({ audience: { operator: 'verified' }, history: [] }), id },
+    'claude-sonnet-4-5', 'grant:preview', 1000);
+    first.append({ kind: 'reserve', id, prompt, at: 1000 });
+    first.append({ kind: 'answer', id, text: 'Please handle this yourself.', state: 'complete', at: 1000 });
+    first.append({ kind: 'reply-jev-reserve', id, at: 1000 });
+    // Base-format mixed verdicts retained uncertain scores but only positive rule IDs.
+    first.append({ kind: 'reply-check', id, result: { verdict: 'violation', ruleIds: ['raw_path'],
+      confidence: 0.91, path: 'jev', latencyMs: 170,
+      scores: Object.fromEntries(Object.keys(REPLY_RULES).map(rule =>
+        [rule, rule === 'raw_path' ? 0.91 : rule === 'parks_on_user' ? 0.5 : 0.01])) as Record<keyof typeof REPLY_RULES, number> }, at: 1000 });
+    first.close();
+
+    const second = openPreviewJournal(path, key);
+    let sent = '', reviews = 0;
+    const recovered = createJournalWorker(second, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
+      send: async input => { sent = input.expectedText; return 7; },
+      replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('Jev repeated'); },
+        escalate: async (text, _id, originalPrompt, ruleIds) => {
+          reviews++;
+          expect(ruleIds).toEqual(Object.keys(REPLY_RULES));
+          expect(JSON.parse(replyReviewContext(originalPrompt!, text))).toMatchObject({
+            audience: { operator: 'verified' }, operatorMessage: 'hello' });
+          return { verdict: 'violation', ruleIds: ['parks_on_user'], confidence: null, latencyMs: 500 };
+        } } });
+    await recovered.drain();
+    expect(reviews).toBe(1);
+    expect(sent).toBe(HOLDING_REPLY);
+    expect(second.view.order[0]?.intent).toBe(HOLDING_REPLY);
+    expect(second.view.lastReplyCheck?.ruleIds).toEqual(['parks_on_user']);
+    expect(second.view.calls).toBe(2);
+    expect(second.view.jevChecks).toBe(1);
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('does not repeat an interrupted paid review and holds the candidate instead of sending it unchecked', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-crash-')));
   const path = join(root, 'journal.encrypted');
