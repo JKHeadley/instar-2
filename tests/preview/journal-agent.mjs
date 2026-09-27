@@ -666,11 +666,16 @@ async function main() {
     runs = readRuns(runsPath);
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
-    let failedPolls = 0;
-    const pollFailure = async () => {
+    let failedPolls = 0, conflictedPolls = 0;
+    const pollFailure = async conflict => {
       failedPolls++;
-      if (failedPolls >= 20) { endReason = 'Telegram polling failed 20 times in a row'; return false; }
-      const until = Date.now() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
+      conflictedPolls = conflict ? conflictedPolls + 1 : 0;
+      if (conflictedPolls >= 5 || failedPolls >= 20) {
+        endReason = conflict ? 'Telegram polling conflict after 5 attempts' : 'Telegram polling failed 20 times in a row';
+        process.exitCode = 1;
+        return false;
+      }
+      const until = Date.now() + Math.min(conflict ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
       while (!workerStop.value && !existsSync(stopPath) && Date.now() < until)
         await delay(Math.min(100, until - Date.now()));
       return true;
@@ -730,14 +735,17 @@ async function main() {
       try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
         body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5) },
         timeoutMs: 12000 }, token()); }
-      catch { if (!await pollFailure()) break; continue; }
+      catch { if (!await pollFailure(false)) break; continue; }
       await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
-      if (result.kind !== 'response' || result.status !== 200) { if (!await pollFailure()) break; continue; }
+      if (result.kind !== 'response' || result.status !== 200) {
+        if (!await pollFailure(result.kind === 'response' && result.status === 409)) break;
+        continue;
+      }
       let updates;
-      try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure()) break; continue; }
-      if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
-      failedPolls = 0;
+      try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure(false)) break; continue; }
+      if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
+      failedPolls = 0; conflictedPolls = 0;
       worker.intake(updates.result); await worker.drain(); await worker.sendReminders(); summarizeLater();
       if (await stopAtCap()) break;
 

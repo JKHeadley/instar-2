@@ -641,6 +641,18 @@ subscription invocation. An exact send intent precedes the one physical Telegram
 An intent without a durable Telegram result is **UNKNOWN** and is never sent again;
 the next unrelated turn can proceed. Telegram API acceptance is not human receipt.
 
+The process-level cutover regression is `journal-cutover.test.ts`, using
+`journal-cutover-harness.mjs` to launch real runner children with test-only physical
+Telegram and model ports. It records a canary long-poll overlap, a bounded 409
+launch refusal, canary shutdown, and restart on the same live journal. A pending
+update is answered once after restart, and a further restart cannot resend it.
+The runner records the conflict in `runs.jsonl` and exits nonzero after five
+consecutive 409 responses; a short conflict can recover within that bound.
+Other poll failures retain the existing 20-attempt bound and also exit nonzero
+when exhausted. The September 27 frozen15 deploy log recorded a canary reply,
+then zero live runner processes; its proposed long-poll cause was not confirmed
+by child diagnostics. See [the supervised live cutover script](journal-cutover-live-test.md).
+
 `status.holds` and self-state show one fixed plain notice per held reply. A
 safety-check outage says a new message may work after recovery; the original
 still remains held with durable intake. Stop and unchanged spend caps say
