@@ -98,6 +98,29 @@ it('fsyncs the exact HTML body and expected visible text before dispatch', async
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
+it.each([
+  ['PREVIEW: answer', 'PREVIEW — answer'],
+  ['PREVIEW — answer', 'PREVIEW — answer'],
+  ['answer', 'PREVIEW — answer'],
+  ['PREVIEW: PREVIEW: answer', 'PREVIEW — PREVIEW: answer'],
+  ['PREVIEWING answer', 'PREVIEW — PREVIEWING answer'],
+])('adds one runner marker to model answer %s', async (answer, expected) => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let checked = '', sent = '';
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => answer, checkOutbound: text => { checked = text; },
+      send: async input => { sent = input.expectedText; return 5; } });
+    worker.intake([update(1)]); await worker.drain();
+    expect(journal.view.order[0]?.answer).toBe(answer);
+    expect(journal.view.order[0]?.intent).toBe(expected);
+    expect(checked).toBe(expected);
+    expect(sent).toBe(expected);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('persists the exact prepared model input before invoking its route', async () => {
   const root = origin();
   try {

@@ -770,7 +770,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // An invalid memory acknowledgement stays rejected even after a later summary settles it.
         let reply = turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
-          : `PREVIEW — ${turn.answer ?? UNKNOWN_ANSWER_NOTICE}`;
+          : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`;
         if (ports.replyCheck) {
           const previous = turn.replyChecks?.at(-1);
           // Only a completed PASS releases the candidate; an unavailable or interrupted

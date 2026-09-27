@@ -1032,3 +1032,6 @@ durable check order, and the holding reply without network access.
 Memory shows what was actually sent: history, recall, commitments and the
 coherence check read the send intent (the checked reply or the holding reply),
 never an unsent candidate.
+
+For the one-marker reply formatting check in the approved private chat, follow
+[marker-dup-live-test.md](marker-dup-live-test.md).
