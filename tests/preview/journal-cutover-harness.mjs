@@ -9,7 +9,7 @@ const key = Buffer.alloc(32, 19).toString('hex');
 const token = '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const pause = ms => new Promise(done => setTimeout(done, ms));
 
-export function cutoverHarness(world, profile) {
+export function cutoverHarness(world, profile, childEnv = {}) {
   const directory = world.directory, marker = join(directory, 'long-poll-overlap');
   const activation = world.activation();
   const activationPath = join(directory, 'cutover-activation.json');
@@ -23,8 +23,9 @@ export function cutoverHarness(world, profile) {
     '--expires-at', String(activation.expiresAt), '--activation-record', activationPath,
     '--login-profile', profilePath, '--model', world.model, '--max-cycles', String(cycles),
     '--max-poll-seconds', '1'];
-  const env = role => ({ ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
+  const env = role => ({ ...process.env, ...childEnv, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
     INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: token,
+    INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: '',
     INSTAR_PREVIEW_CUTOVER_WORLD: directory, INSTAR_PREVIEW_CUTOVER_ROLE: role });
   const canaryRoot = join(directory, 'cutover-canary');
   const liveRoot = join(directory, 'cutover-live');

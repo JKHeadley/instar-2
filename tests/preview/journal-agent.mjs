@@ -25,6 +25,7 @@ import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
+import { exhaustedPollReason } from './poll-failure-reason.mjs';
 
 const importSource = (journal, state, source, stopped) => {
   try {
@@ -670,8 +671,9 @@ async function main() {
     const pollFailure = async conflict => {
       failedPolls++;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
-      if (conflictedPolls >= 5 || failedPolls >= 20) {
-        endReason = conflict ? 'Telegram polling conflict after 5 attempts' : 'Telegram polling failed 20 times in a row';
+      const reason = exhaustedPollReason(failedPolls, conflictedPolls);
+      if (reason) {
+        endReason = reason;
         process.exitCode = 1;
         return false;
       }

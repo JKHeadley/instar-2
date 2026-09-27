@@ -1,8 +1,9 @@
 // @ts-nocheck -- process-level fixture; physical ports are replaced by its test loader.
 import { expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
+import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 
 it('refuses a recorded long-poll overlap, then restarts and answers once from durable intake', async () => {
@@ -57,4 +58,40 @@ it('recovers a short Telegram poll conflict within the same launch', () => {
   expect(result.status).toBe(0);
   expect(harness.calls().filter(call => call.kind === 'poll' && call.role === 'live')).toHaveLength(3);
   expect(JSON.parse(harness.status().stdout)).toMatchObject({ cursor: 0, turns: 0, replies: 0 });
+});
+
+it('reports the exhausted twenty-poll limit after mixed failures', () => {
+  let failedPolls = 0, conflictedPolls = 0;
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    const conflict = attempt === 20;
+    failedPolls++;
+    conflictedPolls = conflict ? conflictedPolls + 1 : 0;
+    expect(exhaustedPollReason(failedPolls, conflictedPolls)).toBe(
+      attempt === 20 ? 'Telegram polling failed 20 times in a row' : null);
+  }
+  expect(exhaustedPollReason(5, 5)).toBe('Telegram polling conflict after 5 attempts');
+});
+
+it('keeps an inherited TypeSafe key out of the offline child', () => {
+  const world = successiveWorld();
+  const attemptedFetch = join(world.directory, 'external-fetch-attempted');
+  const preload = join(world.directory, 'reject-fetch.mjs');
+  writeFileSync(preload, `import { writeFileSync } from 'node:fs';
+globalThis.fetch = async () => {
+  writeFileSync(${JSON.stringify(attemptedFetch)}, 'called');
+  throw Error('external fetch refused');
+};
+`);
+  const harness = cutoverHarness(world, offlineProfile, {
+    INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'dummy-inherited-key',
+    NODE_OPTIONS: `--import=${preload}` });
+  harness.setUpdates([{ update_id: 1, message: { message_id: 101,
+    from: { id: Number(world.configuration.operatorSenderId), is_bot: false, first_name: 'Justin' },
+    chat: { id: Number(world.configuration.chatId), type: 'private' },
+    date: Math.floor(Date.now() / 1000), text: 'What is the marker? Juniper.' } }]);
+  const result = harness.launchLive(2);
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+  expect(existsSync(attemptedFetch)).toBe(false);
+  expect(harness.calls().filter(call => call.kind === 'send')).toHaveLength(1);
 });
