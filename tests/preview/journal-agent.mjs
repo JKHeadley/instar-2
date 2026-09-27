@@ -80,6 +80,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   dated: packet.dated ?? [], moreDated: packet.moreDated ?? 0,
   datedPending: packet.datedPending ?? [], moreDatedPending: packet.moreDatedPending ?? 0,
   preferences: packet.preferences ?? [],
+  openConflicts: packet.openConflicts ?? [],
   recalled: packet.recalled?.length ?? 0, history: packet.history?.length ?? 0,
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
@@ -140,6 +141,10 @@ async function main() {
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
       withheld: withheldView(view.view),
+      conflicts: view.view.conflicts.map(item => ({ askedByUpdate: view.view.turns.get(item.askedBy)?.update,
+        asked: item.asked, answeredByUpdate: item.answeredBy ? view.view.turns.get(item.answeredBy)?.update : null,
+        first: { source: item.first.source, quote: redact(item.first.quote).text },
+        second: { source: item.second.source, quote: redact(item.second.quote).text }, winner: item.winner ?? null })),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
