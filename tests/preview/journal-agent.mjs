@@ -73,8 +73,8 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
       ...(digest ? [awayDigestSource(digest)] : [])];
   };
 };
-/** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
-const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };
+/** The operator's IANA time zone; an unknown zone refuses. */
+const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Only the recall-relevant parts of a packet, never sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null,
   summarySourceKind: packet.summary?.sourceKind ?? null,

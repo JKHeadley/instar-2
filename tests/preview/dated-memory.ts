@@ -40,10 +40,13 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
     if (!named[3] && dayKey(year, month, date) < localToday) year++;
     if (validDay(year, month, date)) day = dayKey(year, month, date); else ambiguity = 'invalid calendar date';
   } else if (weekday) {
-    if (weekday[1]) ambiguity = 'this/next weekday has more than one common reading';
+    if (weekday[1]?.toLowerCase() === 'this') ambiguity = 'this weekday has more than one common reading';
     const target = weekdays.findIndex(value => value.toLowerCase() === weekday[2]!.toLowerCase());
     const current = new Date(Date.UTC(today.year, today.month - 1, today.day)).getUTCDay();
-    let ahead = (target - current + 7) % 7;
+    // "Next Friday" is Friday of the next Monday-Sunday calendar week in the operator zone.
+    const ahead = weekday[1]?.toLowerCase() === 'next'
+      ? (7 - (current + 6) % 7) + (target + 6) % 7
+      : (target - current + 7) % 7;
     if (ahead === 0 && !weekday[1]) ambiguity = 'weekday could mean today or next week';
     if (!ambiguity) {
       const value = new Date(Date.UTC(today.year, today.month - 1, today.day + ahead));
