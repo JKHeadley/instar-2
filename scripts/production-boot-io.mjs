@@ -40,26 +40,26 @@ export const productionProviderIO = Object.freeze({
   realpath: realpathSync,
   executableBytes: path => { if (!lstatSync(path).isFile()) throw Error('provider executable missing'); return readFileSync(path); },
   execute: input => new Promise(resolve => {
-    if (input.stopped?.()) { resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); return; }
+    if (input.stopped?.()) { resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); return; }
     const child = spawn(input.executable, input.args, { cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
       shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
-    let chunks = [], size = 0, limited = false;
-    const fail = () => { limited = true; chunks = [];
+    let chunks = [], size = 0, limited = false, localLimit = null;
+    const fail = reason => { if (limited) return; limited = true; localLimit = reason; chunks = [];
       if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* A group may be gone or unavailable. */ }
       try { child.kill('SIGKILL'); } catch { /* Timer and stop callbacks must never throw. */ }
     };
-    const timer = setTimeout(fail, input.timeout);
-    const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(); }, 25) : undefined;
-    child.on('error', () => { clearTimeout(timer); clearInterval(stopTimer); resolve({ code: null, limited: true, stdout: '', stdoutBytes: new Uint8Array() }); });
-    child.stdin.on('error', fail);
+    const timer = setTimeout(() => fail('timeout'), input.timeout);
+    const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null); }, 25) : undefined;
+    child.on('error', () => { clearTimeout(timer); clearInterval(stopTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
+    child.stdin.on('error', () => fail(null));
     child.stdout.on('data', chunk => {
       size += chunk.length;
-      if (size > input.maxBytes) fail(); else if (!limited) chunks.push(chunk);
+      if (size > input.maxBytes) fail('size'); else if (!limited) chunks.push(chunk);
     });
     child.on('close', code => {
       clearTimeout(timer); clearInterval(stopTimer);
       const stdoutBytes = Buffer.concat(chunks);
-      resolve({ code, limited, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes) });
+      resolve({ code, limited, localLimit, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes) });
     });
     child.stdin.end(input.stdin, 'utf8');
   }),

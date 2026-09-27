@@ -29,6 +29,9 @@ export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Pleas
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null };
+export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | null;
+  elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
+  isError: boolean | null; outputTokens: number | null; promptBytes: number }
 
 /** A person named in an earlier accepted message. The model only selects: the name
  * and quote are exact substrings of the source turn's own text, and who said the
@@ -60,6 +63,7 @@ export type JournalRecord =
   | { kind: 'reply-jev-reserve'; id: string; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; at: number }
+  | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; at: number }
   | { kind: 'sent'; id: string; message: number; at: number }
@@ -89,6 +93,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
   summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
+  callOutcomes: Extract<JournalRecord, {kind:'call-outcome'}>[]; callOutcomeCounts: Map<string, number>;
   sourceStop: string | null; imported: boolean;
   people: PersonNote[]; commitments: CommitmentNote[]; closed: Map<number, CommitmentClosure>; memory: MemoryChange[];
   /** Flagged replies whose correction note no later model call has carried yet. */
@@ -149,6 +154,25 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'stop') { view.stop ??= row.reason; return; }
   if (row.kind === 'legacy-call') { view.calls++; return; }
   if (row.kind === 'legacy-reply') { view.replies++; return; }
+  if (row.kind === 'call-outcome') {
+    const valid = row.role === 'summary' ? /^summary:\d+$/.test(row.id) && view.summaryReservations.has(Number(row.id.slice(8)))
+      : row.role === 'reply-review' ? row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
+      : !!view.turns.get(row.id)?.reserved;
+    const o = row.outcome;
+    if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
+      || o.exitCode !== null && (!Number.isSafeInteger(o.exitCode) || o.exitCode < 0)
+      || o.outputTokens !== null && (!Number.isSafeInteger(o.outputTokens) || o.outputTokens < 0)
+      || ![null, 'timeout', 'size', 'output-cap'].includes(o.localLimit)
+      || ![null, 'result', 'other'].includes(o.type)
+      || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
+      || ![null, true, false].includes(o.isError)) throw Error('preview journal: call outcome malformed');
+    const category = o.localLimit ?? (o.type === 'result' ? o.isError ? 'result-error-frame' : 'result-frame' : 'no-result-frame');
+    view.callOutcomeCounts.set('total', (view.callOutcomeCounts.get('total') ?? 0) + 1);
+    view.callOutcomeCounts.set(`role:${row.role}`, (view.callOutcomeCounts.get(`role:${row.role}`) ?? 0) + 1);
+    view.callOutcomeCounts.set(category, (view.callOutcomeCounts.get(category) ?? 0) + 1);
+    view.callOutcomes.push(row); if (view.callOutcomes.length > 10) view.callOutcomes.shift();
+    return;
+  }
   if (row.kind === 'import') {
     if (!view.genesis.importSource || view.imported || row.source !== view.genesis.importSource)
       throw Error('preview journal: import lineage differs');
@@ -282,7 +306,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -319,7 +343,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };

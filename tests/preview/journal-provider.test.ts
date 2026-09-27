@@ -34,20 +34,26 @@ it('invokes the existing subscription route with one bounded prepared journal en
         orgId: offlineProfile.organization, orgName: 'Offline', subscriptionType: 'max' });
       else { modelCalls++;
         expect(command.args).toEqual(policy.args);
+        expect(command.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('2048');
+        expect(command.timeout).toBe(120000);
         expect(command.stdin).toContain('early memory');
         const decision = { type: 'Decision', schemaVersion: 1, id: 'offline-journal-answer',
           conclusion: { subject: 'preview-stage2-answer', value: 'remembered' } };
         if (outcome === 'throw') throw Error('invocation failed after dispatch');
-        stdout = outcome === 'failure' ? JSON.stringify({ type: 'result', subtype: 'success', is_error: true,
-          result: 'provider refusal text', session_id: 'journal-offline-failed-call',
+        stdout = outcome === 'failure' || outcome === 'usage-limit' ? JSON.stringify({ type: 'result', subtype: 'success', is_error: true,
+          result: outcome === 'usage-limit' ? "You've reached your usage limit; resets in 3 hours" : 'provider refusal text', session_id: 'journal-offline-failed-call',
           usage: { input_tokens: 8, output_tokens: 0 } })
           : outcome === 'empty' ? JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
             result: '', session_id: 'journal-offline-empty-call', usage: { input_tokens: 8, output_tokens: 0 } })
-          : outcome.startsWith('bare') ? '' : JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
-            result: JSON.stringify(decision), session_id: 'journal-offline-call-1',
-            usage: { input_tokens: 8, output_tokens: 3 } });
+          : outcome.startsWith('bare') ? '' : JSON.stringify({ type: 'result', subtype: outcome === 'subtype-error' ? 'error_max_turns' : 'success', is_error: false,
+            result: outcome === 'oversized-answer' ? 'x'.repeat(policy.maxOutputBytes + 1) : JSON.stringify(decision), session_id: 'journal-offline-call-1',
+            usage: { input_tokens: 8, output_tokens: outcome === 'over-cap' ? 2049 : 3 } });
+        if (outcome === 'invalid-frame') stdout = JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+          result: JSON.stringify(decision), usage: { input_tokens: 8, output_tokens: 3 } });
       }
-      return { code: command.args.includes('--print') && (outcome === 'failure' || outcome === 'bare1') ? 1 : 0,
+      if (outcome === 'timeout' && command.args.includes('--print'))
+        return { code: null, limited: true, localLimit: 'timeout', stdout: '', stdoutBytes: new Uint8Array() };
+      return { code: command.args.includes('--print') && (outcome === 'failure' || outcome === 'usage-limit' || outcome === 'bare1') ? 1 : 0,
         limited: false, stdout, stdoutBytes: new Uint8Array(Buffer.from(stdout)) };
     } };
   const route = createClaudeCodeSubscriptionRoute({ context, credential: { type: 'SecretRef', schemaVersion: 1,
@@ -72,15 +78,36 @@ it('invokes the existing subscription route with one bounded prepared journal en
     timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
     maxCharge:0,automaticRetries:0})).toMatchObject({state:'rejected',bytes:null,
       providerOperation:'journal-offline-failed-call',usage:{inputTokens:8,outputTokens:0,charge:null}});
+  outcome = 'usage-limit';
+  expect(await route.value.invoke(bytes, {operation:'turn:usage-limit',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).toMatchObject({state:'rejected',bytes:null});
+  outcome = 'subtype-error';
+  expect(await route.value.invoke(bytes, {operation:'turn:subtype-error',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).toMatchObject({state:'rejected',bytes:null});
   outcome = 'empty';
   expect(await route.value.invoke(bytes, {operation:'turn:empty',deadline:now+180000,
     timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
     maxCharge:0,automaticRetries:0})).toMatchObject({state:'complete',bytes:''});
-  for (const [next, operation] of [['bare0','turn:3'],['bare1','turn:4'],['throw','turn:5']]) {
+  outcome = 'over-cap';
+  expect(await route.value.invoke(bytes, {operation:'turn:over-cap',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).toMatchObject({state:'rejected',bytes:null,
+      usage:{outputTokens:2049}});
+  outcome = 'oversized-answer';
+  expect(await route.value.invoke(bytes, {operation:'turn:oversized-answer',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).toMatchObject({state:'rejected',bytes:null});
+  outcome = 'timeout';
+  expect(await route.value.invoke(bytes, {operation:'turn:timeout',deadline:now+180000,
+    timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
+    maxCharge:0,automaticRetries:0})).toMatchObject({state:'uncertain',bytes:null});
+  for (const [next, operation] of [['bare0','turn:3'],['bare1','turn:4'],['throw','turn:5'],['invalid-frame','turn:6']]) {
     outcome = next;
     expect((await route.value.invoke(bytes, {operation,deadline:now+180000,
       timeout:policy.timeout,maxOutputBytes:policy.maxOutputBytes,maxTokens:policy.maxTokens,
       maxCharge:0,automaticRetries:0})).state).toBe('uncertain');
   }
-  expect(modelCalls).toBe(6);
+  expect(modelCalls).toBe(12);
 });

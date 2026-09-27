@@ -14,6 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { observedSubscriptionIO } from './call-diagnostics.mjs';
 
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
@@ -124,6 +125,8 @@ async function main() {
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
+      callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
+      lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
       unknownSends: view.view.order.filter(t => t.intent && !t.sent).length,
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
@@ -254,7 +257,7 @@ async function main() {
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, Date.now(), journal.view.limits.maxBytes);
     const invokeSubscription = async (prepared, id, reviewTurnId) => {
-      const route = modelRoute(), policy = subscriptionConversationPolicy(required(options, 'model'));
+      const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
       const result = await route.invoke(prepared, { operation: id, deadline: Math.min(g.expires, Date.now() + 180000),
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
@@ -395,7 +398,7 @@ async function main() {
     }
     await summaryJob;
     endReason ??= 'cycle limit reached';
-    function modelRoute() {
+    function modelRoute(operation) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       const policy = subscriptionConversationPolicy(options.model);
       const contract = { reference: activation.reference, version: activation.profileDigest,
@@ -404,11 +407,13 @@ async function main() {
         sourceEvidence: [activation.reference], terminalEvidence: activation.reference, terminalReasonField: 'subtype',
         successfulFinalReplyReasons: ['success'], strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
+      const physicalIO = createSubscriptionProviderIO({ repository: process.cwd(),
+        stopped: () => workerStop.value || existsSync(stopPath) || !active() });
+      const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row));
       return take(createClaudeCodeSubscriptionRoute({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
-        io: createSubscriptionProviderIO({ repository: process.cwd(),
-          stopped: () => workerStop.value || existsSync(stopPath) || !active() }),
+        io,
         now: Date.now, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract,
         ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes
