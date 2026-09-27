@@ -6,6 +6,8 @@ import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
   SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS } from './journal-test-worker.js';
+import { TOO_LONG_INPUT_NOTICE } from './journal.js';
+
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -662,7 +664,7 @@ it('holds a prepared answer when the reply cap is exhausted', async () => {
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
-it('holds context overflow with originals intact when no current summary can cover it', async () => {
+it('notifies about context overflow with originals intact when no current summary can cover it', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), maxBytes: 128 });
@@ -672,7 +674,8 @@ it('holds context overflow with originals intact when no current summary can cov
     worker.intake([update(1, 'never drop this original')]); await worker.drain();
     expect(calls).toBe(0);
     expect(journal.view.order[0]?.text).toBe('never drop this original');
-    expect(journal.view.order[0]?.held).toBe('context overflow');
+    expect(journal.view.order[0]?.intent).toBe(TOO_LONG_INPUT_NOTICE);
+    expect(journal.view.order[0]?.sent).toBe(1);
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }
 });

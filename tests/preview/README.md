@@ -1219,6 +1219,15 @@ provider's reported output-token usage; Justin's live procedure is
 [summary-size-live-test.md](summary-size-live-test.md). When the call-diagnostics
 branch is integrated, its content-free `role:summary` rows supply actual prompt
 bytes, output tokens, elapsed time and local limit classification for the live check.
+An oversized single operator turn gets a checked, short too-long notice in chat;
+its original remains in the encrypted journal. `status.tooLong` shows the
+Telegram acceptance or UNKNOWN delivery, and an UNKNOWN send is never retried.
+Later packets use an explicit omission marker for that turn. A reply that exceeds
+Telegram's 4096-byte or character limit after HTML escaping also gets one short
+notice through the existing intent fence, with no prefix of the answer sent.
+Telegram split parts remain distinct durable updates. See
+[long-message-live-test.md](long-message-live-test.md) for the live trial.
+
 
 When a summary covers earlier turns, a **memory sentinel**
 (`memory-sentinel.ts`) picks which of those original journal turns are quoted
