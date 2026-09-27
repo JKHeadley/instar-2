@@ -85,7 +85,7 @@ const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.r
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
-    result: item.result ?? (item.reserved ? { verdict: 'unavailable', reason: 'Jev request outcome unknown' } : null) })) });
+    reserved: item.reserved === true, result: item.result ?? null })) });
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
