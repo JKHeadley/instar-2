@@ -913,7 +913,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             let checked: ReplyDecision;
             if (turn.jevReserved) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
-              checked = await reviewReply(reply, turn.id, checkPorts, previous?.ruleIds ?? [], turn.prompt);
+              // Older durable Jev verdicts omitted uncertain rules when another rule was positive.
+              // On recovery, review all eight rather than treating those omitted rules as cleared.
+              checked = await reviewReply(reply, turn.id, checkPorts, [], turn.prompt);
             } else if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
               checked = await reviewReply(reply, turn.id, checkPorts, [], turn.prompt);

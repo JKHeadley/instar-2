@@ -14,7 +14,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './b
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 
@@ -130,7 +130,9 @@ async function main() {
       process.stdout.write(`${JSON.stringify({ cursor: null, importComplete: false })}\n`);
       return;
     }
-    try { process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+    try {
+      const lastSent = view.view.order.filter(turn => turn.sentAt !== undefined).at(-1);
+      process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       capAuthority: view.view.capAuthority,
@@ -166,10 +168,14 @@ async function main() {
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
       lastReplyCheck: view.view.lastReplyCheck,
+      lastReplyTiming: lastSent ? { update: lastSent.update,
+        intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
+        checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       people: [...new Set(view.view.people.filter(note => !view.view.memory.some(change =>
         note.source === change.source && note.quote.includes(change.quote))).map(note => note.name))],
       launches: readRuns(runsPath).launches.slice(-3),
-      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`); }
+      self: selfState(view.view, readRuns(runsPath), Date.now(), timeZoneOf(options)) })}\n`);
+    }
     finally { view.close(); }
     return;
   }
@@ -323,17 +329,18 @@ async function main() {
           if (!response.ok) throw Error('preview: Jev unavailable');
           return { value: await response.json(), latencyMs: Math.round(performance.now() - start) };
         },
-        escalate: async (text, id, originalPrompt) => {
+        escalate: async (text, id, originalPrompt, reviewRules) => {
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
-          const question = `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify(REPLY_RULES)}. Return ONLY compact JSON {"verdict":"pass"|"violation","ruleIds":string[],"reason":string}. A violation requires an actual breach; uncertainty is a pass under the reachability fail direction. Give a short reason for either verdict.`;
+          const selectedRules = replyReviewRules(reviewRules ?? []);
+          const question = replyReviewQuestion(reviewRules ?? []);
           const prepared = modelEnvelope({ question,
             context: replyReviewContext(originalPrompt, text), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           const parsed = JSON.parse(result.value);
           if (!['pass', 'violation'].includes(parsed.verdict) || !Array.isArray(parsed.ruleIds)
-            || parsed.ruleIds.some(rule => !Object.hasOwn(REPLY_RULES, rule))
+            || parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))
             || (parsed.verdict === 'pass' && parsed.ruleIds.length !== 0)
             || (parsed.verdict === 'violation' && parsed.ruleIds.length === 0)
             || typeof parsed.reason !== 'string' || !parsed.reason.trim() || parsed.reason.length > 2000)

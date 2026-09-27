@@ -160,6 +160,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:0,unknownSends:unknown,
+        lastReplyTiming: { update: mode === 'echo' ? 2 : 1,
+          intakeToApiAcceptedMs: expect.any(Number), checkMs: expect.any(Number) },
         coherence:{checked:2,unchecked:0,failed:0}});
   } finally { endpoint.kill('SIGTERM'); }
 },30000);

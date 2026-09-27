@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkReply, HOLDING_REPLY, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
+import { checkReply, HOLDING_REPLY, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules } from './reply-check.js';
 import type { ReplyCheckResult } from './reply-check.js';
 import { redact } from '../../src/recall/redact.js';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
@@ -111,6 +111,35 @@ it('sends an operator-supplied personal code after a full-context false-positive
     expect(journal.view.lastReplyCheck).toMatchObject({ verdict: 'pass', path: 'subscription' });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([
+  ['one uncertain rule', scores({ claims_blocked: 0.5 }), ['claims_blocked']],
+  ['positive plus uncertain', scores({ raw_path: 0.9, parks_on_user: 0.5 }), ['raw_path', 'parks_on_user']],
+  ['Jev unavailable', null, Object.keys(REPLY_RULES)],
+] as const)('%s: review receives every unresolved rule and full context', async (_name, answer, expected) => {
+  const prompt = prepareJournalEnvelope({ question: 'What did I say?',
+    context: JSON.stringify({ audience: { operator: 'verified' }, sources: [{ id: 'source:1' }],
+      history: [{ update: 1, user: 'remember this' }] }), id: 'turn:2' },
+  'claude-sonnet-4-5', 'grant:test', 1000);
+  let reviewed: readonly string[] = [];
+  const result = await checkReply('PREVIEW — candidate', 'turn:2', {
+    elapsedMs: () => 100,
+    jev: async () => { if (!answer) throw Error('timeout'); return { value: answer, latencyMs: 100 }; },
+    reserveEscalation: () => true,
+    escalate: async (text, _id, originalPrompt, ruleIds) => {
+      reviewed = ruleIds ?? [];
+      expect(JSON.parse(replyReviewContext(originalPrompt!, text))).toMatchObject({
+        operatorMessage: 'What did I say?', audience: { operator: 'verified' },
+        sources: [{ id: 'source:1' }], history: [{ update: 1, user: 'remember this' }] });
+      return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 100 };
+    }, record: () => {},
+  }, prompt);
+  expect(result.outcome).toBe('pass');
+  expect(reviewed).toEqual(expected);
+  const selected = replyReviewRules(reviewed as (keyof typeof REPLY_RULES)[]);
+  expect(selected).toEqual(Object.fromEntries(expected.map(id => [id, REPLY_RULES[id as keyof typeof REPLY_RULES]])));
+  expect(replyReviewQuestion(reviewed as (keyof typeof REPLY_RULES)[])).toContain(JSON.stringify(selected));
 });
 
 it('durably checks before intent, sends a holding reply on violation, and replays counts', async () => {
@@ -246,6 +275,56 @@ it('escalates an interrupted Jev check without repeating Jev after restart', asy
     expect(second.view.jevChecks).toBe(1);
     expect(second.view.calls).toBe(2);
     expect(second.view.order[0]?.sent).toBe(7);
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reviews every rule after reopening a pre-upgrade mixed Jev verdict', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-legacy-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    const intake = createJournalWorker(first, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('model must not run'); }, checkOutbound: () => {},
+      send: async () => { throw Error('send must not run'); } });
+    intake.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'hello' } }]);
+    const id = first.view.order[0]!.id;
+    const prompt = prepareJournalEnvelope({ question: 'hello',
+      context: JSON.stringify({ audience: { operator: 'verified' }, history: [] }), id },
+    'claude-sonnet-4-5', 'grant:preview', 1000);
+    first.append({ kind: 'reserve', id, prompt, at: 1000 });
+    first.append({ kind: 'answer', id, text: 'Please handle this yourself.', state: 'complete', at: 1000 });
+    first.append({ kind: 'reply-jev-reserve', id, at: 1000 });
+    // Base-format mixed verdicts retained uncertain scores but only positive rule IDs.
+    first.append({ kind: 'reply-check', id, result: { verdict: 'violation', ruleIds: ['raw_path'],
+      confidence: 0.91, path: 'jev', latencyMs: 170,
+      scores: Object.fromEntries(Object.keys(REPLY_RULES).map(rule =>
+        [rule, rule === 'raw_path' ? 0.91 : rule === 'parks_on_user' ? 0.5 : 0.01])) as Record<keyof typeof REPLY_RULES, number> }, at: 1000 });
+    first.close();
+
+    const second = openPreviewJournal(path, key);
+    let sent = '', reviews = 0;
+    const recovered = createJournalWorker(second, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
+      send: async input => { sent = input.expectedText; return 7; },
+      replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('Jev repeated'); },
+        escalate: async (text, _id, originalPrompt, ruleIds) => {
+          reviews++;
+          expect(ruleIds).toEqual(Object.keys(REPLY_RULES));
+          expect(JSON.parse(replyReviewContext(originalPrompt!, text))).toMatchObject({
+            audience: { operator: 'verified' }, operatorMessage: 'hello' });
+          return { verdict: 'violation', ruleIds: ['parks_on_user'], confidence: null, latencyMs: 500 };
+        } } });
+    await recovered.drain();
+    expect(reviews).toBe(1);
+    expect(sent).toBe(HOLDING_REPLY);
+    expect(second.view.order[0]?.intent).toBe(HOLDING_REPLY);
+    expect(second.view.lastReplyCheck?.ruleIds).toEqual(['parks_on_user']);
+    expect(second.view.calls).toBe(2);
+    expect(second.view.jevChecks).toBe(1);
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
