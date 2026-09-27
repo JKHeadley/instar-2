@@ -125,3 +125,68 @@ it('selects a quoted older reply and marks a first-turn why question as having n
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('withholds a historical packet after forgetting a paraphrased source reply', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-why-forget-'))), path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    const seen: Record<string, unknown>[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => {
+        const packet = JSON.parse(input.context) as Record<string, unknown>;
+        seen.push(packet);
+        if (input.question === 'Please stop remembering my gym locker code.') {
+          const source = (packet.memoryCandidates as { id: string; message: string }[])
+            .find(item => item.message === 'My gym locker code is 3310.');
+          return JSON.stringify({ reply: 'Understood.', memory: [{ mode: 'forget', source: source?.id,
+            quote: 'My gym locker code is 3310.' }] });
+        }
+        return input.question === 'My gym locker code is 3310.' ? 'Your gym locker code is 3310.'
+          : input.question === 'What is the project marker?' ? 'Cedar is the marker.'
+            : input.question === 'What is the second marker?' ? 'Maple is the second marker.'
+              : 'That historical packet is withheld.';
+      }, send: async input => input.update, checkOutbound: () => {} });
+    for (const [id, message] of ['My gym locker code is 3310.', 'What is the project marker?',
+      'Please stop remembering my gym locker code.', 'Why did you say Cedar is the marker?',
+      'What is the second marker?', 'Why did you say Maple is the second marker?'].entries()) {
+      worker.intake([update(id + 1, message, id === 3 ? 2 : id === 5 ? 5 : undefined)]); await worker.drain();
+    }
+    expect((seen[3]?.history as { answer: string }[])[0]?.answer).toBe('[withheld: operator correction or forgetting]');
+    const provenance = seen[3]?.replyProvenance as { update: number; recorded: unknown; missing: string };
+    expect(provenance.update).toBe(2);
+    expect(provenance.recorded).toBeNull();
+    expect(provenance.missing).toContain('current correction or forgetting');
+    const later = seen[5]?.replyProvenance as { update: number; recorded: { history: { answer: string }[] } };
+    expect(later.update).toBe(5);
+    expect(later.recorded.history[0]?.answer).toBe('[withheld: operator correction or forgetting]');
+    expect(journal.view.memory).toHaveLength(1);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not match a missing reply-to ID to an UNKNOWN send', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-why-unknown-'))), path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    const seen: Record<string, unknown>[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => { seen.push(JSON.parse(input.context));
+        return input.question === 'Alpha prompt' ? 'Alpha quartz.' : input.question === 'Beta prompt' ? 'Beta maple.'
+          : 'The Beta reply had the Beta prompt available.'; },
+      send: async input => input.update === 1 ? null : input.update, checkOutbound: () => {} });
+    for (const [id, message] of ['Alpha prompt', 'Beta prompt', 'Why did you say Beta maple?'].entries()) {
+      worker.intake([update(id + 1, message)]); await worker.drain();
+    }
+    const provenance = seen[2]?.replyProvenance as { update: number; reply: string; delivery: string;
+      recorded: { history: { user: string }[] } };
+    expect(journal.view.order[0]?.sent).toBeUndefined();
+    expect(provenance.update).toBe(2);
+    expect(provenance.reply).toBe('Beta maple.');
+    expect(provenance.delivery).toBe('Telegram API accepted');
+    expect(provenance.recorded.history).toEqual(expect.arrayContaining([
+      expect.objectContaining({ user: 'Alpha prompt', outcome: 'delivery UNKNOWN' })]));
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -1047,9 +1047,11 @@ it says so instead of inventing a reason.
 The recorded view names the earlier turns and imported channel items that were
 available, plus any summary, recalled turns, people, commitments, corrections,
 memory changes and pinned sources in that packet. The reply says these were
-**available inputs**, not proven causes inside the model. The view applies current
-secret redaction and verified
-memory corrections or forgetting before it is shown to the model. If the full
+**available inputs**, not proven causes inside the model. Current secret redaction
+applies to the view. If a verified memory correction or forgetting came after
+the saved packet, the whole historical view is withheld with an explicit reason:
+legacy packet fields cannot reliably tie a paraphrased reply to its source turn.
+Packets saved after the current memory changes remain available. If the full
 record cannot fit the bounded prompt, the packet explicitly says that the
 recorded view was omitted; the turn can still receive an honest answer.
 
