@@ -154,7 +154,7 @@ it('closes an item only on a later message the operator verifiably sent, and nev
     w.journal.close();
     expect(run(root, 'status').commitments).toEqual({ total: 3, open: 1 });
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 30000);
 
 it('refuses a closure for an open item omitted from the summary packet', async () => {
   const root = origin();

@@ -156,16 +156,25 @@ it('keeps same-name people apart for the model and gives an unknown person nothi
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('offers a possible alias without merging, then links only the two notes Justin confirms across replay', async () => {
+it.each(['forget', 'correct'] as const)('links only the confirmed pair across replay, then withdraws it on %s', async mode => {
   const root = origin();
   const summarize = (context: string) => {
-    const packet = JSON.parse(context) as { history: { user: string }[] };
+    const packet = JSON.parse(context) as { history: { user: string }[];
+      memoryRequest?: { message: string }; memoryCandidates?: { id: string; message: string }[] };
     const people = packet.history.flatMap(({ user }) => {
       const name = user.startsWith('Sam Ortiz is') ? 'Sam Ortiz' : user.startsWith('Sam Ruiz,') ? 'Sam Ruiz'
         : user.startsWith('My cofounder Sam') ? 'Sam' : null;
-      return name ? [{ name, quote: user }] : [];
+      return name ? [{ name, quote: user }]
+        : user.includes('Sam and Sam Ortiz') ? ['Sam', 'Sam Ortiz'].map(found => ({ name: found, quote: user })) : [];
     });
-    return JSON.stringify({ summary: 'The operator mentioned three people named Sam.', people, memory: [] });
+    const old = 'Actually, Sam and Sam Ortiz are the same person.';
+    const source = packet.memoryCandidates?.find(item => item.message === old)?.id;
+    const request = packet.memoryRequest?.message;
+    const memory = source && request?.includes('Sam and Sam Ortiz')
+      && (request.startsWith('Please forget') || request.includes('different people'))
+      ? [{ mode, source, quote: old,
+        ...(mode === 'correct' ? { replacement: 'Sam and Sam Ortiz are different people.' } : {}) }] : [];
+    return JSON.stringify({ summary: 'The operator mentioned three people named Sam.', people, memory });
   };
   const answer = (question: string, context: string) => {
     const packet = JSON.parse(context) as { personMergeCandidates?: { left: number; right: number; leftName: string; rightName: string }[] };
@@ -195,6 +204,8 @@ it('offers a possible alias without merging, then links only the two notes Justi
     await w.say(n, 'Are Sam and Sam Ortiz the same person?');
     expect(w.journal.view.personMerges).toEqual([]);
     await w.say(n + 1, 'Actually, Sam and Sam Ortiz are the same person.');
+    expect(w.journal.view.people.some(note => note.source === `telegram:12345678:update:${n}`)).toBe(true);
+    expect(w.journal.view.people.some(note => note.source === `telegram:12345678:update:${n + 1}`)).toBe(true);
     expect(w.journal.view.personMerges).toMatchObject([{ left: 0, right: 1,
       trigger: `telegram:12345678:update:${n + 1}` }]);
     w.journal.close();
@@ -209,14 +220,41 @@ it('offers a possible alias without merging, then links only the two notes Justi
     const linked = w.worker.probe('What does Ortiz think?');
     if ('reason' in linked) throw Error(linked.reason);
     const packet = JSON.parse(linked.context);
-    expect(packet.people.map((item: { mentions: { person: string }[] }) => item.mentions[0]?.person))
-      .toEqual(['Sam', 'Sam Ortiz']);
+    expect(packet.people.map((item: { source: string }) => item.source)).toContain('telegram:12345678:update:1');
+    expect(packet.people.map((item: { source: string }) => item.source)).toContain('telegram:12345678:update:2');
     expect(packet.personMerges).toMatchObject([{ left: { name: 'Sam' }, right: { name: 'Sam Ortiz' } }]);
     expect(packet.people.some((item: { mentions: { person: string }[] }) => item.mentions[0]?.person === 'Sam Ruiz')).toBe(false);
     expect(w.journal.view.people.some(note => note.name === 'Sam Ruiz')).toBe(true);
+    const withdrawal = mode === 'forget' ? 'Please forget that Sam and Sam Ortiz are the same person.'
+      : 'Actually, Sam and Sam Ortiz are different people.';
+    await w.say(n + 2, withdrawal);
+    expect(w.journal.view.memory).toMatchObject([{ mode, source: `telegram:12345678:update:${n + 1}`,
+      quote: 'Actually, Sam and Sam Ortiz are the same person.' }]);
+    expect(w.journal.view.personMerges).toHaveLength(1); // historical evidence survives
+    const withdrawn = w.worker.probe('What does Ortiz think?');
+    if ('reason' in withdrawn) throw Error(withdrawn.reason);
+    const after = JSON.parse(withdrawn.context);
+    expect(after.people.map((item: { source: string }) => item.source)).not.toContain('telegram:12345678:update:1');
+    expect(after.people.map((item: { source: string }) => item.source)).toContain('telegram:12345678:update:2');
+    expect(after.personMerges).toBeUndefined();
+    const reconsider = w.worker.probe('Are Sam and Sam Ortiz the same person?');
+    if ('reason' in reconsider) throw Error(reconsider.reason);
+    expect(JSON.parse(reconsider.context).personMergeCandidates)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ left: 0, right: 1 })]));
+    w.journal.close();
+    const inactive = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(inactive.status, inactive.stderr).toBe(0);
+    expect(JSON.parse(inactive.stdout).personMerges).toEqual([]);
+    w = world(root, { summarize, answer });
+    const replay = w.worker.probe('What does Ortiz think?');
+    if ('reason' in replay) throw Error(replay.reason);
+    expect(JSON.parse(replay.context).personMerges).toBeUndefined();
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 10000);
+}, 30000);
 
 it.each(['Are Sam and Sam Ortiz the same person?', 'Actually, Sam and Sam Ortiz are not the same person.'])
   ('rejects a model-proposed merge from %s and does not admit another sender as operator', async question => {

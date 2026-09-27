@@ -100,6 +100,11 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
+/** Keep the append-only confirmation, but stop using it once its source claim is corrected or forgotten. */
+export const activePersonMerges = (view: JournalView): PersonMerge[] => view.personMerges.filter(link =>
+  !view.memory.some(change => change.source === link.trigger
+    && (link.confirmation.includes(change.quote) || change.quote.includes(link.confirmation))));
+
 const frameLimit = 2 * 1024 * 1024;
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
@@ -489,7 +494,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && !affectedNote(note)
         && terms(note.name).some(term => asked.has(term)) ? [index] : [];
     }));
-    for (const link of journal.view.personMerges) if (selected.has(link.left) || selected.has(link.right)) {
+    for (const link of activePersonMerges(journal.view)) if (selected.has(link.left) || selected.has(link.right)) {
       for (const index of [link.left, link.right]) {
         const note = journal.view.people[index], source = note && journal.view.turns.get(note.source);
         if (source && source.update <= through && !affectedNote(note!)) selected.add(index);
@@ -505,8 +510,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const mergeCandidates = (notes: readonly PersonNote[]) => {
     const pairs: { left: number; right: number; leftName: string; rightName: string;
       leftSource: string; rightSource: string; confirmText: string }[] = [];
-    for (let a = 0; a < notes.length; a++) for (let b = a + 1; b < notes.length; b++) {
-      const left = notes[a]!, right = notes[b]!;
+    // A question or the exact confirmation repeats names without introducing another person.
+    // Keep those notes for recall, but count only source claims when resolving a pair.
+    const sources = journal.view.people.filter(note => {
+      const text = journal.view.turns.get(note.source)?.text.trim() ?? '';
+      return !text.endsWith('?') && !/^Actually, .+ and .+ are the same person\.$/u.test(text)
+        && !journal.view.memory.some(change => change.trigger === note.source);
+    });
+    const eligible = notes.filter(note => sources.includes(note));
+    for (let a = 0; a < eligible.length; a++) for (let b = a + 1; b < eligible.length; b++) {
+      const left = eligible[a]!, right = eligible[b]!;
       const one = new Set(terms(left.name)), two = new Set(terms(right.name));
       if (left.name === right.name || left.source === right.source || !one.size || !two.size
         || !(one.size < two.size && [...one].every(term => two.has(term))
@@ -514,9 +527,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const firstId = journal.view.people.indexOf(left), secondId = journal.view.people.indexOf(right);
       const [leftId, rightId, leftNote, rightNote] = firstId < secondId
         ? [firstId, secondId, left, right] as const : [secondId, firstId, right, left] as const;
-      if (journal.view.people.filter(note => note.name === leftNote.name && !affectedNote(note)).length !== 1
-        || journal.view.people.filter(note => note.name === rightNote.name && !affectedNote(note)).length !== 1) continue;
-      if (journal.view.personMerges.some(link => link.left === leftId && link.right === rightId
+      if (sources.filter(note => note.name === leftNote.name && !affectedNote(note)).length !== 1
+        || sources.filter(note => note.name === rightNote.name && !affectedNote(note)).length !== 1) continue;
+      if (activePersonMerges(journal.view).some(link => link.left === leftId && link.right === rightId
         || link.left === rightId && link.right === leftId)) continue;
       pairs.push({ left: leftId, right: rightId, leftName: leftNote.name, rightName: rightNote.name,
         leftSource: leftNote.source, rightSource: rightNote.source,
@@ -602,7 +615,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
       message: clean(redact(turn.text).text, true), mentions: mentions.map(mention => ({ ...mention, quote: clean(mention.quote, true) })) }));
     const personMergeCandidates = summary ? mergeCandidates(named) : [];
-    const personMerges = journal.view.personMerges.filter(link => named.includes(journal.view.people[link.left]!)
+    const personMerges = activePersonMerges(journal.view).filter(link => named.includes(journal.view.people[link.left]!)
       && named.includes(journal.view.people[link.right]!)).map(link => ({
         left: { name: journal.view.people[link.left]!.name, source: journal.view.people[link.left]!.source },
         right: { name: journal.view.people[link.right]!.name, source: journal.view.people[link.right]!.source },
