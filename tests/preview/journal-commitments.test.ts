@@ -52,18 +52,20 @@ const extractor = (bad = true) => (context: string) => {
   return JSON.stringify({ summary: 'Earlier turns covered a locker code, a dentist call, errands and plans.', people: [], commitments, closed });
 };
 
-function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes?: number } = {}) {
+function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes?: number;
+  now?: () => number; answer?: (question: string) => string; send?: () => number | null;
+  checkOutbound?: (text: string) => void } = {}) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(options.maxBytes));
   const asked = new Map<string, string>();
   const clock = { now: 1790172860000 };
-  const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
+  const worker = createJournalWorker(journal, { now: options.now ?? (() => clock.now), stopped: () => false,
     prepareModel: input => input.context,
     model: async input => {
       if (input.id.startsWith('summary:')) return options.plain ? 'A plain summary.' : extractor(options.bad ?? true)(input.context);
       asked.set(input.question, input.context);
-      return input.question === DENTIST ? `Noted. ${PROMISE}` : 'Noted.';
+      return options.answer?.(input.question) ?? (input.question === DENTIST ? `Noted. ${PROMISE}` : 'Noted.');
     },
-    send: async () => 1, checkOutbound: () => {} });
+    send: async () => options.send ? options.send() : 1, checkOutbound: options.checkOutbound ?? (() => {}) });
   const say = async (id: number, text: string, from?: number) => {
     worker.intake([update(id, text, from)]); await worker.drain(); await worker.summarizeIfNeeded();
   };
@@ -71,7 +73,8 @@ function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes
   const fillUntilCompacted = async (next: number, question: string) => {
     for (; next < 120; next++) {
       const probe = worker.probe(question);
-      if (!('reason' in probe) && JSON.parse(probe.context).commitments) return next;
+      if (!('reason' in probe) && JSON.parse(probe.context).historyMode === 'summary-plus-recent'
+        && JSON.parse(probe.context).commitments) return next;
       await say(next, filler(next));
     }
     throw Error('compaction never reached');
@@ -85,21 +88,179 @@ it('records requests and its own promises verbatim after replies, drops everythi
     const w = world(root);
     await w.say(1, LOCKER);
     await w.say(2, DENTIST);
-    expect(w.journal.view.commitments).toEqual([]);
+    expect(w.journal.view.commitments).toMatchObject([{ in: 'reply', source: 'telegram:12345678:update:2', quote: PROMISE,
+      agentPromise: { owner: 'agent', waitsOn: 'next-relevant-reply' } }]);
     let n = 3;
     for (; !w.journal.view.summaries.length && n < 60; n++) await w.say(n, filler(n));
     const view = w.journal.view;
-    expect(view.commitments).toEqual([
+    expect(view.commitments).toMatchObject([
+      { in: 'reply', source: 'telegram:12345678:update:2', quote: PROMISE },
       { in: 'message', source: 'telegram:12345678:update:1', quote: LOCKER },
-      { in: 'message', source: 'telegram:12345678:update:2', quote: DENTIST },
-      { in: 'reply', source: 'telegram:12345678:update:2', quote: PROMISE }]);
+      { in: 'message', source: 'telegram:12345678:update:2', quote: DENTIST }]);
     expect(view.closed.size).toBe(0);
     expect(view.calls).toBe(n - 1 + view.summaries.length);
     expect(view.order.every(turn => turn.sent === 1)).toBe(true);
     w.journal.close();
     const status = run(root, 'status');
     expect(status.commitments).toEqual({ total: 3, open: 3 });
-    expect(status.summaries[0].commitments).toBe(3);
+    expect(status.summaries[0].commitments).toBe(2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('captures a sent explicit promise before compaction, surfaces it next and when due, and closes an accepted reminder', async () => {
+  const root = origin();
+  try {
+    let now = 1790000000000;
+    let w = world(root, { now: () => now, answer: question => question === 'First'
+      ? 'I’ll remind you to call the dentist tomorrow.' : question === 'Due now'
+        ? 'Reminder: call the dentist.' : 'Okay.' });
+    await w.say(1, 'First');
+    expect(w.journal.view.commitments).toHaveLength(1);
+    expect(w.journal.view.commitments[0]?.agentPromise?.owner).toBe('agent');
+    expect(w.journal.view.summaries).toHaveLength(0);
+    w.journal.close();
+    expect(run(root, 'status').commitments).toEqual({ total: 1, open: 1 });
+    w = world(root, { now: () => now, answer: question => question === 'Due now' ? 'Reminder: call the dentist.' : 'Okay.' });
+    await w.say(2, 'Unrelated question');
+    expect(JSON.parse(w.asked.get('Unrelated question')!).commitments[0].items[0])
+      .toMatchObject({ owner: 'agent', waitsOn: 'next-relevant-reply', due: { state: 'upcoming', day: '2026-09-22' } });
+    await w.say(3, 'Due now');
+    expect(w.journal.view.closed.size).toBe(0);
+    now += 2 * 86400000;
+    await w.say(4, 'Due now');
+    expect(JSON.parse(w.asked.get('Due now')!).commitments[0].items[0].due.state).toBe('overdue');
+    expect(w.journal.view.closed.get(0)?.source).toBe('telegram:12345678:update:4');
+    await w.say(5, 'Anything pending?');
+    expect(JSON.parse(w.asked.get('Anything pending?')!).commitments ?? []).toEqual([]);
+    w.journal.close();
+    expect(run(root, 'status').commitments).toEqual({ total: 1, open: 0 });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a due promise open when an accepted reply only quotes a reminder example, including after replay', async () => {
+  const root = origin();
+  try {
+    let now = 1790000000000;
+    const example = 'This is only a format example, not your reminder:\n```text\nReminder: call the dentist.\n```';
+    const w = world(root, { now: () => now, answer: question => question === 'Promise'
+      ? 'I’ll remind you to call the dentist tomorrow.' : example });
+    await w.say(1, 'Promise');
+    now += 2 * 86400000;
+    await w.say(2, 'Show me an example');
+    expect(w.journal.view.order[1]?.sent).toBe(1);
+    expect(w.journal.view.closed.size).toBe(0);
+    w.journal.close();
+    expect(run(root, 'status').commitments).toEqual({ total: 1, open: 1 });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an invalid due day open after an accepted exact reminder, including after replay', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: question => question === 'Promise'
+      ? 'I’ll remind you to call the dentist on 2026-02-30.' : 'Reminder: call the dentist.' });
+    await w.say(1, 'Promise');
+    expect(w.journal.view.commitments[0]?.agentPromise?.due).toMatchObject({ ambiguity: 'invalid calendar date' });
+    await w.say(2, 'Remind me');
+    expect(w.journal.view.order[1]?.sent).toBe(1);
+    expect(w.journal.view.closed.size).toBe(0);
+    w.journal.close();
+    expect(run(root, 'status').commitments).toEqual({ total: 1, open: 1 });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a check promise open without external evidence and never records an unsent candidate', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: question => question === 'Check' ? 'I’ll check the report tomorrow.'
+      : question === 'Blocked' ? 'I’ll send the result tomorrow.' : 'I checked the report.',
+    checkOutbound: text => { if (text.includes('send the result')) throw Error('outbound refused'); } });
+    await w.say(1, 'Check');
+    await w.say(2, 'Blocked');
+    expect(w.journal.view.order[1]?.intent).toBeUndefined();
+    expect(w.journal.view.commitments).toHaveLength(1);
+    await w.say(3, 'Any news?');
+    expect(w.journal.view.closed.size).toBe(0);
+    expect(JSON.parse(w.asked.get('Any news?')!).commitments[0].items[0].quote)
+      .toBe('I’ll check the report tomorrow.');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not close a reminder when the later send has no API receipt', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: question => question === 'Promise'
+      ? 'I’ll remind you to call the dentist tomorrow.' : 'Reminder: call the dentist.',
+    send: () => w.journal.view.order.length === 1 ? 1 : null });
+    await w.say(1, 'Promise');
+    await w.say(2, 'Please remind me');
+    expect(w.journal.view.order[1]?.intent).toContain('Reminder: call the dentist.');
+    expect(w.journal.view.order[1]?.sent).toBeUndefined();
+    expect(w.journal.view.closed.size).toBe(0);
+    w.journal.close();
+    expect(run(root, 'status').commitments).toEqual({ total: 1, open: 1 });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an older due agent promise visible when the ten-item packet limit is reached', async () => {
+  const root = origin();
+  try {
+    let now = 1790000000000;
+    const w = world(root, { maxBytes: 32768, now: () => now,
+      answer: question => question === 'First' ? 'I’ll remind you to call the dentist tomorrow.'
+        : `I’ll keep ${question} on my list.` });
+    await w.say(1, 'First');
+    for (let i = 2; i <= 12; i++) await w.say(i, `item ${i}`);
+    now += 2 * 86400000;
+    const probe = w.worker.probe('Anything due?');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    const packet = JSON.parse(probe.context);
+    const quotes = packet.commitments.flatMap((entry: { items: { quote: string }[] }) => entry.items.map(item => item.quote));
+    expect(quotes).toHaveLength(10);
+    expect(quotes).toContain('I’ll remind you to call the dentist tomorrow.');
+    expect(Array.from({ length: 11 }, (_, index) => `I’ll keep item ${index + 2} on my list.`)
+      .filter(quote => !quotes.includes(quote)).length).toBe(2);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('surfaces a fresh promise made after the latest summary', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { maxBytes: 4000, answer: question => question === 'Promise'
+      ? 'I’ll check the report tomorrow.' : 'Okay.' });
+    let id = 1;
+    for (; !w.journal.view.summaries.length && id < 60; id++) await w.say(id, filler(id));
+    expect(w.journal.view.summaries.length).toBeGreaterThan(0);
+    await w.say(id++, 'Promise');
+    const probe = w.worker.probe('What did you promise?');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(JSON.parse(probe.context).commitments.flatMap((entry: { items: { quote: string }[] }) =>
+      entry.items.map(item => item.quote))).toContain('I’ll check the report tomorrow.');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('selects an older relevant agent promise when newer open items fill the packet limit', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { maxBytes: 32768, answer: question => question === 'First'
+      ? 'I’ll check the ALPHA report.' : `I’ll keep ${question} on my list.` });
+    await w.say(1, 'First');
+    for (let i = 2; i <= 12; i++) await w.say(i, `item ${i}`);
+    const probe = w.worker.probe('What about the ALPHA report?');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    const quotes = JSON.parse(probe.context).commitments.flatMap((entry: { items: { quote: string }[] }) =>
+      entry.items.map(item => item.quote));
+    expect(quotes).toHaveLength(10);
+    expect(quotes).toContain('I’ll check the ALPHA report.');
+    expect(Array.from({ length: 11 }, (_, index) => `I’ll keep item ${index + 2} on my list.`)
+      .filter(quote => !quotes.includes(quote)).length).toBe(2);
+    w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -119,12 +280,12 @@ it('brings open items back after compaction with who said them and when, says it
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === LOCKER || turn.user === DENTIST)).toBe(false);
     expect(packet.commitments).toMatchObject([
-      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 0, quote: LOCKER }] },
-      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 1, quote: DENTIST }] },
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 1, quote: LOCKER }] },
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 2, quote: DENTIST }] },
       { source: 'telegram:12345678:update:2', from: 'you, in your own earlier reply', date: '2026-09-21T14:15Z', reply: `Noted. ${PROMISE}`, answering: DENTIST,
-        delivery: 'Telegram API accepted', items: [{ id: 2, quote: PROMISE }] }]);
-    expect(packet.capability).toContain('you cannot do, schedule or remind anyone of anything');
-    expect(packet.capability).toContain('never add one that is not listed');
+        delivery: 'Telegram API accepted', items: [{ id: 0, quote: PROMISE }] }]);
+    expect(packet.capability).toContain('a promise itself grants no send');
+    expect(packet.capability).toContain('Absence from this bounded list proves nothing');
     // The sources of listed commitments are not repeated as recalled turns.
     expect((packet.recalled ?? []).some((turn: { user: string }) => turn.user === LOCKER)).toBe(false);
     w.journal.close();
@@ -144,13 +305,13 @@ it('surfaces only BM25-related open items with age, while an unrelated turn gets
       return JSON.parse('context' in probe ? probe.context : '{}');
     };
     expect(packet('What about my gym locker code?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
-      .toEqual([0]);
+      .toEqual([1]);
     expect(packet('What about the dentist crown?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
-      .toEqual([1, 2]);
+      .toEqual([2, 0]);
     expect(packet('How are the garden tomatoes?').commitments).toBeUndefined();
     expect(packet('What about my gym locker code?').commitments[0].age).toBe('2 days');
     expect(packet('What open commitments do you have?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
-      .toEqual([0, 1, 2]);
+      .toEqual([1, 2, 0]);
     w.clock.now = 1790000060000 + 2 * 60 * 60 * 1000;
     expect(packet('What about my gym locker code?').commitments[0].age).toBe('2 hours');
     w.clock.now = 1790000060000 + 2 * 60 * 1000;
@@ -182,10 +343,10 @@ it('closes an item only on a later message the operator verifiably sent, and nev
     for (; (w.journal.view.summaries.at(-1)?.through ?? 0) < doneUpdate && n < 120; n++)
       await w.say(n, filler(n));
     expect([...w.journal.view.closed.entries()].map(([id, closure]) => [id, closure.quote])).toEqual([
-      [1, 'I already called the dentist'], [2, 'I already called the dentist']]);
+      [0, 'I already called the dentist'], [2, 'I already called the dentist']]);
     await w.say(n, 'Anything open?');
     const packet = JSON.parse(w.asked.get('Anything open?')!);
-    expect(packet.commitments.map((entry: { items: { id: number }[] }) => entry.items.map(item => item.id))).toEqual([[0]]);
+    expect(packet.commitments.map((entry: { items: { id: number }[] }) => entry.items.map(item => item.id))).toEqual([[1]]);
     const related = w.worker.probe('What about the dentist crown?');
     expect('context' in related && JSON.parse(related.context).commitments).toBeUndefined();
     w.journal.close();
@@ -271,7 +432,7 @@ it('settles an item made and closed within one summarized stretch', async () => 
     await w.say(1, DENTIST);
     await w.say(2, DONE);
     for (let n = 3; !w.journal.view.summaries.length && n < 60; n++) await w.say(n, filler(n));
-    expect(w.journal.view.commitments.map(note => note.in)).toEqual(['message', 'reply']);
+    expect(w.journal.view.commitments.map(note => note.in)).toEqual(['reply', 'message']);
     expect([...w.journal.view.closed.keys()]).toEqual([0, 1]);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
