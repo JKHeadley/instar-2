@@ -322,7 +322,7 @@ it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNK
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout)).toMatchObject({ unknownCalls: 1, modelResultStates: { uncertain: 1 },
       modelFailureClasses: {}, replies: 1 });
-    expect(JSON.parse(status.stdout).self).toContain('1 model call(s)');
+    expect(JSON.parse(status.stdout).self).toContain('1 turn-model calls and 0 summary-model calls without a durable result (in flight or UNKNOWN)');
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
