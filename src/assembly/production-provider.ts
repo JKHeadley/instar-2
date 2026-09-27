@@ -287,8 +287,9 @@ export function createClaudeCodeSubscriptionRoute(input:
       maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
     const route = take(createProviderSubscriptionCustodian({ ...config, submit: async (_profile, bytes, bounds) => {
       let lastFailure = classifyProviderFailure({ code: null, limited: false, stdout: '', now: config.now() });
+      let reportedUsage: ProviderObservation['usage'] | null = null;
       const uncertain = (): ProviderObservation => ({ state: 'uncertain', bytes: null, providerOperation: null, failure: lastFailure,
-        usage: { inputTokens: null, outputTokens: null, charge: null,
+        usage: reportedUsage ?? { inputTokens: null, outputTokens: null, charge: null,
           source: 'Subscription preview: charge and quiescence unknown; no retry or fallback' }, retryBlocked: false });
       try {
         ensure(bounds.automaticRetries === 0 && bounds.maxCharge === 0 && bounds.timeout > 0 && bounds.timeout <= policy.timeout
@@ -334,14 +335,18 @@ export function createClaudeCodeSubscriptionRoute(input:
         const returned = await command(policy.args, bytes, bounds.timeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+        if (frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
+          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens))
+          reportedUsage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens,
+            charge: null,
+            source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
         ensure(frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
           && typeof frame.subtype === 'string' && frame.subtype.length > 0
           && typeof frame.session_id === 'string'
           && frame.session_id.length > 0 && frame.session_id.length <= 256
-          && integer(frame.usage?.input_tokens) && integer(frame.usage?.output_tokens)
+          && reportedUsage !== null
           && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
-        const usage = { inputTokens: frame.usage.input_tokens, outputTokens: frame.usage.output_tokens, charge: null,
-          source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
+        const usage = reportedUsage;
         // A usage-limit or policy result keeps the existing uncertain path, whose failure
         // record drives the durable limit hold; other terminal error frames are rejected.
         if (frame.is_error === true) return lastFailure.failureClass === 'limit' || lastFailure.failureClass === 'policy'

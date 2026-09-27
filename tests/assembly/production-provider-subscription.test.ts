@@ -168,8 +168,27 @@ for (const size of [65536, 65537]) it(`checks complete raw terminal ${size} with
 });
 for (const tokens of [2048, 2049]) it(`enforces ${tokens} observed output tokens`, async () => {
   const f = fixture({ tokens });
-  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe(tokens === 2048 ? 'complete' : 'uncertain');
+  const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
+  expect(observed.state).toBe(tokens === 2048 ? 'complete' : 'uncertain');
+  expect(observed.usage.outputTokens).toBe(tokens);
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});
+it('keeps available usage on uncertain conversation results and leaves unavailable usage null', async () => {
+  for (const [terminal, outputTokens] of [
+    [JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'candidate',
+      session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 2049 } }), 2049],
+    [JSON.stringify({ type: 'result', subtype: 'error_max_turns', is_error: false,
+      session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 2048 } }), 2048],
+    [JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'candidate',
+      session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: -1 } }), null],
+    ['{', null],
+  ] as const) {
+    const f = fixture({ conversation: true, terminal });
+    const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
+    expect(observed.state).toBe('uncertain');
+    expect(observed.usage.outputTokens).toBe(outputTokens);
+    expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  }
 });
 it('refuses invalid UTF-8 and malformed auth JSON with bounded uncertain outcomes', async () => {
   for (const options of [{ invalidUtf8: true }, { malformedAuth: true }]) {
