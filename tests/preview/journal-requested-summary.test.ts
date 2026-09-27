@@ -25,7 +25,10 @@ const decide = (input: Input) => {
     summaryRequests?: { id: string; quote: string }[] };
   if (input.question.startsWith('[Scheduled summary')) {
     const period = packet.period!;
-    return JSON.stringify({ reply: `Summary of ${period.from} to ${period.through}: ${String(period.total)} earlier messages.` });
+    // Authority-shaped fields on a runner-authored turn must be ignored, never applied.
+    return JSON.stringify({ reply: `Summary of ${period.from} to ${period.through}: ${String(period.total)} earlier messages.`,
+      memory: [{ mode: 'forget', source: 'x', quote: 'lunch with Mia' }], summaries: [{ quote: 'send me a summary', when: 'at 9 pm',
+        period: 'today', repeat: 'daily' }], cancelSummaries: ['summary-anything'], dated: [{ quote: 'the ferry at 6 pm', when: 'today at 6 pm', remind: true }] });
   }
   const listed = packet.summaryRequests ?? [];
   const schedule = /^(?:send me a summary of (today|yesterday|this week) (every day|every friday|today) at (\d+(?: ?[ap]m)?))/u.exec(input.question);
@@ -95,6 +98,10 @@ it('sends a requested daily summary once per day, stating its reason, through th
     // The runner-authored turn carries no operator authority and appears as such in later packets.
     const synthetic = journal.view.order.at(-1)!;
     expect(synthetic.requestedSummary).toMatchObject({ slot: '2026-09-26', window: { from: '2026-09-26', through: '2026-09-26' } });
+    expect(journal.view.summaryGrants).toHaveLength(1);
+    expect(journal.view.summaryCancels).toEqual([]);
+    expect(journal.view.memory).toEqual([]);
+    expect(journal.view.dated).toEqual([]);
     state.now = sixPm() + 3600_000; await worker.drain();
     journal.close(); ({ journal, worker } = open());
     await worker.drain(); await worker.sendReminders();
