@@ -493,7 +493,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const words = new Set(terms(text));
       for (const name of known) {
         const nameWords = terms(name);
-        if (!nameWords.length || !(nameWords.some(word => words.has(word) && asked.has(word))
+        if (!nameWords.length || !(nameWords.some(word => words.has(word))
           || name === senderName(item))) continue;
         const note = { name, source: channelMemoryId(item), quote: text.trim() };
         if (!journal.view.memory.some(change => change.source === note.source

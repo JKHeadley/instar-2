@@ -207,6 +207,10 @@ it('carries a dated, sourced timeline from imported messages and caps it per per
     expect('reason' in replay).toBe(false);
     if ('reason' in replay) throw Error(replay.reason);
     expect(JSON.parse(replay.context).people).toEqual(packet.people);
+    const surname = w.worker.probe('What did Chen say?');
+    expect('reason' in surname).toBe(false);
+    if ('reason' in surname) throw Error(surname.reason);
+    expect(JSON.parse(surname.context).people).toEqual(packet.people);
     const unrelated = w.worker.probe('What did Oliver say?');
     expect('reason' in unrelated).toBe(false);
     if ('reason' in unrelated) throw Error(unrelated.reason);
