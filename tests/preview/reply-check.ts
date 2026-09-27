@@ -62,7 +62,7 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
   const usage = { inputTokens: typeof response?.usage?.input_tokens === 'number' ? response.usage.input_tokens : null,
     outputTokens: typeof response?.usage?.output_tokens === 'number' ? response.usage.output_tokens : null, charge: null };
   const flagged = rules.filter((id, index) => probabilities[index]! >= positiveLine[id]);
-  const uncertain = rules.filter((id, index) => probabilities[index]! > 0.15);
+  const uncertain = rules.filter((id, index) => probabilities[index]! >= 0.5);
   if (flagged.length) return { verdict: 'violation', ruleIds: uncertain,
     confidence: Math.max(...flagged.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage };
   return uncertain.length
