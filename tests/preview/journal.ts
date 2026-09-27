@@ -53,6 +53,7 @@ export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Pleas
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export const HELD_NOTICE_AFTER_MS = 600_000;
+export const HELD_NOTICE_WINDOW_MS = 3_600_000;
 const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable'
   || reason === 'call cap' || reason === 'memory correction pending';
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
@@ -148,7 +149,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
-  awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent';
+  awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent' | 'held-notice-intent';
     at: number; id?: string; through?: number; reason?: string }[];
   channelItems: Map<string, ChannelItem>;
   channelSources: Map<'telegram' | 'slack', ChannelSourceCursor>;
@@ -173,6 +174,11 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   stepCheckStarted: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
+
+function heldNoticeDueAt(view: JournalView, turn: Turn): number {
+  const lastNotice = view.awayEvents.filter(event => event.kind === 'held-notice-intent').at(-1)?.at ?? -Infinity;
+  return Math.max(turn.heldSince! + HELD_NOTICE_AFTER_MS + 1, lastNotice + HELD_NOTICE_WINDOW_MS);
+}
 
 /** Keep the append-only confirmation, but stop using it once its source claim is corrected or forgotten. */
 export const activePersonMerges = (view: JournalView): PersonMerge[] => view.personMerges.filter(link =>
@@ -435,7 +441,7 @@ function project(view: JournalView, row: JournalRecord): void {
     }
   }
   if (row.kind === 'hold' || row.kind === 'caps' || row.kind === 'reserve' || row.kind === 'summary-reserve'
-    || row.kind === 'model-uncertain' || row.kind === 'notice' || row.kind === 'intent')
+    || row.kind === 'model-uncertain' || row.kind === 'notice' || row.kind === 'intent' || row.kind === 'held-notice-intent')
     view.awayEvents.push({ kind: row.kind, at: row.at, ...('id' in row ? { id: row.id } : {}),
       ...('through' in row ? { through: row.through } : {}), ...('reason' in row ? { reason: row.reason } : {}) });
   if (row.kind !== 'summary-candidate' && 'state' in row
@@ -605,11 +611,16 @@ function project(view: JournalView, row: JournalRecord): void {
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
   if (row.kind === 'held-notice-intent') {
+    const lastNotice = view.awayEvents.filter(event => event.kind === 'held-notice-intent' && event.id !== row.id).at(-1)?.at ?? -Infinity;
+    const heldCount = view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
+    const legacyText = /^PREVIEW — I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
+    const countedText = new RegExp(`^PREVIEW — I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
     if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldSince === undefined
       || row.at <= turn.heldSince + HELD_NOTICE_AFTER_MS || turn.intent !== undefined
       || turn.heldNoticeIntent !== undefined || view.replies >= view.limits.maxReplies
+      || row.at < lastNotice + HELD_NOTICE_WINDOW_MS
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
-      || row.grant !== view.genesis.grant || !/^PREVIEW — I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text))
+      || row.grant !== view.genesis.grant || !(legacyText || countedText))
       throw Error('preview journal: held notice intent order');
     turn.heldNoticeIntent = row.text; view.replies++; return;
   }
@@ -987,10 +998,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       throw Error('preview poll capacity reached');
     }
   };
-  const nextHeldNoticeAt = () => journal.view.order.filter(turn => turn.accepted && heldNoticeReason(turn.held)
+  const nextHeldNoticeAt = () => {
+    return journal.view.order.filter(turn => turn.accepted && heldNoticeReason(turn.held)
     && turn.heldSince !== undefined && turn.intent === undefined && turn.heldNoticeIntent === undefined
     && journal.view.replies < journal.view.limits.maxReplies)
-    .reduce<number | null>((due, turn) => Math.min(due ?? Infinity, turn.heldSince! + HELD_NOTICE_AFTER_MS + 1), null);
+      .reduce<number | null>((due, turn) => Math.min(due ?? Infinity, heldNoticeDueAt(journal.view, turn)), null);
+  };
   const intake = (updates: readonly TelegramUpdate[]) => {
     gate();
     for (const update of [...updates].sort((a, b) => a.update_id - b.update_id)) {
@@ -2045,12 +2058,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       for (const turn of journal.view.order) {
         if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldNoticeIntent !== undefined
           || turn.intent !== undefined || turn.heldSince === undefined
-          || ports.now() <= turn.heldSince + HELD_NOTICE_AFTER_MS
+          || ports.now() < heldNoticeDueAt(journal.view, turn)
           || journal.view.replies >= journal.view.limits.maxReplies) continue;
         gate();
         const parts = Object.fromEntries(zoneFormatter(ports.timeZone ?? 'UTC').formatToParts(messageTime(turn) ?? turn.at)
           .map(part => [part.type, part.value]));
-        const reply = `PREVIEW — I'm holding my answer to your message from ${parts.hour}:${parts.minute}; it will follow or I'll tell you why`;
+        const heldCount = journal.view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
+        const reply = `PREVIEW — I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from ${parts.hour}:${parts.minute}; it will follow or I'll tell you why`;
         ports.checkOutbound(reply);
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         journal.append({ kind: 'held-notice-intent', id: turn.id, text: reply, chat: journal.view.genesis.chat,

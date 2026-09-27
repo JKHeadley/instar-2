@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, HELD_NOTICE_AFTER_MS, openPreviewJournal, raiseJournalCaps, reportJournalCap } from './journal.js';
+import { createJournalWorker, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, openPreviewJournal, raiseJournalCaps, reportJournalCap } from './journal.js';
 
 const key = new Uint8Array(32).fill(7);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'held-reply-notice-')));
@@ -25,7 +25,7 @@ for (const reason of ['reply check unavailable', 'call cap', 'memory correction 
             return { state: 'rejected' as const, failureClass: 'rejected' as const };
           throw Error('held answer ran');
         }, checkOutbound: () => {},
-        send: async input => { sends++; expect(input.expectedText).toBe("PREVIEW — I'm holding my answer to your message from 12:26; it will follow or I'll tell you why");
+        send: async input => { sends++; expect(input.expectedText).toBe("PREVIEW — I'm holding 1 answer, including your message from 12:26; it will follow or I'll tell you why");
           return 12; } });
       worker.intake([update(1)]);
       const turn = journal.view.order[0]!;
@@ -58,6 +58,64 @@ for (const reason of ['reply check unavailable', 'call cap', 'memory correction 
   });
 }
 
+for (const receipt of [12, null] as const) {
+  it(`aggregates three held answers and keeps an hourly fence after restart with receipt ${String(receipt)}`, async () => {
+    const dir = root(), path = join(dir, 'journal.encrypted');
+    try {
+      let now = 1_000; const sends: string[] = [];
+      const first = openPreviewJournal(path, key, genesis(1, 4));
+      const ports = { now: () => now, stopped: () => false, model: async () => { throw Error('model ran'); },
+        checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return receipt; } };
+      const worker = createJournalWorker(first, ports);
+      worker.intake([update(1), update(2), update(3)]);
+      for (const turn of first.view.order) first.append({ kind: 'hold', id: turn.id, reason: 'call cap', at: now });
+      await worker.drain();
+      expect(first.view.order.map(turn => turn.held)).toEqual(['call cap', 'call cap', 'call cap']);
+      now += HELD_NOTICE_AFTER_MS + 1;
+      await worker.drain();
+      expect(sends).toEqual(["PREVIEW — I'm holding 3 answers, including your message from 12:26; it will follow or I'll tell you why"]);
+      expect(first.view.replies).toBe(1);
+      first.close();
+
+      const reopened = openPreviewJournal(path, key);
+      const resumed = createJournalWorker(reopened, ports);
+      const nextDue = 1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS;
+      now = nextDue - 1;
+      expect(resumed.nextHeldNoticeAt()).toBe(nextDue);
+      await resumed.drain();
+      expect(sends).toHaveLength(1);
+      now++;
+      await resumed.drain(); await resumed.drain();
+      expect(sends).toHaveLength(2);
+      expect(reopened.view.replies).toBe(2);
+      expect(reopened.view.order.filter(turn => turn.heldNoticeIntent !== undefined)).toHaveLength(2);
+      reopened.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
+
+it('waits for each turn to age ten minutes before selecting its notice', async () => {
+  const dir = root();
+  try {
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(1, 3));
+    let now = 1_000; const updates: number[] = [];
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async () => { throw Error('model ran'); }, checkOutbound: () => {},
+      send: async input => { updates.push(input.update); return 12; } });
+    worker.intake([update(1), update(2)]);
+    const [first, second] = journal.view.order;
+    journal.append({ kind: 'hold', id: second!.id, reason: 'call cap', at: now });
+    now += HELD_NOTICE_AFTER_MS / 2;
+    journal.append({ kind: 'hold', id: first!.id, reason: 'call cap', at: now });
+    now += HELD_NOTICE_AFTER_MS / 2 + 1;
+    expect(worker.nextHeldNoticeAt()).toBe(now);
+    await worker.drain();
+    expect(updates).toEqual([2]);
+    expect(first?.heldNoticeIntent).toBeUndefined();
+    journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 it('fences an uncertain notice send and later releases the held answer once', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {
@@ -77,7 +135,7 @@ it('fences an uncertain notice send and later releases the held answer once', as
     await worker.drain(); first.close();
     expect(sends).toBe(1);
     const second = openPreviewJournal(path, key);
-    expect(second.view.order[0]?.heldNoticeIntent).toContain("I'm holding my answer");
+    expect(second.view.order[0]?.heldNoticeIntent).toContain("I'm holding 1 answer");
     expect(second.view.order[0]?.heldNoticeSent).toBeUndefined();
     raiseJournalCaps(second, { maxCalls: 3, maxReplies: 3, maxTurns: 3, authority: 'test operator', at: now + 1 });
     const resumed = createJournalWorker(second, { now: () => now + 2, stopped: () => false,
@@ -106,7 +164,7 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
       let now = 1_000;
       const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
         model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
-        send: async input => input.expectedText.includes("I'm holding my answer") ? noticeReceipt : answerReceipt });
+        send: async input => input.expectedText.includes("I'm holding 1 answer") ? noticeReceipt : answerReceipt });
       worker.intake([update(1)]);
       const id = journal.view.order[0]!.id;
       journal.append({ kind: 'reserve', id, at: now });
