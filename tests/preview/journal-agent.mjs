@@ -13,6 +13,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
 import { openPreviewJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, PREVIEW_LIVE_LIMITS } from './journal.js';
 import { appendRun, readRuns, selfState, selfStateSource, zoneFormatter } from './self-state.js';
+import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, REPLY_RULES, replyReviewContext } from './reply-check.js';
 
 const parse = values => {
@@ -62,8 +63,13 @@ const turnSources = (root, options, view, runs, current = () => undefined) => {
   const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: view.limits.maxCalls, expiresAt: view.genesis.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
-  return () => [...sources, selfStateSource(selfState(view, runs(), Date.now(), timeZoneOf(options), current())),
-    deskStatusSource(readDeskStatus(deskStatusPath), Date.now(), deskStatusPath)];
+  return turn => {
+    const now = Date.now(), log = runs();
+    const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
+    const digest = turn && awayDigest(view, log, now, turn, [desk]);
+    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk,
+      ...(digest ? [awayDigestSource(digest)] : [])];
+  };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'UTC'; zoneFormatter(zone); return zone; };

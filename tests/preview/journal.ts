@@ -85,6 +85,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   turns: Map<string, Turn>; order: Turn[]; calls: number; replies: number; stop: string | null;
+  awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent';
+    at: number; id?: string; through?: number; reason?: string }[];
   channelItems: Map<string, ChannelItem>;
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Set<number>;
@@ -119,6 +121,10 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
     throw Error('preview journal: UNKNOWN call prevents cap raise');
 }
 function project(view: JournalView, row: JournalRecord): void {
+  if (row.kind === 'hold' || row.kind === 'caps' || row.kind === 'reserve' || row.kind === 'summary-reserve'
+    || row.kind === 'model-uncertain' || row.kind === 'notice' || row.kind === 'intent')
+    view.awayEvents.push({ kind: row.kind, at: row.at, ...('id' in row ? { id: row.id } : {}),
+      ...('through' in row ? { through: row.through } : {}), ...('reason' in row ? { reason: row.reason } : {}) });
   if ('state' in row && row.state) view.providerStates.set(row.state, (view.providerStates.get(row.state) ?? 0) + 1);
   if ('failureClass' in row && row.failureClass)
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
@@ -282,7 +288,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row = JSON.parse(Buffer.concat([cipher.update(ciphertext), cipher.final()]).toString('utf8')) as JournalRecord;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view, row);
       offset += 4 + length;
     }
@@ -319,7 +325,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       fsyncSync(fd); size += packet.length;
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, turns: new Map(), order: [], awayEvents: [], channelItems: new Map(), calls: 0, replies: 0, stop: null, limits: limitsOf(row), capAuthority: null, capRaisedAt: null, summaries: [], summaryReservations: new Set(), summaryFailures: new Map(), failureClasses: new Map(), providerStates: new Map(), sourceStop: null, imported: false, people: [], commitments: [], closed: new Map(), memory: [], corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
     };
@@ -395,7 +401,7 @@ export function raiseJournalCaps(journal: ReturnType<typeof openPreviewJournal>,
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
   /** Static sources, or a function read at each turn (for the desk's report). */
-  sources?: unknown;
+  sources?: readonly unknown[] | ((turn?: Turn) => readonly unknown[]);
   prepareModel?(input: { question: string; context: string; id: string }): string;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
@@ -538,7 +544,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
-    open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = []) => {
+    open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], awayFor?: Turn) => {
     const summary = compact ? summaryFor(through) : undefined;
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
       && (!summary || item.update > summary.through));
@@ -600,7 +606,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
         operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current) }) },
-      ...(ports.sources === undefined ? {} : { sources: typeof ports.sources === 'function' ? ports.sources() : ports.sources }),
+      ...(ports.sources === undefined ? {} : { sources: typeof ports.sources === 'function' ? ports.sources(awayFor) : ports.sources }),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { through: summary.through, text: clean(redact(summary.text).text, true) } }
         : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
@@ -639,7 +645,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const promised = Math.min(open.length, kept), people = Math.min(named.length, kept - promised);
             const base = packetFor(turn.update - 1, compact, recalled.slice(0, kept - promised - people),
               named.slice(named.length - people), open.slice(open.length - promised), turn.thread, false, flagged,
-              channels.slice(0, channelCount));
+              channels.slice(0, channelCount), turn);
             const offered = [...candidates, ...channels.slice(0, channelCount).map(item => ({
               id: channelMemoryId(item), source: 'channel-import',
               message: clean(redact(`${item.subject ?? ''} ${item.text}`).text, true).slice(0, 1000), reply: '' }))];

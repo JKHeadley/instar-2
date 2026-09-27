@@ -618,6 +618,17 @@ Lanes:
 Not yet available: production memory, multi-machine, Slack.
 ```
 
+After more than three hours since the previous verified operator message, a
+normal answer packet also carries `away-digest`. It is a short runner-derived
+data source, not an instruction or an extra message. The digest counts launches
+and recorded ends from `runs.jsonl`, journal holds, lost-answer notices, unknown
+model/send outcomes, and cap raises since that message. It reports changed desk
+lines by comparing the current report with the snapshot already in the earlier
+durable model prompt. If that snapshot is unavailable, it says so. Missing or
+unreadable report data is never invented. The digest is rebuilt on each attempt
+from existing records, capped at 640 characters, and uses no model call, daemon,
+or additional store. See `away-digest-live-test.md` for the operator-channel proof.
+
 ### Remembering people
 
 When the rolling summary runs (after a reply, sharing the same attempt cap), the
