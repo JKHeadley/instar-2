@@ -8,8 +8,8 @@
  * just before ("what would she want?"), and a paraphrase of something the
  * summary still names but no longer quotes ("the code for my gym cabinet" for a
  * "locker combination"). It also cannot answer "what did I tell you yesterday?".
- * The query uses strong direct matches first; absent or one-word overlaps can
- * widen through the prior turn and touched summary sentences. A named day also helps. */
+ * The query ranks direct matches first and can widen through the prior turn
+ * and touched summary sentences. A named day also helps. */
 import { bm25, terms } from '../../src/recall/lexical.js';
 
 export interface SentinelTurn { readonly text: string; readonly at: number }
@@ -65,19 +65,14 @@ export function selectRecall(input: SentinelInput): number[] {
   const documents = input.candidates.map(turn => terms(turn.text));
   const score = new Array<number>(documents.length).fill(0);
   const direct = bm25(message, documents);
-  const strongest = Math.max(0, ...direct.map(hit => hit.matched));
   const add = (query: readonly string[], weight: number) => {
     for (const hit of bm25(query, documents)) score[hit.index]! += weight * hit.score;
   };
-  // A strong direct match is enough. A lone shared word can be incidental,
-  // so a multiword question may still need context to bridge a paraphrase.
-  if (strongest) {
-    for (const hit of direct) if (hit.matched === strongest) score[hit.index]! += hit.score;
-  }
-  if (!strongest || strongest === 1 && new Set(message).size > 1) {
-    add(input.previous ? terms(input.previous) : [], 0.5);
-    add(bridge(input.summary, new Set(message)), 0.5);
-  }
+  // Keep complementary direct evidence and bridged paraphrases eligible even
+  // when another source shares more words with the question.
+  for (const hit of direct) score[hit.index]! += hit.score;
+  add(input.previous ? terms(input.previous) : [], 0.5);
+  add(bridge(input.summary, new Set(message)), 0.5);
   // A named day counts like one strong matching term, so it ranks alongside content.
   if (window) input.candidates.forEach((turn, index) => {
     if (turn.at >= window.from && turn.at <= window.to) score[index]! += 2;
