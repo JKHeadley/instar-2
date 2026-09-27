@@ -1098,15 +1098,13 @@ review under the same journal call cap. Jev's pinned model is `jev-1.13.0`.
 
 Jev checks the eight measured message questions in one batch. A clear pass sends
 the candidate. A violation, uncertain score, or unavailable Jev invokes one
-subscription review with the candidate, original operator message, flagged
-rule definitions and at most four recent history entries within 4096 bytes.
-If Jev is unavailable, the review includes all eight rules. The original
-grounding packet stays in the encrypted journal; the reviewer receives only
-this bounded context and returns one short PASS or VIOLATION line inside the
-existing Decision envelope. Only that contextual review can suppress a non-secret
-candidate. Only a completed PASS (Jev or the contextual review) releases the
-candidate. If no check can decide (review budget exhausted, reviewer outage,
-malformed output), nothing is sent: the turn stays held with its message,
+subscription review with the candidate, original operator message, the complete
+bounded answer grounding packet and flagged rule definitions. If Jev is unavailable,
+the review includes all eight rules. The reviewer returns one short PASS or
+VIOLATION line inside the existing Decision envelope. Only that grounded review
+can suppress a non-secret candidate. Only a completed PASS (Jev or the grounded
+review) releases the candidate. If no check can decide (review budget exhausted,
+reviewer outage, malformed output), nothing is sent: the turn stays held with its message,
 candidate and reservations. A refused review reservation is a `call cap` hold
 that `raise-caps` retries; any other failure is a `reply check unavailable`
 hold shown in `status`. New answers leave one shared call-budget

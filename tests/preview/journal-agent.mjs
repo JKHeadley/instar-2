@@ -323,7 +323,7 @@ async function main() {
         escalate: async (text, id, originalPrompt, ruleIds) => {
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
-          const question = 'Judge the candidate reply against the listed rules using the operator message and recent history. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach; uncertainty is PASS. Use only listed rule IDs. No other text.';
+          const question = 'Judge the candidate reply against the listed rules using the full answer grounding, including the operator message, summary, sources and history. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach; uncertainty is PASS. Use only listed rule IDs. No other text.';
           const prepared = modelEnvelope({ question,
             context: replyReviewContext(originalPrompt, text, ruleIds), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id);

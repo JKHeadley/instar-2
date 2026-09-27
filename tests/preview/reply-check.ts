@@ -24,27 +24,19 @@ const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0
   claims_blocked: 0.85, parks_on_user: 0.85 };
 export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: REPLY_RULES[id] }]));
 
-/** Review the proposed send with the operator's request and a small recent slice.
- * A Jev transport failure supplies no rule IDs, so review all eight rules. */
+/** Reuse the bounded packet that grounded the answer, including summary, sources,
+ * audience, memory and history. A Jev failure reviews all eight rules. */
 export function replyReviewContext(originalPrompt: string, candidateReply: string, flagged: ReplyRule[] = []): string {
   const messages = JSON.parse(originalPrompt).messages as { role: string; content: string }[];
   const packet = JSON.parse(messages.find(message => message.role === 'context')?.content ?? '').packet;
   const operatorMessage = messages.find(message => message.role === 'user')?.content;
-  if (typeof operatorMessage !== 'string' || !Array.isArray(packet?.history) || typeof candidateReply !== 'string')
+  if (typeof operatorMessage !== 'string' || !packet?.audience || !Array.isArray(packet.history)
+    || typeof candidateReply !== 'string')
     throw Error('preview: full reply-review context malformed');
-  if (Buffer.byteLength(operatorMessage) > 8192 || Buffer.byteLength(candidateReply) > 8192)
-    throw Error('preview: reply-review text exceeds bound');
   const selected = flagged.length ? flagged : rules;
   if (selected.some(id => !Object.hasOwn(REPLY_RULES, id))) throw Error('preview: reply-review rule absent');
-  const recentHistory: unknown[] = [];
-  let bytes = 2; // JSON array brackets
-  for (const entry of packet.history.slice(-4).reverse()) {
-    const size = Buffer.byteLength(JSON.stringify(entry)) + (recentHistory.length ? 1 : 0);
-    if (bytes + size > 4096) break;
-    recentHistory.unshift(entry); bytes += size;
-  }
-  return JSON.stringify({ candidateReply, operatorMessage,
-    rules: Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])), recentHistory });
+  return JSON.stringify({ ...packet, operatorMessage, candidateReply,
+    rules: Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])) });
 }
 
 /** The short line lives inside the route's required Decision envelope. */

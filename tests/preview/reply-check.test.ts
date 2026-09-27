@@ -60,24 +60,63 @@ it('keeps the turn pending, never sending unchecked, when Jev and the full-conte
   expect(records.at(-1)?.verdict).toBe('unavailable');
 });
 
-it('bounds review to the candidate, operator message, flagged rules and recent history', () => {
+it('keeps the complete answer grounding for the blocking reviewer and selects only flagged rules', () => {
   const context = { audience: { operator: 'verified' }, sources: [{ id: 'source:1' }],
     history: Array.from({ length: 12 }, (_, index) => ({ update: index + 1, user: `turn ${index + 1}` })),
     memory: [{ secret: 'unrelated' }], now: 1000 };
   const prompt = prepareJournalEnvelope({ question: 'What did I say?', context: JSON.stringify(context), id: 'turn:2' },
     'claude-sonnet-4-5', 'grant:test', 1000);
-  expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate', ['credential']))).toEqual({
+  expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate', ['credential']))).toEqual({ ...context,
     operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate',
-    rules: { credential: REPLY_RULES.credential }, recentHistory: context.history.slice(-4) });
+    rules: { credential: REPLY_RULES.credential } });
   expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate')).rules).toEqual(REPLY_RULES);
   const large = prepareJournalEnvelope({ question: 'Question?',
-    context: JSON.stringify({ history: [{ user: 'a'.repeat(6000) }, { user: 'recent' }] }), id: 'turn:3' },
+    context: JSON.stringify({ audience: { operator: 'verified' },
+      history: [{ user: 'a'.repeat(6000) }, { user: 'recent' }] }), id: 'turn:3' },
     'claude-sonnet-4-5', 'grant:test', 1000);
-  const recent = JSON.parse(replyReviewContext(large, 'candidate')).recentHistory;
-  expect(recent).toEqual([{ user: 'recent' }]);
-  expect(Buffer.byteLength(JSON.stringify(recent))).toBeLessThanOrEqual(4096);
-  expect(() => replyReviewContext(prompt, 'x'.repeat(8193), ['credential'])).toThrow('exceeds bound');
+  expect(JSON.parse(replyReviewContext(large, 'candidate')).history).toEqual([
+    { user: 'a'.repeat(6000) }, { user: 'recent' }]);
   expect(() => replyReviewContext(prompt, 'candidate', ['unknown' as keyof typeof REPLY_RULES])).toThrow('rule absent');
+});
+
+it.each([2700, 3000])('reviews and sends a %i-character CJK message, including after replay', async length => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-cjk-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const question = '文'.repeat(length);
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 2, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    let reviewed = 0, sent = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', 1000),
+      model: async () => 'candidate', checkOutbound: () => {},
+      send: async () => { sent++; return 1; },
+      replyCheck: { elapsedMs: () => 100,
+        jev: async () => ({ value: scores({ credential: 0.57 }), latencyMs: 150 }),
+        escalate: async (text, _id, originalPrompt, ruleIds) => {
+          const context = replyReviewContext(originalPrompt!, text, ruleIds);
+          expect(JSON.parse(context).operatorMessage).toBe(question);
+          prepareJournalEnvelope({ question: 'Judge the candidate reply.', context, id: 'review:1' },
+            'claude-sonnet-4-5', 'grant:preview', 1000);
+          reviewed++;
+          return { verdict: 'pass', ruleIds: [] as [], confidence: null, latencyMs: 400 };
+        } } });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: question } }]);
+    await worker.drain();
+    expect(reviewed).toBe(1);
+    expect(sent).toBe(1);
+    expect(journal.view.order[0]?.held).toBeUndefined();
+    journal.close();
+    const replay = openPreviewJournal(path, key);
+    await createJournalWorker(replay, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
+      send: async () => { sent++; return 2; } }).drain();
+    expect(sent).toBe(1);
+    expect(replay.view.order[0]?.sent).toBe(1);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it('accepts one-line compact verdicts and refuses malformed or unlisted outcomes', () => {
@@ -263,14 +302,15 @@ it('does not repeat an interrupted paid review and holds the candidate instead o
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('answers a long, summarized conversation when Jev is unsure: compact review decides, never a hold', async () => {
+it('answers a long, summarized conversation when Jev is unsure: grounded review decides', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-summary-')));
   const path = join(root, 'journal.encrypted');
   try {
     const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
       grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
       maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 1500, cursor: 0 });
-    const reviewed: { operatorMessage: string; candidateReply: string; rules: Record<string, string>; recentHistory: unknown[] }[] = [];
+    const reviewed: { operatorMessage: string; candidateReply: string; rules: Record<string, string>;
+      history: unknown[]; summary: { text: string } }[] = [];
     const sent: string[] = [];
     let jevMemoryChecks = 0;
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
@@ -301,11 +341,12 @@ it('answers a long, summarized conversation when Jev is unsure: compact review d
     expect(sent.at(-1)).toBe('PREVIEW — It was ORCHID.');
     expect(last.sent).toBe(13);
     expect(last.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'unsure'], ['subscription', 'pass']]);
-    // The deciding review sees the request and recent turns without the full answer packet.
+    // The deciding review sees the summary even when earlier turns leave recent history.
     expect(reviewed).toHaveLength(1);
     expect(reviewed[0]).toMatchObject({ operatorMessage: 'What was the first unique memory?',
       candidateReply: 'PREVIEW — It was ORCHID.' });
-    expect(reviewed[0]!.recentHistory.length).toBeLessThanOrEqual(4);
+    expect(reviewed[0]!.summary.text).toContain('ORCHID');
+    expect(reviewed[0]!.history).toBeDefined();
     expect(reviewed[0]!.rules).toEqual({ claims_blocked: REPLY_RULES.claims_blocked });
     worker.intake([{ update_id: 14, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
       text: 'Please repeat the first unique memory.' } }]);
