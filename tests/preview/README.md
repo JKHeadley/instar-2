@@ -600,6 +600,13 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSO
 
 ## Structural journal runner (rounds 10–13)
 
+`journal-forget-property.test.ts` uses twelve reproducible generated histories to
+vary save/import order, correction/forget order, summary timing and restart
+placement. It checks every later model packet and summary model call, the
+faithfulness audit, summary supervisor and reviewer, and read-only probes for
+the removed values. The private-channel procedure is
+[forget-completeness-live-test.md](forget-completeness-live-test.md).
+
 ### Offline recall benchmark
 
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and

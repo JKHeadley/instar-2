@@ -169,9 +169,8 @@ it.each([
       summaryCheck: async evidence => {
         seen.push(evidence);
         const audit = JSON.parse(evidence).auditDecisions;
-        return jev(audit.some((decision: { sourceQuote: string; summaryPassages: string[] }) =>
-          decision.sourceQuote === 'My workshop code is 7319.'
-          && decision.summaryPassages.includes('The operator\'s workshop code is 7319.'))
+        return jev(audit.some((decision: { sourceQuote: string; mode: string }) =>
+          decision.mode === 'forget' && decision.sourceQuote === '[withheld: operator correction or forgetting]')
           && candidate.includes('workshop access code') ? 0.99 : 0.01);
       }, send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(1, 'My workshop code is 7319.'), update(2, 'Riley owns a red bike.')]);
@@ -187,10 +186,9 @@ it.each([
     await worker.summarizeIfNeeded(true);
     expect(seen).toHaveLength(1);
     const evidence = JSON.parse(seen[0]!);
-    expect(evidence.auditDecisions).toMatchObject([{ mode: 'forget', sourceQuote: 'My workshop code is 7319.',
-      sourceContext: 'My workshop code is 7319.',
-      operatorRequest: 'Please forget my workshop code.',
-      summaryPassages: ["The operator's workshop code is 7319."] }]);
+    expect(evidence.auditDecisions).toMatchObject([{ mode: 'forget', sourceQuote: '[withheld: operator correction or forgetting]' }]);
+    expect(seen[0]).not.toContain('My workshop code is 7319.');
+    expect(seen[0]).not.toContain("The operator's workshop code is 7319.");
     expect(evidence.priorSummary).toBe('Riley owns a red bike.');
     expect(evidence.activeMemory).toMatchObject([{ mode: 'forgotten' }]);
     expect(JSON.stringify(evidence.activeMemory)).not.toContain('7319');
