@@ -25,6 +25,7 @@ import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
+import { exhaustedPollReason } from './poll-failure-reason.mjs';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -669,11 +670,17 @@ async function main() {
     runs = readRuns(runsPath);
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
-    let failedPolls = 0;
-    const pollFailure = async () => {
+    let failedPolls = 0, conflictedPolls = 0;
+    const pollFailure = async conflict => {
       failedPolls++;
-      if (failedPolls >= 20) { endReason = 'Telegram polling failed 20 times in a row'; return false; }
-      const until = clock.elapsed() + Math.min(30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
+      conflictedPolls = conflict ? conflictedPolls + 1 : 0;
+      const reason = exhaustedPollReason(failedPolls, conflictedPolls);
+      if (reason) {
+        endReason = reason;
+        process.exitCode = 1;
+        return false;
+      }
+      const until = clock.elapsed() + Math.min(conflict ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
       return true;
@@ -735,14 +742,17 @@ async function main() {
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
           allowed_updates: ['message', 'edited_message'] },
         timeoutMs: 12000 }, token()); }
-      catch { if (!await pollFailure()) break; continue; }
+      catch { if (!await pollFailure(false)) break; continue; }
       await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
-      if (result.kind !== 'response' || result.status !== 200) { if (!await pollFailure()) break; continue; }
+      if (result.kind !== 'response' || result.status !== 200) {
+        if (!await pollFailure(result.kind === 'response' && result.status === 409)) break;
+        continue;
+      }
       let updates;
-      try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure()) break; continue; }
-      if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure()) break; continue; }
-      failedPolls = 0;
+      try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure(false)) break; continue; }
+      if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
+      failedPolls = 0; conflictedPolls = 0;
       worker.intake(updates.result); await worker.drain(); await worker.sendReminders(); summarizeLater();
       if (await stopAtCap()) break;
 
