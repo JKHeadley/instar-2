@@ -630,6 +630,34 @@ no call or store. Justin's supervised probe is
 npx vitest run tests/preview/hallucinated-memory-rate.test.ts --configLoader=runner
 ```
 
+### Journal upgrade compatibility before a live switch
+
+Run the focused offline check before replacing a live preview build:
+
+```sh
+npx vitest run tests/preview/journal-upgrade-compat.test.ts --configLoader=runner --maxWorkers=1
+```
+
+`journal-upgrade-fixture.mjs` writes a disposable encrypted journal through the
+actual runner-frozen14 (`7d824d64`) journal module. It contains the reviewed
+renewal frame, two answered turns, a corrected summary, and a held turn. It also
+seeds the runner's content-free `model-json-shapes.json` diagnostic sidecar.
+The test archives frozen14 and frozen13 into separate checkouts and exercises
+the current candidate checkout, comparing status, replayed state, prepared
+answer packet, and one grounded answer with an offline model stub. The older
+frozen13 (`89d5ee35`) status and writer
+both refuse the renewed journal without output or byte change. The older
+reader's known refusal is for an **uncompacted** renewal frame; compaction can
+hide that frame in a snapshot, so this is not a rollback guarantee. No network,
+provider, Telegram send, live root, or production secret is used. This is a
+format and answer-path compatibility check, not a live quality measurement.
+
+Before each live switch, run this focused test on the candidate tree, then use
+[journal-upgrade-live-test.md](journal-upgrade-live-test.md) to compare a
+read-only copy of the real journal and its sidecars and to check the first live
+answer after installation. Keep the current reader available for recovery; do
+not assume an older binary can read a journal after a newer writer appends.
+
 ### Offline recall benchmark
 
 `recall-benchmark.ts` measures packet visibility on synthetic 200, 1000 and
