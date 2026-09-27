@@ -81,6 +81,13 @@ const withheldView = view => view.memory.map(change => ({
   operatorUpdate: view.turns.get(change.trigger)?.update, quote: redact(change.quote).text,
   reason: change.mode === 'forget' ? 'verified operator requested forgetting' : 'verified operator corrected this fact' }));
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
+const packetStatus = view => {
+  const last = view.order.filter(turn => turn.reserved).at(-1);
+  if (!last) return null;
+  return { update: last.update, bytes: last.prompt === undefined ? null : Buffer.byteLength(last.prompt),
+    limit: last.packetLimit ?? view.limits.maxBytes,
+    dropped: last.packetDropped ?? 'unavailable in earlier reservation' };
+};
 
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
@@ -119,6 +126,7 @@ async function main() {
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
       summaryThrough: view.view.summaries.at(-1)?.through ?? null,
+      packet: packetStatus(view.view),
       withheld: withheldView(view.view),
       holds: view.view.order.filter(t => t.held).map(t => ({ update: t.update, reason: t.held })),
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
