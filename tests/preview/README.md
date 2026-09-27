@@ -1219,9 +1219,10 @@ drops anything else, including quotes of the agent's own answers. No extra model
 call is made and no new file is written: notes ride on the summary's journal record.
 
 A later message that shares a name word with a known person gets `people` in its
-packet ("Sam" also finds notes filed as "Sam Ruiz"; the model judges identity). The
-most recent ten notes are recalled, and each source message is shown in full, redacted,
-with its date, the quoted mentions and `from`. `from` is the message's authenticated
+packet ("Sam" also finds notes filed as "Sam Ruiz"; the model judges identity). Up to
+ten notes per person are recalled, chosen by question overlap and distinct source
+wording. Each source message is shown in full, redacted, with its date, the quoted
+mentions and `from`. `from` is the message's authenticated
 sender, read from the journal, never from the model. A quote is only a pointer into
 its message, so "Priya falsely claimed that Sam supports November" can never reduce
 to "Sam supports November". "Sam thinks X" from the operator appears as the operator's
@@ -1251,9 +1252,13 @@ Justin's supervised check is [people-facts-through-summaries-live-test.md](live-
 
 When the operator asks about a known person, `people` is also the short dated
 timeline for that person. Each entry carries its journal `sourceId`, whole source
-message, date, actual sender and the matched mention. Entries are ordered by source
-time, with at most ten source messages per person and twenty in one packet; older
-entries stay in the encrypted journal. Imported channel items join the timeline
+message, date, actual sender and the matched mention. Entries are displayed by source
+time, with at most ten source messages per person and twenty in one packet. Selection
+favors question words and distinct source wording, so many near-identical recent
+mentions do not crowd out an older relationship; unselected entries stay in the
+encrypted journal. If no stored name matches, source words can offer role or nickname
+candidates. These are only evidence for the model to judge, never identity links.
+Imported channel items join the timeline
 when their asserted sender matches the person or their text mentions that person.
 An imported entry names its source and account and labels its sender as unverified
 export metadata. Name matching only offers evidence; the model judges identity and
@@ -1263,6 +1268,17 @@ Telegram summary, while Telegram messages before compaction already appear in
 proof that nothing was said. `inspect --text` shows the selected entries without
 making a call or changing the journal. See
 [people-timeline-live-test.md](people-timeline-live-test.md) for Justin's live check.
+
+The shared-first-name regression covers an older cofounder Sam who also goes by
+Sammy and thirteen newer neighbour Sam mentions. Before the change, the role and
+nickname questions had no people timeline, and a bare Sam question lost the
+cofounder under the ten-entry cap. The focused fixture now keeps the older and
+newer contexts visible for a genuinely ambiguous bare name, while a role or
+nickname question finds the older source. The model still makes the final
+clear-versus-ambiguous judgment. See
+[people-disambiguation-live-test.md](live-tests-archive/people-disambiguation-live-test.md) for
+Justin's scored private-chat check; the offline packet result is not a live-model
+answer score.
 
 When two recalled notes use a short and longer name with the same name words
 (for example, `Sam` and `Sam Ortiz`), the packet carries up to five
