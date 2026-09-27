@@ -52,7 +52,7 @@ export interface MemoryChange { mode: 'correct' | 'forget' | 'prefer'; source: s
 
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
-  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number }
+  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; at: number }
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
@@ -82,7 +82,7 @@ export type JournalRecord =
 
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
-export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; answer?: string;
+export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; answer?: string;
   reserved: boolean; prompt?: string; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
   checked?: CoherenceFinding[]; checkFailed?: true;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain' }
@@ -144,8 +144,12 @@ function project(view: JournalView, row: JournalRecord): void {
     if (prior) { if (prior.update !== row.update || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
     if (view.order.length >= view.limits.maxTurns) throw Error('preview journal: turn capacity');
     if (row.thread !== undefined && !(Number.isSafeInteger(row.thread) && row.thread > 0)) throw Error('preview journal: invalid thread');
+    if (row.editOf !== undefined && (!row.accepted || !row.replaces || !view.turns.get(row.editOf)?.accepted
+      || !view.turns.get(row.replaces)?.accepted || row.update <= view.turns.get(row.replaces)!.update))
+      throw Error('preview journal: edit lineage refused');
     const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
-      ...(row.thread === undefined ? {} : { thread: row.thread }) };
+      ...(row.thread === undefined ? {} : { thread: row.thread }),
+      ...(row.editOf === undefined ? {} : { editOf: row.editOf, replaces: row.replaces }) };
     view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor); return;
   }
   if (row.kind === 'channel-item') {
@@ -389,10 +393,11 @@ export function importChannelFixture(journal: ReturnType<typeof openPreviewJourn
   return added;
 }
 
-type TelegramUpdate = { update_id: number; message?: { chat?: { id: number; type?: string }; from?: { id: number }; text?: string; message_thread_id?: number } };
+type TelegramMessage = { message_id?: number; chat?: { id: number; type?: string }; from?: { id: number }; text?: string; message_thread_id?: number; date?: number; edit_date?: number };
+type TelegramUpdate = { update_id: number; message?: TelegramMessage; edited_message?: TelegramMessage };
 export function admittedUpdate(genesis: JournalView['genesis'], update: TelegramUpdate) {
   if (!Number.isSafeInteger(update.update_id) || update.update_id < 0) throw Error('preview journal: malformed update');
-  const message = update.message, thread = message?.message_thread_id;
+  const message = update.edited_message ?? update.message, thread = message?.message_thread_id;
   const accepted = message?.chat?.type === 'private' && String(message.chat.id) === genesis.chat
     && String(message.from?.id) === genesis.operator && typeof message.text === 'string'
     && (thread === undefined || Number.isSafeInteger(thread) && thread > 0);
@@ -445,17 +450,38 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const update of updates) {
       const parsed = admittedUpdate(journal.view.genesis, update), prior = journal.view.turns.get(parsed.id);
       if (prior) continue;
+      let editOf: string | undefined, replaces: string | undefined;
+      if (update.edited_message && parsed.accepted && Number.isSafeInteger(update.edited_message.message_id)
+        && update.edited_message.message_id! > 0) {
+        const matches = journal.view.order.filter(turn => turn.accepted && turn.update < update.update_id
+          && turn.thread === parsed.thread && (() => {
+            try {
+              const raw = JSON.parse(turn.raw) as TelegramUpdate;
+              const message = raw.edited_message ?? raw.message;
+              return message?.message_id === update.edited_message!.message_id
+                && message?.chat?.id === update.edited_message!.chat?.id
+                && message?.from?.id === update.edited_message!.from?.id;
+            } catch { return false; }
+          })());
+        const latest = matches.at(-1);
+        if (latest) { editOf = latest.editOf ?? latest.id; replaces = latest.id; }
+      }
+      // An unlinked edit is preserved with the cursor, but has no authority to
+      // create a new turn or reply. The same holds for a foreign edit.
+      const accepted = update.edited_message ? parsed.accepted && editOf !== undefined : parsed.accepted;
       const cursor = update.update_id + 1;
-      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: parsed.text,
-        raw: JSON.stringify(update), accepted: parsed.accepted, cursor, at: ports.now(),
-        ...(parsed.thread === undefined ? {} : { thread: parsed.thread }) });
+      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? parsed.text : '',
+        raw: JSON.stringify(update), accepted, cursor, at: ports.now(),
+        ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
+        ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }) });
     }
     return journal.view.cursor;
   };
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
   /** Telegram's own send time survives import; the local intake time is the fallback. */
   const sentAt = (turn: Turn) => {
-    try { const sent = (JSON.parse(turn.raw) as { message?: { date?: unknown } }).message?.date;
+    try { const raw = JSON.parse(turn.raw) as TelegramUpdate;
+      const sent = (raw.edited_message ?? raw.message)?.date;
       if (typeof sent === 'number' && Number.isSafeInteger(sent) && sent > 0) return sent * 1000; } catch { /* raw kept verbatim */ }
     return turn.at > 0 ? turn.at : null;
   };
@@ -506,7 +532,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     .slice(-limit);
   type Open = ReturnType<typeof openFor>[number];
   const fromOperator = (turn: Turn) => {
-    try { return String((JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id) === journal.view.genesis.operator; }
+    try { const raw = JSON.parse(turn.raw) as TelegramUpdate;
+      return String((raw.edited_message ?? raw.message)?.from?.id) === journal.view.genesis.operator; }
     catch { return false; }
   };
   // A lexical cue schedules an intelligent summary decision; it grants no authority
@@ -522,7 +549,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const preferenceCue = (turn: Turn) => fromOperator(turn)
     && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
   const pendingMemory = () => journal.view.order.find(turn => turn.accepted && fromOperator(turn) && !turn.memoryUndecided
-    && (memoryCue(turn) || preferenceCue(turn) || turn.memoryPending || turn.held === 'memory correction pending')
+    && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending || turn.held === 'memory correction pending')
     && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
@@ -582,7 +609,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Who actually sent a turn, from its authenticated sender; a person named inside it never becomes its speaker. */
   const speakerOf = (turn: Turn) => {
     let from: unknown;
-    try { from = (JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id; } catch { /* raw kept verbatim */ }
+    try { const raw = JSON.parse(turn.raw) as TelegramUpdate;
+      from = (raw.edited_message ?? raw.message)?.from?.id; } catch { /* raw kept verbatim */ }
     return String(from) === journal.view.genesis.operator ? 'the operator (verified sender)'
       : `Telegram user ${String(from)} (authenticated sender, not the operator)`;
   };
@@ -598,10 +626,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
     open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn) => {
     const summary = compact ? summaryFor(through) : undefined;
+    const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
+      .map(item => item.replaces!));
     const earlier = journal.view.order.filter(item => item.accepted && item.update <= through
-      && (!summary || item.update > summary.through));
+      && !superseded.has(item.id) && (!summary || item.update > summary.through));
     const elsewhere = (item: Turn) => item.thread === current && !labelAll ? {} : { conversation: conversationName(item.thread), date: dated(item) };
-    const history = earlier.map(item => ({ ...elsewhere(item), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
+    const history = earlier.map(item => ({ ...elsewhere(item), ...(item.editOf ? { editedTurn: item.editOf } : {}),
+      ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true, item.id),
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}), outcome: outcome(item) }));
@@ -628,8 +659,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true, turn.id), delivery: outcome(turn) }),
         items: items.map(item => ({ ...item, quote: clean(item.quote, true, turn.id) })) }));
     const cited = new Set([...sources.keys(), ...[...promised.values()].map(entry => entry.turn.id)]);
-    const recall = summary ? recalled.filter(item => !cited.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
+    const recall = summary ? recalled.filter(item => !cited.has(item.id) && !superseded.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ date: dated(item),
       ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
+      ...(item.editOf ? { editedTurn: item.editOf } : {}),
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true, item.id), answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
@@ -750,7 +782,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     working = true;
     try {
       for (const turn of journal.view.order) {
-        if (!turn.accepted || turn.sent || turn.intent) continue;
+        if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
+        if (journal.view.order.some(item => item.accepted && item.editOf === turn.id)) {
+          if (turn.held !== 'superseded by edit')
+            journal.append({ kind: 'hold', id: turn.id, reason: 'superseded by edit', at: ports.now() });
+          continue;
+        }
         // A correction is decided before its reply, so an uncertain send cannot
         // let a later answer use the old fact. Intake remains durable if the
         // capped summary path cannot decide it.
@@ -915,6 +952,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             journal.append({ kind: 'sent', id: turn.id, message, at: ports.now() });
         } catch { /* exact intent stays UNKNOWN */ }
       }
+      // Edits consume the existing summary judgment, never the reply doorway.
+      if (pendingMemory()?.editOf) await summarizeIfNeeded(true);
     } finally { working = false; }
   };
   /** Keeps only proposed notes whose name and quote occur exactly in one accepted message
@@ -982,6 +1021,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const channel = typeof source === 'string' && source.startsWith('channel:')
         ? journal.view.channelItems.get(source.slice('channel:'.length)) : undefined;
       if ((mode !== 'correct' && mode !== 'forget' && mode !== 'prefer')
+        || trigger.editOf && (mode !== 'correct' || source !== trigger.replaces)
         || mode === 'prefer' && (source !== trigger.id || typeof quote !== 'string'
           || quote.length < 8 || Buffer.byteLength(quote) > 1000 || terms(quote).length < 2
           || !redact(trigger.text).text.includes(quote) || replacement !== undefined
@@ -1043,6 +1083,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'For a correction, preserve the new fact and omit the old claim from the summary. For forget, omit the item entirely. '
       + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary that express the old fact; leave unrelated material alone. '
       + 'Return memory: [] when no direct request applies; set memoryDisposition: "unresolved" when a direct request has no identifiable source.';
+    const editInstruction = ' A Telegram edit is a revision of editedTurn, not a new request or reply opportunity. Compare its memoryRequest.message with the exact prior revision in memoryCandidates. If a stated fact changed, return a correct memory action with the exact old clause, the exact replacement clause, and affected replies and summary passages. Return memory:[] only when no stated fact changed. The latest revision controls the summary.';
     // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
     // bound one pass; the next worker cycle can continue from the last summary.
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -1075,23 +1116,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (journal.view.summaryReservations.has(through) || (journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
         const closable = openFor(through, 50).map(({ id, note }) => ({ id, in: note.in, quote: note.quote }));
         const strictTrigger = journal.view.order.find(item => item.accepted && fromOperator(item) && !item.memoryUndecided
-          && (memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
+          && (item.editOf || memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
           && item.update > previous && item.update <= through);
         const trigger = strictTrigger ?? journal.view.order.filter(item => item.accepted && fromOperator(item)
           && item.update > previous && item.update <= through).at(-1);
         const older = trigger ? journal.view.order.filter(item => item.accepted && fromOperator(item) && item.update < trigger.update) : [];
         const ranked = trigger ? selectRecall({ message: trigger.text, now: ports.now(), limit: 5,
           summary: summaryFor(trigger.update)?.text ?? '', candidates: older.map(item => ({ text: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) }) : [];
-        const memoryCandidates = [...activePreferences().map(item => ({ id: item.source, message: redact(item.quote).text, reply: '' })),
+        const replaced = trigger?.replaces ? journal.view.turns.get(trigger.replaces) : undefined;
+        const memoryCandidates = [...(replaced ? [{ id: replaced.id, message: redact(replaced.text).text,
+          reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, message: redact(item.quote).text, reply: '' })),
           ...ranked.map(index => ({ id: older[index]!.id, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
-          reply: replyFor(older[index]!) })), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
+          reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
         for (let kept = closable.length; kept >= 0; kept--) {
           const offered = closable.slice(closable.length - kept);
           for (let count = memoryCandidates.length; count >= (strictTrigger ? memoryCandidates.length : 0); count--) {
             const includeMemory = trigger !== undefined && (strictTrigger || count > 0);
             const packet = kept || includeMemory ? JSON.stringify({ ...JSON.parse(base) as object,
               ...(kept ? { openCommitments: offered } : {}),
-              ...(includeMemory ? { memoryRequest: { id: trigger.id, message: clean(redact(trigger.text).text, false, trigger.id) },
+              ...(includeMemory ? { memoryRequest: { id: trigger.id, message: clean(redact(trigger.text).text, false, trigger.id),
+                ...(trigger.editOf ? { editedTurn: trigger.editOf, replaces: trigger.replaces, instruction: editInstruction } : {}) },
                 memoryCandidates: memoryCandidates.slice(0, count) } : {}) }) : base;
             if (Buffer.byteLength(packet) > journal.view.limits.maxBytes) continue;
             try {
@@ -1159,7 +1203,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
       }
       if ([...journal.view.memory, ...memory ?? []].some(change => change.mode !== 'prefer'
-        && !preferenceState().lineage.has(JSON.stringify([change.source, change.quote])) && summaryText.includes(change.quote))) {
+        && !preferenceState().lineage.has(JSON.stringify([change.source, change.quote])) && summaryText.includes(change.quote))
+        || trigger?.replaces && summaryText.includes(journal.view.turns.get(trigger.replaces)!.text)) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;

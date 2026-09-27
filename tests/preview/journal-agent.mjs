@@ -407,7 +407,8 @@ async function main() {
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       let result;
       try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
-        body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5) },
+        body: { offset: journal.view.cursor, limit: 1, timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
+          allowed_updates: ['message', 'edited_message'] },
         timeoutMs: 12000 }, token()); }
       catch { if (!await pollFailure()) break; continue; }
       await new Promise(done => setImmediate(done));
