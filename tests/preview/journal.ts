@@ -1448,6 +1448,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const recallFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>) => {
     const older = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update <= summary.through);
     const previous = journal.view.order.filter(item => item.accepted && !sizeRefused(item) && item.update < turn.update).at(-1);
+    // A sequence of near-identical updates can fill every lexical slot with recent
+    // values. An explicit earliest question needs the oldest matching source too.
+    // This only offers evidence; the reply model still judges what "first" means.
+    const topic = terms(turn.text).filter(term => !['first', 'earliest', 'oldest', 'original'].includes(term));
+    const earliest = /\b(?:first|earliest|oldest|original)\b/iu.test(turn.text) && topic.length
+      ? older.find(item => {
+        const words = new Set(terms(clean(item.text, true, item.id)));
+        return topic.every(term => words.has(term));
+      }) : undefined;
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
       ...(previous ? { previous: `${clean(previous.text, true, previous.id)} ${clean(sentText(previous) ?? '', true, previous.id)}` } : {}),
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`, at: sentAt(item) ?? 0 })) })
@@ -1455,7 +1464,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
       .map(index => older[index]!);
     const dated = older.filter(item => dueSoon(clean(item.text, true))).slice(-PREVIEW_RECALL_LIMIT).reverse();
-    return [...new Map([...dated, ...ranked].map(item => [item.id, item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
+    return [...new Map([...(earliest ? [earliest] : []), ...dated, ...ranked].map(item => [item.id, item])).values()].slice(0, PREVIEW_RECALL_LIMIT);
   };
   /** Imported items use the existing sentinel but never become executable turns. */
   const channelFor = (turn: Turn, summary?: string, prioritizeDates = true) => {
