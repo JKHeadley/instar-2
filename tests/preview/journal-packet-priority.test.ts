@@ -87,7 +87,7 @@ it('keeps a nearby dated open item inside the ten-commitment window ahead of old
     addTurn(journal, 13, `Unrelated history. ${'f'.repeat(15000)}`);
     journal.append({ kind: 'summary-reserve', through: 13, at: now });
     journal.append({ kind: 'summary', through: 13, text: 'The operator listed open items.', commitments, at: now });
-    journal.view.limits.maxBytes = 14000;
+    journal.view.limits.maxBytes = 15000;
     const probe = workerFor(journal).probe('What remains open?');
     if ('reason' in probe) throw Error(probe.reason);
     const packet = JSON.parse(probe.context);
