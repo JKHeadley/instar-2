@@ -599,6 +599,10 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --time-zone America/Los_Angeles
 ```
 
+For the supervised sequence of existing private-chat checks against one runner
+root, use [live-test-suite-live-test.md](live-test-suite-live-test.md). The
+coordinator reads status and sends nothing; Justin performs the listed steps.
+
 ### What the preview knows about itself and 2.0
 
 Each model call's packet carries `now`, the audience, the conversation history,
