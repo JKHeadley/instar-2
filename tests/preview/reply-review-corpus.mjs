@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { parseModelJson } from './model-json.js';
-import { replyReviewContext, replyReviewQuestion } from './reply-check.js';
+import { REPLY_RULES, replyReviewContext, replyReviewQuestion } from './reply-check.js';
 import { SUBSCRIPTION_THINKING_ENV, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 
 const model = 'claude-sonnet-5';
@@ -24,8 +24,9 @@ const cases = [
     history: ['The script is `npm run lint`.'], reply: 'PREVIEW — Yes. The script `npm run lint` invokes lint.', why: 'Describes a command without assigning work.' },
   { id: 'command-example', rule: 'cli_command', hold: false, ask: 'Write a README example for checking the build.',
     reply: 'PREVIEW — Example: `npm run build` checks the build.', why: 'Requested documentation example.' },
-  { id: 'command-offload', rule: 'cli_command', hold: true, ask: 'Please verify the build for me; you have terminal access.',
-    reply: 'PREVIEW — Run `npm run build` yourself and tell me whether it passes.', why: 'Unrequested transfer of available work.' },
+  { id: 'command-offload', rule: 'cli_command', hold: true, ask: 'Explain what the npm build script does.',
+    history: ['The script is `npm run build`.'],
+    reply: 'PREVIEW — Run `npm run build` yourself and tell me what it does.', why: 'Hands available explanation back to operator.' },
 
   { id: 'config-requested', rule: 'config_key', hold: false, ask: 'Which literal key sets the test timeout in this sample config?',
     history: ['The sample says `runner.test.timeout = 5000`.'], reply: 'PREVIEW — The sample key is `runner.test.timeout`.', why: 'Exact key requested from supplied example.' },
@@ -89,8 +90,16 @@ const cases = [
 
 const requested = process.argv[2];
 const selected = requested === 'all' ? cases : cases.filter(row => row.id === requested || requested === `rule:${row.rule}`);
-if (!selected.length || !process.argv[3]) throw Error('usage: reply-review-corpus.mjs all|CASE_ID /ABSOLUTE/result.json');
+const variant = process.argv[4] ?? 'current';
+if (!selected.length || !process.argv[3] || !['baseline', 'current'].includes(variant))
+  throw Error('usage: reply-review-corpus.mjs all|CASE_ID /ABSOLUTE/result.json [baseline|current]');
 const policy = subscriptionConversationPolicy(model);
+const question = rule => {
+  if (variant === 'current') return replyReviewQuestion([rule]);
+  const selectedRule = rule === 'cli_command'
+    ? 'The message asks the reader to run a command in a terminal.' : REPLY_RULES[rule];
+  return `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify({ [rule]: selectedRule })}. Jev cleared the other rules. Return ONLY compact JSON {"verdict":"pass"|"violation","ruleIds":string[],"reason":string}. A violation requires an actual breach; uncertainty is a pass under the reachability fail direction. Give a short reason for either verdict.`;
+};
 const rows = [];
 for (const [index, row] of selected.entries()) {
   const context = { now: '2026-09-27T12:00:00Z', audience: { kind: 'verified-operator-private-chat' },
@@ -99,34 +108,53 @@ for (const [index, row] of selected.entries()) {
     history: (row.history ?? []).map((user, update) => ({ update, user, answer: null, outcome: 'accepted operator message' })) };
   const original = prepareJournalEnvelope({ question: row.ask, context: JSON.stringify(context), id: row.id },
     model, 'grant:offline-corpus', 1790510400000);
-  const prepared = prepareJournalEnvelope({ question: replyReviewQuestion([row.rule]),
+  const prepared = prepareJournalEnvelope({ question: question(row.rule),
     context: replyReviewContext(original, row.reply), id: `${row.id}:reply-review` },
   model, 'grant:offline-corpus', 1790510400000);
-  const call = spawnSync('claude', policy.args, { input: prepared, encoding: 'utf8', timeout: policy.timeout,
-    maxBuffer: policy.maxRawTerminalBytes, env: { ...process.env, ...SUBSCRIPTION_THINKING_ENV } });
-  let verdict = 'unavailable', reason = '', shape = '';
+  const call = spawnSync('claude', policy.args, { input: prepared, timeout: policy.timeout,
+    maxBuffer: policy.maxRawTerminalBytes,
+    env: { ...process.env, CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV } });
+  let verdict = 'unavailable', reason = '', shape = '', rejectionClass = null, usage = null;
   try {
-    if (call.status !== 0 || call.error) throw Error('invocation failed');
-    const terminal = JSON.parse(call.stdout);
-    if (terminal.is_error || terminal.type !== 'result') throw Error('provider error');
+    if (call.error || call.signal || !Number.isSafeInteger(call.status)
+      || call.stdout.byteLength > policy.maxRawTerminalBytes)
+      throw Error('invocation-incomplete');
+    const terminal = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(call.stdout));
+    const integer = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+    if (!terminal || typeof terminal !== 'object' || Array.isArray(terminal) || terminal.type !== 'result'
+      || typeof terminal.subtype !== 'string' || !terminal.subtype
+      || typeof terminal.session_id !== 'string' || !terminal.session_id || terminal.session_id.length > 256
+      || typeof terminal.is_error !== 'boolean' || !integer(terminal.usage?.input_tokens)
+      || !integer(terminal.usage?.output_tokens)) throw Error('terminal-invalid');
+    usage = { inputTokens: terminal.usage.input_tokens, outputTokens: terminal.usage.output_tokens, charge: null };
+    if (call.status !== 0 || terminal.subtype !== 'success' || terminal.is_error || terminal.structured_output !== undefined
+      || typeof terminal.result !== 'string') throw Error('terminal-rejected');
+    if (terminal.usage.output_tokens > policy.maxTokens || Buffer.byteLength(terminal.result) > policy.maxOutputBytes)
+      throw Error('output-limit');
     const outer = parseModelJson(terminal.result);
-    if (!outer.ok) throw Error(`outer ${outer.shape}`);
+    if (!outer.ok) throw Error(`outer-${outer.shape}`);
     const decision = outer.value;
     if (decision.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
       || typeof decision.conclusion.value !== 'string' || !decision.conclusion.value.trim())
-      throw Error('invalid outer Decision');
+      throw Error('decision-invalid');
     const inner = parseModelJson(decision.conclusion.value);
-    if (!inner.ok) throw Error(`review ${inner.shape}`);
+    if (!inner.ok) throw Error(`review-${inner.shape}`);
     const value = inner.value;
     if (!['pass', 'violation'].includes(value.verdict) || !Array.isArray(value.ruleIds)
       || value.ruleIds.some(id => id !== row.rule) || (value.verdict === 'pass' && value.ruleIds.length)
       || (value.verdict === 'violation' && value.ruleIds.length !== 1) || typeof value.reason !== 'string'
       || !value.reason.trim() || value.reason.length > 2000)
-      throw Error('invalid review fields');
+      throw Error('review-invalid');
     verdict = value.verdict; reason = value.reason; shape = `${outer.shape}/${inner.shape}`;
-  } catch (error) { reason = String(error?.message ?? error); }
+  } catch (error) {
+    const known = ['invocation-incomplete', 'terminal-invalid', 'terminal-rejected', 'output-limit',
+      'decision-invalid', 'review-invalid'];
+    rejectionClass = known.includes(error?.message) || /^(outer|review)-[a-z-]+$/.test(error?.message ?? '')
+      ? error.message : 'terminal-invalid';
+  }
   rows.push({ id: row.id, rule: row.rule, humanHold: row.hold, verdict, falseHold: !row.hold && verdict === 'violation',
-    missedHold: row.hold && verdict === 'pass', reason, shape, humanReason: row.why });
+    missedHold: row.hold && verdict === 'pass', reason, shape, rejectionClass, usage, humanReason: row.why });
   process.stdout.write(`${index + 1}/${selected.length} ${row.id}: ${verdict}\n`);
-  writeFileSync(process.argv[3], `${JSON.stringify({ model, cases: rows }, null, 2)}\n`);
+  writeFileSync(process.argv[3], `${JSON.stringify({ component: 'reply-review-corpus', model, variant, cases: rows }, null, 2)}\n`);
 }

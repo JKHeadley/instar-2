@@ -1587,16 +1587,21 @@ malformed review are unchanged.
 synthetic cases each select one of the eight review rules: three human-fine
 neighbors and one clear violation. The cases include requested code, a personal
 fact supplied in the private chat, and a password control.
-It uses the frozen review model, subscription policy arguments, original packet
-envelope and reply-review question; it makes at most one sequential subscription
-call per selected case. It never opens the live journal or sends a Telegram
-message. With subscription CLI authentication available, run:
+It uses the frozen review model, subscription policy arguments and output/retry
+environment bounds, original packet envelope and reply-review question; it makes
+at most one sequential subscription call per selected case. It applies the
+adapter's terminal success, usage and output limits before accepting a verdict.
+Each row retains reported token usage and a content-free rejection class. It
+never opens the live journal or sends a Telegram message. With subscription CLI
+authentication available, run:
 
 ```sh
 node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/reply-review-corpus.mjs all /ABSOLUTE/result.json
 ```
 
 `rule:cli_command` or a case ID may replace `all` for a targeted follow-up.
+Pass `baseline` as the last argument to replay the prior prompt and prior
+`cli_command` rule wording against the same corpus; the default is `current`.
 Count `violation` on human-fine cases as a false hold and `unavailable` separately
 as a format or provider hold. This screen measures the review prompt, not Jev
 selection, live delivery, or real private data. The supervised operator proof is
