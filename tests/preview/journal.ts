@@ -13,6 +13,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES } from './reply-check.js';
 import { parseDatedItem, dueState, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
+import { requestedPeriod, inRequestedPeriod } from './period-summary.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
@@ -1939,6 +1940,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const preparedFor = (turn: Turn, includeRecorded = true) => {
     const question = redact(turn.text).text;
+    const period = fromOperator(turn) ? requestedPeriod(turn.text, sentAt(turn) ?? turn.at, ports.timeZone ?? 'America/Los_Angeles') : null;
+    const periodMatches = period ? journal.view.order.filter(item => item.accepted && item.update < turn.update
+      && inRequestedPeriod(sentAt(item), period)) : [];
+    const periodTurns = periodMatches.slice(-12);
     const inventory = inventoryFor(turn);
     const contradictions = contradictionFor(turn);
     const pending = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(0, PREVIEW_CORRECTION_LIMIT);
@@ -1973,6 +1978,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: unresolved.map(note => ({ text: clean(note.quote, true), at: sentAt(journal.view.turns.get(note.source)!) ?? 0 })) });
     const questions = [...new Set([...related, ...unresolved.slice(-2).map(item => unresolved.indexOf(item))])]
       .slice(0, PREVIEW_QUESTION_LIMIT).map(index => unresolved[index]!);
+    const periodContexts = (ordinary: string): string[] => {
+      if (!period) return [ordinary];
+      const packet = JSON.parse(ordinary) as object;
+      return Array.from({ length: periodTurns.length + 1 }, (_, index) => {
+        const kept = periodTurns.length - index;
+        return JSON.stringify({ ...packet,
+          period: { from: period.from, through: period.through, zone: period.zone,
+            total: periodMatches.length, omitted: periodMatches.length - kept,
+            turns: periodTurns.slice(periodTurns.length - kept).map(item => ({
+              date: dated(item), conversation: conversationName(item.thread),
+              ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
+              user: clean(redact(item.text).text, true, item.id),
+              answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
+              outcome: outcome(item) })) },
+          periodGuide: 'The calendar window is a candidate inferred from the question, not a decision about its meaning. Interpret the full question using all available evidence. For period claims use dated evidence; the rolling summary also covers other dates. Mark open questions and commitments only when supported by evidence; identify uncertain delivery. If period.omitted is positive, say the recap is partial. Do not infer that no other turns exist.' });
+      });
+    };
     let promptFit = false;
     let measuredPromptOverflow = false;
     let preparationUnavailable = false;
@@ -1988,7 +2010,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const channels = channelFor(turn, summary?.text);
       const candidateChannels = channelFor(turn, summary?.text, false);
       const named = peopleFor(turn.text, summary?.through ?? -1);
-      const open = summary ? relatedOpenFor(turn, summary) : [];
+      const open = summary ? period ? openFor(summary.through, PREVIEW_COMMITMENT_LIMIT) : relatedOpenFor(turn, summary) : [];
       type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'recent' | 'candidate';
         key: string; rank: number; match: number; recent: number; index: number };
       const optional: Optional[] = [];
@@ -2055,8 +2077,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutSummary = (() => { const packet = JSON.parse(fullContext) as Record<string, unknown>;
           if (!('memorySummary' in packet)) return undefined;
           delete packet.memorySummary; return JSON.stringify(packet); })();
-        for (const context of withoutSummary && dropped.some(item => item.kind === 'candidate')
-          ? [withoutSummary, fullContext] : [fullContext, ...(withoutSummary ? [withoutSummary] : [])]) {
+        for (const ordinary of withoutSummary && dropped.some(item => item.kind === 'candidate')
+          ? [withoutSummary, fullContext] : [fullContext, ...(withoutSummary ? [withoutSummary] : [])]) for (const context of periodContexts(ordinary)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {

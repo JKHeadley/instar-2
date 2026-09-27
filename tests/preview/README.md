@@ -1937,3 +1937,14 @@ update, whether its packet was available, and source counts and imported source
 IDs without dumping the old packet. Earlier journal turns without a saved prompt are reported as
 missing. For the private operator procedure, see
 [why-did-you-say-live-test.md](why-did-you-say-live-test.md).
+
+### Period recaps
+
+A verified operator can ask for this or last week, this or last month, today,
+yesterday, the past 1–31 days, or an explicit `YYYY-MM-DD to YYYY-MM-DD` range
+of at most 31 days. The runner uses its installed time zone and shows at most
+twelve dated original turns, with an omission count, beside ordinary recall and
+the rolling summary. The calendar window is a candidate for the model to judge;
+ambiguous or conflicting periods use ordinary recall. `inspect` exposes the
+same bounded period evidence. Existing prompt, review, secret, cap, stop and
+send-intent gates apply. See [week-summary-request-live-test.md](week-summary-request-live-test.md).
