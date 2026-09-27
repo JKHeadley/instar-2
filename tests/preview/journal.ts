@@ -1607,13 +1607,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       message: turn ? clean(redact(turn.text).text, true, turn.id)
         : clean(redact(`${item!.subject ?? ''} ${item!.text}`.trim()).text, true, source),
       mentions: mentions.map(mention => ({ ...mention, quote: clean(mention.quote, true, source) })) }));
-    const activeAttributes = journal.view.personAttributes.filter(note => {
+    const reportedAttributes = journal.view.personAttributes.filter(note => {
       const source = journal.view.turns.get(note.source);
-      return source && source.update <= through && !affectedAttribute(note);
+      return source && source.update <= through;
     });
     const personAttributes = selectedAttributes.map(note => {
       const source = journal.view.turns.get(note.source)!;
-      const later = activeAttributes.some(other => other.name === note.name && other.attribute === note.attribute
+      // Withholding a later report removes its content, not the fact that it superseded an older report.
+      const later = reportedAttributes.some(other => other.name === note.name && other.attribute === note.attribute
         && journal.view.turns.get(other.source)!.update > source.update);
       return { name: clean(redact(note.name).text, true, note.source), attribute: note.attribute,
         value: clean(redact(note.value).text, true, note.source),
@@ -1824,7 +1825,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             : item.attribute === 'partner' ? /\b(?:partner|dating|relationship)\b/iu.test(turn.text)
               : /\b(?:pet|cat|dog|animal)\b/iu.test(turn.text);
         const older = journal.view.personAttributes.some(later => later.name === item.name && later.attribute === item.attribute
-          && !affectedAttribute(later) && (journal.view.turns.get(later.source)?.update ?? -1) > (journal.view.turns.get(item.source)?.update ?? -1));
+          && (journal.view.turns.get(later.source)?.update ?? -1) > (journal.view.turns.get(item.source)?.update ?? -1));
         optional.push({ kind: 'attribute', key: `${item.source}:${item.attribute}:${index}`,
           rank: older ? askedAttribute && /\b(?:history|earlier|before|previous|used to)\b/iu.test(turn.text) ? 0 : 2 : 0,
           match: 0, recent: journal.view.turns.get(item.source)?.update ?? 0, index });

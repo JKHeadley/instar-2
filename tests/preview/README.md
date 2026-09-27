@@ -881,7 +881,9 @@ dated values when asked. Shared names remain separate identity questions.
 The packet fits current events first and gives requested history priority over
 unrelated older evidence; a tight byte limit may omit history, never turn an
 older event into a current one. Correction and forgetting filter affected
-events without erasing their journal evidence. No new store, call or service is
+events without erasing their journal evidence. Forgetting a newer value keeps
+its predecessor historical; the current value remains unknown until a surviving
+newer report supports it. No new store, call or service is
 used. See [people-attribute-history-live-test.md](people-attribute-history-live-test.md)
 for Justin's supervised check after integration.
 
