@@ -713,7 +713,7 @@ Telegram message timestamp, falling back to the durable intake timestamp. It sto
 store, service or scheduler is added. Every verified operator reply packet asks the model for a
 dated decision, including `dated:[]` when there is no event or deadline. Up to three items can be
 recorded from one turn. A malformed proposed item is not recorded; the runner retains a pending
-date decision and sends a checked, truthful clarification instead of the model's false save claim.
+date decision and sends a checked, truthful clarification while retaining unrelated answer text.
 If the model omits the structured date decision, the original turn stays durable and
 `datedPending` names it in `status` and the next packet. That is an unconfirmed missing decision,
 never a due item; the preview must not claim it saved a deadline from that evidence alone.
@@ -727,14 +727,17 @@ other relative phrases retain their ambiguity. A bare hour such as “at 3:30”
 settled time. Day-only and ambiguous-hour items become
 due on their local date and overdue the next local day. A precise time becomes overdue after
 that local time. Items without a resolved day are shown as ambiguous. The packet of the next
-operator message includes up to ten upcoming, due, overdue or ambiguous active items, with a count of
-additional ones. `status` reports all active items and their current states; `inspect --text`
+operator message includes up to ten upcoming, due, overdue or ambiguous active items. The existing
+byte fitting can show fewer, including zero, and reports the omitted count. It likewise fits up to
+three pending date decisions. Full records remain in the journal. `status` reports all active items
+and their current states; `inspect --text`
 shows the next packet's dated block. Corrections and forgetting use the existing validated
 memory change: an affected old item is withheld, and a corrected date is recorded only when
 the operator's replacement clause is selected and validated in its own turn.
 
-For a validated dated item, the immediate reply states its absolute `YYYY-MM-DD` day and zone;
-an unresolved expression gets a clarification. Later answer packets carry those absolute
+For a validated dated item, the immediate reply keeps the model's answer and adds its absolute
+`YYYY-MM-DD` day and zone; an unresolved time remains explicit beside any model clarification.
+An unresolved date gets a clarification. Later answer packets carry those absolute
 dates and ask the model to state them when relevant. The exact reply still passes the existing
 reply check and send intent.
 

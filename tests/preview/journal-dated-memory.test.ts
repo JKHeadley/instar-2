@@ -80,7 +80,7 @@ it('stores the Telegram turn-time date in the default operator zone and sends it
     worker.intake([earlier]); await worker.drain();
     expect(journal.view.dated).toMatchObject([{ day: '2026-09-27', zone: 'America/Los_Angeles' }]);
     expect(journal.view.order[0]?.intent).toContain('2026-09-27 (America/Los_Angeles)');
-    expect(journal.view.order[0]?.intent).not.toContain('Tomorrow is the deadline');
+    expect(journal.view.order[0]?.intent).toContain('Tomorrow is the deadline');
     expect(sends).toBe(1);
     const friday = update(2, 'The appointment is next Friday.');
     friday.message.date = Math.floor(Date.UTC(2026, 8, 25, 17) / 1000);
@@ -105,6 +105,64 @@ it('stores the Telegram turn-time date in the default operator zone and sends it
     expect(utcStatus.status).toBe(0);
     expect(JSON.parse(defaultStatus.stdout).self).toContain('time zone America/Los_Angeles');
     expect(JSON.parse(utcStatus.stdout).self).toContain('time zone UTC');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps the answer and an ambiguous-hour question beside the verified date', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-answer-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const sent: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
+      model: async input => JSON.stringify({ reply: input.question.includes('invoice')
+        ? '2 + 2 = 4. Your invoice is due tomorrow.' : 'Do you mean 3:30 AM or PM?', memory: [],
+        dated: [{ quote: input.question.includes('invoice') ? 'The invoice is due tomorrow.' : input.question,
+          when: input.question.includes('invoice') ? 'tomorrow' : 'tomorrow at 3:30' }] }),
+      send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
+    worker.intake([update(1, 'The invoice is due tomorrow. Also, what is 2 + 2?'),
+      update(2, 'My dentist appointment is tomorrow at 3:30.')]);
+    await worker.drain();
+    expect(sent[0]).toContain('2 + 2 = 4.');
+    expect(sent[0]).toContain('2026-09-27 (America/Los_Angeles)');
+    expect(sent[1]).toContain('Do you mean 3:30 AM or PM?');
+    expect(sent[1]).toContain('2026-09-27 (America/Los_Angeles); AM or PM unspecified');
+    expect(journal.view.dated[1]).toMatchObject({ day: '2026-09-27', ambiguity: 'AM or PM unspecified' });
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('shrinks dated projections for summary and later replies without losing journaled dates', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-fit-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis, maxCalls: 16, maxReplies: 16, maxBytes: 4500 });
+    const packets: Array<{ id: string; packet: Record<string, unknown> }> = [];
+    let sends = 0;
+    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
+      model: async input => {
+        const packet = JSON.parse(input.context) as Record<string, unknown>;
+        packets.push({ id: input.id, packet });
+        if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The operator has dated invoice events.',
+          people: [], memory: [], commitments: [], closed: [] });
+        if (input.question === 'Hello') return JSON.stringify({ reply: 'Hello.', memory: [], dated: [] });
+        return JSON.stringify({ reply: 'I have the invoice date.', memory: [],
+          dated: [{ quote: input.question, when: 'tomorrow' }] });
+      }, send: async () => ++sends, checkOutbound: () => {} });
+    for (let id = 1; id <= 7; id++) {
+      worker.intake([update(id, `Invoice ${id} for ${'the prepared design materials and delivery work '.repeat(6)}is due tomorrow.`)]);
+      await worker.drain(); await worker.summarizeIfNeeded();
+    }
+    worker.intake([update(8, 'Hello')]); await worker.drain();
+    expect(sends).toBe(8);
+    expect(journal.view.order[7]?.held).toBeUndefined();
+    expect(journal.view.dated).toHaveLength(7);
+    const hello = packets.find(item => item.id === journal.view.order[7]?.id)?.packet;
+    expect(hello).toBeDefined();
+    expect(hello?.moreDated).toBeGreaterThan(0);
+    expect(packets.some(item => item.id.startsWith('summary:') &&
+      typeof item.packet.moreDated === 'number' && item.packet.moreDated > 0)).toBe(true);
+    expect(journal.view.calls).toBeLessThan(16);
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -166,6 +224,24 @@ it('replies truthfully once to a malformed dated proposal across restart, retain
     await worker.drain();
     expect(sends).toBe(1);
     expect(journal.view.order[1]?.datedPending).toBe(true);
+    expect(journal.view.dated).toHaveLength(0);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an unrelated answer when the model proposes an invalid saved date', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-invalid-answer-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    let sent = '';
+    const worker = createJournalWorker(journal, { now: () => start, stopped: () => false,
+      model: async () => JSON.stringify({ reply: '2 + 2 = 4. I saved it.', memory: [],
+        dated: [{ quote: 'The invoice is due tomorrow.', when: 'October 5' }] }),
+      send: async input => { sent = input.text; return 1; }, checkOutbound: () => {} });
+    worker.intake([update(1, 'The invoice is due tomorrow. Also, what is 2 + 2?')]); await worker.drain();
+    expect(sent).toContain('2 + 2 = 4.');
+    expect(sent).not.toContain('I saved it.');
+    expect(sent).toContain('I have not saved a dated item.');
     expect(journal.view.dated).toHaveLength(0);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

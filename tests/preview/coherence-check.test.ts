@@ -107,8 +107,17 @@ it('keeps a reply reachable when a correction cannot fit and retains the uncarri
     sample.worker.checkCoherence();
     const withNote = sample.worker.probe('Can I open it?');
     expect('context' in withNote).toBe(true);
-    const limit = Buffer.byteLength(('context' in bare ? bare.context : '')) + 1;
-    expect(Buffer.byteLength(('context' in withNote ? withNote.context : ''))).toBeGreaterThan(limit);
+    // The worker can drop memory candidates independently of correction notes.
+    // Derive the cap from the smallest ordinary packet, then prove even the
+    // smallest packet carrying the correction exceeds it.
+    const withoutCandidates = (context: string) => {
+      const packet = JSON.parse(context) as Record<string, unknown>;
+      delete packet.memoryDecision;
+      delete packet.memoryCandidates;
+      return JSON.stringify(packet);
+    };
+    const limit = Buffer.byteLength(withoutCandidates('context' in bare ? bare.context : '{}')) + 1;
+    expect(Buffer.byteLength(withoutCandidates('context' in withNote ? withNote.context : '{}'))).toBeGreaterThan(limit);
     sample.journal.close();
 
     const trial = make('trial', limit);
