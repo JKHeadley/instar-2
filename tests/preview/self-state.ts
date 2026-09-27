@@ -88,8 +88,9 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   for (const turn of view.order) if (turn.held) holds.set(turn.held, (holds.get(turn.held) ?? 0) + 1);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = [...view.summaryReservations].filter(through => !view.summaries.some(item => item.through === through)).length;
-  const unknownSends = view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined
-    || turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined).length;
+  const unknownSends = view.order.reduce((count, turn) => count
+    + Number(turn.intent !== undefined && turn.sent === undefined)
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0);
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const refused = view.order.length - accepted.length;
   const when = (ms: number) => parts(format, ms).text;

@@ -126,8 +126,9 @@ async function main() {
       unknownCalls: view.view.order.filter(t => t.reserved && (t.modelState === 'uncertain' || t.answer === undefined)).length,
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
       modelResultStates: Object.fromEntries(view.view.providerStates),
-      unknownSends: view.view.order.filter(t => t.intent && !t.sent
-        || t.heldNoticeIntent && !t.heldNoticeSent).length,
+      unknownSends: view.view.order.reduce((count, t) => count
+        + Number(t.intent !== undefined && t.sent === undefined)
+        + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined), 0),
       summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
         memory: s.memory ? s.memory.length : null })),

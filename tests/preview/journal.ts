@@ -568,6 +568,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
   const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
+  const heldNoticeOutcome = (item: Turn) => item.heldNoticeSent === undefined ? 'delivery UNKNOWN' : 'Telegram API accepted';
   const outcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN' : 'Telegram API accepted')
     : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
@@ -587,7 +588,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       user: clean(redact(item.text).text, true),
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
-      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent } : {}), outcome: outcome(item) }));
+      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent, heldNoticeOutcome: heldNoticeOutcome(item) } : {}), outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn; mentions: { person: string; quote: string }[] }>();
     if (summary) for (const note of named) {
@@ -616,7 +617,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: clean(redact(item.text).text, true), answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
-      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent } : {}),
+      ...(item.heldNoticeIntent ? { heldNotice: item.heldNoticeIntent, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.filter(item => !journal.view.memory.some(change =>
       change.source === item.id || change.replies?.includes(item.id))).map(item => ({ update: item.update, date: dated(item),
