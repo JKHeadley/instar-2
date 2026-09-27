@@ -72,6 +72,67 @@ it('answers a verified operator from dated bounded memory, marks corrections, co
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
+it.each([
+  { name: 'later correction', third: 'Actually Sam keeps the cedar map in the red drawer.',
+    mode: 'correct', visible: 'red drawer', hidden: 'green drawer', forgotten: 0 },
+  { name: 'forgotten clause', third: 'Forget the cedar map in the green drawer.',
+    mode: 'forget', visible: '[withheld: operator correction or forgetting]',
+    hidden: 'the cedar map in the green drawer.', forgotten: 1 },
+])('search applies memory projection after $name and replay', async scenario => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-search-chain-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis);
+    const ports = { now: () => 1790001000000, stopped: () => false, checkOutbound: () => {},
+      model: async (input: { id: string; context: string }) => {
+        if (!input.id.startsWith('summary:')) return 'Understood.';
+        const packet = JSON.parse(input.context);
+        const request = packet.memoryRequest?.message as string | undefined;
+        const source = packet.memoryCandidates?.find((item: { message: string }) =>
+          item.message.includes(request?.includes('green drawer') && !request.startsWith('Forget')
+            ? 'blue drawer' : 'green drawer'));
+        const memory = request && source ? [request.startsWith('Forget')
+          ? { mode: 'forget', source: source.id, quote: 'the cedar map in the green drawer.' }
+          : { mode: 'correct', source: source.id,
+            quote: request.includes('red drawer') ? 'Sam keeps the cedar map in the green drawer.'
+              : 'Sam keeps the cedar map in the blue drawer.',
+            replacement: request.includes('red drawer') ? 'Sam keeps the cedar map in the red drawer.'
+              : 'Sam keeps the cedar map in the green drawer.' }] : [];
+        return JSON.stringify({ summary: 'Sam has a drawer fact.', people: [], memory });
+      }, send: async () => 1 };
+    let worker = createJournalWorker(journal, ports);
+    for (const [index, message] of [
+      'Sam keeps the cedar map in the blue drawer.',
+      'Actually Sam keeps the cedar map in the green drawer.', scenario.third,
+    ].entries()) { worker.intake([update(index + 1, message)]); await worker.drain(); }
+    expect(journal.view.memory).toHaveLength(2);
+    expect(journal.view.memory[1]?.mode).toBe(scenario.mode);
+    journal.close();
+
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    const probe = worker.probe('What do you remember about Sam?');
+    expect('reason' in probe).toBe(false);
+    if ('reason' in probe) throw Error(probe.reason);
+    const packet = JSON.parse(probe.context);
+    const search = packet.memorySearch;
+    expect(search.forgotten).toBe(scenario.forgotten);
+    expect(search.items).toHaveLength(1);
+    expect(search.items[0].quote).toContain(scenario.visible);
+    expect(search.items[0].quote).not.toContain(scenario.hidden);
+    expect(probe.context).not.toContain(scenario.hidden);
+    if (scenario.mode === 'correct') {
+      expect(search.items[0]).toMatchObject({ source: 'turn 2', status: 'corrected', correctedBy: 'turn 3' });
+      expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'Sam keeps the cedar map in the red drawer.' }]);
+    } else {
+      expect(search.items[0]).toMatchObject({ source: 'turn 1', status: 'corrected', correctedBy: 'turn 2' });
+      expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: expect.stringContaining('[withheld:') },
+        { mode: 'forgotten' }]);
+    }
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
 it('keeps bounded search unavailable to an unverified sender', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-search-standing-')));
   try {

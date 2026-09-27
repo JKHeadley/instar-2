@@ -520,6 +520,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const passage of change.summaryPassages ?? []) projected = projected.replaceAll(passage, withheld);
     return projected;
   }, value);
+  const supersededCorrection = (change: MemoryChange) => journal.view.memory
+    .slice(journal.view.memory.indexOf(change) + 1).some(next => next.quote.includes(change.replacement!));
   const replyFor = (turn: Turn) => turn.noticeClass ? clean(redact(sentText(turn) ?? '').text, true)
     : journal.view.memory.some(change => change.source === turn.id || change.replies?.includes(turn.id))
       ? withheld : clean(redact(sentText(turn) ?? '').text, true);
@@ -566,12 +568,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const changes = journal.view.memory.filter(change => change.source === source.id);
       const last = changes.at(-1);
       if (last?.mode === 'forget') { forgotten++; continue; }
-      if (last?.mode === 'correct' && journal.view.memory.some(change => change.mode === 'forget'
-        && change.quote.includes(last.replacement!))) continue;
+      if (last?.mode === 'correct' && supersededCorrection(last)) continue;
       if (items.length >= PREVIEW_RECALL_LIMIT) { truncated = true; continue; }
       const correction = last?.mode === 'correct' ? last : undefined;
       const trigger = correction ? journal.view.turns.get(correction.trigger) : undefined;
-      const quote = correction ? correction.replacement! : clean(source.text, true);
+      const quote = clean(correction ? correction.replacement! : source.text, true);
       items.push({ source: source.source, date: source.date,
         ...(source.conversation ? { conversation: source.conversation } : {}),
         status: correction ? 'corrected' : 'current', quote: redact(quote).text.slice(0, 1000),
@@ -649,11 +650,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(ports.sources === undefined ? {} : { sources: typeof ports.sources === 'function' ? ports.sources() : ports.sources }),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { through: summary.through, text: clean(redact(summary.text).text, true) } }
         : { historyMode: 'complete' }),
-      ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
+      ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change):
         Array<{ mode: string; reason?: string; replacement?: string }> => {
         if (change.mode === 'forget') return [{ mode: 'forgotten', reason: 'verified operator requested forgetting' }];
-        const later = journal.view.memory.slice(index + 1).some(next => next.quote.includes(change.replacement!));
-        return later ? [] : [{ mode: 'corrected', replacement: clean(redact(change.replacement!).text) }];
+        return supersededCorrection(change) ? [] : [{ mode: 'corrected', replacement: clean(redact(change.replacement!).text) }];
       }) } : {}),
       ...(corrections.length ? { corrections } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}),
       ...(search ? { memorySearch: search } : {}), history });
