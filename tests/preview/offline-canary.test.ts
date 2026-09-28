@@ -39,7 +39,7 @@ const status = root => {
   return JSON.parse(result.stdout);
 };
 
-it('answers, reviews a clean reply, and holds a contradictory one-line review without sending its candidate', async () => {
+it('answers, reviews a clean reply, and sends on a non-secret Jev flag when the one-line review is malformed (Rule 86)', async () => {
   const root = rootOf(), path = join(root, 'journal.encrypted');
   let journal = openPreviewJournal(path, key, genesis());
   const sent = [], reviewPackets = [];
@@ -60,21 +60,23 @@ it('answers, reviews a clean reply, and holds a contradictory one-line review wi
     worker.intake([update(1, 'What color is it?')]); await worker.drain();
     worker.intake([update(2, 'And the other color?')]); await worker.drain();
     worker.intake([update(3, 'And one more color?')]); await worker.drain();
-    expect(sent.map(item => item.expectedText)).toEqual(['PREVIEW — The answer is violet.', 'PREVIEW — The answer is amber.']);
+    expect(sent.map(item => item.expectedText)).toEqual(['PREVIEW — The answer is violet.', 'PREVIEW — The answer is amber.',
+      'PREVIEW — The answer is scarlet.']);
     expect(reviewPackets).toHaveLength(2);
     expect(reviewPackets[0].originalPrompt).toContain('And the other color?');
     expect(reviewPackets[0].rules).toContain('raw_path');
     expect(journal.view.order[2].answer).toBe('The answer is scarlet.');
-    expect(journal.view.order[2].intent).toBeUndefined();
-    expect(journal.view.order[2].held).toBe('reply check unavailable');
-    expect(status(root)).toMatchObject({ turns: 3, calls: 5, replies: 2,
+    expect(journal.view.order[2].intent).toBe('PREVIEW — The answer is scarlet.');
+    expect(journal.view.order[2].held).toBeUndefined();
+    expect(status(root)).toMatchObject({ turns: 3, calls: 5, replies: 3,
       limits: { maxCalls: 12, maxReplies: 8, maxTurns: 8, maxBytes: 32768 },
-      replyChecks: { pass: 2, unavailable: 1 }, unknownSends: 0, stop: null });
+      replyChecks: { pass: 2, unavailable: 1 }, reviewUnavailableReleases: { total: 1, byRule: { raw_path: 1 } },
+      unknownSends: 0, stop: null });
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, { now: () => at, stopped: () => false,
       model: async () => { throw Error('answer repeated'); }, send: async () => { throw Error('send repeated'); },
       checkOutbound: () => {} }).drain();
-    expect(journal.view.order[2].held).toBe('reply check unavailable');
+    expect(journal.view.order[2].sent).toBe(3);
     expect(journal.view.cursor).toBe(4);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

@@ -19,7 +19,7 @@ import { isStatusCommand, statusReply } from './status-command.js';
 import { explicitAgentPromises, fulfillsReminder, type AgentPromise } from './agent-commitment.js';
 import { requestedPeriod, inRequestedPeriod } from './period-summary.js';
 import { messageTime, zoneFormatter } from './self-state.js';
-import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics } from './reply-check.js';
+import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
@@ -323,6 +323,31 @@ export const activePersonMerges = (view: JournalView): PersonMerge[] => view.per
   !view.memory.some(change => change.source === link.trigger
     && (link.confirmation.includes(change.quote) || change.quote.includes(link.confirmation))));
 
+
+/** Rule 86: Jev is a low-context filter, so it may hold a reply alone only for a secret.
+ * Its completed flags name no credential and no review returned a violation: when the
+ * full-context review then gives no verdict, the reply is sent. The durable Jev row, the
+ * unavailable review row and the intent together are the record; nothing is re-dispatched. */
+const jevNonSecretFlags = (turn: Turn, candidateDigest?: string): ReplyRule[] | undefined => {
+  const checks = turn.replyChecks ?? [];
+  if (checks.some(check => check.path !== 'jev' && check.verdict === 'violation')) return undefined;
+  const jev = [...checks].reverse().find(check => check.path === 'jev' && (check.verdict === 'violation' || check.verdict === 'unsure')
+    && (candidateDigest === undefined || check.candidateDigest === candidateDigest));
+  return jev?.ruleIds.length && !jev.ruleIds.includes('credential') ? jev.ruleIds : undefined;
+};
+/** Content-free status: replies sent on Jev's non-secret flags while the review was unavailable. */
+export function reviewUnavailableReleases(view: JournalView): { total: number; byRule: Partial<Record<ReplyRule, number>> } {
+  const byRule: Partial<Record<ReplyRule, number>> = {};
+  let total = 0;
+  for (const turn of view.order) {
+    const flags = turn.intent !== undefined && turn.replyChecks?.at(-1)?.verdict === 'unavailable'
+      ? jevNonSecretFlags(turn) : undefined;
+    if (!flags) continue;
+    total++;
+    for (const rule of flags) byRule[rule] = (byRule[rule] ?? 0) + 1;
+  }
+  return { total, byRule };
+}
 
 /** Read-only timing projection from the same durable frames as the reply state. */
 export function replyTimings(view: JournalView) {
@@ -3673,8 +3698,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 chat: journal.view.genesis.chat, operator: journal.view.genesis.operator }, history: [] } }) }] })
             : undefined);
 
-          // Only a completed PASS releases the candidate; an unavailable or interrupted
-          // check keeps the turn pending with its intake, candidate and reservations.
+          // A completed PASS releases the candidate. An unavailable or interrupted check keeps the
+          // turn pending with its intake, candidate and reservations, unless Rule 86 releases it below.
           let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact secret wall runs before provider disclosure on every replay.
           if (redact(reply).count) {
@@ -3684,7 +3709,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else if (previous && previous.path !== 'jev' && previous.verdict === 'violation') decision = 'violation';
           else if (previous && previous.path !== 'holding' && previous.verdict === 'pass') decision = 'pass';
           else if (turn.reviewReserved) {
-            // A failed or interrupted paid review is UNKNOWN: never repeat it, never send unchecked.
+            // A failed or interrupted paid review is UNKNOWN: never repeat it.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
               ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'unavailable';
@@ -3721,6 +3746,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
           }
+          // Rules 4, 86: without a review verdict, Jev's non-secret flags only signal. A spend-cap
+          // refusal, a secret flag or a review violation still holds; stop and expiry gate the send.
+          if (decision === 'unavailable' && !capRefused && jevNonSecretFlags(turn, candidateDigest)) decision = 'pass';
           if (decision === 'violation') { reply = summaryHeader === undefined ? HOLDING_REPLY
             : `${summaryHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`; heldBack = true; }
           else if (decision === 'unavailable') {

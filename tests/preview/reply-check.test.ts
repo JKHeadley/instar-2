@@ -537,7 +537,7 @@ it('reviews every rule after reopening a pre-upgrade mixed Jev verdict', async (
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('does not repeat an interrupted paid review and holds the candidate instead of sending it unchecked', async () => {
+it('does not repeat an interrupted paid review; Jev\'s non-secret flag alone does not hold the candidate (Rule 86)', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-crash-')));
   const path = join(root, 'journal.encrypted');
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -563,13 +563,12 @@ it('does not repeat an interrupted paid review and holds the candidate instead o
         escalate: async () => { throw Error('review repeated'); } } });
     await recovered.drain();
     await recovered.drain();
-    expect(sent).toBe('');
+    expect(sent).toBe('PREVIEW — candidate');
     expect(second.view.calls).toBe(2);
     expect(second.view.lastReplyCheck?.path).toBe('subscription');
     expect(second.view.lastReplyCheck?.verdict).toBe('unavailable');
-    expect(second.view.order[0]?.intent).toBeUndefined();
-    expect(second.view.order[0]?.answer).toBe('candidate');
-    expect(second.view.order[0]?.held).toBe('reply check unavailable');
+    expect(second.view.order[0]?.intent).toBe('PREVIEW — candidate');
+    expect(second.view.order[0]?.held).toBeUndefined();
     expect(replyTimings(second.view).perReply[0]?.fallbackMs).toBeNull();
     expect(replyTimings(second.view).fallback).toEqual({ count: 0, p50Ms: null, p95Ms: null });
     second.close();
