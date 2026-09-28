@@ -19,7 +19,7 @@ import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, r
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
-import { failureShapeOf, parseModelJson } from './model-json.js';
+import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
 
@@ -576,14 +576,15 @@ async function main() {
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
-      if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string') {
+      const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
+        ? conclusionText(decision.conclusion.value) : null;
+      if (value === null) {
         recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
         return { state: 'complete', failureClass: 'malformed', usage: result.usage };
       }
       if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
-      if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
+      if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
+      return { state: 'complete', value, usage: result.usage };
     };
     const invokeJev = async (text, questions) => {
       const start = performance.now();

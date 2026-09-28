@@ -39,9 +39,10 @@ const conversation = (record, p = profile, now = NOW) =>
 it('pins the renewed expiry and leaves every invocation policy digest unchanged', () => {
   expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 9, 5, 20, 40));
   expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(7 * 24 * 3600 * 1000);
-  // The int11 conversation policy digest for claude-sonnet-5; the policy never carries the expiry.
+  // The live-fix conversation policy digest for claude-sonnet-5 (int11 was sha256:efe69876…; the 2026-09-28
+  // declaration-slot system prompt needs a policy-successor record). The policy never carries the expiry.
   expect(encoded(subscriptionConversationPolicy(model)).hash)
-    .toBe('sha256:efe698761d91114749594313b2bde1e2c21a855901f539c5a3afc4a16998cea7');
+    .toBe('sha256:aced65e686a665f11a02d7480501170ad3e2f8664fa5858ec69f42374390374a');
   expect(JSON.stringify([subscriptionConversationPolicy(model), subscriptionInvocationPolicy(model)]))
     .not.toMatch(new RegExp(`${PRIOR_EXPIRY}|${SUBSCRIPTION_PREVIEW_EXPIRY}`));
 });

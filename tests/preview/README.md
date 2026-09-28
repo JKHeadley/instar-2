@@ -2625,7 +2625,27 @@ that context; an unrequested internal disclosure or handoff of work can still
 violate. The review returns its one-line `PASS | reason` or
 `VIOLATION:rule_id | reason` verdict inside the required Decision envelope's
 `conclusion.value`. The narrow line parser and refusal on a malformed review are
-unchanged.
+unchanged, except that the reason may run to 600 characters (the question asks for
+under 300): live on 2026-09-28 the real model wrote 170-200 character reasons and the
+earlier 160 bound refused every one as malformed, holding replies as "check unavailable".
+
+**Decision slot for declarations (live repair 2026-09-28).** The conversation system
+prompt now puts `reason` (the model's reasoning) first and lets `conclusion.value` be
+either the plain reply string or the object `{"reply": ..., ...decision fields}` whenever
+the packet's decision guidance applies (memory, dated, directives, openLoops, blocker and
+the rest). The runner re-serializes that object as the JSON text the worker has always
+validated (`conclusionText` in `model-json.ts`); any other non-string value is malformed.
+Before this, the prompt asked for the reply "in plain text" and the declarations existed
+only as packet guidance: across the whole live trial no memory change, dated item,
+commitment, directive or blocker was ever recorded, because the real model put its
+declarations in `reason.value`, which nothing reads. The answer packet also now carries
+`capabilities`, the keys a blocker avenue's evidence must name. The prompt change moves
+the invocation-policy digest, so a live runner needs a policy-successor activation record
+(`renew-activation.mjs --policy-successor`). Real model bytes for the four failing live
+turns, under the old and the new prompt, are in
+`fixtures/live-declarations-2026-09-28.json`, driven end to end by
+`live-declarations.test.ts`; the live procedure is
+[live-declarations-live-test.md](live-declarations-live-test.md).
 
 `reply-review-corpus.mjs` is a bounded offline screen for false holds. Its 32
 synthetic cases each select one of the eight review rules: three human-fine

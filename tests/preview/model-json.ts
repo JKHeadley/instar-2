@@ -66,3 +66,12 @@ export function parseModelJson(text: string): ModelJsonResult {
   if (fence || outside.includes('```')) return { ok: false, shape: 'fenced' };
   return { ok: false, shape: spans.length === 1 ? 'prose-wrapped' : 'not-json' };
 }
+
+/** The text the runner hands the journal worker for a Decision's conclusion.value: the string itself, or a plain
+ * object (the conversation protocol's {reply, ...decision fields}, or a runner task's JSON answer) re-serialized as
+ * JSON text for the worker's existing validators. Any other value (null, array, number) is refused as null. The whole
+ * response was already exactly one Decision object (parseModelJson), so nothing outside it is ever read. */
+export function conclusionText(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  return isObject(value) ? JSON.stringify(value) : null;
+}

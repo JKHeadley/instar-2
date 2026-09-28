@@ -707,7 +707,7 @@ it('falls back to a current summary when the complete prepared prompt overflows,
       send: async()=>1,checkOutbound:()=>{} });
     worker.intake([update(3,'what was first?')]); await worker.drain();
     expect(full).toBeGreaterThan(0);
-    expect(compact).toBeLessThan(10000);
+    expect(compact).toBeLessThan(11000); // the obligation guide + capabilities ride every operator packet
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);
     journal.append({kind:'hold',id:'telegram:12345678:update:2',reason:'review needed',at:1000});

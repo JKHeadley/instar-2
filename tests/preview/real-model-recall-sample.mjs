@@ -5,6 +5,7 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { installRecallStopSignals, runRealModelRecallSample } from './real-model-recall-sample.ts';
+import { conclusionText } from './model-json.ts';
 
 const flags = process.argv.slice(2);
 const live = flags.includes('--live');
@@ -62,9 +63,10 @@ if (!live || !profilePath) {
         return { state: result.state === 'complete' ? 'rejected' : result.state, usage };
       try {
         const decision = JSON.parse(result.bytes);
-        if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-          || typeof decision.conclusion.value !== 'string') return { state: 'rejected', usage };
-        return { state: 'complete', text: decision.conclusion.value, usage };
+        const text = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
+          ? conclusionText(decision.conclusion.value) : null;
+        if (text === null) return { state: 'rejected', usage };
+        return { state: 'complete', text, usage };
       } catch { return { state: 'rejected', usage }; }
     }, activation.trial, () => !active());
     if (!active()) throw Error('recall sample: stopped; report remains incomplete');
