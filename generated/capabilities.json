@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:cf211bb476ecc292de347a6542ad5f3dbf2bba4da5446936b9f3611914cc91aa",
-  "commit": "71c3ac6b62fed5d09f8914537561eccd11a0dae1",
+  "generation": "sha256:3b04f8a26d5f2d5e4a64d0f649484cb5337491d30a56b0a375520c9c5d59b064",
+  "commit": "42087e1fdb154f8e23ceaf6c70e5688e629dfd52",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -26,6 +26,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
+      },
+      {
+        "id": "preview-owned-obligations",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
       },
       {
         "id": "preview-requested-reminders",
@@ -126,6 +134,14 @@
         "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
       },
       {
+        "id": "preview-owned-obligations",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
+      },
+      {
         "id": "preview-requested-reminders",
         "status": "dark",
         "module": "tests/preview",
@@ -224,6 +240,14 @@
         "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
       },
       {
+        "id": "preview-owned-obligations",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
+      },
+      {
         "id": "preview-requested-reminders",
         "status": "dark",
         "module": "tests/preview",
@@ -320,6 +344,14 @@
         "availability": "available",
         "userFacing": true,
         "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
+      },
+      {
+        "id": "preview-owned-obligations",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
       },
       {
         "id": "preview-requested-reminders",
