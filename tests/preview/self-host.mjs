@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // Rules 2 and 115 (D14 §9): the native harness develops, tests, packages, installs and exercises a
 // local capability unattended, through the public ports every harness has: reasoning through a
-// registered model doorway (each attempt durably recorded before it is made), tools only as
-// admitted proposals dispatched through one interface, execution through the native adapter and
-// Eight's confinement, packaging and activation on the owners' package records.
+// registered model doorway (each attempt charged and consumed in Six before it is invoked through
+// Six), tools only as admitted proposals dispatched through one interface, execution admitted by
+// the owners and launched through the S8 boundary into Eight's confinement, packaging and
+// activation on the owners' package records.
 // This file owns process, clock and filesystem; nothing here widens a grant or runs a shell.
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { hashBytes } from '../../src/facts/index.js';
 import { DEVELOPMENT_TOOLS } from '../../src/assembly/index.js';
 import { redact } from '../../src/recall/redact.js';
-import { appendDurable, createSelfHostHarness, dispatchTool, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
+import { appendDurable, createSelfHostHarness, dispatchTool, latchStop, openRecordLog, stoppedAt } from './self-host-harness.mjs';
 import { createPackageLifecycle } from './self-host-packages.mjs';
 
 export const SELF_HOST_LIMITS = Object.freeze({ rounds: 3, attempts: 3, files: 20, fileBytes: 65536, tools: 8 });
@@ -30,27 +31,6 @@ export function selfHostPrompt(task, feedback) {
       + '"probe":{"entrypoint":string,"export":string,"input":any,"expect":any}}}. Paths are relative to the package directory; '
       + 'include a node:test file and the package-test tool to run it. Code runs confined: no writes, no network, no child processes, no environment. '
       + 'Use only listed tools; the harness stages and installs after the package tests pass.' });
-}
-
-/**
- * The durable provider-attempt ledger: an attempt is recorded before it is made and counted
- * forever, so a restart never resets the allowance; a started attempt without a settled row is
- * an UNKNOWN charged attempt.
- */
-export function attemptLedger(root, allowance = SELF_HOST_LIMITS.attempts) {
-  const path = join(root, 'attempts.jsonl');
-  const rows = key => readDurable(path).filter(row => row.task === key);
-  return Object.freeze({
-    used: key => rows(key).filter(row => row.state === 'started').length,
-    unknown: key => { const all = rows(key); return all.filter(row => row.state === 'started' && !all.some(other => other.state === 'settled' && other.operation === row.operation)).length; },
-    begin(key, at) {
-      const used = rows(key).filter(row => row.state === 'started').length;
-      if (used >= allowance) throw Error(`self-host: provider attempt allowance exhausted (${used} of ${allowance} recorded)`);
-      const operation = `self-host:${key.slice(7, 19)}:${used + 1}`;
-      appendDurable(path, { task: key, operation, state: 'started', at }); return operation;
-    },
-    settle(key, operation, outcome, at) { appendDurable(path, { task: key, operation, state: 'settled', outcome, at }); },
-  });
 }
 
 const parsePlan = text => {
@@ -78,16 +58,17 @@ export async function selfHost({ task, propose, repo, root, grants, context, sco
   const phases = join(root, 'self-host.jsonl'), record = row => appendDurable(phases, { ...row, at: now() });
   const harness = createSelfHostHarness({ root, context, stopped, now, log, resolveCredential, wallMs });
   const lifecycle = createPackageLifecycle({ context, log, harness, stopped, work });
-  const ledger = attemptLedger(root, allowance);
-  const recovered = lifecycle.recover();
+  const recovered = await lifecycle.recover();
   if (recovered.length) record({ phase: 'recovered', outcomes: recovered });
   let feedback = null;
   for (let round = 1; round <= SELF_HOST_LIMITS.rounds; round++) {
     if (stopped()) { record({ phase: 'stopped', round }); return { passed: false, stopped: true, rounds: round - 1, recovered }; }
-    const operation = ledger.begin(key, now());
-    let reply;
-    try { reply = await propose(selfHostPrompt(task, feedback), { operation, stopped }); ledger.settle(key, operation, 'answered', now()); }
-    catch (error) { ledger.settle(key, operation, 'failed-charge-unknown', now()); throw error; }
+    let reply, attempt = null;
+    try {
+      reply = await harness.dispatchProvider(key, async operation => { attempt = operation;
+        return propose(selfHostPrompt(task, feedback), { operation, stopped }); }, allowance ?? SELF_HOST_LIMITS.attempts);
+      record({ phase: 'provider', round, operation: attempt, outcome: 'answered' });
+    } catch (error) { if (attempt) record({ phase: 'provider', round, operation: attempt, outcome: 'failed-charge-unknown' }); throw error; }
     const plan = parsePlan(reply);
     const real = realpathSync(scope);
     for (const file of plan.files) {
@@ -108,7 +89,7 @@ export async function selfHost({ task, propose, repo, root, grants, context, sco
     };
     const ports = {
       'stage-package': options => { const staged = bound(options); return { contentDigest: staged.package.contentDigest, output: `staged ${staged.package.id}` }; },
-      'install-package': options => { const outcome = lifecycle.install(bound(options), { crashAfterActivating });
+      'install-package': async options => { const outcome = await lifecycle.install(bound(options), { crashAfterActivating });
         return { code: outcome.passed ? 0 : 1, passed: outcome.passed, contentDigest: outcome.active, inhibited: outcome.inhibited ?? null,
           output: outcome.passed ? 'installed and active' : `inhibited: ${outcome.evidence.probed?.output ?? ''} ${outcome.evidence.tested?.output ?? ''}` }; },
     };
@@ -119,7 +100,7 @@ export async function selfHost({ task, propose, repo, root, grants, context, sco
     for (const proposal of Array.isArray(plan.tools) ? plan.tools.slice(0, SELF_HOST_LIMITS.tools) : []) {
       await yieldTurn();
       if (stopped()) break;
-      results.push(call(proposal));
+      results.push(await call(proposal));
     }
     record({ phase: 'tools', round, results: results.map(item => ({ tool: item.tool, code: item.code ?? null, refused: item.refused ?? null,
       observation: item.observation ?? null })) });
@@ -131,11 +112,11 @@ export async function selfHost({ task, propose, repo, root, grants, context, sco
     let install = results.find(item => item.tool === 'install-package' && item.passed);
     if (!install) {
       await yieldTurn();
-      const staged = call({ operation: 'stage-package', params: [], options });
+      const staged = await call({ operation: 'stage-package', params: [], options });
       results.push(staged);
       if (staged.code !== 0) { feedback = { round, tested, failed: [summary(staged)], refused: [] }; continue; }
       await yieldTurn();
-      install = call({ operation: 'install-package', params: [], options });
+      install = await call({ operation: 'install-package', params: [], options });
       results.push(install);
     }
     record({ phase: 'installed', round, namespace: options.namespace, passed: !!install.passed, refused: install.refused ?? null,
@@ -146,7 +127,7 @@ export async function selfHost({ task, propose, repo, root, grants, context, sco
   record({ phase: 'exhausted', rounds: SELF_HOST_LIMITS.rounds });
   return { passed: false, rounds: SELF_HOST_LIMITS.rounds, feedback, recovered };
 }
-/** Each confined run is a bounded synchronous child; the loop yields between them so its host stays responsive. */
+/** The loop yields between steps so its host stays responsive. */
 const yieldTurn = () => new Promise(done => setImmediate(done));
 const summary = item => ({ tool: item.tool, code: item.code ?? null, refused: item.refused ?? null, timedOut: item.timedOut ?? false, output: item.output ?? '' });
 

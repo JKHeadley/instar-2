@@ -14,12 +14,24 @@ const take = result => { if (result.kind !== 'Success') throw Error(`self-host: 
 const fsyncPath = path => { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
 const probeOf = pkg => JSON.parse(pkg.probes[0]);
 
+/**
+ * Rules 26, 90 (D14 §9): the immutable package identity is the whole package — its declaration
+ * (namespace, version, entrypoints and probe) and every retained executable and test byte — so two
+ * versions with the same code are two packages. `sourceDigest` is the entrypoint bytes alone.
+ */
+export function packageIdentity(declaration, archive, tests) {
+  return hashBytes(JSON.stringify({ namespace: declaration.namespace, version: declaration.version,
+    entrypoints: archive.map((entry, index) => [declaration.entrypoints[index].id, entry.path, entry.digest]),
+    probe: { entrypoint: declaration.probe.entrypoint, export: declaration.probe.export, input: declaration.probe.input ?? null,
+      expect: declaration.probe.expect ?? null }, tests: tests.map(file => [file.path, file.digest]) }));
+}
+
 /** The package record for a declaration over exact archive bytes (inert until staged and switched). */
 export function packageRecord(declaration, archive, prior, tests) {
-  const contentDigest = hashBytes(JSON.stringify(archive.map(entry => [entry.path, entry.digest])));
+  const contentDigest = packageIdentity(declaration, archive, tests), sourceDigest = hashBytes(JSON.stringify(archive.map(entry => [entry.path, entry.digest])));
   return { type: 'LocalCapabilityPackage', schemaVersion: 1, id: `package:${declaration.namespace}@${declaration.version}:${contentDigest.slice(7, 19)}`,
     predecessors: [], dependencyFacts: [], namespace: declaration.namespace, ownerPrincipal: 'agent', version: declaration.version,
-    contentDigest, sourceDigest: contentDigest, parent: '', upstream: '', priorPackage: prior?.id ?? '',
+    contentDigest, sourceDigest, parent: '', upstream: '', priorPackage: prior?.id ?? '',
     portRequirements: [{ port: 'OperationAdapterPort', version: '1' }], dependencies: [],
     entrypoints: archive.map((entry, index) => ({ id: declaration.entrypoints[index].id, path: entry.path, digest: entry.digest })),
     declarationIds: [`${declaration.namespace}.operation`], dataScopes: ['workspace'], custodyScopes: [], grants: ['local-install'],
@@ -60,15 +72,15 @@ export function createPackageLifecycle({ context, log, harness, stopped, work })
   } };
 
   /** Exercise exact retained bytes in confinement: the package's tests over them, then its entrypoint probe. */
-  const exercise = pkg => {
+  const exercise = async pkg => {
     verify(pkg);
     const probe = probeOf(pkg);
     const retained = [...pkg.entrypoints, ...probe.tests].map(entry => ({ path: entry.path, bytes: readFileSync(join(directory(pkg), entry.path), 'utf8') }));
-    const tested = probe.tests.length ? harness.run({ mode: 'confined', kind: 'test', tool: 'package-test', work,
+    const tested = probe.tests.length ? await harness.run({ mode: 'confined', kind: 'test', tool: 'package-test', work,
       directory: harness.stageWork(retained), files: probe.tests.map(file => file.path) }) : null;
     const entry = pkg.entrypoints.find(item => item.id === probe.entrypoint);
     if (!entry) throw Error('self-host: probe names no entrypoint');
-    const probed = harness.run({ mode: 'confined', kind: 'probe', tool: 'probe', work, entry: join(directory(pkg), entry.path), export: probe.export, input: probe.input });
+    const probed = await harness.run({ mode: 'confined', kind: 'probe', tool: 'probe', work, entry: join(directory(pkg), entry.path), export: probe.export, input: probe.input });
     const line = probed.stdout?.split('\n').find(text => text.startsWith('@probe '));
     let actual; try { actual = line ? JSON.parse(line.slice(7)).value : undefined; } catch { actual = undefined; }
     const probePassed = !probed.refused && probed.code === 0 && line !== undefined && JSON.stringify(actual) === JSON.stringify(probe.expect);
@@ -83,11 +95,13 @@ export function createPackageLifecycle({ context, log, harness, stopped, work })
     generation: 'self-host:generation:1', testEvidence: evidence.testEvidence, migrationEvidence: [], probeEvidence: evidence.probeEvidence,
     operation: `operation:switch:${randomUUID()}`, claim: `claim:${work}`, observedArtifactDigest: pkg.contentDigest, from, to, outstandingWork: [] });
   const byDigest = digest => packages().find(pkg => pkg.contentDigest === digest) ?? null;
+  /** The owner's resolution must name exactly this package before a switch counts as done. */
+  const resolvesTo = pkg => active(pkg.namespace)?.contentDigest === pkg.contentDigest;
   const lastActive = pkg => transitions(pkg.namespace).filter(row => row.to === 'active' && row.observedArtifactDigest === pkg.contentDigest).at(-1);
 
   /** Re-prove a retained earlier version and make it the head again (rollback). */
-  const restore = (prior, after) => {
-    const proven = exercise(prior);
+  const restore = async (prior, after) => {
+    const proven = await exercise(prior);
     if (!proven.passed) return null;
     return transition(prior, 'activating', 'active', [after.id], { testEvidence: lastActive(prior)?.testEvidence ?? proven.testEvidence,
       probeEvidence: proven.probeEvidence }, null, 'rollback: the replacement was inhibited');
@@ -105,38 +119,51 @@ export function createPackageLifecycle({ context, log, harness, stopped, work })
       return { ...take(stageLocalCapability(record, archive, packages().filter(pkg => pkg.namespace !== record.namespace), context)), tests };
     },
     /** Install: retain bytes, record the package, exercise in confinement, then switch — or inhibit and keep the prior version. */
-    install(staged, { crashAfterActivating = false } = {}) {
+    async install(staged, { crashAfterActivating = false } = {}) {
       if (stopped()) throw Error('self-host: stop latched before install');
       const pkg = staged.package, prior = active(pkg.namespace), current = head(pkg.namespace);
       if (current === 'ambiguous') throw Error('self-host: package history ambiguous');
       retain(pkg, staged.entries, staged.tests ?? []);
       if (!packages().some(item => item.id === pkg.id)) log.append(pkg);
-      const evidence = exercise(pkg);
+      const evidence = await exercise(pkg);
       if (!evidence.passed) {
         const inhibited = transition(pkg, 'staged', 'inhibited', current ? [current.id] : [], evidence, prior, 'exercise failed');
-        const restored = prior ? restore(prior, inhibited) : null;
+        const restored = prior ? await restore(prior, inhibited) : null;
         return { passed: false, inhibited: inhibited.id, active: restored ? prior.contentDigest : null, evidence };
       }
       if (stopped()) throw Error('self-host: stop latched before activation');
       const activating = transition(pkg, 'eligible', 'activating', current ? [current.id] : [], evidence, prior, 'exercised in confinement');
       if (crashAfterActivating) throw Object.assign(Error('self-host: simulated crash during activation'), { cut: true });
-      transition(pkg, 'activating', 'active', [activating.id], evidence, prior, 'activation observed');
+      const switched = transition(pkg, 'activating', 'active', [activating.id], evidence, prior, 'activation observed');
+      if (!resolvesTo(pkg)) {
+        // The owner cannot resolve the switch: never report success; keep the prior usable version.
+        const inhibited = transition(pkg, 'active', 'inhibited', [switched.id], evidence, prior, 'owner resolution refused the switch');
+        const restored = prior ? await restore(prior, inhibited) : null;
+        return { passed: false, inhibited: inhibited.id, active: restored ? prior.contentDigest : null, evidence };
+      }
       return { passed: true, active: pkg.contentDigest, evidence };
     },
-    /** Complete or roll back every interrupted switch (run before new work). */
-    recover() {
+    /** Complete or roll back every interrupted switch, and repair an active head the owner cannot resolve (run before new work). */
+    async recover() {
       const namespaces = [...new Set(packages().map(pkg => pkg.namespace))], outcomes = [];
       for (const namespace of namespaces) {
         const current = head(namespace);
-        if (!current || current === 'ambiguous' || current.to === 'active' || current.to === 'retired') continue;
+        if (!current || current === 'ambiguous' || current.to === 'retired') continue;
         const pkg = byDigest(current.observedArtifactDigest), prior = current.priorActiveDigest ? byDigest(current.priorActiveDigest) : null;
+        if (current.to === 'active') {
+          if (active(namespace)) continue;
+          // An active label the owner cannot resolve is not a usable version: inhibit it and restore the prior one.
+          const inhibited = transition(pkg ?? { namespace, contentDigest: current.observedArtifactDigest }, 'active', 'inhibited', [current.id],
+            { testEvidence: [], probeEvidence: [] }, prior, 'owner resolution refused the active head');
+          outcomes.push({ namespace, inhibited: current.observedArtifactDigest, restored: prior && await restore(prior, inhibited) ? prior.contentDigest : null }); continue;
+        }
         if (current.to === 'activating' && pkg) {
-          const evidence = exercise(pkg);
+          const evidence = await exercise(pkg);
           if (evidence.passed) { transition(pkg, 'activating', 'active', [current.id], evidence, prior, 'recovered interrupted activation'); outcomes.push({ namespace, completed: pkg.contentDigest }); continue; }
           const inhibited = transition(pkg, 'activating', 'inhibited', [current.id], evidence, prior, 'recovery exercise failed');
-          outcomes.push({ namespace, inhibited: pkg.contentDigest, restored: prior && restore(prior, inhibited) ? prior.contentDigest : null }); continue;
+          outcomes.push({ namespace, inhibited: pkg.contentDigest, restored: prior && await restore(prior, inhibited) ? prior.contentDigest : null }); continue;
         }
-        if (current.to === 'inhibited' && prior) outcomes.push({ namespace, restored: restore(prior, current) ? prior.contentDigest : null });
+        if (current.to === 'inhibited' && prior) outcomes.push({ namespace, restored: await restore(prior, current) ? prior.contentDigest : null });
       }
       return outcomes;
     },

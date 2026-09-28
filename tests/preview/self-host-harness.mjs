@@ -1,24 +1,33 @@
-// Rules 2, 5, 55, 63, 115 (D14 §§3–4, 9; D17 §2): the self-hosting harness composition. The
-// public native adapter (`createNativeHarnessAdapter`) admits every launch and records every
-// observation; its Eight-owned driver runs model-generated code only inside Eight's shipped
-// confinement profile (deploy/macos/fixed-worker/worker.sb: deny by default, no writes, no
-// network, no children, exec of the pinned runtime only) with an empty environment and a hard
-// wall/memory bound, so generated code never runs in, or reads from, the credential-bearing
-// launcher. Fixed-argv repository tools run on the host with a scrubbed environment plus only the
-// credentials the owner resolves for them. This file owns process, clock and filesystem.
+// Rules 2, 5, 26, 55, 63, 68, 115 (D14 §§3–4, 9; D17 §2): the self-hosting harness composition. The
+// public native adapter (`createNativeHarnessAdapter`) records every observation; its driver owns no
+// authority of its own: launch and observation go through the existing S8 production launch boundary
+// over one signed store per operation (self-host-owners.ts), so a process starts only after Five's
+// Run, Six's prepared/claimed/consumed reservation, Ten's HarnessLaunchSpec and the recorded plan
+// exist, and after the M1 monitor service has durably decided. The physical release leaf below is
+// the only code that starts a process. Generated code runs inside Eight's shipped confinement
+// profile (deploy/macos/fixed-worker/worker.sb) with an empty environment, under a fixed runner whose
+// main thread enforces the wall bound itself: the child ends at its deadline even if this launcher
+// dies. Fixed-argv repository tools run on the host with a scrubbed environment plus only the
+// credentials the owner resolves, after their paths are resolved physically inside the granted
+// roots. This file owns process, clock and filesystem.
 import { randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { closeSync, constants, copyFileSync, existsSync, linkSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync,
+import { spawn } from 'node:child_process';
+import { closeSync, constants, copyFileSync, existsSync, linkSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync,
   renameSync, statSync, writeFileSync, writeSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { uptime } from 'node:os';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { hashBytes } from '../../src/facts/index.js';
 import { admitToolProposal, createNativeHarnessAdapter, decodeAssemblyRecord } from '../../src/assembly/index.js';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { SELF_HOST_HARNESS, SELF_HOST_STALL_COVERAGE } from './stall-coverage.js';
+import { createSelfHostOwners } from './self-host-owners.ts';
+import { compositionDigest, currentRuntime } from '../../scripts/composition-digest.mjs';
 
-export const CONFINEMENT_LIMITS = Object.freeze({ wallMs: 20000, memoryMb: 256, outputBytes: 4096, hostToolMs: 600000 });
+export const CONFINEMENT_LIMITS = Object.freeze({ wallMs: 20000, memoryMb: 256, outputBytes: 4096, hostToolMs: 600000, graceMs: 5000 });
 const WORKER_PROFILE = new URL('../../deploy/macos/fixed-worker/worker.sb', import.meta.url);
+const DECLARATIONS = new URL('../../src/assembly/harness.declarations.json', import.meta.url);
+const REPOSITORY = new URL('../../', import.meta.url);
 const take = result => { if (result.kind !== 'Success') throw Error(`self-host: refused ${result.detail ?? ''}`); return result.value; };
 const tail = text => redact(String(text ?? '')).text.slice(-CONFINEMENT_LIMITS.outputBytes);
 const fsyncDirectory = path => { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
@@ -63,13 +72,58 @@ export function openRecordLog(root, context) {
 }
 
 /**
+ * Rules 26, 49, 69, 115 (D17 §2): the exact bytes the supported self-hosting tuple was certified on.
+ * The declaration names the composition's files and runtime; the digest is recomputed from the
+ * files as they are now, so changing the driver, the owners, the runner or the runtime changes it.
+ */
+export function selfHostCompositionEvidence(declarations = JSON.parse(readFileSync(DECLARATIONS, 'utf8')),
+  read = path => { try { return readFileSync(new URL(path, REPOSITORY), 'utf8'); } catch { return null; } }) {
+  const metrics = declarations.flatMap(entry => entry.requiredFacts?.metrics ?? []);
+  const prefix = `harness.${SELF_HOST_HARNESS}.`;
+  const fact = name => metrics.filter(metric => metric.startsWith(prefix) && metric.includes(`.self-hosting.${name}=`)).map(metric => metric.slice(metric.indexOf('=') + 1));
+  const [files] = fact('files'), [declared] = fact('conformance'), list = (files ?? '').split(',').filter(Boolean);
+  // The digest is of the files as they are now, on the runtime actually running this process.
+  return { files: list, runtime: currentRuntime(), declared: declared ?? null, digest: compositionDigest(currentRuntime(), list, read) ?? hashBytes('incomplete composition') };
+}
+
+/** The confined runner: the fixed program the profile lets run. Its main thread holds the wall bound. */
+const RUNNER_SOURCE = `import { Worker } from 'node:worker_threads';
+const wallMs = Number(process.argv[2]);
+setTimeout(() => { process.stdout.write('\\n@expired\\n'); process.exit(124); }, wallMs);
+let input = '';
+process.stdin.setEncoding('utf8');
+for await (const chunk of process.stdin) input += chunk;
+const plan = JSON.parse(input);
+const source = \`import { workerData } from 'node:worker_threads';
+const plan = workerData;
+if (plan.kind === 'probe') {
+  const loaded = await import(new URL('file://' + plan.entry).href);
+  const value = await loaded[plan.export](plan.input);
+  process.stdout.write('\\\\n@probe ' + JSON.stringify({ value }) + '\\\\n');
+} else {
+  const { run } = await import('node:test');
+  const { tap } = await import('node:test/reporters');
+  let failed = false;
+  const stream = run({ files: plan.files.map(file => plan.directory + '/' + file), isolation: 'none' });
+  stream.on('test:fail', () => { failed = true; });
+  for await (const line of stream.compose(tap)) process.stdout.write(line);
+  process.exitCode = failed ? 1 : 0;
+}\`;
+const worker = new Worker(source, { eval: true, workerData: plan, resourceLimits: { maxOldGenerationSizeMb: Number(process.argv[3]) } });
+worker.on('error', error => { process.stderr.write(String(error?.stack ?? error)); process.exit(1); });
+worker.on('exit', code => process.exit(code));
+`;
+
+/**
  * Eight's confinement for generated code: the shipped worker profile, materialized for this root
  * (the only substitutions are its two path tokens and the ancestor metadata of this release path),
- * and the pinned runtime inside the release. Everything the child may read lives in the release.
+ * the pinned runtime and the fixed runner inside the release. Everything the child may read lives
+ * in the release.
  */
 export function confinedRelease(root) {
   const release = join(root, 'release'), slot = join(root, 'release-slot'), runtime = join(release, 'runtime', 'node');
-  mkdirSync(join(release, 'runtime'), { recursive: true, mode: 0o700 }); mkdirSync(slot, { recursive: true, mode: 0o700 });
+  mkdirSync(join(release, 'runtime'), { recursive: true, mode: 0o700 }); mkdirSync(join(release, 'bin'), { recursive: true, mode: 0o700 });
+  mkdirSync(slot, { recursive: true, mode: 0o700 });
   const pinned = join(release, 'runtime.json');
   const source = statSync(process.execPath), recorded = existsSync(pinned) ? JSON.parse(readFileSync(pinned, 'utf8')) : null;
   if (!existsSync(runtime) || recorded?.size !== source.size || recorded?.mtimeMs !== source.mtimeMs || statSync(runtime).size !== source.size) {
@@ -79,6 +133,8 @@ export function confinedRelease(root) {
     renameSync(pending, runtime);
     durablePreviewWrite(pinned, { size: source.size, mtimeMs: source.mtimeMs, from: process.execPath });
   }
+  const runner = join(release, 'bin', 'confined-runner.mjs');
+  if (!existsSync(runner) || readFileSync(runner, 'utf8') !== RUNNER_SOURCE) writeFileSync(runner, RUNNER_SOURCE, { mode: 0o400 });
   const real = realpathSync(release), ancestors = [];
   for (let p = real; p !== '/';) { p = dirname(p); ancestors.push(`(literal "${p}")`); }
   const profile = readFileSync(WORKER_PROFILE, 'utf8').replaceAll('@RELEASE_DIR@', real).replaceAll('@SLOT_DIR@', realpathSync(slot))
@@ -86,8 +142,8 @@ export function confinedRelease(root) {
   if (/@[A-Z_]+@/u.test(profile)) throw Error('self-host: confinement profile not fully materialized');
   const profilePath = join(release, 'worker.sb');
   if (!existsSync(profilePath) || readFileSync(profilePath, 'utf8') !== profile) writeFileSync(profilePath, profile, { mode: 0o600 });
-  return Object.freeze({ release: real, slot: realpathSync(slot), runtime: join(real, 'runtime', 'node'), profile: profilePath,
-    artifact: hashBytes(`${readFileSync(WORKER_PROFILE, 'utf8')}\0${readFileSync(new URL(import.meta.url), 'utf8')}`) });
+  return Object.freeze({ release: real, slot: realpathSync(slot), runtime: join(real, 'runtime', 'node'), runner: join(real, 'bin', 'confined-runner.mjs'),
+    profile: profilePath, profileDigest: hashBytes(profile), runnerDigest: hashBytes(RUNNER_SOURCE) });
 }
 
 /** Copies files into a fresh read-only (to the child) work directory inside the release. */
@@ -97,94 +153,191 @@ export function stageWork(release, files) {
   return directory;
 }
 
-const PROBE_SOURCE = `const [entry, name, input] = process.argv.slice(1);
-const module = await import(new URL('file://' + entry).href);
-const value = await module[name](JSON.parse(input));
-process.stdout.write('\\n@probe ' + JSON.stringify({ value }) + '\\n');`;
+/**
+ * Rules 2, 115 (D14 §9): filesystem scope resolved physically. Each path must lie inside a granted
+ * root once every EXISTING component is resolved on disk (a symlinked parent that leaves the root is
+ * refused); components that do not exist yet cannot be links. Returns the refusal, or null.
+ */
+export function physicalScopeRefusal(path, roots) {
+  const inside = (candidate, root) => candidate === root || candidate.startsWith(`${root}${sep}`);
+  const granted = roots.filter(root => existsSync(root)).map(root => ({ lexical: resolve(root), real: realpathSync(root) }));
+  const target = resolve(path), root = granted.find(item => inside(target, item.lexical));
+  if (!root) return `${path} is outside every granted root`;
+  let existing = target;
+  while (!existsSync(existing) && existing !== root.lexical) existing = dirname(existing);
+  if (existsSync(existing) && lstatSync(existing).isSymbolicLink() && existing === target) return `${path} is a link`;
+  const real = realpathSync(existing), expected = join(root.real, relative(root.lexical, existing));
+  if (real !== expected || !inside(real, root.real)) return `${path} leaves its granted root through a link`;
+  return null;
+}
+
+const bootIdentity = () => `boot:${Math.round(Date.now() / 1000 - uptime())}`;
 
 /**
- * The self-hosting native harness: one adapter over one Eight-owned driver. `run(plan)` admits a
- * launch spec, launches, delivers the plan's input and observes the exit, appending every
- * observation to the record log; it returns the observation ids and the bounded output.
+ * The physical release leaf the M1 service calls after its durable decision: it starts exactly the
+ * plan recorded for the admitted operation, and reports what actually happened to that process.
+ */
+function createReleaseLeaf({ release, resolvePlan, resolveCredential, bootId, wallMs }) {
+  const processes = new Map(), byOperation = new Map();
+  const limit = text => text.length > 1024 * 1024 ? text.slice(-1024 * 1024) : text;
+  const start = (closure, identity) => {
+    const { plan } = resolvePlan(closure.operation);
+    let child, bound;
+    if (plan.mode === 'confined') {
+      bound = plan.wallMs;
+      child = spawn('/usr/bin/sandbox-exec', ['-f', release.profile, release.runtime, `--max-old-space-size=${CONFINEMENT_LIMITS.memoryMb}`,
+        release.runner, String(plan.wallMs), String(CONFINEMENT_LIMITS.memoryMb)],
+      { cwd: release.slot, env: {}, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    } else {
+      for (const path of plan.paths) { const refusal = physicalScopeRefusal(path, plan.roots); if (refusal) throw Error(`self-host: ${refusal}`); }
+      const env = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', LANG: 'C.UTF-8', NO_COLOR: '1' };
+      for (const reference of plan.credentials) {
+        const resolved = resolveCredential(reference);
+        if (!resolved) throw Error(`self-host: credential ${reference} is not resolvable by its owner`);
+        env[resolved.env] = resolved.value;
+      }
+      bound = CONFINEMENT_LIMITS.hostToolMs;
+      const [command, ...rest] = plan.argv;
+      child = spawn(command, rest, { cwd: plan.cwd, env, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    }
+    child.on('error', () => {}); // a start failure is reported below as no process, never as a crash of the launcher
+    if (!child.pid) throw Error('self-host: the process did not start');
+    const startTicks = process.hrtime.bigint(), state = { child, stdout: '', stderr: '', exit: null, bound, launchedAt: Date.now() };
+    child.stdin.on('error', () => {});
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { state.stdout = limit(state.stdout + chunk); });
+    child.stderr.on('data', chunk => { state.stderr = limit(state.stderr + chunk); });
+    state.settled = new Promise(done => child.on('close', (code, signal) => {
+      clearTimeout(state.backstop);
+      state.exit = { code, signal, expired: code === 124 && /(^|\n)@expired\n/u.test(state.stdout) || state.killedAtBound === true };
+      done();
+    }));
+    // The launcher's own backstop only; the confined child enforces its deadline itself.
+    state.backstop = setTimeout(() => { state.killedAtBound = true; try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } },
+      bound + CONFINEMENT_LIMITS.graceMs);
+    processes.set(identity, state); byOperation.set(closure.operation, state);
+    return { uid: process.getuid(), pid: child.pid, processStartIdentity: { bootId, uniqueId: String(child.pid), startTicks: String(startTicks) },
+      originalDeadline: { ownerClockReference: 'clock:self-host-wall', ownerValidUntil: state.launchedAt + bound, bootId,
+        continuousTicks: String(startTicks + BigInt(bound) * 1_000_000n), timebaseNumer: '1', timebaseDenom: '1' },
+      evidenceReferences: [`spawned:${child.pid}`, `plan:${closure.digest}`] };
+  };
+  const observe = identity => {
+    const state = processes.get(identity);
+    if (!state) return null;
+    if (!state.exit) return { state: 'running', reason: 'ok' };
+    const references = [`exit-code:${state.exit.code ?? 'none'}`, `signal:${state.exit.signal ?? 'none'}`, `output:${hashBytes(state.stdout + state.stderr)}`];
+    return state.exit.expired ? { state: 'expired', reason: 'deadline', evidenceReferences: references }
+      : { state: 'exited', reason: 'worker-exit', evidenceReferences: references };
+  };
+  return Object.freeze({ start, observe, byOperation, wallMs });
+}
+
+/**
+ * The self-hosting native harness: one adapter whose launches are admitted by the owners. `run(plan)`
+ * records the plan, admits it, launches through S8, delivers the recorded plan to the process,
+ * waits for the process and observes its exit through S8; every observation goes to the record log.
  */
 export function createSelfHostHarness({ root, context, stopped, now, log, resolveCredential = () => null, wallMs = CONFINEMENT_LIMITS.wallMs }) {
-  const release = confinedRelease(root), plans = new Map(), results = new Map();
-  const execute = plan => {
-    if (plan.mode === 'confined') {
-      const args = plan.kind === 'probe' ? ['--input-type=module', '-e', PROBE_SOURCE, plan.entry, plan.export, JSON.stringify(plan.input ?? null)]
-        : ['--test', '--test-isolation=none', ...plan.files.map(file => join(plan.directory, file))];
-      return spawnSync('/usr/bin/sandbox-exec', ['-f', release.profile, release.runtime, `--max-old-space-size=${CONFINEMENT_LIMITS.memoryMb}`, ...args],
-        { cwd: release.slot, env: {}, shell: false, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: wallMs,
-          killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 });
-    }
-    const env = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', LANG: 'C.UTF-8', NO_COLOR: '1' };
-    for (const reference of plan.credentials) {
-      const resolved = resolveCredential(reference);
-      if (!resolved) throw Error(`self-host: credential ${reference} is not resolvable by its owner`);
-      env[resolved.env] = resolved.value;
-    }
-    const [command, ...rest] = plan.argv;
-    return spawnSync(command, rest, { cwd: plan.cwd, env, shell: false, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: CONFINEMENT_LIMITS.hostToolMs, killSignal: 'SIGKILL', maxBuffer: 16 * 1024 * 1024 });
-  };
+  const release = confinedRelease(root), composition = selfHostCompositionEvidence(), bootId = bootIdentity();
+  const artifact = composition.digest, handles = new Map();
+  const digests = { releaseDigest: hashBytes(`${release.runnerDigest}\0${release.profileDigest}\0${artifact}`), artifactDigest: artifact,
+    profileDigest: release.profileDigest, handlePolicyDigest: hashBytes(JSON.stringify(['confined-worker-profile', 'host-tool'])),
+    limitsDigest: hashBytes(JSON.stringify({ ...CONFINEMENT_LIMITS, wallMs })) };
+  const leaf = createReleaseLeaf({ release, resolveCredential, bootId, wallMs,
+    resolvePlan: operation => { const handle = handles.get(operation); if (!handle) throw Error('self-host: no admitted operation'); return handle.owners.planOf(operation); } });
+  const handleOf = processIdentity => [...handles.values()].find(handle => handle.processIdentity === processIdentity);
+  // The adapter's driver: launch and observation are the S8 boundary's; delivery writes the
+  // recorded plan (digest-checked against the admitted specification) to the launched process.
   const driver = Object.freeze({ owner: 'part-eight',
-    launch: input => { if (stopped()) return { kind: 'Refused', detail: 'stop latched' }; return plans.has(input.incarnation)
-      ? { kind: 'Success', value: `confined:${input.incarnation}` } : { kind: 'Refused', detail: 'no admitted plan for this incarnation' }; },
+    launch: input => {
+      if (stopped()) return { kind: 'Refused', detail: 'stop latched' };
+      const handle = handles.get(input.operation);
+      if (!handle || handle.claim !== input.claim) return { kind: 'Refused', detail: 'no admitted operation for this launch' };
+      const observed = handle.owners.launch(handle.spec, input.operation, input.claim);
+      handle.monitor.push(log.append(observed));
+      if (observed.phase !== 'launched') return { kind: 'Refused', detail: `monitor ${observed.detail}` };
+      handle.processIdentity = `process:${observed.boundaryEvidence}`;
+      return { kind: 'Success', value: handle.processIdentity };
+    },
     deliver: input => {
       if (stopped()) return { kind: 'Refused', detail: 'stop latched' };
-      const plan = plans.get(input.incarnation); if (!plan || plan.digest !== input.digest) return { kind: 'Refused', detail: 'input differs from the admitted plan' };
-      const started = now(), result = execute(plan);
-      results.set(input.incarnation, { code: result.status, signal: result.signal ?? null, timedOut: result.error?.code === 'ETIMEDOUT' || result.signal === 'SIGKILL',
-        stdout: String(result.stdout ?? ''), output: tail(`${result.stdout ?? ''}${result.stderr ?? ''}`), ms: now() - started });
-      return { kind: 'Success', value: `pid:${result.pid ?? 0}:${input.incarnation}` };
+      const handle = handleOf(input.processIdentity), state = handle && leaf.byOperation.get(handle.operation);
+      if (!handle || !state || input.digest !== handle.spec.inputDigest) return { kind: 'Refused', detail: 'input differs from the admitted plan' };
+      const { bytes } = handle.owners.planOf(handle.operation);
+      if (hashBytes(bytes) !== input.digest) return { kind: 'Refused', detail: 'recorded plan changed' };
+      state.child.stdin.end(handle.plan.mode === 'confined' ? bytes : '');
+      return { kind: 'Success', value: `stdin:${state.child.pid}:${input.digest}` };
     },
-    observe: input => { const incarnation = input.processIdentity.split(':').slice(1).join(':'); const result = results.get(incarnation);
-      return result ? { kind: 'Success', value: { phase: 'exit-observed', evidence: `exit:${result.code}:${incarnation}`,
-        detail: result.timedOut ? `killed at the ${wallMs} ms bound` : `exit ${result.code}` } }
-        : { kind: 'Success', value: { phase: 'uncertain', evidence: `none:${incarnation}`, detail: 'no exit observed' } }; },
+    observe: input => {
+      const handle = handleOf(input.processIdentity);
+      if (!handle) return { kind: 'Success', value: { phase: 'uncertain', evidence: `none:${input.processIdentity}`, detail: 'no admitted process' } };
+      const observed = handle.owners.observe(handle.operation);
+      handle.monitor.push(log.append(observed));
+      return { kind: 'Success', value: { phase: observed.phase, evidence: observed.boundaryEvidence, detail: observed.detail } };
+    },
   });
-  const adapter = createNativeHarnessAdapter({ id: SELF_HOST_HARNESS, artifact: release.artifact, platform: `${process.platform}-${process.arch}`,
-    conformance: 'self-host:confined-worker-profile', driver, stallCoverage: SELF_HOST_STALL_COVERAGE, context, clock: now,
+  const adapter = createNativeHarnessAdapter({ id: SELF_HOST_HARNESS, artifact, platform: `${process.platform}-${process.arch}`,
+    conformance: `self-host:${composition.declared ?? 'undeclared'}`, driver, stallCoverage: SELF_HOST_STALL_COVERAGE, context, clock: now,
     generation: () => 'self-host:generation:1' });
   let ordinal = 0;
-  const run = plan => {
-    const id = `${randomUUID()}`, incarnation = `incarnation:${id}`, digest = hashBytes(JSON.stringify(plan));
-    plans.set(incarnation, { ...plan, digest });
-    const spec = take(decodeAssemblyRecord('HarnessLaunchSpec', { type: 'HarnessLaunchSpec', schemaVersion: 1, id: `launch:${id}`,
-      predecessors: [], dependencyFacts: [], run: `self-host:${plan.work}`, step: `${plan.kind}:${++ordinal}`, principal: 'agent', incarnation,
-      harness: SELF_HOST_HARNESS, artifactDigest: release.artifact, machine: 'local', workingScope: plan.mode === 'confined' ? release.release : plan.cwd,
-      processOperation: `${plan.kind}:${plan.tool}`, resourceReferences: [`wall-ms:${plan.mode === 'confined' ? wallMs : CONFINEMENT_LIMITS.hostToolMs}`],
-      portHandles: plan.mode === 'confined' ? ['confined-worker-profile'] : ['host-tool', ...plan.credentials.map(name => `credential:${name}`)],
-      environment: [], contextManifest: [{ class: 'plan', reference: `plan:${id}`, digest }], input: `plan:${id}`, inputDigest: digest,
-      consumptionMode: 'advisory' }, context));
-    const launched = adapter.launch(spec, `operation:launch:${id}`, `claim:${id}`);
-    if (launched.kind !== 'Success') return { tool: plan.tool, refused: launched.detail, observations: [] };
-    const observations = [log.append(launched.value)];
-    const accepted = adapter.deliver({ launch: spec.id, intake: spec.input, digest, incarnation, operation: `operation:deliver:${id}` });
-    if (accepted.kind !== 'Success') return { tool: plan.tool, refused: accepted.detail, observations: observations.map(item => item.id) };
-    observations.push(log.append(accepted.value));
-    const exit = log.append(take(adapter.observe({ launch: spec.id, delivery: accepted.value.id, operation: `operation:observe:${id}` })));
-    observations.push(exit);
-    const result = results.get(incarnation);
-    return { tool: plan.tool, code: result.code, timedOut: result.timedOut, output: result.output, stdout: result.stdout,
-      observation: exit.id, observations: observations.map(item => item.id) };
+  const run = async plan => {
+    const recorded = plan.mode === 'confined'
+      ? { mode: 'confined', kind: plan.kind, tool: plan.tool, work: plan.work, wallMs, ...(plan.kind === 'probe'
+        ? { entry: plan.entry, export: plan.export, input: plan.input ?? null } : { directory: plan.directory, files: plan.files }) }
+      : { mode: 'host', kind: 'tool', tool: plan.tool, work: plan.work, argv: plan.argv, cwd: plan.cwd, credentials: plan.credentials,
+        paths: plan.paths ?? [], roots: plan.roots ?? [] };
+    if (stopped()) return { tool: plan.tool, refused: 'stop latched', observations: [] };
+    for (const reference of recorded.credentials ?? [])
+      if (!resolveCredential(reference)) return { tool: plan.tool, refused: `credential ${reference} is not resolvable by its owner`, observations: [] };
+    let owners;
+    try {
+      owners = createSelfHostOwners({ root, invocation: randomUUID(), harness: SELF_HOST_HARNESS, digests, bootId, stopped, leaf, now });
+      const admitted = owners.admitLaunch({ plan: recorded, step: `${plan.kind}:${++ordinal}`, workingScope: plan.mode === 'confined' ? release.release : plan.cwd,
+        portHandles: plan.mode === 'confined' ? ['confined-worker-profile'] : ['host-tool', ...plan.credentials.map(name => `credential:${name}`)],
+        wallMs, artifact });
+      const handle = { ...admitted, owners, plan: recorded, monitor: [], processIdentity: null };
+      handles.set(admitted.operation, handle);
+      const spec = admitted.spec;
+      const launched = adapter.launch(spec, admitted.operation, admitted.claim);
+      if (launched.kind !== 'Success') return { tool: plan.tool, refused: launched.detail, observations: handle.monitor.map(item => item.id) };
+      const observations = [...handle.monitor, log.append(launched.value)];
+      const accepted = adapter.deliver({ launch: spec.id, intake: spec.input, digest: spec.inputDigest, incarnation: spec.incarnation, operation: admitted.operation });
+      if (accepted.kind !== 'Success') return { tool: plan.tool, refused: accepted.detail, observations: observations.map(item => item.id) };
+      observations.push(log.append(accepted.value));
+      const state = leaf.byOperation.get(admitted.operation);
+      await state.settled;
+      const exit = log.append(take(adapter.observe({ launch: spec.id, delivery: accepted.value.id, operation: admitted.operation })));
+      observations.push(...handle.monitor.slice(1), exit);
+      return { tool: plan.tool, code: state.exit.code, timedOut: state.exit.expired, output: tail(`${state.stdout}${state.stderr}`), stdout: state.stdout,
+        operation: admitted.operation, launch: spec.id, observation: exit.id, observations: observations.map(item => item.id) };
+    } catch (error) {
+      if (error?.cut) throw error;
+      return { tool: plan.tool, refused: tail(error?.message ?? error), observations: [] };
+    } finally { owners?.close(); }
   };
-  return Object.freeze({ adapter, release, run, stageWork: files => stageWork(release, files) });
+  /** One provider attempt, charged and consumed in Six before `invoke(operation)` runs through Six. */
+  const dispatchProvider = async (task, invoke, allowance) => {
+    if (stopped()) throw Error('self-host: stop latched before the provider attempt');
+    const owners = createSelfHostOwners({ root, invocation: randomUUID(), harness: SELF_HOST_HARNESS, digests, bootId, stopped, leaf, now });
+    try { return await owners.dispatchProvider(task, invoke, allowance); } finally { owners.close(); }
+  };
+  return Object.freeze({ adapter, release, artifact, composition, run, dispatchProvider, stageWork: files => stageWork(release, files) });
 }
 
 /**
  * The one tool interface: every advertised tool is admitted by the inventory, then dispatched to
  * its actual handler — process tools through the harness (package tests confined, repository tools
- * on the host with only owner-resolved credentials), port tools to their public handlers.
+ * on the host with only owner-resolved credentials and physically resolved paths), port tools to
+ * their public handlers.
  */
-export function dispatchTool({ proposal, grants, context, scopes, harness, repo, scope, ports, work }) {
+export async function dispatchTool({ proposal, grants, context, scopes, harness, repo, scope, ports, work }) {
   const admitted = admitToolProposal(proposal, grants, context, scopes);
   if (admitted.kind !== 'Success') return { tool: proposal?.operation ?? null, refused: admitted.detail };
   const tool = admitted.value;
   if (tool.run.kind === 'port') {
     const handler = ports[tool.tool];
     if (!handler) return { tool: tool.tool, refused: `port ${tool.run.port} is not bound in this harness` };
-    try { return { tool: tool.tool, code: 0, ...handler(tool.run.options) }; }
+    try { return { tool: tool.tool, code: 0, ...await handler(tool.run.options) }; }
     catch (error) { if (error?.cut) throw error; return { tool: tool.tool, code: 1, output: tail(error?.message ?? error) }; }
   }
   if (tool.tool === 'package-test') {
@@ -192,7 +345,13 @@ export function dispatchTool({ proposal, grants, context, scopes, harness, repo,
     return harness.run({ mode: 'confined', kind: 'test', tool: tool.tool, work, directory: harness.stageWork(files),
       files: tool.run.argv.slice(2) });
   }
-  return harness.run({ mode: 'host', kind: 'tool', tool: tool.tool, work, argv: tool.run.argv, cwd: repo, credentials: tool.run.credentials });
+  // Refuse escaping links before anything is admitted; the release leaf checks again at start.
+  for (const path of tool.run.paths) {
+    const refusal = physicalScopeRefusal(path, scopes.roots);
+    if (refusal) return { tool: tool.tool, refused: `option path outside its scope: ${refusal}` };
+  }
+  return harness.run({ mode: 'host', kind: 'tool', tool: tool.tool, work, argv: tool.run.argv, cwd: repo, credentials: tool.run.credentials,
+    paths: tool.run.paths, roots: scopes.roots });
 }
 
 /** Every regular file under the authoring scope (bounded by the loop's own file limits). */

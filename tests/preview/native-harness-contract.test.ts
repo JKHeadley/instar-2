@@ -1,9 +1,11 @@
 // @ts-nocheck -- each doorway's physical IO is replaced only by its captured-frame conformance fixture; everything else is shipped code.
 // Rules 26, 49, 59, 69, 105, 115 (D14 §3, D17 §§2, 11): the harness contract applied to the actual
-// native compositions, per registered doorway. The self-hosting harness (the public native adapter
-// over Eight's confined driver) and the journal runner (a real runner child) each reason through
-// the doorway's own adapter code; only the doorway's physical frames are captured. The register's
-// harness parity facts cite these cases for each supported harness × doorway tuple.
+// native composition, per registered doorway. The self-hosting harness (the public native adapter
+// whose launches are admitted by the owners and launched through the S8 boundary) reasons through
+// the doorway's own adapter code; only the doorway's physical frames are captured. Its supported
+// tuple is bound to the exact composition bytes and runtime this case runs (checked here and by the
+// architecture lint). The journal runner case is provider and conversation-restart evidence; its
+// tuple is declared unproven because it is not the shared full-port contract.
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -18,7 +20,9 @@ import { encoded } from './canonical.js';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SELF_HOST_CONTEXT, doorwayProposer, selfHost } from './self-host.mjs';
-import { latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
+import { createSelfHostHarness, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
+import { ownerStoreFacts, providerAttemptsOf } from './self-host-owners.ts';
+import { hashBytes } from '../../src/facts/index.js';
 import { SELF_HOST_HARNESS } from './stall-coverage.js';
 import { parityMatrix } from '../../scripts/check-architecture.mjs';
 
@@ -74,8 +78,29 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
       const observations = records.filter(row => row.type === 'HarnessObservation');
       const byLaunch = Map.groupBy(observations, row => row.launch);
       expect(byLaunch.size).toBeGreaterThanOrEqual(3); // the package test, the installed tests and the installed probe
-      for (const rows of byLaunch.values()) expect(rows.map(row => row.phase)).toEqual(['launched', 'input-accepted', 'exit-observed']);
-      expect(observations.every(row => row.run.startsWith('self-host:work:'))).toBe(true);
+      // Each launch: the S8 boundary's signed receipt of the real start, the adapter's launch, the delivered recorded
+      // input, the S8 exit receipt and the adapter's exit observation.
+      for (const rows of byLaunch.values()) expect(rows.map(row => [row.phase, row.detail])).toEqual([['launched', 'running:ok'],
+        ['launched', 'actual process launch observed'], ['input-accepted', 'durable input accepted; consumption not yet claimed'],
+        ['exit-observed', 'exited:worker-exit'], ['exit-observed', 'exited:worker-exit']]);
+      // Every launch was admitted by the owners before it ran: its specification is in an owner store, bound to that store's
+      // Run, to the prepared Six reservation that was claimed and consumed, and to the recorded input digest.
+      const specs = ownerStoreFacts(root).flatMap(({ facts }) => facts.filter(fact => fact.kind === 'assembly-HarnessLaunchSpec'
+        && fact.body.record.id.startsWith('launch:')).map(fact => ({ spec: fact.body.record, facts })));
+      for (const launch of byLaunch.keys()) {
+        const found = specs.find(item => item.spec.id === launch);
+        expect(found, launch).toBeTruthy();
+        const reservations = found.facts.filter(fact => fact.kind === 'transport-AdmissionReservation').map(fact => fact.body.record);
+        expect(reservations.map(row => row.state)).toEqual(['prepared', 'dispatch-claimed', 'consumed']);
+        expect(found.spec).toMatchObject({ run: reservations[0].run, harness: SELF_HOST_HARNESS, inputDigest: reservations[0].digest });
+      }
+      // The certified tuple is this composition: its declared conformance digest is the running adapter's artifact, on this runtime.
+      const tuple = parityMatrix().harnessTuples.find(row => row.harness === SELF_HOST_HARNESS && row.doorway === id && row.mode === 'self-hosting');
+      const described = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: () => false, now: () => NOW,
+        log: openRecordLog(root, SELF_HOST_CONTEXT) }).adapter.describe();
+      expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [`node-${process.versions.node.split('.')[0]}`],
+        artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
+      expect(described.platform).toBe(`${tuple.platform}-${process.arch}`);
       // Confined tools and the installed capability: the owner resolves the active package; its evidence is these observations.
       const active = resolveActivePackage('agent.word-count', openRecordLog(root, SELF_HOST_CONTEXT).rows(), SELF_HOST_CONTEXT);
       expect(active.kind).toBe('Success');
@@ -95,7 +120,9 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
           const failing = { outcome, calls: 0, stdin: [], answer: () => PLAN };
           await expect(run(`A ${outcome} call.`, await proposerAt(other, failing, world), other)).rejects.toThrow('self-host: model');
           expect(failing.calls).toBe(1);
-          expect(readDurable(join(other, 'attempts.jsonl')).map(row => row.outcome ?? row.state)).toEqual(['started', 'failed-charge-unknown']);
+          // Charged and consumed in Six before the call; recorded as an unknown charge; never retried; nothing launched.
+          expect(providerAttemptsOf(other, hashBytes(`A ${outcome} call.`))).toBe(1);
+          expect(readDurable(join(other, 'self-host.jsonl')).map(row => row.outcome)).toEqual(['failed-charge-unknown']);
           expect(readDurable(join(other, 'assembly.jsonl'))).toEqual([]);
         } finally { rmSync(other, { recursive: true, force: true }); }
       }

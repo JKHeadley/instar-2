@@ -57,16 +57,20 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   expect(matrix.features.find(row => row.id === 'media')!.cells.telegram).toMatchObject({ status: 'unsupported', inhibited: true,
     declaration: 'telegram-conversation-adapter' });
   expect(matrix.features.find(row => row.id === 'ordinary-reply')!.cells.slack).toMatchObject({ status: 'unproven' });
-  const native = matrix.harnessTuples.filter(tuple => tuple.harness === NATIVE_HARNESS);
-  expect(native.find(tuple => tuple.mode === 'conversation')).toMatchObject({ doorway: 'claude-code-subscription', platform: 'darwin',
-    status: 'supported', artifact: ['PREVIEW_JOURNAL_HARNESS@tests/preview/journal-agent.mjs'],
-    route: ['claude-code-subscription@src/assembly/production-provider.ts'],
-    evidence: [{ file: 'tests/preview/native-harness-contract.test.ts', title: 'the journal runner converses through doorway claude-code-subscription' }] });
-  expect(native.find(tuple => tuple.mode === 'ordinary-exhaustion-recovery')).toMatchObject({ status: 'unproven' });
-  expect(matrix.harnessTuples.find(tuple => tuple.harness === 'preview-self-host-native')).toMatchObject({ mode: 'self-hosting', status: 'supported',
-    artifact: ['createNativeHarnessAdapter@src/assembly/harness.ts'], route: ['claude-code-subscription@src/assembly/production-provider.ts'],
+  // The native reference harness is the self-hosting HarnessAdapterPort composition; its supported tuple is bound to the
+  // exact composition files, runtime and conformance digest. The journal runner's conversation case is not the shared
+  // full-port contract, so its tuple is unproven (with its reason), as are the cells no captured case covers.
+  expect(NATIVE_HARNESS).toBe('preview-self-host-native');
+  expect(matrix.harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS)).toMatchObject({ mode: 'self-hosting', status: 'supported',
+    doorway: 'claude-code-subscription', platform: 'darwin',
+    artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'], route: ['claude-code-subscription@src/assembly/production-provider.ts'],
+    runtime: [`node-${process.versions.node.split('.')[0]}`], conformance: [expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)],
+    files: [expect.stringContaining('tests/preview/self-host-owners.ts')],
     evidence: [{ file: 'tests/preview/native-harness-contract.test.ts', title: 'native composition honours the harness contract through doorway claude-code-subscription' }] });
-  expect(native.find(tuple => tuple.mode === 'preventive-compaction')).toMatchObject({ status: 'unsupported' });
+  const journal = matrix.harnessTuples.filter(tuple => tuple.harness === 'preview-journal-native');
+  expect(journal.find(tuple => tuple.mode === 'conversation')).toMatchObject({ status: 'unproven', reason: expect.stringContaining('not the shared full-port contract') });
+  expect(journal.find(tuple => tuple.mode === 'ordinary-exhaustion-recovery')).toMatchObject({ status: 'unproven' });
+  expect(journal.find(tuple => tuple.mode === 'preventive-compaction')).toMatchObject({ status: 'unsupported' });
 
   const doorways = ['claude-code-subscription'];
   // Every issue below is an R105 finding about the committed declarations themselves.
@@ -95,14 +99,26 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   expect(details(with_('src/conversation/slack.declarations.json', entries => {
     const metrics = entries[0]!.requiredFacts.metrics; metrics.splice(metrics.findIndex(metric => metric.startsWith('slack.operation.ordinary-reply.reason=')), 1);
   }))).toContain('ordinary-reply × slack: unproven without a reason');
-  // A supported harness tuple is bound to its adapter artifact and registered route, not only a test title.
+  // A supported harness tuple is bound to its composition artifact and registered route, not only a test title.
   expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
     metrics[metrics.findIndex(metric => metric.endsWith('.self-hosting.route=claude-code-subscription@src/assembly/production-provider.ts'))] =
       'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.route=claude-code-subscription@src/assembly/harness.ts';
-    metrics.splice(metrics.findIndex(metric => metric.endsWith('.self-hosting.artifact=createNativeHarnessAdapter@src/assembly/harness.ts')), 1);
+    metrics.splice(metrics.findIndex(metric => metric.endsWith('.self-hosting.artifact=createSelfHostHarness@tests/preview/self-host-harness.mjs')), 1);
   }))).toEqual(expect.arrayContaining([
     'preview-self-host-native × claude-code-subscription × darwin × self-hosting: supported without an adapter artifact that names it',
     'preview-self-host-native × claude-code-subscription × darwin × self-hosting: supported without its registered route']));
+  // D17 §2: support is for exact bytes on an exact runtime. A changed driver (any composition file), a changed runtime
+  // or a missing composition list each leave the tuple uncertified until its contract is re-run and re-declared.
+  const edited = (path: string, text: string) => (file: string) => file === path ? text : read(file);
+  const drift = lintParityRegister(sources, edited('tests/preview/self-host-owners.ts', `${read('tests/preview/self-host-owners.ts')}\n// changed driver\n`), doorways)
+    .map(issue => issue.detail).filter(detail => !clean.includes(detail));
+  expect(drift).toEqual([expect.stringContaining('preview-self-host-native × claude-code-subscription × darwin × self-hosting: conformance is not for the current composition bytes')]);
+  expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
+    metrics[metrics.findIndex(metric => metric.includes('.self-hosting.runtime='))] = 'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.runtime=node-18';
+  }))).toContain(`preview-self-host-native × claude-code-subscription × darwin × self-hosting: certified on node-18, running node-${process.versions.node.split('.')[0]}`);
+  expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
+    metrics.splice(metrics.findIndex(metric => metric.includes('.self-hosting.files=')), 1);
+  }))).toContain('preview-self-host-native × claude-code-subscription × darwin × self-hosting: supported without its composition files and runtime');
   // A newly registered doorway lands without a native harness tuple.
   expect(details(sources, [...doorways, 'new-doorway'])).toContain('registered doorway new-doorway has no native harness tuple');
   // The committed declarations carry no other finding.

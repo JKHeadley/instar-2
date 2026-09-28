@@ -5,6 +5,7 @@ import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { importClosure } from './import-closure.mjs';
+import { compositionDigest, currentRuntime } from './composition-digest.mjs';
 
 export function createProgram(extra = {}) {
   const configPath = ts.findConfigFile(process.cwd(), ts.sys.fileExists, 'tsconfig.json');
@@ -260,13 +261,14 @@ export function registerDeclarationSources(read = repoRead, root = 'src') {
     : e.name.endsWith('.declarations.json') ? [`${path}/${e.name}`] : []);
   return Object.fromEntries(files(root).sort().map(path => [path, JSON.parse(read(path) ?? '[]')]));
 }
-/** Rules 30, 105, 115: the harness whose tuple every registered model doorway must carry. */
-export const NATIVE_HARNESS = 'preview-journal-native';
+/** Rules 30, 105, 115: the native reference harness (a HarnessAdapterPort composition) whose tuple
+ * every registered model doorway must carry. */
+export const NATIVE_HARNESS = 'preview-self-host-native';
 const CHANNEL_SOURCE = /^src\/conversation\/([a-z]+)\.declarations\.json$/u;
 const CHANNEL_STATE = /^([a-z]+)\.operation\.([a-z-]+)\.(supported|inhibited|unsupported|unproven)$/u;
 const CHANNEL_FACT = /^([a-z]+)\.operation\.([a-z-]+)\.(evidence|reason)=(.+)$/u;
 const TUPLE_STATE = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(supported|unsupported|unproven)$/u;
-const TUPLE_FACT = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(evidence|artifact|route|reason)=(.+)$/u;
+const TUPLE_FACT = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(evidence|artifact|route|reason|files|runtime|conformance)=(.+)$/u;
 /**
  * Rule 105 (with 30, 115): the feature-by-channel and harness-by-doorway parity matrix, derived
  * from the register's own declarations (the facts the generated register and capability briefing
@@ -277,12 +279,15 @@ const TUPLE_FACT = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-
  *   (`inhibited` is the adapter's own refusal and is its reason);
  * - any declaration declares a harness tuple cell
  *   `harness.<harness>.<doorway>.<platform>.<mode>.<supported|unsupported|unproven>`, plus, when
- *   supported, `.artifact=<adapter id>@<code path>`, `.route=<doorway id>@<registering module>` and
- *   `.evidence=<test file>#<test title>`, and `.reason=<text>` otherwise.
+ *   supported, `.artifact=<composition id>@<code path>`, `.route=<doorway id>@<registering module>`,
+ *   `.files=<the composition's files, comma-separated>`, `.runtime=node-<major>`,
+ *   `.conformance=<compositionDigest of those files on that runtime>` and `.evidence=<test file>#<test title>`,
+ *   and `.reason=<text>` otherwise.
  */
 export function parityMatrix(sources = registerDeclarationSources()) {
   const channels = [], cells = new Map(), tuples = new Map(), stray = [];
-  const cellOf = (map, key, init) => { if (!map.has(key)) map.set(key, { ...init, states: [], evidence: [], reason: [], artifact: [], route: [] }); return map.get(key); };
+  const cellOf = (map, key, init) => { if (!map.has(key)) map.set(key, { ...init, states: [], evidence: [], reason: [], artifact: [], route: [],
+    files: [], runtime: [], conformance: [] }); return map.get(key); };
   for (const [path, entries] of Object.entries(sources)) {
     const channel = CHANNEL_SOURCE.exec(path)?.[1];
     if (channel) channels.push(channel);
@@ -306,11 +311,12 @@ export function parityMatrix(sources = registerDeclarationSources()) {
   }
   const evidenceOf = value => { const at = value.indexOf('#'); return at < 0 ? { file: value, title: '' } : { file: value.slice(0, at), title: value.slice(at + 1) }; };
   const settle = cell => {
-    const { states, evidence, reason, artifact, route, ...rest } = cell;
+    const { states, evidence, reason, artifact, route, files, runtime, conformance, ...rest } = cell;
     const status = states.length === 1 ? (states[0] === 'inhibited' ? 'unsupported' : states[0]) : undefined;
     return { ...rest, status, declaredStates: states, ...(states[0] === 'inhibited' ? { inhibited: true } : {}),
       ...(evidence.length ? { evidence: evidence.map(evidenceOf) } : {}), ...(reason.length ? { reason: reason.join('; ') } : {}),
-      ...(artifact.length ? { artifact } : {}), ...(route.length ? { route } : {}) };
+      ...(artifact.length ? { artifact } : {}), ...(route.length ? { route } : {}), ...(files.length ? { files } : {}),
+      ...(runtime.length ? { runtime } : {}), ...(conformance.length ? { conformance } : {}) };
   };
   const features = [...new Set([...cells.values()].map(cell => cell.feature))].sort().map(id => ({ id,
     cells: Object.fromEntries(channels.flatMap(channel => { const cell = cells.get(`${id}\0${channel}`); return cell ? [[channel, settle(cell)]] : []; })) }));
@@ -349,6 +355,17 @@ export function lintParityRegister(sources = registerDeclarationSources(), read 
     const [routeId, routePath] = tuple.route?.length === 1 ? tuple.route[0].split('@') : [];
     if (routeId !== tuple.doorway || !routePath || !registeredDoorways(read(routePath) ?? '').includes(routeId))
       flag(`${where}: supported without its registered route`, tuple.source);
+    // D17 §2: support is bound to the exact composition bytes and runtime its conformance ran on.
+    const files = tuple.files?.length === 1 ? tuple.files[0].split(',') : [];
+    const runtime = tuple.runtime?.length === 1 ? tuple.runtime[0] : null;
+    if (!files.length || !files.includes(artifactPath) || !files.includes(routePath) || !runtime)
+      flag(`${where}: supported without its composition files and runtime`, tuple.source);
+    else if (runtime !== currentRuntime()) flag(`${where}: certified on ${runtime}, running ${currentRuntime()}`, tuple.source);
+    else {
+      const digest = compositionDigest(runtime, files, read);
+      if (!digest || tuple.conformance?.length !== 1 || tuple.conformance[0] !== digest)
+        flag(`${where}: conformance is not for the current composition bytes (now ${digest ?? 'a missing file'}); re-run its contract and re-declare`, tuple.source);
+    }
   }
   for (const doorway of doorways) if (!matrix.harnessTuples.some(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === doorway))
     flag(`registered doorway ${doorway} has no native harness tuple`);

@@ -93,7 +93,8 @@ export interface ToolProposal {
 export interface ToolScopes { readonly roots: readonly string[] }
 export interface AdmittedTool {
   readonly tool: string; readonly phase: ToolPhase;
-  readonly run: Readonly<{ kind: 'process'; argv: readonly string[]; credentials: readonly string[] }>
+  /** `paths`: the admitted root/file option values, for the executor to resolve physically before it runs anything. */
+  readonly run: Readonly<{ kind: 'process'; argv: readonly string[]; credentials: readonly string[]; paths: readonly string[] }>
     | Readonly<{ kind: 'port'; port: string; options: Readonly<Record<string, string>> }>;
 }
 
@@ -143,6 +144,7 @@ export function admitToolProposal(proposal: unknown, grants: readonly string[], 
     if (tool.run.kind === 'port') return freeze({ tool: tool.id, phase: tool.phase, run: { kind: 'port' as const, port: tool.run.port, options } });
     return freeze({ tool: tool.id, phase: tool.phase, run: { kind: 'process' as const,
       argv: [...tool.run.argv, ...prefix, ...Object.entries(options).flatMap(([name, value]) => [`--${name}`, value]), ...params as string[]],
-      credentials: [...tool.credentials ?? []] } });
+      credentials: [...tool.credentials ?? []],
+      paths: declared.filter(item => item.kind === 'root' || item.kind === 'file').flatMap(item => options[item.name] === undefined ? [] : [options[item.name]!]) } });
   });
 }

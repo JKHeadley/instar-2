@@ -68,7 +68,8 @@ export function admitPreviewHarness(read: (file: string) => string | null, cover
   if (gaps.length) throw Error(`preview: harness stall coverage incomplete: ${gaps.join('; ')}`);
 }
 
-/** The self-hosting harness: the native adapter over Eight's confined worker profile (tests/preview/self-host-harness.mjs). */
+/** The self-hosting harness: the native adapter whose launches the owners admit and the S8 boundary launches into Eight's
+ * confined worker profile (tests/preview/self-host-harness.mjs, tests/preview/self-host-owners.ts). */
 export const SELF_HOST_HARNESS = 'preview-self-host-native';
 const SELF_HOST_TESTS = 'tests/preview/self-host.test.ts';
 const selfHostCase = (title: string) => ({ file: SELF_HOST_TESTS, title });
@@ -81,28 +82,30 @@ const STOP = selfHostCase('refuses every provider attempt and tool launch once t
 const ALLOWANCE = selfHostCase('counts provider attempts durably across a restart and refuses past the allowance');
 const INTERRUPTED = selfHostCase('an interrupted provider attempt stays charged after a restart');
 const MALFORMED = selfHostCase('refuses a malformed plan and a file outside the package scope before running anything');
+const LAUNCH_EVIDENCE = selfHostCase('launch evidence is only the real start of an admitted process: a start failure and an unadmitted operation launch nothing');
+const LAUNCHER_KILLED = selfHostCase('a confined child ends at its own deadline after its launcher is killed, and its launch was decided durably first');
 
 /** Rule 59 for the self-hosting harness, admitted by its adapter constructor on every composition. */
 export const SELF_HOST_STALL_COVERAGE: HarnessStallCoverage = Object.freeze({
   type: 'HarnessStallCoverage', harness: SELF_HOST_HARNESS, rows: Object.freeze([
     { stall: 'launch-rejected-or-answer-lost',
-      detection: 'the native adapter launch observation, or its typed refusal (no admitted plan, stop latched), appended to the record log',
-      recovery: 'report the refusal in the round feedback; never relaunch the same incarnation', positive: DEVELOPS, failing: STOP },
+      detection: 'the S8 boundary receipt for the exact admitted operation (running, refused-before-release or unknown), recorded before the adapter launch observation; the M1 journal keeps its durable decision',
+      recovery: 'report the refusal in the round feedback; the boundary never launches an operation twice and an unknown start is never claimed as launched', positive: DEVELOPS, failing: LAUNCH_EVIDENCE },
     { stall: 'input-buffered-not-consumed',
       detection: 'an input-accepted observation without an exit observation is uncertain; only the exit observation of the exact admitted plan digest counts',
       recovery: 'treat the tool as not run and re-exercise from retained bytes; nothing is inferred from a launch alone', positive: DEVELOPS, failing: HUNG },
     { stall: 'prompt-approval-or-tool-wait',
-      detection: 'confined children get no stdin, no terminal and no network; any wait ends at the wall bound as a killed exit observation',
-      recovery: 'kill at the bound, record the killed exit and inhibit the candidate; nothing is approved by timeout', positive: CONFINED, failing: HUNG },
+      detection: 'confined children get only their recorded plan on stdin, no terminal and no network; any wait ends at the wall bound as an expired exit receipt',
+      recovery: 'end at the bound, record the expired exit and inhibit the candidate; nothing is approved by timeout', positive: CONFINED, failing: HUNG },
     { stall: 'provider-unavailable-or-expired',
-      detection: 'the durable provider-attempt ledger: a started row without a settled row is an UNKNOWN charged attempt',
-      recovery: 'never retried beyond the allowance; every attempt stays counted across restarts', positive: ALLOWANCE, failing: INTERRUPTED },
+      detection: 'Six prepared, claimed and consumed each provider attempt in a signed store before the call; a consumed attempt without an answered outcome is an UNKNOWN charged attempt',
+      recovery: 'never retried beyond the allowance; every prepared attempt in every store under the root stays counted across restarts', positive: ALLOWANCE, failing: INTERRUPTED },
     { stall: 'worker-exit-or-process-reuse',
-      detection: 'the record log survives the process: an activating head without its active successor is an interrupted switch',
+      detection: 'the record log and the owner stores survive the process: an activating head without its active successor, or an active head the owner cannot resolve, is an interrupted switch',
       recovery: 'the next run re-proves the retained bytes in confinement and completes, or inhibits and restores the prior version', positive: CUT, failing: REPLACEMENT },
     { stall: 'alive-without-progress',
-      detection: 'the round bound and the per-launch wall bound, each observed as a round record or a killed exit observation',
-      recovery: 'feed the recorded failure back for one bounded repair round, then end at the round limit', positive: DEVELOPS, failing: HUNG },
+      detection: 'the round bound and the per-launch wall bound the confined child enforces itself, observed as a round record or an expired exit receipt',
+      recovery: 'feed the recorded failure back for one bounded repair round, then end at the round limit; a child outliving its launcher ends at its own deadline', positive: DEVELOPS, failing: LAUNCHER_KILLED },
     { stall: 'context-compacted-or-limit',
       detection: 'each round request is rebuilt from the task and the recorded feedback only; a plan over the file or size bounds is refused',
       recovery: 'stateless re-grounding from the durable records; an oversized plan is refused, never truncated', positive: DEVELOPS, failing: MALFORMED },
