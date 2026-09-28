@@ -126,8 +126,12 @@ it('measures 60 assembled journal turns with real adapters, polling, prompt cons
     expect(journal.view.calls).toBe(60);
     expect(journal.view.replies).toBe(60);
     expect(journal.view.order.every(turn=>turn.sent)).toBe(true);
-    const first=p95(samples.slice(0,10)),final=p95(samples.slice(50));
-    process.stdout.write(`journal assembled 60 turns: non-model p95=${p95(samples).toFixed(1)} ms, first-ten=${first.toFixed(1)} ms, final-ten=${final.toFixed(1)} ms, growth=${(final-first).toFixed(1)} ms\n`);
+    // Growth compares the median of the first and last ten turns. A "p95" of ten samples is their maximum, so one
+    // scheduler stall under parallel load decided it (Rule 37 record, docs/defects/full-suite-load-timeouts.md);
+    // a real per-turn cost that grows with the journal moves the median as much as the maximum.
+    const median=values=>{const sorted=values.slice().sort((a,b)=>a-b);return (sorted[4]+sorted[5])/2;};
+    const first=median(samples.slice(0,10)),final=median(samples.slice(50));
+    process.stdout.write(`journal assembled 60 turns: non-model p95=${p95(samples).toFixed(1)} ms, first-ten median=${first.toFixed(1)} ms, final-ten median=${final.toFixed(1)} ms, growth=${(final-first).toFixed(1)} ms, final-ten max=${Math.max(...samples.slice(50)).toFixed(1)} ms\n`);
     expect(p95(samples)).toBeLessThan(5000);
     expect(final-first).toBeLessThan(1000);
   } finally {journal?.close();endpoint.kill('SIGTERM');}
