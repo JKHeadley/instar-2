@@ -1,6 +1,21 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-export { productionStorageIO, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
+import { createSubscriptionProviderIO as physicalProviderIO } from '../../scripts/production-boot-io.mjs';
+import { DOORWAY_CONFORMANCE } from './doorway-conformance.js';
+export { productionStorageIO } from '../../scripts/production-boot-io.mjs';
+
+/** The named doorway's captured frames (INSTAR_PREVIEW_CUTOVER_DOORWAY), answering the operator and the reply check;
+ * every submitted request is recorded so a test can read what actually reached the doorway. */
+export function createSubscriptionProviderIO(...args) {
+  const doorway = process.env.INSTAR_PREVIEW_CUTOVER_DOORWAY;
+  if (!doorway) return physicalProviderIO(...args);
+  const directory = process.env.INSTAR_PREVIEW_CUTOVER_WORLD;
+  const state = { outcome: 'complete', calls: 0, stdin: [], answer: stdin => {
+    appendFileSync(join(directory, 'doorway.jsonl'), `${JSON.stringify({ doorway, stdin })}\n`);
+    return stdin.includes('Judge this proposed reply') ? 'PASS | The answer repeats the operator\'s marker.' : 'Juniper is the marker.';
+  } };
+  return DOORWAY_CONFORMANCE[doorway].io(state);
+}
 
 export function createProductionTelegramIO() {
   const directory = process.env.INSTAR_PREVIEW_CUTOVER_WORLD;

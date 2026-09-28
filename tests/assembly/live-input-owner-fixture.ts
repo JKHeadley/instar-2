@@ -165,6 +165,7 @@ import { createEffectSpine, createEffectDoorway, createHarnessLiveInputExecution
 import { createTransportAuthority, createTransportSpine, transportSchemas, registerTransportBodies, decodeLoopPolicy } from '../../src/transport/index.js';
 import { assemblyInput } from './fixture.js';
 import { productionReferenceKinds } from './round8-extended-fixture.js';
+import { stallCoverageFixture } from './stall-coverage-fixture.js';
 
 function productionSchemas(f: any) {
   const identity = { id: { kind: 'text', maxLength: 2048 } };
@@ -333,7 +334,7 @@ function installAssemblySupport(f: any, options: any) {
       liveProcess: { owner: 'part-ten', resolve: l => { f.owners.events.push('live-process'); return f.success({ launch: l.id, run: l.run,
         incarnation: l.incarnation, harness: l.harness, artifactDigest: l.artifactDigest, machine: l.machine, processIdentity: 'pid:42:start:1' }); } },
       execution: f.effects.executor });
-    const harness = createNativeHarnessAdapter({ id: f.harnessId, artifact: launch.artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
+    const harness = createNativeHarnessAdapter({ id: f.harnessId, stallCoverage: stallCoverageFixture(f.harnessId), artifact: launch.artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
       context, clock: () => f.deps.clock().value, generation: () => f.run.generation.id, contextDeliveryDriver: driver,
       driver: { owner: 'part-eight', launch: () => { throw Error('launch held; existing process instrument only'); },
         deliver: () => { throw Error('legacy delivery forbidden'); }, observe: () => { throw Error('legacy observation forbidden'); } } });

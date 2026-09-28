@@ -115,7 +115,9 @@ it('keeps a probe reply out of commitments, question closures and summary source
           people: mode === 'person' ? [{ name: 'Juniper', quote: 'Juniper' }] : [], commitments: [], closed: [], questions: [], memory: [] });
         if (mode === 'closure' && input.question !== trigger) return ''; // leaves the dentist question unanswered
         return JSON.stringify({ reply: { answer: mode === 'promise' ? "Your marker is Juniper. I'll keep your test marker in mind." : 'Your marker is Juniper.' },
-          memory: [], dated: [], ...(mode === 'closure' ? { closedQuestions: (packet.openQuestions ?? []).map(item => item.id) } : {}) });
+          memory: [], dated: [], ...(mode === 'closure' ? { closedQuestions: (packet.openQuestions ?? []).map(item => item.id) } : {}),
+          // The model proposes its own promise (Rule 10); code keeps the exact quote.
+          ...(mode === 'promise' ? { promises: [{ quote: "I'll keep your test marker in mind." }] } : {}) });
       },
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
       replyCheck: { elapsedMs: () => 100, escalate: async () => { throw new Error('unexpected escalation'); },

@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
 import { operatorDigest } from './operator-digest.js';
 
@@ -52,6 +52,31 @@ const extractor = (bad = true) => (context: string) => {
   return JSON.stringify({ summary: 'Earlier turns covered a locker code, a dentist call, errands and plans.', people: [], commitments, closed });
 };
 
+/** Test-only stand-in for the answering model's own reading (Rule 10): it proposes the
+ * first-person promises in its reply and, for a due promise, the reply line that carries it
+ * out. Production never pattern-matches this; the real model proposes, code checks quotes. */
+const proposing = (answer: string, context: string): string => {
+  try { JSON.parse(answer); return answer; } catch { /* plain reply */ }
+  const promises: { quote: string; when?: string }[] = [];
+  let code = false;
+  for (const line of answer.split('\n')) {
+    if (line.trimStart().startsWith('```')) { code = !code; continue; }
+    if (code || /^\s*(?:>|["“'`])/u.test(line)) continue;
+    for (const sentence of line.split(/(?<=[.!?])\s+/u)) {
+      if (!/^\s*(?:I’ll|I'll|I will)\s+(?:remind you|check|follow up|send|tell|update|keep)\b/iu.test(sentence)) continue;
+      const when = /\b(?:tomorrow|today|\d{4}-\d{2}-\d{2})\b/iu.exec(sentence)?.[0];
+      promises.push({ quote: sentence.trim(), ...(when ? { when } : {}) });
+    }
+  }
+  const reminder = /^Reminder:[ \t]+(.+?)[.!?]?$/iu.exec(answer.trim())?.[1];
+  const items = ((JSON.parse(context) as { commitments?: { items: { id: number; quote: string; owner?: string; due?: { state: string } }[] }[] })
+    .commitments ?? []).flatMap(group => group.items);
+  const fulfilled = reminder ? items.filter(item => item.owner === 'agent' && (!item.due || ['due', 'overdue'].includes(item.due.state))
+    && new RegExp(`remind you to ${reminder.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\b`, 'iu').test(item.quote))
+    .map(item => ({ id: item.id, quote: answer.trim() })) : [];
+  return promises.length || fulfilled.length ? JSON.stringify({ reply: answer, promises, fulfilled }) : answer;
+};
+
 function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes?: number;
   now?: () => number; answer?: (question: string) => string; send?: () => number | null;
   checkOutbound?: (text: string) => void } = {}) {
@@ -65,7 +90,7 @@ function world(root: string, options: { bad?: boolean; plain?: boolean; maxBytes
     model: async input => {
       if (input.id.startsWith('summary:')) return options.plain ? 'A plain summary.' : extractor(options.bad ?? true)(input.context);
       asked.set(input.question, input.context);
-      return options.answer?.(input.question) ?? (input.question === DENTIST ? `Noted. ${PROMISE}` : 'Noted.');
+      return proposing(options.answer?.(input.question) ?? (input.question === DENTIST ? `Noted. ${PROMISE}` : 'Noted.'), input.context);
     },
     send: async () => options.send ? options.send() : 1, checkOutbound: options.checkOutbound ?? (() => {}) });
   const say = async (id: number, text: string, from?: number) => {
@@ -231,7 +256,7 @@ it('keeps an older due agent promise visible when the ten-item packet limit is r
 it('surfaces a fresh promise made after the latest summary', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 5000, answer: question => question === 'Promise'
+    const w = world(root, { maxBytes: 6500, answer: question => question === 'Promise'
       ? 'I’ll check the report tomorrow.' : 'Okay.' });
     let id = 1;
     for (; !w.journal.view.summaries.length && id < 60; id++) await w.say(id, filler(id));
@@ -417,7 +442,8 @@ it('drops optional open commitments until the complete summary envelope fits and
       model: async input => { calls.push({ id: input.id, context: input.context });
         return input.id.startsWith('summary:') ? 'The thirty items remain open; later discussion covered the garden.' : 'ok'; },
       send: async () => 3, checkOutbound: () => {} });
-    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2700)}`)]);
+    // Sized below the live bound less the always-offered decisions and the mind-held instructions.
+    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2200)}`)]);
     await worker.drain();
     const summaryCall = calls.find(call => call.id === 'summary:2');
     expect(summaryCall).toBeDefined();
@@ -458,9 +484,11 @@ it('keeps a plain summary and reports the missing commitment record in status', 
 it('keeps per-turn non-model overhead flat through 200 turns with commitments and a restart', async () => {
   const root = origin(), samples: number[] = [];
   try {
-    let w = world(root, { bad: false, maxBytes: 6000 });
+    // Every operator packet carries the summary-scheduling and promise decisions (Rule 10), so the
+    // tiny cap leaves room for optional commitments at 7500 bytes (was 6000 before those were unconditional).
+    let w = world(root, { bad: false, maxBytes: 7500 });
     for (let i = 1; i <= 200; i++) {
-      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 6000 }); }
+      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 7500 }); }
       const text = i % 10 === 1 ? `Please remember item ${i} for the review.` : i === 199 ? 'What did I ask you to remember?' : `${filler(i)} ${'x'.repeat(250)}`;
       const start = performance.now();
       await w.say(i, text);
@@ -487,6 +515,7 @@ it('the live script reaches compaction and the question carries the open commitm
   try {
     const g = { ...genesis(32768), maxCalls: 40, maxReplies: 40, maxTurns: 40 };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, g);
+    const prepared: string[] = [];
     writeFileSync(join(root, 'desk-status.md'), '# Instar 2.0 desk report\nLane commitments-memory: live proof.\n');
     const sources = sourcePacket(path => readFileSync(join(process.cwd(), path), 'utf8'), SOURCE_PINS,
       { providerAttempts: g.maxCalls, expiresAt: g.expires }).sources;
@@ -498,9 +527,10 @@ it('the live script reaches compaction and the question carries the open commitm
         return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk,
           operatorDigest(journal.view, runs, desk)];
       },
-      prepareModel: input => prepareJournalEnvelope(input, model, g.grant, Date.now()),
+      prepareModel: input => { const bytes = prepareJournalEnvelope(input, model, g.grant, Date.now());
+        if (!input.id.startsWith('summary:')) prepared.push(bytes); return bytes; },
       model: async ({ id, question, context }) => id.startsWith('summary:') ? extractor(false)(context)
-        : question === DENTIST ? `Noted. ${PROMISE}` : 'ok',
+        : question === DENTIST ? JSON.stringify({ reply: `Noted. ${PROMISE}`, memory: [], promises: [{ quote: PROMISE }] }) : 'ok',
       send: async () => 1, checkOutbound: () => {} });
     const sentence = 'The garden plan has tomatoes, beans, squash and herbs along the south fence. ';
     const LIVE_FILLER = `Filler for the memory test, just reply ok. ${sentence.repeat(50).trim()}`;
@@ -522,8 +552,27 @@ it('the live script reaches compaction and the question carries the open commitm
     await worker.drain();
     const last = run(root, 'inspect').last;
     expect(last.historyMode).toBe('summary-plus-recent');
+    // The read-only inspect surface names the standing instructions the prepared prompt carried.
+    expect(last.instructions.rules).toEqual(MIND_RULES.map(([rule]) => rule));
     expect(last.commitments.flatMap((entry: { items: { quote: string }[] }) => entry.items.map(item => item.quote)))
       .toEqual([LOCKER, DENTIST, PROMISE]);
+    // Rule 47: at prepared provider input, the persistent instruction set and persistent
+    // sources are identical at the first turn and after compaction; current state may change.
+    const parts = (bytes: string) => {
+      const messages = (JSON.parse(bytes) as { messages: { role: string; content: string }[] }).messages;
+      const packet = (JSON.parse(messages.find(item => item.role === 'context')!.content) as {
+        packet: { historyMode: string; sources: { id: string; title: string; text: string; provenance: unknown }[] } }).packet;
+      return { instructions: messages.find(item => item.role === 'instructions')?.content, packet };
+    };
+    const start = parts(prepared[0]!), after = parts(prepared.at(-1)!);
+    expect(start.packet.historyMode).toBe('complete');
+    expect(after.packet.historyMode).toBe('summary-plus-recent');
+    expect(start.instructions).toBe(ANSWER_INSTRUCTIONS);
+    expect(after.instructions).toBe(start.instructions);
+    const lasting = (packet: typeof start.packet) => packet.sources.filter(item => item.id.startsWith('purpose:') || item.id === 'capability-note');
+    expect(lasting(start.packet)).toHaveLength(4);
+    expect(lasting(after.packet)).toEqual(lasting(start.packet));
+    expect(after.packet.sources.map(item => item.id)).toEqual(expect.arrayContaining(start.packet.sources.map(item => item.id)));
     process.stdout.write(`commitments live script: ${fillers} fillers; turns=${journal.view.order.length}, calls=${journal.view.calls}, summaries=${journal.view.summaries.length}\n`);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

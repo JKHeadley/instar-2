@@ -28,7 +28,7 @@ import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, create
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
 import { assemblySchemas, bootProductionAssembly, createAssemblyRuntime, createAssemblySpine,
   inspectProductionAssemblyBindings, registerAssemblyBodies, createProductionGroundingReader,
-  createConfinedContextDeliveryDriver, createNativeHarnessAdapter, contextDeliveryIdFor } from '../dist/assembly/index.js';
+  createConfinedContextDeliveryDriver, createNativeHarnessAdapter, contextDeliveryIdFor, HARNESS_STALL_CLASSES } from '../dist/assembly/index.js';
 import { createOperatorSurface, minimalPlaneProjectionIds, minimalPlaneProjections,
   requiredMinimalDependencies } from '../dist/operator/index.js';
 import { createVerificationRuntime, createVerificationSpine, registerVerificationBodies,
@@ -1565,7 +1565,12 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
         return { launch: launch.id, run: launch.run, incarnation, harness: 'slice-harness:1', artifactDigest: artifact,
           machine: config.machine, processIdentity };
       }) } });
-    const harness = createNativeHarnessAdapter({ id: 'slice-harness:1', artifact, platform: 'darwin-arm64',
+    // Rule 59: a slice fixture table; the slice exercises context delivery, not stall recovery.
+    const stallCoverage = { type: 'HarnessStallCoverage', harness: 'slice-harness:1', rows: HARNESS_STALL_CLASSES.map(stall => ({ stall,
+      detection: `slice fixture detection for ${stall}`, recovery: `slice fixture recovery for ${stall}`,
+      positive: { file: 'tests/assembly/stall-coverage.test.ts', title: `slice positive case ${stall}` },
+      failing: { file: 'tests/assembly/stall-coverage.test.ts', title: `slice failing case ${stall}` } })) };
+    const harness = createNativeHarnessAdapter({ id: 'slice-harness:1', artifact, platform: 'darwin-arm64', stallCoverage,
       conformance: 'AdapterConformance', context, clock: () => now().value, generation: () => registerShape.generation.id,
       contextDeliveryDriver: driver, driver: { owner: 'part-eight',
         launch: () => { throw new Error('harness launch is held; current worker process only'); },

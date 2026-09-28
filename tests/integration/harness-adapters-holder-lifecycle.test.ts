@@ -23,6 +23,7 @@ import { transportFixture } from '../transport/fixture.js';
 import { transportLoopFixture } from '../transport/loop-fixture.js';
 import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
+import { stallCoverageFixture } from '../assembly/stall-coverage-fixture.js';
 
 function exactSubject(event: HarnessRuntimeEvent): string {
   return consumeResult(canonical([event.harness, event.artifactDigest, event.platform, event.machine,
@@ -252,7 +253,7 @@ it('A2-INTEGRATION R2-F05 R2-F06 P13-NF-24 P13-NF-39 delivery replay preserves i
   let now = 20;
   let driverCalls = 0;
   const tripwire = () => { driverCalls++; throw new Error('replay must not invoke the driver'); };
-  const packageView = createFutureHarnessAdapter({ id: 'native', artifact: f.handle.artifactDigest,
+  const packageView = createFutureHarnessAdapter({ id: 'native', stallCoverage: stallCoverageFixture('native'), artifact: f.handle.artifactDigest,
     platform: handle.platform, conformance: conformance.id, machine: handle.machine,
     driver: { owner: 'part-eight', launch: tripwire, deliver: tripwire, observe: tripwire },
     handles: f.handles, evidence: f.evidence, context: f.owner.c, clock: () => now,
@@ -306,7 +307,7 @@ it('A2-INTEGRATION R3-F03 P13-NF-24 P13-NF-39 delivery replay preserves owner re
     f.owner.time(now);
     let driverCalls = 0;
     const tripwire = () => { driverCalls++; throw new Error('replay must not invoke the driver'); };
-    const packageView = createFutureHarnessAdapter({ id: 'native', artifact: f.handle.artifactDigest,
+    const packageView = createFutureHarnessAdapter({ id: 'native', stallCoverage: stallCoverageFixture('native'), artifact: f.handle.artifactDigest,
       platform: handle.platform, conformance: conformance.id, machine: handle.machine,
       driver: { owner: 'part-eight', launch: tripwire, deliver: tripwire, observe: tripwire },
       handles: f.handles, evidence: f.evidence, context: f.owner.c, clock: () => now,
@@ -353,7 +354,7 @@ it('session driver recovers a pending Part Thirteen attempt only through its dur
       ? assemblyBoundary('SyntheticAmbiguousSession', null, f.owner.c, () => { throw Error('send may have arrived'); })
       : f.owner.success('tmux-input:recovered'); },
   };
-  const packageView = createFutureHarnessAdapter({ id: 'native', artifact: f.handle.artifactDigest,
+  const packageView = createFutureHarnessAdapter({ id: 'native', stallCoverage: stallCoverageFixture('native'), artifact: f.handle.artifactDigest,
     platform: handle.platform, conformance: conformance.id, machine: handle.machine,
     driver, handles: f.handles, evidence: f.evidence, context: f.owner.c,
     clock: () => 20, generation: () => f.owner.host.current().generation });
@@ -396,7 +397,7 @@ it('A2-INTEGRATION R2-F09 P13-NF-04 base describe re-resolves real Ten conforman
     observe: () => { driverCalls++; throw new Error('describe must not invoke observation'); },
   });
   let now = 20;
-  const packageView = createFutureHarnessAdapter({ id: 'native', artifact: digest('native-artifact'),
+  const packageView = createFutureHarnessAdapter({ id: 'native', stallCoverage: stallCoverageFixture('native'), artifact: digest('native-artifact'),
     platform: 'darwin-arm64', conformance: conformance.id, machine: 'machine-a', driver, handles, evidence,
     context: f.owner.c, clock: () => now, generation: () => 'generation:fixture' });
   expect(packageView).toMatchObject({ owner: 'part-thirteen', family: 'session-harness', handles, evidence });

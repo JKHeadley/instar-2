@@ -17,6 +17,7 @@ import { verificationInput } from '../verification/fixture.js';
 import { verificationRuntimeFixture } from '../verification/runtime-fixture.js';
 // @ts-expect-error The exact filesystem host is JavaScript outside pure core compilation.
 import { createHarnessAdapterFileState } from '../../scripts/slice-p13-state-storage.mjs';
+import { stallCoverageFixture } from '../assembly/stall-coverage-fixture.js';
 
 const [mode, cut, path] = process.argv.slice(2) as [string, string, string];
 const die = () => process.kill(process.pid, 'SIGKILL');
@@ -125,7 +126,7 @@ if (mode === 'seed') {
 } else {
   let driverCalls = 0;
   const tripwire = () => { driverCalls++; throw new Error('restart replay must not invoke a driver'); };
-  const packageView = createFutureHarnessAdapter({ id: 'native', artifact: handle.artifactDigest,
+  const packageView = createFutureHarnessAdapter({ id: 'native', stallCoverage: stallCoverageFixture('native'), artifact: handle.artifactDigest,
     platform: handle.platform, conformance: conformance.id, machine: handle.machine,
     driver: { owner: 'part-eight', launch: tripwire, deliver: tripwire, observe: tripwire },
     handles, evidence, context: f.owner.c, clock: () => 21,

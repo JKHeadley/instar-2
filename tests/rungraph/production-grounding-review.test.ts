@@ -11,6 +11,7 @@ import { assemblyInput } from '../assembly/fixture.js';
 import { assemblyRuntimeFixture } from '../assembly/round8-extended-fixture.js';
 import { privateKey } from '../facts/fixtures.js';
 import { executeInitialLiveInputLifecycle, paired, setup, value, json, ref, digest } from './astra-production-grounding-fixture.js';
+import { stallCoverageFixture } from '../assembly/stall-coverage-fixture.js';
 const result = (r:any):any => consumeResult(r,{Success:v=>({accepted:true,value:v}),Refused:r=>({accepted:false,detail:r.detail})});
 it('V1 accepts a signed current initial specification',()=>{const f=ten();expect(result(f.runtime.recordContextDelivery(f.spec())).accepted).toBe(true)});
 it('V2 accepts valid spec delivery through the real recorder',()=>{const f=ten();const s=value(f.runtime.recordContextDelivery(f.spec()));const actual=result(f.driver.deliver(s,{operation:s.operation,claim:s.claim}));expect(actual,JSON.stringify(actual)).toMatchObject({accepted:true});expect(f.calls()).toBe(1)});
@@ -48,7 +49,7 @@ it('V21 refuses predecessor skip after a second delivery',()=>{const f=ten();con
 it('V22 accepts unchanged incarnation for a second live-input specification',()=>{const f=ten();const a=value(f.runtime.recordContextDelivery(f.spec()));const af=value(f.runtime.inspect()).find(r=>r.record.id===a.id)!.fact;const op=f.next('second').operation;const b=value(f.runtime.recordContextDelivery(f.spec('live-input',op.id,af.id)));expect(b.incarnation).toBe(a.incarnation);expect(b.id).not.toBe(a.id)});
 it('V23 native reader accepts a real signed launch and context-delivery record',()=>{
  const f=ten();const events:string[]=[];
- const harness=createNativeHarnessAdapter({id:'native',artifact:f.launch.artifactDigest,platform:'test',conformance:'test',context:{...f.c,history:f.history},clock:()=>100,generation:()=> 'generation:fixture',contextDeliveryDriver:f.driver,driver:{owner:'part-eight',launch:()=>f.success('pid:42:start:1'),deliver:()=>{throw Error('legacy deliver forbidden')},observe:()=>{throw Error('legacy observe forbidden')}}});
+ const harness=createNativeHarnessAdapter({ id: 'native', stallCoverage: stallCoverageFixture('native'),artifact:f.launch.artifactDigest,platform:'test',conformance:'test',context:{...f.c,history:f.history},clock:()=>100,generation:()=> 'generation:fixture',contextDeliveryDriver:f.driver,driver:{owner:'part-eight',launch:()=>f.success('pid:42:start:1'),deliver:()=>{throw Error('legacy deliver forbidden')},observe:()=>{throw Error('legacy observe forbidden')}}});
  f.composition.harnesses.splice(0, f.composition.harnesses.length, harness);
  value(harness.launch(f.launch,f.launch.processOperation,'launch-claim'));
  const reader=createProductionGroundingReader({scope:'scope:minimal',runtime:f.runtime,harness,clock:()=>{events.push('clock');return f.clock(100)},context:f.c,sample:()=>{events.push('sample');return f.success({specification:f.spec(),grounding:(consumption:any)=>({at:f.clock(100),step:'step:next',incarnation:f.launch.incarnation,contextDeliveryReason:'initial',consumption})})}});

@@ -4,7 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
 import { openPreviewJournal } from './journal.js';
 
 it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding) => {
@@ -79,6 +79,7 @@ it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle pol
   writeFileSync(updates,'[]');
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const binding=JSON.parse(JSON.parse(prepared).messages[1].content).bindings;
   const review=JSON.parse(prepared).messages[0].content.startsWith('Judge this proposed reply');
@@ -182,6 +183,7 @@ it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic fr
       message_thread_id:7,is_topic_message:true}}]));
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const context=envelope.messages[1].content, asked=envelope.messages[0].content;
@@ -257,6 +259,7 @@ it.each([
   writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:chat,type:'private'},from:{id:operator},text:'Remember this.'}}]));
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+${FIXTURE_DOORWAY}
 const mode = ${JSON.stringify(mode)};
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
