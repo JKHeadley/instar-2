@@ -96,7 +96,7 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
   { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input; a stop act on the independent surface stays there until consumed', basis: 'Rule 4 emergency stop; governed expiry; Eleven §4' },
   { gate: 'model call cap', fails: 'closed', preserves: 'held message; limited answer from the reserve', basis: 'Rule 4 spend floor; Rule 15' },
   { gate: 'ordinary reply and turn caps', fails: 'open', preserves: 'input via the minimal reserve', basis: 'Rule 15' },
-  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'overflow preserved before the cursor passes it; past the reserve, messages wait at Telegram; presses and /stop in the page still read; a stop beyond the page arrives through the independent stop page', basis: 'Rule 60 finite capacity; Rule 15' },
+  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'overflow preserved before the cursor passes it; past the reserve, updates enter a finite waiting store in order and the backlog is scanned for the operator\'s exact /stop first; past that store, messages wait at Telegram', basis: 'Rule 60 finite capacity; Rules 4, 15' },
   { gate: 'minimal-path admission (Part Eleven verdict)', fails: 'closed', preserves: 'message kept; owned outage recorded; /stop latches without a reply', basis: 'Rule 15; Eleven §5' },
   { gate: 'operator approval request', fails: 'closed', preserves: 'request, challenge and pressed update; raises only on the verified surface', basis: 'Purpose (safeguards); Rules 82, 98' },
   { gate: 'UNKNOWN call or send', fails: 'closed', preserves: 'reservation and intent', basis: 'no duplicate sends floor' },
@@ -106,9 +106,14 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
  * messages and gives them a limited, truthful answer; it makes no model call. The turn reserve
  * exceeds two full poll pages, so a stop sent behind a page of waiting messages is preserved and
  * read rather than stranded (overflow is preserved before Telegram is told it was read). Past it,
- * the cursor holds and an exact /stop in the page still latches; a stop beyond the page reaches the latch
- * through the independent surface's standing stop challenge, which needs no conversation queue. */
+ * operator updates enter the finite waiting store (MINIMAL_WAITING_UPDATES) and the whole backlog is scanned
+ * for an exact /stop first; the independent surface's standing stop challenge also reaches the latch. */
 export const MINIMAL_RESERVE = Object.freeze({ turns: 240, replies: 6, windowMs: 3_600_000 });
+/** Operator updates past the reserve preserved in the journal, in order, before the cursor passes them
+ * (Rule 60 finite; Rule 4 durable intake). The backlog they sit in is scanned for the verified operator's
+ * exact /stop first, so a stop behind waiting messages latches before anything else is processed. Past this
+ * store, updates wait at Telegram with the cursor held. */
+export const MINIMAL_WAITING_UPDATES = 1000;
 /** Updates read per poll at every capacity level, so presses behind a waiting message are still seen. */
 export const MINIMAL_POLL_LIMIT = 100;
 /** How long an operator message waits on a busy ordinary worker before the minimal path answers it
@@ -399,6 +404,8 @@ export type JournalRecord =
     verified?: VerifiedApproval }
   /** The standing emergency-stop challenge the independent verifier issued for this trial (Rules 4, 15). */
   | { kind: 'stop-challenge'; challenge: SurfaceChallenge; at: number }
+  /** An update past the reserve, preserved before the cursor passes it; taken as a turn once capacity frees. */
+  | { kind: 'waiting'; update: number; raw: string; cursor: number; at: number }
   | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }
   | { kind: 'expiry'; genesisHash: string; expires: number; activation: string; authority: string; at: number }
   | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; level?: 'near'; at: number }
@@ -461,8 +468,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   clockFloor: number;
   /** Derived in-memory index; snapshots rebuild it from the recorded turns. */
   turns: Map<string, Turn>; order: Turn[]; heldTurns: Set<Turn>; calls: number; replies: number; stop: string | null;
-  /** Current emergency-stop challenges on the independent surface (the newest few, unexpired when issued). */
+  /** Current emergency-stop challenges on the independent surface (every one unexpired when the latest was issued). */
   stopChallenges: SurfaceChallenge[];
+  /** Updates past the reserve, preserved in order and not yet taken as turns (MINIMAL_WAITING_UPDATES). */
+  waiting: { update: number; raw: string }[];
   tokenTotals: TokenTotals; tokenCalls: TokenReservation[]; tokenCurrent: Map<string, number>;
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent' | 'held-notice-intent';
     at: number; id?: string; through?: number; reason?: string }[];
@@ -689,7 +698,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryRequired: new Set(saved.summaryRequired ?? []), summaryCandidates: new Map(saved.summaryCandidates ?? []),
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryFaithfulness: new Map(saved.summaryFaithfulness ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
     callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []), mentionedDates: new Set(saved.mentionedDates ?? []), reminders: new Map(saved.reminders ?? []), reminderGrant: saved.reminderGrant ?? null, reminderCancels: saved.reminderCancels ?? [],
-    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [], stopChallenges: saved.stopChallenges ?? [] };
+    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [], stopChallenges: saved.stopChallenges ?? [], waiting: saved.waiting ?? [] };
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -1222,6 +1231,7 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'intake') {
     const prior = view.turns.get(row.id);
+    view.waiting = view.waiting.filter(item => item.update !== row.update);
     if (prior) { if (prior.update !== row.update || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
     if (row.reserve !== undefined && (row.reserve !== true || view.order.length < view.limits.maxTurns))
       throw Error('preview journal: reserve intake order');
@@ -1304,7 +1314,16 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'stop-challenge') {
     if (view.stop !== null || !validStopChallenge(view, row.challenge) || !(row.challenge.expiresAt > row.at)
       || view.stopChallenges.some(item => item.id === row.challenge.id)) throw Error('preview journal: stop challenge refused');
-    view.stopChallenges = [...view.stopChallenges.filter(item => item.expiresAt > row.at), { ...row.challenge }].slice(-8); return;
+    // Retention is bounded by expiry, never by a count: a still-valid displayed page is never evicted.
+    view.stopChallenges = [...view.stopChallenges.filter(item => item.expiresAt > row.at), { ...row.challenge }]; return;
+  }
+  if (row.kind === 'waiting') {
+    let id: unknown;
+    try { id = (JSON.parse(row.raw) as TelegramUpdate).update_id; } catch { id = undefined; }
+    if (!Number.isSafeInteger(row.update) || id !== row.update || row.update < view.cursor || row.cursor !== row.update + 1
+      || view.waiting.length >= MINIMAL_WAITING_UPDATES || view.turns.has(previewTurnId(view.genesis.bot, row.update)))
+      throw Error('preview journal: waiting update refused');
+    view.waiting.push({ update: row.update, raw: row.raw }); view.cursor = row.cursor; return;
   }
   if (row.kind === 'stop') {
     if (row.verified !== undefined && !view.stopChallenges.some(item => item.id === row.verified!.challenge
@@ -1913,7 +1932,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1993,7 +2012,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -2236,25 +2255,39 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // past every bound waits at Telegram (the cursor holds before it) while later presses are still read.
   const pollLimit = () => { gate(); return MINIMAL_POLL_LIMIT; };
   const pollGate = () => { pollLimit(); };
-  let intakeHeld = false;
+  let intakeHeld = false, readAhead = false;
+  /** Past the reserve (Rules 4, 14, 15, 60): scan the whole backlog for the verified operator's exact /stop
+   * and latch it first, then preserve every other update in order in the finite waiting store before the
+   * cursor passes it. Presses are still decided until a stop latches. Past the store, updates wait at Telegram. */
+  const holdBacklog = (rest: readonly TelegramUpdate[], waiting: ReadonlySet<number>) => {
+    const fresh = rest.filter(update => !waiting.has(update.update_id)
+      && !journal.view.turns.has(previewTurnId(journal.view.genesis.bot, update.update_id)));
+    const stop = fresh.find(update => { const parsed = admittedUpdate(journal.view.genesis, update);
+      return parsed.accepted && isStopCommand(parsed.text); });
+    // The brake needs no reply: the exact /stop latches before anything else, its update kept.
+    if (stop) journal.append({ kind: 'stop', reason: 'operator', update: stop.update_id, raw: JSON.stringify(stop), at: ports.now() });
+    for (const update of fresh) {
+      if (update === stop || update.update_id < journal.view.cursor) continue;
+      if (journal.view.stop === null && update.callback_query && decideApproval(update, true)) continue;
+      if (journal.view.waiting.length >= MINIMAL_WAITING_UPDATES) break;
+      journal.append({ kind: 'waiting', update: update.update_id, raw: JSON.stringify(update), cursor: update.update_id + 1, at: ports.now() });
+    }
+  };
   const intake = (updates: readonly TelegramUpdate[]) => {
     gate();
-    // Held: an operator message past every bound waits at Telegram and the cursor stays before it.
-    // Later presses and an exact /stop are still read, recorded without moving the cursor (Rules 14, 15).
+    // Preserved waiting updates come first, in order, so they are taken as turns once capacity frees.
+    const waiting = new Set(journal.view.waiting.map(item => item.update)), start = journal.view.cursor;
+    const pending = [...journal.view.waiting.map(item => JSON.parse(item.raw) as TelegramUpdate),
+      ...updates.filter(update => !waiting.has(update.update_id))].sort((a, b) => a.update_id - b.update_id);
     let held = false;
-    for (const update of [...updates].sort((a, b) => a.update_id - b.update_id)) {
+    for (const [index, update] of pending.entries()) {
       if (journal.view.stop !== null) break;
       if (update.callback_query && update.update_id >= journal.view.cursor && decideApproval(update, held)) continue;
-      if (held && update.callback_query) continue;
       const parsed = admittedUpdate(journal.view.genesis, update), prior = journal.view.turns.get(parsed.id);
       if (prior) continue;
       const reserve = journal.view.order.length >= journal.view.limits.maxTurns;
-      if (!held && reserve && parsed.accepted && reserveTurnsUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.turns) held = true;
-      if (held) {
-        // The brake needs no reply: an exact /stop past every bound latches at once, its update kept.
-        if (parsed.accepted && isStopCommand(parsed.text))
-          journal.append({ kind: 'stop', reason: 'operator', update: update.update_id, raw: JSON.stringify(update), at: ports.now() });
-        continue;
+      if (reserve && parsed.accepted && reserveTurnsUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.turns) {
+        held = true; holdBacklog(pending.slice(index), waiting); break;
       }
       let editOf: string | undefined, replaces: string | undefined;
       if (update.edited_message && parsed.accepted && Number.isSafeInteger(update.edited_message.message_id)
@@ -2284,6 +2317,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(reserve ? { reserve: true as const } : {}) });
     }
     intakeHeld = held;
+    // A held page that moved the cursor may have more backlog behind it: the runner reads on at once.
+    readAhead = held && journal.view.stop === null && journal.view.cursor > start
+      && journal.view.waiting.length < MINIMAL_WAITING_UPDATES;
     return journal.view.cursor;
   };
   /** Rules 79/82/98: the verified operator's press may decline a request or confirm the brake. It can
@@ -4422,13 +4458,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || issued.base !== base || issued.singleUse !== true || !(issued.expiresAt > now)) return undefined;
     return { id, action: 'raise-caps', base, limits, challenge: issued };
   };
-  /** One standing emergency-stop challenge on the independent surface, reissued before it lapses. A refused
-   * issue is retried after a pause (Rule 55); the conversation path and its /stop are unaffected. */
+  /** One standing emergency-stop challenge on the independent surface. Any unexpired challenge is reused,
+   * so a displayed Stop page stays valid until it lapses; a new one is issued only then. A refused issue is
+   * retried after a pause (Rule 55); the conversation path and its /stop are unaffected. */
   let stopIssueRetryAt = 0;
   const ensureStopChallenge = () => {
     const surface = ports.approvalSurface, view = journal.view, now = ports.now();
     if (!surface || view.stop !== null || journal.readOnly || now < stopIssueRetryAt
-      || view.stopChallenges.some(item => item.expiresAt - now > STOP_CHALLENGE_MS / 4)) return;
+      || view.stopChallenges.some(item => item.expiresAt > now)) return;
     const { request, digest } = stopSubject(view), operator = approvalOperator(view);
     let challenge: SurfaceChallenge | null = null;
     try {
@@ -5237,7 +5274,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
   const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await answerLimited(); };
-  return { intake, drain, minimal, stopPage, intakeHeld: () => intakeHeld, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, probe,
+  return { intake, drain, minimal, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

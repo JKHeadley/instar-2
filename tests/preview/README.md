@@ -2822,12 +2822,16 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   reserve (`MINIMAL_RESERVE`: 240 messages and 6 limited answers per rolling hour, independent of
   the ordinary allowance; a stranger's update never spends it). The turn reserve exceeds two full
   poll pages, so a stop sent behind a page of waiting messages is preserved and read: the cursor only
-  ever passes messages already in the journal. Past the reserve the next message waits at Telegram
-  with the cursor before it, and presses and an exact `/stop` in the same page are still read. A
-  stop behind more than that cannot come through the conversation queue without skipping unpreserved
-  messages, so it comes through the independent approval surface instead: with that surface
-  installed, the minimal step keeps one standing emergency-stop challenge on it (`stop-challenge`,
-  reissued before it lapses; the exact subject `stopSubject` binds the trial's genesis and grant, the
+  ever passes messages already in the journal. Past the reserve every update is preserved, in order,
+  in a finite waiting store (`MINIMAL_WAITING_UPDATES`: 1000) before the cursor passes it, and the
+  whole backlog is scanned first for the verified operator's exact `/stop` (Rule 4's exact floor, not
+  a reading of meaning): it latches before anything else, with no model call. A held full page that
+  moved the cursor is followed at once by the next page in the same poll cycle, so a stop behind the
+  reserve plus a full waiting page latches on the first poll. Waiting updates become turns, in order,
+  once the reserve frees. Past the store, messages wait at Telegram with the cursor held. The stop
+  also comes through the independent approval surface when one is installed: the minimal step keeps
+  one standing emergency-stop challenge on it (`stop-challenge`, reused while unexpired so a displayed
+  Stop page stays valid, and retained until it expires; the exact subject `stopSubject` binds the trial's genesis and grant, the
   audience `independent-emergency-stop`, and the operator requesting it for themself, as
   `src/operator/surface.ts` does). Every limited answer carries a **Stop page** button to it. The
   operator's tap there is verified by that surface's own verifier (a one-use proof with no authority
@@ -2853,9 +2857,10 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   the run for the host supervisor. The live runner installs **no** independent surface: Part Nine's
   verifier (for example `scripts/fixed-installation-verifier-clock-observer.mjs`, which runs under
   the operator's own OS identity with the operator's own signing factor) is an operator installation
-  this preview cannot perform for itself. Until it is installed a stop behind a full held page is
-  honestly unreachable by chat, and the host `stop` command remains a local brake only; that is
-  not claimed as phone-complete.
+  this preview cannot perform for itself. Until it is installed (build 3b), a chat `/stop` reaches the
+  latch through the backlog scan up to the waiting store's bound; a stop behind more than 240 reserve
+  plus 1000 waiting updates within the hour is honestly unreachable by chat, and the host `stop`
+  command remains a local brake only.
 - **Operator channel (Rule 14).** A verified operator's photo, voice note or caption, and an edit
   of a message this journal never saw, reach the mind with a plain flag instead of being dropped.
   Service messages and foreign senders take no turn; their raw updates stay preserved.

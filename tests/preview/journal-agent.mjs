@@ -820,6 +820,9 @@ async function main() {
       worker.intake(updates.result);
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;
+      // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
+      // behind it latches before any further processing (Rule 4; bounded by the waiting store).
+      if (worker.readAhead() && updates.result.length >= pollLimit) continue;
       await worker.minimal();
       if (journal.view.stop) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is

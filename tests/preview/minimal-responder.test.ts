@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT, UNLINKED_EDIT_FLAG,
   UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS,
-  independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS } from './journal-test-worker.js';
+  independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS, MINIMAL_WAITING_UPDATES } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
 
 const key = new Uint8Array(32).fill(71);
-const genesis = (limits: Partial<{ maxCalls: number; maxReplies: number; maxTurns: number }> = {}) => ({ kind: 'genesis' as const,
+const genesis = (limits: Partial<{ maxCalls: number; maxReplies: number; maxTurns: number; expires: number }> = {}) => ({ kind: 'genesis' as const,
   bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
   expires: 9999999999999, maxCalls: 8, maxReplies: 8, maxTurns: 2, maxBytes: 32768, cursor: 0, ...limits });
 const message = (id: number, text: string, extra: Record<string, unknown> = {}, from = 7654321) => ({ update_id: id,
@@ -68,8 +68,9 @@ it('bounds the reserve per rolling hour, then frees it; a stranger never spends 
   const burst = Array.from({ length: MINIMAL_RESERVE.turns + 2 }, (_, index) => message(3 + index, `m${index}`));
   worker.intake(burst);
   expect(journal.view.order).toHaveLength(1 + MINIMAL_RESERVE.turns);
-  // The cursor stays before the first unread operator message: it waits at Telegram, not lost.
-  expect(journal.view.cursor).toBe(3 + MINIMAL_RESERVE.turns);
+  // The over-reserve messages are preserved in order in the waiting store before the cursor passes them.
+  expect(journal.view.waiting.map(item => item.update)).toEqual([3 + MINIMAL_RESERVE.turns, 4 + MINIMAL_RESERVE.turns]);
+  expect(journal.view.cursor).toBe(5 + MINIMAL_RESERVE.turns);
   expect(worker.intakeHeld()).toBe(true);
   // Reading never stops: the next poll still sees presses and a stop behind the waiting message.
   expect(worker.pollLimit()).toBe(MINIMAL_POLL_LIMIT);
@@ -77,6 +78,7 @@ it('bounds the reserve per rolling hour, then frees it; a stranger never spends 
   clock += MINIMAL_RESERVE.windowMs;
   worker.intake(burst.slice(MINIMAL_RESERVE.turns));
   expect(journal.view.order).toHaveLength(3 + MINIMAL_RESERVE.turns);
+  expect(journal.view.waiting).toEqual([]);
   expect(worker.intakeHeld()).toBe(false);
   journal.close();
 }), 60_000);
@@ -171,7 +173,7 @@ const marked = (sends: Marked[]) => async (input: { expectedText: string; replyM
 
 it('past 60 ordinary and every reserve message, a stop press and a /stop behind a waiting message are still read', () => withRoot(async path => {
   // The review's counterexample: every conversation bound spent. Reading continues; the waiting message
-  // stays at Telegram with the cursor before it, and the brake behind it still works.
+  // is preserved in order in the waiting store before the cursor passes it, and the brake behind it still works.
   const sends: Marked[] = [], calls: string[] = [];
   const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
   const worker = createJournalWorker(journal, { ...ports(() => 1000, sends, calls), send: marked(sends) });
@@ -188,7 +190,8 @@ it('past 60 ordinary and every reserve message, a stop press and a /stop behind 
   // The next poll returns an over-bound message first, then the operator's press on the stop confirmation.
   worker.intake([message(last + 1, 'waiting'), press(last + 2, confirm.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
-  expect(journal.view.cursor).toBe(cursor);
+  expect(journal.view.waiting.map(item => item.update)).toEqual([last + 1]);
+  expect(journal.view.cursor).toBe(cursor + 1);
   expect(journal.view.order).toHaveLength(last);
   journal.close();
   // Same bounds, no confirmation pending: an exact /stop behind the waiting message latches at once.
@@ -198,7 +201,8 @@ it('past 60 ordinary and every reserve message, a stop press and a /stop behind 
   const held = second.view.cursor;
   other.intake([message(2 + MINIMAL_RESERVE.turns, 'waiting'), message(3 + MINIMAL_RESERVE.turns, '/stop')]);
   expect(second.view.stop).toBe('operator');
-  expect(second.view.cursor).toBe(held);
+  expect(second.view.waiting.map(item => item.update)).toEqual([2 + MINIMAL_RESERVE.turns]);
+  expect(second.view.cursor).toBe(held + 1);
   second.close();
 }), 60_000);
 
@@ -364,10 +368,10 @@ it('when the blocked model recovers, the ordinary answer goes and the stop is ne
   journal.close();
 }));
 
-it('at the current reserve bound a /stop beyond the held page stays out of Telegram\'s reach; the independent stop page latches it', () => withRoot(async path => {
-  // Review round 3 (MF1): 1 ordinary + every reserve message, then 100 waiting messages and /stop, polled
-  // exactly as the runner does. The conversation queue cannot advance past unpreserved input, so the brake
-  // arrives through the independent surface (its own verifier, storage and transport), not the queue.
+it('past the reserve the waiting page is preserved in order; the independent stop page still latches without the queue', () => withRoot(async path => {
+  // Review round 3 (MF1): 1 ordinary + every reserve message, then 100 waiting messages, polled as the runner
+  // does. The page is preserved before the cursor passes it; the brake also arrives through the independent
+  // surface (its own verifier), not the queue.
   let clock = 1000;
   const sends: Marked[] = [];
   const surface = independentSurface(() => clock);
@@ -384,15 +388,15 @@ it('at the current reserve bound a /stop beyond the held page stays out of Teleg
   expect(page).toEqual({ text: STOP_PAGE_BUTTON, url: `https://approve.example.org/c/${stop!.id.replace(':', '-')}` });
   expect(worker.stopPage()).toBe(page.url);
   const first = 2 + MINIMAL_RESERVE.turns, sent = sends.length;
-  const queue = [...Array.from({ length: MINIMAL_POLL_LIMIT }, (_, i) => message(first + i, 'waiting')),
-    message(first + MINIMAL_POLL_LIMIT, '/stop')];
+  const queue = Array.from({ length: MINIMAL_POLL_LIMIT }, (_, i) => message(first + i, 'waiting'));
   const cursors: number[] = [];
   for (let i = 0; i < 3; i++) {
     const polled = queue.filter(update => update.update_id >= journal.view.cursor).slice(0, worker.pollLimit());
     worker.intake(polled); await worker.minimal(); cursors.push(journal.view.cursor);
   }
-  // The named Telegram boundary is unchanged and honest: the cursor holds, nothing unpreserved is skipped.
-  expect(cursors).toEqual([first, first, first]);
+  // Every waiting message is preserved, in order, before the cursor passes it; none is taken as a turn.
+  expect(cursors).toEqual([first + MINIMAL_POLL_LIMIT, first + MINIMAL_POLL_LIMIT, first + MINIMAL_POLL_LIMIT]);
+  expect(journal.view.waiting.map(item => item.update)).toEqual(queue.map(update => update.update_id));
   expect(journal.view.stop).toBeNull();
   // Wrong decisions and forged proofs decide nothing (Rule 98); the one-use proof stays unspent.
   surface.acts.push({ challenge: stop!.id, proof: surface.sign(stop!.id, 'decline'), decision: 'decline' });
@@ -463,3 +467,83 @@ it('a failed ordinary worker leaves the minimal path answering at once, and a la
   expect(journal.view.stop).toBe('operator');
   journal.close();
 }));
+
+/** One runner poll cycle: a held full page that moved the cursor is followed at once by the next page. */
+const pollCycle = (worker: ReturnType<typeof createJournalWorker>, journal: ReturnType<typeof openPreviewJournal>,
+  queue: ReturnType<typeof message>[]) => {
+  let pages = 0, page: ReturnType<typeof message>[];
+  do {
+    page = queue.filter(update => update.update_id >= journal.view.cursor).slice(0, worker.pollLimit());
+    worker.intake(page); pages++;
+  } while (journal.view.stop === null && worker.readAhead() && page.length >= worker.pollLimit());
+  return pages;
+};
+
+it('MF1 round 4: a /stop behind the reserve and a full waiting page latches on the first poll, every other update preserved in order', () => withRoot(async path => {
+  // The reviewer's counterexample, in the live runner's configuration (no independent surface): 1 ordinary +
+  // 240 reserve + 100 waiting updates, /stop at 342.
+  const sends: Marked[] = [], calls: string[] = [];
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, { ...ports(() => 1000, sends, calls), send: marked(sends) });
+  worker.intake(Array.from({ length: 1 + MINIMAL_RESERVE.turns }, (_, i) => message(i + 1, 'admitted')));
+  await worker.minimal();
+  const sent = sends.length, first = 2 + MINIMAL_RESERVE.turns;
+  expect(first).toBe(242);
+  const queue = [...Array.from({ length: MINIMAL_POLL_LIMIT }, (_, i) => message(first + i, 'waiting')), message(342, '/stop')];
+  expect(pollCycle(worker, journal, queue)).toBe(2);
+  expect(journal.view.stop).toBe('operator');
+  // Nothing skipped or dropped: 241 turns, then the 100 waiting updates in order; the stop update is kept on its row.
+  expect(journal.view.order.map(turn => turn.update)).toEqual(Array.from({ length: 241 }, (_, i) => i + 1));
+  expect(journal.view.waiting.map(item => item.update)).toEqual(Array.from({ length: 100 }, (_, i) => first + i));
+  // No model call and no send after the stop.
+  expect(() => worker.gate()).toThrow('preview stopped');
+  await expect(worker.drain()).rejects.toThrow('preview stopped');
+  expect(calls).toEqual([]);
+  expect(sends).toHaveLength(sent);
+  journal.close();
+  const replay = openPreviewJournal(path, key);
+  expect(replay.view.stop).toBe('operator');
+  expect(replay.view.waiting.map(item => item.update)).toEqual(Array.from({ length: 100 }, (_, i) => first + i));
+  replay.close();
+}), 60_000);
+
+it('waiting updates are taken as turns in order once the reserve frees; the store is finite', () => withRoot(async path => {
+  let clock = 1000;
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, ports(() => clock, [], []));
+  worker.intake(Array.from({ length: 1 + MINIMAL_RESERVE.turns }, (_, i) => message(i + 1, 'admitted')));
+  worker.intake([message(242, 'a'), message(243, 'b')]);
+  expect(journal.view.waiting.map(item => item.update)).toEqual([242, 243]);
+  expect(worker.intakeHeld()).toBe(true);
+  // A row past the store, or one that would skip past the cursor, is refused at the journal.
+  expect(() => journal.append({ kind: 'waiting', update: 100, raw: JSON.stringify(message(100, 'x')), cursor: 101, at: clock }))
+    .toThrow('waiting update refused');
+  clock += MINIMAL_RESERVE.windowMs + 1;
+  worker.intake([message(244, 'c')]);
+  expect(journal.view.waiting).toEqual([]);
+  expect(journal.view.order.slice(-3).map(turn => [turn.update, turn.text])).toEqual([[242, 'a'], [243, 'b'], [244, 'c']]);
+  expect(MINIMAL_WAITING_UPDATES).toBeGreaterThan(MINIMAL_POLL_LIMIT);
+  journal.close();
+}), 60_000);
+
+it('MF9: a displayed Stop page stays valid through repeated minimal steps, and its genuine approval latches', () => withRoot(async path => {
+  // The reviewer's probe: a one-hour trial, the page for challenge 1 displayed, eight extra minimal steps with
+  // no clock movement or new input, then the operator's genuine approval for challenge 1.
+  const clock = 1000;
+  const sends: Marked[] = [];
+  const surface = independentSurface(() => clock);
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1, maxCalls: 60, maxReplies: 60, expires: clock + 3_600_000 }));
+  const worker = createJournalWorker(journal, { ...ports(() => clock, [], []), send: marked(sends), approvalSurface: surface.port });
+  worker.intake([message(1, 'one'), message(2, 'two')]);
+  await worker.minimal();
+  const displayed = sends.at(-1)!.markup!.inline_keyboard.at(-1)![0]!;
+  expect(displayed.url).toBe('https://approve.example.org/c/challenge-1');
+  for (let i = 0; i < 8; i++) await worker.minimal();
+  // No churn: the unexpired challenge is reused and never evicted.
+  expect([...surface.issued.values()].filter(item => item.audience === 'independent-emergency-stop')).toHaveLength(1);
+  expect(journal.view.stopChallenges.map(item => item.id)).toEqual(['challenge:1']);
+  surface.operatorActs('challenge:1', 'approve');
+  await worker.minimal();
+  expect(journal.view.stop).toBe('operator');
+  journal.close();
+}), 60_000);
