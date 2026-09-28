@@ -168,9 +168,10 @@ it('memory denial: full-context review objects to a false no-memory claim and th
     ports.replyCheck = { jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
       // cint-2: unsure on every non-secret rule; a credential flag would hold under Rule 86's secrets exception.
       .map(id => [id, { type: 'noul', noul: id === 'credential' ? 0.01 : 0.5 }])) }, latencyMs: 0 }),
-    escalate: async (candidate, _id, originalPrompt, reviewRules) => {
+    escalate: async (candidate, _id, originalPrompt, reviewRules, _deadline, operation) => {
       expect(originalPrompt).toContain("You have durable memory in this trial's encrypted local journal");
-      expect(reviewRules).toContain('claims_blocked');
+      // The revised candidate's own review asks only the held classes (Rules 6, 8).
+      expect(reviewRules).toContain(operation === 'revision' ? 'defers_work' : 'claims_blocked');
       return candidate.includes('memory is unavailable')
         ? { verdict: 'violation' as const, ruleIds: ['claims_blocked' as const],
           reason: 'It claims memory is unavailable without evidence despite the supplied trial memory.', confidence: null, latencyMs: 0 }

@@ -200,7 +200,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
+const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 /** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
@@ -648,7 +648,7 @@ async function main() {
       replyCheck: {
         elapsedMs: () => performance.now(),
         jev: (text, questions = jevQuestions, timeoutMs) => askJev(text, questions, timeoutMs),
-        escalate: async (text, id, originalPrompt, reviewRules, deadlineAt) => {
+        escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, operation) => {
 
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
@@ -656,8 +656,11 @@ async function main() {
           const question = replyReviewQuestion(reviewRules ?? []);
 
           const prepared = modelEnvelope({ question,
-            context: replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id)), id: `${id}:reply-review` });
-          const result = await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
+            context: replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id)),
+            id: operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review` });
+          // A revised candidate's held-class review is its own operation; the worker journals its result row.
+          const result = operation === 'revision' ? await invokeSubscription(prepared, `${id}:revision-review`)
+            : await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
           // the whole-line pattern admits no surrounding text, so a written rejection

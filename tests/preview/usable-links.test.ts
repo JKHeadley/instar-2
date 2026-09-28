@@ -36,7 +36,10 @@ it('turns an unusable link into a revision signal before the send, then sends th
     prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', 1000),
     model: async () => 'Open http://localhost:4042/view/abc to read it.',
     replyCheck: { elapsedMs: () => 0, jev: async () => ({ value: pass, latencyMs: 1 }),
-      escalate: async () => { throw Error('no review needed'); },
+      // Only the revised candidate is reviewed, for the held classes (Rules 6, 8); the link signal needs no review.
+      escalate: async (_text, _id, _prompt, _rules, _deadline, operation) => {
+        if (operation !== 'revision') throw Error('no review needed');
+        return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 }; },
       revise: async input => { expect(input.ruleIds).toEqual(['api_endpoint']); expect(input.reason).toBe(LINK_SHAPE_REASON);
         return { state: 'complete', text: 'The report is in the private view I shared in the dashboard.' }; } },
     send: async input => { sent.push(input.expectedText); return sent.length; } });

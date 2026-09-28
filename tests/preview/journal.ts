@@ -504,6 +504,9 @@ export type JournalRecord =
   /** One bounded revision of an objected draft, inside the existing call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-reserve'; id: string; objections: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision'; id: string; state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; usage?: ModelUsage; at: number }
+  /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
+  | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; usage?: ModelUsage; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -599,6 +602,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   answerMs?: number; sendMs?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string }; release?: ReplyRelease;
+  revisionReviewReserved?: true; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string };
   /** Admitted by the minimal reserve past the ordinary turn allowance. */
   reserve?: true;
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
@@ -995,6 +999,7 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
       ...(turn.jevReserved ? ['reply-jev-reserve'] : []),
       ...(turn.reviewReserved ? ['reply-review-reserve'] : []),
       ...(turn.revisionReserved ? ['reply-revision-reserve'] : []),
+      ...(turn.revisionReviewReserved ? ['reply-revision-review-reserve'] : []),
       ...(turn.intent !== undefined && turn.groupedInto === undefined ? ['intent'] : []), ...(turn.held !== undefined ? ['hold'] : [])];
     for (const kind of required) if (!found?.has(kind)) throw Error(`preview journal: pending ${kind} evidence absent`);
     if (turn.groupedInto !== undefined && !kinds.get(turn.groupedInto)?.has('intent')) throw Error('preview journal: pending intent evidence absent');
@@ -1649,6 +1654,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     && (summary[2] === undefined || view.summaryReviews.has(Number(summary[1])))
     : row.role === 'reply-review' ? row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
       || row.id.endsWith(':reply-revision') && !!view.turns.get(row.id.slice(0, -15))?.revisionReserved
+      || row.id.endsWith(':revision-review') && !!view.turns.get(row.id.slice(0, -16))?.revisionReviewReserved
     : !!view.turns.get(row.id)?.reserved;
   const o = row.outcome;
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
@@ -2144,6 +2150,22 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.state !== 'uncertain') settleTokens(view, `revision:${row.id}`, row.usage);
     return;
   }
+  if (row.kind === 'reply-revision-review-reserve') {
+    if (turn.revision?.state !== 'complete' || turn.revisionReviewReserved || turn.intent !== undefined
+      || view.calls >= view.limits.maxCalls) throw Error('preview journal: revision review reservation order or cap');
+    reserveTokens(view, `revision-review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
+    turn.revisionReviewReserved = true; view.calls++; return;
+  }
+  if (row.kind === 'reply-revision-review') {
+    if (!turn.revisionReviewReserved || turn.revisionReview !== undefined || turn.intent !== undefined
+      || !['pass', 'violation', 'unavailable'].includes(row.verdict) || !Array.isArray(row.ruleIds)
+      || row.ruleIds.some(rule => typeof rule !== 'string') || row.reason !== undefined && typeof row.reason !== 'string')
+      throw Error('preview journal: revision review result order');
+    turn.revisionReview = { verdict: row.verdict, ruleIds: [...row.ruleIds], ...(row.reason === undefined ? {} : { reason: row.reason }) };
+    if (row.verdict !== 'unavailable') settleTokens(view, `revision-review:${row.id}`, row.usage);
+    return;
+  }
   if (row.kind === 'reply-review-state') {
     if (!turn.reviewReserved || turn.reviewState !== undefined || turn.intent !== undefined)
       throw Error('preview journal: review state order');
@@ -2554,7 +2576,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve'
-          || row.kind === 'reply-revision-reserve') && view.calls >= view.limits.maxCalls)
+          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve') && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
         throw Error('preview journal: capacity reached');
@@ -5048,6 +5070,31 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (!redact(candidate).count && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
                   revised = candidate;
               }
+            }
+            // Rules 6, 8: the revised text is a new candidate. It carries only the original answer's admitted
+            // declarations (filtered against its text at the intent), so it is selected only when one bounded
+            // contextual review of exactly this text, with that declared record, clears the held classes. No
+            // clearance inside the allowance (cap, failure, UNKNOWN, a held class) keeps the otherwise releasable
+            // original, or the credential notice when the original cannot leave. Other objections stay advisory.
+            if (revised !== undefined) {
+              if (!turn.revisionReviewReserved && journal.view.calls < journal.view.limits.maxCalls) {
+                gate();
+                journal.append({ kind: 'reply-revision-review-reserve', id: turn.id,
+                  maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+                let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; usage?: ModelUsage };
+                try {
+                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, REVIEW_HOLDING_RULES,
+                    undefined, 'revision');
+                  result = { verdict: reviewed.verdict === 'pass' ? 'pass' : 'violation',
+                    ruleIds: Array.isArray(reviewed.ruleIds) ? reviewed.ruleIds.filter(rule => typeof rule === 'string') : [],
+                    ...(typeof reviewed.reason === 'string' ? { reason: reviewed.reason } : {}),
+                    ...(reviewed.usage ? { usage: reviewed.usage } : {}) };
+                } catch { result = { verdict: 'unavailable', ruleIds: [] }; }
+                journal.append({ kind: 'reply-revision-review', id: turn.id, ...result, at: ports.now() });
+              }
+              const check = turn.revisionReview;
+              if (!(check?.verdict === 'pass' || check?.verdict === 'violation'
+                && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)))) revised = undefined;
             }
             if (revised !== undefined) { reply = revised; mentionedKeys = []; }
             else if (credentialShape) {

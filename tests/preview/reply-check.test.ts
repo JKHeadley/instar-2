@@ -269,13 +269,18 @@ it('revises an objected draft once within the call cap, then sends the revision 
   try {
     const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
       grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-      maxCalls: 3, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+      maxCalls: 4, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
     const sends: string[] = []; let revisions = 0;
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', 1000),
       model: async () => 'Look in /Users/me/notes for it.', checkOutbound: () => {},
       replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores({ raw_path: 0.91 }), latencyMs: 170 }),
-        escalate: async () => ({ verdict: 'violation', ruleIds: ['raw_path'], confidence: null, latencyMs: 500, reason: 'shows a path' }),
+        // The revised text gets its own held-class review (Rules 6, 8); only the held classes are asked.
+        escalate: async (text, _id, _prompt, rules, _deadline, operation) => operation === 'revision'
+          ? (expect(text).toBe('PREVIEW — It is in your notes folder.'),
+            expect(rules).toEqual(['credential', 'defers_work', 'unrecorded_blocker']),
+            { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 })
+          : { verdict: 'violation', ruleIds: ['raw_path'], confidence: null, latencyMs: 500, reason: 'shows a path' },
         revise: async input => {
           revisions++;
           expect(input.ruleIds).toEqual(['raw_path']);
@@ -289,7 +294,8 @@ it('revises an objected draft once within the call cap, then sends the revision 
     await worker.drain();
     expect(revisions).toBe(1);
     expect(sends).toEqual(['PREVIEW — It is in your notes folder.']);
-    expect(journal.view.calls).toBe(3);
+    expect(journal.view.calls).toBe(4);
+    expect(journal.view.order[0]?.revisionReview).toEqual({ verdict: 'pass', ruleIds: [] });
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['raw_path'], revised: true });
     worker.checkCoherence();
     const next = worker.probe('and then?');
@@ -305,6 +311,70 @@ it('revises an objected draft once within the call cap, then sends the revision 
         escalate: async () => { throw Error('review repeated'); }, revise: async () => { throw Error('revision repeated'); } } }).drain();
     expect(replay.view.order[0]?.sent).toBe(1);
     replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Astra cint-2 MUST-FIX 1 (Rules 6, 8): a revision is a new candidate. Real-model shapes: the answer is the
+// model's JSON reply naming a machine path; the revision drops the path but promises follow-up work the
+// answer never declared. That untracked deferral must never be sent in place of the original.
+const BILL_ANSWER = 'Your March electricity statement is saved at /Users/justin/Documents/Bills/pge-2026-03.pdf and shows $142.18 due on April 9.';
+const BILL_REVISION = "I can't open the statement from here, so I don't have the exact amount yet. I'll pull up your March PG&E bill tonight and get back to you with what you owe.";
+it.each([
+  ['a held class on the revised text', 5, 'violation', undefined],
+  ['an unavailable revised-text review', 5, 'unavailable', undefined],
+  ['no call left for the revised-text review', 3, undefined, undefined],
+  ['an interrupted revised-text review', 5, undefined, 'after:reply-revision-review-reserve'],
+] as const)('keeps the original when the revision has %s, and never sends an untracked revised deferral', async (_name, maxCalls, verdict, crashAt) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-revision-held-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const first = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 }, crashAt === undefined ? undefined
+      : stage => { if (stage === crashAt) throw Error('crash'); });
+    const sends: string[] = [], reviewed: string[] = [];
+    const ports = (journal: typeof first, fresh: boolean) => ({ now: () => 1790000000000, stopped: () => false,
+      prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) =>
+        prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', 1790000000000),
+      model: async () => { if (!fresh) throw Error('model repeated'); return JSON.stringify({ reply: BILL_ANSWER, memory: [] }); },
+      checkOutbound: () => {},
+      replyCheck: { elapsedMs: () => 0,
+        jev: async () => { if (!fresh) throw Error('Jev repeated'); return { value: scores({ raw_path: 0.93 }), latencyMs: 0 }; },
+        escalate: async (text: string, _id: string, _prompt?: string, _rules?: readonly string[], _deadline?: number, operation?: 'revision') => {
+          if (!fresh) throw Error('review repeated');
+          reviewed.push(text);
+          if (operation !== 'revision') return { verdict: 'violation' as const, ruleIds: ['raw_path' as const], confidence: null,
+            latencyMs: 0, reason: 'names a machine path the operator cannot open' };
+          if (verdict === 'violation') return { verdict: 'violation' as const, ruleIds: ['defers_work' as const], confidence: null,
+            latencyMs: 0, reason: 'promises to follow up tonight with no tracked commitment' };
+          throw Error('reviewer unavailable'); },
+        revise: async () => { if (!fresh) throw Error('revision repeated');
+          return { state: 'complete' as const, text: BILL_REVISION, usage: { inputTokens: 900, outputTokens: 60, charge: null } }; } },
+      send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; } });
+    const worker = createJournalWorker(first, ports(first, true));
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+      text: 'How much do I owe on the electricity bill?' } }]);
+    if (crashAt) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
+    first.close();
+    // Replay (and recovery after the crash) never repeats a paid call and never sends the revision.
+    const journal = openPreviewJournal(path, key);
+    await createJournalWorker(journal, ports(journal, false)).drain();
+    const turn = journal.view.order[0]!;
+    expect(sends).toEqual([`PREVIEW — ${BILL_ANSWER}`]);
+    expect(sends.join('\n')).not.toContain("I'll pull up");
+    expect(turn.sent).toBe(1);
+    expect(turn.release).toMatchObject({ review: 'violation', revised: false });
+    expect(turn.release?.objections).toContain('raw_path');
+    expect(journal.view.commitments).toEqual([]);
+    expect(turn.revision).toEqual({ state: 'complete', text: BILL_REVISION });
+    expect(turn.revisionReview).toEqual(verdict === 'violation' ? { verdict, ruleIds: ['defers_work'],
+      reason: 'promises to follow up tonight with no tracked commitment' }
+      : verdict === 'unavailable' ? { verdict, ruleIds: [] } : undefined);
+    expect(turn.revisionReviewReserved).toBe(maxCalls === 3 ? undefined : true);
+    expect(journal.view.calls).toBe(maxCalls === 3 ? 3 : 4);
+    expect(reviewed).toEqual(maxCalls === 3 || crashAt ? [`PREVIEW — ${BILL_ANSWER}`]
+      : [`PREVIEW — ${BILL_ANSWER}`, `PREVIEW — ${BILL_REVISION}`]);
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -567,7 +637,7 @@ it('withholds credential-shaped text before Jev can receive it, with an honest s
 });
 
 it.each([
-  ['clean revision', 'I cannot repeat that key here; it is stored in your vault.', 'PREVIEW — I cannot repeat that key here; it is stored in your vault.', 2],
+  ['clean revision', 'I cannot repeat that key here; it is stored in your vault.', 'PREVIEW — I cannot repeat that key here; it is stored in your vault.', 3],
   ['revision still shaped like a secret', 'It is sk-BBBBBBBBBBBBBBBBBBBBBBBB', CREDENTIAL_SHAPE_NOTICE, 2],
 ] as const)('credential shape: %s', async (_name, revised, expected, calls) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-secret-revise-')));
@@ -581,7 +651,10 @@ it.each([
       model: async () => 'Your API key is sk-AAAAAAAAAAAAAAAAAAAAAAAA',
       checkOutbound: text => { if (redact(text).count) throw Error('outbound secret refused'); },
       replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('secret reached Jev'); },
-        escalate: async () => { throw Error('secret reached review'); },
+        // Only a clean revised candidate reaches the held-class review; the secret never does.
+        escalate: async (text, _id, _prompt, _rules, _deadline, operation) => {
+          if (operation !== 'revision' || redact(text).count) throw Error('secret reached review');
+          return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 }; },
         revise: async input => { seen = input.text; return { state: 'complete', text: revised }; } },
       send: async input => { sent = input.expectedText; return 8; } });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },

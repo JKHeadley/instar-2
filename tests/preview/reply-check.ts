@@ -161,7 +161,9 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 
 export interface ReplyCheckPorts {
   jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number): Promise<{ value: unknown; latencyMs: number }>;
-  escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
+  escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
+    /** `revision`: the held-class review of a revised candidate, a distinct operation from the first review. */
+    operation?: 'revision'): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
 
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
