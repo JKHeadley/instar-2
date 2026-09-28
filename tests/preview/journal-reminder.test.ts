@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, reminderOverflowLine } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(29);
 const start = Date.UTC(2026, 8, 26, 17); // Saturday 10:00 in Los Angeles.
@@ -375,7 +375,7 @@ it('releases the reminder once a later operator message is interpreted and cance
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('sends an oversized same-topic group across polls, one fitting message each, never repeating an item across restart', async () => {
+it('sends an oversized same-topic group as one fitting message with a count line, never another push across restart', async () => {
   const root = tmp('overflow');
   try {
     const { state, open, pushes } = harness(root, 40, { maxCalls: 40, maxTurns: 30, maxBytes: 32768 });
@@ -384,17 +384,20 @@ it('sends an oversized same-topic group across polls, one fitting message each, 
     worker.intake(tasks.map((text, n) => update(n + 1, text))); await worker.drain();
     expect(journal.view.dated.filter(item => item.remind)).toHaveLength(8);
     state.now = friday9;
-    for (let poll = 0; poll < 8 && pushes().join('\n').split('\n').length < 8; poll++) {
+    for (let poll = 0; poll < 4; poll++) {
       await worker.sendReminders();
       journal.close(); ({ journal, worker } = open());
     }
-    const lines = pushes().flatMap(text => text.split('\n'));
-    expect(pushes().length).toBeGreaterThan(1);
-    expect(pushes().every(text => Buffer.byteLength(text) <= 4096)).toBe(true);
-    expect(lines).toHaveLength(8);
-    expect(new Set(lines).size).toBe(8);
+    // Rule 52: one push per topic; what does not fit is one count line, never a later push.
+    expect(pushes()).toHaveLength(1);
+    const lines = pushes()[0]!.split('\n'), listed = lines.filter(line => line.startsWith('PREVIEW reminder you asked for'));
+    expect(Buffer.byteLength(pushes()[0]!)).toBeLessThanOrEqual(4096);
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.length).toBeLessThan(8);
+    expect(lines.at(-1)).toBe(reminderOverflowLine(8 - listed.length));
+    expect(new Set(listed).size).toBe(listed.length);
     await worker.sendReminders();
-    expect(pushes().flatMap(text => text.split('\n'))).toHaveLength(8);
+    expect(pushes()).toHaveLength(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -144,7 +144,8 @@ export function proposedLimits(view: JournalView, reason: LimitedReason) {
   const { maxCalls, maxReplies, maxTurns } = view.limits, g = view.genesis;
   return reason === 'calls' ? { maxCalls: maxCalls + g.maxCalls, maxReplies, maxTurns }
     : reason === 'replies' ? { maxCalls, maxReplies: maxReplies + g.maxReplies, maxTurns }
-      : { maxCalls, maxReplies, maxTurns: maxTurns + g.maxTurns };
+      // Reserve turns may already exceed the allowance; the raise must cover every recorded turn.
+      : { maxCalls, maxReplies, maxTurns: Math.max(maxTurns + g.maxTurns, view.order.length + 1) };
 }
 export function approvalRequestText(view: JournalView, reason: LimitedReason): string {
   const next = proposedLimits(view, reason);
@@ -2176,8 +2177,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (approval?.decision !== 'approved' || approval.applied || journal.view.stop !== null) continue;
       if (approval.action === 'stop') { journal.append({ kind: 'stop', reason: 'operator', at: ports.now() }); return; }
       if (approval.base !== approvalBase(journal.view) || !approval.limits || unknownCallCounts(journal.view).total > 0) continue;
-      raiseJournalCaps(journal, { ...approval.limits, authority: `telegram-approval:${approval.id}:update:${String(approval.decidedBy)}`,
-        at: ports.now() });
+      // A raise the journal refuses (for example a newly UNKNOWN call) stays approved-unapplied and
+      // visible; it never crashes intake or the drain.
+      try { raiseJournalCaps(journal, { ...approval.limits, authority: `telegram-approval:${approval.id}:update:${String(approval.decidedBy)}`,
+        at: ports.now() }); } catch { /* retried at the next drain while its base is still current */ }
     }
   };
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);

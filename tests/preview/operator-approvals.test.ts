@@ -142,3 +142,16 @@ it('keeps the phone stop reachable past the ordinary turn allowance', () => with
   expect(journal.view.stop).toBe('operator');
   journal.close();
 }));
+
+it('raises the turn allowance to cover every reserve turn when the operator approves', () => withRoot(async path => {
+  const { journal, worker, sent, calls } = harness(path, undefined, { maxCalls: 16, maxTurns: 1 });
+  worker.intake([message(1, 'one')]); await worker.drain();
+  worker.intake([message(2, 'a'), message(3, 'b'), message(4, 'c'), message(5, 'd')]); await worker.drain();
+  const offer = sent.at(-1)!;
+  expect(offer.text).toContain('from 1 to 6');
+  worker.intake([press(6, buttons(offer)[0]!)]);
+  expect(journal.view.limits.maxTurns).toBe(6);
+  await worker.drain();
+  expect(calls).toHaveLength(5);
+  journal.close();
+}));
