@@ -288,9 +288,9 @@ export function landingVerdict(record, entries, ctx) {
   const inChange = entries.filter(e => ctx.heads.includes(e.head));
   const redone = new Set(entries.filter(e => e.kind === 'redo').map(e => e.target));
   const classified = new Set(entries.filter(e => e.kind === 'classification' && RED_CLASSES.includes(e.class)).map(e => e.target));
-  // A gate run is bound to the subject captured when it STARTED. A start with no finished row
+  // A gate or ci-local run is bound to the subject captured when it STARTED. A start with no finished row
   // is an interrupted run or a failed recording; either way it is red, never absent.
-  const finished = new Set(entries.filter(e => e.kind === 'suite').map(e => e.runId));
+  const finished = new Set(entries.filter(e => (e.kind === 'suite' || e.kind === 'ci') && e.runId).map(e => e.runId));
   const evidence = inChange.filter(e => e.kind === 'suite' || e.kind === 'ci' || (e.kind === 'run-start' && !finished.has(e.runId)));
   const isGreen = e => (e.kind === 'suite' ? !!e.runId && e.complete === true && e.success === true && e.exit === 0 && e.dirty === false && e.subjectMoved === false
     : e.kind === 'ci' ? e.success === true && e.exit === 0 : false);
@@ -302,12 +302,20 @@ export function landingVerdict(record, entries, ctx) {
     errors.push("Rule 37: the desk gate's preserved test results match no green gate run recorded for this tree");
   for (const e of red) if (!classified.has(e.id) && !redone.has(e.id)) errors.push(`Rule 107: red evidence ${e.id} (${e.kind} at ${e.head.slice(0, 8)}) carries no classification`);
   const passes = inChange.filter(e => e.kind === 'pass' && e.record === ctx.record);
-  // Acceptance is the linked artifact's own decision, never a caller's label.
-  const accepted = passes.filter(p => p.verdict === 'accepted' && p.tree === ctx.tree && ctx.artifactDecision(p.artifact) === 'YES');
+  const producedBefore = p => entries.filter(e => e.seq < p.seq && evidence.includes(e));
+  // Red evidence produced before a pass but not given to it: that pass reviewed an incomplete
+  // population, so it can never be the basis of admission (its gap stays visible below).
+  const withheld = p => producedBefore(p).filter(e => !(p.submitted ?? []).includes(e.id) && red.includes(e) && !redone.has(e.id));
+  // Acceptance is the linked artifact's own decision, never a caller's label. Each reviewer's
+  // latest pass on the exact tree is their standing decision: a later NO is never outlived by
+  // the YES it corrected.
+  const accepts = p => p.verdict === 'accepted' && ctx.artifactDecision(p.artifact) === 'YES';
+  const exactPasses = passes.filter(p => p.tree === ctx.tree);
+  const standing = exactPasses.filter(p => !exactPasses.some(q => q.reviewer === p.reviewer && q.seq > p.seq));
+  const accepted = standing.filter(p => accepts(p) && !withheld(p).length);
   if (!accepted.length) errors.push(`Rule 74: no accepted independent review pass for the exact tree ${ctx.tree}`);
   if (ctx.desk && !accepted.some(p => p.artifact === ctx.desk.artifact && p.reviewer === ctx.desk.reviewer))
     errors.push(`Rule 74: no accepted pass binds the desk's review record (${ctx.desk.reviewer}, ${ctx.desk.artifact})`);
-  const producedBefore = p => entries.filter(e => e.seq < p.seq && evidence.includes(e));
   for (const p of passes) {
     if (p.reviewer === ctx.author) errors.push(`Rule 65: pass ${p.id} names the author as its reviewer`);
     const hash = ctx.artifactHash(p.artifact);
@@ -315,13 +323,12 @@ export function landingVerdict(record, entries, ctx) {
     if (/\.sample\.md$/.test(p.artifact)) errors.push(`Rule 74: pass ${p.id} links the sample record, not a real review`);
     const decision = ctx.artifactDecision(p.artifact);
     if ((p.verdict === 'accepted') !== (decision === 'YES')) errors.push(`Rule 74: pass ${p.id} is recorded ${p.verdict} but its artifact decides ${decision ?? 'nothing'}`);
-    // Withholding stays visible on the pass that did it; a later pass that was given the
-    // evidence discharges it (the earlier pass and its gap are kept, never deleted).
-    const submitted = new Set(p.submitted ?? []);
-    for (const e of producedBefore(p)) if (!submitted.has(e.id) && red.includes(e) && !redone.has(e.id)) {
-      const corrective = passes.find(q => q.seq > p.seq && (q.submitted ?? []).includes(e.id));
-      if (corrective) notes.push(`pass ${p.id} withheld red evidence ${e.id}; discharged by pass ${corrective.id}, which was given it`);
-      else errors.push(`Rule 107: red evidence ${e.id} was produced before pass ${p.id} but not submitted to it, and no later pass was given it`);
+    // Withholding stays visible on the pass that did it; only a later ACCEPTING pass that was
+    // given the evidence discharges it (the earlier pass and its gap are kept, never deleted).
+    for (const e of withheld(p)) {
+      const corrective = passes.find(q => q.seq > p.seq && accepts(q) && (q.submitted ?? []).includes(e.id));
+      if (corrective) notes.push(`pass ${p.id} withheld red evidence ${e.id}; discharged by accepting pass ${corrective.id}, which was given it`);
+      else errors.push(`Rule 107: red evidence ${e.id} was produced before pass ${p.id} but not submitted to it, and no later accepting pass was given it`);
     }
   }
   if (record.one('Convergence') === 'claimed') {

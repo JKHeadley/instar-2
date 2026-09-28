@@ -209,8 +209,31 @@ describe('landing evidence (Rules 37, 65, 74, 107, 112)', () => {
     const corrective = pass({ submitted: [red.id, good.id] });
     const repaired = land([red, good, deficient, classified, corrective]);
     expect(repaired.errors).toEqual([]);
-    expect(repaired.notes.join('\n')).toContain(`pass ${deficient.id} withheld red evidence ${red.id}; discharged by pass ${corrective.id}`);
-    expect(land([red, good, deficient, classified]).errors.join('\n')).toContain('no later pass was given it');
+    expect(repaired.notes.join('\n')).toContain(`pass ${deficient.id} withheld red evidence ${red.id}; discharged by accepting pass ${corrective.id}`);
+    expect(land([red, good, deficient, classified]).errors.join('\n')).toContain('no later accepting pass was given it');
+    // The rejecting neighbour: a later NO that was given the evidence discharges nothing, and the
+    // deficient YES it corrected is never the basis of admission (both passes stay in the ledger).
+    const rejecting = pass({ verdict: 'repair', artifact: '/lanes/astra-no.md', submitted: [red.id, good.id] });
+    const rejected = land([red, good, deficient, classified, rejecting]).errors.join('\n');
+    expect(rejected).toContain('no accepted independent review pass');
+    expect(rejected).toContain(`red evidence ${red.id} was produced before pass ${deficient.id} but not submitted to it, and no later accepting pass was given it`);
+    // A deficient YES alone never admits, even when its reviewer has said nothing since.
+    expect(land([red, good, deficient, classified]).errors.join('\n')).toContain('no accepted independent review pass');
+  });
+  it("takes each reviewer's latest exact-tree pass as their standing decision: a later NO outlives an earlier YES (Rule 74)", () => {
+    const good = green();
+    expect(land([good, pass({ submitted: [good.id] })]).errors).toEqual([]);
+    const withdrawn = land([good, pass({ submitted: [good.id] }), pass({ verdict: 'repair', artifact: '/lanes/astra-no.md', submitted: [good.id] })]);
+    expect(withdrawn.errors.join('\n')).toContain('no accepted independent review pass');
+    expect(land([good, pass({ verdict: 'repair', artifact: '/lanes/astra-no.md' }), pass({ submitted: [good.id] })]).errors).toEqual([]);
+  });
+  it('holds a ci-local start open as red until its completion is recorded (Rules 37, 112)', () => {
+    const good = green();
+    const started = entry({ kind: 'run-start', runId: 'ci-1', scope: 'ci' });
+    const open = land([good, started, pass({ submitted: [good.id, started.id] })]).errors.join('\n');
+    expect(open).toContain(`red evidence ${started.id} (run-start`);
+    const done = entry({ kind: 'ci', runId: 'ci-1', exit: 0, complete: true, success: true });
+    expect(land([good, started, done, pass({ submitted: [good.id, done.id] })]).errors).toEqual([]);
   });
   it("reads acceptance from the linked artifact's own decision, never a caller label (Rule 74)", () => {
     expect(artifactDecision('review\nVERDICT: NO\n')).toBe('NO');

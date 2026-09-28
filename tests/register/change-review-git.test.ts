@@ -1,7 +1,7 @@
 // The change review check and landing gate, driven through the real CLI against throwaway git
 // repositories: each refusal is shown next to the neighbour it must accept.
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -218,7 +218,9 @@ describe('landing gate and the append-only evidence ledger (Rules 37, 74, 107, 1
     const codes = await Promise.all(Array.from({ length: 24 }, () => r.runAsync('ci', 'ci.json')));
     expect(codes.every(c => c === 0)).toBe(true);
     const rows = ledgerRows(r.dir);
-    expect(rows).toHaveLength(24);
+    // Each direct ci call records its own start, then completes it: 24 starts and 24 results.
+    expect(rows).toHaveLength(48);
+    expect(rows.filter(e => e.kind === 'ci').map(e => e.runId).sort()).toEqual(rows.filter(e => e.kind === 'run-start').map(e => e.runId).sort());
     rows.forEach((row, i) => { expect(row.seq).toBe(i); expect(row.prev).toBe(i === 0 ? 'genesis' : rows[i - 1]!.id); });
     expect(r.check('landing').out).not.toContain('unbroken chain');
     // An interrupted append (a torn last line) and a lock left by a dead writer both recover,
@@ -227,8 +229,54 @@ describe('landing gate and the append-only evidence ledger (Rules 37, 74, 107, 1
     writeFileSync(ledger, readFileSync(ledger, 'utf8') + '{"torn":');
     writeFileSync(`${ledger}.lock`, '999999');
     expect(r.check('ci', 'ci.json').status).toBe(0);
-    expect(ledgerRows(r.dir)).toHaveLength(25);
+    expect(ledgerRows(r.dir)).toHaveLength(50);
     expect(readdirSync(join(r.dir, '.git')).some(f => f.startsWith('instar-change-evidence.jsonl.torn-'))).toBe(true);
+  }, 120_000);
+  it('keeps a recording obligation when recording fails: no start, no run; a lost result stays red even after an earlier green (Rules 37, 95, 112)', () => {
+    const { r, review, artifact } = setup();
+    r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0);
+    review('YES'); expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', artifact, '--submitted', 'all').status).toBe(0);
+    expect(r.check('landing').status).toBe(0);
+    const ledger = join(r.dir, '.git', 'instar-change-evidence.jsonl'); const rows = ledgerRows(r.dir).length;
+    // The start cannot be recorded: the gate never runs, so no result exists to be lost.
+    chmodSync(ledger, 0o400); r.write('gate-mode', 'fail');
+    try {
+      const refused = r.check('run'); expect(refused.status).toBe(2);
+      expect(JSON.parse(r.read('.test-results.json')).success).toBe(true);
+    } finally { chmodSync(ledger, 0o600); }
+    expect(ledgerRows(r.dir)).toHaveLength(rows);
+    // The start is recorded but the result store is obstructed: the gate's own exit is kept and
+    // the unfinished start is red evidence, so the earlier green no longer admits the candidate.
+    const store = join(r.dir, '.git', 'instar-change-evidence-runs'); renameSync(store, `${store}-saved`); writeFileSync(store, 'obstruction');
+    try {
+      const lost = r.check('run'); expect(lost.status).toBe(1); expect(lost.out).toContain('gate result NOT recorded');
+      r.write('ci.json', JSON.stringify({ head: r.git('rev-parse', 'HEAD'), verdict: 'failed', verdictReason: 'fixture red' }));
+      const ci = r.check('ci', 'ci.json'); expect(ci.status).toBe(2); expect(ci.out).toContain('stays an unfinished run (red)');
+    } finally { rmSync(store); renameSync(`${store}-saved`, store); }
+    const starts = ledgerRows(r.dir).slice(rows);
+    expect(starts.map(e => [e.kind, e.scope])).toEqual([['run-start', 'full'], ['run-start', 'ci']]);
+    const landing = r.check('landing'); expect(landing.status).toBe(1);
+    for (const e of starts) expect(landing.out).toContain(`red evidence ${e.id as string} (run-start`);
+  }, 120_000);
+  it('admits only on an accepting corrective review: a later NO never revives the deficient YES it corrected (Rules 65, 74, 107)', () => {
+    const { r, artifact, review } = setup();
+    r.write('gate-mode', 'fail'); expect(r.check('run').status).toBe(1);
+    r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0);
+    const [redSuite, greenSuite] = ledgerRows(r.dir).filter(e => e.kind === 'suite');
+    expect(r.check('classify', redSuite!.id as string, 'product-regression-fixed', 'fixed in the next tree').status).toBe(0);
+    review('YES');
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', artifact, '--submitted', greenSuite!.id as string).status).toBe(0);
+    expect(r.check('landing').out).toContain('no later accepting pass was given it');
+    const withdraw = `${artifact}.withdraw.md`; dirs.push(withdraw);
+    writeFileSync(withdraw, `Reviewed HEAD ${r.git('rev-parse', 'HEAD')}\nThe earlier YES is withdrawn.\n\nVERDICT: NO\n`);
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', withdraw, '--submitted', 'all').status).toBe(0);
+    const rejected = r.check('landing'); expect(rejected.status).toBe(1);
+    expect(rejected.out).toContain('no accepted independent review pass');
+    const accept = `${artifact}.accept.md`; dirs.push(accept);
+    writeFileSync(accept, `Reviewed HEAD ${r.git('rev-parse', 'HEAD')}\n\nVERDICT: YES\n`);
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', accept, '--submitted', 'all').status).toBe(0);
+    const landed = r.check('landing'); expect(landed.status).toBe(0); expect(landed.out).toContain('discharged by accepting pass');
+    expect(ledgerRows(r.dir).filter(e => e.kind === 'pass')).toHaveLength(3);
   }, 120_000);
   it("consumes the desk's candidate, review and gate records instead of a second certification step", () => {
     const { r, base, artifact, review } = setup();

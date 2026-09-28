@@ -22,7 +22,9 @@
 // addressed and never overwritten, beside the ledger:
 //   run                                   `npm run test:all`: runs the whole gate (npm run test:gate),
 //                                         bound to the subject captured when it starts
-//   ci <ci-local-result.json>             record a ci-local verdict (ci-local does this)
+//   ci-start                              record a ci-local start before any step runs; prints its run id
+//   ci <ci-local-result.json> [--run ID]  complete that start with ci-local's verdict (ci-local does
+//                                         both); with no --run, the start is recorded first here
 //   pass <record> (--records DIR | --reviewer R --artifact PATH)
 //        [--independence TEXT] [--inspected all|a,b] [--omitted path=reason,...]
 //        [--residue id=severity=basis]... [--submitted all|id,id]
@@ -285,34 +287,40 @@ const GATE = ['run', 'test:gate'];
 const RESULTS = '.test-results.json';
 function gateRun() {
   const runId = randomUUID(); const start = headTree();
-  let recorded = true;
-  try { append({ kind: 'run-start', runId, ...start, scope: 'full', command: `npm ${GATE.join(' ')}` }); }
-  catch (e) { recorded = false; console.error(`change-review: gate run NOT recorded (no green evidence can come from it): ${e.message}`); }
+  // No evidence-producing work runs before its start is durable: a start that cannot be
+  // recorded refuses the run, so a result can never be produced and then silently lost.
+  append({ kind: 'run-start', runId, ...start, scope: 'full', command: `npm ${GATE.join(' ')}` });
   try { unlinkSync(RESULTS); } catch { /* no stale report */ }
   const child = spawnSync('npm', GATE, { stdio: 'inherit' });
   const exit = child.status ?? 128;
-  if (recorded) {
-    try {
-      let bytes = null; let report = null;
-      try { bytes = readFileSync(RESULTS); report = JSON.parse(bytes.toString('utf8')); } catch { /* the run left no report */ }
-      const complete = !!report && report.numTotalTests > 0 && Array.isArray(report.testResults)
-        && report.testResults.every(r => ['passed', 'failed', 'skipped', 'pending'].includes(r.status));
-      const end = headTree();
-      const stored = bytes ? preserve(bytes) : null;
-      append({ kind: 'suite', runId, ...start, scope: 'full', exit, signal: child.signal ?? null, complete,
-        subjectMoved: end.head !== start.head || end.tree !== start.tree || end.dirty !== start.dirty,
-        success: !!report?.success, total: report?.numTotalTests ?? null, failed: report?.numFailedTests ?? null,
-        skipped: report?.numPendingTests ?? null, resultsSha256: stored?.hash ?? null, results: stored?.path ?? null });
-    } catch (e) { console.error(`change-review: gate result NOT recorded; the run stays an unfinished start (red) in the ledger: ${e.message}`); }
-  }
+  try {
+    let bytes = null; let report = null;
+    try { bytes = readFileSync(RESULTS); report = JSON.parse(bytes.toString('utf8')); } catch { /* the run left no report */ }
+    const complete = !!report && report.numTotalTests > 0 && Array.isArray(report.testResults)
+      && report.testResults.every(r => ['passed', 'failed', 'skipped', 'pending'].includes(r.status));
+    const end = headTree();
+    const stored = bytes ? preserve(bytes) : null;
+    append({ kind: 'suite', runId, ...start, scope: 'full', exit, signal: child.signal ?? null, complete,
+      subjectMoved: end.head !== start.head || end.tree !== start.tree || end.dirty !== start.dirty,
+      success: !!report?.success, total: report?.numTotalTests ?? null, failed: report?.numFailedTests ?? null,
+      skipped: report?.numPendingTests ?? null, resultsSha256: stored?.hash ?? null, results: stored?.path ?? null });
+  } catch (e) { console.error(`change-review: gate result NOT recorded; the run stays an unfinished start (red) in the ledger: ${e.message}`); }
   return exit;
 }
-function ci(file) {
-  const bytes = readFileSync(file); const result = JSON.parse(bytes.toString('utf8'));
-  const head = /^[0-9a-f]{40}$/.test(result.head ?? '') ? result.head : git('rev-parse', 'HEAD');
-  const stored = preserve(bytes);
-  return append({ kind: 'ci', head, tree: git('rev-parse', `${head}^{tree}`), dirty: headTree().dirty, exit: result.verdict === 'passed' ? 0 : 1,
-    complete: true, success: result.verdict === 'passed', verdictReason: result.verdictReason, resultSha256: stored.hash, results: stored.path });
+// ci-local records its start before running any step (ci-start) and completes it here. A direct
+// `ci` call with no --run records its own start first. Either way a completion that cannot be
+// recorded leaves an unfinished start, which landing counts as red until it is classified.
+const ciStart = () => append({ kind: 'run-start', runId: randomUUID(), ...headTree(), scope: 'ci', command: 'node scripts/ci-local.mjs' });
+function ci(file, runId) {
+  const start = runId ? readLedger().find(e => e.kind === 'run-start' && e.runId === runId && e.scope === 'ci') : ciStart();
+  if (!start) throw Error(`no recorded ci-local start ${runId}`);
+  try {
+    const bytes = readFileSync(file); const result = JSON.parse(bytes.toString('utf8'));
+    const head = /^[0-9a-f]{40}$/.test(result.head ?? '') ? result.head : start.head;
+    const stored = preserve(bytes);
+    return append({ kind: 'ci', runId: start.runId, head, tree: git('rev-parse', `${head}^{tree}`), dirty: headTree().dirty, exit: result.verdict === 'passed' ? 0 : 1,
+      complete: true, success: result.verdict === 'passed', verdictReason: result.verdictReason, resultSha256: stored.hash, results: stored.path });
+  } catch (e) { throw Error(`${e.message}; start ${start.id} stays an unfinished run (red) in the ledger`); }
 }
 
 function changeHeads(recordPath) {
@@ -408,7 +416,8 @@ async function main(argv) {
       setFields(rest[0], { 'Review state': 'frozen', 'Reviewed content': workingDigest(workingSubject(base)) }); console.log(`${rest[0]} frozen`); return 0; }
     case 'open': setFields(rest[0], { 'Review state': 'open', 'Reviewed content': 'none' }); console.log(`${rest[0]} open; the frozen round is void`); return 0;
     case 'run': if (rest.length) throw Error('run takes no arguments: it always runs the whole gate'); return gateRun();
-    case 'ci': ci(rest[0]); return 0;
+    case 'ci-start': console.log(`ci-run ${ciStart().runId}`); return 0;
+    case 'ci': ci(rest[0], flag('run')); return 0;
     case 'pass': pass(rest[0], { reviewer: flag('reviewer'), verdict: flag('verdict'), artifact: flag('artifact'), records: flag('records'),
       independence: flag('independence'), inspected: flag('inspected'), omitted: flag('omitted'), residue: flags('residue'), submitted: flag('submitted') }); return 0;
     case 'classify': {
@@ -428,7 +437,4 @@ async function main(argv) {
     default: console.error(`unknown command ${command}`); return 2;
   }
 }
-// ci-local's own verdict must not change because its recording failed; the failure is loud, and
-// the missing row leaves landing without that evidence.
-if (process.argv[2] === 'ci') { try { await main(process.argv.slice(2)); } catch (e) { console.error(`change-review: ci evidence NOT recorded: ${e.message}`); } }
-else process.exitCode = await main(process.argv.slice(2)).catch(e => { console.error(`change-review: ${e.message}`); return 2; });
+process.exitCode = await main(process.argv.slice(2)).catch(e => { console.error(`change-review: ${e.message}`); return 2; });
