@@ -294,7 +294,8 @@ export type JournalRecord =
     /** Proposed commitments refused at creation for an undeclared dependency (Rule 83). */
     commitmentRefusals?: number; state?: 'complete'; usage?: ModelUsage; at: number }
 
-  | { kind: 'step-check-start'; at: number }
+  /** `boundaries: ['cleanup']` extends the dark step observer to each reply's cleanup Result (build 9, Rule 38). */
+  | { kind: 'step-check-start'; boundaries?: ['cleanup']; at: number }
   | { kind: 'step-check-reserve'; step: string; evidence: string; at: number }
   | { kind: 'step-check'; step: string; result: StepCheckResult; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
@@ -304,7 +305,7 @@ export type JournalRecord =
  * (`thread`); every one has the operator as its only audience. */
 export interface PacketDrop { kind: string; source: string; reason: string }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; answer?: string;
-  reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true; askConflict?: string; lastNamedPerson?: string;
+  reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true; askConflict?: string; lastNamedPerson?: string;
 
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
@@ -368,7 +369,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
-  stepCheckStarted: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
+  stepCheckStarted: boolean; stepCheckCleanup: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
@@ -543,6 +544,8 @@ function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
     summaryCandidates: [...view.summaryCandidates], summaryChecks: [...view.summaryChecks], summaryFaithfulness: [...view.summaryFaithfulness], summaryReviews: [...view.summaryReviews],
     callOutcomeCounts: [...view.callOutcomeCounts], questionsReviewed: [...view.questionsReviewed], tokenCurrent: [...view.tokenCurrent], mentionedDates: [...view.mentionedDates], reminders: [...view.reminders] }, retained };
 }
+/** The complete durable projection, as the compaction verifier compares it (Rule 26: the state itself, not a count of it). */
+export const durableProjection = (view: JournalView): Snapshot['view'] => snapshotOf(view, []).view;
 function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
   const saved = snapshot?.view;
   if (!saved || JSON.stringify(saved.genesis) !== JSON.stringify(genesis) || !Array.isArray(snapshot.retained)
@@ -562,7 +565,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     heldTurns: new Set([...turns.values()].filter(turn => turn.held !== undefined)), channelItems: new Map(saved.channelItems),
     summaryReservations: new Map(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
     failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed),
-    capReports: new Set(saved.capReports ?? []), stepChecks: new Map(saved.stepChecks ?? []),
+    capReports: new Set(saved.capReports ?? []), stepCheckCleanup: saved.stepCheckCleanup ?? false, stepChecks: new Map(saved.stepChecks ?? []),
     channelSources: new Map(saved.channelSources ?? []), channelSourceErrors: new Map(saved.channelSourceErrors ?? []),
     summaryRequired: new Set(saved.summaryRequired ?? []), summaryCandidates: new Map(saved.summaryCandidates ?? []),
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryFaithfulness: new Map(saved.summaryFaithfulness ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
@@ -1572,8 +1575,10 @@ function project(view: JournalView, row: JournalRecord): void {
     return;
   }
   if (row.kind === 'step-check-start') {
-    if (view.stepCheckStarted) throw Error('preview journal: step check already started');
-    view.stepCheckStarted = true; return;
+    const cleanup = row.boundaries?.length === 1 && row.boundaries[0] === 'cleanup';
+    if (row.boundaries !== undefined && !cleanup || (cleanup ? view.stepCheckCleanup : view.stepCheckStarted))
+      throw Error('preview journal: step check already started');
+    view.stepCheckStarted = true; if (cleanup) view.stepCheckCleanup = true; return;
   }
   if (row.kind === 'step-check-reserve') {
     const step = view.stepChecks.get(row.step);
@@ -1626,7 +1631,7 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'held-notice-sent') {
     if (turn.heldNoticeIntent === undefined || turn.heldNoticeSent !== undefined
       || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: held notice receipt order');
-    turn.heldNoticeSent = row.message; return;
+    turn.heldNoticeSent = row.message; turn.heldNoticeSentAt = row.at; return;
   }
   const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? UNKNOWN_ANSWER_NOTICE
     : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
@@ -1701,6 +1706,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (turn.intent === undefined || turn.checked !== undefined || !Array.isArray(row.findings)) throw Error('preview journal: coherence order');
     turn.checked = row.findings; if (row.failed) turn.checkFailed = true;
     if (row.findings.length) view.corrections.push(turn.id);
+    if (view.stepCheckCleanup) view.stepChecks.set(`cleanup:${row.id}`, {});
   }
   if (row.kind === 'model-uncertain') {
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: uncertain model order');
@@ -1940,7 +1946,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -2017,7 +2023,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -4919,8 +4925,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
   };
   const startStepChecks = () => {
-    if (ports.stepCheck && !journal.view.stepCheckStarted)
-      journal.append({ kind: 'step-check-start', at: ports.now() });
+    // One start record connects the observer to cleanup Results too; a journal started before that keeps
+    // its earlier steps and gains the cleanup boundary from this record on.
+    if (ports.stepCheck && !journal.view.stepCheckCleanup)
+      journal.append({ kind: 'step-check-start', boundaries: ['cleanup'], at: ports.now() });
   };
   /** Observe completed model steps after the send path. A reservation survives a crash;
    * an interrupted Jev request becomes unavailable and is never dispatched twice. */
@@ -4937,7 +4945,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           continue;
         }
         if ([...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return;
-        const evidence = stepId.startsWith('answer:') ? (() => {
+        const evidence = stepId.startsWith('cleanup:') ? (() => {
+          const turn = journal.view.turns.get(stepId.slice('cleanup:'.length))!;
+          return { step: stepId, modelOutput: sentText(turn) ?? null, journal: { coherenceFindings: turn.checked ?? [],
+            coherenceCheckFailed: turn.checkFailed === true, memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
+            memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
+            delivery: turn.sent === undefined ? 'send outcome UNKNOWN' : 'Telegram API accepted' } };
+        })() : stepId.startsWith('answer:') ? (() => {
           const turn = journal.view.turns.get(stepId.slice('answer:'.length))!;
           return { step: stepId, modelOutput: turn.answer, journal: { answerRecorded: true,
             memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),

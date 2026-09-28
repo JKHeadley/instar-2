@@ -1,6 +1,7 @@
 // Rules 1, 26, 31, 40, 42, 69, 96. This uses TypeScript's resolved types, not identifier spelling.
-// Rule 26 also reaches the live runner: a declared detector module observes state only through the
-// ports it is handed (NF-26), so a filename, flag, process or clock read cannot stand in for the outcome.
+// Rule 26 also reaches the live runner: a declared detector module reads state only through the ports
+// it is handed (NF-26) — no filesystem, process or clock of its own. That confines the reading; whether
+// an observation is genuine is decided by its bound witness, not by this lint.
 import ts from 'typescript';
 import { readdirSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
@@ -22,7 +23,7 @@ export function createProgram(extra = {}) {
   return ts.createProgram([...config.fileNames, ...virtual.keys()], config.options, host);
 }
 
-export const DETECTOR_MODULES = Object.freeze(['tests/preview/proofs.ts']);
+export const DETECTOR_MODULES = Object.freeze(['tests/preview/proofs.ts', 'tests/preview/capabilities.ts']);
 const DETECTOR_AMBIENT = ['Date', 'performance', 'fetch', 'process', 'setTimeout', 'setInterval', 'require', 'eval', 'Function',
   'existsSync', 'statSync', 'lstatSync', 'readFileSync', 'readdirSync', 'execSync', 'execFileSync', 'spawnSync'];
 export function lintProgram(program, files, detectors = DETECTOR_MODULES) {

@@ -28,8 +28,8 @@ import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { deriveProfile } from '../../src/index.js';
-import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, proofPosture, stepCoverage } from './proofs.js';
-import { PREVIEW_CAPABILITIES, capabilityRows, proofStatusLines } from './capabilities.js';
+import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, probeId, proofPosture, stepCoverage } from './proofs.js';
+import { capabilityRows, previewInventory, proofStatusLines, resolveLiveProof } from './capabilities.js';
 import { appendProof, readProofs } from './proof-log.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -120,6 +120,9 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
 const shapeTerms = () => ({ owner: 'part-three',
   derivedFrom: JSON.parse(readFileSync(resolve(process.cwd(), 'register-source/bootstrap-shape.json'), 'utf8')).derivedFrom });
 const classifier = () => { const terms = shapeTerms(); return profile => take(deriveProfile(profile, terms, 'preview:host')); };
+/** The runner's register inputs, read from the same committed file the register's source collector reads. */
+const declarationsOf = name => JSON.parse(readFileSync(resolve(process.cwd(), `tests/preview/${name}.json`), 'utf8'));
+const inventory = () => previewInventory(declarationsOf('preview.declarations'), declarationsOf('preview.pending-declarations'));
 /** A capability's version is the digest of its own source files, so a live proof survives unrelated edits. */
 const capabilityVersions = () => {
   const files = new Map(), digest = path => {
@@ -127,7 +130,7 @@ const capabilityVersions = () => {
       catch { value = `missing:${path}`; } files.set(path, value); }
     return files.get(path);
   };
-  return Object.fromEntries(PREVIEW_CAPABILITIES.map(item => [item.declaration.id,
+  return Object.fromEntries(inventory().capabilities.map(item => [item.declaration.id,
     `sha256:${createHash('sha256').update(item.sources.map(digest).join('\n')).digest('hex')}`]));
 };
 const VERSION_PREFIX = 'version:';
@@ -140,7 +143,8 @@ const runningLaunch = proofs => {
     .map(([name, value]) => [name.slice(VERSION_PREFIX.length), value]));
   return { generation: startup.generation, versions, stepCheck: startup.observed.stepCheck === true, agentState: startup.observed.agentState === true };
 };
-/** Posture and step coverage for one reading; every input is a durable record or the replayed journal. */
+/** Posture and step coverage for one reading; every input is a durable record or the replayed journal. With no
+ * startup record the versions come from disk and every plan reads unknown: nothing from another launch counts. */
 const proofReport = (view, log, launch, now) => {
   const versions = launch && Object.keys(launch.versions).length ? launch.versions : capabilityVersions();
   const supervisors = { replyReview: true, summaryReview: true, stepCheck: launch?.stepCheck ?? false };
@@ -150,7 +154,7 @@ const proofReport = (view, log, launch, now) => {
     stepCoverage: stepCoverage(view, supervisors) };
 };
 /** Capability truth over a reading (Rules 34, 39, 62, 72, 73, 76); `status` is what the metrics must reach. */
-const capabilityReport = (reading, log, status, now) => capabilityRows(PREVIEW_CAPABILITIES, { classify: classifier(),
+const capabilityReport = (joined, reading, log, status, now) => capabilityRows(joined, { classify: classifier(),
   versions: reading.versions, enabled: reading.enabled, status, liveProofs: log.liveProofs, proofs: reading.proofs, now });
 /** The exact sources every live turn carries; shared by run and the read-only inspect probe.
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
@@ -445,51 +449,41 @@ async function main() {
       // Rules 9/39/43/73: proof posture and capability truth from the durable proof log and the replayed journal.
       const proofLog = readProofs(proofsPathOf(root));
       try {
-        report.proofLog = { attempts: proofLog.proofs.length, liveProofs: proofLog.liveProofs.length, unreadable: proofLog.unreadable };
-        const reading = proofReport(view.view, proofLog, runningLaunch(proofLog.proofs), now);
+        report.proofLog = { available: proofLog.available, attempts: proofLog.proofs.length, liveProofs: proofLog.liveProofs.length, unreadable: proofLog.unreadable };
+        const launch = runningLaunch(proofLog.proofs), reading = proofReport(view.view, proofLog, launch, now), joined = inventory();
+        report.proofGeneration = launch ? launch.generation : null;
         report.proofs = reading.proofs;
         report.stepCoverage = reading.stepCoverage;
-        const rows = report.capabilities = capabilityReport(reading, proofLog, report, now);
-        report.protection = { declared: rows.length, enabled: rows.filter(row => row.protection === 'enabled').length,
-          dark: rows.filter(row => row.protection === 'dark').map(row => row.id),
-          offInThisLaunch: rows.filter(row => row.protection === 'off-in-this-launch').map(row => row.id) };
-      } catch { report.proofs = 'unavailable: the register shape or proof log could not be read'; }
+        const rows = report.capabilities = capabilityReport(joined, reading, proofLog, report, now);
+        const posture = plan => reading.proofs.find(row => probeId(row.plan) === plan)?.posture ?? 'unavailable';
+        report.duties = joined.duties.map(item => ({ id: item.id, status: item.status, watcher: item.requiredFacts.watcher,
+          posture: posture(probeId(item.requiredFacts.proof.replace(/^proofs\.jsonl#/u, ''))) }));
+        report.sentinels = joined.sentinels.map(item => ({ id: item.id, status: item.status, freshness: posture(item.requiredFacts.freshnessProbe) }));
+        report.protection = { declared: rows.length, inventoryGaps: joined.gaps, pendingRegistration: joined.pending,
+          ...Object.fromEntries(['confirmed', 'unconfirmed', 'unproven', 'gap', 'dark', 'off-in-this-launch'].map(state =>
+            [state, rows.filter(row => row.protection === state).map(row => row.id)])) };
+      } catch { report.proofs = 'unavailable: the register inputs or proof log could not be read'; }
       process.stdout.write(`${JSON.stringify(report)}\n`);
     }
     finally { view.close(); }
     return;
   }
   if (command === 'record-live-proof') {
-    // Rule 62: a live-surface proof is an observed fact, never an assertion. The named update must be a
-    // real operator message in this journal whose reply Telegram accepted; the record binds to the version
-    // the running launch declared for that capability.
-    const capability = PREVIEW_CAPABILITIES.find(item => item.declaration.id === required(options, 'capability'));
-    if (!capability?.declaration.requiredFacts.liveProof) throw Error('preview: capability names no live proof');
-    const update = number(required(options, 'update'), 'update', 0), fact = capability.liveFact ?? 'reply-accepted';
+    // Rule 62: a live-surface proof is the capability's own observed outcome, bound to the launch that executed
+    // it — never an assertion. An unrelated turn, a capability that launch had off, or a missing startup
+    // record all refuse; a capability whose outcome is semantic also needs the desk's recorded observation.
+    const capability = inventory().capabilities.find(item => item.declaration.id === required(options, 'capability'));
+    if (!capability) throw Error('preview: unknown capability');
+    const update = number(required(options, 'update'), 'update', 0);
     const view = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try {
-      let messageId = null;
-      if (fact === 'stop-latched') {
-        // The stop is proven by what did not happen: the latch is recorded, the launch ended on it, nothing sent after.
-        const latch = existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : null;
-        const ranPast = latch && readRuns(runsPath).launches.some(run => (run.exit ?? Infinity) > latch.latchedAt
-          && run.reason !== 'operator stop latched');
-        if (!latch || !Number.isSafeInteger(latch.latchedAt) || ranPast
-          || view.view.order.some(item => (item.sentAt ?? 0) > latch.latchedAt || (item.heldNoticeSent !== undefined && item.at > latch.latchedAt))
-          || update !== view.view.cursor) throw Error('preview: no observed stop latch at this cursor');
-      } else {
-        const turn = view.view.order.find(item => item.update === update);
-        if (!turn?.accepted || probeTurn(view.view, turn)) throw Error('preview: not an accepted operator message');
-        messageId = fact === 'held-notice-accepted' ? turn.heldNoticeSent : turn.sent;
-        if (!Number.isSafeInteger(messageId)) throw Error('preview: Telegram did not accept the observed message');
-      }
-      const log = readProofs(proofsPath), launch = runningLaunch(log.proofs);
-      const version = (launch?.versions ?? capabilityVersions())[capability.declaration.id];
-      if (!version) throw Error('preview: capability version unavailable');
-      const record = { v: 1, liveProof: capability.declaration.requiredFacts.liveProof, capability: capability.declaration.id,
-        version, fact, update, messageId, recordedAt: wallNow() };
-      appendProof(proofsPath, record);
-      process.stdout.write(`${JSON.stringify(record)}\n`);
+      const result = resolveLiveProof({ capability, view: view.view, update, deskObservation: options['desk-observation'] ?? null,
+        stopLatch: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : null,
+        launches: readRuns(runsPath).launches, startups: readProofs(proofsPath).proofs, now: wallNow() });
+      // The refusal names only the capability, the update and the missing outcome, never message text.
+      if (!result.ok) { process.stderr.write(`preview: live proof refused: ${result.reason}\n`); process.exitCode = 1; return; }
+      appendProof(proofsPath, result.record);
+      process.stdout.write(`${JSON.stringify(result.record)}\n`);
     } finally { view.close(); }
     return;
   }
@@ -611,7 +605,7 @@ async function main() {
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
   let handoff = null, reservedAtLaunch = new Set();
   // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
-  let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null;
+  let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
@@ -740,11 +734,12 @@ async function main() {
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
       statusExtra: () => {
         if (!proofLaunch) return [];
+        const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
         try {
           const log = { proofs: proofRecords, liveProofs: readProofs(proofsPath).liveProofs };
           const reading = proofReport(journal.view, log, proofLaunch, wallNow());
-          return proofStatusLines(reading.proofs, capabilityReport(reading, log, {}, wallNow()));
-        } catch { return ['Proofs: unavailable (the register shape or proof log could not be read).']; }
+          return [...unavailable, ...proofStatusLines(reading.proofs, capabilityReport(inventory(), reading, log, {}, wallNow()))];
+        } catch { return [...unavailable, 'Proofs: unavailable (the register inputs or proof log could not be read).']; }
       },
       send: async ({ text, expectedText, chat, thread }) => {
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop) return null;
@@ -792,19 +787,21 @@ async function main() {
         } catch { return null; }
       } };
     const startup = executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'startup'),
-      { ...proofPorts, botIdentity: () => ({ id: identity.identity.id }) }, generation, clock.elapsed);
-    Object.assign(startup, { observed: { ...startup.observed, stepCheck: stepCheckEnabled, agentState: Boolean(options['agent-state-dir']),
-      ...Object.fromEntries(Object.entries(launchVersions).map(([id, version]) => [`${VERSION_PREFIX}${id}`, version])) } });
-    appendProof(proofsPath, startup); proofRecords.push(startup);
-    proofLaunch = runningLaunch(proofRecords);
+      { ...proofPorts, botIdentity: () => ({ id: identity.identity.id }), launch: { stepCheck: stepCheckEnabled, agentState: Boolean(options['agent-state-dir']),
+        ...Object.fromEntries(Object.entries(launchVersions).map(([id, version]) => [`${VERSION_PREFIX}${id}`, version])) } }, generation, clock.elapsed);
+    // Rules 14/95: the proof log is evidence, not a gate on conversation. An unwritable log is reported and retried
+    // with backoff; the undurable record never counts as proof, and intake and replies continue.
+    const recordProof = record => {
+      try { appendProof(proofsPath, record); proofRecords.push(record); proofStoreFailed = false; }
+      catch { proofStoreFailed = true; proofBackoffUntil = clock.elapsed() + 60000; process.stderr.write('preview: proof log unavailable; retrying with backoff\n'); }
+    };
+    recordProof(startup);
+    proofLaunch = runningLaunch([startup]);
     /** One due plan per cycle, bounded by its own probe; a failed durable write backs off instead of retrying every cycle. */
     const runDueProof = () => {
       if (workerStop.value || existsSync(stopPath) || journal.view.stop || wallNow() >= journal.view.expires || clock.elapsed() < proofBackoffUntil) return;
       const plan = nextDuePlan(PREVIEW_PROOF_PLANS, proofRecords, generation, proofPorts, wallNow());
-      if (!plan) return;
-      const record = executeProof(plan, proofPorts, generation, clock.elapsed);
-      try { appendProof(proofsPath, record); proofRecords.push(record); }
-      catch { proofBackoffUntil = clock.elapsed() + 60000; }
+      if (plan) recordProof(executeProof(plan, proofPorts, generation, clock.elapsed));
     };
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.

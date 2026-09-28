@@ -1,8 +1,9 @@
 // @ts-nocheck -- process-level fixture; physical ports are replaced by its test loader.
-// Build 9: required proofs run on the live runner, and status reports their actual results (Rules 9, 26, 43, 62, 73).
+// Build 9: required proofs run on the live runner, status reports their actual results, a live proof binds to the
+// capability's own outcome, and an unwritable proof log never stops the conversation (Rules 9, 14, 26, 43, 62, 73, 95).
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { readProofs } from './proof-log.js';
@@ -10,84 +11,122 @@ import { offlineProfile, successiveWorld } from './successive-fixture.js';
 
 const args = ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs'];
 const key = Buffer.alloc(32, 19).toString('hex');
-type Posture = { plan: string; posture: string; required: boolean; last: { disposition: string } | null };
-type Row = { id: string; protection: string; liveProof: { state: string; update: number | null }; metrics: { unreached: string[] };
-  graduation: { overdue: boolean } | null };
-type Status = { proofs: Posture[]; capabilities: Row[]; protection: { dark: string[] }; proofLog: { unreadable: number };
-  stepCoverage: Record<string, { boundary: string; state: string }[]> };
-
-it('runs the startup and due proofs on the live runner, reports them, and records a live proof only for an accepted reply', () => {
+const setup = () => {
   const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
   const operator = Number(world.configuration.operatorSenderId), chat = Number(world.configuration.chatId);
-  const message = (update_id: number, text: string) => ({ update_id, message: { message_id: 100 + update_id,
+  const message = (update_id, text) => ({ update_id, message: { message_id: 100 + update_id,
     from: { id: operator, is_bot: false, first_name: 'Justin' }, chat: { id: chat, type: 'private' }, date: Math.floor(Date.now() / 1000), text } });
+  const record = (capability, update, ...extra) => spawnSync(process.execPath, [...args, 'record-live-proof',
+    '--root', harness.liveRoot, '--capability', capability, '--update', String(update), ...extra],
+  { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key }, encoding: 'utf8', timeout: 20000 });
+  return { world, harness, message, record };
+};
+
+it('runs the startup and due proofs on the live runner and reports them against the declared inventory', () => {
+  const { harness, message } = setup();
   harness.setUpdates([message(1, 'What is the marker? Juniper.')]);
-  const launched = harness.launchLive(12);
+  const launched = harness.launchLive(20);
   expect(launched.status, launched.stderr).toBe(0);
 
   const log = readProofs(join(harness.liveRoot, 'proofs.jsonl'));
-  expect(log.unreadable).toBe(0);
+  expect(log).toMatchObject({ available: true, unreadable: 0 });
   const plans = log.proofs.map(row => row.plan);
   expect(plans[0]).toBe('startup');
-  for (const plan of ['telegram-identity', 'journal-restore', 'reply-drain', 'reply-review-reached', 'provider-outcomes', 'summary-checked'])
+  for (const plan of ['telegram-identity', 'journal-restore', 'reply-drain', 'reply-delivered', 'reply-review-reached', 'provider-outcomes'])
     expect(plans).toContain(plan);
   // The optional step observer is off in this launch: it is never run and never counted.
   expect(plans).not.toContain('step-check-reached');
   const byPlan = new Map(log.proofs.map(row => [row.plan, row]));
   expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 8820318295, stepCheck: false } });
-  expect(byPlan.get('telegram-identity')!.disposition).toBe('passed');
-  expect(byPlan.get('journal-restore')).toMatchObject({ disposition: 'passed', observed: { restored: true } });
-  // Each plan ran once: a recorded attempt is not due again inside its cadence.
+  expect(byPlan.get('journal-restore')).toMatchObject({ disposition: 'passed', observed: { restored: true, differing: null } });
+  expect(byPlan.get('reply-delivered')).toMatchObject({ disposition: 'passed' });
   expect(plans.length).toBe(new Set(plans).size);
 
-  const status = JSON.parse(harness.status().stdout) as Status;
+  const status = JSON.parse(harness.status().stdout);
   const posture = new Map(status.proofs.map(row => [row.plan, row]));
-  expect(posture.get('startup')!.posture).toBe('healthy');
-  expect(posture.get('journal-restore')!.posture).toBe('healthy');
-  expect(posture.get('telegram-identity')!.posture).toBe('healthy');
+  for (const plan of ['startup', 'journal-restore', 'telegram-identity', 'reply-delivered']) expect(posture.get(plan).posture, plan).toBe('healthy');
+  expect(posture.get('reply-review-reached').last.observed).toMatchObject({ sentAnswers: 1 });
   expect(posture.get('step-check-reached')).toMatchObject({ required: false, posture: 'inactive' });
+  expect(status.protection.inventoryGaps).toEqual([]);
   expect(status.protection.dark).toEqual(['preview.step-check']);
+  expect(status.protection.gap).toEqual([]);
+  // Record-referencing declarations wait for a register that can resolve them: reported, never dropped.
+  expect(status.protection.pendingRegistration).toContain('preview.reply');
   const rows = new Map(status.capabilities.map(row => [row.id, row]));
-  expect(rows.get('preview.step-check')).toMatchObject({ protection: 'dark', graduation: { overdue: Date.now() >= 1790726400000 } });
-  expect(rows.get('preview.channel-memory')!.protection).toBe('off-in-this-launch');
-  expect(rows.get('preview.reply')!.liveProof.state).toBe('missing');
-  for (const row of status.capabilities) if (row.protection === 'enabled') expect(row.metrics.unreached, row.id).toEqual([]);
-  expect(status.stepCoverage['operator-reply']!.find(row => row.boundary === 'prepare-packet')!.state).toBe('missing');
-
-  const record = (update: string, capability = 'preview.reply') => spawnSync(process.execPath, [...args, 'record-live-proof',
-    '--root', harness.liveRoot, '--capability', capability, '--update', update],
-  { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key }, encoding: 'utf8', timeout: 20000 });
-  expect(record('7').status).toBe(1);
-  expect(record('1', 'preview.stop').status).toBe(1);
-  const accepted = record('1');
-  expect(accepted.status, accepted.stderr).toBe(0);
-  const after = JSON.parse(harness.status().stdout) as Status;
-  expect(after.capabilities.find(row => row.id === 'preview.reply')!.liveProof).toMatchObject({ state: 'recorded', update: 1 });
+  // Held notices, reminders and stops were never exercised: those capabilities are not confirmed.
+  for (const id of ['preview.held-reply-notice', 'preview.reminders', 'preview.stop']) expect(rows.get(id).protection, id).toBe('unconfirmed');
+  expect(rows.get('preview.channel-memory').protection).toBe('off-in-this-launch');
+  expect([rows.get('preview.reply').registered, rows.get('preview.rolling-summary').registered]).toEqual([false, true]);
+  expect(rows.get('preview.reply').liveProof.state).toBe('missing');
+  for (const row of status.capabilities) if (row.enabled) expect(row.metrics.unreached, row.id).toEqual([]);
+  const reply = status.stepCoverage['operator-reply'];
+  expect(reply.rows.find(row => row.boundary === 'prepare-packet')).toMatchObject({ population: 1, state: 'missing' });
+  expect(status.duties.find(row => row.id === 'preview.duty.every-reply-reviewed').posture).toBeDefined();
 
   // A torn line in the durable log is counted, never read as a result.
   writeFileSync(join(harness.liveRoot, 'proofs.jsonl'), `${readFileSync(join(harness.liveRoot, 'proofs.jsonl'), 'utf8')}{"v":1,"plan":`);
-  expect((JSON.parse(harness.status().stdout) as Status).proofLog.unreadable).toBe(1);
+  expect(JSON.parse(harness.status().stdout).proofLog.unreadable).toBe(1);
+}, 60000);
+
+it('records a live proof only for the capability’s own outcome, never an unrelated turn or a disabled capability', () => {
+  const { harness, message, record } = setup();
+  harness.setUpdates([message(1, 'What is the marker? Juniper.'), message(2, 'status')]);
+  expect(harness.launchLive(12).status).toBe(0);
+  // Astra's counterexamples: each of these was accepted before.
+  expect(record('preview.reminders', 1).status).toBe(1);
+  expect(record('preview.channel-memory', 1, '--desk-observation', 'arrived').stderr).toMatch(/had preview\.channel-memory off/u);
+  expect(record('preview.status-pull', 1).status).toBe(1);
+  expect(record('preview.reply', 2).status).toBe(1);
+  expect(record('preview.memory', 1).stderr).toMatch(/desk-recorded semantic observation/u);
+  const reply = record('preview.reply', 1), status = record('preview.status-pull', 2);
+  expect(reply.status, reply.stderr).toBe(0);
+  expect(status.status, status.stderr).toBe(0);
+  const startup = readProofs(join(harness.liveRoot, 'proofs.jsonl')).proofs.find(row => row.plan === 'startup');
+  expect(JSON.parse(reply.stdout)).toMatchObject({ capability: 'preview.reply', update: 1, generation: startup.generation,
+    version: startup.observed['version:preview.reply'], fact: 'outcome-observed' });
+  const rows = new Map(JSON.parse(harness.status().stdout).capabilities.map(row => [row.id, row]));
+  expect(rows.get('preview.reply').liveProof).toMatchObject({ state: 'recorded', update: 1 });
+  expect(rows.get('preview.status-pull').liveProof).toMatchObject({ state: 'recorded', update: 2 });
 }, 60000);
 
 it('answers the operator status pull with the proof posture', () => {
-  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
-  const operator = Number(world.configuration.operatorSenderId), chat = Number(world.configuration.chatId);
-  harness.setUpdates([{ update_id: 1, message: { message_id: 101, from: { id: operator, is_bot: false, first_name: 'Justin' },
-    chat: { id: chat, type: 'private' }, date: Math.floor(Date.now() / 1000), text: 'status' } }]);
+  const { harness, message } = setup();
+  harness.setUpdates([message(1, 'status')]);
   const launched = harness.launchLive(3);
   expect(launched.status, launched.stderr).toBe(0);
-  const sent = harness.calls().filter(call => call.kind === 'send').map(call => call.text as string);
+  const sent = harness.calls().filter(call => call.kind === 'send').map(call => call.text);
   expect(sent).toHaveLength(1);
   expect(sent[0]).toMatch(/Proofs: \d+\/\d+ healthy/u);
-  expect(sent[0]).toMatch(/Capabilities: \d+ on, 1 dark \(preview\.step-check\)/u);
+  expect(sent[0]).toMatch(/Capabilities: \d+ confirmed, \d+ unconfirmed, 1 dark \(preview\.step-check\)/u);
 }, 60000);
 
+it('an unwritable proof log is reported and retried; intake and replies continue (Rules 14, 95)', () => {
+  const { harness, message } = setup();
+  harness.setUpdates([]);
+  expect(harness.launchLive(2).status).toBe(0);
+  const path = join(harness.liveRoot, 'proofs.jsonl');
+  rmSync(path); mkdirSync(path);
+  harness.setUpdates([message(1, 'Can you reply?')]);
+  const before = harness.calls().length;
+  const launched = harness.launchLive(3);
+  expect(launched.status, launched.stderr).toBe(0);
+  expect(launched.stderr).toMatch(/proof log unavailable/u);
+  expect(harness.calls().slice(before).filter(call => call.kind === 'send')).toHaveLength(1);
+  const status = JSON.parse(harness.status().stdout);
+  expect(status.proofLog.available).toBe(false);
+  expect(status.proofs.every(row => row.posture !== 'healthy')).toBe(true);
+  // Restoring the store lets proofs record again; nothing from the failed launch was counted.
+  rmSync(path, { recursive: true });
+  expect(harness.launchLive(2).status).toBe(0);
+  expect(readProofs(path).proofs[0].plan).toBe('startup');
+}, 90000);
+
 it('records a stop live proof only after an observed latch with nothing sent past it', () => {
-  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  const { harness } = setup();
   harness.setUpdates([]);
   expect(harness.launchLive(2).status).toBe(0);
   const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key };
-  const run = (...rest: string[]) => spawnSync(process.execPath, [...args, ...rest, '--root', harness.liveRoot],
+  const run = (...rest) => spawnSync(process.execPath, [...args, ...rest, '--root', harness.liveRoot],
     { cwd: process.cwd(), env, encoding: 'utf8', timeout: 20000 });
   const cursor = String(JSON.parse(harness.status().stdout).cursor);
   expect(run('record-live-proof', '--capability', 'preview.stop', '--update', cursor).status).toBe(1);
@@ -95,5 +134,6 @@ it('records a stop live proof only after an observed latch with nothing sent pas
   expect(run('record-live-proof', '--capability', 'preview.stop', '--update', String(Number(cursor) + 1)).status).toBe(1);
   const recorded = run('record-live-proof', '--capability', 'preview.stop', '--update', cursor);
   expect(recorded.status, recorded.stderr).toBe(0);
-  expect(JSON.parse(recorded.stdout)).toMatchObject({ fact: 'stop-latched', messageId: null, capability: 'preview.stop' });
+  expect(JSON.parse(recorded.stdout)).toMatchObject({ fact: 'outcome-observed', messageId: null, capability: 'preview.stop' });
+  expect(JSON.parse(harness.status().stdout).capabilities.find(row => row.id === 'preview.stop').outcomes[0]).toMatchObject({ posture: 'unavailable', confirmed: true });
 }, 60000);

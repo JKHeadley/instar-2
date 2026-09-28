@@ -272,3 +272,31 @@ it('does not dispatch Jev when stop arrives after the evidence reservation', asy
 it('refuses a malformed score rather than treating it as a pass', () => {
   expect(() => interpretStepJev(jev(Number.NaN), 1)).toThrow('malformed');
 });
+
+it('reaches each reply cleanup Result too, and a journal started before that gains the boundary and replays (build 9, Rule 38)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-cleanup-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    const states: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, model: async () => 'Seven.',
+      send: async () => 5, checkOutbound: () => {},
+      stepCheck: { jev: async state => { states.push(state); return { value: jev(0.02), latencyMs: 7 }; } } });
+    // An earlier start record without boundaries: answer steps only, until the cleanup start is appended.
+    journal.append({ kind: 'step-check-start', at: 1000 });
+    worker.intake([update(1, 'What is seven?')]); await worker.drain(); worker.checkCoherence();
+    expect([...journal.view.stepChecks.keys()]).toEqual(['answer:telegram:12345678:update:1']);
+    worker.startStepChecks(); worker.startStepChecks();
+    expect(journal.view.stepCheckCleanup).toBe(true);
+    worker.intake([update(2, 'And eight?')]); await worker.drain(); worker.checkCoherence(); await worker.checkSteps();
+    const id = 'telegram:12345678:update:2';
+    expect(journal.view.stepChecks.get(`cleanup:${id}`)?.result?.verdict).toBe('pass');
+    expect(states.some(state => state.includes(`"step":"cleanup:${id}"`) && state.includes('"coherenceFindings":[]'))).toBe(true);
+    const keys = [...journal.view.stepChecks.keys()];
+    journal.close();
+    const replay = openPreviewJournal(path, key, undefined, undefined, true);
+    expect([...replay.view.stepChecks.keys()]).toEqual(keys);
+    expect(replay.view.stepCheckCleanup).toBe(true);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

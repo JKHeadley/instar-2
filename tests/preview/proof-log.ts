@@ -6,7 +6,8 @@ import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, wr
 import { dirname } from 'node:path';
 import type { LiveProofRecord, ProofRecord } from './proofs.js';
 
-export interface ProofLog { proofs: ProofRecord[]; liveProofs: LiveProofRecord[]; unreadable: number }
+/** `available` is false when the log exists but cannot be read: an unreadable store, never an empty history. */
+export interface ProofLog { proofs: ProofRecord[]; liveProofs: LiveProofRecord[]; unreadable: number; available: boolean }
 
 export function appendProof(path: string, record: ProofRecord | LiveProofRecord): void {
   const fresh = !existsSync(path);
@@ -24,9 +25,10 @@ const text = (value: unknown): value is string => typeof value === 'string' && v
 const time = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 
 export function readProofs(path: string): ProofLog {
-  const log: ProofLog = { proofs: [], liveProofs: [], unreadable: 0 };
+  const log: ProofLog = { proofs: [], liveProofs: [], unreadable: 0, available: true };
   let content = '';
-  try { content = readFileSync(path, 'utf8'); } catch { return log; }
+  try { content = readFileSync(path, 'utf8'); }
+  catch (error) { return (error as { code?: string }).code === 'ENOENT' ? log : { ...log, available: false }; }
   for (const line of content.split('\n')) {
     if (!line) continue;
     let row: Record<string, unknown>;
@@ -37,11 +39,14 @@ export function readProofs(path: string): ProofLog {
       if (!text(row.planVersion) || !text(row.generation) || !time(row.startedAt) || !time(row.completedAt)
         || (row.completedAt as number) < (row.startedAt as number) || !['passed', 'failed', 'unknown'].includes(row.disposition as string)
         || typeof row.detail !== 'string' || observed === null || typeof observed !== 'object' || Array.isArray(observed)
-        || !Object.values(observed).every(scalar)) { log.unreadable++; continue; }
+        || !Object.values(observed).every(scalar) || !(row.observedAt === null || time(row.observedAt))
+        || !(row.capture === null || typeof row.capture === 'string' && /^sha256:[a-f0-9]{64}$/u.test(row.capture))
+        || (row.capture === null) !== (row.observedAt === null)) { log.unreadable++; continue; }
       log.proofs.push(row as unknown as ProofRecord);
     } else if (text(row.liveProof)) {
-      if (!text(row.capability) || !text(row.version) || !time(row.update) || !(row.messageId === null || time(row.messageId)) || !time(row.recordedAt)
-        || !['reply-accepted', 'held-notice-accepted', 'stop-latched'].includes(row.fact as string)) { log.unreadable++; continue; }
+      if (!text(row.capability) || !text(row.version) || !text(row.generation) || !time(row.update) || !(row.messageId === null || time(row.messageId))
+        || !time(row.observedAt) || !time(row.recordedAt) || !['outcome-observed', 'desk-observed'].includes(row.fact as string)
+        || (row.fact === 'desk-observed') !== text(row.deskObservation) || !(row.deskObservation === null || text(row.deskObservation))) { log.unreadable++; continue; }
       log.liveProofs.push(row as unknown as LiveProofRecord);
     } else log.unreadable++;
   }

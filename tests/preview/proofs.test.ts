@@ -1,16 +1,18 @@
 // Build 9: due plans, their probes and Nine's posture over the durable records (Rules 9, 26, 38, 43, 73).
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, writeFileSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import type { JournalView } from './journal.js';
-import { CRITICAL_PIPELINES, PREVIEW_PROOF_PLANS, executeProof, journalFingerprint, nextDuePlan, planVersion, proofPosture, stepCoverage } from './proofs.js';
+import type { JournalView, Turn } from './journal.js';
+import { CRITICAL_PIPELINES, PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, planVersion, projectionSections, proofPosture,
+  stepCoverage, verificationPlanInput } from './proofs.js';
 import type { ProofPorts, ProofRecord } from './proofs.js';
 import { appendProof, readProofs } from './proof-log.js';
+import { decodeVerificationRecord } from '../../src/verification/index.js';
 
 const key = new Uint8Array(32).fill(29);
-const T0 = 1790000000000, MINUTE = 60_000, HOUR = 60 * MINUTE;
+const T0 = 1790000000000, MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
   configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 50, maxReplies: 50, maxTurns: 50, maxBytes: 8000, cursor: 0 };
 const plan = (id: string) => PREVIEW_PROOF_PLANS.find(p => p.id === id)!;
@@ -37,51 +39,89 @@ async function world(options: { review?: boolean } = {}) {
     botIdentity: () => ({ id: 12345678 }), boundBot: 12345678, supervisors, ...extra });
   return { root, path, journal, clock, say, ports };
 }
-const record = (id: string, at: number, disposition: ProofRecord['disposition'], generation = 'g1'): ProofRecord =>
-  ({ v: 1, plan: id, planVersion: planVersion(plan(id)), generation, startedAt: at, completedAt: at, disposition, observed: {}, detail: '' });
+/** A probe run at `at`, observing a source produced at `observedAt`. */
+const run = (id: string, at: number, disposition: 'passed' | 'failed' | 'unknown', observedAt: number | null = at, generation = 'g1'): ProofRecord =>
+  executeProof({ ...plan(id), probe: () => ({ disposition, observed: { n: 1 }, detail: disposition, observedAt }) },
+    { now: () => at } as ProofPorts, generation, () => 0);
+const at = (records: ProofRecord[], now: number, generation = 'g1', ports = { supervisors }) =>
+  new Map(proofPosture(PREVIEW_PROOF_PLANS, records, generation, ports, now).map(row => [row.plan, row]));
+/** A view with only the fields a probe reads; the rest of the projection is irrelevant to it. */
+const view = (fields: Partial<JournalView>): JournalView => ({ order: [], turns: new Map(), summaries: [], stepChecks: new Map(), callOutcomes: [],
+  reminders: new Map(), awayEvents: [], memory: [], calls: 0, replies: 0, limits: genesis, stop: null, expires: 9999999999999, ...fields }) as unknown as JournalView;
+const turn = (id: string, fields: Partial<Turn>): Turn => ({ id, update: Number(id.slice(1)), text: 'what is the plan', raw: '', accepted: true, at: T0,
+  reserved: false, answer: 'Here it is.', intent: 'PREVIEW — Here it is.', ...fields });
 
-describe('posture and due work through Nine derivations', () => {
+describe("posture and due work through Nine's decoders and derivations", () => {
+  it('every plan decodes as a full Nine VerificationPlan (witness, consumer, bounds, activation)', () => {
+    for (const p of PREVIEW_PROOF_PLANS) {
+      const decoded = decodeVerificationRecord('VerificationPlan', verificationPlanInput(p, 'g1', true),
+        { site: 'preview.proofs', preserved: 'x', register: { generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'x' }, entries: [], sites: { 'preview.proofs': 'closed' } } });
+      expect(decoded.kind, `${p.id}: ${'detail' in decoded ? decoded.detail : ''}`).toBe('Success');
+    }
+  });
   it('distinguishes never-run, healthy, failed, stale, not-current and inactive', () => {
-    const at = (records: ProofRecord[], now: number, generation = 'g1', ports = { supervisors }) =>
-      new Map(proofPosture(PREVIEW_PROOF_PLANS, records, generation, ports, now).map(row => [row.plan, row]));
     expect(at([], T0).get('journal-restore')).toMatchObject({ posture: 'unknown', last: null, overdueBy: T0 });
-    const passed = at([record('journal-restore', T0, 'passed')], T0 + HOUR).get('journal-restore')!;
-    expect(passed).toMatchObject({ posture: 'healthy', lastSuccessAt: T0, dueAt: T0 + 6 * HOUR, overdueBy: 0 });
-    expect(at([record('journal-restore', T0, 'passed'), record('journal-restore', T0 + HOUR, 'failed')], T0 + 2 * HOUR).get('journal-restore')!.posture).toBe('failed');
-    expect(at([record('journal-restore', T0, 'unknown')], T0 + HOUR).get('journal-restore')!.posture).toBe('unknown');
-    expect(at([record('journal-restore', T0, 'passed')], T0 + 13 * HOUR).get('journal-restore')!.posture).toBe('stale');
+    expect(at([run('journal-restore', T0, 'passed')], T0 + HOUR).get('journal-restore')).toMatchObject({
+      posture: 'healthy', lastSuccessAt: T0, dueAt: T0 + 6 * HOUR, overdueBy: 0, undecodable: 0 });
+    expect(at([run('journal-restore', T0, 'passed'), run('journal-restore', T0 + HOUR, 'failed')], T0 + 2 * HOUR).get('journal-restore')!.posture).toBe('failed');
+    expect(at([run('journal-restore', T0, 'unknown', null)], T0 + HOUR).get('journal-restore')!.posture).toBe('unknown');
+    // Past the freshness window the witness no longer binds: Nine reads that as unknown, never healthy.
+    expect(at([run('journal-restore', T0, 'passed')], T0 + 13 * HOUR).get('journal-restore')!.posture).toBe('unknown');
     // A record from another code generation is history, not current proof.
-    expect(at([record('journal-restore', T0, 'passed', 'g0')], T0 + HOUR).get('journal-restore')!.posture).toBe('unknown');
-    const stepOff = at([], T0).get('step-check-reached')!;
-    expect(stepOff).toMatchObject({ required: false, posture: 'inactive', overdueBy: 0 });
+    expect(at([run('journal-restore', T0, 'passed', T0, 'g0')], T0 + HOUR).get('journal-restore')!.posture).toBe('unknown');
+    expect(at([], T0).get('step-check-reached')).toMatchObject({ required: false, posture: 'inactive', overdueBy: 0 });
     expect(at([], T0, 'g1', { supervisors: { ...supervisors, stepCheck: true } }).get('step-check-reached')!.required).toBe(true);
+  });
+  it('an old source observation never renews into fresh health, however recently it was re-read', () => {
+    // The probe ran an hour ago, but what it saw was produced 25 hours earlier: the witness has expired.
+    const renewed = run('reply-delivered', T0 + 25 * HOUR, 'passed', T0);
+    expect(at([renewed], T0 + 26 * HOUR).get('reply-delivered')!.posture).not.toBe('healthy');
+    // The same attempt over a source inside the window is healthy.
+    expect(at([run('reply-delivered', T0 + 25 * HOUR, 'passed', T0 + 24 * HOUR)], T0 + 26 * HOUR).get('reply-delivered')!.posture).toBe('healthy');
+    // Provider outcomes: a 30-day-old successful call is not a current observation at all.
+    const old = view({ callOutcomes: [{ kind: 'call-outcome', id: 'c', role: 'model', at: T0,
+      outcome: { exitCode: 0, localLimit: null, elapsedMs: 1, type: 'result', subtype: 'success', isError: false, outputTokens: 1, promptBytes: 1 } }] as JournalView['callOutcomes'] });
+    const later = T0 + 30 * DAY, record = executeProof(plan('provider-outcomes'), { now: () => later, liveView: () => old } as ProofPorts, 'g1', () => 0);
+    expect(record).toMatchObject({ disposition: 'unknown', observedAt: null, capture: null });
+    expect(at([record], later).get('provider-outcomes')!.posture).toBe('unknown');
+  });
+  it('an altered observation no longer binds its witness, and a pass with no source time is not a pass', () => {
+    const genuine = run('journal-restore', T0, 'passed');
+    expect(at([{ ...genuine, observed: { n: 2 } }], T0 + HOUR).get('journal-restore')!.posture).toBe('unknown');
+    expect(run('journal-restore', T0, 'passed', null)).toMatchObject({ disposition: 'unknown', capture: null });
   });
   it('the executor takes one most-overdue cadence plan and never a launch plan', () => {
     expect(nextDuePlan(PREVIEW_PROOF_PLANS, [], 'g1', { supervisors }, T0)!.trigger).toBe('cadence');
-    const everyCadence = PREVIEW_PROOF_PLANS.filter(p => p.trigger === 'cadence').map(p => record(p.id, T0, 'passed'));
+    const everyCadence = PREVIEW_PROOF_PLANS.filter(p => p.trigger === 'cadence').map(p => run(p.id, T0, 'passed'));
     expect(nextDuePlan(PREVIEW_PROOF_PLANS, everyCadence, 'g1', { supervisors }, T0 + MINUTE)).toBeNull();
     expect(nextDuePlan(PREVIEW_PROOF_PLANS, everyCadence, 'g1', { supervisors }, T0 + 15 * MINUTE)!.id).toBe('reply-drain');
     // A failed or unknown attempt is due again only after its cadence: no retry storm.
-    expect(nextDuePlan(PREVIEW_PROOF_PLANS, everyCadence.map(r => ({ ...r, disposition: 'failed' as const })), 'g1', { supervisors }, T0 + MINUTE)).toBeNull();
+    expect(nextDuePlan(PREVIEW_PROOF_PLANS, PREVIEW_PROOF_PLANS.filter(p => p.trigger === 'cadence').map(p => run(p.id, T0, 'failed')),
+      'g1', { supervisors }, T0 + MINUTE)).toBeNull();
   });
   it('a probe that cannot observe is recorded unknown, never passed', () => {
     const broken = { ...plan('journal-restore'), probe: () => { throw Error('unreadable'); } };
-    const ports = { now: () => T0, liveView: () => { throw Error('x'); }, durableView: () => { throw Error('x'); }, botIdentity: () => null,
-      boundBot: 1, supervisors } as unknown as ProofPorts;
-    expect(executeProof(broken, ports, 'g1', () => 0)).toMatchObject({ disposition: 'unknown', observed: {} });
+    expect(executeProof(broken, { now: () => T0 } as ProofPorts, 'g1', () => 0)).toMatchObject({ disposition: 'unknown', observed: {}, capture: null });
   });
 });
 
 describe('probes observe underlying state', () => {
-  it('journal restore passes on an equal replay and fails on a differing or unreadable one', async () => {
+  it('journal restore compares the whole durable projection: equal passes; changed content with equal counts fails by section', async () => {
     const w = await world();
-    await w.say('hello there');
-    expect(plan('journal-restore').probe(w.ports()).disposition).toBe('passed');
-    const stale = { ...journalFingerprint(w.journal.view) };
-    const differing = w.ports({ durableView: () => ({ ...w.journal.view, cursor: w.journal.view.cursor - 1 }) as JournalView });
-    expect(plan('journal-restore').probe(differing)).toMatchObject({ disposition: 'failed', observed: { differing: 'cursor' } });
+    await w.say('remember that the marker is Juniper');
+    await w.say('what is the marker');
+    expect(plan('journal-restore').probe(w.ports())).toMatchObject({ disposition: 'passed', observed: { restored: true, differing: null } });
+    // Astra's neighbor: identical counts, different turn text, answer and memory — the old count fingerprint passed this.
+    const live = w.journal.view;
+    const changed = { ...live, order: live.order.map(t => ({ ...t, text: 'REPLACED', answer: 'CORRUPT' })),
+      turns: new Map([...live.turns].map(([id, t]) => [id, { ...t, text: 'REPLACED', answer: 'CORRUPT' }])),
+      memory: live.memory.map(m => ({ ...m, quote: 'different memory' })) } as JournalView;
+    const differing = plan('journal-restore').probe(w.ports({ durableView: () => changed }));
+    expect(differing.disposition).toBe('failed');
+    expect(String(differing.observed.differing)).toMatch(/turns/u);
+    expect(JSON.stringify(differing)).not.toMatch(/Juniper|REPLACED|CORRUPT/u);
     expect(plan('journal-restore').probe(w.ports({ durableView: () => { throw Error('corrupt'); } })).disposition).toBe('failed');
-    expect(journalFingerprint(w.journal.view)).toEqual(stale);
+    expect(projectionSections(live)).toEqual(projectionSections(w.ports().durableView()));
     w.journal.close();
   });
   it('bot identity passes only for the bound bot, and no answer is unknown', async () => {
@@ -91,7 +131,7 @@ describe('probes observe underlying state', () => {
     expect(plan('telegram-identity').probe(w.ports({ botIdentity: () => null })).disposition).toBe('unknown');
     w.journal.close();
   });
-  it('reply review reached: passes when every sent answer passed review, fails when one did not, unknown with none', async () => {
+  it('reply review reached: over the whole population, one unreviewed answer fails it', async () => {
     const unreviewed = await world();
     expect(plan('reply-review-reached').probe(unreviewed.ports()).disposition).toBe('unknown');
     await unreviewed.say('what is the weather like');
@@ -102,18 +142,46 @@ describe('probes observe underlying state', () => {
     expect(plan('reply-review-reached').probe(reviewed.ports())).toMatchObject({ disposition: 'passed', observed: { sentAnswers: 1, reviewed: 1 } });
     reviewed.journal.close();
   });
+  it('summary and step duties hold over every member: one checked sibling never hides an unchecked one', () => {
+    const mixed = view({ summaries: [{ faithfulness: { verdict: 'unavailable' } }, {}] as unknown as JournalView['summaries'] });
+    expect(plan('summary-checked').probe({ now: () => T0, liveView: () => mixed } as ProofPorts))
+      .toMatchObject({ disposition: 'failed', observed: { summaries: 2, checked: 1, unchecked: 1 } });
+    const steps = view({ stepChecks: new Map([['answer:a', { result: { verdict: 'pass', reason: '', score: 0, latencyMs: 1 } }], ['cleanup:a', {}]]) });
+    expect(plan('step-check-reached').probe({ now: () => T0, liveView: () => steps } as ProofPorts))
+      .toMatchObject({ disposition: 'failed', observed: { steps: 2, verdicts: 1, pending: 1 } });
+  });
   it('reply drain fails only on overdue accepted work with nothing inhibiting it', async () => {
     const w = await world();
     expect(plan('reply-drain').probe(w.ports()).disposition).toBe('passed');
-    const view = w.journal.view;
-    const waiting = { ...view, order: [{ id: 'x', update: 1, text: 'hi', raw: '', accepted: true, at: T0, reserved: false }] } as unknown as JournalView;
+    const waiting = { ...w.journal.view, order: [{ id: 'x', update: 1, text: 'hi', raw: '', accepted: true, at: T0, reserved: false }] } as unknown as JournalView;
     w.clock.now = T0 + HOUR;
     expect(plan('reply-drain').probe(w.ports({ liveView: () => waiting })).disposition).toBe('failed');
     expect(plan('reply-drain').probe(w.ports({ liveView: () => ({ ...waiting, stop: 'operator' }) as JournalView }))).toMatchObject({
       disposition: 'passed', observed: { inhibition: 'operator' } });
     w.journal.close();
   });
-  it('provider outcomes: unknown before any call, failed when the latest calls all failed', async () => {
+  it('delivery outcomes read Telegram acceptance and its source time: accepted passes, unknown fails, none or old is unknown', async () => {
+    const w = await world();
+    expect(plan('reply-delivered').probe(w.ports())).toMatchObject({ disposition: 'unknown', observedAt: null });
+    await w.say('what is the plan');
+    expect(plan('reply-delivered').probe(w.ports())).toMatchObject({ disposition: 'passed', observedAt: T0 });
+    w.journal.close();
+    const lost = view({ order: [turn('u1', { sent: 4, sentAt: T0 }), turn('u2', {})] });
+    expect(plan('reply-delivered').probe({ now: () => T0, liveView: () => lost } as ProofPorts)).toMatchObject({ disposition: 'failed', observedAt: T0 });
+    const old = view({ order: [turn('u1', { sent: 4, sentAt: T0 })] });
+    expect(plan('reply-delivered').probe({ now: () => T0 + 2 * DAY, liveView: () => old } as ProofPorts).disposition).toBe('unknown');
+    const status = view({ order: [turn('u1', { text: 'status', sent: 5, sentAt: T0 }), turn('u2', { sent: 6, sentAt: T0 })] });
+    expect(plan('status-answered').probe({ now: () => T0, liveView: () => status } as ProofPorts)).toMatchObject({ disposition: 'passed', observed: { attempts: 1 } });
+    const notice = view({ order: [turn('u1', { heldNoticeIntent: 'x', heldNoticeSent: 8, heldNoticeSentAt: T0 })] });
+    expect(plan('held-notice-delivered').probe({ now: () => T0 + HOUR, liveView: () => notice } as ProofPorts).disposition).toBe('passed');
+  });
+  it('spend-cap refusal passes only on an observed hold at a reached allowance, and fails on overspend', () => {
+    const probe = (fields: Partial<JournalView>) => plan('spend-cap-refusal').probe({ now: () => T0 + HOUR, liveView: () => view(fields) } as ProofPorts);
+    expect(probe({})).toMatchObject({ disposition: 'unknown' });
+    expect(probe({ calls: 50, awayEvents: [{ kind: 'hold', at: T0, id: 'u1', reason: 'call cap' }] })).toMatchObject({ disposition: 'passed', observedAt: T0 });
+    expect(probe({ calls: 51 })).toMatchObject({ disposition: 'failed' });
+  });
+  it('provider outcomes: unknown before any call, failed when the recent calls all failed', async () => {
     const w = await world();
     expect(plan('provider-outcomes').probe(w.ports()).disposition).toBe('unknown');
     const call = (subtype: string) => ({ kind: 'call-outcome', id: 'c', role: 'model', at: T0,
@@ -126,36 +194,55 @@ describe('probes observe underlying state', () => {
   });
 });
 
-describe('every critical pipeline step reaches its supervisor or names its deterministic exception (Rule 38)', () => {
-  it('a consequential send is not covered by the deterministic floor alone', async () => {
-    const unreviewed = await world();
-    await unreviewed.say('what is the weather like');
-    const rows = stepCoverage(unreviewed.journal.view, supervisors)['operator-reply']!;
-    expect(rows.find(r => r.boundary === 'send')!.state).toBe('unavailable');
-    expect(rows.find(r => r.boundary === 'intake')!.state).toBe('validated');
-    // The dark step observer contributes nothing: those boundaries show as missing, not validated.
-    expect(rows.find(r => r.boundary === 'prepare-packet')!.state).toBe('missing');
-    unreviewed.journal.close();
-    const reviewed = await world({ review: true });
-    await reviewed.say('what is the weather like');
-    const covered = stepCoverage(reviewed.journal.view, supervisors);
-    expect(covered['operator-reply']!.find(r => r.boundary === 'send')!.state).toBe('validated');
-    expect(covered['requested-reminder']!.every(r => r.state === 'validated')).toBe(true);
-    expect(Object.keys(covered)).toEqual(Object.keys(CRITICAL_PIPELINES));
-    reviewed.journal.close();
+describe('every critical pipeline step, over its complete population (Rule 38)', () => {
+  const coverage = (fields: Partial<JournalView>, on = supervisors) => stepCoverage(view(fields), on);
+  const row = (rows: ReturnType<typeof stepCoverage>[string], step: string) => rows.rows.find(r => r.boundary === step)!;
+  it('one reviewed answer never covers an unreviewed one (mixed pass/missing neighbor)', () => {
+    const reviewed = turn('u1', { sent: 1, sentAt: T0, replyChecks: [{ verdict: 'pass', ruleIds: [], confidence: null, path: 'jev', latencyMs: 1 }] });
+    const bare = turn('u2', { sent: 2, sentAt: T0 });
+    const rows = coverage({ order: [reviewed, bare], turns: new Map([['u1', reviewed], ['u2', bare]]) })['operator-reply']!;
+    for (const step of ['answer', 'interpret', 'send'])
+      expect(row(rows, step)).toMatchObject({ population: 2, validated: 1, missing: 1, state: 'missing' });
+    expect(row(rows, 'intake')).toMatchObject({ state: 'validated', bootstrap: expect.any(String) });
+    const both = coverage({ order: [reviewed], turns: new Map([['u1', reviewed]]) })['operator-reply']!;
+    expect(row(both, 'send').state).toBe('validated');
+  });
+  it('a step no supervisor reaches is missing, never validated; an off supervisor contributes nothing (missing-step neighbor)', () => {
+    const reviewed = turn('u1', { sent: 1, sentAt: T0, replyChecks: [{ verdict: 'pass', ruleIds: [], confidence: null, path: 'jev', latencyMs: 1 }] });
+    const stepChecks = new Map([['cleanup:u1', { result: { verdict: 'pass' as const, reason: '', score: 0, latencyMs: 1 } }]]);
+    const off = coverage({ order: [reviewed], turns: new Map([['u1', reviewed]]), stepChecks })['operator-reply']!;
+    expect(row(off, 'prepare-packet').state).toBe('missing');
+    expect(row(off, 'cleanup').state).toBe('missing');
+    const on = coverage({ order: [reviewed], turns: new Map([['u1', reviewed]]), stepChecks }, { ...supervisors, stepCheck: true })['operator-reply']!;
+    expect(row(on, 'cleanup').state).toBe('validated');
+    expect(row(on, 'prepare-packet').state).toBe('missing');
+    // A violation is failed, not validated.
+    const flagged = turn('u1', { sent: 1, sentAt: T0, replyChecks: [{ verdict: 'violation', ruleIds: [], confidence: 1, path: 'holding', latencyMs: 0 }] });
+    expect(row(coverage({ order: [flagged], turns: new Map([['u1', flagged]]) })['operator-reply']!, 'send').state).toBe('failed');
+  });
+  it('a reminder send has no supervisor: missing with its declared open direction; no invented deterministic validation', () => {
+    const reminders = new Map([['r1', { items: [], text: 'x', day: '2026-09-22', at: T0, sent: 3, sentAt: T0 }]]);
+    const pipeline = coverage({ reminders: reminders as JournalView['reminders'] })['requested-reminder']!;
+    expect(pipeline.failureDirection).toBe('open');
+    expect(pipeline.rows.map(r => r.state)).toEqual(['missing', 'missing']);
+    expect(Object.values(CRITICAL_PIPELINES).flatMap(p => p.steps).filter(s => s.bootstrap).map(s => s.step)).toEqual(['intake', 'select-due']);
+    expect(Object.keys(stepCoverage(view({}), supervisors))).toEqual(Object.keys(CRITICAL_PIPELINES));
   });
 });
 
-it('the proof log keeps valid rows and counts torn or malformed ones', () => {
+it('the proof log keeps valid rows, counts torn or malformed ones, and reports an unreadable store', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-proof-log-')));
   const path = join(root, 'proofs.jsonl');
-  appendProof(path, record('journal-restore', T0, 'passed'));
-  appendProof(path, { v: 1, liveProof: 'live-proof:preview.reply', capability: 'preview.reply', version: 'v', fact: 'reply-accepted', update: 1, messageId: 3, recordedAt: T0 });
-  appendFileSync(path, '{"v":1,"plan":"x","planVersion":"v","generation":"g","startedAt":5,"completedAt":4,"disposition":"passed","observed":{},"detail":""}\n{"v":1,"plan":');
+  appendProof(path, run('journal-restore', T0, 'passed'));
+  appendProof(path, { v: 1, liveProof: 'live-proof:preview.reply', capability: 'preview.reply', version: 'v', generation: 'g1', fact: 'outcome-observed',
+    update: 1, messageId: 3, observedAt: T0, recordedAt: T0, deskObservation: null });
+  appendFileSync(path, '{"v":1,"plan":"x","planVersion":"v","generation":"g","startedAt":5,"completedAt":4,"disposition":"passed","observed":{},"detail":"","observedAt":null,"capture":null}\n{"v":1,"plan":');
   const log = readProofs(path);
+  expect(log).toMatchObject({ available: true, unreadable: 2 });
   expect(log.proofs).toHaveLength(1);
   expect(log.liveProofs).toHaveLength(1);
-  expect(log.unreadable).toBe(2);
   writeFileSync(path, '');
-  expect(readProofs(join(root, 'absent.jsonl'))).toEqual({ proofs: [], liveProofs: [], unreadable: 0 });
+  expect(readProofs(join(root, 'absent.jsonl'))).toEqual({ proofs: [], liveProofs: [], unreadable: 0, available: true });
+  mkdirSync(join(root, 'dir.jsonl'));
+  expect(readProofs(join(root, 'dir.jsonl')).available).toBe(false);
 });
