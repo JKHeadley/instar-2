@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from '../../scripts/build-register.mjs';
 import type { BootstrapBinding } from '../../scripts/build-register.mjs';
+import { actionRegistry } from '../../scripts/register-source.mjs';
 import { defineDecoder, decode } from '../../src/index.js';
 import { generationOf, decodeGenerationRecord } from '../../src/register/index.js';
 import type { FactReference, RegisterContext } from '../../src/register/index.js';
@@ -157,6 +158,9 @@ describe('compiled register build adapter lifecycle', () => {
       const compiledMachine = value(compiledDecode('VerifiedPrincipal', json('VerifiedPrincipal', { id: 'landing', kind: 'system' }), { ...s.f.ctx, provenance }));
       const actions = ['append:version-chain', 'append:generation-record', 'append:check-run-record'];
       Object.assign(s.f.ctx.register.actions, Object.fromEntries(actions.map(action => [action, { protected: false, repository: false }])));
+      // The landing authority carries the committed owner action metadata of the register it lands.
+      Object.assign(s.f.ctx.register.actions, actionRegistry(Object.fromEntries(git('ls-files', '*.actions.json').trim().split('\n')
+        .filter(Boolean).map(path => [path, readFileSync(join(root, path), 'utf8')]))));
       s.f.grant({ id: 'landing:grant', grantee: machine, standing: 'delegate', actions, expiresAt: 1000 });
       const completedExtract = { ...workflow.extract, rows: result.register.entries.map(({ declaration }) => {
         const { declaredBy: _site, ...authored } = declaration;
