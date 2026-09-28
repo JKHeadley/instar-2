@@ -56,7 +56,7 @@ import { memoryReport } from './memory-export.js';
 
 import { operatorDigest } from './operator-digest.js';
 import { stepQuestions } from './step-check.js';
-import { RETROSPECTIVE_QUESTION, disciplineDigest, disciplineSource, eligibleCases, feedbackDispositions, openFindings, promotedCases, standingGrantCandidates } from './retrospective.js';
+import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunsDue, standingGrantCandidates } from './retrospective.js';
 
 
 
@@ -211,19 +211,36 @@ const packetStatus = view => {
     dropped: last.packetDropped ?? 'unavailable in earlier reservation' };
 };
 
-/** The retrospective review's proof of running, coverage and open work (content-free except its own findings). */
-const retrospectiveView = view => ({ passes: view.retroPasses.map(pass => ({ pass: pass.pass, at: pass.at,
-  state: pass.state ?? 'in-flight-or-unknown', reason: pass.reason ?? null, eligible: pass.eligible, inspected: pass.cases.length,
-  omitted: pass.omitted.length, efficiency: pass.result?.efficiency.summary ?? null,
-  gravityWellsObserved: pass.result?.gravityWells.filter(item => item.observed).map(item => item.well) ?? [],
-  findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs,
-    disposition: 'owner' in item.disposition ? `owned by ${item.disposition.owner}` : 'declined with reason' })) ?? [] })),
-  openFindings: openFindings(view).map(item => item.id), feedbackDispositions: feedbackDispositions(view).map(item => ({ case: item.case, disposition: item.disposition })),
-  standingGrantCandidates: standingGrantCandidates(view).map(item => ({ case: item.case, presentable: item.presentable, recurrences: item.recurrences.length })),
-  promotedCases: promotedCases(view).map(item => ({ case: item.provenance.case, expected: item.expected, pass: item.provenance.pass })),
-  owed: (() => { const owed = eligibleCases(view, retrospectiveCases(view)).filter(item => item.category !== 'open');
-    return { cases: owed.length, oldestAt: owed[0]?.at ?? null }; })(),
-  contextDigest: disciplineDigest(), routeSelection: 'unmeasured' });
+/** The retrospective review's proof of running, its accounting, grades and open work (content-free except its own findings). */
+const retrospectiveView = (view, now) => { const digest = replyContextDigest(view);
+  const grades = [...latestGrades(view).values()];
+  return { passes: view.retroPasses.map(pass => ({ pass: pass.pass, at: pass.at,
+    state: pass.state ?? 'in-flight-or-unknown', reason: pass.reason ?? null, eligible: pass.eligible,
+    supplied: pass.cases.length, deferredByBound: pass.omitted.length,
+    inspected: pass.result ? pass.result.inspected.length : null, omittedByReview: pass.result ? pass.result.omitted.length : null,
+    accounting: passAccounting(pass), efficiency: pass.result?.efficiency.summary ?? null,
+    duties: pass.result?.duties.map(item => ({ duty: item.duty, disposition: item.disposition })) ?? [],
+    gravityWellsObserved: pass.result?.gravityWells.filter(item => item.observed).map(item => item.well) ?? [],
+    findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs, recurs: item.recurs ?? [],
+      structuralRemedy: item.structuralRemedy ?? null,
+      disposition: 'owner' in item.disposition ? `owned by ${item.disposition.owner}` : 'declined with reason' })) ?? [],
+    reruns: (pass.reruns ?? []).map(run => ({ index: run.index, case: run.case, state: run.state ?? 'in-flight-or-unknown' })) })),
+  grades: grades.map(({ grade, pass }) => ({ case: grade.case, pass, conclusion: grade.conclusion.assessment, reason: grade.reason.assessment,
+    outcome: grade.outcome.assessment, outcomeReason: grade.outcome.reason, rederivation: grade.rederivation ?? null, reassessment: grade.reassessment === true })),
+  pendingGrades: pendingGrades(view).length,
+  openFindings: openFindings(view).map(item => ({ id: item.id, duty: item.duty, next: 'next' in item.disposition ? item.disposition.next : null })),
+  feedbackDispositions: feedbackDispositions(view).map(item => ({ case: item.case, disposition: item.disposition, finding: item.finding ?? null })),
+  standingGrantCandidates: standingGrantCandidates(view).map(item => ({ case: item.case, presentable: item.presentable,
+    recurrences: item.recurrences, scope: item.scope })),
+  promotedCases: promotedCases(view).map(item => ({ case: item.provenance.case, expected: item.expected, pass: item.provenance.pass,
+    contextDigest: item.provenance.contextDigest, pending: item.pending })),
+  benchmarkReruns: benchmarkReruns(view), rerunsDue: rerunsDue(view, digest).length,
+  owed: (() => { const owed = owedCases(view, retrospectiveCases(view), now);
+    return { cases: owed.length, byCategory: Object.fromEntries(['message', 'decision', 'verdict', 'repair', 'authorization', 'open', 'rerun']
+      .map(category => [category, owed.filter(row => row.item.category === category).length])),
+      oldestSince: owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) === Number.MAX_SAFE_INTEGER ? null
+        : owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) }; })(),
+  contextDigest: digest, routeSelection: 'unmeasured' }; };
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
@@ -400,7 +417,7 @@ async function main() {
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
-      retrospective: retrospectiveView(view.view),
+      retrospective: retrospectiveView(view.view, wallNow()),
       people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
         change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
@@ -435,7 +452,11 @@ async function main() {
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
         ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
-          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
+          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null,
+          answerReason: reply.answerReason ?? null,
+          retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
+            return row ? { pass: row.pass, conclusion: row.grade.conclusion, reason: row.grade.reason, outcome: row.grade.outcome,
+              rederivation: row.grade.rederivation ?? null } : null; })() } : null,
         ...(next ? { next } : {}), withheld: withheldView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
