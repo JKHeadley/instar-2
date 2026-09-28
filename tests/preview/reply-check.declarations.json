@@ -10,14 +10,14 @@
       "rungs": [
         {
           "decidesAlone": "no",
-          "criticality": "A reply the operator reads cannot be unsent; a contextual reviewer judges it before release. When the review gives no verdict and Jev flagged a credential, or Jev itself gave no completed verdict, the reply is not sent.",
+          "criticality": "A reply the operator reads cannot be unsent; a contextual reviewer judges it before release. When the review gives no verdict and Jev flagged a credential, Jev itself gave no completed verdict, or the spend cap refused the review, the reply is not sent.",
           "failDirection": "closed",
           "preservesInput": "encrypted preview journal: the turn and its candidate reply stay held and pending",
           "model": "preview-subscription-claude"
         },
         {
           "decidesAlone": "no",
-          "criticality": "Rule 86: Jev is a low-context filter and may hold a reply alone only for a secret. When Jev completed with non-credential flags only and the contextual review then gives no verdict, those flags only signal and the reply is sent (reachability to the operator fails open, Rule 95).",
+          "criticality": "Rule 86: Jev is a low-context filter and may hold a reply alone only for a secret. When Jev completed with non-credential flags only and the contextual review was attempted but gave no verdict, those flags only signal and the reply is sent once (reachability to the operator fails open, Rule 95).",
           "failDirection": "open",
           "preservesInput": "encrypted preview journal: the Jev row, the unavailable review row and the reply intent stay recorded; the release is counted on status (reviewUnavailableReleases)",
           "model": "preview-subscription-claude"
