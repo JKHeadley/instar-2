@@ -12,6 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
+import { projectionDigest } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
@@ -28,7 +29,7 @@ import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { hostname, homedir } from 'node:os';
-import { claimConversation, observeConversationOwner } from './conversation-owner.js';
+import { assessStranded, claimConversation, observeConversationOwner, recordRefusal, refusedLaunches, SUPPORTED_POSTURE } from './conversation-owner.js';
 import { agreementLine, agreementStatus, runDueAgreements } from './store-agreements.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -243,6 +244,11 @@ async function main() {
     return realpathSync(directory);
   };
   const ownerMachine = options['owner-machine'] ?? hostname();
+  // Rule 113: the declared multi-machine posture. Only single-machine has a conversation authority today.
+  const posture = options['machine-posture'] ?? process.env.INSTAR_MACHINE_POSTURE ?? 'single-machine';
+  if (posture !== 'single-machine' && posture !== 'multi-machine') throw Error('preview: machine-posture must be single-machine or multi-machine');
+  const topology = { posture, supported: posture === SUPPORTED_POSTURE, authority: 'host-local conversation lease (this machine only)',
+    ...(posture === SUPPORTED_POSTURE ? {} : { reason: 'no shared conversation authority exists for a multi-machine posture; this runner does not serve it' }) };
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
@@ -285,14 +291,17 @@ async function main() {
       const g = view.view.genesis;
       const ownership = observeConversationOwner({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine,
         probePid: pid => process.kill(pid, 0), now });
-      // Stranded: accepted operator messages wait while nobody live on this machine serves the conversation.
+      // Stranded (signal only): every current ownership record is assessed, with or without waiting input.
       const waiting = view.view.order.filter(turn => turn.accepted && turn.intent === undefined && turn.sent === undefined).length;
-      const retired = log.launches.filter(run => run.nonowner).length;
       process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
       ownership: { ...ownership, holder: ownership.holder && { machine: ownership.holder.machine, since: ownership.holder.since,
-        thisRoot: ownership.holder.root === root } },
-      stranded: waiting > 0 && ownership.state !== 'serving' ? { waiting, owner: ownership.state } : null,
-      duplicateLaunchesRetired: retired,
+        thisRoot: ownership.holder.root === root }, topology },
+      stranded: assessStranded(ownership, waiting),
+      // Startup refusals are counted host-wide for this conversation (every root sees the same number);
+      // retirements of an existing worker that lost the fence, and inhibited launches, are this root's own.
+      duplicateLaunchesRefused: refusedLaunches(ownersDirectory(), g.bot, g.chat),
+      workersRetired: log.launches.filter(run => run.retired).length,
+      inhibitedLaunches: log.launches.filter(run => run.inhibited).length,
       storeAgreements: agreementStatus(agreementsPath, now),
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
@@ -554,14 +563,19 @@ async function main() {
       const g = journal.view.genesis;
       runDueAgreements(agreementsPath, { view: journal.view, runs: readRuns(runsPath), root, now: wallNow(),
         ownership: observeConversationOwner({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine,
-          probePid: pid => process.kill(pid, 0), now: wallNow() }) }, force);
+          probePid: pid => process.kill(pid, 0), now: wallNow() }),
+        replay: () => { const replayed = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+          try { return projectionDigest(replayed.view); } finally { replayed.close(); } } }, force);
     } catch { /* an interrupted maintenance pass stays due; the last completed check remains visible */ }
   };
+  let retiredReason = null;
   const ownerHeld = () => {
     if (ownerClaim?.owner && ownerClaim.verify()) return true;
-    if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; workerStop.value = true; }
+    if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; retiredReason ??= 'conversation ownership lost'; workerStop.value = true; }
     return false;
   };
+  // Service observation (design 18): whether this owner can serve right now, with the typed reason when not.
+  const serviceBeat = (servable, reason) => { try { if (ownerClaim?.owner) ownerClaim.observe(wallNow(), servable, reason); } catch { /* evidence only */ } };
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
@@ -596,18 +610,39 @@ async function main() {
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
+    if (!topology.supported) {
+      // Rule 113 / 63: an unsupported topology is visibly inhibited; the platform keeps the input, nothing is sent.
+      const at = wallNow();
+      appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
+      appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${topology.reason}`, revival: 'inhibited',
+        inhibited: `unsupported topology: ${posture}` });
+      process.stderr.write('preview: the declared multi-machine posture has no shared conversation authority; nothing was polled or sent\n');
+      process.exitCode = 4;
+      return;
+    }
     ownerClaim = claimConversation({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine, root,
       key: key(), context, io: productionStorageIO, now: wallNow() });
     if (!ownerClaim.owner) {
-      // Duplicate retirement: a non-owner neither polls (the platform keeps the input for the owner) nor sends.
       const at = wallNow(), holder = ownerClaim.holder;
       appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
+      if (ownerClaim.disposition === 'inhibited') {
+        // The authority could not be read or written: not evidence that anyone serves. Inhibited, work preserved.
+        appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${ownerClaim.reason}`, revival: 'inhibited',
+          inhibited: ownerClaim.reason });
+        process.stderr.write('preview: conversation ownership could not be established; nothing was polled or sent\n');
+        process.exitCode = 4;
+        return;
+      }
+      // Startup duplicate refusal: a non-owner neither polls (the platform keeps the input for the owner) nor sends.
+      try { recordRefusal({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine, root, at, reason: ownerClaim.reason }); }
+      catch { /* the root's own run log still records the refusal */ }
       appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `not the conversation owner: ${ownerClaim.reason}`,
         revival: 'none', nonowner: { machine: holder?.machine ?? null, since: holder?.since ?? null } });
-      process.stderr.write('preview: this conversation is served by another runner; this launch retired without polling or sending\n');
+      process.stderr.write(`preview: this conversation is held by another runner (${ownerClaim.reason}); this launch retired without polling or sending\n`);
       process.exitCode = 3;
       return;
     }
+    serviceBeat(true, 'claimed');
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
     const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
@@ -650,8 +685,8 @@ async function main() {
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
       statusLines: () => {
-        const log = readRuns(runsPath), retired = log.launches.filter(run => run.nonowner).length;
-        return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${retired} duplicate launch(es) retired.`,
+        const refused = refusedLaunches(ownersDirectory(), g.bot, g.chat);
+        return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
           agreementLine(agreementsPath, wallNow())];
       },
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
@@ -759,12 +794,14 @@ async function main() {
         return false;
       }
       const until = clock.elapsed() + Math.min(conflict ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
+      serviceBeat(false, conflict ? 'Telegram reports another poller' : 'polling Telegram is failing');
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
       return true;
     };
     // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
     if (exhaustedPollReason(failedPolls, conflictedPolls)) {
+      serviceBeat(false, 'poll breaker open after sustained failures');
       const until = clock.elapsed() + Math.min(conflictedPolls >= 5 ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls, 7));
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
@@ -805,6 +842,7 @@ async function main() {
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || !ownerHeld()) break;
+      serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, journal.view.stop ? 'stop latched' : 'serving');
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
           importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
@@ -898,8 +936,11 @@ async function main() {
             || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
           const remaining = health ? health.unfinished + health.scheduledWork : 0;
           if (health) end = { unfinished: health.unfinished, revival: remaining === 0 ? 'none' : inhibited ? 'inhibited' : 'queued',
-            ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }) };
+            ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }),
+            // Rule 33: the exact journal frontier this claim describes.
+            frontier: projectionDigest(journal.view) };
         } catch { /* an exit without a disposition is revived by the host watcher as a crash */ }
+        if (retiredReason) end = { ...end, retired: retiredReason };
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {

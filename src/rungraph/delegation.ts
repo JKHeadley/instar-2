@@ -8,9 +8,12 @@
  * its own. Delivery evidence arrives from the agent-transport port (part six).
  *
  * Deliberate bounds of this slice: references (principals, grants, intents,
- * evidence) are opaque owner-issued ids, never live authority; the receiving
- * agent maps the reserved child identity to its own run through a durable
- * acceptance record, so the Run decoder's depth-one slice is unchanged.
+ * evidence) are opaque owner-issued ids, never live authority. The receiving
+ * agent's Run owner maps the reserved child identity to its own admitted run
+ * (the durable acceptance) and closes it (the result's RunExit and accounting)
+ * through the `DelegatedRunAuthority` seam in agent-transport.ts; this ledger
+ * never decides authority or resources itself. The Run decoder's depth-one
+ * slice is unchanged, so recursive Run admission stays a P5 residual.
  */
 import type { BoundaryContext, Json, Result } from '../index.js';
 import type { AppendReceipt, FactEnvelope, FactSchema } from '../facts/index.js';
@@ -103,6 +106,8 @@ export interface DelegationResult {
   readonly edge: string; readonly childRun: string; readonly contractDigest: string;
   readonly terminal: 'completed' | 'refused' | 'cancelled' | 'failed';
   readonly result: string; readonly evidence: readonly string[]; readonly effects: readonly string[];
+  /** The recipient's own terminal transition: its admitted run, that run's RunExit and the resources it spent. */
+  readonly exit: Readonly<{ localRun: string; runExit: string; spent: number }>;
   readonly submittedBy: string; readonly digest: string;
 }
 export type DelegationRecord =
@@ -113,8 +118,9 @@ export type DelegationRecord =
   | Readonly<{ record: 'collection'; edge: string; terminal: string; digest: string; at: number }>
   | Readonly<{ record: 'cancel'; edge: string; by: string; reason: string; at: number }>
   | Readonly<{ record: 'conflict'; edge: string; subject: string; left: string; right: string; at: number }>
-  /** Proof that a replicated-demand edge achieved its demand; without it the edge is never dispatchable. */
-  | Readonly<{ record: 'durable'; edge: string; durability: 'replicated'; replicas: number; at: number }>;
+  /** Proof that the exact edge (or acceptance) prefix achieved a replicated demand. Without it the
+   * edge is never dispatchable (or executable); the requested demand is not a receipt. */
+  | Readonly<{ record: 'durable'; edge: string; durability: 'replicated'; replicas: number; at: number; prefix?: 'edge' | 'acceptance' }>;
 export interface DelegationAppendReceipt { readonly durability: DelegationDurability; readonly replicas: number }
 /** Owner-supplied durable store. `append` returns only after the record is durable at the stated level. */
 export interface DelegationStorePort {
@@ -134,6 +140,10 @@ export interface EdgeView {
   readonly conflicts: readonly string[];
   /** An offer may leave only when the edge's durability demand is proven met. */
   readonly dispatchable: boolean;
+  /** A worker may start, and custody may be claimed, only when the acceptance achieved the demand too. */
+  readonly executable: boolean;
+  /** The durability actually achieved by the edge prefix (never the requested demand). */
+  readonly achieved: DelegationDurability | null;
   /** Owned while its result is uncollected or its cancellation unconfirmed — even after parent or worker loss. */
   readonly owned: boolean;
 }
@@ -179,14 +189,14 @@ export function childAuthority(contract: DelegationContract): DelegationAuthorit
 export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMap<string, EdgeView> {
   type Mutable = { contract: DelegationContract; acceptance: EdgeView['acceptance']; lastProven: DeliveryState | null;
     uncertain: string[]; refusals: NonNullable<DeliveryEvidence['refusedWhat']>[]; result: DelegationResult | null;
-    collected: boolean; conflicts: string[]; proofs: Set<DeliveryState>; cancelRequested: boolean; replicated: boolean };
+    collected: boolean; conflicts: string[]; proofs: Set<DeliveryState>; cancelRequested: boolean; achieved: Set<'edge' | 'acceptance'> };
   const edges = new Map<string, Mutable>();
   for (const row of records) {
     if (row.record === 'edge') {
       const prior = edges.get(row.contract.id);
       if (prior) { if (prior.contract.digest !== row.contract.digest) prior.conflicts.push(`edge digest ${row.contract.digest}`); continue; }
       edges.set(row.contract.id, { contract: row.contract, acceptance: null, lastProven: null, uncertain: [], refusals: [],
-        result: null, collected: false, conflicts: [], proofs: new Set(), cancelRequested: false, replicated: false });
+        result: null, collected: false, conflicts: [], proofs: new Set(), cancelRequested: false, achieved: new Set() });
       continue;
     }
     const edgeId = row.record === 'evidence' ? row.evidence.edge : row.record === 'result' ? row.result.edge : row.edge;
@@ -210,7 +220,7 @@ export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMa
     } else if (row.record === 'collection') edge.collected = true;
     else if (row.record === 'cancel') edge.cancelRequested = true;
     else if (row.record === 'conflict') edge.conflicts.push(`${row.subject}: ${row.left} vs ${row.right}`);
-    else if (row.record === 'durable') edge.replicated = row.replicas >= 1;
+    else if (row.record === 'durable' && row.durability === 'replicated' && row.replicas >= 1) edge.achieved.add(row.prefix ?? 'edge');
   }
   const view = new Map<string, EdgeView>();
   for (const [id, edge] of edges) {
@@ -223,7 +233,9 @@ export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMa
       proven: DELIVERY_STATES.filter(state => edge.proofs.has(state)), lastProven: edge.lastProven,
       uncertain: [...edge.uncertain], refusals: [...edge.refusals], result: edge.result, collected: edge.collected,
       cancellation, conflicts: [...edge.conflicts],
-      dispatchable: edge.contract.durability === 'local-durable' || edge.replicated,
+      dispatchable: edge.contract.durability === 'local-durable' || edge.achieved.has('edge'),
+      executable: edge.acceptance !== null && (edge.contract.durability === 'local-durable' || edge.achieved.has('acceptance')),
+      achieved: edge.contract.durability === 'local-durable' ? 'local-durable' : edge.achieved.has('edge') ? 'replicated' : null,
       owned: !(edge.collected || settledWithoutResult) || cancellation === 'requested' }));
   }
   return view;
@@ -251,10 +263,15 @@ export interface DelegationLedger {
 export function createDelegationLedger(store: DelegationStorePort, context: BoundaryContext): DelegationLedger {
   const view = () => foldDelegation(store.read());
   const edgeOf = (id: string) => { const edge = view().get(id); need(edge, `unknown delegation edge ${id}`); return edge; };
-  const durable = (record: DelegationRecord, demand: DelegationDurability) => {
+  // Append, then compare the store's achieved durability with the demand. A record appended below its
+  // demand stays as local history but earns no `durable` proof, so it never becomes dispatchable or
+  // executable — across restart and redelivery alike.
+  const durable = (record: DelegationRecord, demand: DelegationDurability, prefix?: Readonly<{ edge: string; kind: 'edge' | 'acceptance'; at: number }>) => {
     const receipt = store.append(record);
     need(demand === 'local-durable' || (receipt.durability === 'replicated' && receipt.replicas >= 1),
       `replication demand unmet: ${receipt.durability} with ${receipt.replicas} replica(s)`);
+    if (demand === 'replicated' && prefix)
+      store.append({ record: 'durable', edge: prefix.edge, durability: 'replicated', replicas: receipt.replicas, at: prefix.at, prefix: prefix.kind });
     return receipt;
   };
   const descendants = (edge: DelegationContract, all: ReadonlyMap<string, EdgeView>): string[] => {
@@ -307,9 +324,7 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
         need(retrieved.dispatchable, 'replication demand unmet: no proof the edge reached its replicas');
         return retrieved.contract;
       }
-      const receipt = durable({ record: 'edge', contract }, request.durability);
-      if (request.durability === 'replicated')
-        durable({ record: 'durable', edge: id, durability: 'replicated', replicas: receipt.replicas, at: request.at }, 'replicated');
+      durable({ record: 'edge', contract }, request.durability, { edge: id, kind: 'edge', at: request.at });
       return contract;
     }),
     receiveEdge: (contract, at) => boundary('DelegationReceivedEdge', { edge: contract.id }, context, () => {
@@ -323,23 +338,27 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
           store.append({ record: 'conflict', edge: contract.id, subject: 'edge', left: existing.contract.digest, right: digest, at });
           throw new Error('Conflict: a different contract under the same edge identity');
         }
-        return existing;
+        if (existing.dispatchable) return existing;
       }
-      durable({ record: 'edge', contract }, contract.durability);
+      // A first copy, or a redelivery of one whose replicated demand was never achieved: append again and
+      // take the store's new receipt. The fold ignores the identical duplicate.
+      durable({ record: 'edge', contract }, contract.durability, { edge: contract.id, kind: 'edge', at });
       return edgeOf(contract.id);
     }),
     accept: (edgeId, recipient, localRun, at) => boundary('DelegationAcceptance', { edge: edgeId }, context, () => {
       const edge = edgeOf(edgeId);
       need(edge.contract.recipient === recipient, 'acceptance by a principal other than the contract recipient');
       need(at < edge.contract.expiresAt, 'delegation expired before acceptance');
+      need(edge.dispatchable, 'replication demand unmet: the received edge never reached its replicas');
       if (edge.acceptance) {
         if (edge.acceptance.localRun !== localRun) {
           store.append({ record: 'conflict', edge: edgeId, subject: 'acceptance', left: edge.acceptance.localRun, right: localRun, at });
           throw new Error('exclusive edge already accepted by a different run');
         }
-        return edge;
+        if (edge.executable) return edge;
       }
-      durable({ record: 'acceptance', edge: edgeId, recipient, childRun: edge.contract.childRun, localRun, at }, edge.contract.durability);
+      durable({ record: 'acceptance', edge: edgeId, recipient, childRun: edge.contract.childRun, localRun, at }, edge.contract.durability,
+        { edge: edgeId, kind: 'acceptance', at });
       return edgeOf(edgeId);
     }),
     record: evidence => boundary('DeliveryEvidence', { key: evidence.key, state: evidence.state }, context, () => {
@@ -363,6 +382,9 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
       const edge = edgeOf(result.edge);
       need(result.childRun === edge.contract.childRun && result.contractDigest === edge.contract.digest, 'result is bound to another contract');
       need(result.submittedBy === edge.contract.recipient, 'result submitted by a principal other than the recipient');
+      text(result.exit?.localRun, 'result run'); text(result.exit.runExit, 'result RunExit'); count(result.exit.spent, 'result spend');
+      need(result.exit.spent <= edge.contract.budget, `result spent ${result.exit.spent} beyond the edge budget ${edge.contract.budget}`);
+      if (edge.acceptance) need(result.exit.localRun === edge.acceptance.localRun, 'result closes a run other than the accepted one');
       if (edge.result) {
         if (edge.result.digest !== result.digest) {
           store.append({ record: 'conflict', edge: result.edge, subject: 'result', left: edge.result.digest, right: result.digest, at });

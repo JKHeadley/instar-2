@@ -24,7 +24,7 @@ export { createDelegationLedger, foldDelegation, placeDelegation, childAuthority
 export type { DelegationAuthority, DelegationRequest, DelegationContract, DelegationRecord, DelegationResult, DelegationLedger,
   DelegationStorePort, DelegationAppendReceipt, DelegationDurability, DeliveryEvidence, DeliveryState, EdgeView, RetryPlan,
   CapabilityAdvertisement, PlacementDecision } from './delegation.js';
-export { createAgentEndpoint, createLocalAgentTransport, offerEnvelope, cancelEnvelope, resultEnvelope, resultFor, sealEnvelope,
+export { createAgentEndpoint, createLocalAgentTransport, offerEnvelope, cancelEnvelope, resultEnvelope, resultFor, resultKey, sealEnvelope,
   envelopeIntact, semanticDigest, evidenceFromReceipt } from './agent-transport.js';
 export type { AgentTransportPort, AgentTransportEnvelope, AgentEnvelopeKind, AgentEndpoint, EndpointReceipt, DelegatedWorker,
-  WorkerOutcome, SendMode } from './agent-transport.js';
+  WorkerOutcome, SendMode, DelegatedRunAuthority } from './agent-transport.js';

@@ -53,9 +53,22 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; }
   };
   const releaseOverlap = () => rmSync(marker, { force: true });
+  // Asynchronous twins of launchLive/status: the Vitest worker keeps its event loop (and its RPC to the main
+  // process) alive while the child runs, so a slow machine never turns into an unhandled onTaskUpdate timeout.
+  const collect = (child, timeout) => new Promise(done => {
+    let stdout = '', stderr = '', finished = false;
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+    const timer = setTimeout(() => { if (!finished) child.kill('SIGKILL'); }, timeout);
+    child.once('close', (status, signal) => { finished = true; clearTimeout(timer); done({ status, signal, stdout, stderr }); });
+  });
+  const runLive = (cycles, extraArgs = [], extraEnv = {}) => collect(spawn(process.execPath, [...launchArgs(liveRoot, 'live', cycles), ...extraArgs],
+    { cwd: process.cwd(), env: { ...env('live'), ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] }), 60000);
+  const statusOf = () => collect(spawn(process.execPath, [...args, 'status', '--root', liveRoot],
+    { cwd: process.cwd(), env: env('live'), stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
   const setUpdates = updates => writeFileSync(join(directory, 'updates.json'), JSON.stringify(updates));
   const setConflicts = count => writeFileSync(join(directory, 'conflicts-remaining'), String(count));
   const calls = () => readFileSync(join(directory, 'telegram.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   return { directory, canaryRoot, liveRoot, startCanary, launchLive, startLive, status, waitForOverlap,
-    stopCanary, releaseOverlap, setUpdates, setConflicts, calls };
+    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf };
 }

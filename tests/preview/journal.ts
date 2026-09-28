@@ -543,6 +543,11 @@ function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
     summaryCandidates: [...view.summaryCandidates], summaryChecks: [...view.summaryChecks], summaryFaithfulness: [...view.summaryFaithfulness], summaryReviews: [...view.summaryReviews],
     callOutcomeCounts: [...view.callOutcomeCounts], questionsReviewed: [...view.questionsReviewed], tokenCurrent: [...view.tokenCurrent], mentionedDates: [...view.mentionedDates], reminders: [...view.reminders] }, retained };
 }
+/** Canonical digest of the whole conversation projection (what a snapshot would save). Two views agree
+ * exactly when their digests match; Rule 33 uses it as a journal frontier and as the replay comparison. */
+export function projectionDigest(view: JournalView): string {
+  return createHash('sha256').update(JSON.stringify(snapshotOf(view, []).view)).digest('hex');
+}
 function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
   const saved = snapshot?.view;
   if (!saved || JSON.stringify(saved.genesis) !== JSON.stringify(genesis) || !Array.isArray(snapshot.retained)

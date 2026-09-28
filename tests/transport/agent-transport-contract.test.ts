@@ -7,9 +7,13 @@
 import { describe, expect, it } from 'vitest';
 import { childAuthority, placeDelegation } from '../../src/rungraph/index.js';
 import type { DelegationContract } from '../../src/rungraph/index.js';
-import { offerEnvelope, sealEnvelope } from '../../src/rungraph/index.js';
+import { offerEnvelope, resultEnvelope, resultFor, sealEnvelope } from '../../src/rungraph/index.js';
+import { createThreadlineKeyCustody, sealThreadlineFrame } from '../../src/transport/index.js';
+import type { ThreadlineFrame } from '../../src/transport/index.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { WorkerOutcome } from '../../src/rungraph/index.js';
-import { context, createNetwork, Disk, refusal, value } from './agent-fault-harness.js';
+import { context, counterRandom, createNetwork, Disk, identityOf, refusal, value } from './agent-fault-harness.js';
 
 const done = (result: string): WorkerOutcome => ({ terminal: 'completed', result, evidence: ['file-reference:src/x.ts'] });
 
@@ -309,26 +313,226 @@ describe('P5-NF-33 capability-aware placement', () => {
   });
 });
 
-describe('Threadline reference adapter authentication (P6-NF-23/24)', () => {
-  it('rejects wrong recipient, forged signature, unknown key, unknown suite and future schema before admission', () => {
+describe('Threadline reference adapter authentication and confidentiality (P6-NF-23/24)', () => {
+  const setup = () => {
     const net = createNetwork('threadline');
     const a = net.add('agent-a', ['code'], () => null);
     const b = net.add('agent-b', ['code'], () => done('x'));
+    const c = net.add('agent-c', ['code'], () => null);
     const edge = value(a.ledger.delegate(net.request(net.rootAuthority('agent-a'), 'agent-b')));
+    return { net, a, b, c, edge };
+  };
+  it('rejects wrong recipient, tampered ciphertext or routing, unknown key, a forged inner signature, unknown suite and future schema before admission', () => {
+    const { net, a, b, edge } = setup();
     net.send(a, offerEnvelope(edge));
     const [genuine] = net.relay.queues.get('agent-b')!;
     net.relay.queues.set('agent-b', []);
-    net.relay.inject({ ...genuine!, recipient: 'agent-b', sender: 'agent-a', signature: Buffer.from('forged').toString('base64') });
+    const flipped = Buffer.from(genuine!.sealed, 'base64'); flipped[3] = flipped[3]! ^ 1;
+    net.relay.inject({ ...genuine!, sealed: flipped.toString('base64') });
+    net.relay.inject({ ...genuine!, conversation: 'a2a:other' });
     net.relay.inject({ ...genuine!, sender: 'agent-unknown' });
+    net.relay.inject({ ...genuine!, sender: 'agent-c' });
     net.relay.inject({ ...genuine!, suite: 'none-v0' });
     net.relay.inject({ ...genuine!, schemaVersion: 2 });
-    net.relay.inject({ ...genuine!, envelope: { ...genuine!.envelope!, reason: 'swapped' } });
     net.relay.queues.get('agent-b')!.push({ ...genuine!, recipient: 'agent-c' });
+    // A holder of a's agreement key but not a's signing key: the frame opens, its inner signature does not verify.
+    const stolen = createThreadlineKeyCustody({ principal: 'agent-a',
+      identity: { ...identityOf('agent-c'), agreement: identityOf('agent-a').agreement }, peer: p => identityOf(p).public, random: counterRandom('stolen') });
+    net.relay.inject(sealThreadlineFrame(stolen, { kind: 'envelope', recipient: 'agent-b', conversation: genuine!.conversation,
+      key: genuine!.key, digest: genuine!.digest, attempt: 'stolen' }, { envelope: offerEnvelope(edge), receipt: null }) as ThreadlineFrame);
     net.tick(1);
-    expect(b.rejections.map(r => r.reason).sort()).toEqual(['bad-signature', 'bad-signature', 'future-schema', 'unknown-key', 'unknown-suite', 'wrong-recipient'].sort());
+    expect(b.rejections.map(r => r.reason).sort()).toEqual(['bad-ciphertext', 'bad-ciphertext', 'bad-ciphertext', 'bad-signature',
+      'future-schema', 'unknown-key', 'unknown-suite', 'wrong-recipient'].sort());
     expect([...b.ledger.view().values()]).toHaveLength(0);
     net.relay.inject(genuine!);
     net.tick(1);
     expect([...b.ledger.view().values()]).toHaveLength(1);
+  });
+
+  it('the relay holds routing identifiers and ciphertext only: no contract, question, grant or result is relay-visible', () => {
+    const { net, a, edge } = setup();
+    net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b', { sequence: 1, question: 'SECRET-QUESTION-MARKER' }));
+    net.send(a, offerEnvelope(edge));
+    net.tick(6);
+    expect(a.ledger.view().get(edge.id)!.collected).toBe(true);
+    expect(net.relay.held.length).toBeGreaterThan(4);
+    for (const frame of net.relay.held) {
+      expect(Object.keys(frame).sort()).toEqual(['attempt', 'conversation', 'digest', 'key', 'kind', 'nonce', 'protocol', 'recipient',
+        'salt', 'schemaVersion', 'sealed', 'sender', 'suite']);
+      const visible = JSON.stringify(frame);
+      for (const hidden of ['SECRET-QUESTION-MARKER', 'grant:work', 'repo:instar', 'report-cites-files', '"result"', 'What does'])
+        expect(visible).not.toContain(hidden);
+    }
+    // A retry re-seals (fresh salt and nonce) but keeps the inner logical key and digest.
+    const offers = net.relay.held.filter(frame => frame.key === offerEnvelope(edge).key && frame.kind === 'envelope');
+    expect(offers.length).toBeGreaterThanOrEqual(1);
+    net.send(a, offerEnvelope(edge));
+    const again = net.relay.held.filter(frame => frame.key === offerEnvelope(edge).key && frame.kind === 'envelope');
+    expect(again.at(-1)!.digest).toBe(offers[0]!.digest);
+    expect(again.at(-1)!.sealed).not.toBe(offers[0]!.sealed);
+  });
+
+  it('a captured frame reproduces byte for byte, opens only for its recipient, and every tamper refuses', () => {
+    const fixturePath = fileURLToPath(new URL('./fixtures/threadline-ref-v2-offer.json', import.meta.url));
+    const net = createNetwork('threadline');
+    const a = net.add('agent-a', ['code'], () => null);
+    const b = net.add('agent-b', ['code'], () => null);
+    const edge = value(a.ledger.delegate(net.request(net.rootAuthority('agent-a'), 'agent-b')));
+    const keysA = createThreadlineKeyCustody({ principal: 'agent-a', identity: identityOf('agent-a'), peer: p => identityOf(p).public,
+      random: counterRandom('captured-fixture') });
+    const frame = sealThreadlineFrame(keysA, { kind: 'envelope', recipient: 'agent-b', conversation: edge.transport.conversation,
+      key: offerEnvelope(edge).key, digest: offerEnvelope(edge).digest, attempt: 'captured' }, { envelope: offerEnvelope(edge), receipt: null }) as ThreadlineFrame;
+    if (process.env.CAPTURE_THREADLINE_FIXTURE) writeFileSync(fixturePath, `${JSON.stringify(frame, null, 2)}\n`);
+    const captured = JSON.parse(readFileSync(fixturePath, 'utf8')) as ThreadlineFrame;
+    expect(frame).toEqual(captured);
+    const flip = (field: 'sealed' | 'nonce' | 'salt') => { const bytes = Buffer.from(captured[field], 'base64'); bytes[0] = bytes[0]! ^ 0x80;
+      return { ...captured, [field]: bytes.toString('base64') }; };
+    for (const tampered of [flip('sealed'), flip('nonce'), flip('salt'), { ...captured, key: `${captured.key}x` },
+      { ...captured, digest: 'sha256:0' }, { ...captured, attempt: 'replayed-elsewhere' }]) net.relay.inject(tampered);
+    net.tick(1);
+    expect(b.rejections.map(r => r.reason)).toEqual(Array(6).fill('bad-ciphertext'));
+    expect([...b.ledger.view().values()]).toHaveLength(0);
+    net.relay.inject(captured);
+    net.tick(1);
+    expect(b.ledger.view().get(edge.id)!.acceptance).not.toBeNull();
+  });
+
+  it('a third peer cannot supply the recipient\'s receipt: signer, conversation and digest must be the exact send', () => {
+    const { net, a, c, edge } = setup();
+    net.partition('agent-b');
+    net.send(a, offerEnvelope(edge));
+    const e = offerEnvelope(edge);
+    const forged = (fields: Partial<{ conversation: string; digest: string }>) => sealThreadlineFrame(c.keys!, { kind: 'receipt',
+      recipient: 'agent-a', conversation: fields.conversation ?? e.conversation, key: e.key, digest: fields.digest ?? e.digest, attempt: 'forged' },
+    { envelope: null, receipt: { key: e.key, digest: fields.digest ?? e.digest, state: 'durably-queued', authoritative: 'c-assertion',
+      result: null, durability: 'replicated' } }) as ThreadlineFrame;
+    net.relay.inject(forged({})); net.relay.inject(forged({ conversation: 'WRONG' })); net.relay.inject(forged({ digest: 'WRONG' }));
+    expect(a.threadline!.pump(a.endpoint).map(r => r.reason)).toEqual(['unexpected-receipt', 'unexpected-receipt', 'unexpected-receipt']);
+    expect(net.observe(a, edge.id).state).toBe('uncertain');
+    expect(a.ledger.view().get(edge.id)!.proven).not.toContain('durably-queued');
+  });
+});
+
+describe.each(['local', 'threadline'] as const)('contract parties and current run authority over %s delivery', kind => {
+  it('a signed third peer cannot return the recipient\'s result, whatever the result names inside', () => {
+    const net = createNetwork(kind);
+    const a = net.add('agent-a', ['code'], () => null);
+    net.add('agent-b', ['code'], () => null); const c = net.add('agent-c', ['code'], () => null);
+    const contract = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b'));
+    const raw = resultEnvelope(contract, resultFor(contract, { terminal: 'completed', result: 'forged by c' },
+      { localRun: 'run:x', runExit: 'exit:x', spent: 1 }), net.now());
+    const { digest: _d, type: _t, schemaVersion: _v, ...fields } = raw;
+    const sent = value(c.port.send(sealEnvelope({ ...fields, sender: 'agent-c' }), 'forged', 'submit'));
+    net.tick(2);
+    if (kind === 'local') expect(sent).toMatchObject({ state: 'refused', refusedWhat: 'receiving-admission' });
+    expect(a.ledger.view().get(contract.id)!.result).toBeNull();
+    expect(a.ledger.view().get(contract.id)!.collected).toBe(false);
+    // An envelope naming someone else as its sender is refused before it is even sent over Threadline.
+    if (kind === 'threadline') expect(refusal(c.port.send(raw, 'impersonated', 'submit'))).toContain('own principal');
+    else expect(value(c.port.send(raw, 'impersonated', 'submit'))).toMatchObject({ state: 'refused' });
+  });
+
+  it('expired or revoked authority never starts the worker; the edge stays inhibited and owned', () => {
+    const net = createNetwork(kind);
+    const a = net.add('agent-a', ['code'], () => null);
+    let calls = 0;
+    const b = net.add('agent-b', ['code'], () => { calls++; return done('ran'); });
+    const expiring = net.delegate(a, net.request(net.rootAuthority('agent-a', { expiresAt: net.now() + 15 }), 'agent-b', { sequence: 0 }));
+    if (kind === 'threadline') { b.threadline!.pump(b.endpoint); }
+    net.advance(100); net.tick(3);
+    expect(calls).toBe(0);
+    expect(a.ledger.outstanding().map(edge => edge.contract.id)).toContain(expiring.id);
+    const revoked = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b', { sequence: 1 }));
+    b.revoked.add(revoked.id);
+    net.tick(3);
+    expect(calls).toBe(0);
+    expect(b.ledger.view().get(revoked.id)!.acceptance).not.toBeNull();
+    expect(b.ledger.view().get(revoked.id)!.result).toBeNull();
+    b.revoked.delete(revoked.id);
+    net.tick(4);
+    expect(calls).toBe(1);
+    // The result carries the recipient run's RunExit and its accounted spend, within the edge budget.
+    expect(a.ledger.view().get(revoked.id)!.result!.exit).toMatchObject({ runExit: expect.stringContaining(':completed'), spent: 1 });
+  });
+
+  it('a parent\'s cancellation confirms no more than descendant settlement proves', () => {
+    const net = createNetwork(kind);
+    const a = net.add('agent-a', ['code'], () => null);
+    const b = net.add('agent-b', ['code'], contract => {
+      if (![...b.ledger.view().values()].some(edge => edge.contract.parentRun === contract.childRun))
+        net.delegate(b, net.request(childAuthority(contract), 'agent-d', { budget: 1 }));
+      return null;
+    });
+    net.add('agent-d', ['code'], () => null);
+    const ab = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b'));
+    net.tick(4);
+    const bd = [...b.ledger.view().values()].find(edge => edge.contract.recipient === 'agent-d')!;
+    net.partition('agent-d');
+    value(a.ledger.cancel(ab.id, 'agent-a', 'stop', net.now()));
+    net.tick(6);
+    expect(b.ledger.view().get(bd.contract.id)!.cancellation).toBe('requested');
+    expect(a.ledger.view().get(ab.id)!.cancellation).toBe('requested');
+    expect(a.ledger.outstanding().map(edge => edge.contract.id)).toEqual([ab.id]);
+    net.rejoin('agent-d');
+    net.tick(10);
+    expect(b.ledger.view().get(bd.contract.id)!.cancellation).toBe('confirmed');
+    expect(a.ledger.view().get(ab.id)!.cancellation).toBe('confirmed');
+    expect(a.ledger.outstanding()).toHaveLength(0);
+  });
+
+  it('a receiver whose replicated demand is unmet never runs the child or claims custody, across redelivery and restart', () => {
+    const net = createNetwork(kind);
+    let calls = 0;
+    const a = net.add('agent-a', ['code'], () => null, new Disk('replicated', 1));
+    const b = net.add('agent-b', ['code'], () => { calls++; return done('ran'); }, new Disk());
+    const contract = value(a.ledger.delegate(net.request(net.rootAuthority('agent-a'), 'agent-b', { durability: 'replicated' })));
+    for (let i = 0; i < 3; i++) { net.send(a, offerEnvelope(contract)); net.tick(2); }
+    const b2 = net.restart('agent-b');
+    net.send(a, offerEnvelope(contract)); net.tick(3);
+    expect(calls).toBe(0);
+    const edge = b2.ledger.view().get(contract.id)!;
+    expect(edge.dispatchable).toBe(false);
+    expect(edge.executable).toBe(false);
+    expect(edge.acceptance).toBeNull();
+    expect(b2.endpoint.lookup(offerEnvelope(contract).key, offerEnvelope(contract).digest, 'agent-a').state).not.toBe('durably-queued');
+    expect(net.observe(a, contract.id).state).not.toBe('durably-queued');
+    expect(a.ledger.view().get(contract.id)!.proven).not.toContain('durably-queued');
+    // Once the receiver's store achieves the demand, redelivery completes the SAME edge; nothing is re-created.
+    b2.disk.durability = 'replicated'; b2.disk.replicas = 1;
+    net.send(a, offerEnvelope(contract)); net.tick(6);
+    expect(calls).toBe(1);
+    expect(a.ledger.view().get(contract.id)!.collected).toBe(true);
+    expect(b2.disk.records.filter(r => r.record === 'edge').length).toBeGreaterThanOrEqual(1);
+    expect(new Set(b2.disk.records.filter(r => r.record === 'acceptance').map(r => JSON.stringify(r))).size).toBe(1);
+  });
+
+  it('an acceptance appended below its replicated demand is not custody: no worker start until the acceptance itself is replicated', () => {
+    const net = createNetwork(kind);
+    let calls = 0;
+    const a = net.add('agent-a', ['code'], () => null, new Disk('replicated', 1));
+    const b = net.add('agent-b', ['code'], () => { calls++; return done('ran'); }, new Disk());
+    const contract = value(a.ledger.delegate(net.request(net.rootAuthority('agent-a'), 'agent-b', { durability: 'replicated' })));
+    // The edge and its proof reach a replica; the acceptance append is answered only locally.
+    b.disk.nextReceipts = [{ durability: 'replicated', replicas: 1 }, { durability: 'replicated', replicas: 1 }, { durability: 'local-durable', replicas: 0 }];
+    net.send(a, offerEnvelope(contract)); net.tick(3);
+    const edge = b.ledger.view().get(contract.id)!;
+    expect([edge.dispatchable, edge.acceptance !== null, edge.executable]).toEqual([true, true, false]);
+    expect(calls).toBe(0);
+    expect(net.observe(a, contract.id).state).not.toBe('durably-queued');
+    b.disk.durability = 'replicated'; b.disk.replicas = 1;
+    net.send(a, offerEnvelope(contract)); net.tick(6);
+    expect(calls).toBe(1);
+    expect(a.ledger.view().get(contract.id)!.collected).toBe(true);
+  });
+
+  it('a lookup is answered only to the edge\'s counterpart', () => {
+    const net = createNetwork(kind);
+    const a = net.add('agent-a', ['code'], () => null);
+    const b = net.add('agent-b', ['code'], () => null);
+    const contract = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b'));
+    net.tick(2);
+    const e = offerEnvelope(contract);
+    expect(b.endpoint.lookup(e.key, e.digest, 'agent-a').state).toBe('delivered-to-worker');
+    expect(b.endpoint.lookup(e.key, e.digest, 'agent-c').state).toBe('unknown');
   });
 });

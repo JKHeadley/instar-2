@@ -16,8 +16,14 @@ export type PollEvent = 'failed' | 'conflicted' | 'restored';
  * inhibited by a stop, expiry or allowance, and when the next scheduled work step falls due. */
 export interface RunEnd { unfinished?: number;
   revival?: 'queued' | 'inhibited' | 'none'; nextWorkAt?: number;
-  /** Rule 63: this launch found another runner serving the conversation and retired without polling or sending. */
-  nonowner?: { machine: string | null; since: number | null } }
+  /** Rule 63: this launch found another runner holding the conversation and retired without polling or sending. */
+  nonowner?: { machine: string | null; since: number | null };
+  /** This launch neither polled nor sent because its ownership authority or declared topology could not serve. */
+  inhibited?: string;
+  /** An existing worker that lost the conversation fence and retired. */
+  retired?: string;
+  /** Rule 33: the journal projection digest at this exit, so the exit claim is comparable only at that frontier. */
+  frontier?: string }
 export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number;
   /** The current poll-failure episode, folded in order over every launch; a crash cannot erase an attempt. */
   pollPressure?: { failed: number; conflicted: number } }
@@ -65,6 +71,10 @@ export function readRuns(path: string): RunLog {
       if (Number.isSafeInteger(row.unfinished) && row.unfinished! >= 0) entry.unfinished = row.unfinished!;
       if (row.revival === 'queued' || row.revival === 'inhibited' || row.revival === 'none') entry.revival = row.revival;
       if (Number.isSafeInteger(row.nextWorkAt)) entry.nextWorkAt = row.nextWorkAt!;
+      const extra = row as { inhibited?: unknown; retired?: unknown; frontier?: unknown };
+      if (typeof extra.inhibited === 'string') entry.inhibited = extra.inhibited;
+      if (typeof extra.retired === 'string') entry.retired = extra.retired;
+      if (typeof extra.frontier === 'string' && /^[a-f0-9]{64}$/.test(extra.frontier)) entry.frontier = extra.frontier;
       const nonowner = (row as { nonowner?: { machine?: unknown; since?: unknown } }).nonowner;
       if (nonowner && typeof nonowner === 'object') entry.nonowner = { machine: typeof nonowner.machine === 'string' ? nonowner.machine : null,
         since: Number.isSafeInteger(nonowner.since) ? nonowner.since as number : null };

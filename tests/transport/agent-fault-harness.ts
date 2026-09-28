@@ -6,17 +6,17 @@
  * disk outage, worker loss and agent restart. Simulation proves distributed
  * logic only; it is never a real replication receipt.
  */
-import { generateKeyPairSync, sign, verify } from 'node:crypto';
-import type { KeyObject } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { cancelEnvelope, childAuthority, createAgentEndpoint, createDelegationLedger, createLocalAgentTransport, offerEnvelope,
   offerKey, resultEnvelope } from '../../src/rungraph/index.js';
 import type { CapabilityAdvertisement, DelegationAuthority, DelegationContract, DelegationDurability,
   DelegationLedger, DelegationRecord, DelegationRequest, DeliveryEvidence } from '../../src/rungraph/index.js';
-import { createThreadlineReferenceAdapter } from '../../src/transport/index.js';
-import type { AgentEndpoint, AgentTransportEnvelope, AgentTransportPort, DelegatedWorker } from '../../src/rungraph/index.js';
-import type { ThreadlineAdapter, ThreadlineFrame, ThreadlineRejection } from '../../src/transport/index.js';
+import { createThreadlineKeyCustody, createThreadlineReferenceAdapter, threadlineIdentityFromSeeds } from '../../src/transport/index.js';
+import type { AgentEndpoint, AgentTransportEnvelope, AgentTransportPort, DelegatedRunAuthority, DelegatedWorker } from '../../src/rungraph/index.js';
+import type { ThreadlineAdapter, ThreadlineFrame, ThreadlineIdentity, ThreadlineKeys, ThreadlineRejection } from '../../src/transport/index.js';
+import { boundary, need } from '../../src/rungraph/boundary.js';
 
 export const context = { site: 'test.delegation', preserved: 'test:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'test:register' },
@@ -33,13 +33,15 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 export class Disk {
   records: DelegationRecord[] = [];
   down = false; loseNextAck = false;
-  constructor(readonly durability: DelegationDurability = 'local-durable', readonly replicas = 0) {}
+  /** Receipts to return for the next appends, in order (an independently failing replica that answers some appends). */
+  nextReceipts: { durability: DelegationDurability; replicas: number }[] = [];
+  constructor(public durability: DelegationDurability = 'local-durable', public replicas = 0) {}
   port() {
     return { read: () => clone(this.records), append: (record: DelegationRecord) => {
       if (this.down) throw new Error('disk unavailable');
       this.records.push(clone(record));
       if (this.loseNextAck) { this.loseNextAck = false; throw new Error('append acknowledgement lost'); }
-      return { durability: this.durability, replicas: this.replicas };
+      return this.nextReceipts.shift() ?? { durability: this.durability, replicas: this.replicas };
     } };
   }
 }
@@ -47,9 +49,11 @@ export class Disk {
 export class Relay {
   queues = new Map<string, ThreadlineFrame[]>();
   cut = new Set<string>(); down = false; duplicate = false; reorder = false; submitted = 0;
+  /** Everything the relay was ever handed: the relay-visible bytes, for confidentiality checks. */
+  held: ThreadlineFrame[] = [];
   submit(frame: ThreadlineFrame): 'accepted' | 'rejected' {
     if (this.down || this.cut.has(frame.sender)) throw new Error('relay unreachable');
-    this.submitted++;
+    this.submitted++; this.held.push(clone(frame));
     const queue = this.queues.get(frame.recipient) ?? [];
     queue.push(clone(frame)); if (this.duplicate) queue.push(clone(frame));
     this.queues.set(frame.recipient, queue); return 'accepted';
@@ -63,36 +67,57 @@ export class Relay {
 }
 
 export type Kind = 'local' | 'threadline';
+/** Deterministic key material and randomness, so captured frames are reproducible. */
+export const seed = (label: string): Uint8Array => createHash('sha256').update(label).digest();
+export function counterRandom(label: string): (bytes: number) => Uint8Array {
+  let counter = 0;
+  return bytes => createHash('sha256').update(`${label}:${counter++}`).digest().subarray(0, bytes);
+}
+export const identityOf = (principal: string): ThreadlineIdentity => threadlineIdentityFromSeeds(seed(`sign:${principal}`), seed(`agree:${principal}`));
+
+/**
+ * A simulated Run owner (parts five/six): it admits the child to a local run, re-checks current authority
+ * (revocation) and reserves before each worker start, and closes the run with a RunExit and its spend.
+ * Real hosts supply the production owners through the same seam.
+ */
+export function simulatedRunAuthority(principal: string, revoked: Set<string>, spend = 1): DelegatedRunAuthority {
+  return {
+    admit: contract => boundary('SimulatedRunAdmit', { edge: contract.id }, context, () => ({ localRun: `run:${principal}:${contract.childRun}` })),
+    start: (contract, localRun, at) => boundary('SimulatedRunStart', { edge: contract.id, at }, context, () => {
+      need(!revoked.has(contract.id), 'grant revoked');
+      return { reservation: `reservation:${localRun}:${at}` };
+    }),
+    close: (contract, localRun, outcome) => boundary('SimulatedRunClose', { edge: contract.id }, context, () =>
+      ({ runExit: `exit:${localRun}:${outcome.terminal}`, spent: Math.min(spend, contract.budget) })),
+  };
+}
+
 export interface Agent {
-  readonly principal: string; readonly disk: Disk; capabilities: string[];
+  readonly principal: string; readonly disk: Disk; capabilities: string[]; revoked: Set<string>; keys?: ThreadlineKeys;
   ledger: DelegationLedger; endpoint: AgentEndpoint; port: AgentTransportPort; threadline?: ThreadlineAdapter;
   worker: DelegatedWorker; cancelsSent: Set<string>; resultCustody: Set<string>; rejections: ThreadlineRejection[]; crashed: boolean;
 }
 
 export function createNetwork(kind: Kind) {
   let now = 1_000;
-  const agents = new Map<string, Agent>(), keys = new Map<string, { publicKey: KeyObject; privateKey: KeyObject }>();
+  const agents = new Map<string, Agent>(), keys = new Map<string, ThreadlineIdentity>();
   const relay = new Relay(), cutLocal = new Set<string>();
   const advertisement = (agent: Agent): CapabilityAdvertisement => ({ agent: agent.principal, machine: `machine-${agent.principal}`,
-    harness: 'claude-code', model: 'opus', transport: kind === 'local' ? 'local-v1' : 'threadline-ref-v1',
+    harness: 'claude-code', model: 'opus', transport: kind === 'local' ? 'local-v1' : 'threadline-ref-v2',
     capabilities: [...agent.capabilities], observedAt: now, freshFor: 60_000, capacity: 4, trust: 'trusted' });
   const build = (agent: Omit<Agent, 'ledger' | 'endpoint' | 'port' | 'threadline'> & Partial<Agent>): Agent => {
     const full = agent as Agent;
     full.ledger = createDelegationLedger(agent.disk.port(), context);
-    full.endpoint = createAgentEndpoint({ principal: agent.principal, ledger: full.ledger, advertisement: () => advertisement(full) });
+    full.endpoint = createAgentEndpoint({ principal: agent.principal, ledger: full.ledger, advertisement: () => advertisement(full),
+      authority: simulatedRunAuthority(agent.principal, agent.revoked) });
     if (kind === 'local') {
-      full.port = createLocalAgentTransport({ route: p => (cutLocal.has(p) || agents.get(p)?.crashed ? undefined : agents.get(p)?.endpoint),
-        now: () => now, freshFor: 60_000, context });
+      full.port = createLocalAgentTransport({ principal: agent.principal,
+        route: p => (cutLocal.has(p) || agents.get(p)?.crashed ? undefined : agents.get(p)?.endpoint), now: () => now, freshFor: 60_000, context });
     } else {
-      const pair = keys.get(agent.principal)!;
+      full.keys = createThreadlineKeyCustody({ principal: agent.principal, identity: keys.get(agent.principal)!,
+        peer: principal => keys.get(principal)?.public, random: counterRandom(`random:${agent.principal}:${Math.random()}`) });
       full.threadline = createThreadlineReferenceAdapter({ relay, now: () => now, freshFor: 60_000, context,
-        advertisements: peer => (agents.get(peer) ? [advertisement(agents.get(peer)!)] : []),
-        keys: { principal: agent.principal, sign: bytes => sign(null, Buffer.from(bytes), pair.privateKey).toString('base64'),
-          verify: (principal, bytes, signature) => {
-            const peer = keys.get(principal);
-            if (!peer) return 'unknown-key';
-            return verify(null, Buffer.from(bytes), peer.publicKey, Buffer.from(signature, 'base64')) ? 'valid' : 'invalid';
-          } } });
+        advertisements: peer => (agents.get(peer) ? [advertisement(agents.get(peer)!)] : []), keys: full.keys });
       full.port = full.threadline.port;
     }
     return full;
@@ -101,14 +126,14 @@ export function createNetwork(kind: Kind) {
     kind, relay, agents, keys, cutLocal,
     now: () => now, advance: (ms: number) => { now += ms; },
     add(principal: string, capabilities: string[], worker: DelegatedWorker, disk = new Disk()) {
-      keys.set(principal, generateKeyPairSync('ed25519'));
-      const agent = build({ principal, disk, capabilities, worker, cancelsSent: new Set(), resultCustody: new Set(), rejections: [], crashed: false });
+      keys.set(principal, identityOf(principal));
+      const agent = build({ principal, disk, capabilities, worker, revoked: new Set(), cancelsSent: new Set(), resultCustody: new Set(), rejections: [], crashed: false });
       agents.set(principal, agent); return agent;
     },
     /** A restart rebuilds everything from the agent's own disk; no memory survives. */
     restart(principal: string) {
       const old = agents.get(principal)!;
-      const agent = build({ principal, disk: old.disk, capabilities: old.capabilities, worker: old.worker,
+      const agent = build({ principal, disk: old.disk, capabilities: old.capabilities, worker: old.worker, revoked: old.revoked,
         cancelsSent: new Set(), resultCustody: new Set(), rejections: [], crashed: false });
       agents.set(principal, agent); return agent;
     },
@@ -125,7 +150,7 @@ export function createNetwork(kind: Kind) {
         scope: ['repo:instar/src'], actions: ['read', 'test'], grants: ['grant:work'], budget: 10,
         exitTest: { check: 'report-cites-files', version: '1', evidence: ['file-reference'] },
         placement: { agent: recipient, machine: `machine-${recipient}`, harness: 'claude-code', model: 'opus',
-          transport: kind === 'local' ? 'local-v1' : 'threadline-ref-v1', required,
+          transport: kind === 'local' ? 'local-v1' : 'threadline-ref-v2', required,
           advertised: target ? [...target.capabilities] : required, observedAt: now, decidedAt: now, reason: 'test placement' },
         conversation: `a2a:${parent.owner}:${recipient}`, resultDestination: { run: parent.run, edge: parent.edge },
         childLimit: { maxChildren: 8, maxDepth: 8 }, collectionCadence: 60_000, durability: 'local-durable',

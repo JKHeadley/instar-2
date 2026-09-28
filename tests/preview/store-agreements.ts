@@ -16,6 +16,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { auditJournal } from './journal-audit.mjs';
+import { projectionDigest } from './journal.js';
 import type { JournalView } from './journal.js';
 import { loopHealth } from './obligations.js';
 import type { OwnerObservation } from './conversation-owner.js';
@@ -24,6 +25,8 @@ import type { RunLog } from './self-state.js';
 export interface AgreementInput {
   readonly view: JournalView; readonly runs: RunLog; readonly ownership: OwnerObservation;
   readonly root: string; readonly now: number;
+  /** Replays the durable journal bytes read-only and returns that projection's digest (absent where no key is held). */
+  readonly replay?: () => string;
 }
 /** `agree: null` means the comparison could not be made from here (never counted as agreement). */
 export type AgreementVerdict = Readonly<{ agree: boolean | null; detail: string }>;
@@ -55,17 +58,16 @@ export const STORE_AGREEMENTS: readonly StoreAgreement[] = Object.freeze([
   { id: 'unfinished-at-exit', question: 'How much accepted operator work did the last run leave unfinished?',
     authoritative: 'the conversation journal (turns and their settlement)', projection: 'the run log exit row written at that exit',
     cadenceMs: 6 * HOUR,
-    check: ({ view, runs, now }) => {
+    // The exit claim is compared at its own recorded journal frontier and exit time: while the journal still
+    // equals that frontier the answer is measurable; after any change (a later launch completing old work) it is
+    // unmeasurable, never a disagreement. The due-work population is evaluated at the exit time, not now.
+    check: ({ view, runs }) => {
       const exited = [...runs.launches].reverse().find(run => run.exit !== undefined && run.unfinished !== undefined && !run.nonowner);
       if (!exited) return { agree: null, detail: 'no exit row records unfinished work yet' };
-      // Only a launch appends turns: compare only while no later launch has accepted new work.
-      // The run log's append order is its sequence; a timestamp is not.
-      const later = runs.launches.slice(runs.launches.lastIndexOf(exited) + 1).filter(run => !run.nonowner);
-      const comparable = later.length === 0 || (later.length === 1 && later[0]!.exit === undefined
-        && !view.order.some(turn => turn.at > later[0]!.at));
-      if (!comparable) return { agree: null, detail: 'a later launch has changed the journal since that exit' };
-      const journal = loopHealth(view, now).unfinished;
-      return journal === exited.unfinished ? { agree: true, detail: `${journal} unfinished in both` }
+      if (!exited.frontier) return { agree: null, detail: 'that exit recorded no journal frontier' };
+      if (projectionDigest(view) !== exited.frontier) return { agree: null, detail: 'the journal changed since that exit' };
+      const journal = loopHealth(view, exited.exit!).unfinished;
+      return journal === exited.unfinished ? { agree: true, detail: `${journal} unfinished in both at that exit` }
         : { agree: false, detail: `run log exit says ${exited.unfinished} unfinished, journal says ${journal}` };
     } },
   { id: 'serving-runner', question: 'Which runner is serving this conversation right now?',
@@ -74,7 +76,8 @@ export const STORE_AGREEMENTS: readonly StoreAgreement[] = Object.freeze([
     check: ({ runs, ownership, root }) => {
       const open = runs.launches.filter(run => run.exit === undefined);
       if (ownership.state === 'foreign') return { agree: null, detail: 'held from another machine; liveness is not observable here' };
-      const mine = ownership.state === 'serving' && ownership.holder?.root === root;
+      // A live holder (whatever its service state) is a runner with an open launch.
+      const mine = ['serving', 'unservable', 'cannot-assess'].includes(ownership.state) && ownership.holder?.root === root;
       if (mine) {
         const current = open.at(-1);
         if (open.length === 1 && (current?.pid === undefined || current.pid === ownership.holder!.pid))
@@ -85,11 +88,15 @@ export const STORE_AGREEMENTS: readonly StoreAgreement[] = Object.freeze([
         : { agree: false, detail: `${open.length} launch(es) without a recorded exit while the owner is ${ownership.state}` };
     } },
   { id: 'snapshot-replay', question: 'What is the conversation state after compaction?',
-    authoritative: 'the append-only journal frames', projection: 'the compaction snapshot',
+    authoritative: 'the durable journal bytes (snapshot plus later frames), replayed read-only now', projection: 'the live in-memory projection',
     cadenceMs: 6 * HOUR,
-    // Opening the journal verifies the snapshot digest and turn index and replays the retained frames;
-    // compaction compares the projection before replacing it. Reaching this check means the open verified.
-    check: ({ view }) => ({ agree: true, detail: `journal opened and replayed (${view.order.length} turns)` }) },
+    // Every check performs the comparison anew: an earlier successful open is never refreshed into a new verdict.
+    check: ({ view, replay }) => {
+      if (!replay) return { agree: null, detail: 'no read-only replay is available from here' };
+      const live = projectionDigest(view), durable = replay();
+      return durable === live ? { agree: true, detail: `durable replay equals the live projection (${view.order.length} turns)` }
+        : { agree: false, detail: 'durable replay differs from the live projection' };
+    } },
 ] satisfies StoreAgreement[]);
 
 export function readAgreementLog(path: string): Map<string, AgreementRecord> {
