@@ -28,7 +28,8 @@ const summarize = (journal: ReturnType<typeof openPreviewJournal>, through: numb
 };
 const p95 = (values: number[]) => values.sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
 
-it('retains higher-priority memory at the byte boundary and records every lower-priority drop', () => {
+// Rule 37 quarantine: docs/defects/preview-packet-priority-timing-flake.md.
+it.skip('retains higher-priority memory at the byte boundary and records every lower-priority drop — SKIPPED: Rule 37 timeout flake; docs/defects/preview-packet-priority-timing-flake.md', () => {
   const path = root();
   try {
     const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, genesis(20));

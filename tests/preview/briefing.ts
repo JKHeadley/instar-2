@@ -16,7 +16,7 @@ export const SOURCE_EXCERPTS = Object.freeze([
     end: 'Alignment held by memory is not alignment.', title: 'Coherency is the root' }),
 ]);
 export const CAPABILITY_NOTE_DATE = '2026-09-27';
-export function capabilityNote(limits: { providerAttempts: number; expiresAt: number; reminders?: boolean }) {
+export function capabilityNote(limits: { providerAttempts: number; expiresAt: number }) {
   return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. `
     + 'It keeps accepted messages, summaries and validated memory changes in one encrypted local journal across restarts and topics for this trial. '
     + 'The bound operator can directly ask it to correct or forget a recorded fact; later reply packets withhold the old claim, while the original audit record remains in the journal. '
@@ -24,8 +24,8 @@ export function capabilityNote(limits: { providerAttempts: number; expiresAt: nu
     + 'Ordinary answers use a subscription model; exact status and how are you doing commands read the durable journal without answer generation. '
     + 'It has no tools: it cannot browse, run code or act outside this chat. '
     + 'When a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; its mention is remembered across restarts. '
-    + (limits.reminders ? 'A separate reminder grant allows one fixed morning batch per day and topic, inside the reply limit. '
-      : 'It cannot schedule work, send extra messages or send an unprompted reminder. ')
+    + 'When the operator explicitly asks to be reminded at a settled day and time, it sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit. '
+    + 'It cannot schedule other work, send summaries, nudges or any other unprompted message. '
 
     + `This trial allows at most ${limits.providerAttempts} model attempts, including any summaries, and ends at epoch millisecond ${limits.expiresAt}. `
     + 'Every reply is prefixed PREVIEW. Outcomes the system could not confirm (a model call or a delivery) are marked unknown, '
@@ -33,7 +33,7 @@ export function capabilityNote(limits: { providerAttempts: number; expiresAt: nu
 }
 /** Reads each excerpt exactly from the repository, verifying the pinned digest. */
 export function sourcePacket(readSource: (path: string) => string, pins: Readonly<Record<string, string>>,
-  limits: { providerAttempts: number; expiresAt: number; reminders?: boolean }) {
+  limits: { providerAttempts: number; expiresAt: number }) {
   const sources: { id: string; title: string; text: string; provenance: Record<string, string | number> }[]
     = SOURCE_EXCERPTS.map(excerpt => {
     const document = readSource(excerpt.path);

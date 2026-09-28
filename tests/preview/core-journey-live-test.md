@@ -31,9 +31,10 @@ Never reset a root and never resend an UNKNOWN effect.
    its plain reason in `status.holds`, at most one held notice once one was due, and that
    the held answer later follows or is explained. Record “no hold occurred” otherwise.
 6. **Requested summary or reminder.** Ask “What did we talk about today?” and expect a
-   bounded recap marked partial if anything was omitted. If, and only if, a morning-reminder
-   grant is recorded, ask for a reminder tomorrow morning and confirm one reminder intent at
-   the granted time; without that grant, confirm the reply says it cannot send one.
+   bounded recap marked partial if anything was omitted. Then ask “Remind me today at
+   HH:MM am/pm to stretch” (about 15 minutes ahead); the reply states the due time, `status.reminders.pending`
+   lists it, and exactly one reminder quoting the request arrives at that time. Details:
+   [requested-reminder-live-test.md](live-tests-archive/requested-reminder-live-test.md).
 
 Record the `status` excerpts after steps 1, 3, 4 and 6, every intent/result ID, any UNKNOWN,
 reply-check paths, and whether each answer matched the expected fact. A plain answer that

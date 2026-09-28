@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`). */
 export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string };
@@ -176,7 +176,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
   const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
-  const reminders = [...view.reminders.values()].filter(item => item.sent !== undefined);
+  const reminders = [...view.reminders.values()].filter(item => item.requested && item.sent !== undefined);
   const remindersToday = reminders.filter(item => isToday(item.sentAt)).length;
   const holds = new Map<string, number>();
   for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.expires))
@@ -198,7 +198,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     edits ? `Telegram edits recorded: ${String(edits)}; each revises an earlier message and opens no reply.` : '',
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
-    `Morning reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; separate grant ${view.reminderGrant === null ? 'absent' : 'recorded'}.`,
+    `Requested reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; ${String(pendingRequestedReminders(view).length)} requested and not yet sent.`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
     `My memory: ${String(incoming.total)} accepted operator turns, ${String(view.summaries.length)} summaries and ${String(view.memory.length)} validated memory changes in this trial's encrypted local journal. It survives runner restarts and spans this trial's topics; I can recall it while the trial is active. The verified operator can ask me to correct or forget a recorded fact. Later reply packets withhold the old claim, but the original audit record remains in the journal. This is not production or other-agent memory.`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
