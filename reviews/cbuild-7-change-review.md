@@ -18,6 +18,14 @@ Bug class: integration
 Bug evidence: reproducer=tests/register/change-review-git.test.ts
 Hook bypass: none
 Convergence: none
+Deferral: scripts/change-review.mjs:49 | not-a-deferral=the placeholder pattern lists TODO/TBD so they are refused as field values
+Deferral: scripts/change-review.mjs:159 | not-a-deferral=a comment naming the rule that dispositions deferrals
+Deferral: scripts/change-review.mjs:160 | not-a-deferral=the deferral pattern itself
+Deferral: scripts/change-review.mjs:161 | not-a-deferral=the skip pattern line, adjacent to the deferral pattern
+Deferral: tests/register/change-review.test.ts:30 | not-a-deferral=a test proving TBD is refused as a field value
+Deferral: tests/register/change-review.test.ts:89 | not-a-deferral=fixture input lines for the deferral detector
+Deferral: tests/register/change-review.test.ts:99 | not-a-deferral=a fixture record carrying fixture dispositions
+Skip: tests/register/change-review.test.ts:90 | scope=a string fixture for the skip detector, not a skipped test
 
 ## Closing block
 
