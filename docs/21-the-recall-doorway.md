@@ -1,4 +1,4 @@
-**Status: draft, awaiting approval. Governed.**
+**Status: approved. Governed.**
 
 # Part twenty-one — the recall doorway
 

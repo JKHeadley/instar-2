@@ -1,4 +1,4 @@
-**Status: draft, awaiting approval. Governed.**
+**Status: approved. Governed.**
 
 # Part eleven — operator surfaces and the first vertical slice
 

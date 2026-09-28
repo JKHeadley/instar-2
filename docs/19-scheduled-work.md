@@ -1,4 +1,4 @@
-**Status: draft, awaiting approval. Governed.**
+**Status: approved. Governed.**
 
 # Part fifteen — scheduled and recurring work
 
