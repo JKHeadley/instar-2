@@ -254,7 +254,7 @@ function world(root: string, malformedMemory: false | 'missing' | 'invalid' | 'u
           request?.includes('4412') ? item.message.includes('My gym locker code is 3310')
             : item.message.includes('my gym locker code is 4412') || item.message.includes('My gym locker code is 3310'));
         const replies = (packet.memoryCandidates ?? []).filter((item: { reply?: string }) =>
-          item.reply === (request?.includes('4412') ? 'Your gym locker code is 3310.' : 'Your gym locker code is 4412.'))
+          item.reply?.endsWith(request?.includes('4412') ? 'Your gym locker code is 3310.' : 'Your gym locker code is 4412.'))
           .map((item: { id: string }) => item.id);
         const memory = request && candidate ? [request.includes('4412')
           ? { mode: 'correct', source: candidate.id, quote: 'My gym locker code is 3310',
@@ -489,7 +489,11 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(w.journal.view.summaries.length).toBeGreaterThan(0);
     const question = 'What is my gym locker code?';
     await w.say(id++, question);
-    expect(w.journal.view.order.at(-1)?.answer).toBe('Your gym locker code is 3310.');
+    // If the filler before this question fell out of the verbatim packet, the reply first discloses the
+    // compaction and accounts for that message (Rule 110), then answers; otherwise it just answers.
+    const asked = w.journal.view.order.at(-1)!;
+    expect(asked.answer?.endsWith('Your gym locker code is 3310.')).toBe(true);
+    expect(asked.answer!.startsWith('Earlier conversation is now summarized for me.')).toBe(asked.compaction !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
     expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Changed My gym locker code is 3310 → my gym locker code is 4412.');

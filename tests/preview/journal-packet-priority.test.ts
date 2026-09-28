@@ -137,7 +137,7 @@ it('measures packet bytes and non-model p95 at 200, 1000 and 2000 accepted turns
 it('replays packet omissions into status without exposing the omitted text', async () => {
   const path = root();
   try {
-    const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, { ...genesis(20), maxBytes: 4000 });
+    const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, { ...genesis(20), maxBytes: 4400 }); // cbuild-2: the always-offered summary decision needs room (measured fit 4400; was 4000)
     addTurn(journal, 1, `Keep the studio commitment open. ${'x'.repeat(700)}`);
     addTurn(journal, 2, `Review the permit on 2026-09-29. ${'y'.repeat(700)}`);
     addTurn(journal, 3, `Sam reviewed the studio plan. ${'z'.repeat(700)}`);

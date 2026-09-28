@@ -1,4 +1,4 @@
-// Rules 1, 26, 31, 40, 42, 69, 96. This uses TypeScript's resolved types, not identifier spelling.
+// Rules 1, 10, 26, 31, 40, 42, 69, 96. This uses TypeScript's resolved types, not identifier spelling.
 import ts from 'typescript';
 import { readdirSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
@@ -98,9 +98,51 @@ export function lintProgram(program, files) {
   }
   return issues;
 }
+/** Rule 10 (NF-10): the live runner's intent-decision sites never branch on a literal
+ * meaning classifier. A decision offered to the model (`xDecision`), the structural memory
+ * search offer, and model-proposed promise validation may test exact values, but no regular
+ * expression over message wording may decide whether judgment happens. Legacy replay decoders
+ * are exact protocol readers, named here explicitly. */
+export const INTENT_DECISION_SITES = Object.freeze({
+  'tests/preview/journal.ts': { variables: ['summaryDecision', 'search'], decisionProperties: true },
+  'tests/preview/agent-commitment.ts': { functions: ['promiseProposals', 'fulfillmentProposals', 'recordedPromises'] },
+});
+export function lintIntentSites(sources = Object.fromEntries(Object.keys(INTENT_DECISION_SITES)
+  .map(path => [path, ts.sys.readFile(resolve(path)) ?? '']))) {
+  const issues = [];
+  for (const [path, text] of Object.entries(sources)) {
+    const site = INTENT_DECISION_SITES[path] ?? {};
+    const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+    const flag = (root, what) => {
+      const scan = node => {
+        if (node.kind === ts.SyntaxKind.RegularExpressionLiteral)
+          issues.push({ file: path, line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1, rule: 'NF-10',
+            detail: `${what} branches on a literal meaning classifier` });
+        ts.forEachChild(node, scan);
+      };
+      scan(root);
+    };
+    const objectOf = node => { while (node && ts.isParenthesizedExpression(node)) node = node.expression; return node; };
+    const visit = node => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && site.variables?.includes(node.name.text) && node.initializer)
+        flag(node.initializer, node.name.text);
+      if (ts.isFunctionDeclaration(node) && node.name && site.functions?.includes(node.name.text) && node.body) flag(node.body, node.name.text);
+      if (site.decisionProperties && ts.isConditionalExpression(node)) {
+        const offered = objectOf(node.whenTrue);
+        const names = offered && ts.isObjectLiteralExpression(offered) ? offered.properties
+          .map(item => item.name && (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name)) ? item.name.text : '')
+          .filter(name => name.endsWith('Decision')) : [];
+        if (names.length) flag(node.condition, names.join(', '));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return issues;
+}
 function walk(path) { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${path}/${e.name}`) : e.name.endsWith('.ts') ? [`${path}/${e.name}`] : []); }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const program = createProgram(); const issues = lintProgram(program, walk('src'));
+  const program = createProgram(); const issues = [...lintProgram(program, walk('src')), ...lintIntentSites()];
   if (issues.length) { console.error(JSON.stringify(issues, null, 2)); process.exitCode = 1; }
   else console.log('architecture checks passed');
 }

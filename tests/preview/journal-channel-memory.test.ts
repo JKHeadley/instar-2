@@ -10,7 +10,8 @@ const now = 1790000000000;
 const account = 'echo-agent@example.test';
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: now + 1_000_000,
-  maxCalls: 100, maxReplies: 80, maxTurns: 80, maxBytes: 6000, cursor: 0 };
+  // cbuild-2: room for the always-offered summary decision (measured fit 6400; was 6000).
+  maxCalls: 100, maxReplies: 80, maxTurns: 80, maxBytes: 6400, cursor: 0 };
 const row = (id: string, text: string, from = 'justin@example.test') => ({ source: 'email', account, id, from,
   at: now - 3600000, subject: 'Studio launch', text });
 const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },

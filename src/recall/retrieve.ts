@@ -65,11 +65,18 @@ function prepare(query: RecallQuery, reader: RecallReader): Result<Prepared> {
     const lexical = matches.filter(s => s.matched >= floor)
       .sort((a, b) => b.matched - a.matched || b.score - a.score || a.index - b.index);
     const strategy: RecallManifest['strategy'] = !lexical.length ? 'none' : strict ? 'lexical-strict' : 'lexical-loose';
-    // Rerank candidates: lexical matches, padded with the most recent exchanges so a
-    // semantic reranker can find a relevant exchange that shares no words with the query.
-    const candidates = lexical.slice(0, bounds.maxRerankCandidates).map(s => s.index);
-    for (let i = 0; i < scanned.length && candidates.length < bounds.maxRerankCandidates; i++)
-      if (!candidates.includes(i)) candidates.push(i);
+    // Rerank candidates: at most half are lexical matches; the rest are non-matching exchanges
+    // spread evenly across the whole scanned range (newest first), so a semantic reranker can
+    // reach older evidence that shares no words with the query even when matches fill the
+    // budget. Unused room goes back to lexical matches.
+    const lexicalSlots = Math.min(lexical.length, Math.ceil(bounds.maxRerankCandidates / 2));
+    const candidates = lexical.slice(0, lexicalSlots).map(s => s.index);
+    const matched = new Set(lexical.map(s => s.index));
+    const others = scanned.map((_, i) => i).filter(i => !matched.has(i));
+    const room = bounds.maxRerankCandidates - candidates.length;
+    if (others.length <= room) candidates.push(...others);
+    else for (let k = 0; k < room; k++) candidates.push(others[Math.floor(k * others.length / room)]!);
+    for (const s of lexical.slice(lexicalSlots)) if (candidates.length < bounds.maxRerankCandidates) candidates.push(s.index);
     // Everything handed to a model is redacted: the query and every candidate field.
     return { scanned, lexical, candidates, bounds, queryText: redact(query.text).text,
       manifest: { strategy, stored, scanned: scanned.length, unreadable, matched: lexical.length } };

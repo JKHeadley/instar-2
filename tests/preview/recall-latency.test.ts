@@ -68,7 +68,10 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // compacted answer contract and single compact summary changed the bytes again.
     // int13 re-pin: diffed against int12's packet, only the capability line (requested reminders and
     // summaries replace the retired morning-reminder grant) and datedDecision's remind:true clause changed.
-    expect(packetHash).toBe('1164bfd6da13f91008ef4fec51ebebaa0384563c297550f35a072bfd9877cacc');
+    // cbuild-2 re-pin: every verified operator packet now carries the summary-scheduling decision and
+    // bounded memory search without keyword prerequisites (Rule 10), and summarized packets report
+    // meaningIndexCoverage (Rule 11); the memory decision notes that undo exists only via undoDecision.
+    expect(packetHash).toBe('24e8179421fce380f803078f769561072169a24ff5bcec2c90e2c08584f9d026');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

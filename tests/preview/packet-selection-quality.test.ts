@@ -84,7 +84,9 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     expect(result.precision).toBeGreaterThanOrEqual(12 / 61);
     // int12: other pieces add fixed reply instructions, plus conflict/fact-update and exact-unit guidance
     // that ride here because memoryCandidates are offered and recalled facts carry units (measured mean 8598).
-    expect(result.packetBytesMean).toBeLessThanOrEqual(8704);
+    // cbuild-2: every verified operator packet is offered the summary-scheduling decision and bounded
+    // memory search (Rules 10 and 11, no keyword prerequisite); search uses only leftover room (measured mean 9486).
+    expect(result.packetBytesMean).toBeLessThanOrEqual(9600);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);

@@ -70,6 +70,21 @@ describe('recall — retrieval by meaning, bounded and offline', () => {
     expect(spent).toBe(paraphraseQueries.length);
   });
 
+  it('paraphrase reaches older zero-overlap evidence even when lexical matches fill every rerank slot', async () => {
+    const r = recallFixture(); const storage = r.memoryStorage(); const w = r.writer(storage);
+    // The oldest exchange is the paraphrase target; 30 newer exchanges all match the query's words.
+    value(captureExchange(r.exchange({ messageId: 'old', conversation: 'telegram:1', session: 's', speakerId: 'justin',
+      speakerName: 'Justin', speakerRole: 'user', text: 'My daughter has a piano recital on Friday.' }), r.at(1000), w));
+    for (let i = 0; i < 30; i++) value(captureExchange(r.exchange({ messageId: `n${i}`, conversation: 'telegram:1', session: 's',
+      speakerId: 'justin', speakerName: 'Justin', speakerRole: 'user', text: `Another kid performance note number ${i}.` }), r.at(2000 + i * 1000), w));
+    const rr = conceptReranker();
+    const out = value(await recall({ text: 'kid performance', bounds: { maxRerankCandidates: 10, maxResults: 3 } },
+      { context: r.fx.c, store: w.store, stopped: () => false, reranker: rr, spend: { reserve: () => true } }));
+    expect(rr.calls[0]).toHaveLength(10);
+    expect(rr.calls[0]!.some(text => text.includes('piano recital'))).toBe(true);
+    expect(out.hits[0]!.exchange.messageId).toBe('old');
+  });
+
   it('spend floor: no spend port or a refused reservation means no model call, lexical stands', async () => {
     const { reader } = loaded();
     const noPort = conceptReranker();
