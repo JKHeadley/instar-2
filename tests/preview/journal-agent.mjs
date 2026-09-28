@@ -381,7 +381,8 @@ async function main() {
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-      obligations: loopHealth(view.view, wallNow()),
+      // Absolute times only: the ages are derivable and would make two reads of one journal differ.
+      obligations: (({ oldestUnfinishedAgeMs: _age, progressAgeMs: _progress, ...health }) => health)(loopHealth(view.view, wallNow())),
       directives: openDirectives(view.view).map(({ id, note }) => ({ id, update: view.view.turns.get(note.source)?.update,
         quote: redact(note.quote).text, since: note.at })),
       blockers: openBlockers(view.view).map(({ id, note }) => ({ id, update: view.view.turns.get(note.source)?.update, kind: note.kind,
@@ -705,6 +706,12 @@ async function main() {
         await delay(Math.min(100, until - clock.elapsed()));
       return true;
     };
+    // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
+    if (exhaustedPollReason(failedPolls, conflictedPolls)) {
+      const until = clock.elapsed() + Math.min(conflictedPolls >= 5 ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls, 7));
+      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
+        await delay(Math.min(100, until - clock.elapsed()));
+    }
         let summaryJob = null, stepJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
@@ -738,12 +745,6 @@ async function main() {
       await waitHeldNotices();
       return true;
     };
-    // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
-    if (exhaustedPollReason(failedPolls, conflictedPolls)) {
-      const until = clock.elapsed() + Math.min(conflictedPolls >= 5 ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls, 7));
-      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
-        await delay(Math.min(100, until - clock.elapsed()));
-    }
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;

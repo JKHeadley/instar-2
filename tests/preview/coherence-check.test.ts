@@ -107,10 +107,10 @@ it('keeps a reply reachable when a correction cannot fit and retains the uncarri
     sample.worker.checkCoherence();
     const withNote = sample.worker.probe('Can I open it?');
     expect('context' in withNote).toBe(true);
-    // Optional memoryCandidates (and the conflict guidance that rides only with them) yield first,
-    // so size the limit to the reply without them: it fits, but the correction note does not.
+    // Optional memoryCandidates (and the conflict guidance that rides only with them) and the obligation
+    // guide yield first, so size the limit to the reply without them: it fits, but the correction note does not.
     const minimal = JSON.parse('context' in bare ? bare.context : '{}') as Record<string, unknown>;
-    delete minimal.memoryCandidates; delete minimal.conflictDecision;
+    delete minimal.memoryCandidates; delete minimal.conflictDecision; delete minimal.obligationDecision; delete minimal.governingConstraints;
     const limit = Buffer.byteLength(JSON.stringify(minimal)) + 16;
     // Fits the next reply while excluding its optional correction note.
     expect(Buffer.byteLength(('context' in withNote ? withNote.context : ''))).toBeGreaterThan(limit);
