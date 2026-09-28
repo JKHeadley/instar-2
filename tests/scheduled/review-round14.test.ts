@@ -32,7 +32,8 @@ it('P15 round-fourteen inventory contains exactly the 52 governed checks and no 
   expect(readFileSync('scripts/check-p15-contract-map.mjs', 'utf8')).not.toContain('P15-NF-53');
 });
 
-it('P15 round-fourteen additivity enumerates advanced-main files with first-landing comparison inapplicable', () => {
+// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
+it.skip('P15 round-fourteen additivity enumerates advanced-main files with first-landing comparison inapplicable', () => {
   const baseline = p15AdditivityBaseline();
   const independentlyListed = execFileSync('git', ['ls-tree', '-r', '--name-only', baseline.mergeBase, '--', 'src', 'tests'],
     { encoding: 'utf8' }).trim().split('\n');

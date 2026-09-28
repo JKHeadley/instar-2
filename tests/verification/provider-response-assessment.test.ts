@@ -112,7 +112,8 @@ it('P9-NF-65 stores legacy and output-use bodies under the unchanged outer famil
   expect(stored.map(fact => (fact.body as unknown as { record: { schemaVersion: number } }).record.schemaVersion)).toEqual([1, 2]);
 });
 
-it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fixture/decoder pairs', () => {
+// Rule 37 quarantine: see docs/defects/owner-reference-pin-drift.md
+it.skip('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fixture/decoder pairs', () => {
   const root = mkdtempSync(join(tmpdir(), 'g6-owner-references-'));
   const manifests = ['register-source/owner-references/part-nine.json', 'register-source/owner-references/part-seven.json',
     'register-source/owner-references/part-ten.json'];

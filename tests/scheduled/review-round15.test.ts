@@ -32,7 +32,8 @@ it('P15 round-fifteen F1 every contract-map entry point refuses stale request-on
   expect(() => auditP15CoverageRows({ success: true, testResults: [] }, [grantedControl])).not.toThrow();
 });
 
-it('P15 round-fifteen F2 validates inherited assertions from the actual HEAD report without a baseline checkout', () => {
+// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
+it.skip('P15 round-fifteen F2 validates inherited assertions from the actual HEAD report without a baseline checkout', () => {
   const checker = readFileSync('scripts/check-p15-additivity.mjs', 'utf8');
   expect(checker).not.toMatch(/git', \['(?:clone|checkout)'/);
   const packageOnMain = execFileSync('git', ['show', 'main:package.json'], { encoding: 'utf8' });

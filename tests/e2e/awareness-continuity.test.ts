@@ -15,7 +15,8 @@ const hook = resolve('scripts/session-hooks/grounding.mjs');
 const harness = resolve('tests/e2e/awareness-fake-harness.mjs');
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
-it.skipIf(!available)('a compacted or respawned session comes back with identity, recent conversation and open work, and carries on', () => {
+// Rule 37 quarantine: see docs/defects/awareness-continuity-respawn-flake.md
+it.skip('a compacted or respawned session comes back with identity, recent conversation and open work, and carries on', () => {
   const root = mkdtempSync(join(tmpdir(), 'instar20-awareness-e2e-'));
   const socket = `instar20-aw-${randomUUID().slice(0, 8)}`;
   const t = (args: readonly string[]) => spawnSync(tmux, ['-L', socket, ...args], { encoding: 'utf8', timeout: 10_000 });

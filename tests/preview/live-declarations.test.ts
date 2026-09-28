@@ -24,7 +24,11 @@ const runnerText = (raw: string): string | null => {
   return decision.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
     ? conclusionText(decision.conclusion.value) : null;
 };
-const conclusionOf = (raw: string) => (parseModelJson(raw) as { value: { conclusion: { value: unknown } } }).value.conclusion.value;
+const conclusionOf = (raw: string): unknown => {
+  const parsed = parseModelJson(raw);
+  if (!parsed.ok) throw new Error('fixture output is not a bare Decision');
+  return (parsed.value as { conclusion: { value: unknown } }).conclusion.value;
+};
 
 it('keeps refusing prose around a Decision, and the fixed prompt yields bare Decisions for every live turn', () => {
   // Live answer 4 and three live reviews wrote reasoning before the object: a contrary judgment could live there.

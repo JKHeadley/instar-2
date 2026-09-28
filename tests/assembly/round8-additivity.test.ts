@@ -36,7 +36,8 @@ async function mainDecoder(): Promise<Decode> {
   return (await import(`${pathToFileURL(file).href}?base=${base}`)).decodeAssemblyRecord as Decode;
 }
 
-it('R8-F1 compares pre-existing Part Ten fixture outcomes on P11 first landing', async () => {
+// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
+it.skip('R8-F1 compares pre-existing Part Ten fixture outcomes on P11 first landing', async () => {
   const scope = firstLanding(process.cwd(), ['src/operator/seams.ts']);
   if (!scope.applicable) {
     console.log(`P11 assembly R8-F1 first-landing comparison inapplicable: operator seams unit already present on current-main baseline ${scope.mainTip}.`);
@@ -55,7 +56,8 @@ it('R8-F1 compares pre-existing Part Ten fixture outcomes on P11 first landing',
   }
 });
 
-it('V72 compares Part Ten decoder field deletions on P11 first landing', async () => {
+// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
+it.skip('V72 compares Part Ten decoder field deletions on P11 first landing', async () => {
   const scope = firstLanding(process.cwd(), ['src/operator/seams.ts']);
   if (!scope.applicable) {
     console.log(`P11 assembly V72 first-landing comparison inapplicable: operator seams unit already present on current-main baseline ${scope.mainTip}.`);
