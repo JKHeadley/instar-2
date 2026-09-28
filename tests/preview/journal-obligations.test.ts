@@ -257,7 +257,7 @@ it('keeps poll-failure pressure and the revival disposition in the run log acros
     appendRun(path, { v: 1, launch: 1, pid: 1 });
     appendRun(path, { v: 1, launch: 1, exit: 2, reason: 'Telegram polling conflict after 5 attempts',
       pollPressure: { failed: 5, conflicted: 5 }, unfinished: 2, revival: 'queued' });
-    expect(readRuns(path).launches).toEqual([{ at: 1, exit: 2, reason: 'Telegram polling conflict after 5 attempts',
+    expect(readRuns(path).launches).toEqual([{ at: 1, pid: 1, exit: 2, reason: 'Telegram polling conflict after 5 attempts',
       pollPressure: { failed: 5, conflicted: 5 }, unfinished: 2, revival: 'queued' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

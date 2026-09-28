@@ -12,8 +12,9 @@
  * agent maps the reserved child identity to its own run through a durable
  * acceptance record, so the Run decoder's depth-one slice is unchanged.
  */
-import type { BoundaryContext, Result } from '../index.js';
-import { boundary, encoded, freeze, need } from './boundary.js';
+import type { BoundaryContext, Json, Result } from '../index.js';
+import type { AppendReceipt, FactEnvelope, FactSchema } from '../facts/index.js';
+import { boundary, encoded, freeze, need, take } from './boundary.js';
 import { INITIAL_MAX_CHILDREN, INITIAL_MAX_DEPTH } from './limits.js';
 
 export type DelegationDurability = 'local-durable' | 'replicated';
@@ -111,7 +112,9 @@ export type DelegationRecord =
   | Readonly<{ record: 'result'; result: DelegationResult }>
   | Readonly<{ record: 'collection'; edge: string; terminal: string; digest: string; at: number }>
   | Readonly<{ record: 'cancel'; edge: string; by: string; reason: string; at: number }>
-  | Readonly<{ record: 'conflict'; edge: string; subject: string; left: string; right: string; at: number }>;
+  | Readonly<{ record: 'conflict'; edge: string; subject: string; left: string; right: string; at: number }>
+  /** Proof that a replicated-demand edge achieved its demand; without it the edge is never dispatchable. */
+  | Readonly<{ record: 'durable'; edge: string; durability: 'replicated'; replicas: number; at: number }>;
 export interface DelegationAppendReceipt { readonly durability: DelegationDurability; readonly replicas: number }
 /** Owner-supplied durable store. `append` returns only after the record is durable at the stated level. */
 export interface DelegationStorePort {
@@ -129,6 +132,8 @@ export interface EdgeView {
   readonly collected: boolean;
   readonly cancellation: 'none' | 'requested' | 'confirmed';
   readonly conflicts: readonly string[];
+  /** An offer may leave only when the edge's durability demand is proven met. */
+  readonly dispatchable: boolean;
   /** Owned while its result is uncollected or its cancellation unconfirmed — even after parent or worker loss. */
   readonly owned: boolean;
 }
@@ -174,14 +179,14 @@ export function childAuthority(contract: DelegationContract): DelegationAuthorit
 export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMap<string, EdgeView> {
   type Mutable = { contract: DelegationContract; acceptance: EdgeView['acceptance']; lastProven: DeliveryState | null;
     uncertain: string[]; refusals: NonNullable<DeliveryEvidence['refusedWhat']>[]; result: DelegationResult | null;
-    collected: boolean; conflicts: string[]; proofs: Set<DeliveryState>; cancelRequested: boolean };
+    collected: boolean; conflicts: string[]; proofs: Set<DeliveryState>; cancelRequested: boolean; replicated: boolean };
   const edges = new Map<string, Mutable>();
   for (const row of records) {
     if (row.record === 'edge') {
       const prior = edges.get(row.contract.id);
       if (prior) { if (prior.contract.digest !== row.contract.digest) prior.conflicts.push(`edge digest ${row.contract.digest}`); continue; }
       edges.set(row.contract.id, { contract: row.contract, acceptance: null, lastProven: null, uncertain: [], refusals: [],
-        result: null, collected: false, conflicts: [], proofs: new Set(), cancelRequested: false });
+        result: null, collected: false, conflicts: [], proofs: new Set(), cancelRequested: false, replicated: false });
       continue;
     }
     const edgeId = row.record === 'evidence' ? row.evidence.edge : row.record === 'result' ? row.result.edge : row.edge;
@@ -205,6 +210,7 @@ export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMa
     } else if (row.record === 'collection') edge.collected = true;
     else if (row.record === 'cancel') edge.cancelRequested = true;
     else if (row.record === 'conflict') edge.conflicts.push(`${row.subject}: ${row.left} vs ${row.right}`);
+    else if (row.record === 'durable') edge.replicated = row.replicas >= 1;
   }
   const view = new Map<string, EdgeView>();
   for (const [id, edge] of edges) {
@@ -217,6 +223,7 @@ export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMa
       proven: DELIVERY_STATES.filter(state => edge.proofs.has(state)), lastProven: edge.lastProven,
       uncertain: [...edge.uncertain], refusals: [...edge.refusals], result: edge.result, collected: edge.collected,
       cancellation, conflicts: [...edge.conflicts],
+      dispatchable: edge.contract.durability === 'local-durable' || edge.replicated,
       owned: !(edge.collected || settledWithoutResult) || cancellation === 'requested' }));
   }
   return view;
@@ -297,9 +304,12 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
       const contract: DelegationContract = { ...body, id, childRun, digest: encoded({ ...body, id, childRun }).hash };
       if (retrieved) {
         need(retrieved.contract.digest === contract.digest, 'same delegation identity with different content is a Conflict');
+        need(retrieved.dispatchable, 'replication demand unmet: no proof the edge reached its replicas');
         return retrieved.contract;
       }
-      durable({ record: 'edge', contract }, request.durability);
+      const receipt = durable({ record: 'edge', contract }, request.durability);
+      if (request.durability === 'replicated')
+        durable({ record: 'durable', edge: id, durability: 'replicated', replicas: receipt.replicas, at: request.at }, 'replicated');
       return contract;
     }),
     receiveEdge: (contract, at) => boundary('DelegationReceivedEdge', { edge: contract.id }, context, () => {
@@ -397,4 +407,40 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
 /** The semantic key of an edge's offer: sender, edge, kind, sequence. Retries never change it. */
 export function offerKey(contract: DelegationContract): string {
   return `${contract.owner}|${contract.id}|offer|0`;
+}
+
+/** The registered durable fact kind that carries every delegation record in the part-two store. */
+export const DELEGATION_FACT_KIND = 'run-delegation';
+const DELEGATION_RECORDS = new Set(['edge', 'acceptance', 'evidence', 'result', 'collection', 'cancel', 'conflict', 'durable']);
+
+/** Schema for the delegation fact kind; `template` supplies the installation's action and scope. */
+export function delegationFactSchema(template: Pick<FactSchema, 'action' | 'scope'>): FactSchema {
+  return freeze({ kind: DELEGATION_FACT_KIND, version: 1,
+    fields: { edge: { kind: 'text', maxLength: 1024 }, record: { kind: 'text', maxLength: 262_144 } },
+    machineScope: 'shared', standing: 'requester', action: template.action, scope: template.scope,
+    causallyBound: false, requiredReferences: [], authority: 'none' });
+}
+
+/**
+ * Backs the ledger with signed facts in the part-two store. Signing stays with the
+ * host's author callback (the ledger never holds a key); the store's own receipt
+ * states the achieved durability, which the ledger compares with each contract's demand.
+ */
+export function createFactDelegationStore(input: Readonly<{ read: () => Result<readonly FactEnvelope[]>;
+  author: (kind: string, body: Json) => Result<AppendReceipt> }>): DelegationStorePort {
+  return freeze({
+    read: () => take(input.read()).filter(fact => fact.kind === DELEGATION_FACT_KIND).map(fact => {
+      const body = fact.body as Record<string, Json>;
+      const record = JSON.parse(String(body.record)) as DelegationRecord;
+      need(record && DELEGATION_RECORDS.has(record.record), `unknown delegation record in fact ${fact.id}`);
+      return record;
+    }),
+    append: record => {
+      const edge = record.record === 'edge' ? record.contract.id : record.record === 'evidence' ? record.evidence.edge
+        : record.record === 'result' ? record.result.edge : record.edge;
+      const receipt = take(input.author(DELEGATION_FACT_KIND, { edge, record: encoded(record).bytes }));
+      return receipt.durability.kind === 'replicated'
+        ? { durability: 'replicated', replicas: receipt.durability.n } : { durability: 'local-durable', replicas: 0 };
+    },
+  });
 }

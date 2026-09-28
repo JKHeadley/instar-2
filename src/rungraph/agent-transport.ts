@@ -116,7 +116,7 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
     // Semantic dedup is derived from durable records only, so a restart cannot forget it.
     const keys = new Map<string, string>();
     for (const edge of ledger.view().values()) {
-      if (edge.contract.recipient === principal) keys.set(offerKey(edge.contract), offerEnvelope(edge.contract).digest);
+      if (edge.contract.recipient === principal && edge.acceptance) keys.set(offerKey(edge.contract), offerEnvelope(edge.contract).digest);
       if (edge.contract.owner === principal && edge.result) keys.set(`${edge.contract.recipient}|${edge.contract.id}|result|0`, edge.result.digest);
     }
     return keys;
@@ -128,6 +128,8 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
       const asOwner = edge.contract.owner === principal && key === `${edge.contract.recipient}|${edge.contract.id}|result|0`;
       if (!asRecipient && !asOwner) continue;
       if (asOwner && !edge.result) break;
+      // Custody is claimed only once the recipient's durable acceptance exists.
+      if (asRecipient && !edge.acceptance) break;
       const stored = asRecipient ? offerEnvelope(edge.contract).digest : edge.result?.digest;
       if (stored !== digest) return freeze({ key, digest, state: 'refused', refusedWhat: 'receiving-admission',
         authoritative: `conflict:${edge.contract.id}`, result: null, durability: null });
