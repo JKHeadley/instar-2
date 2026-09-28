@@ -51,6 +51,14 @@
       }
     },
     {
+      "id": "PREVIEW-OWNED-OBLIGATIONS",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-obligations.test.ts",
+        "hash": "sha256:a3b2d4e84eaa8130769c726f03d870b08e961611badd3d301cee6dc291881c87"
+      }
+    },
+    {
       "id": "PREVIEW-TRIAL-GATES",
       "stage": "build",
       "artifact": {

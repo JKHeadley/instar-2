@@ -208,6 +208,44 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
+    "id": "preview-owned-obligations",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.obligations.open",
+        "preview.obligations.oldest-unfinished",
+        "preview.blockers.recheck-due"
+      ],
+      "gate": {
+        "test": "PREVIEW-OWNED-OBLIGATIONS",
+        "deadline": 1793404800000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      8,
+      39,
+      83,
+      84,
+      93,
+      99
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
     "id": "preview.journal.openPreviewJournal",
     "kind": "stores",
     "status": "live",
