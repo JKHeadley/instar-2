@@ -96,7 +96,7 @@ it.each(cuts)('recovers from %s', cut => {
     const uncertainSend = points.indexOf(cut) >= points.indexOf('journal:after:intent:2')
       && points.indexOf(cut) < points.indexOf('journal:after:sent:2');
     if (!interruptedReview && !uncertainSend) expect(sends.filter(item => item.update === 2), cut).toEqual([
-      { update: 2, text: 'PREVIEW — Maya has the ORCHID key 731.' },
+      { update: 2, text: 'PREVIEW — From your note: Maya has the ORCHID key 731.' },
     ]);
     else expect(sends.filter(item => item.update === 2).length, cut).toBeLessThanOrEqual(1);
     expect(new Set(sends.map(item => item.update)).size, cut).toBe(sends.length);

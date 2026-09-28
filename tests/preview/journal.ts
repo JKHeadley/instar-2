@@ -13,13 +13,13 @@ import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS } from './reply-check.js';
 import { parseDatedItem, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, statusReply } from './status-command.js';
 import { explicitAgentPromises, fulfillsReminder, type AgentPromise } from './agent-commitment.js';
 import { requestedPeriod, inRequestedPeriod } from './period-summary.js';
 import { messageTime, zoneFormatter } from './self-state.js';
-import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics } from './reply-check.js';
+import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
@@ -390,7 +390,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   corrections: string[];
   stepCheckStarted: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
-  replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
+  replyCheckPaths: { jev: number; subscription: number; holding: number; 'operator-echo': number }; lastReplyCheck: ReplyCheckResult | null }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
   if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
@@ -434,6 +434,31 @@ export const activePersonMerges = (view: JournalView): PersonMerge[] => view.per
   !view.memory.some(change => change.source === link.trigger
     && (link.confirmation.includes(change.quote) || change.quote.includes(link.confirmation))));
 
+
+/** Rule 86: Jev is a low-context filter, so it may hold a reply alone only for a secret.
+ * Its completed flags name no credential and no review returned a violation: when the
+ * full-context review then gives no verdict, the reply is sent. The durable Jev row, the
+ * unavailable review row and the intent together are the record; nothing is re-dispatched. */
+const jevNonSecretFlags = (turn: Turn, candidateDigest?: string): ReplyRule[] | undefined => {
+  const checks = turn.replyChecks ?? [];
+  if (checks.some(check => check.path !== 'jev' && check.verdict === 'violation')) return undefined;
+  const jev = [...checks].reverse().find(check => check.path === 'jev' && (check.verdict === 'violation' || check.verdict === 'unsure')
+    && (candidateDigest === undefined || check.candidateDigest === candidateDigest));
+  return jev?.ruleIds.length && !jev.ruleIds.includes('credential') ? jev.ruleIds : undefined;
+};
+/** Content-free status: replies sent on Jev's non-secret flags while the review was unavailable. */
+export function reviewUnavailableReleases(view: JournalView): { total: number; byRule: Partial<Record<ReplyRule, number>> } {
+  const byRule: Partial<Record<ReplyRule, number>> = {};
+  let total = 0;
+  for (const turn of view.order) {
+    const flags = turn.intent !== undefined && turn.replyChecks?.at(-1)?.verdict === 'unavailable'
+      ? jevNonSecretFlags(turn) : undefined;
+    if (!flags) continue;
+    total++;
+    for (const rule of flags) byRule[rule] = (byRule[rule] ?? 0) + 1;
+  }
+  return { total, byRule };
+}
 
 /** Read-only timing projection from the same durable frames as the reply state. */
 export function replyTimings(view: JournalView) {
@@ -575,6 +600,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
   const view: JournalView = { ...saved, personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null,
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
+    replyCheckPaths: { ...saved.replyCheckPaths, 'operator-echo': saved.replyCheckPaths?.['operator-echo'] ?? 0 },
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
     directives: saved.directives ?? [], blockers: saved.blockers ?? [], commitmentRefusals: saved.commitmentRefusals ?? 0,
     obligationWork: saved.obligationWork ?? {}, rejectedObligations: saved.rejectedObligations ?? 0,
@@ -1717,6 +1743,8 @@ function project(view: JournalView, row: JournalRecord): void {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
+    if (row.result.path === 'operator-echo' && (turn.jevReserved || turn.reviewReserved || row.result.verdict !== 'pass'))
+      throw Error('preview journal: operator echo after a check');
     if (row.result.path === 'jev' && row.result.verdict !== 'unavailable')
       settleTokens(view, `jev:${row.id}`, row.result.usage, true);
     if (row.result.path === 'subscription' && row.result.verdict !== 'unavailable' && turn.reviewState !== 'uncertain')
@@ -2001,7 +2029,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -2078,7 +2106,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -4151,18 +4179,27 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 chat: journal.view.genesis.chat, operator: journal.view.genesis.operator }, history: [] } }) }] })
             : undefined);
 
-          // Only a completed PASS releases the candidate; an unavailable or interrupted
-          // check keeps the turn pending with its intake, candidate and reservations.
+          // A completed PASS releases the candidate. An unavailable or interrupted check keeps the
+          // turn pending with its intake, candidate and reservations, unless Rule 86 releases it below.
           let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact secret wall runs before provider disclosure on every replay.
           if (redact(reply).count) {
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
+          } else if (!previous && !turn.jevReserved && !turn.reviewReserved && !turn.noticeClass && !turn.answerRejected && fromOperator(turn)
+            && repeatsOperatorOnly(reply, journal.view.order.filter(item => item.accepted && item.update <= turn.update
+              && fromOperator(item)).map(item => redact(item.text).text))) {
+            // The operator's own words back to the operator skip Jev and the review; the
+            // exact secret wall above and at send still applies (Rules 4, 86, 116). An answer whose
+            // declared deferral or blocker the runner refused still goes to the contextual review below.
+            journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'pass', ruleIds: [], confidence: null,
+              path: 'operator-echo', latencyMs: 0, candidateDigest }, at: ports.now() });
+            decision = 'pass';
           } else if (previous && previous.path !== 'jev' && previous.verdict === 'violation') decision = 'violation';
           else if (previous && previous.path !== 'holding' && previous.verdict === 'pass') decision = 'pass';
           else if (turn.reviewReserved) {
-            // A failed or interrupted paid review is UNKNOWN: never repeat it, never send unchecked.
+            // A failed or interrupted paid review is UNKNOWN: never repeat it.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
               ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'unavailable';
@@ -4202,6 +4239,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
           }
+          // Rules 4, 86: without a review verdict, Jev's non-secret flags only signal. A spend-cap
+          // refusal, a secret flag or a review violation still holds; stop and expiry gate the send.
+          if (decision === 'unavailable' && !capRefused && jevNonSecretFlags(turn, candidateDigest)) decision = 'pass';
           if (decision === 'violation') { reply = summaryHeader === undefined ? HOLDING_REPLY
             : `${summaryHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`; heldBack = true; }
           else if (decision === 'unavailable') {
