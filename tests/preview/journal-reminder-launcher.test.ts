@@ -28,11 +28,11 @@ it.each([
   const chat = Number(world.configuration.chatId), operator = Number(world.configuration.operatorSenderId);
   const update = (id: number, text: string, from = operator) => ({ update_id: id,
     message: { chat: { id: chat, type: 'private' }, from: { id: from }, text, date: Math.floor(start / 1000) + id * 60 } });
-  let journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, { kind: 'genesis',
+  let journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, { kind: 'genesis', origin: 'test',
     bot: world.configuration.botId, chat: world.configuration.chatId, operator: world.configuration.operatorSenderId,
     grant: trial.id, configurationDigest: trial.configurationDigest, expires: trial.expiresAt,
     maxCalls: 16, maxReplies: 16, maxTurns: 20, maxBytes: 32768, cursor: 0 });
-  const worker = createJournalWorker(journal, { now: () => start, stopped: () => false, timeZone: 'America/Los_Angeles',
+  const worker = createJournalWorker(journal, { now: () => start, stopped: () => false, timeZone: 'America/Los_Angeles', origin: 'test',
     checkOutbound: () => {}, send: async () => 100,
     model: async () => JSON.stringify({ reply: 'Okay.', memory: [], dated: [{ quote: request, when, remind: true }] }) });
   worker.intake([update(1, request)]); await worker.drain();

@@ -135,7 +135,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         evidence.push(JSON.parse((plain[0] === 1 ? brotliDecompressSync(plain.subarray(1)) : plain).toString('utf8')));
         offset += 4 + length;
       }
-      const metered = evidence.filter(row => {
+      // Rules 41/75: each of the four subscription calls is recorded once at the launcher boundary.
+      expect(evidence.filter(row => row.kind === 'model-call' && row.route === 'preview-subscription'
+        && row.usage?.inputTokens === 1 && row.usage?.outputTokens === 1
+        && ['answer', 'reply-review', 'summary', 'summary-review'].includes(row.judgment))).toHaveLength(4);
+      const metered = evidence.filter(row => row.kind !== 'model-call').filter(row => {
         const usage = row.usage ?? row.result?.usage ?? row.faithfulness?.usage;
         return usage?.inputTokens === 1 && usage?.outputTokens === 1;
       });

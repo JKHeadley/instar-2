@@ -12,12 +12,13 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, sendOutcomeCounts, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
-import { interpretSummaryReview } from './summary-check.js';
+import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
+import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
 import { failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
@@ -26,6 +27,7 @@ import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
+import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -93,15 +95,6 @@ const typesafeKey = () => {
   const value = process.env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY;
   if (!value || !value.trim()) throw Error('preview: TypeSafe SecretRef unavailable');
   return value;
-};
-const askJev = async (state, questions, timeoutMs) => {
-  const start = performance.now();
-  const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-    method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs ?? 2000)),
-    headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state, model: JEV_MODEL, questions }) });
-  if (!response.ok) throw Error('preview: Jev unavailable');
-  return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
 };
 const context = { site: 'preview.journal', preserved: 'preview:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
@@ -195,6 +188,9 @@ const recordShape = (path, role, layer, outcome, shape) => {
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
 const roleOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
+/** The registered live judgment a subscription call serves (model-call-boundary.ts). */
+const judgmentOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+  : /^summary:/u.test(id) ? 'summary' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 const lastReplyReview = view => {
@@ -324,8 +320,9 @@ async function main() {
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
-      unknownSends: view.view.order.reduce((count, t) => count + Number(t.intent !== undefined && t.sent === undefined) + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined), 0)
-        + [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
+      unknownSends: sendOutcomeCounts(view.view).unknown,
+      sendOutcomes: sendOutcomeCounts(view.view),
+      modelCalls: view.view.modelCalls,
       replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
         unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
@@ -525,12 +522,19 @@ async function main() {
     if (!existsSync(journalPath) && (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
       || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes))
       throw Error('preview: live allowance outside approved bound');
+    // Rule 35: the trusted composition origin. Only the fixed offline test token on a loopback
+    // endpoint is a test composition; it may write only a test-origin store, and a production
+    // store refuses it (and any test-origin identity) at the journal's write boundary.
+    const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
+    if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+      || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
+    const origin = offlineEndpoint ? 'test' : 'production';
     const initial = command !== 'run' ? undefined : {
-      kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'),
+      kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'), ...(origin === 'test' ? { origin } : {}),
       operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
-    journal = openPreviewJournal(journalPath, key(), initial);
+    journal = openPreviewJournal(journalPath, key(), initial, undefined, false, undefined, false, origin);
     const g = journal.view.genesis;
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
@@ -548,11 +552,59 @@ async function main() {
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
     const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
+    // model-call-boundary:start
+    // Rules 41, 57 and 75: the ONLY two places this launcher reaches a model. Each call's exact
+    // input, output, actual route, outcome, latency and usage (or its written exception) is
+    // durably journaled before any caller reads the result; an unregistered judgment refuses.
+    const recordModelCall = entry => journal.append(modelCallRecord({ ...entry, at: wallNow() }));
+    const callSubscription = async (judgment, prepared, id, invocation) => {
+      assertLiveJudgment(judgment, 'preview-subscription');
+      const route = modelRoute(id), start = performance.now();
+      const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared ? `reserve:${id}` : undefined;
+      const base = { id, judgment, route: 'preview-subscription', model: required(options, 'model'), input: prepared,
+        ...(inputRef === undefined ? {} : { inputRef }) };
+      let result;
+      try { result = await route.invoke(prepared, invocation); }
+      catch (error) {
+        recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
+        throw error;
+      }
+      recordModelCall({ ...base, output: typeof result.bytes === 'string' ? result.bytes : null,
+        outcome: ['complete', 'rejected', 'uncertain'].includes(result.state) ? result.state : 'failed',
+        latencyMs: performance.now() - start, usage: result.usage ? { inputTokens: result.usage.inputTokens ?? null,
+          outputTokens: result.usage.outputTokens ?? null, charge: null } : null });
+      return result;
+    };
+    const callJev = async (judgment, state, questions, timeoutMs = 2000) => {
+      assertLiveJudgment(judgment, 'typesafe-jev');
+      const start = performance.now(), body = JSON.stringify({ state, model: JEV_MODEL, questions });
+      const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body };
+      let response, text;
+      try {
+        response = await fetch('https://api.typesafe.ai/v1/systemone', {
+          method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs)),
+          headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' }, body });
+        text = await response.text();
+      } catch (error) {
+        recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
+        throw error;
+      }
+      let value = null;
+      try { if (response.ok) value = parseJevResponse(text); } catch { value = null; }
+      const usage = value?.usage && (typeof value.usage.input_tokens === 'number' || typeof value.usage.output_tokens === 'number')
+        ? { inputTokens: typeof value.usage.input_tokens === 'number' ? value.usage.input_tokens : null,
+          outputTokens: typeof value.usage.output_tokens === 'number' ? value.usage.output_tokens : null, charge: null } : null;
+      const latencyMs = Math.round(performance.now() - start);
+      recordModelCall({ ...base, output: text, outcome: !response.ok ? 'rejected' : value === null ? 'failed' : 'complete', latencyMs, usage });
+      if (!response.ok || value === null) throw Error('preview: Jev unavailable');
+      return { value, latencyMs };
+    };
+    // model-call-boundary:end
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt) => {
-      const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
+      const policy = subscriptionConversationPolicy(required(options, 'model'));
       const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + 180000);
       if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
-      const result = await route.invoke(prepared, { operation: id, deadline,
+      const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
@@ -564,8 +616,9 @@ async function main() {
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
+      // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
       if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string') {
+        || typeof decision.conclusion.value !== 'string' || !decisionWithinFloor(decision)) {
         recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
         return { state: 'complete', failureClass: 'malformed', usage: result.usage };
       }
@@ -573,16 +626,7 @@ async function main() {
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
-    const invokeJev = async (text, questions) => {
-      const start = performance.now();
-      const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-        method: 'POST', signal: AbortSignal.timeout(2000),
-        headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
-      if (!response.ok) throw Error('preview: Jev unavailable');
-      return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
-    };
-    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
@@ -595,10 +639,11 @@ async function main() {
         return { state: 'complete', text: result.value,
           usage: recordedUsage(result.usage) };
       },
-      summaryCheck: async evidence => (await askJev(evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
+      summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: (text, questions = jevQuestions, timeoutMs) => askJev(text, questions, timeoutMs),
+        jev: (text, questions = jevQuestions, timeoutMs) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
+          text, questions, timeoutMs),
         escalate: async (text, id, originalPrompt, reviewRules, deadlineAt) => {
 
           const start = performance.now();
@@ -636,18 +681,18 @@ async function main() {
             shape => recordShape(shapesPath, 'summary-review', 'verdict', 'malformed', shape));
         }
       },
-      ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
-      send: async ({ text, expectedText, chat, thread }) => {
-        if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop) return null;
+      ...(stepCheckEnabled ? { stepCheck: { jev: text => callJev('jev-step-check', text, stepQuestions) } } : {}),
+      // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
+      // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
+      send: async ({ text, expectedText, chat, thread, target, provenance }) => {
+        if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
+          return { kind: 'refused', reason: 'outbound provenance unsigned' };
+        if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
+          return { kind: 'refused', reason: 'stopped before dispatch' };
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
           body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }) },
           timeoutMs: 30000 }, token());
-        if (reply.kind !== 'response' || reply.status !== 200) return null;
-        const payload = JSON.parse(reply.bytes);
-        return payload.ok === true && String(payload.result?.chat?.id) === chat && payload.result?.text === expectedText
-          && (thread === undefined || payload.result?.message_thread_id === thread)
-          && Number.isSafeInteger(payload.result?.message_id)
-          ? payload.result.message_id : null;
+        return classifyTelegramSend(reply, { chat, expectedText, ...(thread === undefined ? {} : { thread }) });
       } });
     if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
@@ -657,9 +702,6 @@ async function main() {
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
-    const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
-    if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-      || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
     }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);

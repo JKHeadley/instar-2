@@ -22,7 +22,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
     answers: Object.fromEntries(['raw_path','cli_command','config_key','credential','api_endpoint',
       'quits_on_self','claims_blocked','parks_on_user'].map(rule => [rule,{type:'noul',noul:0.01}])) }));\n`);
   let journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, {
-    kind: 'genesis', bot: world.configuration.botId, chat: world.configuration.chatId,
+    kind: 'genesis', origin: 'test', bot: world.configuration.botId, chat: world.configuration.chatId,
     operator: world.configuration.operatorSenderId, grant: world.state().read().trial.id,
     configurationDigest: world.state().read().trial.configurationDigest,
     expires: world.state().read().trial.expiresAt, maxCalls: 16, maxReplies: 16,
@@ -152,6 +152,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:1,
           unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:1,total:1},
           replyChecks:{unavailable:1},unknownSends:0,
+          // Rules 41/75: every live model call, including the failed Jev check, is recorded at the one boundary.
+          modelCalls:{total:3,byJudgment:{answer:1,'reply-review':1,'jev-reply-check':1},byOutcome:{complete:2,failed:1},usageUnknown:1},
+          // Rules 42/89: the one reply was accepted and signed as the agent's own speech.
+          sendOutcomes:{accepted:1,refused:0,unknown:0,speakers:{agent:1,infrastructure:0}},
           coherence:{checked:1,unchecked:0,failed:0,pendingCorrections:0,findings:[]}});
     const stop = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],

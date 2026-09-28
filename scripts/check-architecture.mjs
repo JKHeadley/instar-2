@@ -1,6 +1,6 @@
 // Rules 1, 26, 31, 40, 42, 69, 96. This uses TypeScript's resolved types, not identifier spelling.
 import ts from 'typescript';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -98,9 +98,35 @@ export function lintProgram(program, files) {
   }
   return issues;
 }
+// Rules 41 and 75: the shipped live runner reaches a model only inside its one recording
+// boundary. Walk the launcher and every local module it imports; a provider fetch or route
+// invocation anywhere else is a bypass. The Telegram bridge (`physical.invoke`) is not a model.
+export function lintShippedLauncher(entry, read = path => readFileSync(path, 'utf8'), exists = existsSync) {
+  const issues = [], seen = new Set(), queue = [resolve(entry)];
+  while (queue.length) {
+    const file = queue.shift(); if (seen.has(file)) continue; seen.add(file);
+    const text = read(file), lines = text.split('\n');
+    let inside = false;
+    lines.forEach((line, index) => {
+      if (line.includes('// model-call-boundary:start')) inside = file === resolve(entry);
+      if (line.includes('// model-call-boundary:end')) inside = false;
+      const reaches = /\bfetch\s*\(|\.invoke\s*\(/.test(line.replace(/physical\.invoke\s*\(/g, ''));
+      if (reaches && !inside) issues.push({ file: relative(process.cwd(), file), line: index + 1, rule: 'R41-R75',
+        detail: 'model call outside the launcher\'s recording boundary' });
+    });
+    for (const match of text.matchAll(/(?:from|import)\s*\(?\s*'(\.{1,2}\/[^']+)'/g)) {
+      const target = resolve(dirname(file), match[1]);
+      if (target.includes('/node_modules/')) continue;
+      const candidates = [target, target.replace(/\.js$/, '.ts'), target.replace(/\.js$/, '.mjs')];
+      const found = candidates.find(candidate => exists(candidate) && !candidate.includes(`${resolve('src')}/`));
+      if (found) queue.push(found);
+    }
+  }
+  return issues;
+}
 function walk(path) { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${path}/${e.name}`) : e.name.endsWith('.ts') ? [`${path}/${e.name}`] : []); }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const program = createProgram(); const issues = lintProgram(program, walk('src'));
+  const program = createProgram(); const issues = [...lintProgram(program, walk('src')), ...lintShippedLauncher('tests/preview/journal-agent.mjs')];
   if (issues.length) { console.error(JSON.stringify(issues, null, 2)); process.exitCode = 1; }
   else console.log('architecture checks passed');
 }
