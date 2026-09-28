@@ -28,6 +28,8 @@ export type HostAllocation = Readonly<{
   reserve(input: Readonly<{ launch: string; work: string; memoryBytes: number; processCount: number }>):
     { ok: true; handle: AllocationHandle } | { ok: false; reason: string };
   close(set: string, settlement: string): { ok: boolean; reason?: string };
+  /** Completes a set's return under its own durable settlement (a partial return resumes; closed is returned). */
+  resume(set: string): { ok: boolean; reason?: string };
   open(): readonly Readonly<{ set: string; launch: string }>[];
   generation(): number;
   policies: readonly ResourceDomainPolicy[];
@@ -54,7 +56,9 @@ export function hostResourcePolicies(machine: string, ceilings: HostAllocationCe
 }
 
 export function createHostResourceAllocation(options: Readonly<{ root: string; machine: string; ceilings: HostAllocationCeilings;
-  incarnation: string; now: () => number; monotonic: () => number; generationFacts?: number }>): HostAllocation {
+  incarnation: string; now: () => number; monotonic: () => number; generationFacts?: number;
+  /** Test fault: allocation-set appends allowed before a simulated crash (absent: none). */
+  fault?: { appendsBeforeCut: number } }>): HostAllocation {
   const f = factsFixture();
   const policies = hostResourcePolicies(options.machine, options.ceilings);
   const directory = join(options.root, 'six');
@@ -97,7 +101,13 @@ export function createHostResourceAllocation(options: Readonly<{ root: string; m
   const open = (n: number) => {
     const store = createFactStore(ctx, createTransportFileStorage(join(directory, `host-${n}`), result));
     const six = createTransportAuthority(host, createTransportSpine(host, { context: ctx, privateKey }, store), f.c);
-    const sets = createResourceSetAuthority(host, createResourceSetSpine(host, { context: ctx, privateKey }, store), f.c);
+    const spine = createResourceSetSpine(host, { context: ctx, privateKey }, store);
+    const fault = options.fault;
+    const sets = createResourceSetAuthority(host, fault ? { store, append: (record, required) => {
+      if (fault.appendsBeforeCut <= 0) throw Error('simulated crash before append');
+      fault.appendsBeforeCut--;
+      return spine.append(record, required);
+    } } : spine, f.c);
     // This process's lease on the host resource domain; a restarted process is a new authority incarnation.
     const fence = take(six.acquire(`acquire:${options.incarnation}:${n}`, take(six.inspect()).at(-1)?.fact.id ?? '', host.maxLeaseTerm));
     return { store, six, sets, fence };
@@ -115,6 +125,16 @@ export function createHostResourceAllocation(options: Readonly<{ root: string; m
     for (const row of rows()) latest.set(row.record.id, row);
     return [...latest.values()].filter(r => r.record.state !== 'closed');
   };
+  // A refused or abandoned set that never launched keeps its identity until its prepared debits are
+  // back: the next call retries the same set, never a fresh partial one beside it.
+  const pending = new Map<string, string>();
+  const ref = (id: string) => ({ owner: 'part-six' as const, name: 'ResourceAllocationSet' as const, id });
+  const giveBack = (id: string, settlement: string) => {
+    const closed = !detail(g.sets.closeResourceSet({ command: `close:${id}`, allocationSet: ref(id), settlement }));
+    if (closed) pending.delete(id); else pending.set(id, settlement);
+    return closed;
+  };
+  const retryPending = () => { for (const [id, settlement] of [...pending]) giveBack(id, settlement); };
   const rotate = () => {
     if (rows().length < GENERATION_FACTS || openSets().length) return;
     generation++;
@@ -142,13 +162,17 @@ export function createHostResourceAllocation(options: Readonly<{ root: string; m
         { dimension: 'job-family', domain: family, resource: 'launches', amount: 1, policy: 'policy:family-launches', expectedPredecessor: head(family) },
       ].sort((a, b) => a.domain < b.domain ? -1 : a.domain > b.domain ? 1 : a.resource < b.resource ? -1 : a.resource > b.resource ? 1 : 0) as ResourceDemand[];
       let token: FenceToken;
-      try { rotate(); token = current(); } catch (error) { return { ok: false, reason: String((error as Error).message) }; }
+      try { token = current(); retryPending(); rotate(); token = current(); } catch (error) { return { ok: false, reason: String((error as Error).message) }; }
       const reserved = g.sets.reserveResourceSet({ command: `launch:${input.launch}`, fence: token, request, run, parentAllocation: '', demands });
       const refusal = detail(reserved);
-      if (refusal) return { ok: false, reason: refusal };
+      if (refusal) {
+        // An ordinary refusal after an earlier domain was prepared: that proved-unused debit returns now.
+        const partial = openSets().find(r => r.record.run === run.id);
+        if (partial) giveBack(partial.record.id, `never-launched:${input.launch}`);
+        return { ok: false, reason: refusal };
+      }
       const set = take(reserved);
-      const giveBack = (reason: string) => { g.sets.closeResourceSet({ command: `close:${input.launch}`, allocationSet:
-        { owner: 'part-six', name: 'ResourceAllocationSet', id: set.id }, settlement: `never-launched:${input.launch}` }); return { ok: false as const, reason }; };
+      const refuse = (reason: string) => { giveBack(set.id, `never-launched:${input.launch}`); return { ok: false as const, reason }; };
       try {
         // The launch's own single-run Six domain: lease, loop, and its ordinary prepared reservation.
         const authority = openLaunchDomain(input.launch);
@@ -163,12 +187,22 @@ export function createHostResourceAllocation(options: Readonly<{ root: string; m
           { owner: 'part-six', name: 'ResourceAllocationSet', id: set.id }));
         take(authority.claim(`claim:${input.launch}`, lfence, op.operation));
         return { ok: true, handle: { set: set.id, operation: op.operation, launch: input.launch } };
-      } catch (error) { return giveBack(String((error as Error).message)); }
+      } catch (error) { return refuse(String((error as Error).message)); }
     },
     close: (set, settlement) => {
       try { current(); } catch (error) { return { ok: false, reason: String((error as Error).message) }; }
       const closed = g.sets.closeResourceSet({ command: `close:${set}`, allocationSet: { owner: 'part-six', name: 'ResourceAllocationSet', id: set }, settlement });
       const refusal = detail(closed);
+      return refusal ? { ok: false, reason: refusal } : { ok: true };
+    },
+    resume: set => {
+      try { current(); } catch (error) { return { ok: false, reason: String((error as Error).message) }; }
+      const latest = rows().filter(r => r.record.id === set).at(-1)?.record;
+      if (!latest) return { ok: false, reason: 'resource set absent' };
+      if (latest.state === 'closed') return { ok: true };
+      if (latest.state !== 'closing') return { ok: false, reason: 'resource set is not closing' };
+      // The immutable settlement already bound to the durable closing set, never a new cause.
+      const refusal = detail(g.sets.closeResourceSet({ command: `close:${set}`, allocationSet: ref(set), settlement: latest.sourceVector }));
       return refusal ? { ok: false, reason: refusal } : { ok: true };
     },
     open: () => openSets().map(r => ({ set: r.record.id, launch: r.record.run.replace(/^host-launch:/u, '') })),

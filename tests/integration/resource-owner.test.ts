@@ -326,6 +326,81 @@ const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.un
   } finally { try { process.kill(survivor, 'SIGKILL'); } catch { /* ended */ } }
 });
 
+it('an unreadable working directory of a live candidate is unknown membership: cleanup stays unresolved and the debit reserved', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'owned-launches.json'), pids = join(root, 'pids');
+  const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));`);
+  // The working-directory lookup fails (as a denied lsof does); every other observation is real.
+  const blind = (file: string, args: string[]) => file === '/usr/sbin/lsof' ? Promise.resolve(null) : hostQuery(file, args);
+  const allocation = six(root);
+  const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
+  await owner.attach({ ledgerPath, allocation, query: blind });
+  const result = await owner.execute(input(root, escape, [pids]), 'maintenance');
+  const escaped = Number(readFileSync(pids, 'utf8'));
+  try {
+    expect(alive(escaped)).toBe(true);
+    expect(result.resources).toMatchObject({ cleanup: 'unresolved', allocation: { state: 'reserved' } });
+    expect(allocation.open()).toHaveLength(1);
+    expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches)).toHaveLength(1);
+    // Recovery with the same failed lookup: absence is unproven, so the row and the debit stay.
+    const rows = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+    for (const r of Object.values(rows.launches) as Array<Record<string, unknown>>) r.owner = { pid: 999999, start: 'gone' };
+    writeFileSync(ledgerPath, JSON.stringify(rows));
+    const again = six(root);
+    await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: again, query: blind });
+    expect(again.open()).toHaveLength(1);
+  } finally { try { process.kill(escaped, 'SIGKILL'); } catch { /* ended */ } }
+  await settle(200);
+  // The other side: with the escapee gone and the lookup readable, absence is proven and the debit returns.
+  const after = six(root);
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: after });
+  expect(after.open()).toEqual([]);
+  expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
+});
+
+it('a refused allocation returns the debit it already prepared, so refused maintenance never takes the answer slot', () => {
+  const root = dir(), allocation = six(root);
+  const reserve = (launch: string, work: string) => allocation.reserve({ launch, work, memoryBytes: 1024, processCount: 1 });
+  // Two maintenance launches still held (for example, their cleanup is unresolved).
+  expect(reserve('m1', 'maintenance').ok).toBe(true);
+  expect(reserve('m2', 'maintenance').ok).toBe(true);
+  // A third prepares the installation slot, then meets the maintenance-family ceiling.
+  const third = reserve('m3', 'maintenance');
+  expect(third.ok ? '' : third.reason).toMatch(/capacity exhausted/u);
+  expect(allocation.open().map(o => o.launch).sort()).toEqual(['m1', 'm2']);
+  // The answer reserve is intact, and the genuinely held launches stay reserved.
+  expect(reserve('a1', 'answer').ok).toBe(true);
+  expect(allocation.open().map(o => o.launch).sort()).toEqual(['a1', 'm1', 'm2']);
+});
+
+it('recovery resumes a partial allocation return under its durable settlement, and a closed set counts as returned', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'owned-launches.json');
+  const fault = { appendsBeforeCut: Infinity };
+  const allocation = createHostResourceAllocation({ root, machine: 'machine:test', ceilings: ceilings(),
+    incarnation: `test:${process.pid}:${++incarnations}`, now: () => Date.now(), monotonic: () => performance.now(), fault });
+  const reserved = allocation.reserve({ launch: 'cut-launch', work: 'answer', memoryBytes: 1024, processCount: 1 });
+  if (!reserved.ok) throw Error(reserved.reason);
+  const set = reserved.handle.set;
+  // Completion's return lands its first domain, then the process dies before the next write.
+  fault.appendsBeforeCut = 1;
+  expect(allocation.close(set, 'cleanup-verified:cut-launch').ok).toBe(false);
+  fault.appendsBeforeCut = Infinity;
+  expect(allocation.open()).toHaveLength(1);
+  // A new cause cannot rebind the closing set: recovery must resume the original one.
+  expect(allocation.close(set, 'recovery-observed-gone:cut-launch').reason).toMatch(/another settlement/u);
+  writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { 'cut-launch': { pid: 999999, start: 'gone',
+    owner: { pid: 999998, start: 'gone' }, members: {}, allocation: set } } }));
+  const next = six(root);
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: next });
+  expect(next.open()).toEqual([]);
+  expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
+  // Close finished but the row survived (its removal failed): the closed set is recognized as returned.
+  writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { 'cut-launch': { pid: 999999, start: 'gone',
+    owner: { pid: 999998, start: 'gone' }, members: {}, allocation: set } } }));
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: six(root) });
+  expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
+});
+
 it('keeps the durable row and reports unresolved cleanup when a cleanup signal is denied', { timeout: 30000 }, async () => {
   const root = dir(), ledgerPath = join(root, 'owned-launches.json'), pids = join(root, 'pids');
   // A group member outlives the provider; the owner's kill of it is refused (EPERM).
@@ -456,7 +531,8 @@ wait();`);
       expect(r.resources.enforcement.processGrowth).not.toBe('hard');
       expect(r.resources.uidProcesses.subject).toMatch(/^uid:\d+$/u);
     }
-    expect(HOST_BOUNDS).toMatchObject({ treeProcesses: 'sampled', treeMembership: 'working-area-joined', aggregateLaunches: 'hard' });
+    expect(HOST_BOUNDS).toMatchObject({ treeProcesses: 'sampled', treeMembership: 'working-area-joined', aggregateLaunches: 'hard',
+      confinement: 'blocked-install-held' });
   } finally { baseline.forEach(child => { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ } }); }
 });
 

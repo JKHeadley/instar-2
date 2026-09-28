@@ -194,6 +194,22 @@ describe('P6-NF-19 Six composed resource admission (row 36)', () => {
     expect(resourceDebited(t.rowsNow(), 'install:1', 'processes')).toBe(0);
   });
 
+  it('an ancestor bounds the child by each parent dimension of that resource, never their sum', () => {
+    const t = resourceSetFixture(undefined, 'authority:1', [domain('install:1', 'installation', 'launches', 3),
+      domain('family:x', 'job-family', 'launches', 3)]);
+    const fence = t.acquire();
+    // One admitted launch, constrained on two independent dimensions: one unit of capacity, not two.
+    const parent = value(t.sets.reserveResourceSet({ command: 'parent', fence, request: t.request('rp'), run: t.run('rp'), parentAllocation: '',
+      demands: [t.demand('job-family', 'family:x', 'launches', 1), t.demand('installation', 'install:1', 'launches', 1)] }));
+    const child = (command: string, resource: string, amount: number) => t.sets.reserveResourceSet({ command, fence, request: t.request(command),
+      run: t.run(command), parentAllocation: parent.id, demands: [t.demand('ancestor', parent.id, resource, amount, 'policy:ancestor')] });
+    expect(refusal(child('child-2', 'launches', 2))).toMatch(/capacity exhausted/);
+    expect(value(child('child-1', 'launches', 1)).state).toBe('committed');
+    expect(refusal(child('child-3', 'launches', 1))).toMatch(/capacity exhausted/);
+    // A resource the parent never held is not an ambiguous zero-or-anything credit: it refuses.
+    expect(refusal(child('child-4', 'processes', 1))).toMatch(/not held by the parent/);
+  });
+
   it('a command reused with changed demands refuses (conflicting digest)', () => {
     const t = resourceSetFixture(undefined, 'authority:1', [domain('a', 'installation', 'launches', 3)]);
     const fence = t.acquire();

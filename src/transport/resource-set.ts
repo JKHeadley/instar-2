@@ -168,7 +168,11 @@ function capacityCheck(next: ResourceAllocationSet, prior: SetFact | undefined, 
     if (d.dimension === 'ancestor') {
       const parent = latestById(all).get(d.domain)?.record;
       ensure(parent && parent.state === 'committed', 'ancestor allocation must be committed and open');
-      capacity = parent.demands.filter(p => p.resource === d.resource).reduce((n, p) => n + p.amount, 0);
+      // Each parent dimension naming this resource is an independent ceiling on the same admitted
+      // capacity, never an additive credit: the child is bounded by every one of them (the least).
+      const ceilings = parent.demands.filter(p => p.resource === d.resource).map(p => p.amount);
+      ensure(ceilings.length > 0, 'ancestor resource is not held by the parent allocation');
+      capacity = Math.min(...ceilings);
     } else {
       const policy = policies.filter(p => p.domain === d.domain && p.resource === d.resource);
       ensure(policy.length === 1, 'domain resource is not registered: missing approved quantity holds admission');

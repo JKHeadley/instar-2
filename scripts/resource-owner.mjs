@@ -152,9 +152,10 @@ export const HOST_IDENTITY = Object.freeze({ machine: `machine:${hostname()}`,
 /** The host posture: which ceilings are held hard, and on which subject (Rule 60). */
 export const HOST_BOUNDS = Object.freeze({ aggregateLaunches: 'hard', sixAllocation: 'hard', aggregateMemory: 'sampled',
   aggregateProcesses: 'sampled', treeMembership: 'working-area-joined', treeProcesses: 'sampled', treeHandles: 'unsupported',
-  uidProcesses: 'hard',
+  uidProcesses: 'hard', confinement: 'blocked-install-held',
   reason: 'no unprivileged per-tree kernel confinement on this host: memory and tree process counts are enforced on a complete '
-    + 'current-user census joined by recorded incarnation, group, ancestry and private working area; RLIMIT_NPROC bounds the user ID',
+    + 'current-user census joined by recorded incarnation, group, ancestry and private working area; RLIMIT_NPROC bounds the user ID; '
+    + 'the working-area join is observation, not confinement, and a Six memory debit is an accounting reservation, not a kernel one',
   residual: 'a descendant that leaves its group, its parent and the private working area before any census is not joined; '
     + 'the separate restricted worker identity (the held Ten confined-launch monitor) closes it' });
 /** The launch's private working area: the working directory when it is owned by this user ID and closed
@@ -380,11 +381,23 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
     const joined = new Map(members);
     const read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
-    if (read.length) for (const [pid, member] of joinWorkingArea(snapshot, roots, read, await inventory.workingDirectories(read)))
-      joined.set(pid, member);
-    const state = snapshot.status === 'partial' || read.length < candidates.length ? 'partial' : 'complete';
+    const cwds = read.length ? await inventory.workingDirectories(read) : new Map();
+    if (read.length) for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
+    const unread = await unreadCandidates(snapshot, read, cwds);
+    const state = snapshot.status === 'partial' || read.length < candidates.length || unread ? 'partial' : 'complete';
     return { state, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
       examined: snapshot.examined, omitted: (snapshot.omitted ?? 0) + candidates.length - read.length };
+  }
+  /** Candidates whose working directory could not be read and that are still the same live
+   * incarnation: their membership is unknown, so a census holding one is never complete. */
+  async function unreadCandidates(snapshot, read, cwds) {
+    let unread = 0;
+    for (const pid of read) {
+      if (cwds.get(pid)?.state === 'observed') continue;
+      const now = await startEvidence(pid), row = snapshot.processes.find(p => p.pid === pid);
+      if (now === UNKNOWN || (now !== null && now === row?.start)) unread++;
+    }
+    return unread;
   }
   async function sample() {
     const roots = [...launches.values()].filter(l => l.pid && l.running);
@@ -686,12 +699,14 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (snapshot?.status === 'complete') {
         const { members, candidates } = launchMembership(snapshot, roots, process.pid);
         const all = new Map(members), read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
-        if (read.length) for (const [pid, m] of joinWorkingArea(snapshot, roots, read, await inventory.workingDirectories(read))) all.set(pid, m);
+        const cwds = read.length ? await inventory.workingDirectories(read) : new Map();
+        if (read.length) for (const [pid, m] of joinWorkingArea(snapshot, roots, read, cwds)) all.set(pid, m);
+        const unread = await unreadCandidates(snapshot, read, cwds);
         escaped = new Map();
         const rowsByPid = new Map(snapshot.processes.map(p => [p.pid, p]));
         for (const [pid, m] of all) if (!rowsByPid.get(pid)?.zombie && !roots.find(r => r.id === m.launch)?.known.has(pid))
           escaped.set(m.launch, (escaped.get(m.launch) ?? 0) + 1);
-        if (read.length < candidates.length) escaped = null;
+        if (read.length < candidates.length || unread) escaped = null;
       }
     }
     for (const { id, members, surviving, unknown } of judged) {
@@ -704,11 +719,17 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         record({ kind: 'orphan-observed', launch: id, surviving: surviving + (found ?? 0), unknown: unknown + unjoined });
       } else closed.push(id);
     }
+    // A return already durably closing (or closed) under its original settlement resumes under that
+    // same cause; only a set not yet closing takes this recovery's cause.
+    const settle = (set, cause) => {
+      try { if (ports.allocation.close(set, cause)?.ok === true) return true; } catch { /* resumed below */ }
+      try { return ports.allocation.resume?.(set)?.ok === true; } catch { return false; }
+    };
     // A verified-gone launch returns its Six debit once; a row whose return cannot land stays.
     const returned = closed.filter(id => {
       const set = rows[id]?.allocation;
       if (!set || !ports.allocation) return true;
-      try { return ports.allocation.close(set, `recovery-observed-gone:${id}`)?.ok === true; } catch { return false; }
+      return settle(set, `recovery-observed-gone:${id}`);
     });
     if (returned.length) try { ledger(all => { for (const id of returned) delete all[id]; }); } catch { /* observed again next attach */ }
     // A set whose launch has no durable row never opened its gate (the row precedes the gate), so the
@@ -716,8 +737,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     if (ports.allocation) {
       let open = [];
       try { open = ports.allocation.open(); } catch { open = []; }
-      for (const { set, launch } of open) if (!rows[launch])
-        try { ports.allocation.close(set, `never-launched:${launch}`); } catch { /* retried at the next attach */ }
+      for (const { set, launch } of open) if (!rows[launch]) settle(set, `never-launched:${launch}`);
     }
   }
   async function observeInherited() {
