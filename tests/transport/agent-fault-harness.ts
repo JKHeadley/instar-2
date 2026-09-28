@@ -188,4 +188,3 @@ export function createNetwork(kind: Kind) {
   };
   return net;
 }
-
