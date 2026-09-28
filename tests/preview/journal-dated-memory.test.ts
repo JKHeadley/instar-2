@@ -577,12 +577,15 @@ it('delivers upcoming-date behavior in the prepared packet and source briefing',
       model: async () => 'Okay.', send: async () => 1, checkOutbound: () => {} });
     const prepared = worker.probe('Hello');
     if ('reason' in prepared) throw Error(prepared.reason);
-    expect(JSON.parse(prepared.context).capability).toContain('within 48 hours');
-    expect(JSON.parse(prepared.context).capability).toContain('remembered across restarts');
+    // The packet no longer repeats a hand-written capability list; it points at the generated briefing.
+    expect(JSON.parse(prepared.context).capability).toContain('capability-note source');
+    expect(JSON.parse(prepared.context).capability).not.toContain('within 48 hours');
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 30, expiresAt: genesis.expires });
-    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('unprompted message');
-    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('remembered across restarts');
+    const note = sources.sources.find(source => source.id === 'capability-note')?.text;
+    expect(note).toContain('unprompted message');
+    expect(note).toContain('- preview-upcoming-date-mention: when a saved date is within 48 hours');
+    expect(note).toContain('remembered across restarts');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

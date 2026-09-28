@@ -308,8 +308,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const [path, content] of Object.entries({ ...owner.artifacts,
     ...Object.fromEntries(Object.entries(input.sources).filter(([p]) => ownerManifestPaths.includes(p))) }))
     if (readFileSync(path, 'utf8') !== content) throw new Error('owner reference source pin trails ' + path);
-  // The roster is the shipped inventory of the working tree, not a src/ glob.
-  const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).trim().split('\n');
+  // The roster is the shipped inventory of the working tree (tracked or untracked), not a src/ glob.
+  const tracked = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '--', '.', ':!node_modules', ':!dist'], { encoding: 'utf8' }).trim().split('\n');
   const livePaths = shippedInventory(tracked, path => readFileSync(path, 'utf8')).files;
   if (JSON.stringify(livePaths) !== JSON.stringify(Object.keys(input.code).sort()))
     throw new Error('source wiring roster differs from committed graph; commit source changes and regenerate');

@@ -43,7 +43,7 @@ describe('compiled register build adapter lifecycle', () => {
     const yieldToRunner = () => new Promise<void>(done => yieldImmediate(done));
     const root = mkdtempSync(join(tmpdir(), 'instar-register-normal-e2e-'));
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) {
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) {
         cpSync(path, join(root, path), { recursive: true });
         await yieldToRunner();
       }
@@ -186,7 +186,7 @@ describe('compiled register build adapter lifecycle', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init');
       const commit = () => { git('add', '.'); git('commit', '-qm', 'fixture source'); return git('rev-parse', 'HEAD').trim(); };
@@ -263,7 +263,7 @@ describe('compiled register build adapter lifecycle', () => {
   it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
       installOwnerFixture(root); installIntakeOwnerFixture(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8' }).trim();
       git('init', '-q');
@@ -297,7 +297,7 @@ describe('compiled register build adapter lifecycle', () => {
   it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
       installOwnerFixture(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       git('init');
@@ -344,7 +344,7 @@ describe('compiled register build adapter lifecycle', () => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
     const root = join(directory, 'working'); const clean = join(directory, 'clean'); const committed = join(directory, 'committed');
     try {
-      const inputs = ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json'];
+      const inputs = ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
       for (const path of inputs) cpSync(path, join(root, path), { recursive: true });
       installOwnerFixture(root);
       const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();

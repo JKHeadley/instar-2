@@ -38,6 +38,8 @@ export function capabilityLines(text) {
   return [...section.matchAll(/^- `([^`]+)`: (.+)$/gm)].map(m => ({ id: m[1], text: m[2].trim() }));
 }
 const features = register => register.entries.map(e => e.declaration).filter(d => d.kind === 'features' && d.status !== 'retired');
+// A module's capability lines, read from its own README whether or not a launcher loads it.
+const readmeLines = (dir, show) => { try { return capabilityLines(show(`${dir === '.' ? '' : dir + '/'}README.md`)); } catch { return []; } };
 const sourceOf = (d, shipped) => isSidecar(d.declaredBy.path) ? sidecarSource(d.declaredBy.path, shipped) : d.declaredBy.path;
 
 // Per launcher: which declared features its installation carries. A launcher's own
@@ -45,8 +47,8 @@ const sourceOf = (d, shipped) => isSidecar(d.declaredBy.path) ? sidecarSource(d.
 // its code is loaded and it is live. Nothing here is hand-listed.
 export function capabilityBriefing(register, inventory, show) {
   const text = new Map();
-  for (const [dir, m] of Object.entries(inventory.modules)) if (m.readme)
-    for (const line of capabilityLines(show(m.readme))) text.set(`${dir}\u0000${line.id}`, line.text);
+  for (const dir of new Set(features(register).map(d => moduleOf(d.declaredBy.path))))
+    for (const line of readmeLines(dir, show)) text.set(`${dir}\u0000${line.id}`, line.text);
   const launchers = {};
   for (const [launcher, closure] of Object.entries(inventory.launchers)) {
     const own = moduleOf(launcher);
@@ -90,8 +92,9 @@ export function checkShipped(register, inventory, program, owner, show, testsNam
       const sf = program.getSourceFile(resolve(path)); if (!sf || used) continue;
       const scan = n => {
         if (used) return;
+        // Importing, re-exporting or placing it in an object is not a use; calling or passing it is.
         if (ts.isIdentifier(n) && n !== found[0].name && !ts.isImportSpecifier(n.parent) && !ts.isExportSpecifier(n.parent)
-          && !ts.isImportClause(n.parent)) {
+          && !ts.isImportClause(n.parent) && !ts.isShorthandPropertyAssignment(n.parent)) {
           if (target && origin(checker, checker.getSymbolAtLocation(n)) === target) used = true;
         }
         ts.forEachChild(n, scan);
@@ -114,7 +117,7 @@ export function checkShipped(register, inventory, program, owner, show, testsNam
   }
   // The capability briefing is generated from feature declarations plus their module's own text.
   const lines = new Map();
-  for (const [dir, m] of Object.entries(inventory.modules)) if (m.readme) lines.set(dir, capabilityLines(show(m.readme)));
+  for (const dir of new Set([...Object.keys(inventory.modules), ...features(register).map(d => moduleOf(d.declaredBy.path))])) lines.set(dir, readmeLines(dir, show));
   for (const d of features(register)) {
     const module = moduleOf(d.declaredBy.path); const own = (lines.get(module) ?? []).filter(l => l.id === d.id);
     if (own.length !== 1) issues.push(`R78/R84: feature ${d.id} needs exactly one "- \`${d.id}\`: ..." line under "## Capabilities" in ${module}/README.md`);
