@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:bf2ffa01d201d9be39a4ec7a09dbc0742865bf39a91b91b181d1091eabc118df",
-  "commit": "c2c30f8ebb4afdd967d90a28e98ea258a2419250",
+  "generation": "sha256:952d377c4e536a1cf03cbca4d2149258e46c1e46bb575780355e568aaa504e4c",
+  "commit": "2ef7fffaff8c2d654ce77cc79eea55657a431ac1",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -211,7 +211,7 @@
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
-        "availability": "available",
+        "availability": "not-loaded",
         "userFacing": true,
         "text": "answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent."
       },
@@ -219,7 +219,7 @@
         "id": "preview-durable-memory",
         "status": "dark",
         "module": "tests/preview",
-        "availability": "available",
+        "availability": "not-loaded",
         "userFacing": true,
         "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
       },
@@ -227,7 +227,7 @@
         "id": "preview-requested-reminders",
         "status": "dark",
         "module": "tests/preview",
-        "availability": "available",
+        "availability": "not-loaded",
         "userFacing": true,
         "text": "when the operator explicitly asks to be reminded at a settled day and time, sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit."
       },
@@ -235,7 +235,7 @@
         "id": "preview-requested-summaries",
         "status": "dark",
         "module": "tests/preview",
-        "availability": "available",
+        "availability": "not-loaded",
         "userFacing": true,
         "text": "when the operator explicitly asks for a summary at a later time, once or repeatedly, sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary."
       },
@@ -243,7 +243,7 @@
         "id": "preview-status-command",
         "status": "dark",
         "module": "tests/preview",
-        "availability": "available",
+        "availability": "not-loaded",
         "userFacing": true,
         "text": "the exact messages status and how are you doing are answered from the durable journal without generating an answer."
       },
@@ -251,7 +251,7 @@
         "id": "preview-upcoming-date-mention",
         "status": "dark",
         "module": "tests/preview",
-        "availability": "available",
+        "availability": "not-loaded",
         "userFacing": true,
         "text": "when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts."
       },
