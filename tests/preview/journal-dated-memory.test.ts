@@ -219,7 +219,8 @@ it('journals verified dated items once, surfaces them on the next due message, a
     const due = worker.probe('hello');
     if ('reason' in due) throw Error(due.reason);
     expect(JSON.parse(due.context).dated).toMatchObject([{ state: 'due', quote: 'Remind me about the invoice on Oct 1.' }]);
-    expect(JSON.parse(due.context).capability).toContain('explicitly asked for');
+    // Only an explicitly requested item is a reminder; the capability list itself is the generated source.
+    expect(JSON.parse(due.context).capability).toContain('only an item with remind:true is a reminder the operator asked for');
     await worker.sendReminders();
     expect(sends).toBe(1);
     now = Date.UTC(2026, 9, 2, 17);
