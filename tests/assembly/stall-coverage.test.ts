@@ -6,7 +6,7 @@ import type { HarnessStallCoverage } from '../../src/assembly/index.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from './fixture.js';
 import { stallCoverageFixture } from './stall-coverage-fixture.js';
-import { admitPreviewHarness, PREVIEW_JOURNAL_STALL_COVERAGE } from '../preview/stall-coverage.js';
+import { admitPreviewHarness, PREVIEW_JOURNAL_STALL_COVERAGE, SELF_HOST_STALL_COVERAGE } from '../preview/stall-coverage.js';
 
 const read = (file: string) => { try { return readFileSync(file, 'utf8'); } catch { return null; } };
 
@@ -46,4 +46,10 @@ it('the live runner declares all nine silent-stop classes and every captured cas
   expect(() => admitPreviewHarness(file => file.endsWith('journal-handoff.test.ts') ? null : read(file)))
     .toThrow('worker-exit-or-process-reuse: positive case');
   expect(() => admitPreviewHarness(read)).not.toThrow();
+});
+
+it('the self-hosting harness declares all nine silent-stop classes and every captured case resolves to a shipped test', () => {
+  expect(stallCoverageGaps(SELF_HOST_STALL_COVERAGE)).toEqual([]);
+  expect(unresolvedStallCases(SELF_HOST_STALL_COVERAGE, read)).toEqual([]);
+  expect(() => admitPreviewHarness(read, SELF_HOST_STALL_COVERAGE)).not.toThrow();
 });

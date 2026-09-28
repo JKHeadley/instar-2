@@ -67,3 +67,50 @@ export function admitPreviewHarness(read: (file: string) => string | null, cover
   const gaps = [...stallCoverageGaps(coverage), ...unresolvedStallCases(coverage, read)];
   if (gaps.length) throw Error(`preview: harness stall coverage incomplete: ${gaps.join('; ')}`);
 }
+
+/** The self-hosting harness: the native adapter over Eight's confined worker profile (tests/preview/self-host-harness.mjs). */
+export const SELF_HOST_HARNESS = 'preview-self-host-native';
+const SELF_HOST_TESTS = 'tests/preview/self-host.test.ts';
+const selfHostCase = (title: string) => ({ file: SELF_HOST_TESTS, title });
+const DEVELOPS = selfHostCase('develops, tests, repairs, packages, installs and exercises a local capability through the native adapter (Rules 2, 115)');
+const CONFINED = selfHostCase('generated code runs confined: it cannot write outside its scope or read the launcher environment, beside a passing capability');
+const HUNG = selfHostCase('a probe that never settles is killed at its bound without holding the launcher, and its package stays inhibited');
+const REPLACEMENT = selfHostCase('a failed replacement stays inhibited, the prior version stays active and usable, and a reused version label is refused');
+const CUT = selfHostCase('a cut during activation is completed by the next run, and behavior is retained across a compatible update');
+const STOP = selfHostCase('refuses every provider attempt and tool launch once the stop latch is set');
+const ALLOWANCE = selfHostCase('counts provider attempts durably across a restart and refuses past the allowance');
+const INTERRUPTED = selfHostCase('an interrupted provider attempt stays charged after a restart');
+const MALFORMED = selfHostCase('refuses a malformed plan and a file outside the package scope before running anything');
+
+/** Rule 59 for the self-hosting harness, admitted by its adapter constructor on every composition. */
+export const SELF_HOST_STALL_COVERAGE: HarnessStallCoverage = Object.freeze({
+  type: 'HarnessStallCoverage', harness: SELF_HOST_HARNESS, rows: Object.freeze([
+    { stall: 'launch-rejected-or-answer-lost',
+      detection: 'the native adapter launch observation, or its typed refusal (no admitted plan, stop latched), appended to the record log',
+      recovery: 'report the refusal in the round feedback; never relaunch the same incarnation', positive: DEVELOPS, failing: STOP },
+    { stall: 'input-buffered-not-consumed',
+      detection: 'an input-accepted observation without an exit observation is uncertain; only the exit observation of the exact admitted plan digest counts',
+      recovery: 'treat the tool as not run and re-exercise from retained bytes; nothing is inferred from a launch alone', positive: DEVELOPS, failing: HUNG },
+    { stall: 'prompt-approval-or-tool-wait',
+      detection: 'confined children get no stdin, no terminal and no network; any wait ends at the wall bound as a killed exit observation',
+      recovery: 'kill at the bound, record the killed exit and inhibit the candidate; nothing is approved by timeout', positive: CONFINED, failing: HUNG },
+    { stall: 'provider-unavailable-or-expired',
+      detection: 'the durable provider-attempt ledger: a started row without a settled row is an UNKNOWN charged attempt',
+      recovery: 'never retried beyond the allowance; every attempt stays counted across restarts', positive: ALLOWANCE, failing: INTERRUPTED },
+    { stall: 'worker-exit-or-process-reuse',
+      detection: 'the record log survives the process: an activating head without its active successor is an interrupted switch',
+      recovery: 'the next run re-proves the retained bytes in confinement and completes, or inhibits and restores the prior version', positive: CUT, failing: REPLACEMENT },
+    { stall: 'alive-without-progress',
+      detection: 'the round bound and the per-launch wall bound, each observed as a round record or a killed exit observation',
+      recovery: 'feed the recorded failure back for one bounded repair round, then end at the round limit', positive: DEVELOPS, failing: HUNG },
+    { stall: 'context-compacted-or-limit',
+      detection: 'each round request is rebuilt from the task and the recorded feedback only; a plan over the file or size bounds is refused',
+      recovery: 'stateless re-grounding from the durable records; an oversized plan is refused, never truncated', positive: DEVELOPS, failing: MALFORMED },
+    { stall: 'output-partial-malformed-or-delayed',
+      detection: 'the whole plan is decoded as one JSON object before any write; a probe result is read only from its framed output line',
+      recovery: 'refuse the round before anything runs; a missing probe line is a failed exercise', positive: DEVELOPS, failing: MALFORMED },
+    { stall: 'stop-fence-or-resource-loss',
+      detection: 'the durable stop latch read before every provider attempt, launch, delivery and switch; confinement denies writes, network and children',
+      recovery: 'inhibit new action and keep the recorded state; a denied write fails the generated test', positive: CONFINED, failing: STOP },
+  ]),
+}) as HarnessStallCoverage;

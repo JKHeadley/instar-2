@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { importClosure } from '../../scripts/import-closure.mjs';
 
 /**
  * The preview installation: this repository checkout (the shipped runner and the core it loads)
@@ -31,6 +32,21 @@ export function codeDigestOf(files: readonly { path: string; bytes: Uint8Array |
     .map(file => `${file.path}\0${sha256(file.bytes)}`);
   if (new Set(files.map(file => file.path)).size !== files.length) throw Error('preview: duplicate installed path');
   return sha256(lines.join('\n'));
+}
+/**
+ * What the runner executes: its import closure, the TypeScript loader it is launched under, and
+ * every child it spawns from a literal `new URL(…, import.meta.url)` (the Telegram bridge). A
+ * change to any of them changes the digest, so a bridge-only update is an update and a stale
+ * process is visible (Rules 26, 44).
+ */
+export const RUNNER_EXECUTED_ENTRIES = Object.freeze(['tests/preview/journal-agent.mjs', 'scripts/slice-ts-loader.mjs']);
+export function installedCodeOf(read: (path: string) => Uint8Array | string | null, exists: (path: string) => boolean,
+  revision: string | null): InstalledCode {
+  const text = (path: string) => { const bytes = read(path); return bytes === null ? null : typeof bytes === 'string' ? bytes : Buffer.from(bytes).toString('utf8'); };
+  const closure = importClosure([...RUNNER_EXECUTED_ENTRIES], text, exists);
+  if (closure.unresolved.length || closure.computed.length) throw Error('preview: installed runner closure unresolved');
+  return { revision, files: closure.files.length,
+    codeDigest: codeDigestOf(closure.files.map(path => ({ path, bytes: read(path) ?? '' }))) };
 }
 /** Digest of what the agent is told about itself: its sources, instructions and capability note. */
 export function briefingDigestOf(parts: readonly string[]): string { return sha256(JSON.stringify(parts)); }

@@ -15,5 +15,13 @@ export const DYNAMIC_READERS: Readonly<Record<string, { loads: string[]; reason:
 export function lintReplacedStores(sources: Record<string, string>, liveEntries?: readonly string[],
   read?: (path: string) => string | null, exists?: (path: string) => boolean): Issue[];
 export function registeredDoorways(text?: string): string[];
-export function lintParityRegister(register?: unknown, declarations?: Record<string, unknown>,
-  read?: (path: string) => string | null, doorways?: readonly string[]): Issue[];
+export function registerDeclarationSources(read?: (path: string) => string | null, root?: string): Record<string, unknown[]>;
+export const NATIVE_HARNESS: string;
+type ParityEvidence = { file: string; title: string };
+type ParityCell = { status?: 'supported' | 'unsupported' | 'unproven'; declaredStates: string[]; inhibited?: true;
+  evidence?: ParityEvidence[]; reason?: string; artifact?: string[]; route?: string[]; source: string; declaration: string };
+export function parityMatrix(sources?: Record<string, unknown>): { type: 'ParityMatrix'; derivedFrom: string[]; channels: string[];
+  features: { id: string; cells: Record<string, ParityCell & { feature: string; channel: string }> }[];
+  harnessTuples: (ParityCell & { harness: string; doorway: string; platform: string; mode: string })[]; stray: string[] };
+export function lintParityRegister(sources?: Record<string, unknown>, read?: (path: string) => string | null,
+  doorways?: readonly string[]): Issue[];

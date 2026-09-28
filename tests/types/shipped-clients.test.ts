@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores, shippedClientFiles } from '../../scripts/check-architecture.mjs';
+import { existsSync, readFileSync } from 'node:fs';
+import { lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores, NATIVE_HARNESS, parityMatrix,
+  registerDeclarationSources, shippedClientFiles } from '../../scripts/check-architecture.mjs';
 
 const read = (path: string) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
 
@@ -45,26 +46,65 @@ it('R45 refuses a live consumer of a replaced store and an undeclared reader, an
   expect(lintReplacedStores({})).toEqual([]);
 });
 
-it('R105 refuses a declared channel operation, a channel or a doorway without its parity row, and passes the register', () => {
-  const register = JSON.parse(read('src/conversation/parity.register.json')!);
-  const telegram = JSON.parse(read('src/conversation/telegram.declarations.json')!);
-  const slack = JSON.parse(read('src/conversation/slack.declarations.json')!);
-  const clean = lintParityRegister(register, { telegram, slack }, read, ['claude-code-subscription']);
-  expect(clean).toEqual([]);
-  const details = (value: unknown, declarations: Record<string, unknown> = { telegram, slack }, doorways = ['claude-code-subscription']) =>
-    lintParityRegister(value, declarations, read, doorways).map(issue => issue.detail);
-  // A new declared Telegram operation lands without its row.
-  const newOperation = structuredClone(telegram); newOperation[0].requiredFacts.metrics.push('telegram.operation.poll.supported');
-  expect(details(register, { telegram: newOperation, slack })).toContain('declared operation telegram.operation.poll.supported has no parity row');
+it('R105 derives the parity matrix from the register declarations and refuses a cell without its evidence', () => {
+  const sources = registerDeclarationSources();
+  expect(existsSync('src/conversation/parity.register.json')).toBe(false);
+  const matrix = parityMatrix(sources);
+  expect(matrix.channels).toEqual(['slack', 'telegram']);
+  expect(matrix.derivedFrom).toEqual(expect.arrayContaining(['src/conversation/telegram.declarations.json',
+    'src/conversation/slack.declarations.json', 'src/assembly/harness.declarations.json']));
+  // Every declared Telegram operation state is a parity cell of the channel adapter's own declaration.
+  expect(matrix.features.find(row => row.id === 'media')!.cells.telegram).toMatchObject({ status: 'unsupported', inhibited: true,
+    declaration: 'telegram-conversation-adapter' });
+  expect(matrix.features.find(row => row.id === 'ordinary-reply')!.cells.slack).toMatchObject({ status: 'unproven' });
+  const native = matrix.harnessTuples.filter(tuple => tuple.harness === NATIVE_HARNESS);
+  expect(native.find(tuple => tuple.mode === 'conversation')).toMatchObject({ doorway: 'claude-code-subscription', platform: 'darwin',
+    status: 'supported', artifact: ['PREVIEW_JOURNAL_HARNESS@tests/preview/journal-agent.mjs'],
+    route: ['claude-code-subscription@src/assembly/production-provider.ts'],
+    evidence: [{ file: 'tests/preview/native-harness-contract.test.ts', title: 'the journal runner converses through doorway claude-code-subscription' }] });
+  expect(native.find(tuple => tuple.mode === 'ordinary-exhaustion-recovery')).toMatchObject({ status: 'unproven' });
+  expect(matrix.harnessTuples.find(tuple => tuple.harness === 'preview-self-host-native')).toMatchObject({ mode: 'self-hosting', status: 'supported',
+    artifact: ['createNativeHarnessAdapter@src/assembly/harness.ts'], route: ['claude-code-subscription@src/assembly/production-provider.ts'],
+    evidence: [{ file: 'tests/preview/native-harness-contract.test.ts', title: 'native composition honours the harness contract through doorway claude-code-subscription' }] });
+  expect(native.find(tuple => tuple.mode === 'preventive-compaction')).toMatchObject({ status: 'unsupported' });
+
+  const doorways = ['claude-code-subscription'];
+  // Every issue below is an R105 finding about the committed declarations themselves.
+  const clean = lintParityRegister(sources, read, doorways).map(issue => issue.detail);
+  const details = (value: Record<string, unknown>, registered = doorways) =>
+    lintParityRegister(value, read, registered).map(issue => issue.detail).filter(detail => !clean.includes(detail));
+  const with_ = (path: string, edit: (entries: { id: string; requiredFacts: { metrics: string[] } }[]) => void) => {
+    const copy = structuredClone(sources) as Record<string, { id: string; requiredFacts: { metrics: string[] } }[]>;
+    edit(copy[path]!); return copy;
+  };
+  const telegram = 'src/conversation/telegram.declarations.json', harness = 'src/assembly/harness.declarations.json';
+  // A new declared Telegram operation lands without its evidence and without a Slack cell.
+  expect(details(with_(telegram, entries => entries[0]!.requiredFacts.metrics.push('telegram.operation.poll.supported'))))
+    .toEqual(expect.arrayContaining(['poll × telegram: supported without a resolvable captured test', 'poll × slack: no parity cell']));
   // A new channel adapter lands without a column.
-  expect(details(register, { telegram, slack, whatsapp: [] })).toContain('channel whatsapp has an adapter but no parity column');
-  // A supported cell must cite a captured test that exists; a declared-inhibited operation cannot be supported.
-  const broken = structuredClone(register);
-  broken.features[0].cells.telegram.evidence.title = 'a test nobody wrote';
-  broken.features.find((row: { id: string }) => row.id === 'media').cells.telegram = { status: 'supported',
-    evidence: broken.features[1].cells.telegram.evidence };
-  expect(details(broken)).toEqual(expect.arrayContaining(['ordinary-reply × telegram: supported without a resolvable captured test',
-    'telegram.operation.media.inhibited disagrees with its parity cell (supported)']));
-  expect(details(register, { telegram, slack }, ['claude-code-subscription', 'new-doorway']))
-    .toContain('registered doorway new-doorway has no native harness tuple');
+  expect(details({ ...sources, 'src/conversation/whatsapp.declarations.json': [] }))
+    .toContain('channel whatsapp has an adapter but no parity column');
+  // A supported cell must cite a captured test that exists; a declared-inhibited operation cannot also be supported.
+  expect(details(with_(telegram, entries => { const metrics = entries[0]!.requiredFacts.metrics;
+    metrics[metrics.findIndex(metric => metric.startsWith('telegram.operation.status-command.evidence='))] =
+      'telegram.operation.status-command.evidence=tests/preview/status-command.test.ts#a test nobody wrote';
+    metrics.push('telegram.operation.media.supported'); }))).toEqual(expect.arrayContaining([
+    'status-command × telegram: supported without a resolvable captured test',
+    'media × telegram declares more than one parity state (inhibited, supported)']));
+  // An unproven cell must say why.
+  expect(details(with_('src/conversation/slack.declarations.json', entries => {
+    const metrics = entries[0]!.requiredFacts.metrics; metrics.splice(metrics.findIndex(metric => metric.startsWith('slack.operation.ordinary-reply.reason=')), 1);
+  }))).toContain('ordinary-reply × slack: unproven without a reason');
+  // A supported harness tuple is bound to its adapter artifact and registered route, not only a test title.
+  expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
+    metrics[metrics.findIndex(metric => metric.endsWith('.self-hosting.route=claude-code-subscription@src/assembly/production-provider.ts'))] =
+      'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.route=claude-code-subscription@src/assembly/harness.ts';
+    metrics.splice(metrics.findIndex(metric => metric.endsWith('.self-hosting.artifact=createNativeHarnessAdapter@src/assembly/harness.ts')), 1);
+  }))).toEqual(expect.arrayContaining([
+    'preview-self-host-native × claude-code-subscription × darwin × self-hosting: supported without an adapter artifact that names it',
+    'preview-self-host-native × claude-code-subscription × darwin × self-hosting: supported without its registered route']));
+  // A newly registered doorway lands without a native harness tuple.
+  expect(details(sources, [...doorways, 'new-doorway'])).toContain('registered doorway new-doorway has no native harness tuple');
+  // The committed declarations carry no other finding.
+  expect(clean).toEqual([]);
 });

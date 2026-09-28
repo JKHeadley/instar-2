@@ -254,39 +254,103 @@ export function registeredDoorways(text = repoRead('src/assembly/production-prov
   };
   visit(source); return ids;
 }
-/** Rule 105 (with 30, 115): the feature-by-channel and feature-by-harness register. Every channel
- * with an adapter declaration has a column, every declared channel operation has an agreeing row,
- * every registered doorway has a harness tuple, and each cell carries evidence or a reason. */
-export function lintParityRegister(register = JSON.parse(repoRead('src/conversation/parity.register.json') ?? 'null'),
-  declarations = Object.fromEntries(readdirSync('src/conversation').filter(name => name.endsWith('.declarations.json'))
-    .map(name => [name.replace('.declarations.json', ''), JSON.parse(repoRead(`src/conversation/${name}`))])),
-  read = repoRead, doorways = registeredDoorways()) {
-  const issues = [], at = 'src/conversation/parity.register.json';
-  const flag = detail => issues.push({ file: at, line: 0, rule: 'R105', detail });
-  if (!register || register.type !== 'ParityRegister' || !Array.isArray(register.channels) || !Array.isArray(register.features)
-    || !Array.isArray(register.harnessTuples)) { flag('parity register missing or malformed'); return issues; }
+/** The register's declaration sources: every `*.declarations.json` under `src/`, keyed by path. */
+export function registerDeclarationSources(read = repoRead, root = 'src') {
+  const files = path => readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(`${path}/${e.name}`)
+    : e.name.endsWith('.declarations.json') ? [`${path}/${e.name}`] : []);
+  return Object.fromEntries(files(root).sort().map(path => [path, JSON.parse(read(path) ?? '[]')]));
+}
+/** Rules 30, 105, 115: the harness whose tuple every registered model doorway must carry. */
+export const NATIVE_HARNESS = 'preview-journal-native';
+const CHANNEL_SOURCE = /^src\/conversation\/([a-z]+)\.declarations\.json$/u;
+const CHANNEL_STATE = /^([a-z]+)\.operation\.([a-z-]+)\.(supported|inhibited|unsupported|unproven)$/u;
+const CHANNEL_FACT = /^([a-z]+)\.operation\.([a-z-]+)\.(evidence|reason)=(.+)$/u;
+const TUPLE_STATE = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(supported|unsupported|unproven)$/u;
+const TUPLE_FACT = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(evidence|artifact|route|reason)=(.+)$/u;
+/**
+ * Rule 105 (with 30, 115): the feature-by-channel and harness-by-doorway parity matrix, derived
+ * from the register's own declarations (the facts the generated register and capability briefing
+ * carry), never from a side file. Grammar, as metrics of `features` declarations:
+ * - a channel adapter (`src/conversation/<channel>.declarations.json`) declares, per feature,
+ *   `<channel>.operation.<feature>.<supported|inhibited|unsupported|unproven>`, plus
+ *   `.evidence=<test file>#<test title>` when supported and `.reason=<text>` when unsupported/unproven
+ *   (`inhibited` is the adapter's own refusal and is its reason);
+ * - any declaration declares a harness tuple cell
+ *   `harness.<harness>.<doorway>.<platform>.<mode>.<supported|unsupported|unproven>`, plus, when
+ *   supported, `.artifact=<adapter id>@<code path>`, `.route=<doorway id>@<registering module>` and
+ *   `.evidence=<test file>#<test title>`, and `.reason=<text>` otherwise.
+ */
+export function parityMatrix(sources = registerDeclarationSources()) {
+  const channels = [], cells = new Map(), tuples = new Map(), stray = [];
+  const cellOf = (map, key, init) => { if (!map.has(key)) map.set(key, { ...init, states: [], evidence: [], reason: [], artifact: [], route: [] }); return map.get(key); };
+  for (const [path, entries] of Object.entries(sources)) {
+    const channel = CHANNEL_SOURCE.exec(path)?.[1];
+    if (channel) channels.push(channel);
+    for (const entry of Array.isArray(entries) ? entries : []) for (const metric of entry?.requiredFacts?.metrics ?? []) {
+      if (typeof metric !== 'string') continue;
+      const state = CHANNEL_STATE.exec(metric), fact = state ? null : CHANNEL_FACT.exec(metric);
+      const tupleState = TUPLE_STATE.exec(metric), tupleFact = tupleState ? null : TUPLE_FACT.exec(metric);
+      const channelMatch = state ?? fact;
+      if (channelMatch) {
+        if (channelMatch[1] !== channel) { stray.push(`${path} declares ${channelMatch[1]} parity cell ${metric}`); continue; }
+        const cell = cellOf(cells, `${channelMatch[2]}\0${channel}`, { feature: channelMatch[2], channel, source: path, declaration: entry.id });
+        if (state) cell.states.push(state[3]); else cell[fact[3]].push(fact[4]);
+      }
+      const tupleMatch = tupleState ?? tupleFact;
+      if (tupleMatch) {
+        const [, harness, doorway, platform, mode] = tupleMatch;
+        const cell = cellOf(tuples, [harness, doorway, platform, mode].join('\0'), { harness, doorway, platform, mode, source: path, declaration: entry.id });
+        if (tupleState) cell.states.push(tupleState[5]); else cell[tupleFact[5]].push(tupleFact[6]);
+      }
+    }
+  }
+  const evidenceOf = value => { const at = value.indexOf('#'); return at < 0 ? { file: value, title: '' } : { file: value.slice(0, at), title: value.slice(at + 1) }; };
+  const settle = cell => {
+    const { states, evidence, reason, artifact, route, ...rest } = cell;
+    const status = states.length === 1 ? (states[0] === 'inhibited' ? 'unsupported' : states[0]) : undefined;
+    return { ...rest, status, declaredStates: states, ...(states[0] === 'inhibited' ? { inhibited: true } : {}),
+      ...(evidence.length ? { evidence: evidence.map(evidenceOf) } : {}), ...(reason.length ? { reason: reason.join('; ') } : {}),
+      ...(artifact.length ? { artifact } : {}), ...(route.length ? { route } : {}) };
+  };
+  const features = [...new Set([...cells.values()].map(cell => cell.feature))].sort().map(id => ({ id,
+    cells: Object.fromEntries(channels.flatMap(channel => { const cell = cells.get(`${id}\0${channel}`); return cell ? [[channel, settle(cell)]] : []; })) }));
+  return { type: 'ParityMatrix', derivedFrom: Object.keys(sources), channels, features, harnessTuples: [...tuples.values()].map(settle), stray };
+}
+/** Rule 105 (with 26, 30, 49, 69, 115): each parity cell resolves to its declared evidence. Every
+ * channel adapter has a column and every declared feature a cell in each column; each cell has one
+ * state; a supported cell cites a test that exists (and, for a harness tuple, an adapter artifact,
+ * a registered route and its platform/mode); an unsupported or unproven cell states why; every
+ * registered model doorway carries a native harness tuple. */
+export function lintParityRegister(sources = registerDeclarationSources(), read = repoRead, doorways = registeredDoorways()) {
+  const issues = [], matrix = parityMatrix(sources);
+  const flag = (detail, file = 'src/conversation') => issues.push({ file, line: 0, rule: 'R105', detail });
+  for (const detail of matrix.stray) flag(detail);
   const resolves = ref => ref && typeof ref.file === 'string' && typeof ref.title === 'string' && ref.title.length >= 8
     && [`'${ref.title}'`, `"${ref.title}"`, `\`${ref.title}\``].some(quoted => (read(ref.file) ?? '').includes(quoted));
-  const cell = (where, value) => {
-    if (!value || !['supported', 'unsupported', 'unproven'].includes(value.status)) return flag(`${where}: no parity cell`);
-    if (value.status === 'supported' && !resolves(value.evidence)) flag(`${where}: supported without a resolvable captured test`);
-    if (value.status !== 'supported' && !(typeof value.reason === 'string' && value.reason.length >= 10)) flag(`${where}: ${value.status} without a reason`);
+  const judge = (where, cell) => {
+    if (!cell) return flag(`${where}: no parity cell`);
+    if (cell.declaredStates.length !== 1) return flag(`${where} declares ${cell.declaredStates.length ? `more than one parity state (${cell.declaredStates.join(', ')})` : 'no parity state'}`, cell.source);
+    if (cell.status === 'supported' && !(cell.evidence?.length === 1 && resolves(cell.evidence[0])))
+      flag(`${where}: supported without a resolvable captured test`, cell.source);
+    if (cell.status !== 'supported' && cell.evidence) flag(`${where}: ${cell.declaredStates[0]} but cites supporting evidence`, cell.source);
+    if (cell.status !== 'supported' && !cell.inhibited && !(typeof cell.reason === 'string' && cell.reason.length >= 10))
+      flag(`${where}: ${cell.status} without a reason`, cell.source);
   };
-  for (const channel of Object.keys(declarations)) if (!register.channels.includes(channel)) flag(`channel ${channel} has an adapter but no parity column`);
-  const features = new Map(register.features.map(feature => [feature.id, feature]));
-  if (features.size !== register.features.length) flag('duplicate feature row');
-  for (const feature of register.features) for (const channel of register.channels) cell(`${feature.id} × ${channel}`, feature.cells?.[channel]);
-  for (const [channel, entries] of Object.entries(declarations)) for (const entry of entries)
-    for (const metric of entry.requiredFacts?.metrics ?? []) {
-      const match = /^([a-z]+)\.operation\.([a-z-]+)\.(supported|inhibited)$/u.exec(metric);
-      if (!match) continue;
-      const row = features.get(match[2]), status = row?.cells?.[match[1]]?.status;
-      if (!row) flag(`declared operation ${metric} has no parity row`);
-      else if (match[3] === 'supported' ? status !== 'supported' : status === 'supported')
-        flag(`${metric} disagrees with its parity cell (${status})`);
-    }
-  for (const tuple of register.harnessTuples) cell(`${tuple.harness} × ${tuple.doorway} × ${tuple.platform}`, tuple);
-  for (const doorway of doorways) if (!register.harnessTuples.some(tuple => tuple.harness === 'preview-journal-native' && tuple.doorway === doorway))
+  for (const channel of matrix.channels) if (!matrix.features.some(feature => feature.cells[channel]))
+    flag(`channel ${channel} has an adapter but no parity column`, `src/conversation/${channel}.declarations.json`);
+  for (const feature of matrix.features) for (const channel of matrix.channels) judge(`${feature.id} × ${channel}`, feature.cells[channel]);
+  for (const tuple of matrix.harnessTuples) {
+    const where = `${tuple.harness} × ${tuple.doorway} × ${tuple.platform} × ${tuple.mode}`;
+    judge(where, tuple);
+    if (tuple.status !== 'supported') continue;
+    const [artifactId, artifactPath] = tuple.artifact?.length === 1 ? tuple.artifact[0].split('@') : [];
+    if (!/^[A-Za-z_]\w*$/u.test(artifactId ?? '') || !artifactPath || !new RegExp(`\\b${artifactId}\\b`, 'u').test(read(artifactPath) ?? ''))
+      flag(`${where}: supported without an adapter artifact that names it`, tuple.source);
+    const [routeId, routePath] = tuple.route?.length === 1 ? tuple.route[0].split('@') : [];
+    if (routeId !== tuple.doorway || !routePath || !registeredDoorways(read(routePath) ?? '').includes(routeId))
+      flag(`${where}: supported without its registered route`, tuple.source);
+  }
+  for (const doorway of doorways) if (!matrix.harnessTuples.some(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === doorway))
     flag(`registered doorway ${doorway} has no native harness tuple`);
   return issues;
 }

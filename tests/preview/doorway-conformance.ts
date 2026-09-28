@@ -6,12 +6,12 @@ export type DoorwayOutcome = 'complete' | 'refused' | 'timeout' | 'over-cap';
  * Rule 115: one captured-frame conformance fixture per registered model doorway. Each fixture
  * replaces only the doorway's physical IO and reproduces that doorway's real output frames, so the
  * shared harness contract runs through the doorway's own adapter code. A registered doorway with
- * no fixture here must be listed unsupported, with its reason, in the parity register.
+ * no fixture here must be declared unsupported or unproven, with its reason, in the register's harness parity facts.
  */
 export const DOORWAY_CONFORMANCE = Object.freeze({
   'claude-code-subscription': {
     profile: offlineProfile, provider: 'anthropic',
-    io(state: { outcome: DoorwayOutcome; calls: number; stdin: string[] }) {
+    io(state: { outcome: DoorwayOutcome; calls: number; stdin: string[]; answer?: (stdin: string) => string }) {
       return { realpath: path => path, executableBytes: () => Buffer.from('offline executable bytes'),
         inspectSubscriptionProfile: profile => ({ loginProfileIdentity: profile.loginProfileIdentity,
           managedConfigurationDigest: profile.managedConfigurationDigest }),
@@ -26,7 +26,7 @@ export const DOORWAY_CONFORMANCE = Object.freeze({
             state.calls++; state.stdin.push(command.stdin);
             if (state.outcome === 'timeout') return { code: null, limited: true, localLimit: 'timeout', stdout: '', stdoutBytes: new Uint8Array() };
             const decision = { type: 'Decision', schemaVersion: 1, id: 'conformance-answer',
-              conclusion: { subject: 'preview-stage2-answer', value: 'conformance answer' } };
+              conclusion: { subject: 'preview-stage2-answer', value: state.answer ? state.answer(String(command.stdin)) : 'conformance answer' } };
             stdout = JSON.stringify(state.outcome === 'refused'
               ? { type: 'result', subtype: 'success', is_error: true, result: 'provider refusal', session_id: 'conformance-refused',
                 usage: { input_tokens: 8, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 } }

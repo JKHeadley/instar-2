@@ -1,10 +1,10 @@
 // @ts-nocheck -- process-level fixture; physical ports are replaced by its test loader.
 import { expect, it } from 'vitest';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
-import { codeDigestOf, installationRows, installedUpdateFrom, updateDelivery, updatePacketItem } from './installation.js';
+import { codeDigestOf, installationRows, installationStatusLines, installedCodeOf, installedUpdateFrom, updateDelivery, updatePacketItem } from './installation.js';
 
 const message = (world, id, text) => ({ update_id: id, message: { message_id: 100 + id,
   from: { id: Number(world.configuration.operatorSenderId), is_bot: false, first_name: 'Justin' },
@@ -67,3 +67,21 @@ it('an existing installation updated in place carries the change into its next r
   expect(statusText).toMatch(/Update: from [0-9a-f]{8}; briefing changed; delivered in my reply to update 2\./u);
   expect(JSON.parse(harness.status().stdout).installation.updateDelivered).toEqual({ deliveredInReplyTo: 2 });
 }, 90000);
+
+it('a change to executed code outside the import graph (the Telegram bridge, the loader) is an installed update and a stale process (Rules 26, 44)', () => {
+  const read = (path: string) => { try { return readFileSync(path); } catch { return null; } };
+  const exists = (path: string) => { try { return lstatSync(path).isFile(); } catch { return false; } };
+  const current = installedCodeOf(read, exists, 'rev1');
+  const changed = (target: string) => installedCodeOf(path => path === target ? Buffer.concat([read(path)!, Buffer.from('\n// changed\n')]) : read(path), exists, 'rev1');
+  // The imported-file neighbour and the two executed-only artifacts each change the installed code.
+  for (const target of ['tests/preview/installation.ts', 'src/assembly/telegram-bot-api-bridge.mjs', 'scripts/slice-ts-loader.mjs'])
+    expect(changed(target).codeDigest, target).not.toBe(current.codeDigest);
+  // A file the runner never executes does not.
+  expect(changed('tests/preview/journal-installation.test.ts').codeDigest).toBe(current.codeDigest);
+  const bridgeOnly = changed('src/assembly/telegram-bot-api-bridge.mjs');
+  const launched = { ...current, briefingDigest: 'sha256:b', harness: 'preview-journal-native', stallClasses: 9, doorway: 'claude-code-subscription' };
+  expect(installationStatusLines(launched, 0, bridgeOnly, null, null, 'UTC')[0]).toContain('a restart is needed to run them');
+  const next = { ...launched, codeDigest: bridgeOnly.codeDigest };
+  expect(installedUpdateFrom(installationRows(row(10, launched)), next, 20)).toMatchObject({ from: { codeDigest: current.codeDigest },
+    to: { codeDigest: bridgeOnly.codeDigest }, briefingChanged: false });
+});

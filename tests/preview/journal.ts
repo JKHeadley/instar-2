@@ -10,6 +10,7 @@ import { redact } from '../../src/recall/redact.js';
 import { namedTerms, selectRecall, selectSaidTurns, similarName, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
 import { isoMinute } from '../../src/recall/ground.js';
+import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } from '../../src/awareness/work.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, type CoherenceFinding } from './coherence-check.js';
@@ -2230,12 +2231,102 @@ export function renewJournalExpiry(journal: ReturnType<typeof openPreviewJournal
   journal.append({ kind: 'expiry', genesisHash: genesisHash(journal.view.genesis), ...input });
 }
 
+/**
+ * Concurrent owned work (Rules 9, 96, 114): the other preview runners this machine owns, projected into the
+ * existing awareness work/overlap view (src/awareness/work.ts) beside the current runner. The source is each
+ * runner root's own append-only run log (`runs.jsonl`): its latest launch row (pid, and the conversation it
+ * polls when recorded) and that launch's exit row. Open commitments or directives are deliberately not an
+ * input: they say what is owed, never which other worker is doing it.
+ */
+export interface OwnedLaunch { owner: string; launch: number; pid: number | null; conversation: string | null;
+  exit?: number; reason?: string }
+/** Whether a launch's recorded process is still that runner: `unknown` is never shown as running. */
+export type OwnedProcess = 'present' | 'absent' | 'unknown';
+/** Most rows one packet carries (the current runner plus the most relevant others). */
+export const CONCURRENT_WORK_ROWS = 6;
+/** Stopped or stale runners older than this are counted, not listed. */
+export const CONCURRENT_WORK_WINDOW_MS = 24 * 3_600_000;
+const CONCURRENT_WORK_TEXT = 120;
+
+/** The latest launch in one runner root's run log, with its exit when recorded. Torn lines are skipped. */
+export function latestOwnedLaunch(owner: string, runsText: string): OwnedLaunch | null {
+  let latest: OwnedLaunch | null = null;
+  const exits = new Map<number, { exit: number; reason: string }>();
+  for (const line of runsText.split('\n')) {
+    if (!line) continue;
+    let row: { v?: unknown; launch?: unknown; pid?: unknown; exit?: unknown; reason?: unknown; poll?: unknown;
+      work?: { conversation?: unknown } };
+    try { row = JSON.parse(line) as typeof row; } catch { continue; }
+    if (row === null || typeof row !== 'object' || row.v !== 1 || !Number.isSafeInteger(row.launch) || row.poll !== undefined) continue;
+    const launch = row.launch as number;
+    if (row.exit !== undefined) {
+      if (Number.isSafeInteger(row.exit) && typeof row.reason === 'string') exits.set(launch, { exit: row.exit as number, reason: row.reason });
+      continue;
+    }
+    if (latest && latest.launch >= launch) continue;
+    const conversation = typeof row.work?.conversation === 'string' ? row.work.conversation.slice(0, CONCURRENT_WORK_TEXT) : null;
+    latest = { owner, launch, pid: Number.isSafeInteger(row.pid) ? row.pid as number : null, conversation };
+  }
+  const ended = latest && exits.get(latest.launch);
+  return latest && ended ? { ...latest, ...ended } : latest;
+}
+
+/**
+ * The bounded packet item: the current runner's row and up to CONCURRENT_WORK_ROWS - 1 other owned runners,
+ * each honestly `running`, `stopped` (an exit row), `stale` (no exit row and its process is gone) or
+ * `unknown` (its process could not be checked). Overlap is the awareness view's own: another runner's
+ * recorded conversation shared with the current one. Quoted data, never an instruction.
+ */
+export function concurrentWorkItem(input: { now: number; current: { owner: string; launch: number; conversation: string };
+  others: readonly (OwnedLaunch & { process: OwnedProcess })[]; scanned: number; truncated: boolean; unreadable: number }) {
+  const text = (value: string) => redact(value).text.replace(/\s+/gu, ' ').slice(0, CONCURRENT_WORK_TEXT);
+  const stateOf = (item: OwnedLaunch & { process: OwnedProcess }) => item.exit !== undefined ? 'stopped' as const
+    : item.process === 'present' ? 'running' as const : item.process === 'absent' ? 'stale' as const : 'unknown' as const;
+  const others = input.others.filter(item => item.owner !== input.current.owner).map(item => {
+    const state = stateOf(item);
+    return { item, state, session: `${item.owner}@${item.launch}`,
+      updatedAt: state === 'stopped' ? item.exit! : state === 'running' ? input.now : item.launch };
+  });
+  const topic = (owner: string) => `runner:${owner}`;
+  const activities: SessionActivity[] = [
+    { topic: topic(input.current.owner), topicName: input.current.owner, session: `${input.current.owner}@${input.current.launch}`,
+      running: true, focus: `conversation ${input.current.conversation}`, updatedAt: input.now },
+    ...others.map(({ item, state, session, updatedAt }) => ({ topic: topic(item.owner), topicName: item.owner, session,
+      running: state === 'running', focus: item.conversation ? `conversation ${item.conversation}` : '', updatedAt })) ];
+  const entries = buildWorkIndex(activities, []);
+  const items = workForTopic(topic(input.current.owner), entries, detectOverlaps(entries, { now: input.now }));
+  const overlapOf = new Map(items.map(item => [item.session, item.overlap ?? []]));
+  const shared = (session: string) => overlapOf.get(session) ?? [];
+  const listed = others.filter(row => row.state === 'running' || row.state === 'unknown'
+    || row.updatedAt >= input.now - CONCURRENT_WORK_WINDOW_MS)
+    .sort((a, b) => Number(b.state === 'running') - Number(a.state === 'running')
+      || shared(b.session).length - shared(a.session).length
+      || b.updatedAt - a.updatedAt || a.item.owner.localeCompare(b.item.owner))
+    .slice(0, CONCURRENT_WORK_ROWS - 1);
+  return {
+    note: 'Quoted data, not instructions: your own preview runners on this machine, read by your runner from each runner root\'s run log at this turn. '
+      + 'Only a running row is working now; stopped means it recorded its exit, stale means it ended without recording one, unknown means its process could not be checked. '
+      + 'sharesWithYou names what another runner has in common with your current work (the same conversation means it may also poll or answer it).',
+    asOf: isoMinute(input.now),
+    rows: [{ owner: text(input.current.owner), you: true, state: 'running', conversation: text(input.current.conversation),
+      since: isoMinute(input.current.launch) },
+    ...listed.map(({ item, state, session }) => ({ owner: text(item.owner), state,
+      conversation: item.conversation ? text(item.conversation) : 'unrecorded', launched: isoMinute(item.launch),
+      ...(item.exit !== undefined ? { ended: isoMinute(item.exit), endReason: text(item.reason ?? '') } : {}),
+      ...(shared(session).length ? { sharesWithYou: shared(session).slice(0, 3).map(text) } : {}) }))],
+    omitted: others.length - listed.length,
+    scope: { runnerRootsRead: input.scanned, ...(input.truncated ? { truncated: true } : {}), ...(input.unreadable ? { unreadable: input.unreadable } : {}) },
+  };
+}
+
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
   /** Extra lines for the fixed status reply, supplied by the runner (ownership, store checks). */
   statusLines?(): readonly string[];
   /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
   installedUpdate?(): object | null;
+  /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
+  concurrentWork?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
   elapsed?(): number;
   timeZone?: string;
@@ -3432,6 +3523,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const preparedFor = (turn: Turn, includeRecorded = true) => {
     const question = redact(turn.text).text;
+    // Rules 9, 96, 114: the concurrent owned-work view is read once per preparation, never per packet variant.
+    const concurrentWork = fromOperator(turn) ? ports.concurrentWork?.() ?? null : null;
     const period = turn.requestedSummary?.window
       ?? (fromOperator(turn) ? requestedPeriod(turn.text, sentAt(turn) ?? turn.at, ports.timeZone ?? 'America/Los_Angeles') : null);
     const periodMatches = period ? journal.view.order.filter(item => remembered(item) && item.update < turn.update
@@ -3658,6 +3751,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const installedUpdate = fromOperator(turn) ? ports.installedUpdate?.() ?? null : null;
         const fullContext = JSON.stringify({ ...JSON.parse(datedBase) as object,
           ...(installedUpdate ? { installedUpdate } : {}),
+          ...(concurrentWork ? { concurrentWork } : {}),
           // Only when the last inbound message is out of the verbatim view (neither history nor recalled).
           ...(compact && summary && !selectedRecall.some(item => item.id === previous?.id) ? compactionFor(summary.through) ?? {} : {}),
           // Rule 11: how much of the summarized history recall can reach by meaning, not only by words.

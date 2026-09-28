@@ -1,6 +1,8 @@
 // Rules 45 and 115: the static import closure of a shipped entry point. It follows every
 // relative static import, re-export and literal dynamic import; a computed dynamic import cannot
-// be followed and is reported, so a caller must declare what it loads explicitly.
+// be followed and is reported, so a caller must declare what it loads explicitly. A literal
+// `new URL('<relative>', import.meta.url)` names a file the entry executes or loads outside the
+// import graph (a spawned child, a worker); it is part of the closure too (Rules 26, 44).
 import ts from 'typescript';
 import { dirname, join, normalize } from 'node:path';
 
@@ -29,6 +31,12 @@ export function importClosure(entries, read, exists, core = path => path.startsW
     }
     const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
     const visit = node => {
+      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'URL'
+        && node.arguments?.length === 2 && ts.isStringLiteralLike(node.arguments[0]) && /^\.{1,2}\/.*\.(?:mjs|cjs|js|ts|json)$/u.test(node.arguments[0].text)
+        && node.arguments[1].getText(source) === 'import.meta.url') {
+        const target = normalize(join(dirname(file), node.arguments[0].text));
+        if (!core(target)) { if (exists(target)) stack.push(target); else unresolved.push({ from: file, specifier: node.arguments[0].text }); }
+      }
       if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
         && !(node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])))
         computed.push({ from: file, line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1 });

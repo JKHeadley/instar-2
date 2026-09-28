@@ -3,8 +3,8 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync } from 'node:fs';
+import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
@@ -13,11 +13,10 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
-import { importClosure } from '../../scripts/import-closure.mjs';
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
-import { UNRECORDED, briefingDigestOf, codeDigestOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
+import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -137,20 +136,48 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   };
 };
 /** The installed runner, read from this checkout: repository paths only, never outside it. */
-const RUNNER_ENTRY = 'tests/preview/journal-agent.mjs';
 const repoRead = path => { try { return readFileSync(resolve(process.cwd(), path), 'utf8'); } catch { return null; } };
 const repoFile = path => { try { return lstatSync(resolve(process.cwd(), path)).isFile(); } catch { return false; } };
 /** Rule 59: the harness's silent-stop table is admitted, with every captured case resolved, before a launch. */
 const admitHarness = () => admitPreviewHarness(repoRead);
-/** Rules 26, 44: the exact code this process loads (its static import closure) and the checkout revision. */
+/** Rules 26, 44: the exact code this process executes (import closure, loader, spawned children) and the checkout revision. */
 const installedCode = () => {
-  const closure = importClosure([RUNNER_ENTRY], repoRead, repoFile);
-  if (closure.unresolved.length || closure.computed.length) throw Error('preview: installed runner closure unresolved');
   let revision = null;
   try { revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: process.cwd(), encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim() || null; } catch { revision = null; }
-  return { revision, files: closure.files.length,
-    codeDigest: codeDigestOf(closure.files.map(path => ({ path, bytes: readFileSync(resolve(process.cwd(), path)) }))) };
+  return installedCodeOf(path => { try { return readFileSync(resolve(process.cwd(), path)); } catch { return null; } }, repoFile, revision);
+};
+/** Rules 9, 96, 114: the other runner roots beside this one (the same parent directory) are this machine's other
+ * owned preview runners. Each is read from its own run log only; a bounded number of roots and bytes. */
+const OWNED_ROOT_LIMIT = 256, OWNED_RUN_LOG_BYTES = 1024 * 1024;
+/** The conversation a runner polls, recorded on its launch row so a sibling can see a shared conversation. */
+const conversationOf = genesis => `telegram/bot-${genesis.bot}/chat-${genesis.chat}`;
+/** A launch with no exit row is running only while its recorded pid is still that root's runner. */
+const ownedProcess = (pid, root) => {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return 'unknown';
+  try {
+    const command = execFileSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 });
+    // A runner started with another spelling of the root cannot be matched: unknown, never guessed either way.
+    return !command.includes('journal-agent.mjs') ? 'absent' : command.includes(`--root ${root}`) ? 'present' : 'unknown';
+  } catch (error) { return error?.status === 1 ? 'absent' : 'unknown'; }
+};
+const ownedActivity = root => {
+  const parent = dirname(root);
+  let names = [];
+  try { names = readdirSync(parent).sort(); } catch { return { others: [], scanned: 0, truncated: false, unreadable: 1 }; }
+  const others = []; let scanned = 0, unreadable = 0;
+  for (const name of names.slice(0, OWNED_ROOT_LIMIT)) {
+    const sibling = join(parent, name), path = join(sibling, 'runs.jsonl');
+    if (sibling === root) continue;
+    let stat; try { stat = lstatSync(path); } catch { continue; }
+    if (!stat.isFile() || stat.size > OWNED_RUN_LOG_BYTES) { unreadable++; continue; }
+    let text; try { text = readFileSync(path, 'utf8'); } catch { unreadable++; continue; }
+    scanned++;
+    const launch = latestOwnedLaunch(name, text);
+    if (launch) others.push({ ...launch, process: launch.exit === undefined ? ownedProcess(launch.pid, sibling) : 'absent' });
+  }
+  return { others, scanned, truncated: names.length > OWNED_ROOT_LIMIT, unreadable };
 };
 /** What the agent is told about itself, independent of the trial's changing limits. */
 const briefingDigest = () => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
@@ -175,6 +202,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
 
   contradictions: packet.contradictions ?? [],
   crossTopicDigest: packet.crossTopicDigest ?? null,
+  ...(packet.concurrentWork ? { concurrentWork: packet.concurrentWork } : {}),
   restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
   recalled: packet.recalled?.length ?? 0, recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
   replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
@@ -649,6 +677,9 @@ async function main() {
       prepareModel: modelEnvelope,
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
+      // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
+      concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
+        current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: () => installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
         installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
@@ -739,7 +770,7 @@ async function main() {
     installation = { ...installedCode(), briefingDigest: briefingDigest(), harness: PREVIEW_JOURNAL_HARNESS,
       stallClasses: PREVIEW_JOURNAL_STALL_COVERAGE.rows.length, doorway: options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY };
     installUpdate = installedUpdateFrom(installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), installation, launchedAt);
-    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation });
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) } });
     runs = readRuns(runsPath);
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
