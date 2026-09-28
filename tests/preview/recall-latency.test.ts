@@ -70,7 +70,11 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // summaries replace the retired morning-reminder grant) and datedDecision's remind:true clause changed.
     // cbuild-4 re-pin: this operator packet now carries the obligation guide (directives, open loops,
     // governed blocker records) and the governing-constraint keys; nothing else in it changed.
-    expect(packetHash).toBe('e82fceffa2122e705e54b2f0a4f4cbc1e7017d2e39bf230f125841241cfba0a1');
+    // cbuild-2 re-pin: every verified operator packet now carries the summary-scheduling decision and
+    // bounded memory search without keyword prerequisites (Rule 10), and summarized packets report
+    // meaningIndexCoverage (Rule 11); the memory decision notes that undo exists only via undoDecision.
+    // cbuild-10 merge of builds 2 and 4: both additions together; nothing else changed.
+    expect(packetHash).toBe('cb82b4e4b68c0b77fb6dc5fc3df2abbb01fb405413af5bade7b9e0f63b2909ea');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

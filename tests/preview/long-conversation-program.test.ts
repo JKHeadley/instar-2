@@ -25,8 +25,10 @@ it('uses review headroom only when a full-context reply check is installed', () 
       kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:offline',
       configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 100, maxReplies: 30,
       maxTurns: 30, maxBytes: 32768, cursor: 0 });
+    // cbuild-2: the prepared envelope now carries the mind-held instructions, so the history that fits
+    // without review headroom but not with it is smaller (measured 60-80 repeats; was 100).
     for (let turn = 1; turn <= 18; turn++) {
-      const text = `Turn ${turn}: ${'field notes '.repeat(100)}`;
+      const text = `Turn ${turn}: ${'field notes '.repeat(70)}`;
       journal.append({ kind: 'intake', id: `telegram:12345678:update:${turn}`, update: turn,
         text, raw: JSON.stringify({ message: { from: { id: 7654321 }, date: Math.floor(now / 1000), text } }),
         accepted: true, cursor: turn + 1, at: now });

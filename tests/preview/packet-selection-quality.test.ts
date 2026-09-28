@@ -84,8 +84,10 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     expect(result.precision).toBeGreaterThanOrEqual(12 / 61);
     // int12: other pieces add fixed reply instructions, plus conflict/fact-update and exact-unit guidance
     // that ride here because memoryCandidates are offered and recalled facts carry units (measured mean 8598).
-    // cbuild-4: the obligation guide and governing-constraint keys ride operator packets (measured mean 9293).
-    expect(result.packetBytesMean).toBeLessThanOrEqual(9400);
+    // cbuild-4 + cbuild-2: the obligation guide and governing-constraint keys, plus the summary-scheduling
+    // decision and bounded memory search offered to every verified operator packet (Rules 10, 11); search
+    // fills leftover room, so the merged packets measure a mean of 10768.
+    expect(result.packetBytesMean).toBeLessThanOrEqual(10900);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);
