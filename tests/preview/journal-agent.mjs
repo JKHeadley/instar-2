@@ -13,7 +13,7 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, reviewUnavailableReleases, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, reviewUnavailableReleases, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -28,6 +28,14 @@ import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
+import { hostResources, HOST_IDENTITY, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
+import { createHostResourceAllocation } from './six-host-resources.js';
+import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
+import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
+import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
+import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
+import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
+import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -96,7 +104,31 @@ const typesafeKey = () => {
   if (!value || !value.trim()) throw Error('preview: TypeSafe SecretRef unavailable');
   return value;
 };
-const askJev = async (state, questions, timeoutMs) => {
+/** Rule 56: the run's durable doorway map; set by `run`, observed at every real exchange. */
+let doorwayMapPath = null;
+/** Rule 56's standing process, from the bounded poll cycle: at most once a minute, no model call. */
+let doorwayCheckedAt = null;
+const checkDoorways = () => {
+  if (!doorwayMapPath || doorwayCheckedAt !== null && wallNow() - doorwayCheckedAt < 60000) return;
+  doorwayCheckedAt = wallNow();
+  try { const map = readDoorwayMap(doorwayMapPath); if (map) writeDoorwayMap(doorwayMapPath, standingDoorwayCheck(map, doorwayCheckedAt)); }
+  catch { /* the check is evidence; the next cycle retries */ }
+};
+const observeDoorway = (doorway, model, observation) => {
+  if (!doorwayMapPath || !observation) return;
+  try { const map = readDoorwayMap(doorwayMapPath); if (map) writeDoorwayMap(doorwayMapPath, observeExchange(map, doorway, model, observation, wallNow())); }
+  catch { /* the map is evidence; a failed write never changes a model outcome */ }
+};
+/** Content-free discovery at the Jev exchange: success and the model id it reports. */
+const observedJev = async (call, operation) => {
+  let result;
+  try { result = await call(); }
+  catch (error) { observeDoorway('typesafe-jev', JEV_MODEL, { ok: false, reason: 'exchange failed', evidence: `exchange:${operation}` }); throw error; }
+  const reported = typeof result.value?.model === 'string' ? [result.value.model.slice(0, 128)] : [];
+  observeDoorway('typesafe-jev', JEV_MODEL, { ok: true, reportedModels: reported, evidence: `exchange:${operation}` });
+  return result;
+};
+const askJev = (state, questions, timeoutMs) => observedJev(async () => {
   const start = performance.now();
   const response = await fetch('https://api.typesafe.ai/v1/systemone', {
     method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs ?? 2000)),
@@ -104,7 +136,7 @@ const askJev = async (state, questions, timeoutMs) => {
     body: JSON.stringify({ state, model: JEV_MODEL, questions }) });
   if (!response.ok) throw Error('preview: Jev unavailable');
   return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
-};
+}, 'jev-check');
 const context = { site: 'preview.journal', preserved: 'preview:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
@@ -210,7 +242,32 @@ const packetStatus = view => {
   if (!last) return null;
   return { update: last.update, bytes: last.prompt === undefined ? null : Buffer.byteLength(last.prompt),
     limit: last.packetLimit ?? view.limits.maxBytes,
-    dropped: last.packetDropped ?? 'unavailable in earlier reservation' };
+    dropped: last.packetDropped ?? 'unavailable in earlier reservation',
+    capacity: packetCapacity(last.packetDropped, last.packetLimit ?? view.limits.maxBytes) };
+};
+/** The resource owner's persisted snapshot, with its live quantities rendered as measured claims (Rule 13). */
+const resourceStatus = (path, view) => {
+  // Durable waste/repair facts come from the journal's call-outcome rows (they survive restart and
+  // compaction); the owner's file is the bounded live view.
+  const counts = view.callOutcomeCounts, durable = Object.fromEntries(['capacity', 'memory', 'processes', 'cpu', 'aggregate', 'timeout',
+    'leaked-descendants', 'cleanup-unresolved'].map(key => [key, counts.get(key) ?? 0]));
+  const last = view.callOutcomes.findLast(row => row.outcome.resources)?.outcome.resources;
+  const enforcement = last?.enforcement ?? null;
+  // Per-launch evidence of the calls this view still holds (correlated by call id, never a lifetime peak).
+  const launches = view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, at, localLimit: outcome.localLimit,
+    admission: outcome.resources?.admission ?? null, cleanup: outcome.resources?.cleanup ?? null,
+    peakMemoryBytes: outcome.resources?.peakMemoryBytes ?? null,
+    uidProcesses: outcome.resources?.uidProcesses ?? null,
+    membership: outcome.resources?.membership ?? null, allocation: outcome.resources?.allocation ?? null }));
+  let state;
+  try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved', durable, enforcement, launches }; }
+  if (state?.version !== 1) return { state: 'unobserved', durable, enforcement, launches };
+  const claims = (state.active ?? []).flatMap(launch => [
+    renderMeasured(liveMeasurement('owned-process-memory', `launch:${launch.id}`, launch.memoryBytes, state.at)),
+    renderMeasured(liveMeasurement('owned-process-count', `launch:${launch.id}`, launch.processes, state.at))]);
+  const points = state.sample?.points ? resourcePointClaims(state.sample.points, state.identity?.cores ?? 1) : [];
+  return { ...state, claims, points, durable, launches, enforcement: enforcement ?? state.lastLaunch?.enforcement ?? null,
+    uidProcesses: last?.uidProcesses ?? state.lastLaunch?.uidProcesses ?? null };
 };
 
 const stepCheckView = view => ({ total: view.stepChecks.size,
@@ -233,6 +290,9 @@ async function main() {
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
   const shapesPath = join(root, 'model-json-shapes.json');
+  const resourcesPath = join(root, 'resources.json');
+  const launchesPath = join(root, 'owned-launches.json');
+  const doorwaysPath = join(root, 'doorway-map.json');
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
@@ -299,6 +359,25 @@ async function main() {
           ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
           : null,
       packet: packetStatus(view.view),
+      journalCapacity: journalCapacity(view.compacted, PREVIEW_JOURNAL_COMPACT_BYTES),
+      resources: resourceStatus(resourcesPath, view.view),
+      doorways: (() => { const map = readDoorwayMap(doorwaysPath);
+        return map ? { map, ...doorwayFreshness(map, statusNow), standing: map.check ?? null } : { map: null, fresh: false, models: [], prices: [], standing: null }; })(),
+      credentials: (() => {
+        // Rule 100 + purpose Rule 2: custody dispositions are durable on the intake rows, and every
+        // referenced vault object (original capture, stored secret, vaulted registry row) is
+        // checked live on this read path, so a lost or failed custody is visible, never silent.
+        const turns = view.view.order.filter(turn => turn.custody);
+        const custody = { stored: turns.filter(t => t.custody.state === 'stored').length,
+          failed: turns.filter(t => t.custody.state === 'failed').map(t => t.update), missing: null };
+        try { const vault = createSecretCustody(root, key(), wallNow), records = vault.records();
+          custody.missing = vault.missing([...turns.flatMap(t => t.custody.state === 'stored' ? [t.custody.capture, ...t.custody.secrets] : []),
+            ...records.filter(r => r.custody === 'preview-vault').map(r => r.name)]);
+          return { records, due: dueCredentialReminders(records, statusNow), custody,
+            intact: custody.failed.length === 0 && custody.missing.length === 0,
+            referencedIn: view.view.order.filter(turn => turn.text.includes('[credential stored before use: SecretRef ')).map(turn => turn.update) };
+        } catch { return { records: null, due: null, custody, intact: false, error: 'registry unreadable' }; } })(),
+      reconciliation: usageReconciliation(view.view),
 
       memoryHealth: memoryHealthLine(view.view),
 
@@ -386,7 +465,7 @@ async function main() {
       blockers: openBlockers(view.view).map(({ id, note }) => ({ id, update: view.view.turns.get(note.source)?.update, kind: note.kind,
         claim: redact(note.claim).text, constraint: note.constraint, avenues: note.avenues.length, outsideAction: redact(note.outsideAction).text,
         recheckAt: note.recheckAt, recheckDue: wallNow() >= note.recheckAt, rechecks: note.rechecks.length })),
-      replyTimings: replyTimings(view.view),
+      replyTimings: measuredTimings(replyTimings(view.view), statusNow),
       lastReplyCheck: view.view.lastReplyCheck,
       lastReplyReview: lastReplyReview(view.view),
       lastReplyTiming: lastSent ? { update: lastSent.update,
@@ -546,6 +625,27 @@ async function main() {
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
     journal = openPreviewJournal(journalPath, key(), initial);
     const g = journal.view.genesis;
+    // Rules 60 and 61: this process's one resource owner, with the constitutional
+    // measurement, priority-brake and incarnation owners as its decision ports.
+    // A desk-controlled low-ceiling case may lower (never raise) the aggregate memory ceiling.
+    const aggregateMemoryMib = options['resource-aggregate-memory-mib'] === undefined ? undefined
+      : number(options['resource-aggregate-memory-mib'], 'resource-aggregate-memory-mib', 64, 4096);
+    // Rule 60 / SEAM-LEDGER row 36: every launch's resources are a Six allocation set, committed across
+    // its domains and attached to its ordinary reservation before anything is spawned.
+    const allocationCeilings = aggregateMemoryMib === undefined ? RESOURCE_CEILINGS : { ...RESOURCE_CEILINGS,
+      aggregate: { ...RESOURCE_CEILINGS.aggregate, memoryBytes: aggregateMemoryMib * 1024 * 1024 } };
+    const allocation = createHostResourceAllocation({ root, machine: HOST_IDENTITY.machine, ceilings: allocationCeilings,
+      incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
+      now: wallNow, monotonic: () => performance.now() });
+    await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
+      ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
+      compare: resourceCompare, priorityGate: shouldRunScheduledPriority,
+      reconcile: (row, current) => current === null ? 'missing' : take(reconcileProcessIncarnation(
+        { processIncarnation: `${row.pid}:${row.start}`, pid: row.pid, startEvidence: row.start, tags: ['provider-launch'] },
+        { processIncarnation: `${row.pid}:${current}`, pid: row.pid, startEvidence: current, tags: ['provider-launch'] },
+        context)) });
+    // Rule 100: credentials handed over in chat are stored before anything consumes them.
+    const custody = createSecretCustody(root, key(), wallNow);
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
       ['max-replies', maxReplies, g.maxReplies, journal.view.limits.maxReplies],
@@ -587,7 +687,7 @@ async function main() {
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
-    const invokeJev = async (text, questions) => {
+    const invokeJev = (text, questions) => observedJev(async () => {
       const start = performance.now();
       const response = await fetch('https://api.typesafe.ai/v1/systemone', {
         method: 'POST', signal: AbortSignal.timeout(2000),
@@ -595,12 +695,13 @@ async function main() {
         body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
       if (!response.ok) throw Error('preview: Jev unavailable');
       return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
-    };
+    }, 'step-check');
     worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
+      secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const result = await invokeSubscription(prepared, id);
@@ -670,6 +771,25 @@ async function main() {
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
+    // Rule 56: the installed routes' exact model ids, merged into the durable map.
+    doorwayMapPath = doorwaysPath;
+    writeDoorwayMap(doorwaysPath, standingDoorwayCheck(installDoorways(readDoorwayMap(doorwaysPath), [
+      { id: 'preview-subscription', billing: 'subscription', model: options.model, priceReason: 'the subscription route reports no billed charge' },
+      { id: 'typesafe-jev', billing: 'metered', model: JEV_MODEL, priceReason: 'the Jev route reports no price' }], wallNow()), wallNow()));
+    // Rule 100: installed credentials' identity and known fixed expiry. Values stay in their custody.
+    const recordedAt = wallNow();
+    for (const record of [
+      { name: 'telegram-bot-token', kind: 'telegram-bot-token', custody: 'host-environment', identity: `Telegram bot ${g.bot}`,
+        expiresAt: null, expirySource: 'none', smallestHumanAction: 'rotate the bot token with BotFather and rebind the host secret' },
+      { name: 'typesafe-key', kind: 'api-key', custody: 'host-environment', identity: 'TypeSafe Jev route',
+        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'replace the TypeSafe key in host custody' },
+      { name: profile.reference, kind: 'subscription-login', custody: 'cli-custody', identity: profile.expectedAccount,
+        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' },
+      { name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: activation.reference,
+        expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: 'approve a renewed activation record' }])
+      custody.register({ name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
+        expiresAt: record.expiresAt, expirySource: record.expirySource, reminders: reminderSchedule(record.expiresAt),
+        renewal: { standing: 'none', smallestHumanAction: record.smallestHumanAction } });
     const captures = new Map();
     const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
     if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
@@ -761,6 +881,7 @@ async function main() {
       // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick.
       try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
       summarizeLater(); worker.gate();
+      checkDoorways();
       if (await stopAtCap()) break;
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {
@@ -811,8 +932,14 @@ async function main() {
         sourceEvidence: [activation.reference], terminalEvidence: activation.reference, terminalReasonField: 'subtype',
         successfulFinalReplyReasons: ['success'], strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
-      const physicalIO = createSubscriptionProviderIO({ repository: process.cwd(),
-        stopped: () => workerStop.value || existsSync(stopPath) || !active() });
+      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
+      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(),
+        stopped: () => workerStop.value || existsSync(stopPath) || !active(), work });
+      const physicalIO = { ...launchIO, execute: async input => {
+        const result = await launchIO.execute(input);
+        observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation));
+        return result;
+      } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
         { elapsed: () => performance.now(), at: wallNow });
       return take(createClaudeCodeSubscriptionRoute({ context, credential: secretRef(profile.reference), profile,

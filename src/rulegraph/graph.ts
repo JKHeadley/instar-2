@@ -147,6 +147,12 @@ export function checkGraphLoops(graph: RuleGraph, context: RegisterContext) {
     return true;
   });
 }
+/** Rule 56's registered model-map age check: an entry verified at `verifiedAt` stays current for
+ * `freshFor` from then, never from the future; older than its window, or a non-positive window, fails.
+ * The register's deadline check and every live doorway-map reader decide freshness here. */
+export function modelEntryFresh(verifiedAt: number, freshFor: number, now: number): boolean {
+  return freshFor > 0 && verifiedAt <= now && now - verifiedAt <= freshFor;
+}
 export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, landedParts: readonly number[], now: Clock, context: RegisterContext) {
   return checked('DeadlineCheck', { graph, register, landedParts, now }, context, () => {
     const clock = take(decodeMeasurement('clock', now, context.types));
@@ -161,7 +167,7 @@ export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, la
       }
       if (d.kind === 'model doorways') for (const raw of list(d.requiredFacts.models, 'models')) {
         const model = object(raw); const at = number(model.verifiedAt, 'model verifiedAt'); const window = number(model.freshFor, 'model freshness');
-        requireThat(window > 0 && at <= now.value && now.value - at <= window, `model map stale for ${d.id}`);
+        requireThat(modelEntryFresh(at, window, now.value), `model map stale for ${d.id}`);
       }
       if (d.kind === 'model doorways' && d.status === 'live') {
         const subsidy = object(d.requiredFacts.subsidy!); const at = number(subsidy.updatedAt, 'subsidy.updatedAt');

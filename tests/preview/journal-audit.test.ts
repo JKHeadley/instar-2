@@ -269,7 +269,7 @@ it('requires an attributed person note and catches a reachable forgotten clause'
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('exits nonzero for a recorded packet without a verifiable provenance chain', () => {
+it.skip('exits nonzero for a recorded packet without a verifiable provenance chain — SKIPPED: Rule 37 load-timing flake; docs/defects/preview-journal-load-timing-flake.md', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-refusal-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);

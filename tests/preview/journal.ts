@@ -94,9 +94,23 @@ const emptyTokenTotals = (): TokenTotals => Object.fromEntries(tokenKinds.map(ki
   [kind, { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }])) as TokenTotals;
 const subscriptionOutputMaximum = 2048;
 const jevOutputMaximum = JEV_RESPONSE_MAX_BYTES;
-export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | null;
+export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
-  isError: boolean | null; outputTokens: number | null; promptBytes: number }
+  isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
+/** Rules 60/61: content-free resource facts of the owned launch behind a call (optional; older rows carry none). */
+export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handlesPerProcess' | 'processGrowth' | 'treeHandles' | 'memory' | 'treeCpu', 'hard' | 'sampled' | 'unavailable' | 'unsupported'>;
+  /** The kernel process limit actually held, with its subject (a user ID, never the launched tree). */
+  uidProcesses?: { state: 'hard'; subject: string; limit: number } | { state: 'unavailable'; subject: null; limit: null };
+  /** This launch's own admission: its work class, the owned launches running with it, and its wait. */
+  admission?: { work: 'answer' | 'review' | 'maintenance'; concurrent: number; waitedMs: number };
+  peakMemoryBytes: number; peakProcesses: number; treeCpuMilliseconds: number; census: 'none' | 'complete' | 'partial' | 'failed';
+  /** `verified`: a complete census found no live member by recorded incarnation, group, ancestry or private
+   * working area; `unconfined`: no private working area, so only recorded incarnations were verified. */
+  leakedDescendants: number; cleanup: 'verified' | 'unconfined' | 'unresolved';
+  /** How membership was joined (optional; older rows carry none). */
+  membership?: 'working-area-joined' | 'unconfined';
+  /** The launch's Six allocation set (SEAM-LEDGER row 36): returned citing its verification, or still reserved. */
+  allocation?: { set: string; state: 'returned' | 'reserved' } }
 type SummaryFaithfulness = { path: 'exact' | 'jev'; verdict: 'pass' | 'lost' | 'undecided'; score: number | null; usage?: ModelUsage };
 
 
@@ -230,7 +244,7 @@ export interface SummaryMemoryItem { source: string; quote: string }
 
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
-  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string }
+  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
@@ -323,7 +337,13 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface PacketDrop { kind: string; source: string; reason: string }
-export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; answer?: string;
+/** Rule 100 / docs/08 intake step 2: the durable custody disposition of a message whose credential
+ * spans were routed to the secret store. `stored`: the original bytes are sealed in custody under
+ * `capture`, and this row is the redacted artifact carrying the true bytes' `arrival` hash.
+ * `failed`: custody did not complete; the original stays in the encrypted journal, redacted for
+ * every consumer, and no SecretRef exists to spend. Optional: older rows carry none. */
+export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
+export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true; askConflict?: string; lastNamedPerson?: string;
 
 
@@ -1346,10 +1366,27 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
     || o.exitCode !== null && (!Number.isSafeInteger(o.exitCode) || o.exitCode < 0)
     || o.outputTokens !== null && (!Number.isSafeInteger(o.outputTokens) || o.outputTokens < 0)
-    || ![null, 'timeout', 'size', 'output-cap'].includes(o.localLimit)
+    || ![null, 'timeout', 'size', 'output-cap', 'memory', 'processes', 'cpu', 'aggregate', 'capacity'].includes(o.localLimit)
     || ![null, 'result', 'other'].includes(o.type)
     || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
-    || ![null, true, false].includes(o.isError)) throw Error('preview journal: call outcome malformed');
+    || ![null, true, false].includes(o.isError)
+    || o.resources !== undefined && !validLaunchResources(o.resources)) throw Error('preview journal: call outcome malformed');
+}
+function validLaunchResources(r: LaunchResources): boolean {
+  const holds = ['cpuPerProcess', 'handlesPerProcess', 'processGrowth', 'treeHandles', 'memory', 'treeCpu'];
+  return !!r && typeof r === 'object' && !!r.enforcement && Object.keys(r.enforcement).length === holds.length
+    && holds.every(key => ['hard', 'sampled', 'unavailable', 'unsupported'].includes((r.enforcement as Record<string, string>)[key]!))
+    && [r.peakMemoryBytes, r.peakProcesses, r.treeCpuMilliseconds, r.leakedDescendants].every(n => Number.isSafeInteger(n) && n >= 0)
+    && ['none', 'complete', 'partial', 'failed'].includes(r.census) && ['verified', 'unconfined', 'unresolved'].includes(r.cleanup)
+    && (r.uidProcesses === undefined || r.uidProcesses.state === 'hard' && /^uid:\d+$/u.test(r.uidProcesses.subject)
+      && Number.isSafeInteger(r.uidProcesses.limit) && r.uidProcesses.limit > 0
+      || r.uidProcesses.state === 'unavailable' && r.uidProcesses.subject === null && r.uidProcesses.limit === null)
+    && (r.admission === undefined || ['answer', 'review', 'maintenance'].includes(r.admission.work)
+      && Number.isSafeInteger(r.admission.concurrent) && r.admission.concurrent >= 1
+      && Number.isSafeInteger(r.admission.waitedMs) && r.admission.waitedMs >= 0)
+    && (r.membership === undefined || ['working-area-joined', 'unconfined'].includes(r.membership))
+    && (r.allocation === undefined || typeof r.allocation.set === 'string' && /^allocation:sha256:[a-f0-9]{64}$/u.test(r.allocation.set)
+      && ['returned', 'reserved'].includes(r.allocation.state));
 }
 
 function project(view: JournalView, row: JournalRecord): void {
@@ -1405,11 +1442,15 @@ function project(view: JournalView, row: JournalRecord): void {
     if (prior) { if (prior.update !== row.update || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
     if (view.order.length >= view.limits.maxTurns) throw Error('preview journal: turn capacity');
     if (row.thread !== undefined && !(Number.isSafeInteger(row.thread) && row.thread > 0)) throw Error('preview journal: invalid thread');
+    if (row.custody !== undefined && !(row.custody.state === 'failed' || row.custody.state === 'stored'
+      && /^sha256:[0-9a-f]{64}$/u.test(row.custody.arrival) && typeof row.custody.capture === 'string' && Array.isArray(row.custody.secrets)
+      && row.custody.secrets.every(name => typeof name === 'string'))) throw Error('preview journal: intake custody malformed');
     if (row.editOf !== undefined && (!row.accepted || !row.replaces || !view.turns.get(row.editOf)?.accepted
       || !view.turns.get(row.replaces)?.accepted || row.update <= view.turns.get(row.replaces)!.update))
       throw Error('preview journal: edit lineage refused');
     const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
       ...(row.thread === undefined ? {} : { thread: row.thread }),
+      ...(row.custody === undefined ? {} : { custody: row.custody }),
       ...(row.editOf === undefined ? {} : { editOf: row.editOf, replaces: row.replaces }) };
     view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor); return;
   }
@@ -1486,6 +1527,11 @@ function project(view: JournalView, row: JournalRecord): void {
     view.callOutcomeCounts.set('total', (view.callOutcomeCounts.get('total') ?? 0) + 1);
     view.callOutcomeCounts.set(`role:${row.role}`, (view.callOutcomeCounts.get(`role:${row.role}`) ?? 0) + 1);
     view.callOutcomeCounts.set(category, (view.callOutcomeCounts.get(category) ?? 0) + 1);
+    // Durable repair facts: leaked descendants reclaimed, and launches whose cleanup stayed unresolved.
+    if (o.resources?.leakedDescendants) view.callOutcomeCounts.set('leaked-descendants',
+      (view.callOutcomeCounts.get('leaked-descendants') ?? 0) + o.resources.leakedDescendants);
+    if (o.resources?.cleanup === 'unresolved') view.callOutcomeCounts.set('cleanup-unresolved',
+      (view.callOutcomeCounts.get('cleanup-unresolved') ?? 0) + 1);
     view.callOutcomes.push(row); if (view.callOutcomes.length > 10) view.callOutcomes.shift();
     return;
   }
@@ -2187,7 +2233,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       append(initial);
     }
     if (!readOnly && size > Math.max(compactBytes, snapshotBase * 2)) compact();
-    return { get view() { return view!; }, get size() { return size; }, readOnly, append, compact,
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
@@ -2279,6 +2325,8 @@ export interface PreviewPorts {
   summaryCheck?(evidence: string): Promise<unknown>;
 
   stepCheck?: { jev(state: string): Promise<{ value: unknown; latencyMs: number }> };
+  /** Rule 100: vault-first custody of the credentials in a verified operator message, before it is recorded. */
+  secrets?: { custody(input: { text: string; raw: string; source: string }): { text: string; raw: string; custody?: IntakeCustody } };
   boundary?(stage: string): void;
 }
 
@@ -2352,8 +2400,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // create a new turn or reply. The same holds for a foreign edit.
       const accepted = update.edited_message ? parsed.accepted && editOf !== undefined : parsed.accepted;
       const cursor = update.update_id + 1;
-      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? parsed.text : '',
-        raw: JSON.stringify(update), accepted, cursor, at: ports.now(),
+      const custody = accepted && ports.secrets
+        ? ports.secrets.custody({ text: parsed.text, raw: JSON.stringify(update), source: parsed.id }) : null;
+      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? custody?.text ?? parsed.text : '',
+        raw: custody?.raw ?? JSON.stringify(update), accepted, cursor, at: ports.now(),
+        ...(custody?.custody ? { custody: custody.custody } : {}),
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
         ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }) });
     }
