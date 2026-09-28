@@ -134,8 +134,10 @@ describe('compiled register build adapter lifecycle', () => {
       const live = result.register.entries.map(e => e.declaration).filter(d => d.status === 'live');
       const held = new Set(live.flatMap(d => d.holds.map(h => h.rule)));
       const uncovered = live.filter(d => d.kind === 'rules' && !held.has(d.requiredFacts.number as number));
-      // Every uncovered rule is a gap loop; every live deferred hold is its own owned loop.
-      const deferred = live.flatMap(d => d.holds.filter(h => h.class === 'deferred').map(h => `deferred:${d.id}:${h.rule}`));
+      // Every uncovered rule is a gap loop; every deferred hold of a live, dark or soaking entry is
+      // its own owned loop (an inactive holder's debt stays deadline-checked; it mints no edge).
+      const deferred = result.register.entries.map(e => e.declaration).filter(d => d.status !== 'retired')
+        .flatMap(d => d.holds.filter(h => h.class === 'deferred').map(h => `deferred:${d.id}:${h.rule}`));
       expect(result.graph.loops.map(l => l.id).sort()).toEqual(
         [...uncovered.map(d => `gap:${d.requiredFacts.number}`), ...deferred].sort());
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
