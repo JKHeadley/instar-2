@@ -37,6 +37,40 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
+    "id": "preview.reply-check.parseReplyReviewVerdict",
+    "kind": "judgment points",
+    "status": "live",
+    "requiredFacts": {
+      "floor": {
+        "type": "ActionFloor",
+        "schemaVersion": 1,
+        "actions": [
+          "preview.reply.hold",
+          "preview.reply.release"
+        ],
+        "default": "preview.reply.hold"
+      },
+      "benchmark": "unmeasured"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      57
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
     "id": "preview.reply-check.parseJevResponse",
     "kind": "parsers",
     "status": "live",

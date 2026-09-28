@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "owner": "preview.reply-check",
+  "actions": {
+    "preview.reply.hold": {
+      "protected": false,
+      "repository": false
+    },
+    "preview.reply.release": {
+      "protected": false,
+      "repository": false
+    }
+  }
+}

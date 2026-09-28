@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
   decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
-import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource } from './register-source.mjs';
+import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource, isActionSource, actionRegistry } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { capabilityBriefing, checkShipped } from './register-shipped.mjs';
 import { loadOwnerReferences, mergeOwnerReferences } from './register-owner-references.mjs';
@@ -98,7 +98,7 @@ export function build(root, commit, options = {}) {
     throw new Error(id + ' requires committed governed document binding');
   const scanned = scanSources(input.code, owner.decoders);
   sources = bindColocatedDeclarations(sources, scanned.constructs);
-  const context = { ...buildContext(shapeInput, sources, commit, nowValue), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput, owner),
+  const context = { ...buildContext(shapeInput, sources, commit, nowValue, actionRegistry(input.sources)), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput, owner),
     ...(options.provider?.types ? { authorityTypes: options.provider.types } : {}) };
   const now = value(decodeMeasurement('clock', { type: 'Measurement', schemaVersion: 1, subject: { kind: 'clock', instance: 'build-machine' },
     value: nowValue, unit: 'unix-ms', at: nowValue, by: 'register.generator' }, context.types));
@@ -176,7 +176,7 @@ export async function run(args, root = process.cwd()) {
   const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
-    || isDeclarationSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
+    || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
   if (bytes(live) !== bytes(Object.keys(result.input.sources).sort())) throw new Error('P3-NF-23: source roster changed; regenerate from a new source commit');
   for (const [path, content] of Object.entries({ ...result.input.sources, ...result.input.code, ...result.ownerArtifacts })) if (readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n') !== content)
     throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);

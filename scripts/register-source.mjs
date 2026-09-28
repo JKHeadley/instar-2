@@ -35,13 +35,35 @@ function readBlobs(root, commit, paths) {
 }
 // Declarations live in code-adjacent sidecars; parser declarations use their own suffix.
 export const isDeclarationSource = path => path.endsWith('.declarations.json') || path.endsWith('.parser.json');
+// A boundary's finite action metadata lives beside its owner; the build's action
+// registry is exactly the union of these committed files, never the actions a floor requests.
+export const isActionSource = path => path.endsWith('.actions.json');
+export function actionRegistry(files) {
+  const actions = {};
+  for (const [path, content] of Object.entries(files).filter(([p]) => isActionSource(p)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+    const input = JSON.parse(content);
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join() !== 'actions,owner,schemaVersion'
+      || input.schemaVersion !== 1 || typeof input.owner !== 'string' || !input.owner
+      || !input.actions || typeof input.actions !== 'object' || Array.isArray(input.actions) || !Object.keys(input.actions).length)
+      throw new Error(`${path}: malformed action metadata`);
+    for (const [name, meta] of Object.entries(input.actions)) {
+      if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(name)) throw new Error(`${path}: malformed action name ${name}`);
+      if (Object.hasOwn(actions, name)) throw new Error(`${path}: duplicate action ${name}`);
+      if (!meta || typeof meta !== 'object' || Object.keys(meta).sort().join() !== 'protected,repository'
+        || typeof meta.protected !== 'boolean' || typeof meta.repository !== 'boolean')
+        throw new Error(`${path}: malformed metadata for action ${name}`);
+      actions[name] = { protected: meta.protected, repository: meta.repository };
+    }
+  }
+  return actions;
+}
 export function readCommit(root, commit) {
   const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   if (!/^[a-f0-9]{40}$/.test(commit) || git(['rev-parse', '--verify', `${commit}^{commit}`]).trim() !== commit) throw new Error('source commit is not an exact commit id');
   if (git(['rev-parse', '--is-shallow-repository']).trim() !== 'false') throw new Error('P3-NF-23: shallow checkout refuses');
   const files = git(['ls-tree', '-r', '--name-only', commit]).trim().split('\n');
   const selected = files.filter(p => ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'docs/07-the-declarations.md', 'register-source/bootstrap-shape.json'].includes(p)
-    || p.startsWith('docs/rules/') && p.endsWith('.md') || isDeclarationSource(p) || p.startsWith('register-source/') && p.endsWith('.json'));
+    || p.startsWith('docs/rules/') && p.endsWith('.md') || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json'));
   for (const required of ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'register-source/bootstrap-shape.json'])
     if (!selected.includes(required)) throw new Error(`P3-NF-23: missing source ${required}`);
   const cache = readBlobs(root, commit, files.filter(p => /\.(?:ts|mts|mjs|js|json|md)$/.test(p)));
@@ -115,10 +137,10 @@ export function bootstrapDeclarations(documents, shape) {
   }
   return sources;
 }
-export function buildContext(shapeInput, sources, commit, instant = Date.now()) {
+export function buildContext(shapeInput, sources, commit, instant = Date.now(), actions = {}) {
   const entries = [...new Set(['types.decode', 'register.decode', 'register.generator', 'local-build', 'build-machine', ...sources.map(s => s.declaration.id)])];
   const register = { generation: { owner: 'part-three', name: 'RegisterGeneration', id: `bootstrap:${commit}` }, entries,
-    producers: ['register.generator'], methods: ['local-build'], actions: {}, subjects: { clock: ['unix-ms'] },
+    producers: ['register.generator'], methods: ['local-build'], actions, subjects: { clock: ['unix-ms'] },
     sites: { 'types.decode': 'closed', 'register.decode': 'closed' }, keys: {}, allowRedelegation: false, conflictStanding: { ordinary: 'delegate', authority: 'operator' } };
   const captures = {}; const types = { register, preserved: `git:${commit}`, captures };
   const now = value(decode('Measurement', { type: 'Measurement', schemaVersion: 1, subject: { kind: 'clock', instance: 'build-machine' }, value: instant, unit: 'unix-ms', at: instant, by: 'register.generator' }, types));
