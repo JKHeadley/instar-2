@@ -1,11 +1,17 @@
 # Capabilities
 
-Register generation: sha256:1c49cdef5c68964bb457d386ebb516c86586f3ef0aa094085f9240422bd6afc1
-Source commit: 80c8f98257a4e0ab4795049b7613549e20d1147f
+Register generation: sha256:cf211bb476ecc292de347a6542ad5f3dbf2bba4da5446936b9f3611914cc91aa
+Source commit: 71c3ac6b62fed5d09f8914537561eccd11a0dae1
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
 - intake-slice: live; metrics: ["intake.preserved","intake.admitted","intake.held","intake.hold-age","intake.mismatch","intake.stop"]; live proof: unavailable
+- preview-conversation: dark; metrics: ["preview.turns.accepted","preview.replies.sent","preview.replies.unknown"]; live proof: unavailable
+- preview-durable-memory: dark; metrics: ["preview.memory.changes","preview.memory.withheld","preview.summaries"]; live proof: unavailable
+- preview-requested-reminders: dark; metrics: ["preview.reminders.pending","preview.reminders.sent"]; live proof: unavailable
+- preview-requested-summaries: dark; metrics: ["preview.summary-requests.active","preview.summary-requests.sent"]; live proof: unavailable
+- preview-status-command: dark; metrics: ["preview.status.requests"]; live proof: unavailable
+- preview-upcoming-date-mention: dark; metrics: ["preview.dated.mentions"]; live proof: unavailable
 - register-tooling: live; metrics: ["register.entries","register.rules","register.terms","register.warnings"]; live proof: unavailable
 - rungraph-core: dark; metrics: ["rungraph.fact-count","rungraph.pending-count","rungraph.fold-ms","rungraph.conflict-count"]; live proof: unavailable
 - slack-conversation-adapter: dark; metrics: ["slack.envelope.captured","slack.intake.admitted","slack.intake.held","slack.reply.refused"]; live proof: unavailable

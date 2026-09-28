@@ -1,0 +1,23 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "host-watch.writeDurable",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "It records this host's own watch breaker and launch attempts, which describe only this machine; an atomic replace discards the previous values."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32
+    ],
+    "holds": []
+  }
+]

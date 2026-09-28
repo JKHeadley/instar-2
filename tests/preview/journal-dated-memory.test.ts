@@ -219,7 +219,8 @@ it('journals verified dated items once, surfaces them on the next due message, a
     const due = worker.probe('hello');
     if ('reason' in due) throw Error(due.reason);
     expect(JSON.parse(due.context).dated).toMatchObject([{ state: 'due', quote: 'Remind me about the invoice on Oct 1.' }]);
-    expect(JSON.parse(due.context).capability).toContain('explicitly asked for');
+    // Only an explicitly requested item is a reminder; the capability list itself is the generated source.
+    expect(JSON.parse(due.context).capability).toContain('only an item with remind:true is a reminder the operator asked for');
     await worker.sendReminders();
     expect(sends).toBe(1);
     now = Date.UTC(2026, 9, 2, 17);
@@ -577,12 +578,15 @@ it('delivers upcoming-date behavior in the prepared packet and source briefing',
       model: async () => 'Okay.', send: async () => 1, checkOutbound: () => {} });
     const prepared = worker.probe('Hello');
     if ('reason' in prepared) throw Error(prepared.reason);
-    expect(JSON.parse(prepared.context).capability).toContain('within 48 hours');
-    expect(JSON.parse(prepared.context).capability).toContain('remembered across restarts');
+    // The packet no longer repeats a hand-written capability list; it points at the generated briefing.
+    expect(JSON.parse(prepared.context).capability).toContain('capability-note source');
+    expect(JSON.parse(prepared.context).capability).not.toContain('within 48 hours');
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 30, expiresAt: genesis.expires });
-    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('unprompted message');
-    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('remembered across restarts');
+    const note = sources.sources.find(source => source.id === 'capability-note')?.text;
+    expect(note).toContain('unprompted message');
+    expect(note).toContain('- preview-upcoming-date-mention: when a saved date is within 48 hours');
+    expect(note).toContain('remembered across restarts');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -21,5 +21,25 @@
   ],
   "probes": [],
   "decoders": [],
-  "documents": []
+  "documents": [],
+  "captures": [
+    {
+      "id": "P12-TELEGRAM-REPLY-CAPTURE",
+      "origin": "synthetic",
+      "source": "Hand-written Telegram Bot API update shape (synthetic ids and text); no genuine update bytes are committed.",
+      "artifact": {
+        "path": "tests/conversation/fixtures/telegram/reply.json",
+        "hash": "sha256:073c68317e076c099ce4de0570e7af8094cce492fac9473923b1078dba059aac"
+      }
+    },
+    {
+      "id": "P12-SLACK-ENVELOPE-CAPTURE",
+      "origin": "synthetic",
+      "source": "Hand-written Slack Events API envelope shape; the Slack adapter is dark and has no genuine capture.",
+      "artifact": {
+        "path": "tests/conversation/fixtures/slack/dm-message.json",
+        "hash": "sha256:52dc16786dfbbc2f12186ad77a81e6ab8263aacc0b93c0f73554a188b91e62a7"
+      }
+    }
+  ]
 }

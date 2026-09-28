@@ -62,17 +62,20 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(typeof input.prepared).toBe('string'); // prepareJournalEnvelope throws past the prompt bound
       expect(desk(input.context).provenance.status).toBe('current');
       expect(desk(input.context).text).toContain('Preview clock now: 2026-09-21T');
-      expect(JSON.parse(input.context).capability).toContain('no tools');
-      expect(JSON.parse(input.context).capability).toContain('durable memory');
-      expect(JSON.parse(input.context).capability).toContain('survive runner restarts');
-      expect(JSON.parse(input.context).capability).toContain('correct or forget');
-      expect(JSON.parse(input.context).capability).toContain('original audit record remains');
+      // The capability list itself is the generated capability-note source (Rules 78, 84); the packet field points at it.
+      expect(JSON.parse(input.context).capability).toContain('capability-note source');
+      const note = (JSON.parse(input.context).sources as { id: string; text: string }[]).find(s => s.id === 'capability-note')!.text;
+      expect(note).toContain('you have no tools');
+      expect(note).toContain('- preview-durable-memory: keeps accepted messages');
+      expect(note).toContain('survives restarts');
+      expect(note).toContain('correct or forget');
+      expect(note).toContain('the original audit record stays in the journal');
       // Hold guidance rides only while a held item is visible; held-reply-notice.test.ts proves the held side.
       expect(JSON.parse(input.context).capability).not.toContain('runner sends any due held notice on its fixed path');
       expect(JSON.parse(input.context).capability).toContain('use the operator-digest source when present');
       expect(JSON.parse(input.context).sources.map((s: { id: string }) => s.id)).toContain('purpose:purpose');
       expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text)
-        .toContain('exact status and how are you doing commands read the durable journal');
+        .toContain('- preview-status-command: the exact messages status and how are you doing are answered from the durable journal');
       const sources = JSON.parse(input.context).sources as { id: string; text: string }[];
       expect(sources.find(source => source.id === 'capability-note')?.text).toContain('correct or forget a recorded fact');
       expect(sources.find(source => source.id === 'self-state')?.text).toContain('My memory:');

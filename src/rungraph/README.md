@@ -93,11 +93,17 @@ or replacement stimulus is involved.
 
 ## Built scope and explicit residuals
 
-Designed, not yet built: delegation contracts; fan-out/collection; exhaustion
-runs; awaiting-authorization; agent-transport port beyond six's slice needs;
+Built additively beside the legacy graph: `createRunClosureGraph`
+(`closure-service.ts`) admits signed `ExhaustionRecord` and unreachable
+`RunExit` records (`closure-records.ts`), and `readExit` reads completed,
+unreachable and cancelled exits. No live runner yet calls the closure API for
+cannot-do claims or escalation; that join is separate work.
+
+Designed, not yet built: delegation contracts; fan-out/collection;
+awaiting-authorization; agent-transport port beyond six's slice needs;
 summary/compaction continuity accounting; remote/nested traces; judgment attempt
 mapping; production real-surface assembly and production monitoring/supervision.
-Cancellation/unreachable exits and boundary-review loops are also not exposed.
+Boundary-review loops are also not exposed.
 Operator-set ceilings are 32 children / depth 16 / 3 attempts (PR #22); actual
 slice depth is 1 and children are empty. Zero resource capacity remains zero.
 
@@ -120,3 +126,7 @@ The build map reads actual test results and marks partial rows as partial.
 The scoped fold workload records fact count, pending count, conflict count and
 duration with a 5-second test budget; it is not a provider-latency assertion.
 Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
+
+## Capabilities
+
+- `rungraph-core`: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.

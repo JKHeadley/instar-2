@@ -12,6 +12,27 @@ describe('both-way rule graph and deadlines', () => {
     const graph = value(buildRuleGraph(s.build([s.rule(4), { ...s.declaration(), standards: [4] }]), 'branch', [], catalog, s.context));
     expect(graph.rules[0]?.enforcedBy).toEqual([]); expect(graph.gaps).toEqual([4]);
   });
+  it('P3-NF-13 dark, soaking and retired entries still resolve their rule references but mint no live edge (Rule 69)', () => {
+    const s = setup();
+    const deferred = { rule: 999, class: 'deferred', part: 9, ceiling: 1000, owner: 'review', overdueAction: 'surface' };
+    for (const status of ['dark', 'soaking', 'retired']) {
+      expect(detail(buildRuleGraph(s.build([s.rule(4), { ...s.declaration(), status, standards: [999] }]), 'branch', [], catalog, s.context))).toContain('P3-NF-13');
+      expect(detail(buildRuleGraph(s.build([s.rule(4), s.holder([deferred], { status })]), 'branch', [], catalog, s.context))).toContain('P3-NF-13');
+      // A retired rule is still history an inactive entry may cite; neither mints enforcement.
+      const graph = value(buildRuleGraph(s.build([s.rule(4), { ...s.rule(7), status: 'retired' }, s.holder([held], { status, standards: [7] })]), 'branch', [], catalog, s.context));
+      expect(graph.edges).toEqual([]); expect(graph.gaps).toEqual([4]);
+    }
+  });
+  it('P3-NF-15 a dark or soaking holder\'s deferred hold stays an owned, deadline-checked loop, never an edge; retired history mints none', () => {
+    const s = setup(); const deferred = { rule: 4, class: 'deferred', part: 9, ceiling: 1000, owner: 'review', overdueAction: 'surface' };
+    for (const status of ['dark', 'soaking']) {
+      const graph = value(buildRuleGraph(s.build([s.rule(4), s.holder([deferred], { status })]), 'branch', [], catalog, s.context));
+      expect(graph.edges).toEqual([]); expect(graph.loops.filter(l => l.holder !== null)).toEqual([expect.objectContaining({ rule: 4, dueBy: 1000, owner: 'review', part: 9 })]);
+      expect(detail(buildRuleGraph(s.build([s.rule(4), s.holder([{ ...deferred, part: 77 }], { status })]), 'branch', [], catalog, s.context))).toContain('P3-NF-24');
+    }
+    const retired = value(buildRuleGraph(s.build([s.rule(4), s.holder([deferred], { status: 'retired' })]), 'branch', [], catalog, s.context));
+    expect(retired.loops.filter(l => l.holder !== null)).toEqual([]);
+  });
   it('P3-NF-14 a fixture must exist at its stage and a probe must declare cadence', () => {
     const s = setup(); const r = s.build([s.rule(4), s.holder([held])]);
     expect(detail(buildRuleGraph(r, 'branch', [], { ...catalog, fixtures: [{ id: 'fixture:4', stage: 'test' }] }, s.context))).toContain('P3-NF-14');

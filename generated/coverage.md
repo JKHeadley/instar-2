@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:1c49cdef5c68964bb457d386ebb516c86586f3ef0aa094085f9240422bd6afc1
-Source commit: 80c8f98257a4e0ab4795049b7613549e20d1147f
+Register generation: sha256:cf211bb476ecc292de347a6542ad5f3dbf2bba4da5446936b9f3611914cc91aa
+Source commit: 71c3ac6b62fed5d09f8914537561eccd11a0dae1
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -9,10 +9,10 @@ Authority: shape-only; entering-force verification required at consumption.
 |---|---:|
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
-| declared | 0 |
+| declared | 2 |
 | partial | 7 |
-| deferred | 0 |
-| gap | 112 |
+| deferred | 2 |
+| gap | 111 |
 
 {
   "rules": [
@@ -5846,7 +5846,12 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "preview.model-json.parseModelJson",
+        "preview.reply-check.parseJevResponse",
+        "provider-failure-result-v1",
+        "telegram-intake-v1"
+      ]
     },
     {
       "number": 37,
@@ -14412,7 +14417,35 @@ Authority: shape-only; entering-force verification required at consumption.
       "enforcedBy": []
     }
   ],
-  "loops": [],
+  "loops": [
+    {
+      "id": "deferred:preview.reply-check.parseJevResponse:36",
+      "rule": 36,
+      "holder": "preview.reply-check.parseJevResponse",
+      "dueBy": 1793404800000,
+      "part": 7,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    },
+    {
+      "id": "deferred:slack-intake-v1:36",
+      "rule": 36,
+      "holder": "slack-intake-v1",
+      "dueBy": 1793404800000,
+      "part": 4,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    },
+    {
+      "id": "deferred:telegram-intake-v1:36",
+      "rule": 36,
+      "holder": "telegram-intake-v1",
+      "dueBy": 1793404800000,
+      "part": 4,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    }
+  ],
   "prerequisites": [
     {
       "rule": 1,
@@ -14636,11 +14669,6 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 35,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 36,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },

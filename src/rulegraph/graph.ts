@@ -68,10 +68,24 @@ export function buildRuleGraph(register: GeneratedRegister, branch: string, runs
     }
     const edges: { rule: number; holder: string; class: RuleGraph['edges'][number]['class']; portion?: string; remainder?: string }[] = [];
     const loops: { id: string; rule: number; holder: string | null; dueBy: number; part: number | null; owner: string; overdueAction: string }[] = [];
+    // Rule 69: an inactive entry's governing references still resolve, against every
+    // rule version the register retains (retired rules stay as history).
+    const known = new Set(register.entries.filter(e => e.declaration.kind === 'rules').map(e => number(e.declaration.requiredFacts.number, 'rule.number')));
     for (const { declaration: d } of register.entries) {
       // History stays in the register. Retired holders have no current power.
       // Dark/soaking holders likewise cannot establish live enforcement.
-      if (d.status !== 'live') continue;
+      if (d.status !== 'live') {
+        for (const n of [...d.standards, ...d.holds.map(h => h.rule)]) requireThat(known.has(n), `P3-NF-13: ${d.status} ${d.id} names missing rule ${n}`);
+        // A dark or soaking entry's declared debt stays owned and deadline-checked: its deferred
+        // hold becomes a loop, never an edge (it holds nothing while inactive). Retired history does not.
+        if (d.status !== 'retired') for (const h of d.holds) if (h.class === 'deferred') {
+          const shape = register.shape.kinds.find(k => k.name === d.kind);
+          requireThat(shape?.holder && shape.enforceable.includes(h.rule), `P3-NF-18: ${d.kind} may not enforce ${h.rule}`);
+          requireThat(register.shape.parts.includes(h.part), `P3-NF-24: unknown deferred part ${h.part}`);
+          loops.push({ id: `deferred:${d.id}:${h.rule}`, rule: h.rule, holder: d.id, dueBy: h.ceiling, part: h.part, owner: h.owner, overdueAction: h.overdueAction });
+        }
+        continue;
+      }
       for (const standard of d.standards) requireThat(byNumber.has(standard), `P3-NF-13: standard ${standard} missing for ${d.id}`);
       for (const h of d.holds) {
         requireThat(byNumber.has(h.rule), `P3-NF-13: holder ${d.id} names missing rule ${h.rule}`);

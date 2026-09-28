@@ -1,0 +1,398 @@
+{
+  "generation": "sha256:cf211bb476ecc292de347a6542ad5f3dbf2bba4da5446936b9f3611914cc91aa",
+  "commit": "71c3ac6b62fed5d09f8914537561eccd11a0dae1",
+  "launchers": {
+    "bin/instar-production.mjs": [
+      {
+        "id": "intake-slice",
+        "status": "live",
+        "module": "src/intake",
+        "availability": "available",
+        "userFacing": false,
+        "text": "every inbound requester message is captured and receipted or held before any work, with an exact dedup, authentication, resolution and operator-stop brake; an uncertain arrival is kept, never discarded."
+      },
+      {
+        "id": "preview-conversation",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent."
+      },
+      {
+        "id": "preview-durable-memory",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
+      },
+      {
+        "id": "preview-requested-reminders",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when the operator explicitly asks to be reminded at a settled day and time, sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit."
+      },
+      {
+        "id": "preview-requested-summaries",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when the operator explicitly asks for a summary at a later time, once or repeatedly, sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary."
+      },
+      {
+        "id": "preview-status-command",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "the exact messages status and how are you doing are answered from the durable journal without generating an answer."
+      },
+      {
+        "id": "preview-upcoming-date-mention",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts."
+      },
+      {
+        "id": "register-tooling",
+        "status": "live",
+        "module": "src/register",
+        "availability": "available",
+        "userFacing": false,
+        "text": "generates the register, rule book, glossary and this capability briefing from the declarations in code, and fails the build on an undeclared store, undocumented module, dangling rule reference or unused declared boundary."
+      },
+      {
+        "id": "rungraph-core",
+        "status": "dark",
+        "module": "src/rungraph",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant."
+      },
+      {
+        "id": "slack-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+      },
+      {
+        "id": "slack-ordinary-reply",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+      },
+      {
+        "id": "telegram-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "receives Telegram updates by long polling from the bound bot, authenticates the sender and chat, and hands one ordinary reply per admitted message to the effect doorway; media, reactions, typing, edits and deletions are inhibited."
+      }
+    ],
+    "scripts/host-watch.mjs": [
+      {
+        "id": "intake-slice",
+        "status": "live",
+        "module": "src/intake",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "every inbound requester message is captured and receipted or held before any work, with an exact dedup, authentication, resolution and operator-stop brake; an uncertain arrival is kept, never discarded."
+      },
+      {
+        "id": "preview-conversation",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent."
+      },
+      {
+        "id": "preview-durable-memory",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
+      },
+      {
+        "id": "preview-requested-reminders",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when the operator explicitly asks to be reminded at a settled day and time, sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit."
+      },
+      {
+        "id": "preview-requested-summaries",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when the operator explicitly asks for a summary at a later time, once or repeatedly, sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary."
+      },
+      {
+        "id": "preview-status-command",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "the exact messages status and how are you doing are answered from the durable journal without generating an answer."
+      },
+      {
+        "id": "preview-upcoming-date-mention",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts."
+      },
+      {
+        "id": "register-tooling",
+        "status": "live",
+        "module": "src/register",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "generates the register, rule book, glossary and this capability briefing from the declarations in code, and fails the build on an undeclared store, undocumented module, dangling rule reference or unused declared boundary."
+      },
+      {
+        "id": "rungraph-core",
+        "status": "dark",
+        "module": "src/rungraph",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant."
+      },
+      {
+        "id": "slack-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+      },
+      {
+        "id": "slack-ordinary-reply",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+      },
+      {
+        "id": "telegram-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "receives Telegram updates by long polling from the bound bot, authenticates the sender and chat, and hands one ordinary reply per admitted message to the effect doorway; media, reactions, typing, edits and deletions are inhibited."
+      }
+    ],
+    "tests/preview/agent.mjs": [
+      {
+        "id": "intake-slice",
+        "status": "live",
+        "module": "src/intake",
+        "availability": "available",
+        "userFacing": false,
+        "text": "every inbound requester message is captured and receipted or held before any work, with an exact dedup, authentication, resolution and operator-stop brake; an uncertain arrival is kept, never discarded."
+      },
+      {
+        "id": "preview-conversation",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent."
+      },
+      {
+        "id": "preview-durable-memory",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
+      },
+      {
+        "id": "preview-requested-reminders",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when the operator explicitly asks to be reminded at a settled day and time, sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit."
+      },
+      {
+        "id": "preview-requested-summaries",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when the operator explicitly asks for a summary at a later time, once or repeatedly, sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary."
+      },
+      {
+        "id": "preview-status-command",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "the exact messages status and how are you doing are answered from the durable journal without generating an answer."
+      },
+      {
+        "id": "preview-upcoming-date-mention",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts."
+      },
+      {
+        "id": "register-tooling",
+        "status": "live",
+        "module": "src/register",
+        "availability": "available",
+        "userFacing": false,
+        "text": "generates the register, rule book, glossary and this capability briefing from the declarations in code, and fails the build on an undeclared store, undocumented module, dangling rule reference or unused declared boundary."
+      },
+      {
+        "id": "rungraph-core",
+        "status": "dark",
+        "module": "src/rungraph",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant."
+      },
+      {
+        "id": "slack-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+      },
+      {
+        "id": "slack-ordinary-reply",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+      },
+      {
+        "id": "telegram-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "receives Telegram updates by long polling from the bound bot, authenticates the sender and chat, and hands one ordinary reply per admitted message to the effect doorway; media, reactions, typing, edits and deletions are inhibited."
+      }
+    ],
+    "tests/preview/journal-agent.mjs": [
+      {
+        "id": "intake-slice",
+        "status": "live",
+        "module": "src/intake",
+        "availability": "available",
+        "userFacing": false,
+        "text": "every inbound requester message is captured and receipted or held before any work, with an exact dedup, authentication, resolution and operator-stop brake; an uncertain arrival is kept, never discarded."
+      },
+      {
+        "id": "preview-conversation",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent."
+      },
+      {
+        "id": "preview-durable-memory",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory."
+      },
+      {
+        "id": "preview-requested-reminders",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "when the operator explicitly asks to be reminded at a settled day and time, sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit."
+      },
+      {
+        "id": "preview-requested-summaries",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "when the operator explicitly asks for a summary at a later time, once or repeatedly, sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary."
+      },
+      {
+        "id": "preview-status-command",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "the exact messages status and how are you doing are answered from the durable journal without generating an answer."
+      },
+      {
+        "id": "preview-upcoming-date-mention",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts."
+      },
+      {
+        "id": "register-tooling",
+        "status": "live",
+        "module": "src/register",
+        "availability": "available",
+        "userFacing": false,
+        "text": "generates the register, rule book, glossary and this capability briefing from the declarations in code, and fails the build on an undeclared store, undocumented module, dangling rule reference or unused declared boundary."
+      },
+      {
+        "id": "rungraph-core",
+        "status": "dark",
+        "module": "src/rungraph",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant."
+      },
+      {
+        "id": "slack-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+      },
+      {
+        "id": "slack-ordinary-reply",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+      },
+      {
+        "id": "telegram-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "receives Telegram updates by long polling from the bound bot, authenticates the sender and chat, and hands one ordinary reply per admitted message to the effect doorway; media, reactions, typing, edits and deletions are inhibited."
+      }
+    ]
+  }
+}

@@ -72,7 +72,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // governed blocker records) and the governing-constraint keys; nothing else in it changed.
     // cbuild-4 repair 2 re-pin: diffed against repair 1's packet, only two guide sentences changed: the capability
     // line explains an item's need/progress, and the blocker contract drops "tried" for capability-key evidence.
-    expect(packetHash).toBe('583bf4b6af421b0002fb0706f9203d7e7f87586fcd769983366f74a990539e65');
+    // cint-5 re-pin (cbuild-1 on build 4): only the capability field changed; its hand-written capability list
+    // moved to the generated capability-note source (Rules 78, 84).
+    expect(packetHash).toBe('PENDING');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

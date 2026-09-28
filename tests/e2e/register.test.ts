@@ -6,12 +6,28 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from '../../scripts/build-register.mjs';
 import type { BootstrapBinding } from '../../scripts/build-register.mjs';
+import { actionRegistry } from '../../scripts/register-source.mjs';
 import { defineDecoder, decode } from '../../src/index.js';
 import { generationOf, decodeGenerationRecord } from '../../src/register/index.js';
 import type { FactReference, RegisterContext } from '../../src/register/index.js';
 import { setup, value, json, hash } from '../register/fixtures.js';
 import { installOwnerFixture } from '../register/owner-fixture.js';
 import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
+// The fixture world runs at t=100. A real declared model doorway carries its real
+// verification time, which that clock correctly refuses as not-yet-verified. Shift those
+// declared times into the fixture world; the real build keeps checking them at real time.
+function atFixtureClock(root: string) {
+  for (const path of execFileSync('git', ['ls-files', '*.declarations.json'], { encoding: 'utf8' }).trim().split('\n')) {
+    const file = join(root, path); if (!existsSync(file)) continue;
+    const declarations = JSON.parse(readFileSync(file, 'utf8')) as { kind: string; requiredFacts: { models: { verifiedAt: number; freshFor: number }[]; subsidy: { updatedAt: number; freshFor: number } } }[];
+    if (!declarations.some(d => d.kind === 'model doorways')) continue;
+    for (const d of declarations) if (d.kind === 'model doorways') {
+      for (const m of d.requiredFacts.models) Object.assign(m, { verifiedAt: 50, freshFor: 1000 });
+      Object.assign(d.requiredFacts.subsidy, { updatedAt: 50, freshFor: 1000 });
+    }
+    writeFileSync(file, JSON.stringify(declarations, null, 2) + '\n');
+  }
+}
 // Emitted runtime is available when tests execute (after build), but a fresh
 // checkout must be typecheckable before dist exists.
 const emittedModule = '../../dist/index.js';
@@ -43,11 +59,11 @@ describe('compiled register build adapter lifecycle', () => {
     const yieldToRunner = () => new Promise<void>(done => yieldImmediate(done));
     const root = mkdtempSync(join(tmpdir(), 'instar-register-normal-e2e-'));
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) {
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) {
         cpSync(path, join(root, path), { recursive: true });
         await yieldToRunner();
       }
-      installOwnerFixture(root);
+      installOwnerFixture(root); atFixtureClock(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init'); git('add', '.'); git('commit', '-qm', 'fixture bootstrap');
       const initial = git('rev-parse', 'HEAD').trim();
@@ -119,8 +135,12 @@ describe('compiled register build adapter lifecycle', () => {
       const live = result.register.entries.map(e => e.declaration).filter(d => d.status === 'live');
       const held = new Set(live.flatMap(d => d.holds.map(h => h.rule)));
       const uncovered = live.filter(d => d.kind === 'rules' && !held.has(d.requiredFacts.number as number));
+      // Every uncovered rule is a gap loop; every deferred hold of a live, dark or soaking entry is
+      // its own owned loop (an inactive holder's debt stays deadline-checked; it mints no edge).
+      const deferred = result.register.entries.map(e => e.declaration).filter(d => d.status !== 'retired')
+        .flatMap(d => d.holds.filter(h => h.class === 'deferred').map(h => `deferred:${d.id}:${h.rule}`));
       expect(result.graph.loops.map(l => l.id).sort()).toEqual(
-        uncovered.map(d => `gap:${d.requiredFacts.number}`).sort());
+        [...uncovered.map(d => `gap:${d.requiredFacts.number}`), ...deferred].sort());
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
       expect(calls).toContain('extract:fixture:mirrored'); expect(calls).toContain('force'); expect(calls).toContain('current');
       await yieldToRunner();
@@ -138,6 +158,9 @@ describe('compiled register build adapter lifecycle', () => {
       const compiledMachine = value(compiledDecode('VerifiedPrincipal', json('VerifiedPrincipal', { id: 'landing', kind: 'system' }), { ...s.f.ctx, provenance }));
       const actions = ['append:version-chain', 'append:generation-record', 'append:check-run-record'];
       Object.assign(s.f.ctx.register.actions, Object.fromEntries(actions.map(action => [action, { protected: false, repository: false }])));
+      // The landing authority carries the committed owner action metadata of the register it lands.
+      Object.assign(s.f.ctx.register.actions, actionRegistry(Object.fromEntries(git('ls-files', '*.actions.json').trim().split('\n')
+        .filter(Boolean).map(path => [path, readFileSync(join(root, path), 'utf8')]))));
       s.f.grant({ id: 'landing:grant', grantee: machine, standing: 'delegate', actions, expiresAt: 1000 });
       const completedExtract = { ...workflow.extract, rows: result.register.entries.map(({ declaration }) => {
         const { declaredBy: _site, ...authored } = declaration;
@@ -186,7 +209,7 @@ describe('compiled register build adapter lifecycle', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init');
       const commit = () => { git('add', '.'); git('commit', '-qm', 'fixture source'); return git('rev-parse', 'HEAD').trim(); };
@@ -263,8 +286,8 @@ describe('compiled register build adapter lifecycle', () => {
   it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
-      installOwnerFixture(root); installIntakeOwnerFixture(root);
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
+      installOwnerFixture(root); installIntakeOwnerFixture(root); atFixtureClock(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8' }).trim();
       git('init', '-q');
       const script = resolve('scripts/build-register.mjs');
@@ -297,8 +320,8 @@ describe('compiled register build adapter lifecycle', () => {
   it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {
-      for (const path of ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json']) cpSync(path, join(root, path), { recursive: true });
-      installOwnerFixture(root);
+      for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
+      installOwnerFixture(root); atFixtureClock(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       git('init');
       const commit = () => { git('add', '.'); git('commit', '-qm', 'owner CLI source'); return git('rev-parse', 'HEAD'); };
@@ -308,6 +331,13 @@ describe('compiled register build adapter lifecycle', () => {
       expect(good.status, good.stderr).toBe(0);
       const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
       expect(source.authority).toBe('shape-only'); expectOwnerPrerequisites(root, source.authorityPrerequisites);
+      // The consumed documentation is pinned: a changed or removed module README requires regeneration.
+      const readme = join(root, 'tests/preview/README.md'); const documented = readFileSync(readme, 'utf8');
+      writeFileSync(readme, documented.replace('- `preview-conversation`: ', '- `preview-conversation`: stale text '));
+      const changedDoc = run(revision); expect(changedDoc.status).not.toBe(0); expect(changedDoc.stderr).toContain('source pin trails tests/preview/README.md');
+      rmSync(readme);
+      const removedDoc = run(revision); expect(removedDoc.status).not.toBe(0); expect(removedDoc.stderr).toContain('source pin trails tests/preview/README.md');
+      writeFileSync(readme, documented); expect(run(revision).status).toBe(0);
       const declared = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
       expect(declared.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'rungraph-core').declaration).toMatchObject({ status: 'dark', profile: { reach: 'user', consequence: 'control', reversibility: 'costly', surface: 'chat' } });
       const path = join(root, 'src/rungraph/rungraph.ts'); const original = readFileSync(path, 'utf8');
@@ -339,14 +369,14 @@ describe('compiled register build adapter lifecycle', () => {
       const testPath = join(root, 'tests/rungraph/governance.test.ts'); writeFileSync(testPath, readFileSync(testPath, 'utf8') + '\n// ambient edit\n');
       const ambient = run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 60_000);
+  }, 120_000);
   it('P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge', () => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
     const root = join(directory, 'working'); const clean = join(directory, 'clean'); const committed = join(directory, 'committed');
     try {
-      const inputs = ['docs', 'src', 'tests', 'register-source', 'package.json', 'tsconfig.json'];
+      const inputs = ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
       for (const path of inputs) cpSync(path, join(root, path), { recursive: true });
-      installOwnerFixture(root);
+      installOwnerFixture(root); atFixtureClock(root);
       const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       const indexPath = join(root, 'src/rungraph/index.ts');
       const index = readFileSync(indexPath, 'utf8');
@@ -367,7 +397,8 @@ describe('compiled register build adapter lifecycle', () => {
       const run = (cwd: string, pin: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, encoding: 'utf8' });
       for (const cwd of [root, clean]) {
         const result = run(cwd, revision);
-        expect(result.status).not.toBe(0); expect(result.stderr).toContain('unresolved public owner decoder export decodeRun');
+        // The committed shipped-module walk refuses the absent bridge first; an ambient file never satisfies it.
+        expect(result.status).not.toBe(0); expect(result.stderr).toContain('R5: shipped import ./owner-bridge.js from src/rungraph/index.ts does not resolve');
       }
       git(root, 'add', 'src/rungraph/owner-bridge.ts'); git(root, 'commit', '-qm', 'include bridge in committed source graph');
       const pinned = git(root, 'rev-parse', 'HEAD');

@@ -54,14 +54,23 @@ describe('P3-P5 committed owner reference resolver', () => {
       mkdirSync(join(root, 'tests/conversation'), { recursive: true });
       for (const file of ['slack-preparation.test.ts', 'slack-reply-hold.test.ts'])
         cpSync(join('tests/conversation', file), join(root, 'tests/conversation', file));
+      cpSync('tests/conversation/fixtures', join(root, 'tests/conversation/fixtures'), { recursive: true });
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       git('init'); git('add', '.'); git('commit', '-qm', 'owner fixture');
       const commit = git('rev-parse', 'HEAD'); const files = git('ls-tree', '-r', '--name-only', commit).split('\n');
       const path = 'register-source/owner-references/part-twelve.json';
       const original = JSON.parse(readFileSync(join(root, path), 'utf8'));
       const load = (manifest = original) => loadOwnerReferences(root, { commit, files, sources: { [path]: JSON.stringify(manifest) } });
-      expect(load().references).toEqual([{ provider: 'fixture', id: 'P12-NF-19' }, { provider: 'fixture', id: 'P12-NF-28' }]);
+      expect(load().references).toEqual([{ provider: 'fixture', id: 'P12-NF-19' }, { provider: 'fixture', id: 'P12-NF-28' },
+        { provider: 'fixture', id: 'P12-TELEGRAM-REPLY-CAPTURE', kind: 'captured-bytes' }, { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' }]);
+      // Rule 36: capture rows state their origin; the hand-written adapter fixtures are recorded as synthetic.
+      expect(load().captures.map((c: { id: string; origin: string }) => `${c.id}:${c.origin}`)).toEqual(['P12-TELEGRAM-REPLY-CAPTURE:synthetic', 'P12-SLACK-ENVELOPE-CAPTURE:synthetic']);
       const mutations = [
+        (m: typeof original) => { m.captures[0].origin = 'assumed'; },
+        (m: typeof original) => { m.captures[0].source = ''; },
+        (m: typeof original) => { m.captures[0].id = 'P12-NF-19'; },
+        (m: typeof original) => { m.captures[0].artifact.path = 'tests/conversation/slack-preparation.test.ts'; },
+        (m: typeof original) => { m.captures[1].artifact.hash = hash('stale'); },
         (m: typeof original) => { m.fixtures[0].id = 'P12-NF-20'; },
         (m: typeof original) => { m.fixtures[0].artifact.path = 'tests/conversation/slack-reply-hold.test.ts'; },
         (m: typeof original) => { m.fixtures[1].artifact.hash = hash('stale'); },
