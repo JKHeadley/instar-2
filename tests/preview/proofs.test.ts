@@ -118,6 +118,17 @@ describe("posture and due work through Nine's decoders and derivations", () => {
     for (const records of [[failed, passed], [passed, failed]])
       expect(at(records, T0 + 10).get('journal-restore')).toMatchObject({ posture: 'unknown', conflicts: 1, sourceUnavailable: true });
   });
+  it('two retained observations for one logical attempt are a conflict in either order, even when both claim a pass (Astra round-2 MF1)', () => {
+    const good = run('journal-restore', T0, 'passed');
+    const other = run('journal-restore', T0, 'passed', T0, 'g1', { restored: true, differing: null, sections: 20, cursor: 10 });
+    // An empty observation carrying its own canonical digest, labelled passed.
+    const empty = { ...run('journal-restore', T0, 'failed', T0, 'g1', {}), disposition: 'passed' as const };
+    for (const records of [[good, empty], [empty, good], [good, other], [other, good]])
+      expect(at(records, T0 + 10).get('journal-restore')).toMatchObject({ posture: 'unknown', conflicts: 1, sourceUnavailable: true });
+    // Positive neighbors: the single confirming observation, and the same record replayed byte-identically.
+    for (const records of [[good], [good, { ...good }]])
+      expect(at(records, T0 + 10).get('journal-restore')).toMatchObject({ posture: 'healthy', conflicts: 0, sourceUnavailable: false });
+  });
   it('a refused newest attempt is an unavailable source; the earlier pass does not stand in for it (Astra MF1)', () => {
     const earlier = run('journal-restore', T0, 'passed');
     const torn = { ...earlier, startedAt: T0 + 1, completedAt: T0, disposition: 'failed' as const };

@@ -6,7 +6,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import type { JournalRecord } from './journal.js';
+import { STEP_SUPERVISOR_EXHAUSTED, type JournalRecord } from './journal.js';
 import { stepCoverage } from './proofs.js';
 
 const key = new Uint8Array(32).fill(37);
@@ -31,9 +31,9 @@ const decide = (input: Input) => {
 /** Jev answers whichever step question it is asked; `score` picks the probability per step id. */
 const answer = (questions: Record<string, unknown> | undefined, value: number) => ({ model: 'jev-1.13.0',
   answers: Object.fromEntries(Object.keys(questions ?? { unsupported_effect: 1 }).map(id => [id, { type: 'noul', noul: value }])) });
-function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outage') } = {}) {
+function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outage'); maxCalls?: number } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'business-steps-')));
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: options.maxCalls ?? genesis.maxCalls });
   const frames: JournalRecord[] = [];
   const append = journal.append;
   journal.append = row => { frames.push(row); append(row); };
@@ -155,4 +155,49 @@ it('reply intake and preparation are each judged by their own question and evide
     // The same journal read with the supervisor off contributes nothing.
     expect(row(stepCoverage(w.journal.view, { ...on, stepCheck: false }), 'operator-reply', 'intake').state).toBe('missing');
   } finally { w.close(); }
+});
+
+it('an exhausted supervisor budget records the unjudged reminder step unavailable with no call, and the reminder still sends (open direction)', async () => {
+  // Astra round-2 MF3: at maxCalls 4 the ordinary steps and the reminder's due selection spend the budget.
+  for (const cap of [4, 40]) {
+    const w = world({ stepCheck: 'pass', maxCalls: cap });
+    try {
+      w.worker.intake([update(1, priya)]); await w.worker.drain(); await w.worker.checkSteps();
+      w.state.now = friday9; await w.worker.sendReminders(); await w.worker.sendReminders();
+      expect(w.state.sent.filter(text => text.startsWith('PREVIEW reminder'))).toHaveLength(1);
+      const send = [...w.journal.view.stepChecks].find(([id]) => id.startsWith('reminder-send:'))![1];
+      const reminder = stepCoverage(w.journal.view, on)['requested-reminder']!;
+      if (cap === 4) {
+        expect(send).toMatchObject({ result: { verdict: 'unavailable', reason: STEP_SUPERVISOR_EXHAUSTED } });
+        expect(send.reserved).toBeUndefined();
+        expect(w.state.asked.filter(step => step.startsWith('reminder-send:'))).toEqual([]);
+        expect(row({ 'requested-reminder': reminder }, 'requested-reminder', 'send')).toMatchObject({ state: 'unavailable', population: 1 });
+        // The exhausted judgment replays from the durable journal.
+        const copy = openPreviewJournal(join(w.root, 'journal.encrypted'), key, undefined, undefined, true);
+        try { expect(copy.view.stepChecks.get([...w.journal.view.stepChecks.keys()].find(id => id.startsWith('reminder-send:'))!)?.result?.reason)
+          .toBe(STEP_SUPERVISOR_EXHAUSTED); } finally { copy.close(); }
+      } else {
+        expect(send.result?.verdict).toBe('pass');
+        expect(reminder.rows.map(item => [item.boundary, item.state])).toEqual([['select-due', 'validated'], ['send', 'validated']]);
+      }
+    } finally { w.close(); }
+  }
+});
+
+it('an exhausted-budget judgment is refused while budget remains, and a requested summary at an exhausted budget still holds (closed direction)', async () => {
+  const w = world({ stepCheck: 'pass' });
+  try {
+    expect(() => { w.journal.append({ kind: 'step-open', step: 'reminder-due:reminder-0123456789', at: start });
+      w.journal.append({ kind: 'step-check', step: 'reminder-due:reminder-0123456789', at: start,
+        result: { verdict: 'unavailable', reason: STEP_SUPERVISOR_EXHAUSTED, score: null, latencyMs: 0 } }); }).toThrow(/step check result order/u);
+  } finally { w.close(); }
+  const x = world({ stepCheck: 'pass', maxCalls: 4 });
+  try {
+    x.worker.intake([update(1, daily)]); await x.worker.drain(); await x.worker.checkSteps();
+    x.state.now = sixPm; await x.worker.sendReminders(); await x.worker.sendReminders();
+    const summary = x.journal.view.order.find(turn => turn.requestedSummary)!;
+    expect(summary.held).toBeDefined();
+    expect(summary.reserved).toBe(false);
+    expect(x.state.models.filter(id => id === summary.id)).toEqual([]);
+  } finally { x.close(); }
 });

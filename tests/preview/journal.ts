@@ -63,6 +63,8 @@ export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
 const REPLY_REVIEW_HEADROOM_BYTES = 8192;
 /** Most journal-derived inventory entries offered with an operator memory question. */
 export const PREVIEW_INVENTORY_LIMIT = 20;
+/** The recorded reason of a pre-send step the bounded supervisor could not judge because its call budget is spent. */
+export const STEP_SUPERVISOR_EXHAUSTED = 'step supervisor budget exhausted';
 
 /** A small, deterministic overview beside the ordinary cross-conversation history. */
 export const PREVIEW_DIGEST_LIMIT = 8;
@@ -1606,8 +1608,8 @@ function project(view: JournalView, row: JournalRecord): void {
     view.stepCheckStarted = true; if (cleanup) view.stepCheckCleanup = true; if (business) view.stepCheckBusiness = true; return;
   }
   if (row.kind === 'step-open') {
-    if (!view.stepCheckBusiness || view.stepChecks.has(row.step) || !presendStep(row.step)
-      || [...view.stepChecks.values()].filter(item => item.reserved).length >= view.limits.maxCalls)
+    // Opening a pre-send step names it for judgment and costs no call; the reservation below carries the cap.
+    if (!view.stepCheckBusiness || view.stepChecks.has(row.step) || !presendStep(row.step))
       throw Error('preview journal: step open refused');
     view.stepChecks.set(row.step, {}); return;
   }
@@ -1620,7 +1622,11 @@ function project(view: JournalView, row: JournalRecord): void {
   }
   if (row.kind === 'step-check') {
     const step = view.stepChecks.get(row.step);
-    if (!step?.reserved || step.result) throw Error('preview journal: step check result order');
+    // An unreserved result is only the exhausted-budget judgment: unavailable, with no call, once the cap is reached.
+    const exhausted = step !== undefined && !step.reserved && presendStep(row.step) && row.result.verdict === 'unavailable'
+      && row.result.reason === STEP_SUPERVISOR_EXHAUSTED
+      && [...view.stepChecks.values()].filter(item => item.reserved).length >= view.limits.maxCalls;
+    if (!step || !(step.reserved || exhausted) || step.result) throw Error('preview journal: step check result order');
     step.result = row.result; return;
   }
   if (row.kind === 'summary-due') {
@@ -5083,17 +5089,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** Opens (once) and judges the pre-send steps named here. 'validated' lets the next consequential step run; a
    * violation or unavailable verdict is returned for the caller's declared failure direction; 'pending' means the
-   * check could not run now (another check holds it, or the reservation cap is reached). */
+   * check could not run now because another check holds it. A step that cannot be judged because the reservation cap
+   * is reached is recorded unavailable (no call), so each consumer applies its own failure direction to it. */
   const validateBefore = async (steps: readonly { id: string; evidence: () => object }[]): Promise<'off' | 'validated' | 'violation' | 'unavailable' | 'pending'> => {
     if (!ports.stepCheck || !journal.view.stepCheckBusiness) return 'off';
     const verdicts: (StepCheckResult | null)[] = [];
     for (const step of steps) {
       gate();
-      if (!journal.view.stepChecks.has(step.id)) {
-        if ([...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return 'pending';
-        journal.append({ kind: 'step-open', step: step.id, at: ports.now() });
-      }
+      if (!journal.view.stepChecks.has(step.id)) journal.append({ kind: 'step-open', step: step.id, at: ports.now() });
       const existing = journal.view.stepChecks.get(step.id)!;
+      if (!existing.reserved && !existing.result && !stepsInFlight.has(step.id)
+        && [...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls)
+        journal.append({ kind: 'step-check', step: step.id, result: { verdict: 'unavailable', reason: STEP_SUPERVISOR_EXHAUSTED,
+          score: null, latencyMs: 0 }, at: ports.now() });
       verdicts.push(await runStep(step.id, existing.reserved || existing.result ? {} : step.evidence()));
     }
     if (verdicts.some(item => item === null)) return 'pending';

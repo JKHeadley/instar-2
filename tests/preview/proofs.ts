@@ -301,15 +301,20 @@ export function verificationPlanInput(plan: ProofPlan, generation: string, requi
       lifecycle: ['tests/preview/proofs-launcher.test.ts'], semantic: ['desk live test'], limits: ['one due plan per cycle'], evidence: ['proofs.jsonl'] } };
 }
 const recordId = (record: ProofRecord) => `${record.plan}:${record.generation.slice(-12)}:${record.startedAt}`;
+/** One retained capture of an attempt: the logical attempt identity stays `recordId`, while the capture and its
+ * witness are named by what was observed, so two captures of one attempt never overwrite each other. */
+const captureId = (record: ProofRecord) => `${recordId(record)}:${record.capture ?? 'none'}`;
 const challenge = (record: ProofRecord) => hashOf({ plan: record.plan, planVersion: record.planVersion, generation: record.generation, startedAt: record.startedAt });
 const bindingOf = (record: ProofRecord) => ({ challengeDigest: challenge(record), plan: record.plan, planVersion: record.planVersion,
   arm: 'probe', slot: record.generation, attempt: String(record.startedAt), run: `preview:${record.generation}`, operation: `proof:${record.plan}`,
-  comparison: `Result:${record.disposition}` });
+  // The comparison carries the retained capture and its source time, so two records of one attempt that retained
+  // different observations are an immutable disagreement in Nine's merge, never a file-order choice.
+  comparison: `Result:${record.disposition}:capture:${record.capture ?? 'none'}:at:${record.observedAt ?? 'none'}` });
 function probeInput(record: ProofRecord, plan: ProofPlan) {
   const binding = bindingOf(record);
   return { type: 'ProbeRecord', schemaVersion: 1, id: `probe:${recordId(record)}`, predecessors: [], ...binding, subject: plan.capability,
     startedAt: record.startedAt, completedAt: record.completedAt,
-    witnesses: record.disposition === 'passed' && record.capture ? [`evidence:${recordId(record)}`] : [],
+    witnesses: record.disposition === 'passed' && record.capture ? [`evidence:${captureId(record)}`] : [],
     disposition: record.disposition === 'unknown' ? 'inconclusive' : record.disposition,
     missingPhases: record.disposition === 'unknown' ? ['observation'] : [], captureStatus: record.capture ? 'available' : 'missing',
     costs: [{ resource: 'model-calls', amount: 0 }] };
@@ -327,11 +332,11 @@ export function sourceGeneration(records: readonly ProofRecord[], observedAt: nu
 function witnessInput(record: ProofRecord, plan: ProofPlan, context: DecodeContext, executing: string | null) {
   if (record.disposition !== 'passed' || record.capture === null || record.observedAt === null
     || record.capture !== hashOf(record.observed) || !plan.confirms(record.observed) || executing !== record.generation) return null;
-  return { type: 'Evidence', schemaVersion: 1, id: `evidence:${recordId(record)}`,
+  return { type: 'Evidence', schemaVersion: 1, id: `evidence:${captureId(record)}`,
     claim: { subject: plan.capability, predicate: 'probe-passed', value: { ...bindingOf(record), subjectDigest: subjectDigest(plan),
       sourceGeneration: executing, observation: record.capture } },
     source: plan.witness, observedAt: clockAt(context, record.observedAt), freshFor: plan.freshnessMs,
-    capture: { reference: `capture:${recordId(record)}`, hash: record.capture }, strength: 'observation' };
+    capture: { reference: `capture:${captureId(record)}`, hash: record.capture }, strength: 'observation' };
 }
 
 export interface PlanPosture {
@@ -353,7 +358,7 @@ export interface RefusedProof { plan: string; after: number }
 export function proofPosture(plans: readonly ProofPlan[], records: readonly ProofRecord[], generation: string,
   ports: Pick<ProofPorts, 'supervisors'>, now: number, refused: readonly RefusedProof[] = []): PlanPosture[] {
   const captures: Record<string, string> = {};
-  for (const record of records) if (record.capture) captures[`capture:${recordId(record)}`] = encode(record.observed).bytes;
+  for (const record of records) if (record.capture) captures[`capture:${captureId(record)}`] = encode(record.observed).bytes;
   const context = decodeContext(captures), at = clockAt(context, now), facts = factContext(context, at);
   return plans.map(plan => {
     const required = plan.required(ports);
