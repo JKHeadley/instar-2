@@ -97,46 +97,55 @@ to which machine serves a conversation is — the user meets it as a pause — a
 
 ### Critical
 
-**Definition.** A thing is *critical* when its `consequence` is `identity`, `security`, `money`,
-`control`, or `external` — **or** when it is `data` and `reversibility` is `irreversible`.
+**Definition.** A thing is *critical* when it is *consequential* as the purpose defines it, read
+from its profile: its `consequence` is `identity`, `security`, `money`, `control`, or `external`,
+**or** its `reversibility` is `irreversible`, **or** its `reach` is `world`.
 
-In words: a failure that touches who someone is, what they may do, a secret, spend, the life of
-a session, machine, or channel, or the world outside — or one that loses data for good.
+In words: the purpose's four tests, each answered from the plain facts. It cannot be undone by the
+agent alone (`irreversible`, or an `external` effect such as a message sent or a payment made); it
+commits money or a resource (`money` — the level above which spend is consequential is the
+operator's, so every money consequence is declared and the level decides at run time); it reaches
+outside the work's granted scope (`world` — a third party or external service); or it touches a
+matter the operator's policy governs (`identity`, `security`, `control` — who someone is, a secret,
+the life of a session, machine or channel).
 
 **Used by.** Rule 38 (every critical pipeline has a model watching each step), rule 43 (every
 critical outcome has a live probe), the register's *critical outcomes* kind.
 
 **What it excludes, on purpose.** A feature whose failure bothers the user a bounded number of
-times (`consequence: attention`) is not critical, however visible. Visibility is *user-facing*;
-damage is *critical*. 1.x blurred these, which is why the alerts channel was treated as critical
-and the secret store was not.
+times (`consequence: attention`) and that can be undone is not critical, however visible.
+Visibility is *user-facing*; consequence is *critical*. 1.x blurred these, which is why the alerts
+channel was treated as critical and the secret store was not.
 
 **What this includes.** A failure that makes a channel unusable — a flood, a notifier with no
 bound — is `control` under the runaway rule, and therefore critical. A single flood message
 merely bothers; the flood takes the interface away, and taking the interface away *is* damage.
-The split between visibility and damage stands.
+Anything declared `irreversible` is critical whatever its consequence: a one-shot notice that
+changes what a person knows cannot be taken back, so it cannot be ordinary.
 
 ### Significant
 
-**Definition.** A thing is *significant* when it is *critical*, **or** *user-facing*, **or** its
-`reach` is `world`.
+**Definition.** A thing is *significant* exactly when it is *critical*: both words resolve to the
+purpose's single definition of a consequential effect. A feature is significant when at least one
+of its effects is consequential.
 
-In words: anything that can do real damage, anything a person meets, and anything that touches a
-third party — whether or not it is dangerous.
+In words: anything whose effect is consequential. Being seen by a person is *user-facing*, which
+carries its own obligations (live-surface proof, fixes ship live); it does not by itself make a
+thing significant.
 
 **Used by.** Rule 34 (every significant feature has all three test tiers), rule 48's tier signal.
 
-**What it excludes.** Purely internal, reversible, unseen work — a refactor, a cache, a log line.
-Those get unit tests and a review; they do not pay for integration and live end-to-end proof.
-That exclusion is the point of the word: it is where the process gets *cheaper*, and the derived
-definition is what lets it be cheaper safely.
+**What it excludes.** Ordinary work: reversible, bounded, within scope, touching no
+policy-governed matter — a refactor, a cache, a log line, a reversible display change. Those get
+unit tests and a review; they do not pay for integration and live end-to-end proof. A user-facing
+ordinary change still needs its live-surface proof under rule 62.
 
 ### The four together
 
 | | Not user-facing | User-facing |
 |---|---|---|
-| **Not critical** | ordinary — unit tests, review | *significant* — three tiers, live proof before done |
-| **Critical** | *significant* — three tiers, supervised, probed | *significant* — all of the above, and fixes ship live |
+| **Not consequential** | ordinary — unit tests, review | *user-facing* — live proof through its surface before done, fixes ship live |
+| **Consequential** | *critical and significant* — three tiers, supervised, probed | *critical and significant* — all of the above, and fixes ship live |
 
 Add *irreversible* as a flag on any cell: it raises the review to live and the judgment floor to
 its strictest.
@@ -249,7 +258,7 @@ Unblocks step one's finding 4 (an undefined load-bearing term is not yet a rule)
 | `name` — the term, as it appears in rules and facts | The key the resolver looks up. |
 | `kind` — `adjective` (derived), `field` (a profile field or required fact), `noun`, or `standing` | Each kind has a different shape below; the build checks the shape. |
 | `definition` — the human-readable definition, as prose | The agreed, versioned explanation a person reads and a model is briefed with. Required, and reviewed by a human on every change, because it is what the change *means*. |
-| `derivedFrom` — for an `adjective`: the rule over profile facts, as data (`consequence in {identity, security, money, control, external} or (consequence = data and reversibility = irreversible)`) | The definition of a derived word is a computation, and it is stored as one — so the resolver, the build, and the briefing all evaluate the *same* rule, and a prose definition can never drift from the one the code runs. |
+| `derivedFrom` — for an `adjective`: the rule over profile facts, as data (`consequence in {identity, security, money, control, external} or reversibility = irreversible or reach = world`) | The definition of a derived word is a computation, and it is stored as one — so the resolver, the build, and the briefing all evaluate the *same* rule, and a prose definition can never drift from the one the code runs. |
 | `allowedValues` — for a `field`: the closed list, each value with its own one-line meaning | What makes a declaration checkable. The one-line meanings are what an author reads when choosing. |
 | `usedBy` — the rule numbers and register facts that lean on this term | Rule 69, references run from both ends: a term nothing uses is dead weight to remove; a rule using a term with no entry fails the build. Generated, not hand-written. |
 | `supersedes` — the previous entry, when a definition changes | A definition evolves by *replacing* its entry through the approval flow, never by editing in place; the old one stays, dated. |
