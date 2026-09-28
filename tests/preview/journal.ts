@@ -25,6 +25,7 @@ import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJ
 
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, type StepCheckResult } from './step-check.js';
+import { retrospectivePlan, retrospectivePopulation, validateRetrospective, disciplineDigest, type RetroPass } from './retrospective.js';
 
 
 
@@ -158,7 +159,7 @@ export type JournalRecord =
   | { kind: 'answer'; id: string; text: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     memory?: MemoryChange[]; personMerges?: PersonMerge[]; personAttributes?: PersonAttribute[]; memoryPending?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; reminderCancels?: string[]; summaryGrants?: SummaryGrant[]; summaryCancels?: string[]; undo?: UndoTarget; unlabeledRecall?: boolean;
     conflict?: Pick<MemoryConflict, 'first' | 'second'>; askConflict?: string;
-    resolveConflict?: { askedBy: string; winner: string }; lastNamedPerson?: string; usage?: ModelUsage; latencyMs?: number; at: number }
+    resolveConflict?: { askedBy: string; winner: string }; lastNamedPerson?: string; reason?: string; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
@@ -218,7 +219,11 @@ export type JournalRecord =
   | { kind: 'step-check-reserve'; step: string; evidence: string; at: number }
   | { kind: 'step-check'; step: string; result: StepCheckResult; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
-  | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number };
+  | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number }
+  /** One bounded retrospective pass: its exact case population, then its validated result (or refusal/UNKNOWN). */
+  | { kind: 'retro-reserve'; pass: number; turnsSeen: number; cases: string[]; omitted: { case: string; reason: string }[]; eligible: number;
+    packetSha256: string; contextDigest: string; at: number }
+  | { kind: 'retro'; pass: number; state: 'complete' | 'failed' | 'unknown'; result?: RetroPass['result']; reason?: string; usage?: ModelUsage; at: number };
 
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
@@ -229,7 +234,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
-  answerMs?: number; sendMs?: number;
+  answerMs?: number; sendMs?: number; answerReason?: string;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   /** Set only on a runner-authored turn created from a due slot of a requested summary. */
   requestedSummary?: { grant: string; slot: string; window: SummaryWindow; late?: { minutes: number; skipped: number } };
@@ -279,7 +284,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   corrections: string[];
   stepCheckStarted: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
-  replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
+  replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null;
+  /** Retrospective passes in journal order (plain records, so snapshots carry them verbatim). */
+  retroPasses: RetroPass[] }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
   if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
@@ -474,7 +481,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryRequired: new Set(saved.summaryRequired ?? []), summaryCandidates: new Map(saved.summaryCandidates ?? []),
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryFaithfulness: new Map(saved.summaryFaithfulness ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
     callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []), mentionedDates: new Set(saved.mentionedDates ?? []), reminders: new Map(saved.reminders ?? []), reminderGrant: saved.reminderGrant ?? null, reminderCancels: saved.reminderCancels ?? [],
-    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [] };
+    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [], retroPasses: saved.retroPasses ?? [] };
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -787,6 +794,9 @@ const operatorTurn = (view: JournalView, turn: Turn) => {
  * search, open questions, digests, preferences and dated items all skip it. */
 export const PROBE_TAG = /^(?:Build|Renewal|Canary) check [0-9a-f]{7,40}: /u;
 export const probeTurn = (view: JournalView, turn: Turn) => PROBE_TAG.test(turn.text) && operatorTurn(view, turn);
+/** The retrospective review's population: the operator's own messages (never probes, edits or runner-authored turns) and their consequences. */
+export const retrospectiveCases = (view: JournalView) => retrospectivePopulation(view, turn => turn.accepted && !turn.editOf
+  && !turn.requestedSummary && operatorTurn(view, turn) && !probeTurn(view, turn));
 /** This phrase match only requests a capped model judgment; it never opens or closes a question. */
 export const unansweredCue = (reply: string) => /\b(?:I (?:don['’]t|do not) know|I(?:['’]m| am) not sure|I (?:can['’]t|cannot) answer)\b/iu.test(reply);
 export const projectMemoryText = (view: JournalView, value: string) => view.memory.reduce((text, change) => {
@@ -927,6 +937,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   const valid = row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
     && (summary[2] === undefined || view.summaryReviews.has(Number(summary[1])))
     : row.role === 'reply-review' ? row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
+    : /^retrospective:\d+$/u.test(row.id) ? view.retroPasses.some(pass => `retrospective:${String(pass.pass)}` === row.id && pass.state === undefined)
     : !!view.turns.get(row.id)?.reserved;
   const o = row.outcome;
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
@@ -1231,6 +1242,26 @@ function project(view: JournalView, row: JournalRecord): void {
     }
     return;
   }
+  if (row.kind === 'retro-reserve') {
+    const last = view.retroPasses.at(-1);
+    if (row.pass !== view.retroPasses.length || last?.state === undefined && last !== undefined || !row.cases.length
+      || view.calls >= view.limits.maxCalls) throw Error('preview journal: retrospective reservation order or cap');
+    reserveTokens(view, `retrospective:${String(row.pass)}`, 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++;
+    view.retroPasses.push({ pass: row.pass, at: row.at, turnsSeen: row.turnsSeen, cases: row.cases, omitted: row.omitted, eligible: row.eligible,
+      packetSha256: row.packetSha256, contextDigest: row.contextDigest });
+    return;
+  }
+  if (row.kind === 'retro') {
+    const pass = view.retroPasses[row.pass];
+    if (!pass || pass.state !== undefined || (row.state === 'complete') !== (row.result !== undefined))
+      throw Error('preview journal: retrospective result order');
+    settleTokens(view, `retrospective:${String(row.pass)}`, row.usage);
+    pass.state = row.state; pass.completedAt = row.at;
+    if (row.result) pass.result = row.result;
+    if (row.reason !== undefined) pass.reason = row.reason;
+    return;
+  }
   if (row.kind === 'step-check-start') {
     if (view.stepCheckStarted) throw Error('preview journal: step check already started');
     view.stepCheckStarted = true; return;
@@ -1386,7 +1417,7 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.lastNamedPerson !== undefined && (row.lastNamedPerson.trim() !== row.lastNamedPerson
       || !row.lastNamedPerson || Buffer.byteLength(row.lastNamedPerson) > 100 || !turn.accepted
       || !turn.text.includes(row.lastNamedPerson))) throw Error('preview journal: unsupported person cue');
-    turn.answer = row.text;
+    turn.answer = row.text; if (row.reason !== undefined) turn.answerReason = row.reason;
     if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     if (row.unlabeledRecall) turn.unlabeledRecall = true;
     if (view.stepCheckStarted && !row.failureClass) view.stepChecks.set(`answer:${row.id}`, {});
@@ -1579,7 +1610,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null, retroPasses: [] };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1643,7 +1674,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
       if (view && (((row.kind === 'intake' || row.kind === 'summary-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns)
-        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve')
+        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve' || row.kind === 'retro-reserve')
           && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
@@ -1656,7 +1687,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null, retroPasses: [] };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -1819,7 +1850,7 @@ export interface PreviewPorts {
   sources?: readonly unknown[] | ((turn?: Turn) => readonly unknown[]);
   prepareModel?(input: { question: string; context: string; id: string }): string;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
-    usage: ModelUsage} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
+    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
   checkOutbound(text: string): void;
@@ -1829,6 +1860,10 @@ export interface PreviewPorts {
   summaryCheck?(evidence: string): Promise<unknown>;
 
   stepCheck?: { jev(state: string): Promise<{ value: unknown; latencyMs: number }> };
+  /** The bounded retrospective review: one subscription attempt over the pass's case packet.
+   * `value` is the model's JSON answer text; anything else leaves the cases owed. */
+  retrospect?(state: string, id: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
+    | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   boundary?(stage: string): void;
 }
 
@@ -3599,6 +3634,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(fromOperator(turn) && !probe && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
+              ...(typeof answer !== 'string' && answer.reason?.trim() ? { reason: redact(answer.reason.slice(0, 1000)).text } : {}),
               ...(typeof answer === 'string' ? {} : { usage: answer.usage }), latencyMs: answerMs, at: decisionAt });
             if (invalidMemory && !turn.memoryUndecided) {
               journal.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: ports.now() });
@@ -4475,6 +4511,40 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     } finally { checkingSteps = false; }
 
   };
+  /** The bounded retrospective review (Rules 16, 19, 24, 25, 50, 51, 58, 85, 104, 108). One pass is
+   * one model attempt inside the trial cap, after replies. A reservation left by a crash is recorded
+   * UNKNOWN and never replayed; its cases stay owed, so interrupted review remains later work. */
+  let retrospecting = false;
+  const retrospect = async (contextDigest = disciplineDigest()) => {
+    if (!ports.retrospect || retrospecting || journal.readOnly) return;
+    retrospecting = true;
+    try {
+      const last = journal.view.retroPasses.at(-1);
+      if (last && last.state === undefined)
+        journal.append({ kind: 'retro', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded; never replayed', at: ports.now() });
+      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+      const population = retrospectiveCases(journal.view);
+      const plan = retrospectivePlan(journal.view, population, ports.now(), contextDigest);
+      if (!plan) return;
+      gate();
+      const pass = journal.view.retroPasses.length;
+      journal.append({ kind: 'retro-reserve', pass, turnsSeen: journal.view.order.length, cases: plan.cases.map(item => item.id), omitted: plan.omitted,
+        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, at: ports.now() });
+      let answer: Awaited<ReturnType<NonNullable<PreviewPorts['retrospect']>>>;
+      try { answer = await ports.retrospect(plan.state, `retrospective:${String(pass)}`); }
+      catch { journal.append({ kind: 'retro', pass, state: 'unknown', reason: 'model call failed or was stopped; outcome unknown', at: ports.now() }); return; }
+      const usage = answer.usage ? { usage: answer.usage } : {};
+      if (answer.state === 'uncertain') { journal.append({ kind: 'retro', pass, state: 'unknown', reason: 'model outcome uncertain', ...usage, at: ports.now() }); return; }
+      if (!('value' in answer)) { journal.append({ kind: 'retro', pass, state: 'failed', reason: `model ${answer.failureClass ?? answer.state}`, ...usage, at: ports.now() }); return; }
+      let result;
+      try { result = validateRetrospective(JSON.parse(answer.value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')), plan, journal.view, pass); }
+      catch (error) {
+        const reason = error instanceof SyntaxError ? 'answer was not JSON' : error instanceof Error ? error.message : 'answer refused';
+        journal.append({ kind: 'retro', pass, state: 'failed', reason, ...usage, at: ports.now() }); return;
+      }
+      journal.append({ kind: 'retro', pass, state: 'complete', result, ...usage, at: ports.now() });
+    } finally { retrospecting = false; }
+  };
   /** Sends each reminder the verified operator explicitly asked for once, at or after its due time.
    * Reminders due together in one topic share one message (Rule 52); an unknown send is never retried. */
   const sendReminders = async () => {
@@ -4536,7 +4606,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       raw: JSON.stringify({ message: { from: { id: journal.view.genesis.operator } } }), accepted: true,
       at: ports.now(), reserved: false });
   };
-  return { intake, drain, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, startStepChecks, checkSteps, nextHeldNoticeAt, probe,
+  return { intake, drain, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, startStepChecks, checkSteps, retrospect, nextHeldNoticeAt, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

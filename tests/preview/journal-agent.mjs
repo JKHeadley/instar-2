@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, retrospectiveCases, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -56,6 +56,7 @@ import { memoryReport } from './memory-export.js';
 
 import { operatorDigest } from './operator-digest.js';
 import { stepQuestions } from './step-check.js';
+import { RETROSPECTIVE_QUESTION, disciplineDigest, disciplineSource, eligibleCases, feedbackDispositions, openFindings, promotedCases, standingGrantCandidates } from './retrospective.js';
 
 
 
@@ -124,7 +125,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const digest = turn && awayDigest(view, log, now, turn, [desk]);
     const note = handoff();
-    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, operatorDigest(view, log, desk),
+    return [...sources, disciplineSource(view), selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, operatorDigest(view, log, desk),
       ...(digest ? [awayDigestSource(digest)] : []), ...(note ? [note] : [])];
   };
 };
@@ -194,7 +195,8 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
+const roleOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+  : id.startsWith('retrospective:') ? 'retrospective' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 const lastReplyReview = view => {
@@ -209,6 +211,19 @@ const packetStatus = view => {
     dropped: last.packetDropped ?? 'unavailable in earlier reservation' };
 };
 
+/** The retrospective review's proof of running, coverage and open work (content-free except its own findings). */
+const retrospectiveView = view => ({ passes: view.retroPasses.map(pass => ({ pass: pass.pass, at: pass.at,
+  state: pass.state ?? 'in-flight-or-unknown', reason: pass.reason ?? null, eligible: pass.eligible, inspected: pass.cases.length,
+  omitted: pass.omitted.length, efficiency: pass.result?.efficiency.summary ?? null,
+  gravityWellsObserved: pass.result?.gravityWells.filter(item => item.observed).map(item => item.well) ?? [],
+  findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs,
+    disposition: 'owner' in item.disposition ? `owned by ${item.disposition.owner}` : 'declined with reason' })) ?? [] })),
+  openFindings: openFindings(view).map(item => item.id), feedbackDispositions: feedbackDispositions(view).map(item => ({ case: item.case, disposition: item.disposition })),
+  standingGrantCandidates: standingGrantCandidates(view).map(item => ({ case: item.case, presentable: item.presentable, recurrences: item.recurrences.length })),
+  promotedCases: promotedCases(view).map(item => ({ case: item.provenance.case, expected: item.expected, pass: item.provenance.pass })),
+  owed: (() => { const owed = eligibleCases(view, retrospectiveCases(view)).filter(item => item.category !== 'open');
+    return { cases: owed.length, oldestAt: owed[0]?.at ?? null }; })(),
+  contextDigest: disciplineDigest(), routeSelection: 'unmeasured' });
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
@@ -219,6 +234,9 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
+  if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
+  // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
+  const retrospectiveEnabled = options.retrospective !== 'false';
   if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
 
   const root = resolve(required(options, 'root'));
@@ -382,6 +400,7 @@ async function main() {
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
+      retrospective: retrospectiveView(view.view),
       people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
         change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
@@ -571,7 +590,9 @@ async function main() {
       }
       if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
+      const reasonValue = decision.reason?.value;
+      const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
+      return { state: 'complete', value: decision.conclusion.value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
     const invokeJev = async (text, questions) => {
       const start = performance.now();
@@ -592,7 +613,7 @@ async function main() {
         const result = await invokeSubscription(prepared, id);
         if (result.state !== 'complete' || result.failureClass) return { ...result,
           ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
-        return { state: 'complete', text: result.value,
+        return { state: 'complete', text: result.value, ...(result.reason ? { reason: result.reason } : {}),
           usage: recordedUsage(result.usage) };
       },
       summaryCheck: async evidence => (await askJev(evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
@@ -637,6 +658,10 @@ async function main() {
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
+      ...(retrospectiveEnabled ? { retrospect: async (state, id) => {
+        const result = await invokeSubscription(modelEnvelope({ question: RETROSPECTIVE_QUESTION, context: state, id }), id);
+        return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
+      } } : {}),
       send: async ({ text, expectedText, chat, thread }) => {
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
@@ -690,10 +715,15 @@ async function main() {
         await delay(Math.min(100, until - clock.elapsed()));
       return true;
     };
-        let summaryJob = null, stepJob = null;
+        let summaryJob = null, stepJob = null, retroJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
       stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
+    };
+    // After the summary pass: at most one bounded retrospective pass (the worker decides whether one is due).
+    const retrospectLater = () => {
+      if (!retrospectiveEnabled || retroJob) return;
+      retroJob = worker.retrospect().catch(() => {}).finally(() => { retroJob = null; });
     };
 
     const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
@@ -704,7 +734,7 @@ async function main() {
       try { worker.checkCoherence(); } catch { /* the unchecked reply is retried after the next drain */ }
       checkStepsLater();
       if (summaryJob) return;
-      summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
+      summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).then(retrospectLater).finally(() => { summaryJob = null; });
     };
     const reportCap = () => reportJournalCap(journal, wallNow(), line => process.stderr.write(line));
     const waitHeldNotices = async () => {
@@ -769,6 +799,7 @@ async function main() {
     }
     await summaryJob;
     await stepJob;
+    await retroJob;
     if (stepCheckEnabled) await worker.checkSteps();
     const finalCap = reportCap();
     endReason ??= finalCap;
