@@ -173,6 +173,9 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     memoryBytes: 0, processes: 0, sampledAt: null };
   let lastSample = null, observer = { ticks: 0, queries: 0, elapsedMs: 0, lastTickMs: null };
   let orphans = [], lastLaunch = null;
+  /** Ownership evidence a failed ledger write could not land, by launch id. Every later successful
+   * ledger write carries it first, so storage that becomes writable again persists it. */
+  const pendingEvidence = new Map();
   let sampling = false, sampler = null, pump = null, lastPersist = 0;
   const query = (file, args) => { observer.queries++; return ports.query(file, args).catch(() => null); };
 
@@ -211,7 +214,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     return { version: 1, at: ports.now(), identity: HOST_IDENTITY, ceilings, bounds: HOST_BOUNDS, inherited, usage: { ...usage, level: level() },
       active: [...launches.values()].map(l => ({ id: l.id, work: l.work, pid: l.pid ?? null, startedAt: l.startedAt,
         memoryBytes: l.memoryBytes, processes: l.processes, cpuMilliseconds: l.cpuMilliseconds, enforcement: l.enforcement })),
-      waiting: waiters.map(w => w.work), counters, peak, observer, sample: lastSample, lastLaunch, orphans, outcomes };
+      waiting: waiters.map(w => w.work), pendingEvidence: pendingEvidence.size, counters, peak, observer, sample: lastSample, lastLaunch, orphans, outcomes };
   }
   function persist(force = false) {
     if (!attached?.statePath) return;
@@ -230,8 +233,32 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   function ledger(update) {
     if (!attached?.ledgerPath) return;
     const rows = readLedger();
+    for (const carry of pendingEvidence.values()) carry(rows);
     update(rows);
     durableWrite(attached.ledgerPath, { version: 1, launches: rows });
+    const landed = [...pendingEvidence.entries()];
+    pendingEvidence.clear();
+    for (const [, carry] of landed) carry.landed?.();
+  }
+  /** Durable membership of a launch: every recorded incarnation, plus how many member writes failed.
+   * A failed write stays pending and lands with the next successful write; until then the launch's
+   * recording is `incomplete` and its row is never closed. */
+  function recordMembers(lease, extra = {}) {
+    const carry = rows => {
+      if (!rows[lease.id]) {
+        if (!extra.cleanup) return;
+        rows[lease.id] = { pid: lease.pid, start: lease.known.get(lease.pid) ?? null, owner: attached?.owner ?? null,
+          enforcement: lease.enforcement, uidProcesses: lease.uidProcesses };
+      }
+      Object.assign(rows[lease.id], { members: Object.fromEntries(lease.known), ...extra },
+        lease.recordingFailures ? { recording: 'repaired', recordingFailures: lease.recordingFailures } : {});
+    };
+    carry.landed = () => { if (lease.recording === 'incomplete') lease.recording = 'repaired'; };
+    try { ledger(carry); carry.landed(); }
+    catch {
+      lease.recording = 'incomplete'; lease.recordingFailures++; counters.recordingFailures++;
+      pendingEvidence.set(lease.id, carry);
+    }
   }
   function wake() {
     waiters.sort((a, b) => Number(priorityOf(b.work) === 'critical') - Number(priorityOf(a.work) === 'critical') || a.order - b.order);
@@ -252,7 +279,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   function reserve(work, requestedAt = ports.monotonic()) {
     const lease = { id: randomUUID(), work, startedAt: ports.now(), pid: null, memoryBytes: 0, processes: 0,
       cpuMilliseconds: 0, members: [], known: new Map(), limit: null, enforcement: null, uidProcesses: null,
-      peakMemoryBytes: 0, peakProcesses: 0, census: 'none', previous: new Map(), recording: 'complete' };
+      peakMemoryBytes: 0, peakProcesses: 0, census: 'none', previous: new Map(), recording: 'complete', recordingFailures: 0 };
     launches.set(lease.id, lease); counters.admitted++;
     // This launch's own admission evidence: how many owned launches ran with it, and how long it waited.
     lease.admission = { work, concurrent: launches.size, waitedMs: Math.max(0, Math.round(ports.monotonic() - requestedAt)) };
@@ -371,13 +398,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
             monotonicIntervalMs: null, cumulativeCpuMs: null, rssBytes: null, heapBytes: null, heapState: 'missing' });
       // New members join the durable ledger with their start evidence, so recovery and completion
       // can find a member that later leaves the group, and never mistake a reused pid for it.
-      for (const lease of new Set(joined)) try {
-        ledger(rows => { if (rows[lease.id]) rows[lease.id].members = Object.fromEntries(lease.known); });
-      } catch {
-        // A member the durable ledger does not hold: this launch's ownership is incomplete, so its
-        // row is never closed by completion (it stays for recovery to observe).
-        lease.recording = 'incomplete'; counters.recordingFailures++;
-      }
+      // A launch whose earlier member write failed retries here too, so its pending members land.
+      for (const lease of new Set([...joined, ...roots.filter(l => l.recording === 'incomplete')])) recordMembers(lease);
       usage = { observation: census.state === 'complete' ? 'observed' : 'partial', sampledAt: at,
         memoryBytes: roots.reduce((sum, l) => sum + l.memoryBytes, 0), processes: roots.reduce((sum, l) => sum + l.processes, 0) };
       lastSample = { sourceSample, ...HOST_IDENTITY, at, census: { state: census.state, examined: census.examined, omitted: census.omitted },
@@ -454,7 +476,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * incarnation (one that left the group included) are reclaimed by the live owner of this launch.
    * Returns how many were left behind and whether any remain unverified. */
   async function cleanupTree(lease) {
-    let leaked = 0, unresolved = lease.recording !== 'complete';
+    let leaked = 0, unresolved = lease.recording === 'incomplete';
     const group = pids(await query('/usr/bin/pgrep', ['-g', String(lease.pid)]));
     if (group === null) unresolved = true;
     else if (group.length) {
@@ -543,6 +565,9 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
           // A row is removed only once every recorded member is verified gone; otherwise it stays
           // for recovery to observe (the launch evidence is never discarded while unresolved).
           if (!unresolved) try { ledger(rows => { delete rows[lease.id]; }); } catch { /* observed at the next attach */ }
+          // An unresolved launch keeps every discovered incarnation durably (a member whose earlier
+          // write failed included), so recovery observes it after a restart; a failed write stays pending.
+          else recordMembers(lease, { cleanup: 'unresolved' });
           // `unconfined`: every recorded incarnation was observed gone, but tree membership is not
           // confined on this host, so a descendant that escaped before it was recorded cannot be excluded.
           const resources = { enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, admission: lease.admission,

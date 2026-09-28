@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 
 type Ceilings = typeof RESOURCE_CEILINGS;
@@ -335,6 +335,75 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
   expect(done.resources).toMatchObject({ cleanup: 'unconfined', leakedDescendants: 1 });
   expect(alive(reclaimed)).toBe(false);
   expect(JSON.parse(readFileSync(healthyLedger, 'utf8')).launches).toEqual({});
+});
+
+it('keeps a member whose durable write failed: it lands once storage is writable, and recovery still sees it after restart', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'owned-launches.json'), pids = join(root, 'pids');
+  const leave = script(root, 'leave.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'ignore' }).pid)); setTimeout(() => process.exit(0), 600);`);
+  // The ledger is unwritable from the first census that sees the member until `restore` runs.
+  let saved: string | null = null, injected = 0, restoreOn: 'cleanup' | 'manual' = 'cleanup';
+  const restore = () => { if (saved !== null) { writeFileSync(ledgerPath, saved); saved = null; } };
+  const query = async (file: string, args: string[]) => {
+    const text = await hostQuery(file, args);
+    if (args[1] === 'pid=,ppid=,pgid=,rss=,time=,lstart=' && !injected && existsSync(pids) && existsSync(ledgerPath)) {
+      injected = 1; saved = readFileSync(ledgerPath, 'utf8'); writeFileSync(ledgerPath, 'transiently unwritable');
+    }
+    return text;
+  };
+  const denied = (target: number, name: string) => {
+    if (name !== 'SIGKILL') { process.kill(target, name); return; }
+    if (restoreOn === 'cleanup') restore();
+    throw Object.assign(Error('kill EPERM'), { code: 'EPERM' });
+  };
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ ledgerPath, query, signal: denied });
+  const result = await owner.execute(input(root, leave, [pids]), 'maintenance');
+  const survivor = Number(readFileSync(pids, 'utf8'));
+  const survivors = [survivor];
+  try {
+    expect(owner.snapshot().counters.recordingFailures).toBeGreaterThanOrEqual(1);
+    expect(result.resources.cleanup).toBe('unresolved');
+    // Storage writable again at completion: the pending member landed, marked as a repaired recording.
+    const row = Object.values(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches)[0] as Record<string, unknown>;
+    expect(Object.keys(row.members as object)).toContain(String(survivor));
+    expect(row).toMatchObject({ recording: 'repaired', cleanup: 'unresolved' });
+    expect(owner.snapshot().pendingEvidence).toBe(0);
+    // A restart with the old owner gone observes the surviving member instead of closing its row.
+    const ownerRow = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+    for (const r of Object.values(ownerRow.launches) as Array<Record<string, unknown>>) r.owner = { pid: 999999, start: 'gone' };
+    writeFileSync(ledgerPath, JSON.stringify(ownerRow));
+    const restarted = createResourceOwner(ceilings());
+    await restarted.attach({ ledgerPath });
+    expect(restarted.snapshot().orphans).toMatchObject([{ state: 'surviving', surviving: 1 }]);
+    expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches)).toHaveLength(1);
+
+    // The other side: storage still unwritable at completion keeps the evidence pending, and the
+    // next successful ledger write (a later launch's) carries it.
+    const secondLedger = join(dir(), 'owned-launches.json');
+    rmSync(pids);
+    restoreOn = 'manual';
+    const later = createResourceOwner(ceilings());
+    const secondQuery = async (file: string, args: string[]) => {
+      const text = await hostQuery(file, args);
+      if (args[1] === 'pid=,ppid=,pgid=,rss=,time=,lstart=' && injected === 1 && existsSync(pids) && existsSync(secondLedger)) {
+        injected = 2; saved = readFileSync(secondLedger, 'utf8'); writeFileSync(secondLedger, 'still unwritable');
+      }
+      return text;
+    };
+    await later.attach({ ledgerPath: secondLedger, query: secondQuery, signal: denied });
+    const pending = await later.execute(input(root, leave, [pids]), 'maintenance');
+    survivors.push(Number(readFileSync(pids, 'utf8')));
+    expect(pending.resources.cleanup).toBe('unresolved');
+    expect(later.snapshot().pendingEvidence).toBe(1);
+    expect(readFileSync(secondLedger, 'utf8')).toBe('still unwritable');
+    if (saved !== null) { writeFileSync(secondLedger, saved); saved = null; }
+    rmSync(pids);
+    await later.execute(input(root, script(root, 'quick.mjs', "process.stdout.write('ok')")), 'answer');
+    expect(later.snapshot().pendingEvidence).toBe(0);
+    const carried = Object.values(JSON.parse(readFileSync(secondLedger, 'utf8')).launches) as Array<Record<string, unknown>>;
+    expect(carried.some(r => Object.keys(r.members as object).includes(String(survivors[1])) && r.recording === 'repaired')).toBe(true);
+  } finally { for (const pid of survivors) try { process.kill(pid, 'SIGKILL'); } catch { /* ended */ } }
 });
 
 it('does not hold a tree process ceiling: with baseline churn and a concurrent launch, a tree can exceed it', { timeout: 30000 }, async () => {
