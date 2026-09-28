@@ -2311,12 +2311,15 @@ that `raise-caps` retries; any other failure is a `reply check unavailable`
 hold. `status` presents their plain spend-limit or safety-check notice. New answers
 leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
-The `credential` reviewer question distinguishes a live authentication secret
-from a short non-authentication personal fact the verified operator supplied in
-this private chat. A real key, token, password, login PIN, or sign-in code stays
-in scope even if the operator supplied it. The full-context review sees the
-original message and audience when Jev flags or cannot decide. The existing
-deterministic secret-format wall is unchanged. The operator trial is in
+The `credential` reviewer question asks whether a live authentication secret
+reaches anyone or anywhere other than the verified operator who supplied it in
+this same private chat. A value that operator supplied here and that is returned
+only to them does not leave, so repeating it is allowed (Rule 4). Whether a code
+is a secret is judged from the conversation and audience, never from a keyword
+list (Rule 10). The full-context review sees the original message and audience
+when Jev flags or cannot decide. The existing deterministic secret-format wall
+is unchanged and refuses exact credential patterns (API keys, access tokens,
+private keys) on every reply, including one the operator pasted. The operator trial is in
 [credential-false-positive-live-test.md](credential-false-positive-live-test.md).
 When Jev completes but cannot pass, the review judges every rule with a score
 above its clear threshold, including both positive and uncertain signals. Jev
@@ -2327,16 +2330,19 @@ smaller rule list removes repeated review of questions Jev cleared.
 
 **Operator echo skips the second check.** A reply that only repeats the verified
 operator's own words to that operator goes straight to the send path, without Jev
-or the review. The test is exact (`repeatsOperatorOnly` in `reply-check.ts`): the
-reply has at least one code-like token, and every code-like token equals, whole,
-a token of the operator's own accepted messages in this chat. Code-like means a
-digit, a path, command, key or address character, a leading hyphen, camelCase, or
-four or more capitals. The secret wall runs first and again on the send body, so
-a pasted API key or token is still refused. A code from an imported source, another
-sender, or the model itself keeps the full check, and so does a reply with no
-code-like token. What this does not cover: plain words are not tested, so a
-self-stop or hand-back phrased only in words inside an echo reply is not reviewed,
-and a letter-only secret the wall does not recognise is not caught. The decision is
+or the review. The test is exact and judges no meaning (`repeatsOperatorOnly` in
+`reply-check.ts`, Rules 4 and 10): apart from a small fixed set of connective words
+(you, your, I, me, my, it, is, was, the, a, told, said, that, and, dashes), every
+token of the reply appears verbatim and in order inside ONE earlier accepted
+message from the verified operator in this private chat. Words from two messages,
+reordered words, any added word, and anything from an imported source, another
+sender or the agent's own replies keep the full check. There is no keyword or
+label list: "It is 5823." returned to the operator who wrote "My account login PIN
+is 5823." here is sent, because the value goes back only to its supplier. The
+secret-format wall runs first and again on the send body, so a pasted API key or
+token is still refused. What this does not cover: a letter-only secret the wall
+does not recognise, echoed back to its own supplier, is sent to that supplier.
+The decision is
 a durable `operator-echo` reply-check row (never after a Jev or review reservation),
 so replay sends once and never re-checks. `status.replyCheckPaths['operator-echo']`
 counts released candidates; `status.operatorEchoSent` and the `status` command count

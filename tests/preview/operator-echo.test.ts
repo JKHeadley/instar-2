@@ -43,29 +43,38 @@ const seed = async (w: ReturnType<typeof world>) => { for (const [id, text] of l
 
 describe('the exact operator-echo test', () => {
   const own = locker.map(item => item[1]);
-  it('passes only when every code-like token is a whole token of the operator\'s own messages', () => {
-    expect(repeatsOperatorOnly('PREVIEW — You changed it from 4417 to 5823. The current code is 5823.', own)).toBe(true);
-    expect(repeatsOperatorOnly('The current code is 5823; the spare is 9911.', own)).toBe(false);
-    expect(repeatsOperatorOnly('The current code is 15823.', own)).toBe(false);
+  it('passes only when every non-connective token appears verbatim and in order in ONE operator message', () => {
+    expect(repeatsOperatorOnly('PREVIEW — You told me the gym locker code is 5823 now, not 4417.', own)).toBe(true);
+    expect(repeatsOperatorOnly('Your gym locker code is 4417.', own)).toBe(true);
+    // Any added word, even a harmless one, keeps the review.
+    expect(repeatsOperatorOnly('The current code is 5823.', own)).toBe(false);
+    expect(repeatsOperatorOnly('The gym locker code is 5823; the spare is 9911.', own)).toBe(false);
+    expect(repeatsOperatorOnly('The gym locker code is 15823.', own)).toBe(false);
     expect(repeatsOperatorOnly('Run ./unlock --code=5823 to open it.', own)).toBe(false);
-    expect(repeatsOperatorOnly('You corrected your gym locker code.', own)).toBe(false);
+    // Two source messages combined, or words reordered, keep the review.
+    expect(repeatsOperatorOnly('The gym locker code is 4417. The gym locker code is 5823 now.', own)).toBe(false);
+    expect(repeatsOperatorOnly('5823 is the gym locker code.', own)).toBe(false);
+    // Connectives alone repeat nothing; no operator message means no source.
+    expect(repeatsOperatorOnly('It is.', own)).toBe(false);
     expect(repeatsOperatorOnly('Your code is 5823.', [])).toBe(false);
+    // The agent's own earlier replies are not a source.
+    expect(repeatsOperatorOnly('Noted, thanks.', own)).toBe(false);
   });
 
-  it('refuses imported or invented words and authentication secrets even with a matching operator number', () => {
+  it('judges no meaning and uses no keyword list (Rule 10): only the exact source test decides', () => {
     const own = ['My locker code is 5823. What did Sam send?'];
     expect(repeatsOperatorOnly('Your locker code is 5823.', own)).toBe(true);
     expect(repeatsOperatorOnly('Your locker code is 5823. Sam says the server password is violetorchid.', own)).toBe(false);
     expect(repeatsOperatorOnly('Your locker code is 5823. Sam sent violetorchid.', own)).toBe(false);
-    expect(repeatsOperatorOnly('Your account login PIN is 5823.', ['My account login PIN is 5823.'])).toBe(false);
-    expect(repeatsOperatorOnly('Your bank password is 5823.', ['My bank password is 5823.'])).toBe(false);
+    expect(repeatsOperatorOnly('Your bank password is 5823.', ['My bank password is 5823.'])).toBe(true);
+    expect(repeatsOperatorOnly('Your bank password is 5823.', ['My bank code is 5823.'])).toBe(false);
   });
 });
 
 describe('operator echo in the journal runner', () => {
   it('sends the operator\'s own locker code back without Jev or the review; the exact wall still runs', async () => {
     const root = temp();
-    const answer = 'You corrected your gym locker code from 4417 to 5823. The current code is 5823.';
+    const answer = 'You told me the gym locker code is 5823 now, not 4417.';
     const w = world(root, answer);
     try {
       await seed(w);
@@ -86,7 +95,7 @@ describe('operator echo in the journal runner', () => {
 
   it('still checks the same reply when it adds a code the operator never gave (held, as before)', async () => {
     const root = temp();
-    const w = world(root, 'The current code is 5823. The spare locker code is 9911.');
+    const w = world(root, 'The gym locker code is 5823 now. The spare locker code is 9911.');
     try {
       await seed(w);
       await w.say(3, question);
@@ -144,7 +153,7 @@ describe('operator echo in the journal runner', () => {
 
   it('replays the recorded echo decision after a crash and sends once, never re-checking', async () => {
     const root = temp();
-    const answer = 'The current code is 5823.';
+    const answer = 'The gym locker code is 5823 now.';
     let crash = true;
     const first = world(root, answer, { stopped: () => crash && first.journal.view.replyCheckPaths['operator-echo'] > 0 });
     try {
@@ -165,6 +174,59 @@ describe('operator echo in the journal runner', () => {
       await second.worker.drain();
       expect(second.calls.sends).toBe(1);
     } finally { second.journal.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+/** Astra's four repair witnesses, with their expected outcome under the Rules 4/10 reading: a
+ * value returned only to the verified operator who supplied it in this private chat does not
+ * leave, so an exact echo of ONE operator message sends without the second check; the exact
+ * credential wall still runs on the send body. A value the operator never supplied is reviewed. */
+describe('Astra repair witnesses under the Rules 4/10 reading', () => {
+  it.each([
+    { name: 'PIN with its label, from that one message: sent', own: 'My account login PIN is 5823.', reply: 'Your account login PIN is 5823.', echo: true },
+    { name: 'same PIN with its label omitted: sent', own: 'My account login PIN is 5823.', reply: 'It is 5823.', echo: true },
+    { name: 'a number the operator never gave: reviewed', own: 'My account login PIN is 9911.', reply: 'It is 5823.', echo: false },
+    { name: 'one-time code from that one message: sent', own: 'My bank sent a one-time code to sign in: 5823.', reply: 'Your one-time code to sign in is 5823.', echo: true },
+    { name: 'same value with an added word: reviewed', own: 'My account login PIN is 5823.', reply: 'Your current PIN is 5823.', echo: false },
+  ])('$name', async ({ own, reply, echo }) => {
+    expect(repeatsOperatorOnly(reply, [own])).toBe(echo);
+    const root = temp();
+    const journal = openPreviewJournal(join(root, 'journal'), key, genesis);
+    let jev = 0, reviews = 0;
+    const sends: string[] = [], walls: string[] = [];
+    try {
+      const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+        model: async () => JSON.stringify({ reply, memory: [] }),
+        send: async input => { sends.push(input.text); return 1; },
+        checkOutbound: text => { walls.push(text); },
+        replyCheck: { elapsedMs: () => 0, jev: async () => { jev++;
+          return { value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id =>
+            [id, { type: 'noul', noul: id === 'credential' ? 0.99 : 0.01 }])) }, latencyMs: 1 }; },
+          escalate: async () => { reviews++; return { verdict: 'violation', ruleIds: ['credential'], confidence: 1, latencyMs: 1 }; } } });
+      worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+        text: own, date: Math.floor(now / 1000) } }]);
+      await worker.drain();
+      const expected = echo ? `PREVIEW — ${reply}` : HOLDING_REPLY;
+      expect([jev, reviews]).toEqual(echo ? [0, 0] : [1, 1]);
+      expect(journal.view.order[0]?.replyChecks?.[0]?.path).toBe(echo ? 'operator-echo' : 'jev');
+      expect(journal.view.replyCheckPaths['operator-echo']).toBe(echo ? 1 : 0);
+      expect(sends).toEqual([expected]);
+      expect(walls).toEqual([expected]);
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('an access token the operator pasted and the reply echoes is blocked by the exact wall', async () => {
+    const root = temp();
+    const token = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';
+    const w = world(root, `It is ${token}.`);
+    try {
+      await w.say(1, `My GitHub token is ${token}`);
+      const turn = w.journal.view.order[0]!;
+      expect(turn.replyChecks).toEqual([expect.objectContaining({ verdict: 'violation', ruleIds: ['credential'], path: 'holding' })]);
+      expect(turn.intent).toBe(HOLDING_REPLY);
+      expect(w.calls.outbound.some(text => text.includes(token))).toBe(false);
+      expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(0);
+    } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 });
 

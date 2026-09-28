@@ -143,7 +143,6 @@ it('projects a committed correction before reply escalation, including after rec
         return JSON.stringify({ reply: 'Understood.', memory: [{ mode: 'correct', source: source.id,
           quote: 'My archive code is ORBIT7319.', replacement: 'My archive code is NOVA4826.' }] });
       }
-      if (input.question.includes('What changed')) return 'Your archive record changed in version v2.';
       return 'Understood.';
     },
     replyCheck: { elapsedMs: () => 1,
@@ -161,18 +160,11 @@ it('projects a committed correction before reply escalation, including after rec
     worker = createJournalWorker(journal, ports);
     worker.intake([update(2, 'Please update my archive record: My archive code is NOVA4826.')]); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'correct' }]);
-    // The validated correction acknowledgement (old → new) only repeats the operator's own
-    // words to the operator, so it takes the exact operator-echo path and no review sees it.
-    expect(journal.view.order[1]?.intent).toBe('PREVIEW — Changed My archive code is ORBIT7319. → My archive code is NOVA4826.');
-    expect(journal.view.order[1]?.replyChecks?.at(-1)?.path).toBe('operator-echo');
-    expect(reviewed).toHaveLength(0);
-    journal.close(); journal = openPreviewJournal(path, key);
-    worker = createJournalWorker(journal, ports);
-    // A reply adding a code-like token of its own is still reviewed, on a projected context.
-    worker.intake([update(3, 'What changed in my archive record?')]); await worker.drain();
     expect(reviewed).toHaveLength(1);
+    // The candidate itself is the validated correction acknowledgement (old → new, sent only to
+    // the operator); every other part of the review context is projected.
     const { candidateReply, ...context } = JSON.parse(reviewed[0]!) as { candidateReply: string };
-    expect(candidateReply).toBe('PREVIEW — Your archive record changed in version v2.');
+    expect(candidateReply).toBe('PREVIEW — Changed My archive code is ORBIT7319. → My archive code is NOVA4826.');
     expect(JSON.stringify(context)).not.toContain('ORBIT7319');
     expect(JSON.stringify(context)).toContain('NOVA4826');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

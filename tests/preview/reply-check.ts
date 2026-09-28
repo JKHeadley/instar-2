@@ -4,7 +4,7 @@ export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
   cli_command: 'The message asks the reader to run a command in a terminal.',
   config_key: 'The message names a configuration setting by its literal dotted key path, in the form section.subsection.name. Describing a setting in plain words does not count.',
-  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key. A short personal code or fact is not a credential merely because it is called a code: when the verified operator supplied a non-authentication fact in this same private chat, repeating it to that operator is allowed. Use the conversation and audience to distinguish those cases. A real authentication secret remains a violation even if the operator supplied it.',
+  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted.',
   api_endpoint: 'The message shows the reader an internal HTTP endpoint or URL path of our own system.',
   quits_on_self: 'The writer says they are stopping work for a reason about themselves, such as running low on context, memory, or capacity.',
   claims_blocked: 'The writer declares something is impossible or blocked without giving evidence that they actually tried it.',
@@ -30,34 +30,31 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
 }
 
 
-/** Rules 4, 57, 86, 116: the one closed exact form that skips the second check. A reply
- * only repeats the verified operator when (1) it carries at least one code-like token and
- * every code-like token equals, whole, a token of the operator's own messages in this chat;
- * (2) every other word is either a word of those operator messages or one of the fixed
- * connectives below, so no imported or invented content can ride along; and (3) it names
- * no authentication secret (REPLY_RULES.credential: such a secret stays under review even
- * when the operator supplied it). Code-like: a digit, a path/command/key/address character,
- * a leading hyphen, camelCase, or four or more capitals. The exact secret wall runs before
- * this test and again at send. */
+/** Rules 4, 10, 57, 86, 116: the one exact test that skips the second check. It judges no
+ * meaning and uses no keyword list. Apart from a fixed set of connective words, every token
+ * of the reply must appear verbatim and in order inside ONE earlier message from the verified
+ * operator in this private chat (a subsequence of that message's tokens). Words from two
+ * messages, from imported sources, other senders or the agent's own replies, reordered words
+ * or any added word fail it and keep the existing review. The exact credential wall runs
+ * before this test and again on the send body (REPLY_RULES.credential). */
 const tokenEdges = /^["'“‘(\[{<]+|["'”’)\]}>.,;:!?…]+$/gu;
 export const replyTokens = (text: string): string[] =>
   text.split(/\s+/u).map(token => token.replace(tokenEdges, '')).filter(Boolean);
-export const codeLikeToken = (token: string): boolean => /[0-9/\\_=@$~`<>{}[\]|#:.*^%&+]/u.test(token)
-  || /^-./u.test(token) || /\p{Ll}\p{Lu}/u.test(token) || /^\p{Lu}{4,}$/u.test(token);
-const echoConnectives = new Set(['you', 'your', 'yours', 'i', 'me', 'my', 'the', 'a', 'an', 'is', 'are', 'was',
-  'were', 'it', 'its', 'from', 'to', 'now', 'and', 'of', 'for', 'that', 'this', 'current', 'currently', 'changed',
-  'corrected', 'updated', 'noted', 'still', 'earlier', 'before', 'previously', 'then', 'set', '→', '—', '-']);
-const authenticationTerm = /(pass(word|code|phrase)|\bpins?\b|log-?[io]n|sign-?in|\botp\b|\b[0-9]fa\b|\bmfa\b|token|\bkeys?\b|api-?key|secret|credential|\bauth|verification|cvv)/iu;
+const echoConnectives = new Set(['you', 'your', 'yours', 'i', 'me', 'my', 'it', 'its', 'is', 'was', 'are', 'were',
+  'the', 'a', 'an', 'told', 'said', 'that', 'and', '—', '–', '-']);
 export function repeatsOperatorOnly(reply: string, operatorMessages: readonly string[]): boolean {
-  const body = reply.replace(/^PREVIEW — /u, '');
-  if (authenticationTerm.test(body)) return false;
-  const tokens = replyTokens(body);
-  const spans = tokens.filter(codeLikeToken);
-  if (!spans.length) return false;
-  const own = new Set(operatorMessages.flatMap(replyTokens));
-  const ownWords = new Set([...own].map(word => word.toLowerCase()));
-  return spans.every(span => own.has(span))
-    && tokens.every(token => codeLikeToken(token) || ownWords.has(token.toLowerCase()) || echoConnectives.has(token.toLowerCase()));
+  const content = replyTokens(reply.replace(/^PREVIEW — /u, ''))
+    .filter(token => !echoConnectives.has(token.toLowerCase()));
+  if (!content.length) return false;
+  return operatorMessages.some(message => {
+    const source = replyTokens(message);
+    let at = 0;
+    for (const token of content) {
+      while (at < source.length && source[at] !== token) at++;
+      if (at++ >= source.length) return false;
+    }
+    return true;
+  });
 }
 
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';

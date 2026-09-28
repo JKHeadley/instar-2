@@ -46,7 +46,8 @@ const worker = createJournalWorker(journal, {
       ? JSON.stringify({ summary: fact,
         people: original ? [{ name: 'Maya', quote: original }] : [],
         commitments: original ? [{ in: 'message', quote: original }] : [], memory: [] })
-      : remembering ? 'I will remember that.' : fact;
+      // "From your note:" is not operator wording, so the answer stays on the reply-review path under test.
+      : remembering ? 'I will remember that.' : `From your note: ${fact}`;
     point(`${summary ? 'summary' : 'answer'}:call:returning:${input.id}`);
     return result;
   },
