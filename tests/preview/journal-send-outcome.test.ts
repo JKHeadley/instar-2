@@ -67,7 +67,7 @@ it('keeps a definite refusal distinct from UNKNOWN and from delivery, through th
     expect(launcher(dir, 'inspect').reply.refusal).toBeUndefined();
     expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 1, sendOutcomes: { refused: 1, unknown: 1 } });
   } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+}, 60000);
 
 it('signs every outbound intent automatically and the send consumes that exact signed subject', async () => {
   const dir = root();

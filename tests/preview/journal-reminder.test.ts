@@ -81,7 +81,7 @@ it('sends a requested reminder once at its due time with its reason, across rest
       { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
         env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
     expect(status.status, status.stderr).toBe(0);
-    expect(JSON.parse(status.stdout).reminders).toEqual({ intents: 1, accepted: 1, unknown: 0, grant: null,
+    expect(JSON.parse(status.stdout).reminders).toEqual({ intents: 1, accepted: 1, unknown: 0, refused: 0, grant: null,
       requested: 1, pending: [], cancelled: 0 });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
