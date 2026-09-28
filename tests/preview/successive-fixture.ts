@@ -14,6 +14,7 @@ import { SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy } from '../
 import { HOST_OUTAGE_TEXT, initializeSuccessiveRoot, openPreviewState } from './state.js';
 import { createSuccessiveComposition } from './successive.js';
 import { encoded } from './stage2-provider.js';
+import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js';
 
 export const OPERATOR = 7812716706;
 const START = 1790000000000;
@@ -63,6 +64,40 @@ function writePredecessorCursor(root: string, machine: string, cursor: number) {
       if (!storage.captures.preserve(reference, bytes)) throw Error('offline predecessor capture failed');
   } finally { storage.close(); }
 }
+
+/** The offline stand-in for the messaging owner's records: the operator's two authenticated messages
+ * (the grant and the waiver), in the owner's formats. Launchers read them through --operator-records. */
+const OFFLINE_GRANT_WORDS = 'offline approval stand-in', OFFLINE_WAIVER_WORDS = 'offline waiver stand-in';
+export const offlineOperatorMessage = (topicId: number, messageId: number, text: string, at = START, operator = OPERATOR) => ({
+  message: { messageId, topicId, text, fromUser: true, timestamp: new Date(at).toISOString(), sessionName: 'offline',
+    senderName: 'Justin', telegramUserId: operator, forwarded: false, provenance: 'user' },
+  classification: { ts: new Date(at + 1000).toISOString(), topicId, messageId, classification: 'human', reason: null, agentId: null,
+    bodyHash: createHash('sha256').update(text, 'utf8').digest('hex'), bodyBytes: Buffer.byteLength(text), topicBound: true, replayChecked: true } });
+export function writeOperatorRecords(directory: string, messages = [offlineOperatorMessage(1, 1, OFFLINE_GRANT_WORDS),
+  offlineOperatorMessage(1, 2, OFFLINE_WAIVER_WORDS)], operator = OPERATOR) {
+  mkdirSync(join(directory, 'state'), { recursive: true });
+  writeFileSync(join(directory, 'telegram-messages.jsonl'), messages.map(m => `${JSON.stringify(m.message)}\n`).join(''));
+  writeFileSync(join(directory, 'asp-classifications.jsonl'), messages.map(m => `${JSON.stringify(m.classification)}\n`).join(''));
+  writeFileSync(join(directory, 'state', 'topic-operators.json'), JSON.stringify(Object.fromEntries([...new Set(messages.map(m => m.message.topicId))]
+    .map(topic => [String(topic), { platform: 'telegram', uid: String(operator), names: ['justin'], boundAt: '', boundFrom: 'authenticated-inbound',
+      establishmentEvidence: { kind: 'authenticated-inbound', authorization: 'telegram-is-authorized-sender',
+        ingress: 'telegram-polling', senderUid: String(operator), messageId: '1' } }]))));
+  return directory;
+}
+
+/** The recorded operator authority the offline launchers resolve an activation against: an
+ * activation grant plus a bounded one-week renewal grant, and the waiver of the departed rules,
+ * sealed as the desk's disposition under the offline trial's storage key. */
+export const offlineActivationAuthority = (activation: Record<string, any>) => sealAuthorityRecord({ type: 'PreviewActivationAuthority', schemaVersion: 1,
+  grants: [{ id: 'offline-standing-grant', grantor: String(OPERATOR), grantee: 'echo-desk', words: OFFLINE_GRANT_WORDS,
+    source: { kind: 'telegram-message', topicId: 1, messageId: 1 }, issuedAt: START, actions: ['activate-subscription-preview', 'renew-subscription-activation'],
+    scope: { trial: activation.trial, model: activation.model, expectedAccount: activation.expectedAccount,
+      executable: activation.executable, artifact: activation.artifact, version: activation.version,
+      invocationPolicyDigest: activation.invocationPolicyDigest, profileDigest: activation.profileDigest },
+    renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: activation.expiresAt } }],
+  waivers: [{ reference: activation.waiver, rules: ['rule:38'], grantor: String(OPERATOR), recordedAt: START,
+    source: { kind: 'telegram-message', topicId: 1, messageId: 2 }, words: OFFLINE_WAIVER_WORDS }],
+  revocations: [] }, authoritySealKey(OFFLINE_STORAGE_KEY));
 
 export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-successive-'))),
   options: { predecessorCursor?: number } = {}) {
@@ -149,6 +184,9 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
     extraUsageReason: 'Offline account datum unavailable', subscriptionLimit: 'unobservable',
     subscriptionLimitReason: 'Offline limit unavailable', acceptedResiduals: ['unconfined preview', 'UNKNOWN charge/quiescence'],
     expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY });
+  const authorityPath = join(directory, 'activation-authority.json');
+  if (!existsSync(authorityPath)) writeFileSync(authorityPath, JSON.stringify(offlineActivationAuthority(activation(state().read()))));
+  if (!existsSync(join(directory, 'operator-records'))) writeOperatorRecords(join(directory, 'operator-records'));
   const compose = (options: any = {}) => {
     const outerState = state();
     return createSuccessiveComposition({ configuration: { ...base, root }, state: outerState, root,

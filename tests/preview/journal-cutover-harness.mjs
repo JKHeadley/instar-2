@@ -20,7 +20,7 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     '--bot-id', world.configuration.botId, '--bot-username', world.configuration.botUsername,
     '--chat-id', world.configuration.chatId, '--operator-sender-id', world.configuration.operatorSenderId,
     '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
-    '--expires-at', String(activation.expiresAt), '--activation-record', activationPath,
+    '--expires-at', String(activation.expiresAt), '--activation-record', activationPath, '--operator-records', join(directory, 'operator-records'),
     '--login-profile', profilePath, '--model', world.model, '--max-cycles', String(cycles),
     '--max-poll-seconds', '1'];
   const env = role => ({ ...process.env, ...childEnv, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,

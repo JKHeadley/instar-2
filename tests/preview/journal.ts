@@ -25,9 +25,12 @@ import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJ
 
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, type StepCheckResult } from './step-check.js';
-import type { Directive } from '../../src/index.js';
+import type { Directive, VerifiedPrincipal } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
+import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
+import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
+import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type Speaker } from './outbound-provenance.js';
 
 
 
@@ -229,8 +232,12 @@ export interface MemoryConflict { first: { source: string; quote: string }; seco
 export interface SummaryMemoryItem { source: string; quote: string }
 
 export type JournalRecord =
-  | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number }
-  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string }
+  | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
+    /** Rule 35: set only by a trusted test composition; absent means a production store. */
+    origin?: 'test' }
+  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string;
+    /** Rules 28/29: the verified principal minted at intake; absent only on legacy or unaccepted rows. */
+    writer?: WriterRecord }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
@@ -251,7 +258,7 @@ export type JournalRecord =
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
-  | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string; at: number }
+  | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string; provenance?: OutboundProvenance; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
 
   | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -275,16 +282,22 @@ export type JournalRecord =
     /** Requested reminders due in the same topic, grouped into a requested summary's one message (Rule 52). */
     reminderBatch?: number; reminders?: ReminderRef[];
     /** Other requested summaries due in the same topic and slot, sent inside this one message (Rule 52). */
-    summaries?: string[]; at: number }
+    summaries?: string[];
+    /** Rule 89: automatically signed sender provenance; absent only on legacy rows. */
+    provenance?: OutboundProvenance; at: number }
   | { kind: 'sent'; id: string; message: number; latencyMs?: number; at: number }
   /** Legacy: successful-send duration now rides on `sent`; still read on replay. */
   | { kind: 'send-timing'; id: string; latencyMs: number; at: number }
   | { kind: 'reminder-intent'; items: ReminderRef[]; day: string; text: string; body: string; chat: string; thread?: number; grant: string; reminderGrant: string; at: number }
   | { kind: 'reminder-sent'; day: string; thread?: number; message: number; at: number }
-  | { kind: 'requested-reminder-intent'; batch: number; items: ReminderRef[]; text: string; body: string; chat: string; thread?: number; grant: string; at: number }
+  | { kind: 'requested-reminder-intent'; batch: number; items: ReminderRef[]; text: string; body: string; chat: string; thread?: number; grant: string; provenance?: OutboundProvenance; at: number }
+  /** Rule 42: a definite refusal or an unknown dispatch outcome of one outbound intent; never delivery, never retried. */
+  | { kind: 'send-outcome'; target: string; outcome: 'refused' | 'unknown'; reason: string; at: number }
+  /** Rule 41: one live model call recorded at the launcher's single boundary before its result is used. */
+  | ModelCallRecord
   | { kind: 'requested-reminder-sent'; batch: number; message: number; at: number }
   /** One due slot of a requested summary becomes one runner-authored turn (never operator authority). */
-  | { kind: 'summary-due'; id: string; grant: string; slot: string; update: number; window: SummaryWindow;
+  | { kind: 'summary-due'; id: string; grant: string; slot: string; update: number; window: SummaryWindow; writer?: WriterRecord;
     late?: { minutes: number; skipped: number }; at: number }
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
     scope: 'initiated-dated-reminders'; custodian: string; recovery: 'unknown-never-retry'; at: number }
@@ -324,6 +337,8 @@ export type JournalRecord =
  * (`thread`); every one has the operator as its only audience. */
 export interface PacketDrop { kind: string; source: string; reason: string }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; answer?: string;
+  /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
+  writer?: WriterRecord;
   reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true; askConflict?: string; lastNamedPerson?: string;
 
 
@@ -390,7 +405,13 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   corrections: string[];
   stepCheckStarted: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
-  replyCheckPaths: { jev: number; subscription: number; holding: number; 'operator-echo': number }; lastReplyCheck: ReplyCheckResult | null }
+  replyCheckPaths: { jev: number; subscription: number; holding: number; 'operator-echo': number }; lastReplyCheck: ReplyCheckResult | null;
+  /** Rule 42: definite refusals and unknown dispatches, one per outbound target. */
+  sendOutcomes: { target: string; outcome: 'refused' | 'unknown'; reason: string; at: number }[];
+  /** Rule 89: signed outbound intents by speaker. */
+  speakers: Record<Speaker, number>;
+  /** Rules 41 and 75: counts of recorded model calls; the full records stay in the journal. */
+  modelCalls: ModelCallCounts }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
   if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
@@ -613,7 +634,8 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryRequired: new Set(saved.summaryRequired ?? []), summaryCandidates: new Map(saved.summaryCandidates ?? []),
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryFaithfulness: new Map(saved.summaryFaithfulness ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
     callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []), mentionedDates: new Set(saved.mentionedDates ?? []), reminders: new Map(saved.reminders ?? []), reminderGrant: saved.reminderGrant ?? null, reminderCancels: saved.reminderCancels ?? [],
-    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [] };
+    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [],
+    sendOutcomes: saved.sendOutcomes ?? [], speakers: saved.speakers ?? { agent: 0, infrastructure: 0 }, modelCalls: saved.modelCalls ?? emptyModelCalls() };
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -708,12 +730,28 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
     throw Error('preview journal: summary reservation evidence absent');
 }
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
-const verifiedOperatorTurn = (view: JournalView, turn: Turn) => {
-  if (!turn.accepted) return false;
-  try { return String((JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id)
-    === view.genesis.operator; }
-  catch { return false; }
+/** Rule 29: the envelope form of a turn's writer. A legacy operator turn names the exact binding it was admitted under. */
+/** The full verified record (class, capture reference and hash) stays on the durable intake row. */
+export type SessionWriter = Pick<WriterRecord, 'id' | 'kind' | 'adapter'>;
+/** The envelope form of a verified principal the owner minted (a system writer of a model input). */
+export const envelopeWriter = (principal: VerifiedPrincipal | null): SessionWriter | undefined => principal === null ? undefined
+  : { id: principal.id, kind: principal.kind, adapter: principal.provenance.adapter };
+export function sessionWriterOf(view: JournalView, turn: Turn): SessionWriter | undefined {
+  if (turn.writer) return { id: turn.writer.id, kind: turn.writer.kind, adapter: turn.writer.adapter };
+  return turn.accepted && turn.requestedSummary === undefined && operatorWriter(view, turn, true)
+    ? { id: view.genesis.operator, kind: 'person', adapter: 'legacy-exact-sender-binding' } : undefined;
+}
+/** Rule 28: the operator is the verified person principal recorded at intake, bound to the same
+ * update bytes. A legacy turn (no recorded writer) keeps the exact sender binding it was admitted under.
+ * `edits` admits an edited message's sender as well as an original message's. */
+export const operatorWriter = (view: JournalView, turn: Turn, edits = false) => {
+  let from: unknown;
+  try { const raw = JSON.parse(turn.raw) as TelegramUpdate;
+    from = (edits ? raw.edited_message ?? raw.message : raw.message)?.from?.id; } catch { return false; }
+  if (turn.writer !== undefined) return turn.writer.kind === 'person' && turn.writer.id === view.genesis.operator && String(from) === turn.writer.id;
+  return String(from) === view.genesis.operator;
 };
+const verifiedOperatorTurn = (view: JournalView, turn: Turn) => turn.accepted && operatorWriter(view, turn);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const datedKey = (item: DatedItem) => JSON.stringify([item.source, item.quote, item.when]);
 const reminderKey = (item: ReminderRef) => JSON.stringify([item.source, item.quote, item.when]);
@@ -1189,10 +1227,7 @@ function promptRecallHits(prompt: string | undefined): { turns: number; channels
   } catch { return null; }
 }
 
-const operatorTurn = (view: JournalView, turn: Turn) => {
-  try { return String((JSON.parse(turn.raw) as { message?: { from?: { id?: unknown } } }).message?.from?.id) === view.genesis.operator; }
-  catch { return false; }
-};
+const operatorTurn = (view: JournalView, turn: Turn) => operatorWriter(view, turn);
 /** The desk's build-switch and renewal canaries send one fixed, desk-authored form through
  * the operator's own account: "Build|Renewal|Canary check <commit>: ...". It is a protocol tag
  * like the status command, not a reading of meaning. Such a turn is answered and kept verbatim
@@ -1352,7 +1387,86 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     || ![null, true, false].includes(o.isError)) throw Error('preview journal: call outcome malformed');
 }
 
-function project(view: JournalView, row: JournalRecord): void {
+/** The one outbound intent a send outcome settles, with its receipt if any. */
+function sendTarget(view: JournalView, target: string): { sent: number | undefined } | undefined {
+  const [kind, ...rest] = target.split(':'), key = rest.join(':');
+  if (kind === 'reply') { const turn = view.turns.get(key);
+    return turn?.intent !== undefined && turn.groupedInto === undefined ? { sent: turn.sent } : undefined; }
+  if (kind === 'held-notice') { const turn = view.turns.get(key);
+    return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
+  if (kind === 'requested-reminder') { const batch = view.reminders.get(requestedBatchKey(Number(key)));
+    return batch?.requested ? { sent: batch.sent } : undefined; }
+  return undefined;
+}
+/** Rule 42: the one target-outcome lookup every view reads. A receipt is acceptance; a recorded
+ * definite refusal stays a refusal with its reason; anything else (including a legacy intent with
+ * no record) is UNKNOWN. None of the three is ever retried. */
+export type TargetOutcome = { kind: 'accepted'; message: number } | { kind: 'refused'; reason: string } | { kind: 'unknown'; reason: string | null };
+export function sendOutcomeOf(view: JournalView, target: string, sent: number | undefined): TargetOutcome {
+  if (sent !== undefined) return { kind: 'accepted', message: sent };
+  const recorded = view.sendOutcomes.find(item => item.target === target);
+  return recorded?.outcome === 'refused' ? { kind: 'refused', reason: recorded.reason } : { kind: 'unknown', reason: recorded?.reason ?? null };
+}
+/** The reply target a turn's intent was dispatched under (a grouped turn shares its leader's send). */
+export const replyTarget = (turn: Turn) => `reply:${turn.groupedInto ?? turn.id}`;
+/** The target a reminder batch was dispatched under: grouped into a reply, or its own requested batch. */
+function reminderTarget(view: JournalView, key: string, batch: { requested?: boolean }): string {
+  const number = batch.requested ? JSON.parse(key)[1] as number : undefined;
+  const leader = number === undefined ? undefined : view.order.find(turn => turn.reminderBatch === number);
+  return leader ? replyTarget(leader) : number === undefined ? `reminder:${key}` : `requested-reminder:${String(number)}`;
+}
+export const reminderOutcome = (view: JournalView, key: string, batch: { requested?: boolean; sent?: number }) =>
+  sendOutcomeOf(view, reminderTarget(view, key, batch), batch.sent);
+/** The plain label of an unsent outcome: a refusal names its reason; anything else is UNKNOWN. */
+export const unsentLabel = (outcome: TargetOutcome) => outcome.kind === 'refused' ? `refused, not delivered (${outcome.reason})` : 'delivery UNKNOWN';
+/** Status counts, message by message as before: a definite refusal is never delivery and never UNKNOWN. */
+export function sendOutcomeCounts(view: JournalView) {
+  let accepted = 0, unknown = 0, refusedItems = 0;
+  const settle = (target: string, sent: number | undefined) => {
+    const kind = sendOutcomeOf(view, target, sent).kind;
+    if (kind === 'accepted') accepted++; else if (kind === 'refused') refusedItems++; else unknown++;
+  };
+  for (const turn of view.order) {
+    if (turn.intent !== undefined) settle(replyTarget(turn), turn.sent);
+    if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
+  }
+  for (const [key, batch] of view.reminders) settle(reminderTarget(view, key, batch), batch.sent);
+  return { accepted, refused: refusedItems, unknown, speakers: { ...view.speakers },
+    lastRefusal: view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1) ?? null };
+}
+export interface ModelCallCounts { total: number; byJudgment: Record<string, number>; byOutcome: Record<string, number>; usageUnknown: number;
+  last: Pick<ModelCallRecord, 'id' | 'judgment' | 'route' | 'outcome' | 'latencyMs' | 'usage' | 'at'>[] }
+const emptyModelCalls = (): ModelCallCounts => ({ total: 0, byJudgment: {}, byOutcome: {}, usageUnknown: 0, last: [] });
+function checkIntakeWriter(view: JournalView, row: Extract<JournalRecord, { kind: 'intake' }>): void {
+  if (row.writer !== undefined && (!row.accepted || row.writer.kind !== 'person' || row.writer.id !== view.genesis.operator
+    || !Object.values(TELEGRAM_ADAPTER).includes(row.writer.adapter) || !writerBoundToRaw(row.writer, row.raw)))
+    throw Error('preview journal: intake writer refused');
+}
+function checkSendOutcome(view: JournalView, row: Extract<JournalRecord, { kind: 'send-outcome' }>): void {
+  const target = sendTarget(view, row.target);
+  if (!target || target.sent !== undefined || view.sendOutcomes.some(item => item.target === row.target)
+    || (row.outcome !== 'refused' && row.outcome !== 'unknown') || typeof row.reason !== 'string' || !row.reason)
+    throw Error('preview journal: send outcome order');
+}
+function checkModelCall(row: ModelCallRecord): void {
+  const judgment = LIVE_JUDGMENTS[row.judgment];
+  if (!judgment || judgment.route !== row.route || !/^[a-f0-9]{64}$/u.test(row.inputSha256)
+    || (row.input === undefined) === (row.inputRef === undefined) || !['complete', 'rejected', 'uncertain', 'failed'].includes(row.outcome)
+    || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0 || (row.usage === null) !== (row.usageException !== undefined))
+    throw Error('preview journal: model call record refused');
+}
+/** The exact act an outbound intent's signature covers. */
+export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' | 'held-notice-intent' | 'requested-reminder-intent' }>): OutboundSubject {
+  const thread = row.thread === undefined ? {} : { thread: row.thread };
+  if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
+  if (row.kind === 'held-notice-intent') return { target: `held-notice:${row.id}`, chat: row.chat, ...thread, body: row.text };
+  return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
+}
+/** Verifies a recorded system writer's owner signature over its exact occurrence. */
+type SystemCheck = (writer: WriterRecord | undefined, method: SystemMethod, occurrence: string) => boolean;
+/** The exact occurrence a scheduler writer signs for one requested-summary slot. */
+export const summarySlotOccurrence = (grant: SummaryGrant, slot: string) => JSON.stringify([grant.id, grant.source, grant.quote, slot]);
+function project(view: JournalView, row: JournalRecord, system?: SystemCheck): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
   if (row.kind === 'hold') {
     for (let index = view.awayEvents.length - 1; index >= 0; index--) {
@@ -1391,6 +1505,22 @@ function project(view: JournalView, row: JournalRecord): void {
     }
     return;
   }
+  if (row.kind === 'send-outcome') {
+    checkSendOutcome(view, row);
+    view.sendOutcomes.push({ target: row.target, outcome: row.outcome, reason: row.reason, at: row.at }); return;
+  }
+  if (row.kind === 'model-call') {
+    checkModelCall(row);
+    const counts = view.modelCalls;
+    counts.total++; counts.byJudgment[row.judgment] = (counts.byJudgment[row.judgment] ?? 0) + 1;
+    counts.byOutcome[row.outcome] = (counts.byOutcome[row.outcome] ?? 0) + 1;
+    if (row.usage === null) counts.usageUnknown++;
+    counts.last = [...counts.last, { id: row.id, judgment: row.judgment, route: row.route, outcome: row.outcome,
+      latencyMs: row.latencyMs, usage: row.usage, at: row.at }].slice(-20);
+    return;
+  }
+  if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'requested-reminder-intent') && row.provenance)
+    view.speakers[row.provenance.speaker]++;
   if (row.kind === 'reminder-grant') {
     if (view.reminderGrant !== null || view.stop || row.trial !== view.genesis.grant
       || row.surface !== 'telegram-private-chat' || row.scope !== 'initiated-dated-reminders'
@@ -1408,7 +1538,9 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.editOf !== undefined && (!row.accepted || !row.replaces || !view.turns.get(row.editOf)?.accepted
       || !view.turns.get(row.replaces)?.accepted || row.update <= view.turns.get(row.replaces)!.update))
       throw Error('preview journal: edit lineage refused');
+    checkIntakeWriter(view, row);
     const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
+      ...(row.writer === undefined ? {} : { writer: row.writer }),
       ...(row.thread === undefined ? {} : { thread: row.thread }),
       ...(row.editOf === undefined ? {} : { editOf: row.editOf, replaces: row.replaces }) };
     view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor); return;
@@ -1680,11 +1812,16 @@ function project(view: JournalView, row: JournalRecord): void {
     if (!grant || !source || slot !== row.slot || row.id !== `requested-summary:${grant.id}:${slot}` || view.turns.has(row.id)
       || pending || view.stop || row.at >= view.expires || view.order.length >= view.limits.maxTurns
       || row.update !== nextSyntheticUpdate(view) || !window || JSON.stringify(window) !== JSON.stringify(row.window)
-      || JSON.stringify(late) !== JSON.stringify(row.late)) throw Error('preview journal: requested summary slot refused');
+      || JSON.stringify(late) !== JSON.stringify(row.late) || !verifiedOperatorTurn(view, source)
+      // Rule 29: a recorded scheduler writer must re-verify as the owner's signature over this exact slot;
+      // a legacy slot (no writer) keeps its explicit legacy binding, the grant's verified operator request.
+      || row.writer !== undefined && !(system ?? (() => false))(row.writer, 'requested-summary-grant', summarySlotOccurrence(grant, slot)))
+      throw Error('preview journal: requested summary slot refused');
     const turn: Turn = { id: row.id, update: row.update, text: requestedSummaryText(view, grant, window),
       raw: JSON.stringify({ requestedSummary: { grant: grant.id, slot }, message: { date: Math.floor(dueAt / 1000) } }),
       accepted: true, at: row.at, reserved: false, ...(source.thread === undefined ? {} : { thread: source.thread }),
-      requestedSummary: { grant: grant.id, slot, window, ...(late ? { late } : {}) } };
+      requestedSummary: { grant: grant.id, slot, window, ...(late ? { late } : {}) },
+      ...(row.writer === undefined ? {} : { writer: row.writer }) };
     view.turns.set(row.id, turn); view.order.push(turn); return;
   }
   const turn = view.turns.get(row.id);
@@ -2000,7 +2137,9 @@ function project(view: JournalView, row: JournalRecord): void {
 }
 
 export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extract<JournalRecord,{kind:'genesis'}>,
-  boundary?: (stage: string) => void, readOnly = false, compactBytes = PREVIEW_JOURNAL_COMPACT_BYTES, strictReadOnly = false) {
+  boundary?: (stage: string) => void, readOnly = false, compactBytes = PREVIEW_JOURNAL_COMPACT_BYTES, strictReadOnly = false,
+  /** Rule 35: the writing composition's trusted origin; when given, a mismatched store refuses every write. */
+  origin?: WriteOrigin) {
   if (resolve(path) !== path || key.byteLength !== 32) throw Error('preview journal: path or key refused');
   if (!Number.isSafeInteger(compactBytes) || compactBytes <= 0) throw Error('preview journal: compaction threshold refused');
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -2020,6 +2159,16 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
   let snapshotAllowed = false;
   let pendingSnapshot: { start: SnapshotStart; chunks: Buffer[] } | undefined;
   let closed = false;
+  let signer: ReturnType<typeof outboundSigner> | undefined;
+  const signerOf = () => signer ??= outboundSigner(key, view!.genesis.bot);
+  /** Rule 89: the journal owner signs every outbound intent automatically; callers never hold the key. */
+  const signOutbound = (speaker: Speaker, subject: OutboundSubject) => signerOf().sign(speaker, subject);
+  const verifyOutbound = (provenance: unknown, subject: OutboundSubject) => signerOf().verify(provenance, subject);
+  let system: ReturnType<typeof systemWriters> | undefined;
+  /** Rule 29: the owner's verified system writers; minted and re-verified with the journal's own key. */
+  const systemOf = () => system ??= systemWriters(key, view!.genesis.bot);
+  const systemCheck: SystemCheck = (writer, method, occurrence) => systemOf().check(writer, method, occurrence);
+  const systemWriter = (method: SystemMethod, occurrence: string, at: number) => systemOf().mint(method, occurrence, at);
   const sealed = readFileSync(fd);
   let offset = 0;
   try {
@@ -2029,7 +2178,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -2054,7 +2203,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       } else {
         if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
         snapshotAllowed = false;
-        project(view, row);
+        project(view, row, systemCheck);
       }
       offset = decoded.end;
 
@@ -2062,6 +2211,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
 
     }
     if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
+    // Rule 35: a mismatched composition may not even repair or compact this store.
+    if (origin !== undefined && !readOnly && view && view.genesis.origin !== (origin === 'test' ? 'test' : undefined))
+      throw Error(`preview journal: ${origin}-origin write refused by a ${view.genesis.origin ?? 'production'} store`);
     if (offset < sealed.length && strictReadOnly) throw Error('preview journal: incomplete read-only frame');
     if (offset < sealed.length && !readOnly) {
       // Retain the incomplete suffix for diagnosis before removing it from the
@@ -2089,6 +2241,21 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (row.kind === 'expiry') checkExpiry(view!, row, 'new');
       if (row.kind === 'channel-source-cursor') checkChannelSourceCursor(view!, row);
       if (row.kind === 'call-outcome') validateCallOutcome(view!, row);
+      if (row.kind === 'model-call') checkModelCall(row);
+      if (row.kind === 'intake' && !view!.turns.has(row.id)) checkIntakeWriter(view!, row);
+      // Rule 29: a new summary slot is written only by the owner's verified scheduler; only legacy rows replay without one.
+      if (row.kind === 'summary-due' && row.writer === undefined) throw Error('preview journal: requested summary slot refused');
+      if (row.kind === 'send-outcome') checkSendOutcome(view!, row);
+      // Rule 35: a production store refuses test-origin compositions and test-origin identities here, at its write boundary.
+      if (origin !== undefined && (row.kind === 'genesis' ? row.origin : view?.genesis.origin) !== (origin === 'test' ? 'test' : undefined))
+        throw Error(`preview journal: ${origin}-origin write refused by a ${(row.kind === 'genesis' ? row.origin : view?.genesis.origin) ?? 'production'} store`);
+      if ((row.kind === 'genesis' ? row.origin : view?.genesis.origin) !== 'test'
+        && (row.kind === 'intake' || row.kind === 'summary-due') && testOriginWriter(row.writer))
+        throw Error('preview journal: test-origin identity refused by a production store');
+      if (row.kind === 'genesis' && row.origin !== undefined && row.origin !== 'test') throw Error('preview journal: invalid genesis origin');
+      if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'requested-reminder-intent')
+        && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
+        throw Error('preview journal: outbound provenance refused');
       if (row.kind === 'reply-review-reserve' && row.promptSha256
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
@@ -2106,8 +2273,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null };
-      } else project(view!, row);
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
+      } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
     };
@@ -2187,7 +2354,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       append(initial);
     }
     if (!readOnly && size > Math.max(compactBytes, snapshotBase * 2)) compact();
-    return { get view() { return view!; }, get size() { return size; }, readOnly, append, compact,
+    return { get view() { return view!; }, get size() { return size; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
@@ -2230,11 +2397,15 @@ export function importChannelFixture(journal: ReturnType<typeof openPreviewJourn
 type TelegramMessage = { message_id?: number; chat?: { id: number; type?: string }; from?: { id: number }; text?: string; message_thread_id?: number; date?: number; edit_date?: number;
   reply_to_message?: { message_id?: number; chat?: { id: number }; from?: { id: number }; message_thread_id?: number } };
 type TelegramUpdate = { update_id: number; message?: TelegramMessage; edited_message?: TelegramMessage };
-export function admittedUpdate(genesis: JournalView['genesis'], update: TelegramUpdate) {
+/** Rule 28: admission accepts only the verified principal minted from this update at intake,
+ * and it must be the bound operator on the bound private chat, over this store's transport. */
+export function admittedUpdate(genesis: JournalView['genesis'], update: TelegramUpdate, principal: VerifiedPrincipal | null) {
   if (!Number.isSafeInteger(update.update_id) || update.update_id < 0) throw Error('preview journal: malformed update');
   const message = update.edited_message ?? update.message, thread = message?.message_thread_id;
   const accepted = message?.chat?.type === 'private' && String(message.chat.id) === genesis.chat
-    && String(message.from?.id) === genesis.operator && typeof message.text === 'string'
+    && verifiedAtIntake(principal) && principal.kind === 'person' && principal.id === genesis.operator
+    && principal.id === String(message.from?.id) && principalBoundToUpdate(principal, update)
+    && principal.provenance.adapter === TELEGRAM_ADAPTER[genesis.origin ?? 'production'] && typeof message.text === 'string'
     && (thread === undefined || Number.isSafeInteger(thread) && thread > 0);
   return { id: previewTurnId(genesis.bot, update.update_id), accepted, text: accepted ? message!.text! : '',
     ...(accepted && thread !== undefined ? { thread } : {}) };
@@ -2265,13 +2436,19 @@ export interface PreviewPorts {
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
   elapsed?(): number;
   timeZone?: string;
+  /** Rule 35: the trusted composition origin of this worker's transport (default production). */
+  origin?: WriteOrigin;
   /** Static sources, or a function read at each turn (for the desk's report). */
   sources?: readonly unknown[] | ((turn?: Turn) => readonly unknown[]);
-  prepareModel?(input: { question: string; context: string; id: string }): string;
+  /** Rule 29: `writer` is the turn's verified session writer, carried into the session envelope. */
+  prepareModel?(input: { question: string; context: string; id: string; writer?: SessionWriter }): string;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
-  send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<number | null>;
+  /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
+   * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
+  send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
+    target?: string; provenance?: OutboundProvenance }): Promise<number | null | SendOutcome>;
   checkOutbound(text: string): void;
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }> };
@@ -2286,6 +2463,20 @@ export interface PreviewPorts {
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false;
+  /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never retried. */
+  const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
+    input: { text: string; expectedText: string; chat: string; thread?: number; update: number }): Promise<SendOutcome> => {
+    const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
+    let outcome: SendOutcome;
+    if (!journal.verifyOutbound(provenance, subject)) outcome = { kind: 'refused', reason: 'outbound provenance unsigned' };
+    else try { outcome = settleSendOutcome(await ports.send({ ...input, target, provenance: provenance! })); }
+    catch { outcome = { kind: 'unknown', reason: 'send port failed' }; }
+    if (outcome.kind !== 'accepted') {
+      try { journal.append({ kind: 'send-outcome', target, outcome: outcome.kind, reason: redact(outcome.reason).text, at: ports.now() }); }
+      catch { /* the intent stays UNKNOWN without its reason */ }
+    }
+    return outcome;
+  };
   const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
   const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
   let checkingSteps = false;
@@ -2326,7 +2517,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const intake = (updates: readonly TelegramUpdate[]) => {
     gate();
     for (const update of [...updates].sort((a, b) => a.update_id - b.update_id)) {
-      const parsed = admittedUpdate(journal.view.genesis, update), prior = journal.view.turns.get(parsed.id);
+      const principal = authenticateTelegramSender(update, ports.origin ?? 'production', ports.now());
+      const parsed = admittedUpdate(journal.view.genesis, update, principal), prior = journal.view.turns.get(parsed.id);
       if (prior) continue;
       // A poll may return more than one update even when one slot was left.
       // Keep the cursor before the first unrecorded update so it can be fetched
@@ -2354,6 +2546,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const cursor = update.update_id + 1;
       journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? parsed.text : '',
         raw: JSON.stringify(update), accepted, cursor, at: ports.now(),
+        ...(accepted && principal ? { writer: writerRecord(principal) } : {}),
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
         ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }) });
     }
@@ -2621,11 +2814,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: open.map(({ note, turn: source }) => ({ text: clean(note.quote, true), at: sentAt(source!) ?? 0 })) });
     return ranked.map(index => open[index]!).sort((a, b) => a.turn!.update - b.turn!.update || a.id - b.id);
   };
-  const fromOperator = (turn: Turn) => {
-    try { const raw = JSON.parse(turn.raw) as TelegramUpdate;
-      return String((raw.edited_message ?? raw.message)?.from?.id) === journal.view.genesis.operator; }
-    catch { return false; }
-  };
+  const fromOperator = (turn: Turn) => operatorWriter(journal.view, turn, true);
   const resumeGap = (turn: Turn) => {
     if (!fromOperator(turn)) return null;
     const previous = journal.view.order.filter(item => remembered(item) && item.update < turn.update && fromOperator(item)).at(-1);
@@ -2967,8 +3156,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const holdingReply = (item: Turn) => item.intent === HOLDING_REPLY
     && item.replyChecks?.some(check => check.verdict === 'violation') === true;
   const knownNonAnswer = (item: Turn) => item.noticeClass !== undefined || modelFailure(item) || holdingReply(item);
-  const heldNoticeOutcome = (item: Turn) => item.heldNoticeSent === undefined ? 'delivery UNKNOWN' : 'Telegram API accepted';
-  const outcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
+  const heldNoticeOutcome = (item: Turn) => {
+    const settled = sendOutcomeOf(journal.view, `held-notice:${item.id}`, item.heldNoticeSent);
+    return settled.kind === 'accepted' ? 'Telegram API accepted' : unsentLabel(settled);
+  };
+  // Rule 42: an unsent intent reads its recorded outcome; a definite refusal is never shown as UNKNOWN.
+  const outcome = (item: Turn) => {
+    const text = unsettledOutcome(item), settled = item.intent && !item.sent ? sendOutcomeOf(journal.view, replyTarget(item), item.sent) : null;
+    return settled?.kind === 'refused' ? text.replace('delivery UNKNOWN', unsentLabel(settled)) : text;
+  };
+  const unsettledOutcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
       : sizeRefused(item) ? item.intent === TOO_LONG_INPUT_NOTICE ? 'too-long notice Telegram API accepted'
         : 'holding reply delivered in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
@@ -3676,7 +3873,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
-            const prepared = ports.prepareModel?.({ question, context, id: turn.id });
+            const writer = sessionWriterOf(journal.view, turn);
+            const prepared = ports.prepareModel?.({ question, context, id: turn.id, ...(writer ? { writer } : {}) });
             if (ports.replyCheck && prepared !== undefined
               && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT)
                 + Math.min(REPLY_REVIEW_HEADROOM_BYTES,
@@ -3742,8 +3940,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const update = nextSyntheticUpdate(journal.view), window = summaryWindow(grant, slot);
       if (update === null || window === null) continue;
       const minutes = Math.floor((now - wallEpoch(slot, grant.time, grant.zone)) / 60_000), skipped = slots.length - 1;
+      // Rule 29: the scheduler writes this turn as a verified system principal, only under the grant's
+      // verified operator request, signed by the owner over this exact slot.
+      const source = journal.view.turns.get(grant.source);
+      if (!source || !verifiedOperatorTurn(journal.view, source)) continue;
+      const scheduler = journal.systemWriter('requested-summary-grant', summarySlotOccurrence(grant, slot), now);
+      if (scheduler === null) continue;
       journal.append({ kind: 'summary-due', id: `requested-summary:${grant.id}:${slot}`, grant: grant.id, slot, update, window,
-        ...(skipped > 0 || minutes > SUMMARY_LATE_MINUTES ? { late: { minutes, skipped } } : {}), at: now });
+        ...(skipped > 0 || minutes > SUMMARY_LATE_MINUTES ? { late: { minutes, skipped } } : {}), writer: writerRecord(scheduler), at: now });
     }
   };
   /** A created, unsent summary slot is not generated or sent while its grant is withdrawn, or while a
@@ -4126,9 +4330,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
             : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
+        // Rule 89: fixed runner notices speak as infrastructure; the agent's own answers speak as the agent.
+        let speaker: Speaker = turn.noticeClass !== undefined || turn.answer === undefined || turn.answer === MODEL_FAILURE_REPLY
+          || turn.memoryPending && turn.memoryUndecided || isStatusCommand(turn.text) && !turn.reserved ? 'infrastructure' : 'agent';
         const proposedBody = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
         if (Buffer.byteLength(proposedBody) > 4096 || Array.from(proposedBody).length > 4096)
-          reply = TOO_LONG_REPLY_NOTICE;
+          { reply = TOO_LONG_REPLY_NOTICE; speaker = 'infrastructure'; }
         // A requested summary always leads with why it was sent (Rule 54); a held, lost or
         // failed summary sends a truthful notice under the same header, never a made-up summary.
         const summaryHeader = turn.requestedSummary ? requestedSummaryHeader(journal.view, turn) : undefined;
@@ -4139,7 +4346,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               : turn.answer.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '')}`;
           const encoded = encodeReply(reply);
           if (Buffer.byteLength(encoded) > 4096 || Array.from(encoded).length > 4096)
-            reply = `${summaryHeader}\nThe summary was too long for one Telegram message, so I sent no part of it. Ask me for a shorter summary.`;
+            { reply = `${summaryHeader}\nThe summary was too long for one Telegram message, so I sent no part of it. Ask me for a shorter summary.`; speaker = 'infrastructure'; }
         }
         const imminent = journal.view.dated.filter(item => item.source !== turn.id
           && !journal.view.mentionedDates.has(datedKey(item)) && withinNext48Hours(item, ports.now())
@@ -4243,7 +4450,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // refusal, a secret flag or a review violation still holds; stop and expiry gate the send.
           if (decision === 'unavailable' && !capRefused && jevNonSecretFlags(turn, candidateDigest)) decision = 'pass';
           if (decision === 'violation') { reply = summaryHeader === undefined ? HOLDING_REPLY
-            : `${summaryHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`; heldBack = true; }
+            : `${summaryHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`; heldBack = true; speaker = 'infrastructure'; }
           else if (decision === 'unavailable') {
             // A refused review reservation waits on `raise-caps` like any call-cap hold.
             journal.append({ kind: 'hold', id: turn.id, reason: capRefused ? 'call cap'
@@ -4292,7 +4499,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         const intentAt = ports.now();
-        journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread,
+        const provenance = journal.signOutbound(speaker, { target: `reply:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body });
+        journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           ...(grouped.length ? { reminderBatch: [...journal.view.reminders.values()].filter(batch => batch.requested).length,
             reminders: grouped.map(item => ({ source: item.source, quote: item.quote, when: item.when })) } : {}),
@@ -4303,10 +4511,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
         const sendStarted = elapsedMs();
-        try { const message = await ports.send({ text: body, expectedText: reply, chat: journal.view.genesis.chat, ...thread, update: turn.update });
-          // The receipt carries the measured duration; an UNKNOWN or failed attempt records no timing.
-          if (message !== null && Number.isSafeInteger(message) && message > 0)
-            journal.append({ kind: 'sent', id: turn.id, message, latencyMs: duration(sendStarted), at: ports.now() });
+        const outcome = await dispatch(`reply:${turn.id}`, provenance, { text: body, expectedText: reply, chat: journal.view.genesis.chat, ...thread, update: turn.update });
+        // The receipt carries the measured duration; an UNKNOWN or refused attempt records no timing.
+        // A failed receipt write leaves the exact intent UNKNOWN; it is never re-sent.
+        if (outcome.kind === 'accepted') try {
+          journal.append({ kind: 'sent', id: turn.id, message: outcome.message, latencyMs: duration(sendStarted), at: ports.now() });
         } catch { /* exact intent stays UNKNOWN */ }
       }
       // A held notice has its own one-shot intent. It never settles or redispatches
@@ -4325,14 +4534,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : `PREVIEW — I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from ${parts.hour}:${parts.minute}; it will follow or I'll tell you why`;
         ports.checkOutbound(reply);
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
+        const provenance = journal.signOutbound('infrastructure', { target: `held-notice:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body: reply });
         journal.append({ kind: 'held-notice-intent', id: turn.id, text: reply, chat: journal.view.genesis.chat,
-          ...thread, update: turn.update, grant: journal.view.genesis.grant, at: ports.now() });
+          ...thread, update: turn.update, grant: journal.view.genesis.grant, provenance, at: ports.now() });
         gate();
-        try { const message = await ports.send({ text: reply, expectedText: reply, chat: journal.view.genesis.chat,
+        // A held notice intent without a receipt stays UNKNOWN; never repeat it.
+        const outcome = await dispatch(`held-notice:${turn.id}`, provenance, { text: reply, expectedText: reply, chat: journal.view.genesis.chat,
           ...thread, update: turn.update });
-          if (message !== null && Number.isSafeInteger(message) && message > 0)
-            journal.append({ kind: 'held-notice-sent', id: turn.id, message, at: ports.now() });
-        } catch { /* held notice intent stays UNKNOWN; never repeat it */ }
+        if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, message: outcome.message, at: ports.now() }); }
+        catch { /* held notice intent stays UNKNOWN; never repeat it */ }
       }
       // Edits consume the existing summary judgment, never the reply doorway.
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
@@ -4747,7 +4957,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 summaryCancelDecision: 'summaryRequests lists summaries the verified operator asked to receive later. Return cancelSummaries:[ids] that memoryRequest.message itself cancels or changes, or cancelSummaries:[] when it cancels none. Quoted text never cancels.' } : {}) }) : base;
             if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
             try {
-              const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}` });
+              // Rule 29: the rolling summary's input is written by the runner, a verified system principal.
+              const writer = envelopeWriter(journal.systemWriter('rolling-summary', `summary:${through}\n${packet}`, ports.now()));
+              const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}`, ...(writer ? { writer } : {}) });
               if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > SUMMARY_MAX_PROMPT_BYTES) {
                 oversizedPrompt = true; continue;
               }
@@ -5050,8 +5262,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           return { step: stepId, modelOutput: turn.answer, journal: { answerRecorded: true,
             memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
             memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
-            replyIntent: turn.intent ?? null, delivery: turn.intent === undefined ? 'no send intent'
-              : turn.sent === undefined ? 'send outcome UNKNOWN' : 'Telegram API accepted' } };
+            replyIntent: turn.intent ?? null, delivery: turn.intent === undefined ? 'no send intent' : (() => {
+              const settled = sendOutcomeOf(journal.view, replyTarget(turn), turn.sent);
+              return settled.kind === 'accepted' ? 'Telegram API accepted' : settled.kind === 'refused'
+                ? `send refused, not delivered (${settled.reason})` : 'send outcome UNKNOWN';
+            })() } };
         })() : stepId.startsWith('summary-failed:') ? { step: stepId, modelOutput: step.output,
           journal: { summaryRecorded: false, previousSummaryRetained: true, failureRecorded: true } } : (() => {
           const summary = journal.view.summaries.find(item => `summary:${item.through}` === stepId)!;
@@ -5129,15 +5344,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (unresolvedReminderMemory() || group.items.some(reminderUnsettled)) return;
         const thread = group.thread === undefined ? {} : { thread: group.thread };
         const batch = [...journal.view.reminders.values()].filter(item => item.requested).length;
+        const provenance = journal.signOutbound('infrastructure', { target: `requested-reminder:${String(batch)}`, chat: journal.view.genesis.chat, ...thread, body });
         journal.append({ kind: 'requested-reminder-intent', batch, items: group.items.map(item => ({ source: item.source, quote: item.quote, when: item.when })),
-          text, body, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, at: ports.now() });
+          text, body, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, provenance, at: ports.now() });
         gate();
-        try {
-          const message = await ports.send({ text: body, expectedText: text, chat: journal.view.genesis.chat,
-            ...thread, update: journal.view.turns.get(group.items[0]!.source)!.update });
-          if (message !== null && Number.isSafeInteger(message) && message > 0)
-            journal.append({ kind: 'requested-reminder-sent', batch, message, at: ports.now() });
-        } catch { /* durable intent stays UNKNOWN; never repeat */ }
+        // A durable intent without a receipt stays UNKNOWN; never repeat.
+        const outcome = await dispatch(`requested-reminder:${String(batch)}`, provenance, { text: body, expectedText: text, chat: journal.view.genesis.chat,
+          ...thread, update: journal.view.turns.get(group.items[0]!.source)!.update });
+        if (outcome.kind === 'accepted') try { journal.append({ kind: 'requested-reminder-sent', batch, message: outcome.message, at: ports.now() }); }
+        catch { /* durable intent stays UNKNOWN; never repeat */ }
       }
     } finally { working = false; }
   };

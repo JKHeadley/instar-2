@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { activeSummaryGrants, pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { activeSummaryGrants, pendingRequestedReminders, replyTarget, sendOutcomeCounts, sendOutcomeOf, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`), and one per poll attempt that
  * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
@@ -131,9 +131,8 @@ export function memoryHealthLine(view: JournalView): string {
     && !resolved.has(turn.id)).length;
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
-  const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0)
-    + [...view.reminders.values()].filter(item => item.sent === undefined).length;
+  // Rule 42: a definite refusal is counted as a refusal, never as UNKNOWN.
+  const unknownSends = sendOutcomeCounts(view).unknown;
   const sum = (field: 'recallHits' | 'channelRecallHits') => measured.reduce((total, turn) => total + (turn[field] ?? 0), 0);
   return `Memory health: ${String(view.order.filter(turn => turn.held).length)} journal turns currently held; `
     + `${String(view.summaries.length)} summaries, ${String(covered)} accepted operator turns covered by latest summary`
@@ -212,9 +211,8 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = view.summaryReservations.size;
   const heldNoticeCount = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
-  const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0)
-    + [...view.reminders.values()].filter(item => item.sent === undefined).length;
+  // Rule 42: a definite refusal is counted as a refusal, never as UNKNOWN.
+  const unknownSends = sendOutcomeCounts(view).unknown;
 
 
   const refused = view.order.filter(turn => !turn.accepted).length;
@@ -288,7 +286,8 @@ export function restartHandoff(view: JournalView, runs: RunLog, launch: number) 
   const unknownCalls = view.order.filter(turn => turn.accepted && turn.reserved
     && (turn.modelState === 'uncertain' || turn.answer === undefined));
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
-  const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined && turn.sent === undefined);
+  const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined
+    && sendOutcomeOf(view, replyTarget(turn), turn.sent).kind === 'unknown');
   const noticesDue = pending.filter(turn => turn.modelState === 'uncertain' && turn.noticeDueAt !== undefined
     && turn.noticeDueAt <= launch);
   const ids = (turns: readonly Turn[]) => `${String(turns.length)}${turns.length
