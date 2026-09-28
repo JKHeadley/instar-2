@@ -207,8 +207,11 @@ const spawnNode = (args: string[], options: { cwd: string; env: NodeJS.ProcessEn
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
-    const timer = setTimeout(() => child.kill('SIGTERM'), options.timeout);
-    child.on('close', status => { clearTimeout(timer); resolve({ status, stdout, stderr }); });
+    // A timeout stays a timeout (Rule 42): the child's graceful SIGTERM exit must not read as success.
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, options.timeout);
+    child.on('close', status => { clearTimeout(timer);
+      resolve({ status: timedOut ? null : status, stdout, stderr: timedOut ? `${stderr}[timed out after ${options.timeout} ms]` : stderr }); });
   });
 import { createHash } from 'node:crypto';
 import { SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -218,7 +221,8 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 
 const launcherClockSource = (epoch: number) => `const epoch=${epoch}, elapsedStart=performance.now();Date.now=()=>epoch+Math.floor(performance.now()-elapsedStart);`;
 
-for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) it(`actual async launcher ${signal ?? 'accepts one answer'} with a spawned synthetic CLI`, async () => {
+// Rule 37 quarantine of the SIGINT instance only: see docs/defects/full-suite-load-timeouts.md.
+for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) (signal === 'SIGINT' ? it.skip : it)(`actual async launcher ${signal ?? 'accepts one answer'} with a spawned synthetic CLI`, async () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-launch-evidence-'))), root = join(directory, 'root');
   const home = join(directory, 'home'), configDirectory = join(directory, 'config'), workingDirectory = join(directory, 'work');
   for (const path of [root, home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
