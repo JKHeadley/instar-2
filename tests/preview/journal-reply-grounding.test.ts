@@ -46,7 +46,7 @@ it.each([1, null])('records exact full-history IDs before an accepted or UNKNOWN
       expect(status.status, status.stderr).toBe(0);
       expect(JSON.parse(status.stdout).replyGrounding).toEqual({ recorded: 2, unavailableLegacy: 0 });
       expect(output.reply).toEqual({ update: 2, text: 'PREVIEW — answer', telegramMessageId: 1,
-        outcome: 'api-accepted', grounding: audit });
+        outcome: 'api-accepted', grounding: audit, answerReason: null, retrospectiveGrade: null });
     }
     const replay = openPreviewJournal(path, key);
     expect(replay.view.turns.get(id(2))?.grounding).toEqual(audit);
