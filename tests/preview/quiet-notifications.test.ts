@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, OUTBOUND_DISPOSITIONS,
-  reminderOverflowLine, summaryOverviewLead, summaryOverviewOnlyLead } from './journal-test-worker.js';
+  reminderOverflowLine, summaryOverflowLine, summaryOverviewLead, summaryOverviewOnlyLead } from './journal-test-worker.js';
 
 // Rules 52/87 and P-14: one aggregate per topic and slot, overflow as an overview, no repeat of
 // unchanged status, and every push classified at the one send boundary.
@@ -120,4 +120,26 @@ it('classifies every push at the one send boundary; status is never a pushed kin
     .toEqual(['held-notice']);
   worker.intake([update(1, 'hello')]); await tick(worker);
   expect(state.sent.map(item => item.disposition)).toEqual(['result']);
+}));
+
+it('keeps one push when the overview headers themselves exceed one message: the rest are counted', () => withHarness(async ({ state, journal, worker }) => {
+  // Review round 2 (MF5): eight same-slot requests, each quote under the 500-byte bound, drew two pushes.
+  const requests = Array.from({ length: 8 }, (_, i) => `send me a summary of today every day at 6 pm about item ${i} ${'x'.repeat(400)}`);
+  worker.intake(requests.map((text, i) => update(i + 1, text, 17)));
+  await tick(worker);
+  expect(journal.view.summaryGrants).toHaveLength(8);
+  const before = state.sent.length;
+  state.now = sixPm; await tick(worker); await tick(worker); await tick(worker);
+  const pushes = state.sent.slice(before);
+  expect(pushes).toHaveLength(1);
+  expect(pushes[0]!.text.startsWith(summaryOverviewOnlyLead)).toBe(true);
+  expect(Buffer.byteLength(pushes[0]!.text)).toBeLessThanOrEqual(4096);
+  const named = (pushes[0]!.text.match(/about item \d/gu) ?? []).length;
+  expect(named).toBeLessThan(8);
+  expect(pushes[0]!.text.endsWith(summaryOverflowLine(8 - named))).toBe(true);
+  // Every sibling is covered by that one intent; every full body stays retrievable.
+  expect(journal.view.order.filter(turn => turn.requestedSummary && turn.intent === undefined)).toHaveLength(0);
+  expect(journal.view.order.filter(turn => turn.requestedSummary).every(turn => turn.answer?.startsWith('Summary detail.'))).toBe(true);
+  await tick(worker);
+  expect(state.sent.slice(before)).toHaveLength(1);
 }));

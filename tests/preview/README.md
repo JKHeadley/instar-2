@@ -2818,21 +2818,30 @@ trial or change any running root.
 Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runner:
 
 - **Minimal responder (Rule 15; Eleven §5).** Reaching the turn, reply or call cap no longer stops
-  reading the operator. Past the turn cap each verified operator message is kept by a finite
-  reserve (`MINIMAL_RESERVE`: 12 messages and 6 limited answers per rolling hour, independent of
-  the ordinary allowance; a stranger's update never spends it). A message a cap keeps from its
-  answer gets one prompt, fixed, truthful limited answer grouped per conversation (no model call).
-  Whether it may speak is Part Eleven's own verdict (`evaluateMinimalPath`/`minimalResponse` in
-  `src/operator/live.ts`) over the host's observation of every required dependency; when one is
-  missing the message stays preserved and an owned outage is recorded (`minimal-outage`,
-  `status.minimalReserve.outages`), and an exact `/stop` latches at once since the brake needs no
-  reply. The single-machine installed shape is admitted by the reviewed activation record (its
-  waiver/P-11 references), the same evidence that admits every preview reply, until the signed
-  P-08 installation join lands. Reading never stops: when every bound is spent the next message
-  waits at Telegram with the cursor before it, while presses and an exact `/stop` behind it are
-  still read. Ordinary work (model calls, review, summaries) runs beside the poll loop and is never
-  awaited by it, so a blocked or failed ordinary worker cannot silence stop, approvals or limited
-  answers.
+  reading the operator. Past the turn cap each verified operator message is preserved by a finite
+  reserve (`MINIMAL_RESERVE`: 240 messages and 6 limited answers per rolling hour, independent of
+  the ordinary allowance; a stranger's update never spends it). The turn reserve exceeds two full
+  poll pages, so a stop sent behind a page of waiting messages is preserved and read: the cursor only
+  ever passes messages already in the journal. Past the reserve the next message waits at Telegram
+  with the cursor before it, and presses and an exact `/stop` in the same page are still read; a stop
+  behind more than that is the named boundary (the host stop file, or Part Nine's independent
+  surface once installed). The minimal path also takes over from an unavailable ordinary worker
+  whatever the caps: a `/stop` never waits behind a busy or blocked worker, and another message
+  waiting on it longer than `MINIMAL_WORKER_WAIT_MS` (2 minutes) gets a limited answer that asks
+  for nothing (reason `worker`), and its ordinary answer still follows once the worker recovers.
+  Limited answers are fixed text grouped per conversation, with no model call.
+
+  Whether the minimal path may speak is Part Eleven's own verdict (`evaluateMinimalPath`/
+  `minimalResponse` in `src/operator/live.ts`) over what the host actually observes. The live runner
+  reports the register generation, lease, fence and `replication-peer` as **not admitted**. The
+  installed register, the exclusive lease/fence and the signed P-08 single-machine installation
+  policy are not in this preview, and the activation record is not that evidence (Rule 26). So on
+  the live runner limited answers are **inhibited**: each message stays preserved, an owned outage
+  names the missing dependencies (`minimal-outage`, `status.minimalReserve.outages`), and an exact
+  `/stop` latches at once, since the brake needs no reply. The admitted behavior is proven offline
+  with an installed owner. Ordinary work runs beside the poll loop in the same process and is never
+  awaited by it. That isolates the poll loop from a blocked model call, but it is not the separate
+  worker, storage and transport reserve Eleven §5 requires, which remains an explicit pending seam.
 - **Operator channel (Rule 14).** A verified operator's photo, voice note or caption, and an edit
   of a message this journal never saw, reach the mind with a plain flag instead of being dropped.
   Service messages and foreign senders take no turn; their raw updates stay preserved.
@@ -2849,7 +2858,9 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   requested reminders due then, go out as one message: room for the overview of what does not fit
   (`summaryOverviewLead`) and for the reminder count line (`reminderOverflowLine`) is reserved
   before any full body is chosen; when not even one full summary fits beside the rest the message
-  is a bounded overview (`summaryOverviewOnlyLead`). Every full text stays in the journal.
+  is a bounded overview (`summaryOverviewOnlyLead`), and summaries whose overview line does not fit
+  are counted in one line (`summaryOverflowLine`), never sent later. Every full text stays in the
+  journal.
 - **Final-candidate link check (Rule 106).** The link-shape predicate also runs on the exact final
   text (after a revision or assembly); its findings are recorded as `release.final` against that
   text's digest. It advises; it never holds.
@@ -2859,7 +2870,10 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   administered approval surface (Part Nine's `IndependentSurfaceVerifierPort`). The limited answer
   carries the prefilled request and a link to that surface (plus a Decline press); the verifier
   issues a one-use, expiring challenge bound to the request's exact subject and journal base, and
-  the raise is applied only in the moment its proof for that challenge verifies. A Telegram
+  the raise is applied only in the moment its proof for that challenge verifies. Before the proof is
+  spent, the request and wording digests are recomputed from the journal's recorded limits
+  (`raiseSubject`) and compared with the challenge, so limits substituted into the journal cannot
+  ride a genuine proof. Such a request is recorded `refused`, and a fresh one follows. A Telegram
   Approve press, silence, a journal row, a wrong, expired or replayed proof, or a moved base never
   raise. No verifier is installed in this preview, so raises stay with the desk and no raise
   request is offered by phone.

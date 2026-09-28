@@ -671,17 +671,16 @@ async function main() {
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
-      // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host only observes each
-      // required dependency. The single-machine installed shape is admitted by the reviewed activation
-      // record (its recorded waiver/P-11 references), the same evidence that admits every preview reply;
-      // the signed P-08 installation join (builds 6/11) replaces it. Nothing here is a caller flag.
-      minimal: { context, dependencies: () => {
-        const activated = typeof active === 'function' && active();
-        return { 'local-facts': !journal.readOnly && !journal.view.stop, register: activated, 'identity-keys': identityVerified,
-          clock: Number.isSafeInteger(wallNow()), lease: !journal.readOnly, fence: !journal.readOnly,
-          'replication-peer': activated, 'conversation-binding': Boolean(journal.view.genesis.chat && journal.view.genesis.operator),
-          route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified };
-      } },
+      // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
+      // actually observes (Rule 26). The register generation, the exclusive lease/fence and the P-08
+      // installation policy that settles `replication-peer` for the single-machine shape are not
+      // installed in this preview (N1), and the activation record is not that evidence, so they are
+      // reported missing: the minimal path stays inhibited with preserved input and an owned outage,
+      // and an exact /stop still latches at once. Nothing here is a caller flag.
+      minimal: { context, dependencies: () => ({ 'local-facts': !journal.readOnly && !journal.view.stop, register: false,
+        'identity-keys': identityVerified, clock: Number.isSafeInteger(wallNow()), lease: false, fence: false,
+        'replication-peer': false, 'conversation-binding': Boolean(journal.view.genesis.chat && journal.view.genesis.operator),
+        route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified }) },
       // The operator's phone: a pressed Approve/Decline button is cleared with a short toast.
       acknowledge: (callbackId, text) => {
         physical.invoke({ token: secretRef('telegram-bot-token'), method: 'answerCallbackQuery',
@@ -761,9 +760,9 @@ async function main() {
     // A reached cap is a local report, never the end of reachability: past it the minimal
     // reserve keeps reading and answering the operator (Rule 15).
     const reportCap = () => reportJournalCap(journal, wallNow(), line => process.stderr.write(line));
-    // Rule 15, Eleven §5: ordinary work (model calls, reviews, requested summaries) runs beside the
-    // poll loop and is never awaited by it, so a blocked or failed ordinary worker cannot silence the
-    // minimal path: reading, stop, approvals and limited answers keep their own step every cycle.
+    // Rule 15: ordinary work (model calls, reviews, requested summaries) runs beside the poll loop and
+    // is never awaited by it, so a blocked model call cannot stop reading, stop or approvals. It is the
+    // same process, not Eleven §5's separate worker/storage/transport reserve (a pending seam).
     let drainJob = null, drainError = null;
     const background = run => {
       if (drainJob) return;

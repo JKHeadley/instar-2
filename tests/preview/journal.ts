@@ -96,20 +96,30 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
   { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input', basis: 'Rule 4 emergency stop; governed expiry' },
   { gate: 'model call cap', fails: 'closed', preserves: 'held message; limited answer from the reserve', basis: 'Rule 4 spend floor; Rule 15' },
   { gate: 'ordinary reply and turn caps', fails: 'open', preserves: 'input via the minimal reserve', basis: 'Rule 15' },
-  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'messages wait at Telegram; presses and /stop still read', basis: 'Rule 60 finite capacity; Rule 15' },
+  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'overflow preserved before the cursor passes it; past the reserve, messages wait at Telegram; presses and /stop in the page still read', basis: 'Rule 60 finite capacity; Rule 15' },
   { gate: 'minimal-path admission (Part Eleven verdict)', fails: 'closed', preserves: 'message kept; owned outage recorded; /stop latches without a reply', basis: 'Rule 15; Eleven §5' },
   { gate: 'operator approval request', fails: 'closed', preserves: 'request, challenge and pressed update; raises only on the verified surface', basis: 'Purpose (safeguards); Rules 82, 98' },
   { gate: 'UNKNOWN call or send', fails: 'closed', preserves: 'reservation and intent', basis: 'no duplicate sends floor' },
 ] as const);
 /** The minimal responder's reserve (Rule 15): finite, rolling per hour, and independent of
  * the ordinary trial allowance. Past an ordinary cap it still preserves the operator's
- * messages and gives each one a limited, truthful answer; it makes no model call. */
-export const MINIMAL_RESERVE = Object.freeze({ turns: 12, replies: 6, windowMs: 3_600_000 });
+ * messages and gives them a limited, truthful answer; it makes no model call. The turn reserve
+ * exceeds two full poll pages, so a stop sent behind a page of waiting messages is preserved and
+ * read rather than stranded (overflow is preserved before Telegram is told it was read). Past it,
+ * the cursor holds and an exact /stop in the page still latches; beyond that is the named boundary. */
+export const MINIMAL_RESERVE = Object.freeze({ turns: 240, replies: 6, windowMs: 3_600_000 });
 /** Updates read per poll at every capacity level, so presses behind a waiting message are still seen. */
 export const MINIMAL_POLL_LIMIT = 100;
+/** How long an operator message waits on a busy ordinary worker before the minimal path answers it
+ * (Rule 77's timely answer; Eleven §5). A stop never waits. */
+export const MINIMAL_WORKER_WAIT_MS = 120_000;
 /** The approval challenge's lifetime: a raise approved after it must be requested again. */
 export const APPROVAL_CHALLENGE_MS = 3_600_000;
-export type LimitedReason = 'turns' | 'calls' | 'replies';
+/** The capped allowances a verified raise can clear. */
+export type RaiseReason = 'turns' | 'calls' | 'replies';
+/** Why the minimal responder answered: a capped allowance, or the ordinary worker is unavailable
+ * (busy past the wait bound or blocked); the latter needs no approval and offers no raise. */
+export type LimitedReason = RaiseReason | 'worker';
 /** A prefilled operator request (Rules 79, 82): the operator approves or declines from the phone,
  * never authors. It binds the journal base it was issued against; a changed base makes it stale. */
 export interface ApprovalRequest { id: string; action: 'raise-caps' | 'stop'; base: string;
@@ -177,25 +187,37 @@ export const openApproval = (view: JournalView, action: ApprovalRequest['action'
   // A raise whose challenge has expired can no longer complete, so a fresh request may be offered.
   && (at === undefined || turn.approval.challenge === undefined || at <= turn.approval.challenge.expiresAt));
 /** The prefilled cap raise: the capped allowance grows by its original trial amount. */
-export function proposedLimits(view: JournalView, reason: LimitedReason) {
+export function proposedLimits(view: JournalView, reason: RaiseReason) {
   const { maxCalls, maxReplies, maxTurns } = view.limits, g = view.genesis;
   return reason === 'calls' ? { maxCalls: maxCalls + g.maxCalls, maxReplies, maxTurns }
     : reason === 'replies' ? { maxCalls, maxReplies: maxReplies + g.maxReplies, maxTurns }
       // Reserve turns may already exceed the allowance; the raise must cover every recorded turn.
       : { maxCalls, maxReplies, maxTurns: Math.max(maxTurns + g.maxTurns, view.order.length + 1) };
 }
-export function approvalRequestText(view: JournalView, reason: LimitedReason): string {
-  const next = proposedLimits(view, reason);
-  const [what, from, to, effect] = reason === 'calls' ? ['model call', view.limits.maxCalls, next.maxCalls, 'model calls I may spend']
-    : reason === 'replies' ? ['reply', view.limits.maxReplies, next.maxReplies, 'replies I may send']
-      : ['message', view.limits.maxTurns, next.maxTurns, 'messages I may take'];
-  return `Approve raising the ${what} allowance from ${from} to ${to}? That adds ${to - from} ${effect} in this trial.`;
+type RaiseLimits = { maxCalls: number; maxReplies: number; maxTurns: number };
+const raiseText = (from: RaiseLimits, next: RaiseLimits, reason: RaiseReason) => {
+  const [what, was, to, effect] = reason === 'calls' ? ['model call', from.maxCalls, next.maxCalls, 'model calls I may spend']
+    : reason === 'replies' ? ['reply', from.maxReplies, next.maxReplies, 'replies I may send']
+      : ['message', from.maxTurns, next.maxTurns, 'messages I may take'];
+  return `Approve raising the ${what} allowance from ${was} to ${to}? That adds ${to - was} ${effect} in this trial.`;
+};
+export function approvalRequestText(view: JournalView, reason: RaiseReason): string {
+  return raiseText(view.limits, proposedLimits(view, reason), reason);
+}
+/** The exact subject a raise challenge binds (Eleven §2; the same comparison src/operator/surface.ts
+ * makes before verified-act intake): its request, base, limits and grant, and the rendered request
+ * wording from the current limits. Recomputed at completion, so limits substituted into the
+ * agent-writable journal cannot ride a genuine proof. */
+export function raiseSubject(view: JournalView, id: string, base: string, reason: RaiseReason, limits: RaiseLimits) {
+  const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}` as Hash;
+  return { requestDigest: hash(JSON.stringify([id, 'raise-caps', base, limits, view.genesis.grant])),
+    renderingDigest: hash(raiseText(view.limits, limits, reason)) };
 }
 function validApproval(view: JournalView, turnId: string, approval: ApprovalRequest, action: ApprovalRequest['action'], text: string,
   reason?: LimitedReason): boolean {
   return approval.action === action && approval.base === approvalBase(view) && approval.id === approvalId(turnId, action, approval.base)
     && view.stop === null && (action === 'stop' ? approval.limits === undefined && text.includes(STOP_CONFIRM_TEXT)
-    : reason !== undefined && JSON.stringify(approval.limits) === JSON.stringify(proposedLimits(view, reason))
+    : reason !== undefined && reason !== 'worker' && JSON.stringify(approval.limits) === JSON.stringify(proposedLimits(view, reason))
       && text.includes(approvalRequestText(view, reason))
       && (approval.challenge === undefined || approval.challenge.request === approval.id && approval.challenge.base === approval.base
         && approval.challenge.action === 'raise-caps' && approval.challenge.singleUse === true
@@ -203,6 +225,7 @@ function validApproval(view: JournalView, turnId: string, approval: ApprovalRequ
 }
 /** The limited answer's fixed wording: what happened, what it needs, nothing it cannot keep. */
 export function limitedAnswerText(view: JournalView, reason: LimitedReason, count: number): string {
+  if (reason === 'worker') return `PREVIEW — I got your ${count === 1 ? 'message' : `${count} messages`} and saved ${count === 1 ? 'it' : 'them'}, but my ordinary responder is busy or unavailable right now. ${count === 1 ? 'It' : 'They'} will be answered when it recovers; nothing is needed from you.`;
   const what = reason === 'turns' ? `${view.limits.maxTurns} messages` : reason === 'calls'
     ? `${view.limits.maxCalls} model calls` : `${view.limits.maxReplies} replies`;
   return `PREVIEW — I got your ${count === 1 ? 'message' : `${count} messages`} and saved ${count === 1 ? 'it' : 'them'}, but I can't answer yet: this trial's allowance of ${what} is used up. ${count === 1 ? 'It' : 'They'} will be answered once the allowance is raised, which needs your approval.`;
@@ -789,6 +812,9 @@ const reminderTail = (view: JournalView, items: readonly DatedItem[], overflow: 
 export const summaryOverviewLead = 'Also due now, saved in full (ask me and I will send it):';
 /** When not even one summary fits beside the rest, the one message is this overview of all of them. */
 export const summaryOverviewOnlyLead = 'PREVIEW — Summaries you asked for are due now, each saved in full (ask me and I will send it):';
+/** Rule 52: summaries whose overview line does not fit are counted, never sent later. */
+export const summaryOverflowLine = (count: number) =>
+  `And ${count} more summar${count === 1 ? 'y' : 'ies'} due now, saved in full; ask me and I'll list ${count === 1 ? 'it' : 'them'}.`;
 
 /** Windows a requested summary may cover; each is one `requestedPeriod` calendar window. */
 const SUMMARY_PERIOD = /^(?:today|yesterday|this week|last week|this month|last month|past (?:[1-9]|[12]\d|3[01]) days?)$/u;
@@ -1486,7 +1512,7 @@ function project(view: JournalView, row: JournalRecord): void {
       || covered.some(item => !item || !item.accepted || item.intent !== undefined || item.limited !== undefined
         || item.thread !== row.thread || item.requestedSummary !== undefined)
       || row.chat !== view.genesis.chat || row.grant !== view.genesis.grant || view.stop !== null
-      || !['turns', 'calls', 'replies'].includes(row.reason)
+      || !['turns', 'calls', 'replies', 'worker'].includes(row.reason)
       || row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies
       || row.approval !== undefined && (row.approval.action === 'stop' ? !isStopCommand(turn.text) || row.covers.length !== 1
         || !validApproval(view, row.id, row.approval, 'stop', row.text)
@@ -1773,8 +1799,10 @@ function project(view: JournalView, row: JournalRecord): void {
       const group = turn.requestedSummary ? summaryGroup(view, turn) : undefined;
       const items = Array.isArray(row.summaries) ? row.summaries.map(id => view.turns.get(id)) : [];
       if (group === undefined || !items.length || new Set(items).size !== items.length || items.some(item => !item || item === turn
-        || !item.accepted || !item.requestedSummary || item.intent !== undefined || summaryGroup(view, item) !== group
-        || !row.text.includes(requestedSummaryHeader(view, item)))) throw Error('preview journal: grouped summary refused');
+        || !item.accepted || !item.requestedSummary || item.intent !== undefined || summaryGroup(view, item) !== group)
+        // A sibling is named by its header, or counted in the one overflow line (Rule 52).
+        || ((unnamed: number) => unnamed > 0 && !row.text.includes(`\n${summaryOverflowLine(unnamed)}`))(
+          items.filter(item => !row.text.includes(requestedSummaryHeader(view, item!))).length)) throw Error('preview journal: grouped summary refused');
       for (const item of items as Turn[]) { item.intent = row.text; item.intentBody = row.body ?? row.text; item.groupedInto = turn.id;
         delete item.held; delete item.heldSince; view.heldTurns.delete(item); }
       turn.summaryBatch = row.summaries;
@@ -2132,7 +2160,7 @@ export interface PreviewPorts {
 /** Exactly one worker calls drain. A reserved call or prepared send with no
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
-  let working = false;
+  let working = false, workingSince = 0;
   const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
   const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
   let checkingSteps = false;
@@ -2262,6 +2290,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const approval = lead?.approval, challenge = approval?.challenge;
       if (!lead || !approval || !challenge || approval.decision !== undefined || approval.action !== 'raise-caps'
         || (act.decision !== 'approve' && act.decision !== 'decline') || typeof act.proof !== 'string') continue;
+      // The exact subject, before the one-use proof is spent: the challenge the verifier issued must
+      // bind these very limits and wording. A substituted journal row is refused, visibly, and the
+      // genuine proof stays unspent; a fresh request follows.
+      const reason = lead.limited?.reason;
+      const subject = reason === undefined || reason === 'worker' || !approval.limits ? null
+        : raiseSubject(journal.view, approval.id, approval.base, reason, approval.limits);
+      if (!subject || challenge.request !== approval.id || challenge.base !== approval.base
+        || challenge.requestDigest !== subject.requestDigest || challenge.renderingDigest !== subject.renderingDigest) {
+        journal.append({ kind: 'approval-decision', id: lead.id, request: approval.id, decision: act.decision, outcome: 'refused', at: ports.now() });
+        continue;
+      }
       let proof: Parameters<typeof verifiedApproval>[1] | null = null;
       try { consumeResult(surface.verifier.verify(challenge, act.proof, act.decision),
         { Success: value => { proof = value; }, Refused: () => { proof = null; } }); } catch { proof = null; }
@@ -3663,7 +3702,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const drain = () => drainTurns(false);
   const drainTurns = async (due: boolean) => {
     if (working) throw Error('preview journal: second worker refused');
-    working = true;
+    working = true; workingSince = ports.now();
     try {
       completeApprovals();
       if (due) scheduleSummaries();
@@ -3745,6 +3784,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // and releasing a backlog of stale replies at once would itself flood (Rule 52). It stays
         // visible in status and to the mind as an open question; new turns are never review-held.
         if (turn.held) continue;
+        // The minimal path already owns this stop (confirmation sent or latched): never a second one.
+        if (turn.limited && isStopCommand(turn.text)) continue;
         gate();
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStopCommand(turn.text)) {
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: {
@@ -4198,10 +4239,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else {
             // Even this summary and an overview do not fit: send one bounded overview naming every due
             // summary; each full text stays in the journal, retrievable on request.
+            // Even these headers can overflow: those that do not fit are counted in one line, and every
+            // represented sibling is covered by this one message (Rule 52), its full text retained.
             const named = [...ready_];
-            while (named.length && !fitsOne(`${summaryOverviewOnlyLead}\n${headers([turn, ...named])}${minimalTail}`)) named.pop();
-            summaryText = `${summaryOverviewOnlyLead}\n${headers([turn, ...named])}`;
-            batch.push(...named); mentionedKeys = [];
+            const overview = (items: Turn[]) => `${summaryOverviewOnlyLead}\n${headers([turn, ...items])}${
+              items.length < ready_.length ? `\n${summaryOverflowLine(ready_.length - items.length)}` : ''}`;
+            while (named.length && !fitsOne(`${overview(named)}${minimalTail}`)) named.pop();
+            summaryText = overview(named);
+            batch.push(...ready_); mentionedKeys = [];
           }
           reply = summaryText;
           // Reminders: every due one is at least counted; as many as fit are written out in full.
@@ -4262,10 +4307,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The minimal responder (Rule 15): an operator message that an ordinary cap keeps from its
    * answer gets one prompt, limited, truthful reply from the reserve, grouped per conversation.
    * No model call; stop and expiry still refuse; an UNKNOWN send is never repeated. */
-  const limitedReason = (turn: Turn): LimitedReason | null =>
-    !turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedSummary !== undefined
-      || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined ? null
-      : outsideAllowance(journal.view, turn) ? 'turns' : turn.held === 'call cap' ? 'calls' : turn.held === 'reply cap' ? 'replies' : null;
+  const limitedReason = (turn: Turn): LimitedReason | null => {
+    if (!turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedSummary !== undefined
+      || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
+    const capped = outsideAllowance(journal.view, turn) ? 'turns' as const : turn.held === 'call cap' ? 'calls' as const
+      : turn.held === 'reply cap' ? 'replies' as const : null;
+    if (capped || !working || turn.held !== undefined) return capped;
+    // Eleven §5: an unavailable ordinary worker (blocked or busy) leaves the minimal path eligible,
+    // whatever the caps. The brake never waits behind it; other messages wait the bounded interval.
+    return isStopCommand(turn.text) || ports.now() - Math.max(turn.at, workingSince) >= MINIMAL_WORKER_WAIT_MS ? 'worker' : null;
+  };
   /** Part Eleven's own verdict (src/operator/live.ts), never a local substitute: the minimal path speaks
    * only while every required dependency the host observes is admitted. Returns what is missing. */
   const minimalMissing = (): string[] => {
@@ -4288,12 +4339,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return missing;
   };
   /** A raise request exists only with a challenge the independent verifier issued for its exact subject. */
-  const issueRaise = (lead: Turn, reason: LimitedReason): ApprovalRequest | undefined => {
+  const issueRaise = (lead: Turn, reason: RaiseReason): ApprovalRequest | undefined => {
     const surface = ports.approvalSurface, view = journal.view;
     if (!surface) return undefined;
     const base = approvalBase(view), id = approvalId(lead.id, 'raise-caps', base), limits = proposedLimits(view, reason), now = ports.now();
-    const digest = `sha256:${createHash('sha256').update(JSON.stringify([id, 'raise-caps', base, limits, view.genesis.grant])).digest('hex')}` as Hash;
-    const rendering = `sha256:${createHash('sha256').update(approvalRequestText(view, reason)).digest('hex')}` as Hash;
+    const { requestDigest: digest, renderingDigest: rendering } = raiseSubject(view, id, base, reason, limits);
     let challenge: SurfaceChallenge | null = null;
     try {
       consumeResult(surface.verifier.issue({ request: id, requestDigest: digest, renderingDigest: rendering, action: 'raise-caps',
@@ -4343,10 +4393,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       // The limited answer carries the one prefilled request that would clear it (Rules 79, 82).
       const approval: ApprovalRequest | undefined = group.stop ? { id: approvalId(lead.id, 'stop', base), action: 'stop', base }
-        : openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
+        : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
       const text = group.stop ? `PREVIEW — ${STOP_CONFIRM_TEXT}` : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
-        ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}`;
+        && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}`;
       ports.checkOutbound(text);
       const thread = group.thread === undefined ? {} : { thread: group.thread };
       journal.append({ kind: 'limited-intent', id: lead.id, covers: group.turns.map(turn => turn.id), reason: group.reason,
@@ -5033,7 +5083,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // The one due-send point: requested summaries (carrying their due reminders) first, then reminders.
     await drainTurns(true);
     if (working) throw Error('preview journal: second worker refused');
-    working = true;
+    working = true; workingSince = ports.now();
     try {
       gate();
       if (unresolvedReminderMemory()) return;

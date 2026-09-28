@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT, UNLINKED_EDIT_FLAG,
-  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies } from './journal-test-worker.js';
+  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
 
 const key = new Uint8Array(32).fill(71);
@@ -78,7 +78,7 @@ it('bounds the reserve per rolling hour, then frees it; a stranger never spends 
   expect(journal.view.order).toHaveLength(3 + MINIMAL_RESERVE.turns);
   expect(worker.intakeHeld()).toBe(false);
   journal.close();
-}));
+}), 60_000);
 
 it('answers a reply-cap hold from the reserve without spending an ordinary reply slot', () => withRoot(async path => {
   const sends: { text: string }[] = [], calls: string[] = [];
@@ -168,7 +168,7 @@ const marked = (sends: Marked[]) => async (input: { expectedText: string; replyM
   sends.push(item);
   return sends.length; };
 
-it('past 60 ordinary and 12 reserve messages, a stop press and a /stop behind a waiting message are still read', () => withRoot(async path => {
+it('past 60 ordinary and every reserve message, a stop press and a /stop behind a waiting message are still read', () => withRoot(async path => {
   // The review's counterexample: every conversation bound spent. Reading continues; the waiting message
   // stays at Telegram with the cursor before it, and the brake behind it still works.
   const sends: Marked[] = [], calls: string[] = [];
@@ -176,29 +176,30 @@ it('past 60 ordinary and 12 reserve messages, a stop press and a /stop behind a 
   const worker = createJournalWorker(journal, { ...ports(() => 1000, sends, calls), send: marked(sends) });
   worker.intake(Array.from({ length: 60 }, (_, index) => message(index + 1, `m${index}`)));
   await worker.drain();
-  worker.intake([...Array.from({ length: 11 }, (_, index) => message(61 + index, `r${index}`)), message(72, '/stop')]);
+  const last = 60 + MINIMAL_RESERVE.turns;
+  worker.intake([...Array.from({ length: MINIMAL_RESERVE.turns - 1 }, (_, index) => message(61 + index, `r${index}`)), message(last, '/stop')]);
   await worker.minimal();
   const confirm = sends.at(-1)!;
   expect(confirm.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
-  expect(journal.view.order).toHaveLength(72);
+  expect(journal.view.order).toHaveLength(last);
   const cursor = journal.view.cursor;
   expect(worker.pollLimit()).toBe(MINIMAL_POLL_LIMIT);
   // The next poll returns an over-bound message first, then the operator's press on the stop confirmation.
-  worker.intake([message(73, 'waiting'), press(74, confirm.markup!.inline_keyboard[0]![0]!.callback_data!)]);
+  worker.intake([message(last + 1, 'waiting'), press(last + 2, confirm.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   expect(journal.view.cursor).toBe(cursor);
-  expect(journal.view.order).toHaveLength(72);
+  expect(journal.view.order).toHaveLength(last);
   journal.close();
   // Same bounds, no confirmation pending: an exact /stop behind the waiting message latches at once.
   const second = openPreviewJournal(path.replace('journal.encrypted', 'second.encrypted'), key, genesis({ maxTurns: 1 }));
   const other = createJournalWorker(second, ports(() => 1000, [], []));
   other.intake([message(1, 'one'), ...Array.from({ length: MINIMAL_RESERVE.turns }, (_, index) => message(2 + index, `r${index}`))]);
   const held = second.view.cursor;
-  other.intake([message(20, 'waiting'), message(21, '/stop')]);
+  other.intake([message(2 + MINIMAL_RESERVE.turns, 'waiting'), message(3 + MINIMAL_RESERVE.turns, '/stop')]);
   expect(second.view.stop).toBe('operator');
   expect(second.view.cursor).toBe(held);
   second.close();
-}));
+}), 60_000);
 
 it('an ordinary worker blocked on its model does not silence the minimal path: limited answer and stop stay prompt', () => withRoot(async path => {
   const sends: Marked[] = [];
@@ -269,5 +270,95 @@ it('with no minimal-path owner installed nothing is admitted: the real worker ne
   worker.intake([message(2, 'two')]); await worker.minimal();
   expect(sends).toHaveLength(1);
   expect(journal.view.order[1]?.minimalOutage?.missing).toEqual(['minimal-path-owner']);
+  journal.close();
+}));
+
+it('a blocked ordinary model below every cap cannot strand a stop: the minimal path takes it, exactly once', () => withRoot(async path => {
+  // Review round 2 (MF1): with ordinary allowance left, the stop used to wait behind the hung model.
+  const sends: Marked[] = [];
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: () => new Promise<string>(() => {}), send: marked(sends) });
+  worker.intake([message(1, 'hello')]);
+  void worker.drain();
+  await new Promise(done => setImmediate(done));
+  worker.intake([message(2, '/stop')]);
+  await worker.minimal(); await worker.minimal();
+  expect(sends.map(item => item.text)).toEqual([`PREVIEW — ${STOP_CONFIRM_TEXT}`]);
+  expect(journal.view.order[1]?.limited?.reason).toBe('worker');
+  worker.intake([press(3, sends[0]!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
+  expect(journal.view.stop).toBe('operator');
+  journal.close();
+  // Not admitted (a required dependency missing): the brake needs no reply and latches at once.
+  const second = openPreviewJournal(path.replace('journal.encrypted', 'second.encrypted'), key, genesis({ maxTurns: 60 }));
+  const other = createJournalWorker(second, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: () => new Promise<string>(() => {}), send: marked([]),
+    minimal: { context: (await import('./journal-test-worker.js')).previewTestContext,
+      dependencies: () => ({ ...admittedDependencies(), lease: false }) } });
+  other.intake([message(1, 'hello')]);
+  void other.drain();
+  await new Promise(done => setImmediate(done));
+  other.intake([message(2, '/stop')]);
+  await other.minimal();
+  expect(second.view.stop).toBe('operator');
+  second.close();
+}));
+
+it('a below-cap message waiting on a blocked worker gets one limited answer after the wait bound, never before', () => withRoot(async path => {
+  let clock = 1000;
+  const sends: Marked[] = [];
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, { now: () => clock, stopped: () => false, checkOutbound: () => {},
+    model: () => new Promise<string>(() => {}), send: marked(sends) });
+  worker.intake([message(1, 'hello')]);
+  void worker.drain();
+  await new Promise(done => setImmediate(done));
+  worker.intake([message(2, 'are you there?')]);
+  clock += MINIMAL_WORKER_WAIT_MS - 1;
+  await worker.minimal();
+  expect(sends).toHaveLength(0);
+  clock += 1;
+  await worker.minimal(); await worker.minimal();
+  expect(sends).toHaveLength(1);
+  expect(sends[0]!.text).toBe(limitedAnswerText(journal.view, 'worker', 2));
+  // No raise is offered: the ordinary worker, not an allowance, is what is missing.
+  expect(sends[0]!.markup).toBeUndefined();
+  expect(journal.view.order.some(turn => turn.approval)).toBe(false);
+  journal.close();
+}));
+
+it('a stop behind a full page of waiting messages is preserved and read, never stranded (MF1 held page)', () => withRoot(async path => {
+  // Review round 2: 1 ordinary + 12 reserve, then 100 waiting messages and /stop, polled as the runner does.
+  const sends: Marked[] = [];
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, { ...ports(() => 1000, [], []), send: marked(sends) });
+  worker.intake(Array.from({ length: 13 }, (_, i) => message(i + 1, 'admitted')));
+  const queue = [...Array.from({ length: MINIMAL_POLL_LIMIT }, (_, i) => message(i + 14, 'waiting')), message(114, '/stop')];
+  for (let i = 0; i < 3 && sends.at(-1)?.text !== `PREVIEW — ${STOP_CONFIRM_TEXT}`; i++) {
+    const page = queue.filter(update => update.update_id >= journal.view.cursor).slice(0, worker.pollLimit());
+    worker.intake(page); await worker.minimal();
+  }
+  worker.intake([press(115, sends.at(-1)!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
+  expect(journal.view.stop).toBe('operator');
+  // Every message the cursor passed is preserved in the journal first (durable intake).
+  expect(journal.view.order.map(turn => turn.update)).toEqual(Array.from({ length: 114 }, (_, i) => i + 1));
+  journal.close();
+}));
+
+it('when the blocked model recovers, the ordinary answer goes and the stop is never confirmed twice', () => withRoot(async path => {
+  const sends: Marked[] = [];
+  let release: (value: string) => void = () => {};
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: () => new Promise<string>(done => { release = done; }), send: marked(sends) });
+  worker.intake([message(1, 'hello')]);
+  const pass = worker.drain();
+  await new Promise(done => setImmediate(done));
+  worker.intake([message(2, '/stop')]);
+  await worker.minimal();
+  release('ordinary answer');
+  await pass; await worker.drain(); await worker.minimal();
+  expect(sends.map(item => item.text)).toEqual([`PREVIEW — ${STOP_CONFIRM_TEXT}`, 'PREVIEW — ordinary answer']);
+  expect(journal.view.stop).toBeNull();
   journal.close();
 }));

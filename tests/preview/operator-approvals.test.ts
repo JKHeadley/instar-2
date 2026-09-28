@@ -4,7 +4,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, approvalRequestText, limitedAnswerText, RAISE_LINK_HINT,
-  RAISE_NEEDS_SURFACE } from './journal-test-worker.js';
+  RAISE_NEEDS_SURFACE, proposedLimits } from './journal-test-worker.js';
 import type { VerifiedActSubmission } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
 import { refusal, success } from '../../src/types/internal.js';
@@ -240,4 +240,38 @@ it('raises the turn allowance to cover every reserve turn when the operator appr
   await worker.drain();
   expect(calls).toHaveLength(5);
   journal.close();
+}));
+
+it('a genuine proof cannot authorize different limits substituted into agent-owned journal data', () => withRoot(async path => {
+  // Review round 2 (MF2): the challenge binds call allowance 1 -> 2; a valid turn proposal 8 -> 16 is
+  // substituted at the agent-writable journal boundary, keeping the genuine challenge, id and base.
+  const { journal, worker, surface } = harness(path);
+  const append = journal.append;
+  journal.append = row => {
+    if (row.kind === 'limited-intent' && row.approval?.action === 'raise-caps')
+      row = { ...row, reason: 'turns', text: `${limitedAnswerText(journal.view, 'turns', 1)}\n\n${approvalRequestText(journal.view, 'turns')}`,
+        approval: { ...row.approval, limits: proposedLimits(journal.view, 'turns') } };
+    append(row);
+  };
+  worker.intake([message(1, 'one'), message(2, 'two')]); await worker.drain();
+  const challenge = challengeOf(journal)!;
+  expect(surface.issued.get(challenge.id)).toEqual(challenge);
+  journal.close();
+  const reopened = openPreviewJournal(path, key);
+  const resumed = createJournalWorker(reopened, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async () => 'answer', send: async () => 1, approvalSurface: surface.port });
+  surface.operatorActs(challenge.id, 'approve');
+  await resumed.minimal();
+  // Refused, visibly, before the one-use proof is spent; nothing is raised.
+  expect([reopened.view.limits.maxCalls, reopened.view.limits.maxTurns]).toEqual([1, 8]);
+  expect(reopened.view.order.find(turn => turn.approval)?.approval?.decision).toBe('refused');
+  expect(reopened.view.capAuthority).toBeNull();
+  reopened.close();
+  // The unsubstituted neighbor with the same proof path raises exactly the verified proposal.
+  const clean = harness(path.replace('journal.encrypted', 'clean.encrypted'));
+  clean.worker.intake([message(1, 'one'), message(2, 'two')]); await clean.worker.drain();
+  clean.surface.operatorActs(challengeOf(clean.journal)!.id, 'approve');
+  await clean.worker.minimal();
+  expect([clean.journal.view.limits.maxCalls, clean.journal.view.limits.maxTurns]).toEqual([2, 8]);
+  clean.journal.close();
 }));
