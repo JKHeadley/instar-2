@@ -93,10 +93,10 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
   { gate: 'pre-send reply review (Jev and full-context)', fails: 'open', preserves: 'objections on the send record', basis: 'Rules 77, 86, 95' },
   { gate: 'link shape before send', fails: 'open', preserves: 'signal on the send record', basis: 'Rules 86, 106' },
   { gate: 'credential shape before send', fails: 'closed', preserves: 'candidate and message; honest notice sent', basis: 'Rule 4 secret floor (shape, not proof of liveness)' },
-  { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input', basis: 'Rule 4 emergency stop; governed expiry' },
+  { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input; a stop act on the independent surface stays there until consumed', basis: 'Rule 4 emergency stop; governed expiry; Eleven §4' },
   { gate: 'model call cap', fails: 'closed', preserves: 'held message; limited answer from the reserve', basis: 'Rule 4 spend floor; Rule 15' },
   { gate: 'ordinary reply and turn caps', fails: 'open', preserves: 'input via the minimal reserve', basis: 'Rule 15' },
-  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'overflow preserved before the cursor passes it; past the reserve, messages wait at Telegram; presses and /stop in the page still read', basis: 'Rule 60 finite capacity; Rule 15' },
+  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'overflow preserved before the cursor passes it; past the reserve, messages wait at Telegram; presses and /stop in the page still read; a stop beyond the page arrives through the independent stop page', basis: 'Rule 60 finite capacity; Rule 15' },
   { gate: 'minimal-path admission (Part Eleven verdict)', fails: 'closed', preserves: 'message kept; owned outage recorded; /stop latches without a reply', basis: 'Rule 15; Eleven §5' },
   { gate: 'operator approval request', fails: 'closed', preserves: 'request, challenge and pressed update; raises only on the verified surface', basis: 'Purpose (safeguards); Rules 82, 98' },
   { gate: 'UNKNOWN call or send', fails: 'closed', preserves: 'reservation and intent', basis: 'no duplicate sends floor' },
@@ -106,7 +106,8 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
  * messages and gives them a limited, truthful answer; it makes no model call. The turn reserve
  * exceeds two full poll pages, so a stop sent behind a page of waiting messages is preserved and
  * read rather than stranded (overflow is preserved before Telegram is told it was read). Past it,
- * the cursor holds and an exact /stop in the page still latches; beyond that is the named boundary. */
+ * the cursor holds and an exact /stop in the page still latches; a stop beyond the page reaches the latch
+ * through the independent surface's standing stop challenge, which needs no conversation queue. */
 export const MINIMAL_RESERVE = Object.freeze({ turns: 240, replies: 6, windowMs: 3_600_000 });
 /** Updates read per poll at every capacity level, so presses behind a waiting message are still seen. */
 export const MINIMAL_POLL_LIMIT = 100;
@@ -167,6 +168,7 @@ export const raiseMarkup = (id: string, link: string | null) => ({ inline_keyboa
   ...(link === null ? [] : [{ text: 'Review and approve', url: link }]), { text: 'Decline', callback_data: `dc:${id}` }]] });
 export const RAISE_LINK_HINT = 'Open the approval page below to approve it, or tap Decline.';
 export const RAISE_SURFACE_HINT = 'Approve it on your approval page, or tap Decline.';
+export const STOP_PAGE_BUTTON = 'Stop page';
 export const RAISE_NEEDS_SURFACE = 'A raise is approved on your approval page, not here. Nothing changed.';
 /** The preview's register generation, named in every challenge it asks the verifier to issue. */
 export const PREVIEW_REGISTER_GENERATION = Object.freeze({ owner: 'part-three', name: 'RegisterGeneration',
@@ -212,6 +214,29 @@ export function raiseSubject(view: JournalView, id: string, base: string, reason
   const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}` as Hash;
   return { requestDigest: hash(JSON.stringify([id, 'raise-caps', base, limits, view.genesis.grant])),
     renderingDigest: hash(raiseText(view.limits, limits, reason)) };
+}
+/** The emergency stop's exact subject on the independent surface: the tuple src/operator/surface.ts's
+ * `stopChallenge` binds (action, audience, the operator requesting it for themself), over this trial's
+ * genesis and grant only. No limit or base the agent can move enters it, and it carries no authority. */
+export const STOP_CHALLENGE_MS = 86_400_000;
+export function stopSubject(view: JournalView) {
+  const digest = `sha256:${createHash('sha256').update(JSON.stringify(['emergency-stop', genesisHash(view.genesis),
+    view.genesis.grant])).digest('hex')}` as Hash;
+  return { request: `stop:${view.genesis.grant}`, digest };
+}
+export function validStopChallenge(view: JournalView, challenge: SurfaceChallenge | undefined): boolean {
+  const { request, digest } = stopSubject(view), operator = approvalOperator(view);
+  return challenge !== undefined && typeof challenge.id === 'string' && challenge.id.length > 0 && challenge.request === request
+    && challenge.requestDigest === digest && challenge.renderingDigest === digest && challenge.artifact === digest
+    && challenge.action === 'emergency-stop' && challenge.audience === 'independent-emergency-stop'
+    && challenge.operator === operator && challenge.requestedBy === operator && challenge.singleUse === true
+    && challenge.base === view.genesis.grant && Number.isSafeInteger(challenge.expiresAt);
+}
+/** The receipt a surface stop consumes: the verifier's proof for exactly this challenge and operator, carrying no act. */
+export function verifiedStop(challenge: SurfaceChallenge, proof: VerifiedSurfaceProof): VerifiedApproval | null {
+  if (proof?.challenge !== challenge.id || proof.principal?.id !== challenge.operator || proof.act !== null
+    || proof.provenance?.class !== 'verified' || typeof proof.provenance.record?.hash !== 'string') return null;
+  return { challenge: challenge.id, principal: proof.principal.id, receipt: proof.provenance.record.hash };
 }
 function validApproval(view: JournalView, turnId: string, approval: ApprovalRequest, action: ApprovalRequest['action'], text: string,
   reason?: LimitedReason): boolean {
@@ -369,7 +394,11 @@ export type JournalRecord =
   | { kind: 'hold'; id: string; reason: string; at: number }
   | { kind: 'stop'; reason: string; at: number;
     /** An exact /stop the minimal path could not confirm by message latches at once; its update is kept. */
-    update?: number; raw?: string }
+    update?: number; raw?: string;
+    /** A stop the operator gave on the independent surface carries that verifier's receipt instead. */
+    verified?: VerifiedApproval }
+  /** The standing emergency-stop challenge the independent verifier issued for this trial (Rules 4, 15). */
+  | { kind: 'stop-challenge'; challenge: SurfaceChallenge; at: number }
   | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }
   | { kind: 'expiry'; genesisHash: string; expires: number; activation: string; authority: string; at: number }
   | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; level?: 'near'; at: number }
@@ -432,6 +461,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   clockFloor: number;
   /** Derived in-memory index; snapshots rebuild it from the recorded turns. */
   turns: Map<string, Turn>; order: Turn[]; heldTurns: Set<Turn>; calls: number; replies: number; stop: string | null;
+  /** Current emergency-stop challenges on the independent surface (the newest few, unexpired when issued). */
+  stopChallenges: SurfaceChallenge[];
   tokenTotals: TokenTotals; tokenCalls: TokenReservation[]; tokenCurrent: Map<string, number>;
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent' | 'held-notice-intent';
     at: number; id?: string; through?: number; reason?: string }[];
@@ -658,7 +689,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryRequired: new Set(saved.summaryRequired ?? []), summaryCandidates: new Map(saved.summaryCandidates ?? []),
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryFaithfulness: new Map(saved.summaryFaithfulness ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
     callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []), mentionedDates: new Set(saved.mentionedDates ?? []), reminders: new Map(saved.reminders ?? []), reminderGrant: saved.reminderGrant ?? null, reminderCancels: saved.reminderCancels ?? [],
-    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [] };
+    summaryGrants: saved.summaryGrants ?? [], summaryCancels: saved.summaryCancels ?? [], stopChallenges: saved.stopChallenges ?? [] };
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -1270,7 +1301,16 @@ function project(view: JournalView, row: JournalRecord): void {
     return;
 
   }
-  if (row.kind === 'stop') { view.stop ??= row.reason; return; }
+  if (row.kind === 'stop-challenge') {
+    if (view.stop !== null || !validStopChallenge(view, row.challenge) || !(row.challenge.expiresAt > row.at)
+      || view.stopChallenges.some(item => item.id === row.challenge.id)) throw Error('preview journal: stop challenge refused');
+    view.stopChallenges = [...view.stopChallenges.filter(item => item.expiresAt > row.at), { ...row.challenge }].slice(-8); return;
+  }
+  if (row.kind === 'stop') {
+    if (row.verified !== undefined && !view.stopChallenges.some(item => item.id === row.verified!.challenge
+      && item.operator === row.verified!.principal)) throw Error('preview journal: verified stop refused');
+    view.stop ??= row.reason; return;
+  }
   if (row.kind === 'legacy-call') {
     // The old single-answer preview had no summary or reply-check model route.
     reserveTokens(view, `legacy:${String(view.calls)}`, 'answer', view.limits.maxBytes, subscriptionOutputMaximum);
@@ -1873,7 +1913,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1953,7 +1993,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -2160,7 +2200,7 @@ export interface PreviewPorts {
 /** Exactly one worker calls drain. A reserved call or prepared send with no
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
-  let working = false, workingSince = 0;
+  let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
   const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
   const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
   let checkingSteps = false;
@@ -2284,6 +2324,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!surface || journal.view.stop !== null) return;
     let acts: readonly VerifiedActSubmission[];
     try { acts = surface.acts(); } catch { return; }
+    // The emergency stop given on the independent surface (Rules 4, 15; Eleven §4): it reaches the latch
+    // without the conversation queue, so a full held page of waiting messages cannot hide the brake. The
+    // exact stop subject is recomputed and the verifier's one-use proof must carry no authority act.
+    for (const act of acts) {
+      const challenge = typeof act?.challenge === 'string'
+        ? journal.view.stopChallenges.find(item => item.id === act.challenge) : undefined;
+      if (!challenge || act.decision !== 'approve' || typeof act.proof !== 'string'
+        || !validStopChallenge(journal.view, challenge) || ports.now() > challenge.expiresAt) continue;
+      let proof: VerifiedSurfaceProof | null = null;
+      try { consumeResult(surface.verifier.verify(challenge, act.proof, 'approve'),
+        { Success: value => { proof = value; }, Refused: () => { proof = null; } }); } catch { proof = null; }
+      const receipt = proof === null ? null : verifiedStop(challenge, proof);
+      if (receipt === null) continue;
+      journal.append({ kind: 'stop', reason: 'operator', verified: receipt, at: ports.now() }); return;
+    }
     for (const act of acts.slice(0, MINIMAL_POLL_LIMIT)) {
       const lead = typeof act?.challenge === 'string'
         ? journal.view.order.find(turn => turn.approval?.challenge?.id === act.challenge) : undefined;
@@ -3700,7 +3755,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * dispatched only at the due-send point `sendReminders()`, after a successful poll returned nothing
    * new, so a queued withdrawal is always read and settled first (Rules 57, 93). */
   const drain = () => drainTurns(false);
+  /** Eleven §5's ordinary-worker cut: a failed ordinary pass leaves the minimal path answering at once
+   * (reason `worker`) until an ordinary pass completes again. */
   const drainTurns = async (due: boolean) => {
+    if (working) throw Error('preview journal: second worker refused');
+    try { await drainTurnsOnce(due); ordinaryFailedSince = null; }
+    catch (error) { if (journal.view.stop === null) ordinaryFailedSince ??= ports.now(); throw error; }
+  };
+  const drainTurnsOnce = async (due: boolean) => {
     if (working) throw Error('preview journal: second worker refused');
     working = true; workingSince = ports.now();
     try {
@@ -4312,7 +4374,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
     const capped = outsideAllowance(journal.view, turn) ? 'turns' as const : turn.held === 'call cap' ? 'calls' as const
       : turn.held === 'reply cap' ? 'replies' as const : null;
-    if (capped || !working || turn.held !== undefined) return capped;
+    if (capped || turn.held !== undefined) return capped;
+    if (ordinaryFailedSince !== null) return 'worker';
+    if (!working) return null;
     // Eleven §5: an unavailable ordinary worker (blocked or busy) leaves the minimal path eligible,
     // whatever the caps. The brake never waits behind it; other messages wait the bounded interval.
     return isStopCommand(turn.text) || ports.now() - Math.max(turn.at, workingSince) >= MINIMAL_WORKER_WAIT_MS ? 'worker' : null;
@@ -4358,6 +4422,36 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || issued.base !== base || issued.singleUse !== true || !(issued.expiresAt > now)) return undefined;
     return { id, action: 'raise-caps', base, limits, challenge: issued };
   };
+  /** One standing emergency-stop challenge on the independent surface, reissued before it lapses. A refused
+   * issue is retried after a pause (Rule 55); the conversation path and its /stop are unaffected. */
+  let stopIssueRetryAt = 0;
+  const ensureStopChallenge = () => {
+    const surface = ports.approvalSurface, view = journal.view, now = ports.now();
+    if (!surface || view.stop !== null || journal.readOnly || now < stopIssueRetryAt
+      || view.stopChallenges.some(item => item.expiresAt - now > STOP_CHALLENGE_MS / 4)) return;
+    const { request, digest } = stopSubject(view), operator = approvalOperator(view);
+    let challenge: SurfaceChallenge | null = null;
+    try {
+      consumeResult(surface.verifier.issue({ request, requestDigest: digest, renderingDigest: digest, action: 'emergency-stop',
+        scope: { type: 'Scope', schemaVersion: 1, kind: 'conversation', members: [view.genesis.chat] } as unknown as Scope,
+        audience: 'independent-emergency-stop', operator, requestedBy: operator, artifact: digest, base: view.genesis.grant,
+        issuedAt: now, expiresAt: Math.min(view.expires, now + STOP_CHALLENGE_MS), singleUse: true,
+        surface: 'preview-approval-surface', generation: PREVIEW_REGISTER_GENERATION }),
+      { Success: value => { challenge = value; }, Refused: () => { challenge = null; } });
+    } catch { challenge = null; }
+    const issued = challenge as SurfaceChallenge | null;
+    if (issued === null || !validStopChallenge(view, issued) || !(issued.expiresAt > now)) { stopIssueRetryAt = now + 60_000; return; }
+    journal.append({ kind: 'stop-challenge', challenge: issued, at: now });
+  };
+  /** The operator's one-tap stop page on the independent surface, when one is installed and current. */
+  const stopPage = (): string | null => {
+    const current = journal.view.stopChallenges.filter(item => item.expiresAt > ports.now()).at(-1);
+    return current ? approvalLink(current) : null;
+  };
+  const withStopPage = (markup: { inline_keyboard: unknown[][] } | undefined) => {
+    const link = stopPage();
+    return link === null ? markup : { inline_keyboard: [...(markup?.inline_keyboard ?? []), [{ text: STOP_PAGE_BUTTON, url: link }]] };
+  };
   let limitedRunning = false;
   const answerLimited = async () => {
     // One pass at a time: the runner calls it between polls while an ordinary drain may be awaiting a model.
@@ -4402,7 +4496,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       journal.append({ kind: 'limited-intent', id: lead.id, covers: group.turns.map(turn => turn.id), reason: group.reason,
         text, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, ...(approval ? { approval } : {}), at: ports.now() });
       gate();
-      const markup = approval === undefined ? undefined : approval.action === 'stop' ? approvalMarkup(approval.id) : raiseMarkup(approval.id, link);
+      const markup = withStopPage(approval === undefined ? undefined : approval.action === 'stop' ? approvalMarkup(approval.id) : raiseMarkup(approval.id, link));
       try { const message = await push('limited-answer', { text, expectedText: text, chat: journal.view.genesis.chat, ...thread,
         update: lead.update, ...(markup ? { replyMarkup: markup } : {}) });
         if (message !== null && Number.isSafeInteger(message) && message > 0)
@@ -5142,8 +5236,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
-  const minimal = async () => { gate(); completeApprovals(); await answerLimited(); };
-  return { intake, drain, minimal, intakeHeld: () => intakeHeld, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, probe,
+  const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await answerLimited(); };
+  return { intake, drain, minimal, stopPage, intakeHeld: () => intakeHeld, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

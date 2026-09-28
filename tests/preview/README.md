@@ -2823,9 +2823,17 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   the ordinary allowance; a stranger's update never spends it). The turn reserve exceeds two full
   poll pages, so a stop sent behind a page of waiting messages is preserved and read: the cursor only
   ever passes messages already in the journal. Past the reserve the next message waits at Telegram
-  with the cursor before it, and presses and an exact `/stop` in the same page are still read; a stop
-  behind more than that is the named boundary (the host stop file, or Part Nine's independent
-  surface once installed). The minimal path also takes over from an unavailable ordinary worker
+  with the cursor before it, and presses and an exact `/stop` in the same page are still read. A
+  stop behind more than that cannot come through the conversation queue without skipping unpreserved
+  messages, so it comes through the independent approval surface instead: with that surface
+  installed, the minimal step keeps one standing emergency-stop challenge on it (`stop-challenge`,
+  reissued before it lapses; the exact subject `stopSubject` binds the trial's genesis and grant, the
+  audience `independent-emergency-stop`, and the operator requesting it for themself, as
+  `src/operator/surface.ts` does). Every limited answer carries a **Stop page** button to it. The
+  operator's tap there is verified by that surface's own verifier (a one-use proof with no authority
+  act) and latches the stop at the next minimal step, before any poll or ordinary pass. The surface
+  keeps the act in its own storage and reaches the operator over its own transport, so a full
+  conversation queue, a lost ordinary worker or a restart cannot hide the brake. The minimal path also takes over from an unavailable ordinary worker
   whatever the caps: a `/stop` never waits behind a busy or blocked worker, and another message
   waiting on it longer than `MINIMAL_WORKER_WAIT_MS` (2 minutes) gets a limited answer that asks
   for nothing (reason `worker`), and its ordinary answer still follows once the worker recovers.
@@ -2839,9 +2847,15 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   the live runner limited answers are **inhibited**: each message stays preserved, an owned outage
   names the missing dependencies (`minimal-outage`, `status.minimalReserve.outages`), and an exact
   `/stop` latches at once, since the brake needs no reply. The admitted behavior is proven offline
-  with an installed owner. Ordinary work runs beside the poll loop in the same process and is never
-  awaited by it. That isolates the poll loop from a blocked model call, but it is not the separate
-  worker, storage and transport reserve Eleven §5 requires, which remains an explicit pending seam.
+  with an installed owner. Ordinary work runs beside the poll loop and is never awaited by it. A
+  failed ordinary pass no longer ends the run: the minimal path answers at once (reason `worker`)
+  and the ordinary pass is retried with backoff; eight consecutive failures open the breaker and end
+  the run for the host supervisor. The live runner installs **no** independent surface: Part Nine's
+  verifier (for example `scripts/fixed-installation-verifier-clock-observer.mjs`, which runs under
+  the operator's own OS identity with the operator's own signing factor) is an operator installation
+  this preview cannot perform for itself. Until it is installed a stop behind a full held page is
+  honestly unreachable by chat, and the host `stop` command remains a local brake only; that is
+  not claimed as phone-complete.
 - **Operator channel (Rule 14).** A verified operator's photo, voice note or caption, and an edit
   of a message this journal never saw, reach the mind with a plain flag instead of being dropped.
   Service messages and foreign senders take no turn; their raw updates stay preserved.

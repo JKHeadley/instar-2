@@ -761,12 +761,18 @@ async function main() {
     // reserve keeps reading and answering the operator (Rule 15).
     const reportCap = () => reportJournalCap(journal, wallNow(), line => process.stderr.write(line));
     // Rule 15: ordinary work (model calls, reviews, requested summaries) runs beside the poll loop and
-    // is never awaited by it, so a blocked model call cannot stop reading, stop or approvals. It is the
-    // same process, not Eleven §5's separate worker/storage/transport reserve (a pending seam).
-    let drainJob = null, drainError = null;
+    // is never awaited by it, so a blocked model call cannot stop reading, stop or approvals. A failed
+    // ordinary pass no longer ends the process: the minimal path keeps reading and answering (reason
+    // `worker`) while the ordinary pass is retried with backoff; eight consecutive failures open the
+    // breaker and end the run for the host supervisor (Rules 15, 55; Eleven §5's ordinary-worker cut).
+    let drainJob = null, drainError = null, drainFailures = 0, drainRetryAt = 0;
     const background = run => {
-      if (drainJob) return;
-      drainJob = run().catch(error => { drainError ??= error; }).then(summarizeLater).finally(() => { drainJob = null; });
+      if (drainJob || clock.elapsed() < drainRetryAt) return;
+      drainJob = run().then(() => { drainFailures = 0; }, error => {
+        drainFailures++;
+        drainRetryAt = clock.elapsed() + Math.min(300_000, 1000 * 2 ** Math.min(drainFailures - 1, 9));
+        if (drainFailures >= 8) drainError ??= error;
+      }).then(summarizeLater).finally(() => { drainJob = null; });
     };
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
@@ -785,7 +791,10 @@ async function main() {
         }
       }
       if (drainError) throw drainError;
-      worker.gate(); await worker.minimal(); background(() => worker.drain()); worker.gate();
+      worker.gate(); await worker.minimal();
+      // A stop given on the independent surface latches here, before any poll or ordinary pass.
+      if (journal.view.stop) break;
+      background(() => worker.drain()); worker.gate();
       reportCap();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;

@@ -1,14 +1,10 @@
 import { expect, it } from 'vitest';
-import { createHmac, randomBytes } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, approvalRequestText, limitedAnswerText, RAISE_LINK_HINT,
+import { createJournalWorker, independentSurface, openPreviewJournal, raiseJournalCaps, approvalRequestText, limitedAnswerText, RAISE_LINK_HINT,
   RAISE_NEEDS_SURFACE, proposedLimits } from './journal-test-worker.js';
-import type { VerifiedActSubmission } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
-import { refusal, success } from '../../src/types/internal.js';
-import type { IndependentSurfaceVerifierPort, SurfaceChallenge } from '../../src/operator/contracts.js';
 
 // Rules 79/82/98 and the Purpose's "the agent never administers its own safeguards": a cap raise
 // completes only with the independently administered verifier's one-use proof for the exact current
@@ -23,32 +19,6 @@ const press = (id: number, data: string, from = 7654321) => ({ update_id: id,
   callback_query: { id: `cb-${id}`, from: { id: from }, data, message: { message_id: 900, chat: { id: 7654321, type: 'private' } } } });
 type Button = { text: string; callback_data?: string; url?: string };
 type Sent = { text: string; markup?: { inline_keyboard: Button[][] }; kind?: string; disposition?: string };
-
-/** A stand-in for Part Nine's independently administered surface: its signing key never reaches the
- * worker, its challenges are one-use and expire, and only the operator's act on it yields a proof. */
-function independentSurface(clock: () => number) {
-  const secret = randomBytes(32), issued = new Map<string, SurfaceChallenge>(), used = new Set<string>();
-  const acts: VerifiedActSubmission[] = [];
-  let ordinal = 0;
-  const sign = (challenge: string, decision: string) => createHmac('sha256', secret).update(`${challenge}:${decision}`).digest('hex');
-  const verifier: IndependentSurfaceVerifierPort = { owner: 'part-nine', administration: 'independent',
-    issue(subject) { ordinal++; const challenge = { id: `challenge:${ordinal}`, ...subject } as SurfaceChallenge;
-      issued.set(challenge.id, challenge); return success(challenge); },
-    verify(challenge, proof, decision) {
-      const known = issued.get(challenge.id);
-      if (!known || JSON.stringify(known) !== JSON.stringify(challenge) || used.has(challenge.id)
-        || clock() > challenge.expiresAt || proof !== sign(challenge.id, decision)) return refusal('surface: proof refused', 'surface');
-      used.add(challenge.id);
-      return success({ challenge: challenge.id, principal: { id: challenge.operator },
-        provenance: { class: 'verified', record: { reference: `surface:${challenge.id}`, hash: `sha256:${sign(challenge.id, 'receipt')}` } },
-        act: decision === 'approve' ? { type: 'Authorization' } : null, capture: {} } as never);
-    } };
-  return { issued, acts, sign,
-    /** The operator acting on the independent page (never through the agent's chat). */
-    operatorActs: (challenge: string, decision: 'approve' | 'decline') => acts.push({ challenge, proof: sign(challenge, decision), decision }),
-    port: { verifier, link: (challenge: SurfaceChallenge) => `https://approve.example.org/c/${challenge.id.replace(':', '-')}`,
-      acts: () => [...acts] } };
-}
 
 const harness = (path: string, options: { limits?: object; surface?: boolean; boundary?: (stage: string) => void } = {}) => {
   const sent: Sent[] = [], toasts: string[] = [], calls: string[] = [];

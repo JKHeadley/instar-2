@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT, UNLINKED_EDIT_FLAG,
-  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS } from './journal-test-worker.js';
+  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS,
+  independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
 
 const key = new Uint8Array(32).fill(71);
@@ -161,7 +162,7 @@ it('exposes no conversation-creating method at the one Telegram boundary (Rule 5
 
 const press = (id: number, data: string) => ({ update_id: id,
   callback_query: { id: `cb-${id}`, from: { id: 7654321 }, data, message: { message_id: 900, chat: { id: 7654321, type: 'private' } } } });
-type Marked = { text: string; markup?: { inline_keyboard: { callback_data?: string }[][] } };
+type Marked = { text: string; markup?: { inline_keyboard: { text?: string; callback_data?: string; url?: string }[][] } };
 const marked = (sends: Marked[]) => async (input: { expectedText: string; replyMarkup?: unknown }) => {
   const item: Marked = { text: input.expectedText };
   if (input.replyMarkup) item.markup = input.replyMarkup as NonNullable<Marked['markup']>;
@@ -360,5 +361,105 @@ it('when the blocked model recovers, the ordinary answer goes and the stop is ne
   await pass; await worker.drain(); await worker.minimal();
   expect(sends.map(item => item.text)).toEqual([`PREVIEW — ${STOP_CONFIRM_TEXT}`, 'PREVIEW — ordinary answer']);
   expect(journal.view.stop).toBeNull();
+  journal.close();
+}));
+
+it('at the current reserve bound a /stop beyond the held page stays out of Telegram\'s reach; the independent stop page latches it', () => withRoot(async path => {
+  // Review round 3 (MF1): 1 ordinary + every reserve message, then 100 waiting messages and /stop, polled
+  // exactly as the runner does. The conversation queue cannot advance past unpreserved input, so the brake
+  // arrives through the independent surface (its own verifier, storage and transport), not the queue.
+  let clock = 1000;
+  const sends: Marked[] = [];
+  const surface = independentSurface(() => clock);
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, { ...ports(() => clock, [], []), send: marked(sends), approvalSurface: surface.port });
+  worker.intake(Array.from({ length: 1 + MINIMAL_RESERVE.turns }, (_, i) => message(i + 1, 'admitted')));
+  await worker.minimal();
+  // The standing stop challenge binds the exact stop subject; the limited answer carries its one-tap page.
+  const [stop] = journal.view.stopChallenges;
+  expect(stop?.audience).toBe('independent-emergency-stop');
+  expect(stop?.requestedBy).toBe(stop?.operator);
+  expect(stop?.expiresAt).toBe(clock + STOP_CHALLENGE_MS);
+  const page = sends.at(-1)!.markup!.inline_keyboard.at(-1)![0]!;
+  expect(page).toEqual({ text: STOP_PAGE_BUTTON, url: `https://approve.example.org/c/${stop!.id.replace(':', '-')}` });
+  expect(worker.stopPage()).toBe(page.url);
+  const first = 2 + MINIMAL_RESERVE.turns, sent = sends.length;
+  const queue = [...Array.from({ length: MINIMAL_POLL_LIMIT }, (_, i) => message(first + i, 'waiting')),
+    message(first + MINIMAL_POLL_LIMIT, '/stop')];
+  const cursors: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const polled = queue.filter(update => update.update_id >= journal.view.cursor).slice(0, worker.pollLimit());
+    worker.intake(polled); await worker.minimal(); cursors.push(journal.view.cursor);
+  }
+  // The named Telegram boundary is unchanged and honest: the cursor holds, nothing unpreserved is skipped.
+  expect(cursors).toEqual([first, first, first]);
+  expect(journal.view.stop).toBeNull();
+  // Wrong decisions and forged proofs decide nothing (Rule 98); the one-use proof stays unspent.
+  surface.acts.push({ challenge: stop!.id, proof: surface.sign(stop!.id, 'decline'), decision: 'decline' });
+  surface.acts.push({ challenge: stop!.id, proof: 'forged', decision: 'approve' });
+  await worker.minimal();
+  expect(journal.view.stop).toBeNull();
+  // The operator taps Stop on the independent page: the next minimal step latches it, before any poll.
+  surface.operatorActs(stop!.id, 'approve');
+  await worker.minimal();
+  expect(journal.view.stop).toBe('operator');
+  expect(sends).toHaveLength(sent);
+  expect(journal.view.order).toHaveLength(1 + MINIMAL_RESERVE.turns);
+  expect(() => worker.gate()).toThrow('preview stopped');
+  journal.close();
+  const replay = openPreviewJournal(path, key);
+  expect(replay.view.stop).toBe('operator');
+  expect(replay.view.stopChallenges.map(item => item.id)).toEqual([stop!.id]);
+  replay.close();
+}), 60_000);
+
+it('a stop challenge for another subject or principal is refused at the journal, and never latches', () => withRoot(async path => {
+  let clock = 1000;
+  const surface = independentSurface(() => clock);
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1 }));
+  const worker = createJournalWorker(journal, { ...ports(() => clock, [], []), approvalSurface: surface.port });
+  await worker.minimal();
+  const genuine = journal.view.stopChallenges[0]!;
+  // A substituted row (agent-writable) cannot enter: another operator, or a moved subject.
+  expect(() => journal.append({ kind: 'stop-challenge', challenge: { ...genuine, id: 'challenge:x', operator: 'telegram:1', requestedBy: 'telegram:1' }, at: clock }))
+    .toThrow('stop challenge refused');
+  expect(() => journal.append({ kind: 'stop-challenge', challenge: { ...genuine, id: 'challenge:y', requestDigest: `sha256:${'0'.repeat(64)}` as never }, at: clock }))
+    .toThrow('stop challenge refused');
+  // A verified stop naming a challenge this journal never recorded is refused.
+  expect(() => journal.append({ kind: 'stop', reason: 'operator', verified: { challenge: 'challenge:unknown', principal: genuine.operator, receipt: 'sha256:x' }, at: clock }))
+    .toThrow('verified stop refused');
+  // An expired standing challenge is reissued; an act on the lapsed one decides nothing.
+  clock += STOP_CHALLENGE_MS + 1;
+  surface.operatorActs(genuine.id, 'approve');
+  await worker.minimal();
+  expect(journal.view.stop).toBeNull();
+  expect(journal.view.stopChallenges.map(item => item.id)).not.toContain(genuine.id);
+  expect(journal.view.stopChallenges).toHaveLength(1);
+  journal.close();
+}));
+
+it('a failed ordinary worker leaves the minimal path answering at once, and a later ordinary pass recovers (ordinary-worker cut)', () => withRoot(async path => {
+  // Eleven §5's first fault class: the ordinary conversation worker fails outright while every minimal
+  // prerequisite holds. The minimal path answers below every cap without waiting, and a stop still latches.
+  const sends: Marked[] = [];
+  let lost = true;
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
+  const worker = createJournalWorker(journal, { ...ports(() => 1000, [], []), send: marked(sends),
+    sources: () => { if (lost) throw Error('ordinary worker lost'); return []; } });
+  worker.intake([message(1, 'hello')]);
+  await expect(worker.drain()).rejects.toThrow('ordinary worker lost');
+  await worker.minimal();
+  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1)]);
+  // The ordinary answer still follows once the ordinary worker recovers; the limited answer is not repeated.
+  lost = false;
+  await worker.drain(); await worker.minimal();
+  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), 'PREVIEW — ordinary answer']);
+  lost = true;
+  worker.intake([message(2, 'still there?'), message(3, '/stop')]);
+  await expect(worker.drain()).rejects.toThrow('ordinary worker lost');
+  await worker.minimal();
+  expect(sends.slice(2).map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), `PREVIEW — ${STOP_CONFIRM_TEXT}`]);
+  worker.intake([press(4, sends.at(-1)!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
+  expect(journal.view.stop).toBe('operator');
   journal.close();
 }));
