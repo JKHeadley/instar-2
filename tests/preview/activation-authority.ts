@@ -12,7 +12,17 @@
 // classification over the same body hash, and the topic's operator binding established from an
 // authenticated inbound message. The record's words and time must equal that message exactly.
 // An invented grant, an unresolvable source or words the operator never sent refuse.
-import { createHash } from 'node:crypto';
+//
+// Rules 82, 94 and 103 (repair round 3): an authenticated message proves only that those words were
+// sent; it is not a decision about what they approve. The decision (which message is the yes, to
+// which act, grantee, subject and bounds; which message is the waiver of which rules; which grants
+// are revoked) is the authority owner's recorded disposition. In this preview that owner is the desk
+// under the recorded fixture-authority waiver, and its disposition is the authority record SEALED
+// with the trial's own storage SecretRef (`sealAuthorityRecord`). An unsealed record, or any record
+// whose grant, waiver, subject, bounds or revocations differ from what the desk sealed, resolves
+// nothing: the activation is checked against the desk's sealed decision, never against fields
+// assembled beside the proposal. Custody of the seal key is the recorded fixture waiver's.
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { canonical, grantLiveness } from '../../src/index.js';
 import type { Clock, Revocation, StandingGrant } from '../../src/index.js';
 
@@ -43,7 +53,9 @@ export interface ActivationGrant { id: string; grantor: string; grantee: string;
 export interface ActivationWaiver { reference: string; rules: readonly string[]; grantor: string; recordedAt: number; source: OperatorMessageRef; words: string }
 export interface ActivationRevocation { grantId: string; at: number; by: string; source: string }
 export interface ActivationAuthorityRecord { type: 'PreviewActivationAuthority'; schemaVersion: 1;
-  grants: readonly ActivationGrant[]; waivers: readonly ActivationWaiver[]; revocations: readonly ActivationRevocation[] }
+  grants: readonly ActivationGrant[]; waivers: readonly ActivationWaiver[]; revocations: readonly ActivationRevocation[];
+  /** The desk's seal over every other field: `hmac-sha256:<hex>` under the trial's seal key. */
+  seal?: string }
 export type AuthorityResolution =
   | { kind: 'resolved'; action: ActivationAction; grant: string; waiver: string; digest: string }
   | { kind: 'refused'; reason: string };
@@ -74,8 +86,24 @@ export function resolveOperatorMessage(ref: unknown, operator: string, records: 
   if (typeof m.text !== 'string' || !time(at) || m.fromUser !== true || m.provenance !== 'user' || m.forwarded !== false
     || String(m.telegramUserId) !== operator) return null;
   if (c.classification !== 'human' || c.topicBound !== true || c.bodyHash !== sha256(m.text)) return null;
-  if (binding.platform !== 'telegram' || binding.uid !== operator || binding.boundFrom !== 'authenticated-inbound') return null;
+  if (binding.platform !== 'telegram' || binding.uid !== operator || !isVerifiedTopicOperatorBinding(binding)) return null;
   return { text: m.text, at };
+}
+/** The topic-operator owner's own trust oracle (Instar `TopicOperatorStore.isVerifiedTopicOperatorBinding`,
+ * ported unchanged): the `authenticated-inbound` self-report is not enough; the establishment
+ * evidence must exist, name a real ingress and an inbound message, and match the bound uid. */
+export function isVerifiedTopicOperatorBinding(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (record.boundFrom !== 'authenticated-inbound') return false;
+  if (typeof record.uid !== 'string' || !record.uid.trim()) return false;
+  const evidence = row(record.establishmentEvidence);
+  if (evidence.kind !== 'authenticated-inbound') return false;
+  if (evidence.authorization !== 'telegram-is-authorized-sender') return false;
+  if (evidence.ingress !== 'telegram-lifeline-forward' && evidence.ingress !== 'telegram-polling') return false;
+  if (typeof evidence.senderUid !== 'string' || evidence.senderUid.trim() !== record.uid.trim()) return false;
+  if (typeof evidence.messageId !== 'string' || !evidence.messageId.trim()) return false;
+  return true;
 }
 /** The record's words and time are the authenticated message's, exactly. */
 const authentic = (source: unknown, words: unknown, at: unknown, operator: string, records: OperatorMessageRecords | null) => {
@@ -88,15 +116,44 @@ export function authorityDigest(record: unknown): string {
   if (result.kind !== 'Success') throw Error('activation authority: uncanonical record');
   return result.value.hash;
 }
+/** The desk's seal key for this trial, derived from the trial's storage SecretRef (domain-separated,
+ * so the storage key itself never signs anything else). */
+export function authoritySealKey(storageKey: Uint8Array): Buffer {
+  return createHmac('sha256', storageKey).update('instar-preview/activation-authority-seal/v1', 'utf8').digest();
+}
+const sealOf = (record: Record<string, unknown>, sealKey: Uint8Array) => {
+  const { seal: _seal, ...body } = record;
+  return `hmac-sha256:${createHmac('sha256', sealKey).update(authorityDigest(body), 'utf8').digest('hex')}`;
+};
+/** The desk's recording step: seals the authority record it decided. The result is the desk's
+ * disposition; any later change to any field, including dropping a revocation, breaks the seal. */
+export function sealAuthorityRecord(record: unknown, sealKey: Uint8Array): ActivationAuthorityRecord {
+  const r = row(record);
+  if (r.type !== 'PreviewActivationAuthority' || r.schemaVersion !== 1 || !Array.isArray(r.grants) || !Array.isArray(r.waivers)
+    || !Array.isArray(r.revocations)) throw Error('activation authority: malformed record');
+  const { seal: _seal, ...body } = r;
+  return { ...body, seal: sealOf(body, sealKey) } as unknown as ActivationAuthorityRecord;
+}
+const sealed = (record: Record<string, unknown>, sealKey: Uint8Array | null) => {
+  if (!sealKey || typeof record.seal !== 'string') return false;
+  let expected: Buffer;
+  try { expected = Buffer.from(sealOf(record, sealKey), 'utf8'); } catch { return false; } // uncanonical: the desk sealed no such record
+  const actual = Buffer.from(record.seal, 'utf8');
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+};
 
-/** Resolves the activation's act against the recorded authority. `baseExpiry` is the trial's own
- * genesis expiry: an activation ending there is the original activation; a later one is a renewal. */
+/** Resolves the activation's act against the desk's sealed authority record. `baseExpiry` is the
+ * trial's own genesis expiry: an activation ending there is the original activation; a later one is
+ * a renewal. `sealKey` is the trial's (`authoritySealKey`); without it nothing resolves. */
 export function resolveActivationAuthority(activation: ActivationFacts, record: unknown, operator: string,
-  baseExpiry: number, now: number, records: OperatorMessageRecords | null): AuthorityResolution {
+  baseExpiry: number, now: number, records: OperatorMessageRecords | null, sealKey: Uint8Array | null): AuthorityResolution {
   const refuse = (reason: string): AuthorityResolution => ({ kind: 'refused', reason });
   const r = record as Partial<ActivationAuthorityRecord> | null;
   if (r?.type !== 'PreviewActivationAuthority' || r.schemaVersion !== 1 || !Array.isArray(r.grants) || !Array.isArray(r.waivers)
     || !Array.isArray(r.revocations)) return refuse('activation authority record absent or malformed');
+  // The desk's disposition, not a caller's copy: every grant, waiver, subject, bound and revocation
+  // below is the one the desk sealed.
+  if (!sealed(r as Record<string, unknown>, sealKey)) return refuse('the activation authority record is not the desk\'s sealed disposition for this trial');
   if (!time(now) || !time(baseExpiry) || !time(activation.observedAt) || activation.observedAt > now
     || !time(activation.expiresAt) || activation.expiresAt < baseExpiry) return refuse('activation act is not a bounded activation of this trial');
   const revocations = r.revocations.filter(v => v && text(v.grantId) && time(v.at) && v.by === operator && text(v.source));

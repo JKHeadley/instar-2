@@ -2,7 +2,7 @@
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -28,7 +28,7 @@ import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
-import { resolveActivationAuthority } from './activation-authority.js';
+import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -115,13 +115,15 @@ const operatorRecords = directory => {
 };
 /** Rules 94/98/103/104: the activation is exercised only under a recorded operator authority that
  * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
- * The record defaults to `activation-authority.json` beside the activation record. */
+ * The record defaults to `activation-authority.json` beside the activation record. Rule 82: it
+ * resolves only as the desk's disposition sealed under this trial's storage SecretRef
+ * (`seal-authority`); a copy with any field changed resolves nothing. */
 const requireAuthority = (options, activation, activationPath, view, now) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
   let record = null;
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
   const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
-    operatorRecords(options['operator-records']));
+    operatorRecords(options['operator-records']), authoritySealKey(key()));
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };
@@ -241,7 +243,14 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory', 'seal-authority'].includes(command)) throw Error('preview: unknown command');
+  if (command === 'seal-authority') {
+    // The desk's recording step: seals the authority record it decided, under the trial's storage
+    // SecretRef, into a new file (never replacing one). Nothing else is read or written.
+    const sealed = sealAuthorityRecord(JSON.parse(readFileSync(required(options, 'authority-record'), 'utf8')), authoritySealKey(key()));
+    writeFileSync(resolve(required(options, 'out')), `${JSON.stringify(sealed, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    return;
+  }
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });

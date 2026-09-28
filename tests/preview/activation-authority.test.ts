@@ -2,8 +2,8 @@
 // authority. A renewal inside the standing grant needs no new yes; anything outside it refuses.
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { PREVIEW_DESK, resolveActivationAuthority, type ActivationAuthorityRecord, type ActivationFacts,
-  type OperatorMessageRecords } from './activation-authority.js';
+import { authoritySealKey, PREVIEW_DESK, resolveActivationAuthority, sealAuthorityRecord, type ActivationAuthorityRecord,
+  type ActivationFacts, type OperatorMessageRecords } from './activation-authority.js';
 
 const BASE = 1_790_628_000_000, WEEK = 604_800_000, NOW = 1_790_600_000_000;
 const GRANT_WORDS = 'status-quo renewals preapproved', WAIVER_WORDS = 'trial waiver approved';
@@ -26,12 +26,20 @@ const message = (messageId: number, text: string, at: number, change: Record<str
   forwarded: false, provenance: 'user', ...change });
 const classified = (messageId: number, text: string, change: Record<string, unknown> = {}) => ({ topicId: 52075, messageId,
   classification: 'human', bodyHash: createHash('sha256').update(text, 'utf8').digest('hex'), topicBound: true, ...change });
-const binding = { 52075: { platform: 'telegram', uid: '7654321', boundFrom: 'authenticated-inbound' } };
+const evidence = { kind: 'authenticated-inbound', authorization: 'telegram-is-authorized-sender', ingress: 'telegram-lifeline-forward',
+  senderUid: '7654321', messageId: '1' };
+const binding = { 52075: { platform: 'telegram', uid: '7654321', boundFrom: 'authenticated-inbound', establishmentEvidence: evidence } };
 const owner = (change: Partial<OperatorMessageRecords> = {}): OperatorMessageRecords => ({
   messages: [message(1, GRANT_WORDS, NOW - 5000), message(2, WAIVER_WORDS, NOW - 9000)],
   provenance: [classified(1, GRANT_WORDS), classified(2, WAIVER_WORDS)], bindings: binding, ...change });
-const resolve = (r: unknown, facts = activation, records: OperatorMessageRecords | null = owner()) =>
-  resolveActivationAuthority(facts, r, '7654321', BASE, NOW, records);
+// The desk's seal key for this trial, and another trial's.
+const KEY = authoritySealKey(new Uint8Array(32).fill(5)), OTHER_KEY = authoritySealKey(new Uint8Array(32).fill(6));
+const sealed = (r: unknown) => (r && typeof r === 'object' && Array.isArray((r as ActivationAuthorityRecord).grants)
+  && Array.isArray((r as ActivationAuthorityRecord).waivers) && Array.isArray((r as ActivationAuthorityRecord).revocations)
+  ? sealAuthorityRecord(JSON.parse(JSON.stringify(r)), KEY) : r); // as the desk's seal step reads it: JSON
+/** Resolves `r` as the desk sealed it (the default) or exactly as given (`asGiven`). */
+const resolve = (r: unknown, facts = activation, records: OperatorMessageRecords | null = owner(), asGiven = false,
+  key: Uint8Array | null = KEY) => resolveActivationAuthority(facts, asGiven ? r : sealed(r), '7654321', BASE, NOW, records, key);
 
 it('a status-quo renewal inside the recorded standing grant resolves without a new yes, and binds the grant and waiver', () => {
   expect(resolve(record())).toMatchObject({ kind: 'resolved', action: 'renew-subscription-activation', grant: 'observer-note-30',
@@ -86,10 +94,53 @@ it('refuses a grant or waiver that does not resolve to the operator\'s authentic
   refused(record(), owner({ provenance: [classified(1, 'other bytes'), classified(2, WAIVER_WORDS)] }), grantMessage); // body hash disagrees
   refused(record(), owner({ bindings: { 52075: { ...binding[52075], uid: '99' } } }), grantMessage); // topic bound to someone else
   refused(record(), owner({ bindings: { 52075: { ...binding[52075], boundFrom: 'manual-assertion' } } }), grantMessage);
+  // The topic-operator owner's oracle: the `authenticated-inbound` label without its establishment
+  // evidence, or with evidence for another sender or an unknown ingress, is not a verified binding.
+  const { establishmentEvidence: _dropped, ...labelOnly } = binding[52075];
+  refused(record(), owner({ bindings: { 52075: labelOnly } }), grantMessage);
+  refused(record(), owner({ bindings: { 52075: { ...binding[52075], establishmentEvidence: { ...evidence, senderUid: '99' } } } }), grantMessage);
+  refused(record(), owner({ bindings: { 52075: { ...binding[52075], establishmentEvidence: { ...evidence, ingress: 'dashboard' } } } }), grantMessage);
+  refused(record(), owner({ bindings: { 52075: { ...binding[52075], establishmentEvidence: { ...evidence, authorization: undefined } } } }), grantMessage);
   refused(record(), owner({ bindings: {} }), grantMessage);
   // The waiver resolves the same way: invented or altered waiver words refuse even under a real grant.
   refused(record({ waivers: [{ ...record().waivers[0]!, words: 'No waiver was issued.' }] }), owner(), /waiver/u);
   refused(record({ waivers: [{ ...record().waivers[0]!, source: { kind: 'telegram-message', topicId: 52075, messageId: 98 } }] }), owner(), /waiver/u);
   // The real existing grant still resolves under the same records.
   expect(resolve(record())).toMatchObject({ kind: 'resolved', grant: 'observer-note-30' });
+});
+
+it('resolves only the desk\'s sealed disposition: a substituted grant, waiver, subject or dropped revocation refuses', () => {
+  const refusedSeal = (r: unknown, facts = activation, key: Uint8Array | null = KEY) => expect(resolve(r, facts, owner(), true, key))
+    .toMatchObject({ kind: 'refused', reason: expect.stringMatching(/not the desk's sealed disposition/u) });
+  const desk = sealAuthorityRecord(record(), KEY);
+  expect(resolve(desk, activation, owner(), true)).toMatchObject({ kind: 'resolved', grant: 'observer-note-30', waiver: 'trial-waiver' });
+  // Astra's round-3 probes. A genuine operator check-in, authenticated by all three owner records,
+  // substituted as the grant or as the waiver: the words are real, but the desk never decided they
+  // were a yes to anything, so the record is no longer the desk's.
+  const CHECK_IN = 'Checking in I just wanna make sure we\'re still moving forward here';
+  const records = owner({ messages: [...owner().messages, message(3, CHECK_IN, NOW - 7000)],
+    provenance: [...owner().provenance, classified(3, CHECK_IN)] });
+  const checkIn = { kind: 'telegram-message' as const, topicId: 52075, messageId: 3 };
+  const asGrant = { ...desk, grants: [{ ...desk.grants[0]!, id: 'invented-grant-from-check-in', source: checkIn, words: CHECK_IN, issuedAt: NOW - 7000 }] };
+  const asWaiver = { ...desk, waivers: [{ ...desk.waivers[0]!, source: checkIn, words: CHECK_IN, recordedAt: NOW - 7000 }] };
+  for (const substituted of [asGrant, asWaiver])
+    expect(resolveActivationAuthority(activation, substituted, '7654321', BASE, NOW, records, KEY)).toMatchObject({ kind: 'refused',
+      reason: expect.stringMatching(/not the desk's sealed disposition/u) });
+  // The genuine source reused with a changed account and profile in both the activation and the grant.
+  const changed = { ...activation, expectedAccount: 'unapproved@example.test', profileDigest: 'sha256:unapproved-profile' };
+  refusedSeal({ ...desk, grants: [{ ...desk.grants[0]!, scope: { ...desk.grants[0]!.scope, expectedAccount: changed.expectedAccount,
+    profileDigest: changed.profileDigest } }] }, changed);
+  expect(resolve(desk, changed, owner(), true)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/does not cover/u) });
+  // Revocation is the desk's current disposition: a sealed revocation revokes, and dropping it from
+  // the sealed record breaks the seal instead of reviving the grant.
+  const revoked = sealAuthorityRecord(record({ revocations: [{ grantId: 'observer-note-30', at: NOW - 10, by: '7654321', source: 'telegram 3' }] }), KEY);
+  expect(resolve(revoked, activation, owner(), true)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/revoked/u) });
+  refusedSeal({ ...revoked, revocations: [] });
+  // Unsealed, sealed for another trial, a forged seal, or no seal key: nothing resolves.
+  refusedSeal(record());
+  refusedSeal(sealAuthorityRecord(record(), OTHER_KEY));
+  refusedSeal({ ...desk, seal: `hmac-sha256:${'0'.repeat(64)}` });
+  refusedSeal(desk, activation, null);
+  // Resealing is the desk's own recording step and yields the same seal for the same decision.
+  expect(sealAuthorityRecord(desk, KEY).seal).toBe(desk.seal);
 });

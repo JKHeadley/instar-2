@@ -215,9 +215,26 @@ it('the desk script writes new files only and the renew-expiry command binds tha
       scope: { trial: renewed.trial, model, expectedAccount: renewed.expectedAccount, executable: renewed.executable,
         artifact: renewed.artifact, version: renewed.version, invocationPolicyDigest: renewed.invocationPolicyDigest, profileDigest: renewed.profileDigest },
       renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: SUBSCRIPTION_PREVIEW_EXPIRY } };
-    const authority = (g = grant) => file('activation-authority.json', { type: 'PreviewActivationAuthority', schemaVersion: 1, grants: [g],
+    const draft = (g = grant) => ({ type: 'PreviewActivationAuthority', schemaVersion: 1, grants: [g],
       waivers: [{ reference: renewed.waiver, rules: ['rule:38'], grantor: '7654321', recordedAt: 1790000000000,
         source: { kind: 'telegram-message', topicId: 52075, messageId: 107907 }, words: WAIVER_WORDS }], revocations: [] });
+    // Rule 82: the record resolves only as the desk's disposition, sealed by the desk's recording
+    // step under this trial's storage SecretRef. The seal command never replaces an existing file.
+    const authorityPath = join(root, 'activation-authority.json');
+    const authority = (g = grant) => { rmSync(authorityPath, { force: true });
+      const sealed = node(['tests/preview/journal-agent.mjs', 'seal-authority', '--authority-record', file('authority-draft.json', draft(g)),
+        '--out', authorityPath], env);
+      expect(sealed.status, sealed.stderr).toBe(0); };
+    file('activation-authority.json', draft());                      // the real grant, but unsealed: not the desk's disposition
+    refusedWith('not the desk\'s sealed disposition');
+    expect(node(['tests/preview/journal-agent.mjs', 'seal-authority', '--authority-record', file('authority-draft.json', draft()),
+      '--out', authorityPath], env).status).toBe(1);                 // never overwrites
+    authority();
+    const sealedRecord = JSON.parse(readFileSync(authorityPath, 'utf8'));
+    file('activation-authority.json', { ...sealedRecord, grants: [{ ...sealedRecord.grants[0], scope: { ...grant.scope, profileDigest: 'sha256:other' } }] });
+    refusedWith('not the desk\'s sealed disposition');              // an edited sealed record: the seal breaks
+    file('activation-authority.json', { ...sealedRecord, seal: undefined });
+    refusedWith('not the desk\'s sealed disposition');
     authority({ ...grant, scope: { ...grant.scope, model: 'claude-other-1' } });
     refusedWith('does not cover');
     // Rules 28/82: an invented grant (unresolvable source, prose that is no approval) refuses, and so
