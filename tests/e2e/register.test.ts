@@ -12,6 +12,21 @@ import type { FactReference, RegisterContext } from '../../src/register/index.js
 import { setup, value, json, hash } from '../register/fixtures.js';
 import { installOwnerFixture } from '../register/owner-fixture.js';
 import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
+// The fixture world runs at t=100. A real declared model doorway carries its real
+// verification time, which that clock correctly refuses as not-yet-verified. Shift those
+// declared times into the fixture world; the real build keeps checking them at real time.
+function atFixtureClock(root: string) {
+  for (const path of execFileSync('git', ['ls-files', '*.declarations.json'], { encoding: 'utf8' }).trim().split('\n')) {
+    const file = join(root, path); if (!existsSync(file)) continue;
+    const declarations = JSON.parse(readFileSync(file, 'utf8')) as { kind: string; requiredFacts: { models: { verifiedAt: number; freshFor: number }[]; subsidy: { updatedAt: number; freshFor: number } } }[];
+    if (!declarations.some(d => d.kind === 'model doorways')) continue;
+    for (const d of declarations) if (d.kind === 'model doorways') {
+      for (const m of d.requiredFacts.models) Object.assign(m, { verifiedAt: 50, freshFor: 1000 });
+      Object.assign(d.requiredFacts.subsidy, { updatedAt: 50, freshFor: 1000 });
+    }
+    writeFileSync(file, JSON.stringify(declarations, null, 2) + '\n');
+  }
+}
 // Emitted runtime is available when tests execute (after build), but a fresh
 // checkout must be typecheckable before dist exists.
 const emittedModule = '../../dist/index.js';
@@ -47,7 +62,7 @@ describe('compiled register build adapter lifecycle', () => {
         cpSync(path, join(root, path), { recursive: true });
         await yieldToRunner();
       }
-      installOwnerFixture(root);
+      installOwnerFixture(root); atFixtureClock(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init'); git('add', '.'); git('commit', '-qm', 'fixture bootstrap');
       const initial = git('rev-parse', 'HEAD').trim();
@@ -264,7 +279,7 @@ describe('compiled register build adapter lifecycle', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
-      installOwnerFixture(root); installIntakeOwnerFixture(root);
+      installOwnerFixture(root); installIntakeOwnerFixture(root); atFixtureClock(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8' }).trim();
       git('init', '-q');
       const script = resolve('scripts/build-register.mjs');
@@ -298,7 +313,7 @@ describe('compiled register build adapter lifecycle', () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
-      installOwnerFixture(root);
+      installOwnerFixture(root); atFixtureClock(root);
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       git('init');
       const commit = () => { git('add', '.'); git('commit', '-qm', 'owner CLI source'); return git('rev-parse', 'HEAD'); };
@@ -346,7 +361,7 @@ describe('compiled register build adapter lifecycle', () => {
     try {
       const inputs = ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
       for (const path of inputs) cpSync(path, join(root, path), { recursive: true });
-      installOwnerFixture(root);
+      installOwnerFixture(root); atFixtureClock(root);
       const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       const indexPath = join(root, 'src/rungraph/index.ts');
       const index = readFileSync(indexPath, 'utf8');
@@ -367,7 +382,8 @@ describe('compiled register build adapter lifecycle', () => {
       const run = (cwd: string, pin: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, encoding: 'utf8' });
       for (const cwd of [root, clean]) {
         const result = run(cwd, revision);
-        expect(result.status).not.toBe(0); expect(result.stderr).toContain('unresolved public owner decoder export decodeRun');
+        // The committed shipped-module walk refuses the absent bridge first; an ambient file never satisfies it.
+        expect(result.status).not.toBe(0); expect(result.stderr).toContain('R5: shipped import ./owner-bridge.js from src/rungraph/index.ts does not resolve');
       }
       git(root, 'add', 'src/rungraph/owner-bridge.ts'); git(root, 'commit', '-qm', 'include bridge in committed source graph');
       const pinned = git(root, 'rev-parse', 'HEAD');

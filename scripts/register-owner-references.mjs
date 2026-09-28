@@ -119,7 +119,7 @@ export function loadOwnerReferences(root, input) {
   const artifact = (a, path) => {
     exact(a, ['path', 'hash']);
     if (a.path !== path || !input.files.includes(path)) throw new Error('wrong-owner or missing artifact: ' + path);
-    const content = execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+    const content = input.show ? input.show(path) : execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
     if (hash(content) !== a.hash) throw new Error('reference artifact hash differs: ' + path);
     result.artifacts[path] = content;
   };

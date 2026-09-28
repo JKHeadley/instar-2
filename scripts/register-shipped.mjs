@@ -71,13 +71,13 @@ export function checkShipped(register, inventory, program, owner, show, testsNam
     issues.push(`R5: shipped module ${dir} has no documentation entry (${dir === '.' ? '' : dir + '/'}README.md with a heading)`);
   const declarations = register.entries.map(e => e.declaration);
   const beside = new Map(); // shipped non-src source -> its sidecar declarations
+  const bound = []; // [declaration, source, name, binding symbol]
   for (const d of declarations) if (isSidecar(d.declaredBy.path) && !d.declaredBy.path.startsWith('src/')) {
     const source = sidecarSource(d.declaredBy.path, shipped);
     if (!source) { issues.push(`R66: ${d.id} is declared beside ${d.declaredBy.path}, which describes no shipped source`); continue; }
     beside.set(source, [...beside.get(source) ?? [], d]);
     if (!BOUNDARIES.has(d.kind)) continue;
-    // The inspected caller must actually use the declared boundary: bind the named
-    // function or port, then find a shipped use of that exact binding (not a same-named one).
+    // Bind the named function or port in the declaring file.
     const name = d.id.slice(d.id.lastIndexOf('.') + 1); const file = program.getSourceFile(resolve(source));
     const found = [];
     const visit = n => {
@@ -86,24 +86,26 @@ export function checkShipped(register, inventory, program, owner, show, testsNam
     };
     if (file) visit(file);
     if (found.length !== 1) { issues.push(`R66: ${d.id} names ${name}, which is not exactly one binding in ${source}`); continue; }
-    const target = checker.getSymbolAtLocation(found[0].name);
-    let used = false;
-    for (const path of shipped) {
-      const sf = program.getSourceFile(resolve(path)); if (!sf || used) continue;
-      const scan = n => {
-        if (used) return;
-        // Importing, re-exporting or placing it in an object is not a use; calling or passing it is.
-        if (ts.isIdentifier(n) && n !== found[0].name && !ts.isImportSpecifier(n.parent) && !ts.isExportSpecifier(n.parent)
-          && !ts.isImportClause(n.parent) && !ts.isShorthandPropertyAssignment(n.parent)) {
-          if (target && origin(checker, checker.getSymbolAtLocation(n)) === target) used = true;
-        }
-        ts.forEachChild(n, scan);
-      };
-      scan(sf);
-    }
-    if (!used) issues.push(`R66: no shipped code uses ${d.id} (${source}#${name})`);
+    bound.push({ d, source, name, node: found[0].name, symbol: checker.getSymbolAtLocation(found[0].name) });
     if (d.kind === 'stores' && !durableWriter(source, show(source))) issues.push(`R7/R32: store ${d.id} is declared beside ${source}, which writes nothing durable`);
   }
+  // The inspected caller must actually use each bound boundary: one pass over shipped code,
+  // resolving only identifiers that carry a bound name back to the exact binding.
+  const names = new Set(bound.map(b => b.name)); const used = new Set();
+  for (const path of shipped) {
+    const sf = program.getSourceFile(resolve(path)); if (!sf) continue;
+    const scan = n => {
+      // Importing, re-exporting or placing it in an object is not a use; calling or passing it is.
+      if (ts.isIdentifier(n) && names.has(n.text) && !ts.isImportSpecifier(n.parent) && !ts.isExportSpecifier(n.parent)
+        && !ts.isImportClause(n.parent) && !ts.isShorthandPropertyAssignment(n.parent)) {
+        const s = origin(checker, checker.getSymbolAtLocation(n));
+        for (const b of bound) if (n !== b.node && b.symbol && s === b.symbol) used.add(b);
+      }
+      ts.forEachChild(n, scan);
+    };
+    scan(sf);
+  }
+  for (const b of bound) if (!used.has(b)) issues.push(`R66: no shipped code uses ${b.d.id} (${b.source}#${b.name})`);
   // Every shipped file outside src that writes durably declares its stores beside it.
   for (const path of shipped) if (!path.startsWith('src/') && durableWriter(path, show(path))
     && !(beside.get(path) ?? []).some(d => d.kind === 'stores'))

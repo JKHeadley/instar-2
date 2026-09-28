@@ -21,6 +21,18 @@ export function bindColocatedDeclarations(sources, constructs) {
     return matches.length === 1 ? { ...source, path, symbol: matches[0].symbol } : source;
   });
 }
+// One git process reads every candidate blob at the pinned commit (the inventory walk
+// would otherwise spawn one `git show` per shipped file).
+function readBlobs(root, commit, paths) {
+  const out = execFileSync('git', ['-C', root, 'cat-file', '--batch'], { input: paths.map(p => `${commit}:${p}`).join('\n') + '\n', maxBuffer: 512 * 1024 * 1024 });
+  const blobs = new Map(); let at = 0;
+  for (const path of paths) {
+    const eol = out.indexOf(10, at); const header = out.toString('utf8', at, eol).split(' ');
+    if (header[1] !== 'blob') throw new Error(`P3-NF-23: ${path} is not a blob at ${commit}`);
+    const size = Number(header[2]); blobs.set(path, out.toString('utf8', eol + 1, eol + 1 + size)); at = eol + 2 + size;
+  }
+  return blobs;
+}
 // Declarations live in code-adjacent sidecars; parser declarations use their own suffix.
 export const isDeclarationSource = path => path.endsWith('.declarations.json') || path.endsWith('.parser.json');
 export function readCommit(root, commit) {
@@ -32,9 +44,10 @@ export function readCommit(root, commit) {
     || p.startsWith('docs/rules/') && p.endsWith('.md') || isDeclarationSource(p) || p.startsWith('register-source/') && p.endsWith('.json'));
   for (const required of ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'register-source/bootstrap-shape.json'])
     if (!selected.includes(required)) throw new Error(`P3-NF-23: missing source ${required}`);
-  const sources = Object.fromEntries(selected.sort().map(p => [p, git(['show', `${commit}:${p}`]).replaceAll('\r\n', '\n')]));
+  const cache = readBlobs(root, commit, files.filter(p => /\.(?:ts|mts|mjs|js|json|md)$/.test(p)));
+  const show = p => { if (!cache.has(p)) cache.set(p, git(['show', `${commit}:${p}`])); return cache.get(p); };
+  const sources = Object.fromEntries(selected.sort().map(p => [p, show(p).replaceAll('\r\n', '\n')]));
   // The wiring scan covers what ships: built src plus every launcher's runtime closure.
-  const cache = new Map(); const show = p => { if (!cache.has(p)) cache.set(p, git(['show', `${commit}:${p}`])); return cache.get(p); };
   const inventory = shippedInventory(files, show);
   const code = Object.fromEntries(inventory.files.map(p => [p, show(p)]));
   return { commit, sources, files, code, inventory, show };
