@@ -38,7 +38,10 @@ function launchResources(r) {
       && admission.concurrent >= 1 ? { admission: { work: admission.work, concurrent: admission.concurrent, waitedMs: count(admission.waitedMs) } } : {}),
     peakMemoryBytes: count(r.peakMemoryBytes), peakProcesses: count(r.peakProcesses), treeCpuMilliseconds: count(r.treeCpuMilliseconds),
     census: ['none', 'complete', 'partial', 'failed'].includes(r.census) ? r.census : 'none',
-    leakedDescendants: count(r.leakedDescendants), cleanup: ['verified', 'unconfined'].includes(r.cleanup) ? r.cleanup : 'unresolved' };
+    leakedDescendants: count(r.leakedDescendants), cleanup: ['verified', 'unconfined'].includes(r.cleanup) ? r.cleanup : 'unresolved',
+    ...(['working-area-joined', 'unconfined'].includes(r.membership) ? { membership: r.membership } : {}),
+    ...(r.allocation && /^allocation:sha256:[a-f0-9]{64}$/u.test(r.allocation.set) && ['returned', 'reserved'].includes(r.allocation.state)
+      ? { allocation: { set: r.allocation.set, state: r.allocation.state } } : {}) };
 }
 
 /** Append the physical result before the adapter can classify or discard it. */

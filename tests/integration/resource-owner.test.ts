@@ -1,13 +1,14 @@
 // Rules 60 and 61: the host resource owner holds real subprocess ceilings and
 // self-triggered work settles under pressure. Each decision is proved on both sides.
 import { execFileSync, spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
+import { createHostResourceAllocation } from '../preview/six-host-resources.js';
 
 type Ceilings = typeof RESOURCE_CEILINGS;
 const roots: string[] = [];
@@ -22,6 +23,10 @@ const input = (root: string, file: string, args: string[] = [], timeout = 15000)
   args: [file, ...args], cwd: root, env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout, maxBytes: 65536 });
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const settle = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+let incarnations = 0;
+/** The durable owner's Six allocation over the same root (a restart is a new incarnation). */
+const six = (root: string, c: Ceilings = ceilings()) => createHostResourceAllocation({ root, machine: 'machine:test', ceilings: c,
+  incarnation: `test:${process.pid}:${++incarnations}`, now: () => Date.now(), monotonic: () => performance.now() });
 
 it('kills a launch whose descendant tree exceeds its memory ceiling, and not one within it', { timeout: 30000 }, async () => {
   const root = dir();
@@ -199,7 +204,7 @@ it('recovery observes an orphan without signalling it, keeps a live owner\'s row
       // A live launcher (same incarnation still running) owns this launch: never judged by another owner.
       live: { pid: neighbour.pid, start: start(neighbour.pid!), owner: { pid: ownerProcess.pid, start: start(ownerProcess.pid!) } } } }));
     const owner = createResourceOwner(ceilings());
-    await owner.attach({ ledgerPath });
+    await owner.attach({ ledgerPath, allocation: six(root) });
     await settle(100);
     // Disposal needs the unlanded typed recovery effect: nothing is signalled.
     expect([orphan.pid, stranger.pid, neighbour.pid].map(pid => alive(pid!))).toEqual([true, true, true]);
@@ -210,7 +215,7 @@ it('recovery observes an orphan without signalling it, keeps a live owner\'s row
     // Once the orphan is verified gone its row closes; the live owner's row is still untouched.
     process.kill(orphan.pid!, 'SIGKILL'); await settle(150);
     const next = createResourceOwner(ceilings());
-    await next.attach({ ledgerPath });
+    await next.attach({ ledgerPath, allocation: six(root) });
     expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches)).toEqual(['live']);
     expect(alive(neighbour.pid!)).toBe(true);
   } finally {
@@ -225,14 +230,14 @@ it('records launch evidence durably before the provider runs, and never runs a l
 const rows = Object.values(JSON.parse(readFileSync(process.argv[2], 'utf8')).launches);
 writeFileSync(process.argv[3], 'ran'); process.stdout.write(JSON.stringify(rows.map(r => r.pid === process.pid && typeof r.start === 'string')));`);
   const owner = createResourceOwner(ceilings());
-  await owner.attach({ ledgerPath });
+  await owner.attach({ ledgerPath, allocation: six(root) });
   expect(JSON.parse((await owner.execute(input(root, probe, [ledgerPath, marker]), 'answer')).stdout)).toEqual([true]);
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
   // A ledger that cannot be written: the launch is refused and the provider never starts.
   const broken = dir(), brokenLedger = join(broken, 'owned-launches.json'), brokenMarker = join(broken, 'ran');
   writeFileSync(brokenLedger, 'not json');
   const refusing = createResourceOwner(ceilings());
-  await refusing.attach({ ledgerPath: brokenLedger });
+  await refusing.attach({ ledgerPath: brokenLedger, allocation: six(broken) });
   expect(await refusing.execute(input(broken, probe, [brokenLedger, brokenMarker]), 'answer'))
     .toMatchObject({ limited: true, localLimit: 'capacity', stdout: '' });
   await settle(200);
@@ -274,37 +279,51 @@ process.stdout.write(execFileSync(process.execPath, [process.argv[2]], { encodin
   expect(grandchild).toBeLessThan(64);
 });
 
-it('reclaims a recorded detached descendant that left the process group, and still never claims confined membership', { timeout: 30000 }, async () => {
+it('reclaims a recorded detached descendant that left the process group, and verifies the whole joined membership gone', { timeout: 30000 }, async () => {
   const root = dir(), pids = join(root, 'pids');
   const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
 const c = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));
 setTimeout(() => process.exit(0), 700);`);
   const owner = createResourceOwner(ceilings());
-  await owner.attach({ ledgerPath: join(root, 'owned-launches.json') });
+  await owner.attach({ ledgerPath: join(root, 'owned-launches.json'), allocation: six(root) });
   const result = await owner.execute(input(root, escape, [pids]), 'maintenance');
   const detached = Number(readFileSync(pids, 'utf8'));
   await settle(200);
   expect(alive(detached)).toBe(false);
-  expect(result.resources).toMatchObject({ leakedDescendants: 1, cleanup: 'unconfined' });
+  expect(result.resources).toMatchObject({ leakedDescendants: 1, cleanup: 'verified', membership: 'working-area-joined',
+    allocation: { state: 'returned' } });
   expect(JSON.parse(readFileSync(join(root, 'owned-launches.json'), 'utf8')).launches).toEqual({});
 });
 
-it('never reports verified cleanup for a descendant that escaped before it was recorded', { timeout: 30000 }, async () => {
+it('finds and reclaims a descendant that detached before any sample, by the private working-area join; without a private area it is honestly unconfined', { timeout: 30000 }, async () => {
   const root = dir(), pids = join(root, 'pids');
-  // The parent detaches a child into its own session and exits before any sample can record it.
+  // The parent detaches a child into its own session and exits before any sample can record it:
+  // its group, its parent and (a platform binary) its environment are all gone; its working directory is not.
   const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
-const c = spawn('/bin/sleep', ['4'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));`);
+const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));`);
   const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
-  await owner.attach({ ledgerPath: join(root, 'owned-launches.json') });
+  await owner.attach({ ledgerPath: join(root, 'owned-launches.json'), allocation: six(root) });
   const result = await owner.execute(input(root, escape, [pids]), 'maintenance');
   const escaped = Number(readFileSync(pids, 'utf8'));
   try {
-    // The host cannot confine the tree: the escapee is alive and unrecorded, so the verdict says so.
-    expect(alive(escaped)).toBe(true);
-    expect(result.resources).toMatchObject({ census: 'none', cleanup: 'unconfined' });
-    expect(result.resources.cleanup).not.toBe('verified');
-    expect(owner.snapshot().bounds).toMatchObject({ treeMembership: 'unconfined', treeProcesses: 'sampled', uidProcesses: 'hard' });
+    expect(alive(escaped)).toBe(false);
+    expect(result.resources).toMatchObject({ census: 'none', leakedDescendants: 1, cleanup: 'verified', membership: 'working-area-joined' });
+    expect(owner.snapshot().bounds).toMatchObject({ treeMembership: 'working-area-joined', treeProcesses: 'sampled', uidProcesses: 'hard',
+      sixAllocation: 'hard' });
+    expect(JSON.parse(readFileSync(join(root, 'owned-launches.json'), 'utf8')).launches).toEqual({});
   } finally { try { process.kill(escaped, 'SIGKILL'); } catch { /* ended */ } }
+  // The other side: a working directory open to others is no private area, so the escape join is
+  // unavailable and the verdict says `unconfined`, never `verified`, with the escapee alive.
+  const shared = dir(); chmodSync(shared, 0o755);
+  const loose = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
+  await loose.attach({});
+  const open = await loose.execute({ ...input(shared, escape, [join(shared, 'pids')]) }, 'maintenance');
+  const survivor = Number(readFileSync(join(shared, 'pids'), 'utf8'));
+  try {
+    expect(alive(survivor)).toBe(true);
+    expect(open.resources).toMatchObject({ membership: 'unconfined', cleanup: 'unconfined' });
+    expect(open.resources.cleanup).not.toBe('verified');
+  } finally { try { process.kill(survivor, 'SIGKILL'); } catch { /* ended */ } }
 });
 
 it('keeps the durable row and reports unresolved cleanup when a cleanup signal is denied', { timeout: 30000 }, async () => {
@@ -317,7 +336,7 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
     process.kill(target, name);
   };
   const owner = createResourceOwner(ceilings());
-  await owner.attach({ ledgerPath, signal: denied });
+  await owner.attach({ ledgerPath, signal: denied, allocation: six(root) });
   const result = await owner.execute(input(root, leave, [pids]), 'maintenance');
   const survivor = Number(readFileSync(pids, 'utf8'));
   try {
@@ -329,10 +348,10 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
   // The other side: the same launch with signals allowed is observed quiescent and its row closes.
   const healthy = createResourceOwner(ceilings());
   const healthyLedger = join(dir(), 'owned-launches.json');
-  await healthy.attach({ ledgerPath: healthyLedger });
+  await healthy.attach({ ledgerPath: healthyLedger, allocation: six(dirname(healthyLedger)) });
   const done = await healthy.execute(input(root, leave, [pids]), 'maintenance');
   const reclaimed = Number(readFileSync(pids, 'utf8'));
-  expect(done.resources).toMatchObject({ cleanup: 'unconfined', leakedDescendants: 1 });
+  expect(done.resources).toMatchObject({ cleanup: 'verified', leakedDescendants: 1 });
   expect(alive(reclaimed)).toBe(false);
   expect(JSON.parse(readFileSync(healthyLedger, 'utf8')).launches).toEqual({});
 });
@@ -346,7 +365,7 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
   const restore = () => { if (saved !== null) { writeFileSync(ledgerPath, saved); saved = null; } };
   const query = async (file: string, args: string[]) => {
     const text = await hostQuery(file, args);
-    if (args[1] === 'pid=,ppid=,pgid=,rss=,time=,lstart=' && !injected && existsSync(pids) && existsSync(ledgerPath)) {
+    if (args[0] === '-U' && !injected && existsSync(pids) && existsSync(ledgerPath)) {
       injected = 1; saved = readFileSync(ledgerPath, 'utf8'); writeFileSync(ledgerPath, 'transiently unwritable');
     }
     return text;
@@ -357,7 +376,7 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
     throw Object.assign(Error('kill EPERM'), { code: 'EPERM' });
   };
   const owner = createResourceOwner(ceilings());
-  await owner.attach({ ledgerPath, query, signal: denied });
+  await owner.attach({ ledgerPath, query, signal: denied, allocation: six(root) });
   const result = await owner.execute(input(root, leave, [pids]), 'maintenance');
   const survivor = Number(readFileSync(pids, 'utf8'));
   const survivors = [survivor];
@@ -374,7 +393,7 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
     for (const r of Object.values(ownerRow.launches) as Array<Record<string, unknown>>) r.owner = { pid: 999999, start: 'gone' };
     writeFileSync(ledgerPath, JSON.stringify(ownerRow));
     const restarted = createResourceOwner(ceilings());
-    await restarted.attach({ ledgerPath });
+    await restarted.attach({ ledgerPath, allocation: six(root) });
     expect(restarted.snapshot().orphans).toMatchObject([{ state: 'surviving', surviving: 1 }]);
     expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches)).toHaveLength(1);
 
@@ -386,12 +405,12 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
     const later = createResourceOwner(ceilings());
     const secondQuery = async (file: string, args: string[]) => {
       const text = await hostQuery(file, args);
-      if (args[1] === 'pid=,ppid=,pgid=,rss=,time=,lstart=' && injected === 1 && existsSync(pids) && existsSync(secondLedger)) {
+      if (args[0] === '-U' && injected === 1 && existsSync(pids) && existsSync(secondLedger)) {
         injected = 2; saved = readFileSync(secondLedger, 'utf8'); writeFileSync(secondLedger, 'still unwritable');
       }
       return text;
     };
-    await later.attach({ ledgerPath: secondLedger, query: secondQuery, signal: denied });
+    await later.attach({ ledgerPath: secondLedger, query: secondQuery, signal: denied, allocation: six(dirname(secondLedger)) });
     const pending = await later.execute(input(root, leave, [pids]), 'maintenance');
     survivors.push(Number(readFileSync(pids, 'utf8')));
     expect(pending.resources.cleanup).toBe('unresolved');
@@ -437,7 +456,7 @@ wait();`);
       expect(r.resources.enforcement.processGrowth).not.toBe('hard');
       expect(r.resources.uidProcesses.subject).toMatch(/^uid:\d+$/u);
     }
-    expect(HOST_BOUNDS).toMatchObject({ treeProcesses: 'sampled', treeMembership: 'unconfined', aggregateLaunches: 'hard' });
+    expect(HOST_BOUNDS).toMatchObject({ treeProcesses: 'sampled', treeMembership: 'working-area-joined', aggregateLaunches: 'hard' });
   } finally { baseline.forEach(child => { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ } }); }
 });
 
@@ -493,7 +512,7 @@ it('records an owned launch in the durable ledger while it runs', { timeout: 300
   const root = dir(), ledgerPath = join(root, 'owned-launches.json');
   const hold = script(root, 'hold.mjs', `setTimeout(() => {}, 800);`);
   const owner = createResourceOwner(ceilings());
-  await owner.attach({ ledgerPath });
+  await owner.attach({ ledgerPath, allocation: six(root) });
   const running = owner.execute(input(root, hold), 'answer');
   await settle(400);
   const rows = Object.values(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches) as { pid: number; start: string; members: object; owner: { pid: number } }[];
@@ -502,8 +521,9 @@ it('records an owned launch in the durable ledger while it runs', { timeout: 300
   expect(rows[0]!.owner.pid).toBe(process.pid);
   expect(rows[0]!.members).toMatchObject({ [rows[0]!.pid]: rows[0]!.start });
   const finished = await running;
-  // A healthy completion: every recorded incarnation observed gone, the row closed, membership honestly unconfined.
-  expect(finished.resources).toMatchObject({ cleanup: 'unconfined', leakedDescendants: 0, admission: { work: 'answer', concurrent: 1 } });
+  // A healthy completion: every joined member observed gone, the Six debit returned, the row closed.
+  expect(finished.resources).toMatchObject({ cleanup: 'verified', leakedDescendants: 0, admission: { work: 'answer', concurrent: 1 },
+    allocation: { state: 'returned', settlement: expect.stringMatching(/^cleanup-verified:/u) } });
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
 });
 
@@ -539,4 +559,88 @@ held.forEach(fd => closeSync(fd)); process.stdout.write(JSON.stringify({ args: p
   const out = JSON.parse(execFileSync('/bin/sh', argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } }));
   expect(out.args).toEqual(['REQUEST']);
   expect(out.handles).toBeLessThan(64);
+});
+
+it('admits every launch through its Six allocation: a Six capacity refusal waits, spawning nothing, and the returned debit admits the next', { timeout: 30000 }, async () => {
+  const root = dir(), marks = join(root, 'marks');
+  const hold = script(root, 'hold.mjs', `import { appendFileSync } from 'node:fs'; appendFileSync(process.argv[2], 'start\\n');
+setTimeout(() => { appendFileSync(process.argv[2], 'end\\n'); process.stdout.write('ok'); }, 600);`);
+  // The Six installation domain holds one launch slot; the owner's local slot count would admit three.
+  const allocation = six(root, ceilings({ aggregate: { launches: 1 } }));
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ ledgerPath: join(root, 'owned-launches.json'), allocation });
+  const both = [owner.execute(input(root, hold, [marks]), 'answer'), owner.execute(input(root, hold, [marks]), 'review')];
+  await settle(300);
+  // Only one launch started: the other is waiting on the Six domain, not spawned.
+  expect(readFileSync(marks, 'utf8').trim().split('\n')).toEqual(['start']);
+  expect(owner.snapshot().waiting).toHaveLength(1);
+  expect(owner.snapshot().allocation.lastRefusal).toMatch(/capacity exhausted/u);
+  const results = await Promise.all(both);
+  expect(results.map((r: { stdout: string }) => r.stdout)).toEqual(['ok', 'ok']);
+  // Strictly serial under the Six ceiling, and every debit returned once.
+  expect(readFileSync(marks, 'utf8').trim().split('\n')).toEqual(['start', 'end', 'start', 'end']);
+  expect(results.every((r: { resources: { allocation: { state: string } } }) => r.resources.allocation.state === 'returned')).toBe(true);
+  expect(allocation.open()).toEqual([]);
+  // The other side: a roomy domain admits both at once.
+  const roomyRoot = dir(), roomyMarks = join(roomyRoot, 'marks');
+  const roomy = createResourceOwner(ceilings());
+  await roomy.attach({ ledgerPath: join(roomyRoot, 'owned-launches.json'), allocation: six(roomyRoot) });
+  const hold2 = script(roomyRoot, 'hold.mjs', readFileSync(hold, 'utf8'));
+  await Promise.all([roomy.execute(input(roomyRoot, hold2, [roomyMarks]), 'answer'), roomy.execute(input(roomyRoot, hold2, [roomyMarks]), 'review')]);
+  expect(readFileSync(roomyMarks, 'utf8').trim().split('\n').slice(0, 2)).toEqual(['start', 'start']);
+});
+
+it('keeps the Six debit reserved while cleanup is unresolved, across restart, and returns it once recovery observes the survivor gone', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'owned-launches.json'), pids = join(root, 'pids');
+  const leave = script(root, 'leave.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'ignore' }).pid)); setTimeout(() => process.exit(0), 300);`);
+  const denied = (target: number, name: string) => {
+    if (name === 'SIGKILL') throw Object.assign(Error('kill EPERM'), { code: 'EPERM' });
+    process.kill(target, name);
+  };
+  const first = six(root);
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ ledgerPath, signal: denied, allocation: first });
+  const result = await owner.execute(input(root, leave, [pids]), 'maintenance');
+  const survivor = Number(readFileSync(pids, 'utf8'));
+  try {
+    expect(result.resources).toMatchObject({ cleanup: 'unresolved', allocation: { state: 'reserved' } });
+    expect(first.open()).toEqual([{ set: result.resources.allocation.set, launch: expect.any(String) }]);
+    // Restart while the survivor lives: recovery observes it and the debit stays reserved.
+    const rows = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+    for (const r of Object.values(rows.launches) as Array<Record<string, unknown>>) r.owner = { pid: 999999, start: 'gone' };
+    writeFileSync(ledgerPath, JSON.stringify(rows));
+    const second = six(root);
+    await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: second });
+    expect(second.open()).toHaveLength(1);
+  } finally { try { process.kill(survivor, 'SIGKILL'); } catch { /* ended */ } }
+  await settle(200);
+  // Survivor gone: the next recovery returns the debit once and closes the row.
+  const third = six(root);
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: third });
+  expect(third.open()).toEqual([]);
+  expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
+});
+
+it('returns a Six set whose launch has no durable row as never-launched: the row precedes the gate', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'owned-launches.json');
+  const crashed = six(root);
+  // A launcher that died after its allocation and before its launch row: the provider never ran.
+  const reserved = crashed.reserve({ launch: 'lost-launch', work: 'answer', memoryBytes: 1024, processCount: 1 });
+  expect(reserved.ok).toBe(true);
+  expect(crashed.open()).toHaveLength(1);
+  const next = six(root);
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: next });
+  expect(next.open()).toEqual([]);
+  // The other side: a set whose launch row exists (its owner still judged live) is not touched.
+  const live = six(root);
+  const held = live.reserve({ launch: 'held-launch', work: 'answer', memoryBytes: 1024, processCount: 1 });
+  expect(held.ok).toBe(true);
+  writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { 'held-launch': { pid: process.pid,
+    start: execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(process.pid)], { encoding: 'utf8' }).trim(),
+    owner: { pid: process.pid, start: execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(process.pid)], { encoding: 'utf8' }).trim() },
+    allocation: held.ok ? held.handle.set : null } } }));
+  const after = six(root);
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: after });
+  expect(after.open()).toHaveLength(1);
 });

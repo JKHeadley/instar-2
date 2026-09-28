@@ -90,11 +90,16 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     // Each launch's bounds are declared by what the host holds, and its facts are durable in the journal.
     expect(status.resources.enforcement).toEqual({ cpuPerProcess: 'hard', handlesPerProcess: 'hard', memory: 'sampled', treeCpu: 'sampled',
       processGrowth: 'sampled', treeHandles: 'unsupported' });
-    expect(status.resources.bounds).toMatchObject({ treeMembership: 'unconfined', uidProcesses: 'hard', aggregateLaunches: 'hard' });
-    // Per-launch evidence: each launch carries its own admission, its user-ID limit with its subject, and
-    // a cleanup verdict that never claims confined membership. (This stand-in route bypasses the
-    // call-outcome recorder, whose per-call copy is covered in call-diagnostics.test.ts.)
-    expect(status.resources.lastLaunch).toMatchObject({ admission: { work: expect.stringMatching(/^(answer|review|maintenance)$/u), concurrent: expect.any(Number) }, cleanup: 'unconfined',
+    expect(status.resources.bounds).toMatchObject({ treeMembership: 'working-area-joined', sixAllocation: 'hard', uidProcesses: 'hard', aggregateLaunches: 'hard' });
+    // Every launch went through its Six allocation set (SEAM-LEDGER row 36), and none was refused there.
+    expect(status.resources.allocation).toEqual({ state: 'six', lastRefusal: null });
+    // Per-launch evidence: each launch carries its own admission, its user-ID limit with its subject, a
+    // cleanup verified over the joined membership (the provider's private working area included), and
+    // its Six debit returned citing that verification. (This stand-in route bypasses the call-outcome
+    // recorder, whose per-call copy is covered in call-diagnostics.test.ts.)
+    expect(status.resources.lastLaunch).toMatchObject({ admission: { work: expect.stringMatching(/^(answer|review|maintenance)$/u), concurrent: expect.any(Number) },
+      cleanup: 'verified', membership: 'working-area-joined',
+      allocation: { state: 'returned', settlement: expect.stringMatching(/^cleanup-verified:/u) },
       uidProcesses: { state: 'hard', subject: expect.stringMatching(/^uid:\d+$/u) } });
     expect(Array.isArray(status.resources.launches)).toBe(true);
     expect(status.resources.durable).toMatchObject({ 'cleanup-unresolved': 0, capacity: 0 });

@@ -8,3 +8,6 @@ export { admitAcceptedProviderReply } from './run-pair.js';
 export { invokeConsumedDispatch } from './dispatch-invocation.js';
 export { createSequentialServingAdmission, isSequentialServingAdmission } from './sequential-serving-admission.js';
 export type { SequentialServingAdmissionPort, ServingBinding, ServingView } from './sequential-serving-admission.js';
+export type { ResourceSetSpine } from './resource-set.js';
+export { createResourceSetAuthority, createResourceSetSpine, registerResourceSetBodies, resourceSetSchemas, resourceSetRows,
+  resourceDomainHead, resourceDebited, resourceSetFactKind, setDomains } from './resource-set.js';

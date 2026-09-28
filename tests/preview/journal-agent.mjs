@@ -26,7 +26,8 @@ import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
-import { hostResources } from '../../scripts/resource-owner.mjs';
+import { hostResources, HOST_IDENTITY, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
+import { createHostResourceAllocation } from './six-host-resources.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
 import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
@@ -252,7 +253,8 @@ const resourceStatus = (path, view) => {
   const launches = view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, at, localLimit: outcome.localLimit,
     admission: outcome.resources?.admission ?? null, cleanup: outcome.resources?.cleanup ?? null,
     peakMemoryBytes: outcome.resources?.peakMemoryBytes ?? null,
-    uidProcesses: outcome.resources?.uidProcesses ?? null }));
+    uidProcesses: outcome.resources?.uidProcesses ?? null,
+    membership: outcome.resources?.membership ?? null, allocation: outcome.resources?.allocation ?? null }));
   let state;
   try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved', durable, enforcement, launches }; }
   if (state?.version !== 1) return { state: 'unobserved', durable, enforcement, launches };
@@ -614,7 +616,14 @@ async function main() {
     // A desk-controlled low-ceiling case may lower (never raise) the aggregate memory ceiling.
     const aggregateMemoryMib = options['resource-aggregate-memory-mib'] === undefined ? undefined
       : number(options['resource-aggregate-memory-mib'], 'resource-aggregate-memory-mib', 64, 4096);
-    await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow,
+    // Rule 60 / SEAM-LEDGER row 36: every launch's resources are a Six allocation set, committed across
+    // its domains and attached to its ordinary reservation before anything is spawned.
+    const allocationCeilings = aggregateMemoryMib === undefined ? RESOURCE_CEILINGS : { ...RESOURCE_CEILINGS,
+      aggregate: { ...RESOURCE_CEILINGS.aggregate, memoryBytes: aggregateMemoryMib * 1024 * 1024 } };
+    const allocation = createHostResourceAllocation({ root, machine: HOST_IDENTITY.machine, ceilings: allocationCeilings,
+      incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
+      now: wallNow, monotonic: () => performance.now() });
+    await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
       ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
       compare: resourceCompare, priorityGate: shouldRunScheduledPriority,
       reconcile: (row, current) => current === null ? 'missing' : take(reconcileProcessIncarnation(

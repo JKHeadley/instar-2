@@ -23,7 +23,7 @@ export const transportDispositions = [
   ['16', 'partial', 'Static timer/dynamic import/foreign-type scan in owned core; no whole-fleet library audit.'],
   ['17', 'partial', 'Legacy stub behavior plus finite additive A1 breaker values; budgets remain outside A1.'],
   ['18', 'partial', 'One durable breaker episode opens, cools down, admits bounded half-open trials, reopens and closes with evidence.'],
-  ['19', 'partial', 'One finite budget with retained uncertainty, original-demand accounting custody requiring live owner qualification, cumulative unused-credit release, conditional close of a never-dispatched prepared operation on absent-claim proof, and below-budget cap inhibition; nested and independent minimal-plane capacity outside slice.'],
+  ['19', 'partial', 'One finite budget with retained uncertainty, original-demand accounting custody requiring live owner qualification, cumulative unused-credit release, conditional close of a never-dispatched prepared operation on absent-claim proof, and below-budget cap inhibition; additive composed resource allocation sets (row 36) debit each registered domain once, commit only after every domain, attach before dispatch, return once per debit and transfer parent-to-child without multiplying credit; independent minimal-plane capacity outside slice.'],
   ['20', 'partial', 'Legacy durable level wake plus fresh-process A1 breaker reconstruction; one domain.'],
   ['21', 'partial', 'Stopped, open, half-open and closed remain distinct and never create a business Outcome.'],
   ['22', 'out-of-scope', 'Historical full Threadline source audit is not live Telegram slice proof.'],

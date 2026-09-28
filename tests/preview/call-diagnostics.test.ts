@@ -155,7 +155,8 @@ it('keeps each owned launch\'s resource facts on its durable call-outcome row ac
   const resources = { enforcement: { cpuPerProcess: 'hard', handlesPerProcess: 'hard', processGrowth: 'sampled', treeHandles: 'unsupported',
     memory: 'sampled', treeCpu: 'sampled' }, uidProcesses: { state: 'hard', subject: 'uid:501', limit: 900 },
     admission: { work: 'maintenance', concurrent: 2, waitedMs: 15 }, peakMemoryBytes: 1024, peakProcesses: 3, treeCpuMilliseconds: 40, census: 'complete',
-    leakedDescendants: 2, cleanup: 'unresolved', provider: 'prose must not travel' };
+    leakedDescendants: 2, cleanup: 'unresolved', membership: 'working-area-joined',
+    allocation: { set: `allocation:sha256:${'c'.repeat(64)}`, state: 'reserved' }, provider: 'prose must not travel' };
   try {
     const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
       operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
@@ -173,12 +174,18 @@ it('keeps each owned launch\'s resource facts on its durable call-outcome row ac
       uidProcesses: { state: 'hard', subject: 'tree', limit: 4 } } }, at: 1009 })).toThrow(/call outcome malformed/u);
     expect(() => journal.append({ kind: 'call-outcome', id, role: 'model', outcome: { ...outcome, resources: { ...outcome.resources,
       admission: { work: 'maintenance', concurrent: 0, waitedMs: 0 } } }, at: 1009 })).toThrow(/call outcome malformed/u);
+    // A Six allocation must name a real set id and a returned/reserved state.
+    expect(() => journal.append({ kind: 'call-outcome', id, role: 'model', outcome: { ...outcome, resources: { ...outcome.resources,
+      allocation: { set: 'set-1', state: 'returned' } } }, at: 1009 })).toThrow(/call outcome malformed/u);
+    expect(() => journal.append({ kind: 'call-outcome', id, role: 'model', outcome: { ...outcome, resources: { ...outcome.resources,
+      membership: 'confined' } }, at: 1009 })).toThrow(/call outcome malformed/u);
     journal.append({ kind: 'call-outcome', id, role: 'model', outcome, at: 1010 });
     journal.compact();
     journal.close();
     const replayed = openPreviewJournal(path, key, undefined, undefined, true);
     expect(Object.fromEntries(replayed.view.callOutcomeCounts)).toMatchObject({ 'leaked-descendants': 2, 'cleanup-unresolved': 1 });
-    expect(replayed.view.callOutcomes.at(-1)!.outcome.resources).toMatchObject({ admission: { concurrent: 2 }, uidProcesses: { subject: 'uid:501' } });
+    expect(replayed.view.callOutcomes.at(-1)!.outcome.resources).toMatchObject({ admission: { concurrent: 2 }, uidProcesses: { subject: 'uid:501' },
+      membership: 'working-area-joined', allocation: { state: 'reserved' } });
     replayed.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -101,8 +101,13 @@ export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handle
   /** This launch's own admission: its work class, the owned launches running with it, and its wait. */
   admission?: { work: 'answer' | 'review' | 'maintenance'; concurrent: number; waitedMs: number };
   peakMemoryBytes: number; peakProcesses: number; treeCpuMilliseconds: number; census: 'none' | 'complete' | 'partial' | 'failed';
-  /** `unconfined`: every recorded incarnation was observed gone; tree membership is not confined on the host. */
-  leakedDescendants: number; cleanup: 'verified' | 'unconfined' | 'unresolved' }
+  /** `verified`: a complete census found no live member by recorded incarnation, group, ancestry or private
+   * working area; `unconfined`: no private working area, so only recorded incarnations were verified. */
+  leakedDescendants: number; cleanup: 'verified' | 'unconfined' | 'unresolved';
+  /** How membership was joined (optional; older rows carry none). */
+  membership?: 'working-area-joined' | 'unconfined';
+  /** The launch's Six allocation set (SEAM-LEDGER row 36): returned citing its verification, or still reserved. */
+  allocation?: { set: string; state: 'returned' | 'reserved' } }
 type SummaryFaithfulness = { path: 'exact' | 'jev'; verdict: 'pass' | 'lost' | 'undecided'; score: number | null; usage?: ModelUsage };
 
 
@@ -964,7 +969,10 @@ function validLaunchResources(r: LaunchResources): boolean {
       || r.uidProcesses.state === 'unavailable' && r.uidProcesses.subject === null && r.uidProcesses.limit === null)
     && (r.admission === undefined || ['answer', 'review', 'maintenance'].includes(r.admission.work)
       && Number.isSafeInteger(r.admission.concurrent) && r.admission.concurrent >= 1
-      && Number.isSafeInteger(r.admission.waitedMs) && r.admission.waitedMs >= 0);
+      && Number.isSafeInteger(r.admission.waitedMs) && r.admission.waitedMs >= 0)
+    && (r.membership === undefined || ['working-area-joined', 'unconfined'].includes(r.membership))
+    && (r.allocation === undefined || typeof r.allocation.set === 'string' && /^allocation:sha256:[a-f0-9]{64}$/u.test(r.allocation.set)
+      && ['returned', 'reserved'].includes(r.allocation.state));
 }
 
 function project(view: JournalView, row: JournalRecord): void {
