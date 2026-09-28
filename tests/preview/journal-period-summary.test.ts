@@ -35,6 +35,7 @@ it('uses the installed zone and complete calendar boundaries for supported recap
   expect(inRequestedPeriod(Date.UTC(2026, 8, 21, 7), week)).toBe(true);
 });
 
+// Rule 37 budget (cint-3 gate): 4.1–4.2 s isolated on cint-3 and cint-1; over the 10 s default in the loaded gate. Assertions unchanged.
 it('recaps compacted period turns with dates and an omission count, then sends through Jev once', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-period-')));
   try {
@@ -121,7 +122,7 @@ it('recaps compacted period turns with dates and an omission count, then sends t
     expect(reopened.view.turns.get('telegram:12345678:update:19')?.sent).toBe(1);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 30_000);
 
 it('keeps imported email recall and ordinary recall when a period cue is only part of the request', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-period-recall-')));
