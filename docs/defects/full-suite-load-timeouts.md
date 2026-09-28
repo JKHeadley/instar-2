@@ -1,0 +1,14 @@
+# Full-suite load timeouts in rungraph and register tests (Rule 37 quarantine)
+
+**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
+
+During the full repository run retained as `cbuild-4-rr1-full-5ecf9519.log` (load about 27, `--maxWorkers 4`, eight parallel builders on the same host), four cases timed out:
+- `tests/rungraph/provider-answer-reply.test.ts` — the parameterized case at the `it.skip.each(['submitted', …])` line, and `P10-SI-37 reuses a still-current assessment after the clock advances and refuses withdrawn captures`. Each declares 30 000 ms but was reported as timed out at 10 s.
+- `tests/register/owner-references.test.ts` — `resolves pinned fixtures/probes/documents and refuses hostile owner/hash/name inputs` and `resolves only the two paired Part Twelve Slack fixtures at their committed hashes` (10 s default).
+None of these files is changed by constitutional build 4. Host load is a hypothesis, not an exoneration. The reported 10 s against a declared 30 s is itself unexplained. An isolated passing rerun does not clear them.
+
+**Disposition:** each exact case is visibly quarantined with `it.skip` / `it.skip.each` and a comment linking here. Bodies, assertions and declared timeouts are retained. The other cases in both files stay active. While quarantined, the gate does not prove provider-answer reply delivery-state handling for the five parameterized states, the P10-SI-37 assessment reuse and withdrawal refusal, or register owner-reference resolution and hostile-input refusal for pinned fixtures and the paired Slack fixtures. A green gate is reported as green with this quarantine named.
+
+**Repair and closure:** the owner diagnoses why the declared 30 s timeout is reported as 10 s, and whether the cases are CPU- or disk-bound under parallel load. The owner repairs the cause, removes the skips, and shows the retained assertions passing under the original full-suite conditions with headroom. If a repair regresses, the quarantine is restored and this record reopened.
+
+**Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.

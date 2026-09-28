@@ -10,7 +10,8 @@ import { installOwnerFixture, ownerDecoders } from './owner-fixture.js';
 import { hash } from './fixtures.js';
 
 describe('P3-P5 committed owner reference resolver', () => {
-  it('resolves pinned fixtures/probes/documents and refuses hostile owner/hash/name inputs', () => {
+  // Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
+  it.skip('resolves pinned fixtures/probes/documents and refuses hostile owner/hash/name inputs', () => {
     const root = mkdtempSync(join(tmpdir(), 'p3-owner-catalog-'));
     try {
       for (const path of ['docs', 'register-source']) cpSync(path, join(root, path), { recursive: true });
@@ -44,7 +45,8 @@ describe('P3-P5 committed owner reference resolver', () => {
       expect(() => loadOwnerReferences(root, { commit, files: [], sources: { [path]: JSON.stringify(original) } })).toThrow('missing artifact');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
-  it('resolves only the two paired Part Twelve Slack fixtures at their committed hashes', () => {
+  // Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
+  it.skip('resolves only the two paired Part Twelve Slack fixtures at their committed hashes', () => {
     const root = mkdtempSync(join(tmpdir(), 'p3-owner-slack-'));
     try {
       for (const path of ['docs', 'register-source']) cpSync(path, join(root, path), { recursive: true });

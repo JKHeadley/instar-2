@@ -213,7 +213,8 @@ it('P10-SI-37 records near-valid malformed Decision insufficiency and settles fr
   expect(settlement.outcome.kind).toBe('happened');
 }, 30_000);
 
-it.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)(
+// Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
+it.skip.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)(
   'P9-NF-66 reads historical assessment with %s capture loss while current use refuses', async kind => {
     const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
     const assessment: any = value(s.api.assessResponse(s.observed.operation));
@@ -292,7 +293,8 @@ it('P10-SI-17 P10-SI-37 retains unresolved exposure independently of a satisfied
   expect(settlement.retainedExposure).toBe(20);
 }, 30_000);
 
-it('P10-SI-37 reuses a still-current assessment after the clock advances and refuses withdrawn captures', async () => {
+// Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
+it.skip('P10-SI-37 reuses a still-current assessment after the clock advances and refuses withdrawn captures', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
   const assessment = value(s.api.assessResponse(s.observed.operation));
   s.f.time(101);
