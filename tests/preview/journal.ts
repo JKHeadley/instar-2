@@ -466,7 +466,7 @@ export type JournalRecord =
     origin?: 'test' }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string;
     /** Rules 28/29: the verified principal minted at intake; absent only on legacy or unaccepted rows. */
-    writer?: WriterRecord 
+    writer?: WriterRecord;
     /** Admitted past the ordinary turn allowance by the minimal reserve (Rule 15). */
     reserve?: true }
   /** One limited, truthful answer covering the listed unanswered messages in one conversation (Rule 15). */
