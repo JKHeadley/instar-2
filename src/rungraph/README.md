@@ -93,13 +93,25 @@ or replacement stimulus is involved.
 
 ## Built scope and explicit residuals
 
-Designed, not yet built: delegation contracts; fan-out/collection; exhaustion
-runs; awaiting-authorization; agent-transport port beyond six's slice needs;
-summary/compaction continuity accounting; remote/nested traces; judgment attempt
-mapping; production real-surface assembly and production monitoring/supervision.
-Cancellation/unreachable exits and boundary-review loops are also not exposed.
-Operator-set ceilings are 32 children / depth 16 / 3 attempts (PR #22); actual
-slice depth is 1 and children are empty. Zero resource capacity remains zero.
+Built (Rule 114, `delegation.ts`): the durable recursive `DelegationContract`
+edge naming scope, owner, grant, budget, exit test, placement, transport,
+cancellation and result destination, appended before any offer exists; subset
+authority, ancestor budget, fan-out and depth limits at every level (ceilings
+32 children / depth 16, PR #22); capability-aware placement; exclusive receiver
+acceptance; witness-bound delivery evidence; single logical collection; cascading
+cancellation that stays owned until confirmed; late results after parent or
+worker loss; lookup-before-resubmit retry under the same semantic key. The child
+maps to the recipient's own depth-one Run through its durable acceptance, so the
+Run decoder slice is unchanged. Six's `AgentTransportPort` carries it over local
+delivery and the Threadline reference adapter (`src/transport`).
+
+Designed, not yet built: exhaustion runs; awaiting-authorization; dispatch-review
+records; foreign-grant resolution through part four's intake; bounded transport
+queue backpressure; peer concurrence; summary/compaction continuity accounting;
+judgment attempt mapping; production real-surface assembly and production
+monitoring/supervision. Unreachable exits and boundary-review loops are also not
+exposed. The live preview conversation path advertises no tools and so cannot
+delegate yet. Zero resource capacity remains zero.
 
 Tests exercise P1/P2/P3 public consumers, a real fsynced disk spine, a killed
 compiled-package worker, and controlled six/eight/nine/ten contract fixtures.
