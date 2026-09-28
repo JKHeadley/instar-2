@@ -22,16 +22,23 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
     outputTokens, promptBytes, ...(result.resources ? { resources: launchResources(result.resources) } : {}) };
 }
 
-/** The content-free resource facts of one owned launch: which bounds held hard, its observed peaks,
- * and the repair it needed. Kept on the call-outcome row, so they survive restart and compaction. */
+/** The content-free resource facts of one owned launch: which bounds held hard (and on which subject),
+ * its admission, observed peaks, and the repair it needed. Kept on the call-outcome row, so they
+ * survive restart and compaction. */
 function launchResources(r) {
   const count = n => Number.isSafeInteger(n) && n >= 0 ? n : 0;
-  const hold = value => ['hard', 'sampled', 'unavailable'].includes(value) ? value : 'unavailable';
+  const hold = value => ['hard', 'sampled', 'unavailable', 'unsupported'].includes(value) ? value : 'unavailable';
+  const uid = r.uidProcesses, admission = r.admission;
   return { enforcement: Object.fromEntries(['cpuPerProcess', 'handlesPerProcess', 'processGrowth', 'treeHandles', 'memory', 'treeCpu']
     .map(key => [key, hold(r.enforcement?.[key])])),
+    ...(uid && typeof uid === 'object' ? { uidProcesses: uid.state === 'hard' && /^uid:\d+$/u.test(uid.subject)
+      && Number.isSafeInteger(uid.limit) && uid.limit > 0
+      ? { state: 'hard', subject: uid.subject, limit: uid.limit } : { state: 'unavailable', subject: null, limit: null } } : {}),
+    ...(admission && ['answer', 'review', 'maintenance'].includes(admission.work) && Number.isSafeInteger(admission.concurrent)
+      && admission.concurrent >= 1 ? { admission: { work: admission.work, concurrent: admission.concurrent, waitedMs: count(admission.waitedMs) } } : {}),
     peakMemoryBytes: count(r.peakMemoryBytes), peakProcesses: count(r.peakProcesses), treeCpuMilliseconds: count(r.treeCpuMilliseconds),
     census: ['none', 'complete', 'partial', 'failed'].includes(r.census) ? r.census : 'none',
-    leakedDescendants: count(r.leakedDescendants), cleanup: r.cleanup === 'verified' ? 'verified' : 'unresolved' };
+    leakedDescendants: count(r.leakedDescendants), cleanup: ['verified', 'unconfined'].includes(r.cleanup) ? r.cleanup : 'unresolved' };
 }
 
 /** Append the physical result before the adapter can classify or discard it. */

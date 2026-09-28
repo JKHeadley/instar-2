@@ -246,15 +246,21 @@ const resourceStatus = (path, view) => {
   // compaction); the owner's file is the bounded live view.
   const counts = view.callOutcomeCounts, durable = Object.fromEntries(['capacity', 'memory', 'processes', 'cpu', 'aggregate', 'timeout',
     'leaked-descendants', 'cleanup-unresolved'].map(key => [key, counts.get(key) ?? 0]));
-  const enforcement = view.callOutcomes.at(-1)?.outcome.resources?.enforcement ?? null;
+  const last = view.callOutcomes.findLast(row => row.outcome.resources)?.outcome.resources;
+  const enforcement = last?.enforcement ?? null;
+  // Per-launch evidence of the calls this view still holds (correlated by call id, never a lifetime peak).
+  const launches = view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, at, localLimit: outcome.localLimit,
+    admission: outcome.resources?.admission ?? null, cleanup: outcome.resources?.cleanup ?? null,
+    uidProcesses: outcome.resources?.uidProcesses ?? null }));
   let state;
-  try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved', durable, enforcement }; }
-  if (state?.version !== 1) return { state: 'unobserved', durable, enforcement };
+  try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved', durable, enforcement, launches }; }
+  if (state?.version !== 1) return { state: 'unobserved', durable, enforcement, launches };
   const claims = (state.active ?? []).flatMap(launch => [
     renderMeasured(liveMeasurement('owned-process-memory', `launch:${launch.id}`, launch.memoryBytes, state.at)),
     renderMeasured(liveMeasurement('owned-process-count', `launch:${launch.id}`, launch.processes, state.at))]);
   const points = state.sample?.points ? resourcePointClaims(state.sample.points, state.identity?.cores ?? 1) : [];
-  return { ...state, claims, points, durable, enforcement: enforcement ?? state.lastLaunch?.enforcement ?? null };
+  return { ...state, claims, points, durable, launches, enforcement: enforcement ?? state.lastLaunch?.enforcement ?? null,
+    uidProcesses: last?.uidProcesses ?? state.lastLaunch?.uidProcesses ?? null };
 };
 
 const stepCheckView = view => ({ total: view.stepChecks.size,
@@ -604,7 +610,11 @@ async function main() {
     const g = journal.view.genesis;
     // Rules 60 and 61: this process's one resource owner, with the constitutional
     // measurement, priority-brake and incarnation owners as its decision ports.
+    // A desk-controlled low-ceiling case may lower (never raise) the aggregate memory ceiling.
+    const aggregateMemoryMib = options['resource-aggregate-memory-mib'] === undefined ? undefined
+      : number(options['resource-aggregate-memory-mib'], 'resource-aggregate-memory-mib', 64, 4096);
     await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow,
+      ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
       compare: resourceCompare, priorityGate: shouldRunScheduledPriority,
       reconcile: (row, current) => current === null ? 'missing' : take(reconcileProcessIncarnation(
         { processIncarnation: `${row.pid}:${row.start}`, pid: row.pid, startEvidence: row.start, tags: ['provider-launch'] },

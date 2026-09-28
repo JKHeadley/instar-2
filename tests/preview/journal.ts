@@ -95,9 +95,14 @@ export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
   isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
 /** Rules 60/61: content-free resource facts of the owned launch behind a call (optional; older rows carry none). */
-export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handlesPerProcess' | 'processGrowth' | 'treeHandles' | 'memory' | 'treeCpu', 'hard' | 'sampled' | 'unavailable'>;
+export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handlesPerProcess' | 'processGrowth' | 'treeHandles' | 'memory' | 'treeCpu', 'hard' | 'sampled' | 'unavailable' | 'unsupported'>;
+  /** The kernel process limit actually held, with its subject (a user ID, never the launched tree). */
+  uidProcesses?: { state: 'hard'; subject: string; limit: number } | { state: 'unavailable'; subject: null; limit: null };
+  /** This launch's own admission: its work class, the owned launches running with it, and its wait. */
+  admission?: { work: 'answer' | 'review' | 'maintenance'; concurrent: number; waitedMs: number };
   peakMemoryBytes: number; peakProcesses: number; treeCpuMilliseconds: number; census: 'none' | 'complete' | 'partial' | 'failed';
-  leakedDescendants: number; cleanup: 'verified' | 'unresolved' }
+  /** `unconfined`: every recorded incarnation was observed gone; tree membership is not confined on the host. */
+  leakedDescendants: number; cleanup: 'verified' | 'unconfined' | 'unresolved' }
 type SummaryFaithfulness = { path: 'exact' | 'jev'; verdict: 'pass' | 'lost' | 'undecided'; score: number | null; usage?: ModelUsage };
 
 
@@ -951,9 +956,15 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
 function validLaunchResources(r: LaunchResources): boolean {
   const holds = ['cpuPerProcess', 'handlesPerProcess', 'processGrowth', 'treeHandles', 'memory', 'treeCpu'];
   return !!r && typeof r === 'object' && !!r.enforcement && Object.keys(r.enforcement).length === holds.length
-    && holds.every(key => ['hard', 'sampled', 'unavailable'].includes((r.enforcement as Record<string, string>)[key]!))
+    && holds.every(key => ['hard', 'sampled', 'unavailable', 'unsupported'].includes((r.enforcement as Record<string, string>)[key]!))
     && [r.peakMemoryBytes, r.peakProcesses, r.treeCpuMilliseconds, r.leakedDescendants].every(n => Number.isSafeInteger(n) && n >= 0)
-    && ['none', 'complete', 'partial', 'failed'].includes(r.census) && ['verified', 'unresolved'].includes(r.cleanup);
+    && ['none', 'complete', 'partial', 'failed'].includes(r.census) && ['verified', 'unconfined', 'unresolved'].includes(r.cleanup)
+    && (r.uidProcesses === undefined || r.uidProcesses.state === 'hard' && /^uid:\d+$/u.test(r.uidProcesses.subject)
+      && Number.isSafeInteger(r.uidProcesses.limit) && r.uidProcesses.limit > 0
+      || r.uidProcesses.state === 'unavailable' && r.uidProcesses.subject === null && r.uidProcesses.limit === null)
+    && (r.admission === undefined || ['answer', 'review', 'maintenance'].includes(r.admission.work)
+      && Number.isSafeInteger(r.admission.concurrent) && r.admission.concurrent >= 1
+      && Number.isSafeInteger(r.admission.waitedMs) && r.admission.waitedMs >= 0);
 }
 
 function project(view: JournalView, row: JournalRecord): void {

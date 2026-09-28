@@ -8,9 +8,10 @@ import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { hostResources, limitedFileArgv } from './resource-owner.mjs';
 
-/** The transport child's own bounds: a few handles, and no descendants beyond itself and a helper. */
+/** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
-/** The user's current process count plus the transport ceiling, or null (reported unavailable) when it cannot be read. */
+/** The user ID's current process count plus the transport headroom, or null when it cannot be read.
+ * Its subject is the user ID, not the transport's tree: it caps a fork burst, never the tree's size. */
 function transportProcessLimit() {
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
   if (uid === null || uid === 0) return null;
@@ -68,7 +69,8 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       captureDirectory: directory, identityBinding: input.identityBinding,
       ...(testEndpoint === null ? {} : { testEndpoint }) })).toString('base64url');
     // A synchronous, sequential transport child through the same limit shim as every provider launch
-    // (Rule 60): kernel-held per-process CPU time and handles, and a process-growth bound. Its V8 heap
+    // (Rule 60): kernel-held per-process CPU time and handles, and user-ID process headroom (not a tree
+    // bound: see resource-owner.mjs). It is sequential and waited on synchronously. Its V8 heap
     // is capped through NODE_OPTIONS (argv is unchanged), and its elapsed time and output by the
     // options below. Its RSS is not held by any unprivileged kernel limit on this host.
     const env = { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' };

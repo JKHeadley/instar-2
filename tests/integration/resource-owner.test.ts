@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 
 type Ceilings = typeof RESOURCE_CEILINGS;
@@ -166,6 +166,20 @@ setTimeout(() => { process.stdout.write(String(b.length)); }, 2500);`);
     owner.execute(input(root, grow), 'maintenance')]);
   expect(maintenance).toMatchObject({ limited: true, localLimit: 'aggregate' });
   expect(answer).toMatchObject({ code: 0, limited: false, stdout: String(64 * 1024 * 1024) });
+  // Each launch carries its own admission evidence: the overlap is this case's, not a lifetime peak.
+  expect([answer.resources.admission, maintenance.resources.admission]).toEqual(expect.arrayContaining([
+    { work: 'answer', concurrent: expect.any(Number), waitedMs: expect.any(Number) },
+    { work: 'maintenance', concurrent: 2, waitedMs: expect.any(Number) }]));
+});
+
+it('lets a desk-controlled case lower the aggregate memory ceiling, never raise it', async () => {
+  const lowered = createResourceOwner(ceilings());
+  await lowered.attach({ aggregateMemoryBytes: 256 * 1024 * 1024 });
+  expect(lowered.ceilings.aggregate.memoryBytes).toBe(256 * 1024 * 1024);
+  expect(lowered.snapshot().ceilings.aggregate.memoryBytes).toBe(256 * 1024 * 1024);
+  await expect(createResourceOwner(ceilings()).attach({ aggregateMemoryBytes: RESOURCE_CEILINGS.aggregate.memoryBytes + 1 }))
+    .rejects.toThrow(/only be lowered/u);
+  await expect(createResourceOwner(ceilings()).attach({ aggregateMemoryBytes: 1024 })).rejects.toThrow(/only be lowered/u);
 });
 
 it('recovery observes an orphan without signalling it, keeps a live owner\'s row, and closes only verified-gone rows', { timeout: 30000 }, async () => {
@@ -226,7 +240,7 @@ writeFileSync(process.argv[3], 'ran'); process.stdout.write(JSON.stringify(rows.
   expect(refusing.snapshot().outcomes.at(-1)).toMatchObject({ kind: 'capacity-refused', level: 'launch-evidence-unrecorded' });
 });
 
-it('holds an immediate fork burst with the kernel process bound, before any sample, and inherits it in descendants', { timeout: 30000 }, async () => {
+it('caps an immediate fork burst with the user-ID process limit, before any sample, and inherits the handle limit in descendants', { timeout: 30000 }, async () => {
   const root = dir();
   // No sampler can act: the launch lives well under one sample interval.
   const burst = script(root, 'burst.mjs', `import { spawn } from 'node:child_process';
@@ -238,7 +252,9 @@ setTimeout(() => { const started = kids.filter(c => c.pid).length; kids.forEach(
   await bounded.attach({});
   const held = await bounded.execute(input(root, burst), 'answer');
   const heldCounts = JSON.parse(held.stdout);
-  expect(held.resources.enforcement).toMatchObject({ processGrowth: 'hard', treeHandles: 'hard', memory: 'sampled' });
+  // The kernel limit held is the user ID's (its subject is named), never claimed as the tree's.
+  expect(held.resources.enforcement).toMatchObject({ processGrowth: 'sampled', treeHandles: 'unsupported', memory: 'sampled' });
+  expect(held.resources.uidProcesses).toMatchObject({ state: 'hard', subject: `uid:${process.getuid!()}`, limit: expect.any(Number) });
   expect(heldCounts.refused).toBeGreaterThan(0);
   expect(heldCounts.started).toBeLessThan(40);
   // The other side: a roomy ceiling lets the same burst run.
@@ -258,7 +274,7 @@ process.stdout.write(execFileSync(process.execPath, [process.argv[2]], { encodin
   expect(grandchild).toBeLessThan(64);
 });
 
-it('reclaims a detached descendant that left the process group, by its recorded incarnation', { timeout: 30000 }, async () => {
+it('reclaims a recorded detached descendant that left the process group, and still never claims confined membership', { timeout: 30000 }, async () => {
   const root = dir(), pids = join(root, 'pids');
   const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
 const c = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));
@@ -269,8 +285,91 @@ setTimeout(() => process.exit(0), 700);`);
   const detached = Number(readFileSync(pids, 'utf8'));
   await settle(200);
   expect(alive(detached)).toBe(false);
-  expect(result.resources).toMatchObject({ leakedDescendants: 1, cleanup: 'verified' });
+  expect(result.resources).toMatchObject({ leakedDescendants: 1, cleanup: 'unconfined' });
   expect(JSON.parse(readFileSync(join(root, 'owned-launches.json'), 'utf8')).launches).toEqual({});
+});
+
+it('never reports verified cleanup for a descendant that escaped before it was recorded', { timeout: 30000 }, async () => {
+  const root = dir(), pids = join(root, 'pids');
+  // The parent detaches a child into its own session and exits before any sample can record it.
+  const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+const c = spawn('/bin/sleep', ['4'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));`);
+  const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
+  await owner.attach({ ledgerPath: join(root, 'owned-launches.json') });
+  const result = await owner.execute(input(root, escape, [pids]), 'maintenance');
+  const escaped = Number(readFileSync(pids, 'utf8'));
+  try {
+    // The host cannot confine the tree: the escapee is alive and unrecorded, so the verdict says so.
+    expect(alive(escaped)).toBe(true);
+    expect(result.resources).toMatchObject({ census: 'none', cleanup: 'unconfined' });
+    expect(result.resources.cleanup).not.toBe('verified');
+    expect(owner.snapshot().bounds).toMatchObject({ treeMembership: 'unconfined', treeProcesses: 'sampled', uidProcesses: 'hard' });
+  } finally { try { process.kill(escaped, 'SIGKILL'); } catch { /* ended */ } }
+});
+
+it('keeps the durable row and reports unresolved cleanup when a cleanup signal is denied', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'owned-launches.json'), pids = join(root, 'pids');
+  // A group member outlives the provider; the owner's kill of it is refused (EPERM).
+  const leave = script(root, 'leave.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'ignore' }).pid)); setTimeout(() => process.exit(0), 300);`);
+  const denied = (target: number, name: string) => {
+    if (name === 'SIGKILL') throw Object.assign(Error('kill EPERM'), { code: 'EPERM' });
+    process.kill(target, name);
+  };
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ ledgerPath, signal: denied });
+  const result = await owner.execute(input(root, leave, [pids]), 'maintenance');
+  const survivor = Number(readFileSync(pids, 'utf8'));
+  try {
+    expect(result.resources.cleanup).toBe('unresolved');
+    expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches)).toHaveLength(1);
+    expect(owner.snapshot().counters.cleanupUnresolved).toBe(1);
+    expect(alive(survivor)).toBe(true);
+  } finally { try { process.kill(survivor, 'SIGKILL'); } catch { /* ended */ } }
+  // The other side: the same launch with signals allowed is observed quiescent and its row closes.
+  const healthy = createResourceOwner(ceilings());
+  const healthyLedger = join(dir(), 'owned-launches.json');
+  await healthy.attach({ ledgerPath: healthyLedger });
+  const done = await healthy.execute(input(root, leave, [pids]), 'maintenance');
+  const reclaimed = Number(readFileSync(pids, 'utf8'));
+  expect(done.resources).toMatchObject({ cleanup: 'unconfined', leakedDescendants: 1 });
+  expect(alive(reclaimed)).toBe(false);
+  expect(JSON.parse(readFileSync(healthyLedger, 'utf8')).launches).toEqual({});
+});
+
+it('does not hold a tree process ceiling: with baseline churn and a concurrent launch, a tree can exceed it', { timeout: 30000 }, async () => {
+  const root = dir(), go = join(root, 'go');
+  // Baseline processes of the same user, counted into the user-ID limit at launch time.
+  const baseline = Array.from({ length: 12 }, () => spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' }));
+  const forker = script(root, 'forker.mjs', `import { spawn } from 'node:child_process'; import { existsSync } from 'node:fs';
+const wait = () => existsSync(process.argv[2]) ? run() : setTimeout(wait, 25);
+const run = () => { const kids = []; let refused = 0;
+  for (let i = 0; i < 8; i++) { const c = spawn('/bin/sleep', ['5'], { stdio: 'ignore' }); c.on('error', () => { refused++; }); kids.push(c); }
+  setTimeout(() => { const started = kids.filter(c => c.pid).length; kids.forEach(c => { try { c.kill('SIGKILL'); } catch {} });
+    process.stdout.write(JSON.stringify({ started, refused })); }, 300); };
+wait();`);
+  try {
+    await settle(150);
+    // No sampler acts: only what the kernel holds is in play.
+    const owner = createResourceOwner({ ...ceilings({ launch: { processCount: 4 } }), sampleMs: 60000 });
+    await owner.attach({});
+    const first = owner.execute(input(root, forker, [go]), 'answer');
+    const second = owner.execute(input(root, forker, [go]), 'review');
+    await settle(700);
+    // Churn: unrelated processes of the same user exit after both limits were set.
+    baseline.forEach(child => { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ } });
+    await settle(200);
+    writeFileSync(go, '');
+    const results = await Promise.all([first, second]);
+    const started = results.map((r: { stdout: string }) => JSON.parse(r.stdout).started as number);
+    // A tree grew past its own ceiling of 4 after the churn: the user-ID limit is not a tree bound.
+    expect(Math.max(...started)).toBeGreaterThan(4);
+    for (const r of results) {
+      expect(r.resources.enforcement.processGrowth).not.toBe('hard');
+      expect(r.resources.uidProcesses.subject).toMatch(/^uid:\d+$/u);
+    }
+    expect(HOST_BOUNDS).toMatchObject({ treeProcesses: 'sampled', treeMembership: 'unconfined', aggregateLaunches: 'hard' });
+  } finally { baseline.forEach(child => { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ } }); }
 });
 
 it('treats denied observation as unknown: no unhandled rejection, maintenance defers, the kernel bounds still hold', { timeout: 30000 }, async () => {
@@ -291,8 +390,11 @@ it('treats denied observation as unknown: no unhandled rejection, maintenance de
     expect(maintenance).toMatchObject({ limited: true, localLimit: 'capacity' });
     const done = await answer;
     expect(done).toMatchObject({ code: 0, stdout: 'done' });
-    // Unknown process count: the growth bound is reported unavailable, never claimed hard.
-    expect(done.resources.enforcement).toMatchObject({ cpuPerProcess: 'hard', processGrowth: 'unavailable', treeHandles: 'unavailable' });
+    // Unknown process count: the user-ID bound is reported unavailable, and no tree bound is claimed hard.
+    expect(done.resources.enforcement).toMatchObject({ cpuPerProcess: 'hard', processGrowth: 'sampled', treeHandles: 'unsupported' });
+    expect(done.resources.uidProcesses).toEqual({ state: 'unavailable', subject: null, limit: null });
+    // Unverifiable cleanup (every query denied) is unresolved, never verified.
+    expect(done.resources.cleanup).toBe('unresolved');
     expect(owner.snapshot().counters.observationFailures).toBeGreaterThan(0);
     await settle(100);
     expect(rejections).toEqual([]);
@@ -330,7 +432,9 @@ it('records an owned launch in the durable ledger while it runs', { timeout: 300
   expect(rows[0]!.start).toMatch(/\d{4}/u);
   expect(rows[0]!.owner.pid).toBe(process.pid);
   expect(rows[0]!.members).toMatchObject({ [rows[0]!.pid]: rows[0]!.start });
-  await running;
+  const finished = await running;
+  // A healthy completion: every recorded incarnation observed gone, the row closed, membership honestly unconfined.
+  expect(finished.resources).toMatchObject({ cleanup: 'unconfined', leakedDescendants: 0, admission: { work: 'answer', concurrent: 1 } });
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
 });
 

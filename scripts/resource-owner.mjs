@@ -5,16 +5,24 @@
 // of claiming them.
 //
 // Every provider launch passes this owner's admission and runs through a limit
-// shim. What the kernel holds (hard, before any observation):
-//   - per-process CPU time and open handles (RLIMIT_CPU, RLIMIT_NOFILE, soft and hard);
-//   - process growth of the whole launched tree (RLIMIT_NPROC set to the user's
-//     current process count plus the launch's process ceiling): a fork past it is
-//     refused by the kernel, so the tree's size, and with it its total handles
-//     (processes × handles), are bounded however fast it forks or detaches;
-// all inherited by every descendant, including one that leaves the process group.
-// What is only sampled (memory, the tree's summed CPU): there is no unprivileged
-// per-tree memory limit on macOS, so these are enforced on observation and every
-// launch record says `sampled` for them rather than `hard`.
+// shim. What is held hard, and on which subject:
+//   - the count of concurrent owned launches, with a reserve for answer work
+//     (this owner's own admission);
+//   - per process: CPU time and open handles (RLIMIT_CPU, RLIMIT_NOFILE, soft and
+//     hard), inherited by every descendant, including one that leaves the group;
+//   - per user ID: RLIMIT_NPROC, lowered to the user's process count at launch plus
+//     the launch's process ceiling. Its subject is the user ID, not the launched
+//     tree: an unrelated process of the same user exiting frees a slot this tree
+//     can take, so it is reported as `uidProcesses` with that subject and never as
+//     a tree bound.
+// What is NOT held hard on this host: the launched tree's process count and memory,
+// and the aggregate memory/process ceilings are enforced only on observation
+// (`sampled`); the tree's total handles are not observed (`unsupported`). There is
+// no unprivileged confinement of a process tree here (a descendant can leave the
+// group and session), so tree membership is `unconfined` and a completion can
+// verify only the incarnations it recorded (`cleanup: 'unconfined'`), never that no
+// descendant escaped. A confined tree needs the fixed native worker adapter with its
+// own user ID and the Six allocation, which are not installed or landed here.
 //
 // The provider does not start until its launch evidence (pid, start evidence,
 // owner) is durably recorded: the shim waits on a go signal the owner sends only
@@ -24,6 +32,11 @@
 // owned parent pids, or pids this owner recorded with their start evidence. A pid
 // is attributed or signalled only while its start evidence matches the recorded
 // incarnation. A failed or denied query is `unknown`, never a rejection.
+//
+// Completion signals the remaining owned processes and then verifies that every
+// recorded incarnation and the group are gone. A denied signal, a failed query, a
+// member the ledger could not record, or a survivor keeps the durable row
+// (`cleanup: 'unresolved'`): a signal attempt is not observed quiescence.
 //
 // Recovery after a crash is observation only. Disposing of a process left by a dead
 // launcher is a recovery effect that needs the typed Part Eight process effect and
@@ -138,16 +151,24 @@ export const HOST_IDENTITY = Object.freeze({ machine: `machine:${hostname()}`,
   hardwareProfile: `hardware:${platform()}-${arch()}-${cpus().length}cpu`, cores: Math.max(1, cpus().length),
   producer: 'preview-host-launch-observer', classifierGeneration: 'classifier:owned-launch-v1' });
 
-export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
+/** The host posture: which ceilings are held hard, and on which subject (Rule 60). */
+export const HOST_BOUNDS = Object.freeze({ aggregateLaunches: 'hard', aggregateMemory: 'sampled', aggregateProcesses: 'sampled',
+  treeMembership: 'unconfined', treeProcesses: 'sampled', treeHandles: 'unsupported', uidProcesses: 'hard',
+  reason: 'no unprivileged per-tree confinement on this host: RLIMIT_NPROC bounds the user ID, not the launched tree' });
+/** A desk-controlled case may LOWER the aggregate memory ceiling, never raise it. */
+export const MIN_AGGREGATE_MEMORY_BYTES = 64 * 1024 * 1024;
+
+export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
+  let ceilings = initialCeilings;
   const censusLimit = ceilings.censusLimit ?? RESOURCE_CEILINGS.censusLimit;
   const launches = new Map(), waiters = [];
   let counters = { admitted: 0, waited: 0, refusedCapacity: 0, completed: 0, killed: {}, leakedDescendants: 0,
-    orphansObserved: 0, observationFailures: 0, partialSamples: 0 };
+    orphansObserved: 0, observationFailures: 0, partialSamples: 0, recordingFailures: 0, cleanupUnresolved: 0 };
   let outcomes = [];
   /** Highest owned usage seen: live evidence that the ceilings held. */
   let peak = { launches: 0, memoryBytes: 0, processes: 0 };
   let ports = { compare: plainCompare, priorityGate: null, reconcile: null, now: () => Date.now(), query: hostQuery,
-    monotonic: () => performance.now() };
+    monotonic: () => performance.now(), signal: (target, name) => process.kill(target, name) };
   let attached = null, inherited = { state: 'unobserved' }, usage = { level: 'normal', observation: 'idle',
     memoryBytes: 0, processes: 0, sampledAt: null };
   let lastSample = null, observer = { ticks: 0, queries: 0, elapsedMs: 0, lastTickMs: null };
@@ -176,12 +197,18 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     if (outcomes.length > OUTCOME_LIMIT) outcomes.shift();
     persist(true);
   };
-  /** Which bounds this host holds hard, and which only by observation. */
-  const enforcement = processLimit => ({ cpuPerProcess: 'hard', handlesPerProcess: 'hard',
-    processGrowth: processLimit === null ? 'unavailable' : 'hard',
-    treeHandles: processLimit === null ? 'unavailable' : 'hard', memory: 'sampled', treeCpu: 'sampled' });
+  /** Which bounds of one launch are held hard, and which only by observation. The tree's process
+   * growth is sampled: the kernel's process limit holds the user ID (reported as `uidProcesses`
+   * with its subject), not this tree. */
+  const enforcement = () => ({ cpuPerProcess: 'hard', handlesPerProcess: 'hard', processGrowth: 'sampled',
+    treeHandles: 'unsupported', memory: 'sampled', treeCpu: 'sampled' });
+  /** One SIGKILL: `sent`, `gone` (no such process) or `denied` (anything else: never read as success). */
+  const kill = target => {
+    try { ports.signal(target, 'SIGKILL'); return 'sent'; }
+    catch (error) { return error?.code === 'ESRCH' ? 'gone' : 'denied'; }
+  };
   function snapshot() {
-    return { version: 1, at: ports.now(), identity: HOST_IDENTITY, ceilings, inherited, usage: { ...usage, level: level() },
+    return { version: 1, at: ports.now(), identity: HOST_IDENTITY, ceilings, bounds: HOST_BOUNDS, inherited, usage: { ...usage, level: level() },
       active: [...launches.values()].map(l => ({ id: l.id, work: l.work, pid: l.pid ?? null, startedAt: l.startedAt,
         memoryBytes: l.memoryBytes, processes: l.processes, cpuMilliseconds: l.cpuMilliseconds, enforcement: l.enforcement })),
       waiting: waiters.map(w => w.work), counters, peak, observer, sample: lastSample, lastLaunch, orphans, outcomes };
@@ -210,7 +237,7 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     waiters.sort((a, b) => Number(priorityOf(b.work) === 'critical') - Number(priorityOf(a.work) === 'critical') || a.order - b.order);
     for (const waiter of [...waiters]) {
       if (waiter.stopped?.() || ports.now() >= waiter.deadline) { settleWaiter(waiter, null); continue; }
-      if (eligible(waiter.work)) settleWaiter(waiter, reserve(waiter.work));
+      if (eligible(waiter.work)) settleWaiter(waiter, reserve(waiter.work, waiter.requestedAt));
     }
     if (!waiters.length && pump) { clearInterval(pump); pump = null; }
   }
@@ -222,11 +249,13 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     }
     waiter.resolve(lease);
   }
-  function reserve(work) {
+  function reserve(work, requestedAt = ports.monotonic()) {
     const lease = { id: randomUUID(), work, startedAt: ports.now(), pid: null, memoryBytes: 0, processes: 0,
-      cpuMilliseconds: 0, members: [], known: new Map(), limit: null, enforcement: null,
-      peakMemoryBytes: 0, peakProcesses: 0, census: 'none', previous: new Map() };
+      cpuMilliseconds: 0, members: [], known: new Map(), limit: null, enforcement: null, uidProcesses: null,
+      peakMemoryBytes: 0, peakProcesses: 0, census: 'none', previous: new Map(), recording: 'complete' };
     launches.set(lease.id, lease); counters.admitted++;
+    // This launch's own admission evidence: how many owned launches ran with it, and how long it waited.
+    lease.admission = { work, concurrent: launches.size, waitedMs: Math.max(0, Math.round(ports.monotonic() - requestedAt)) };
     peak.launches = Math.max(peak.launches, launches.size);
     if (!sampler) sampler = setInterval(() => { void sample(); }, ceilings.sampleMs);
     return lease;
@@ -235,7 +264,8 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     if (eligible(work)) return Promise.resolve(reserve(work));
     counters.waited++;
     return new Promise(resolve => {
-      waiters.push({ work, stopped, resolve, order: counters.waited, deadline: ports.now() + Math.max(0, timeout) });
+      waiters.push({ work, stopped, resolve, order: counters.waited, deadline: ports.now() + Math.max(0, timeout),
+        requestedAt: ports.monotonic() });
       pump ??= setInterval(wake, 100);
       persist(true);
     });
@@ -251,8 +281,9 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     if (lease.limit) return;
     lease.limit = reason;
     counters.killed[reason] = (counters.killed[reason] ?? 0) + 1;
-    if (lease.pid) try { process.kill(-lease.pid, 'SIGKILL'); } catch { /* the group may have ended */ }
-    for (const pid of members) try { process.kill(pid, 'SIGKILL'); } catch { /* ended between sample and signal */ }
+    if (lease.pid) kill(-lease.pid);
+    // Completion re-verifies every member: a denied signal here surfaces there as unresolved.
+    for (const pid of members) kill(pid);
     record({ kind: 'limit-kill', work: lease.work, reason, memoryBytes: lease.memoryBytes, processes: lease.processes });
   }
   const splitRow = line => {
@@ -342,7 +373,11 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
       // can find a member that later leaves the group, and never mistake a reused pid for it.
       for (const lease of new Set(joined)) try {
         ledger(rows => { if (rows[lease.id]) rows[lease.id].members = Object.fromEntries(lease.known); });
-      } catch { /* the kernel bounds still hold; completion still re-verifies known members */ }
+      } catch {
+        // A member the durable ledger does not hold: this launch's ownership is incomplete, so its
+        // row is never closed by completion (it stays for recovery to observe).
+        lease.recording = 'incomplete'; counters.recordingFailures++;
+      }
       usage = { observation: census.state === 'complete' ? 'observed' : 'partial', sampledAt: at,
         memoryBytes: roots.reduce((sum, l) => sum + l.memoryBytes, 0), processes: roots.reduce((sum, l) => sum + l.processes, 0) };
       lastSample = { sourceSample, ...HOST_IDENTITY, at, census: { state: census.state, examined: census.examined, omitted: census.omitted },
@@ -382,46 +417,74 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     const text = await query('/bin/ps', ['-o', 'lstart=', '-p', String(pid)]);
     return text === null ? UNKNOWN : text.trim() || null;
   }
-  /** The kernel bound on the launched tree: the user's current process count plus the launch ceiling. */
+  /** The kernel process limit of the user ID: its current process count plus the launch ceiling.
+   * Its subject is the user ID (every process of that user counts), never the launched tree. */
   async function processLimit() {
     const uid = typeof process.getuid === 'function' ? process.getuid() : null;
-    if (uid === null || uid === 0) return null;
+    if (uid === null || uid === 0) return { state: 'unavailable', subject: null, limit: null };
     const listed = pids(await query('/bin/ps', ['-U', String(uid), '-o', 'pid=']));
-    return listed === null || listed.length === 0 ? null : listed.length + ceilings.launch.processCount;
+    return listed === null || listed.length === 0 ? { state: 'unavailable', subject: null, limit: null }
+      : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount };
+  }
+  /** Live incarnations of the named pids (a zombie is not live); `null` when the query failed. */
+  async function incarnations(list) {
+    if (!list.length) return new Map();
+    const text = await query('/bin/ps', ['-o', 'pid=,stat=,lstart=', '-p', list.join(',')]);
+    if (text === null) return null;
+    const rows = new Map();
+    for (const line of text.split('\n')) {
+      const [pid, stat, ...start] = line.trim().split(/\s+/u);
+      if (Number.isSafeInteger(Number(pid)) && stat && start.length) rows.set(Number(pid), { start: start.join(' '), zombie: stat.startsWith('Z') });
+    }
+    return rows;
+  }
+  /** Observed quiescence: the group is empty and no recorded incarnation is alive, within a bounded wait. */
+  async function quiescent(lease) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const group = pids(await query('/usr/bin/pgrep', ['-g', String(lease.pid)]));
+      const rows = await incarnations([...lease.known.keys()]);
+      if (group === null || rows === null) return false;
+      const living = [...lease.known].some(([pid, start]) => rows.get(pid)?.start === start && !rows.get(pid).zombie);
+      if (!group.length && !living) return true;
+      await new Promise(done => setTimeout(done, 100));
+    }
+    return false;
   }
   /** After the provider exits: remaining group members and every recorded member still the same
    * incarnation (one that left the group included) are reclaimed by the live owner of this launch.
    * Returns how many were left behind and whether any remain unverified. */
   async function cleanupTree(lease) {
-    let leaked = 0, unresolved = false;
+    let leaked = 0, unresolved = lease.recording !== 'complete';
     const group = pids(await query('/usr/bin/pgrep', ['-g', String(lease.pid)]));
     if (group === null) unresolved = true;
     else if (group.length) {
       // Members keep the group id alive, so it cannot have been reused: every member is owned.
-      try { process.kill(-lease.pid, 'SIGKILL'); } catch { /* ended meanwhile */ }
+      if (kill(-lease.pid) === 'denied') unresolved = true;
       leaked += group.length;
     }
     const recorded = [...lease.known].filter(([pid]) => pid !== lease.pid && !group?.includes(pid));
     if (recorded.length) {
-      const table = await query('/bin/ps', ['-o', 'pid=,ppid=,pgid=,rss=,time=,lstart=', '-p', recorded.map(([pid]) => pid).join(',')]);
-      if (table === null) unresolved = true;
-      else {
-        const rows = new Map(table.split('\n').map(splitRow).filter(Boolean).map(row => [row.pid, row]));
-        for (const [pid, start] of recorded) if (rows.get(pid)?.start === start) {
-          try { process.kill(pid, 'SIGKILL'); leaked++; } catch { /* ended meanwhile */ }
-        }
+      const rows = await incarnations(recorded.map(([pid]) => pid));
+      if (rows === null) unresolved = true;
+      else for (const [pid, start] of recorded) if (rows.get(pid)?.start === start && !rows.get(pid).zombie) {
+        if (kill(pid) === 'denied') unresolved = true;
+        leaked++;
       }
     }
+    // A signal attempt is not quiescence: every recorded incarnation and the group must be observed gone.
+    if (!unresolved && !await quiescent(lease)) unresolved = true;
+    if (unresolved) counters.cleanupUnresolved++;
     if (leaked) {
       counters.leakedDescendants += leaked;
       record({ kind: 'leaked-descendants', work: lease.work, processes: leaked });
     }
     return { leaked, unresolved };
   }
-  function run(input, lease, limitValue) {
+  function run(input, lease, uidProcesses) {
     const handles = Math.max(16, ceilings.launch.handleCount);
     const cpuSeconds = Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000));
-    lease.enforcement = enforcement(limitValue);
+    lease.enforcement = enforcement(); lease.uidProcesses = uidProcesses;
+    const limitValue = uidProcesses.limit;
     return new Promise(resolve => {
       let child;
       try {
@@ -445,7 +508,7 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
         if (start) lease.known.set(lease.pid, start);
         try {
           ledger(rows => { rows[lease.id] = { pid: lease.pid, start, owner: attached?.owner ?? null,
-            members: Object.fromEntries(lease.known), enforcement: lease.enforcement }; });
+            members: Object.fromEntries(lease.known), enforcement: lease.enforcement, uidProcesses: lease.uidProcesses }; });
         } catch {
           // The launch could not be recorded: it never runs (the owner refuses it rather than lose it).
           counters.refusedCapacity++;
@@ -480,8 +543,12 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
           // A row is removed only once every recorded member is verified gone; otherwise it stays
           // for recovery to observe (the launch evidence is never discarded while unresolved).
           if (!unresolved) try { ledger(rows => { delete rows[lease.id]; }); } catch { /* observed at the next attach */ }
-          const resources = { enforcement: lease.enforcement, peakMemoryBytes: lease.peakMemoryBytes, peakProcesses: lease.peakProcesses,
-            treeCpuMilliseconds: lease.cpuMilliseconds, census: lease.census, leakedDescendants: leaked, cleanup: unresolved ? 'unresolved' : 'verified' };
+          // `unconfined`: every recorded incarnation was observed gone, but tree membership is not
+          // confined on this host, so a descendant that escaped before it was recorded cannot be excluded.
+          const resources = { enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, admission: lease.admission,
+            peakMemoryBytes: lease.peakMemoryBytes, peakProcesses: lease.peakProcesses,
+            treeCpuMilliseconds: lease.cpuMilliseconds, census: lease.census, leakedDescendants: leaked,
+            cleanup: unresolved ? 'unresolved' : 'unconfined' };
           lastLaunch = { work: lease.work, at: ports.now(), ...resources };
           resolve({ code, limited, localLimit, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes), resources });
         };
@@ -543,13 +610,21 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     return inherited;
   }
   return Object.freeze({
-    ceilings,
+    get ceilings() { return ceilings; },
     /** One owner per process: a second attach is refused. */
     async attach(options = {}) {
       if (attached) throw Error('resource owner already attached');
       ports = { compare: options.compare ?? plainCompare, priorityGate: options.priorityGate ?? null,
         reconcile: options.reconcile ?? null, now: options.now ?? (() => Date.now()), query: options.query ?? hostQuery,
-        monotonic: options.monotonic ?? (() => performance.now()) };
+        monotonic: options.monotonic ?? (() => performance.now()),
+        signal: options.signal ?? ((target, name) => process.kill(target, name)) };
+      // A desk-controlled low-ceiling case: the aggregate memory ceiling may be lowered, never raised.
+      if (options.aggregateMemoryBytes !== undefined) {
+        const bytes = options.aggregateMemoryBytes;
+        if (!Number.isSafeInteger(bytes) || bytes < MIN_AGGREGATE_MEMORY_BYTES || bytes > ceilings.aggregate.memoryBytes)
+          throw Error('resource owner: aggregate memory ceiling may only be lowered');
+        ceilings = Object.freeze({ ...ceilings, aggregate: Object.freeze({ ...ceilings.aggregate, memoryBytes: bytes }) });
+      }
       attached = { ledgerPath: options.ledgerPath ?? null, statePath: options.statePath ?? null, owner: { pid: process.pid, start: null } };
       const own = await startEvidence(process.pid);
       attached.owner.start = typeof own === 'string' ? own : null;

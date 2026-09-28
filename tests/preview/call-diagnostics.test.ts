@@ -152,8 +152,9 @@ it('keeps each owned launch\'s resource facts on its durable call-outcome row ac
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-call-resources-')));
   const key = new Uint8Array(32).fill(7), path = join(root, 'journal.encrypted');
   const id = 'telegram:12345678:update:1';
-  const resources = { enforcement: { cpuPerProcess: 'hard', handlesPerProcess: 'hard', processGrowth: 'hard', treeHandles: 'hard',
-    memory: 'sampled', treeCpu: 'sampled' }, peakMemoryBytes: 1024, peakProcesses: 3, treeCpuMilliseconds: 40, census: 'complete',
+  const resources = { enforcement: { cpuPerProcess: 'hard', handlesPerProcess: 'hard', processGrowth: 'sampled', treeHandles: 'unsupported',
+    memory: 'sampled', treeCpu: 'sampled' }, uidProcesses: { state: 'hard', subject: 'uid:501', limit: 900 },
+    admission: { work: 'maintenance', concurrent: 2, waitedMs: 15 }, peakMemoryBytes: 1024, peakProcesses: 3, treeCpuMilliseconds: 40, census: 'complete',
     leakedDescendants: 2, cleanup: 'unresolved', provider: 'prose must not travel' };
   try {
     const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
@@ -167,11 +168,17 @@ it('keeps each owned launch\'s resource facts on its durable call-outcome row ac
     // A malformed resource record is refused, not stored.
     expect(() => journal.append({ kind: 'call-outcome', id, role: 'model', outcome: { ...outcome, resources: { ...outcome.resources, census: 'lots' } }, at: 1009 }))
       .toThrow(/call outcome malformed/u);
+    // A user-ID limit without its subject, or an admission without its concurrency, is refused too.
+    expect(() => journal.append({ kind: 'call-outcome', id, role: 'model', outcome: { ...outcome, resources: { ...outcome.resources,
+      uidProcesses: { state: 'hard', subject: 'tree', limit: 4 } } }, at: 1009 })).toThrow(/call outcome malformed/u);
+    expect(() => journal.append({ kind: 'call-outcome', id, role: 'model', outcome: { ...outcome, resources: { ...outcome.resources,
+      admission: { work: 'maintenance', concurrent: 0, waitedMs: 0 } } }, at: 1009 })).toThrow(/call outcome malformed/u);
     journal.append({ kind: 'call-outcome', id, role: 'model', outcome, at: 1010 });
     journal.compact();
     journal.close();
     const replayed = openPreviewJournal(path, key, undefined, undefined, true);
     expect(Object.fromEntries(replayed.view.callOutcomeCounts)).toMatchObject({ 'leaked-descendants': 2, 'cleanup-unresolved': 1 });
+    expect(replayed.view.callOutcomes.at(-1)!.outcome.resources).toMatchObject({ admission: { concurrent: 2 }, uidProcesses: { subject: 'uid:501' } });
     replayed.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
