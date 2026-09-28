@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { childAuthority, placeDelegation } from '../../src/rungraph/index.js';
 import type { DelegationContract } from '../../src/rungraph/index.js';
-import { offerEnvelope, resultEnvelope, resultFor, sealEnvelope } from '../../src/rungraph/index.js';
+import { cancelEnvelope, offerEnvelope, resultEnvelope, resultFor, sealEnvelope, semanticDigest } from '../../src/rungraph/index.js';
 import { createThreadlineKeyCustody, sealThreadlineFrame } from '../../src/transport/index.js';
 import type { ThreadlineFrame } from '../../src/transport/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -534,5 +534,107 @@ describe.each(['local', 'threadline'] as const)('contract parties and current ru
     const e = offerEnvelope(contract);
     expect(b.endpoint.lookup(e.key, e.digest, 'agent-a').state).toBe('delivered-to-worker');
     expect(b.endpoint.lookup(e.key, e.digest, 'agent-c').state).toBe('unknown');
+  });
+});
+
+describe.each(['local', 'threadline'] as const)('settlement and durability evidence are exact per record over %s delivery (Rules 42/68/114)', kind => {
+  it('a later refused attempt never settles a child an earlier attempt handed to a worker; a never-delivered child settles at once', () => {
+    const net = createNetwork(kind);
+    const a = net.add('agent-a', ['code'], () => null);
+    const b = net.add('agent-b', ['code'], () => null);
+    // The sending transport itself refuses: an unreachable local route, or a relay that is down.
+    const cut = (down: boolean) => { if (kind === 'local') { if (down) net.partition('agent-b'); else net.rejoin('agent-b'); } else net.relay.down = down; };
+    // Local delivery can prove the send did not happen; a down relay leaves it unresolved. Neither settles earlier custody.
+    const failed = kind === 'local' ? 'refused' : 'uncertain';
+    const c = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b'));
+    net.tick(2);
+    expect(b.ledger.view().get(c.id)!.proven).toContain('delivered-to-worker');
+    // A duplicate offer meets a partition and is refused; the parent never saw the worker observation.
+    cut(true);
+    expect(net.send(a, offerEnvelope(c)).state).toBe(failed);
+    value(a.ledger.cancel(c.id, 'agent-a', 'stop', net.now()));
+    expect(a.ledger.view().get(c.id)!.cancellation).toBe('requested');
+    expect(a.ledger.outstanding().map(edge => edge.contract.id)).toContain(c.id);
+    // Recipient settlement is what confirms it.
+    cut(false);
+    net.tick(8);
+    expect(b.ledger.view().get(c.id)!.result!.terminal).toBe('cancelled');
+    expect(a.ledger.view().get(c.id)!.cancellation).toBe('confirmed');
+    expect(a.ledger.outstanding()).toHaveLength(0);
+    // The other side of the boundary: a child whose every attempt was provably refused before any custody settles
+    // without a result; an unresolved attempt does not.
+    const lost = value(a.ledger.delegate(net.request(net.rootAuthority('agent-a'), 'agent-b', { sequence: 1 })));
+    cut(true);
+    expect(net.send(a, offerEnvelope(lost)).state).toBe(failed);
+    value(a.ledger.cancel(lost.id, 'agent-a', 'stop', net.now()));
+    expect(a.ledger.view().get(lost.id)!.cancellation).toBe(kind === 'local' ? 'confirmed' : 'requested');
+    expect(a.ledger.outstanding().map(edge => edge.contract.id)).toEqual(kind === 'local' ? [] : [lost.id]);
+  });
+
+  it('a cancel receipt consumes the cancel append itself: an unavailable disk refuses, and custody follows only a recorded cancel', () => {
+    const net = createNetwork(kind);
+    const a = net.add('agent-a', ['code'], () => null);
+    const b = net.add('agent-b', ['code'], () => null);
+    const c = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b'));
+    net.tick(2);
+    const cancel = cancelEnvelope(c, 'stop', net.now());
+    b.disk.down = true;
+    expect(b.endpoint.receive(cancel, net.now(), 'agent-a').state).toBe('refused');
+    b.disk.down = false;
+    expect(b.disk.records.some(row => row.record === 'cancel')).toBe(false);
+    expect(b.ledger.view().get(c.id)!.cancellation).toBe('none');
+    expect(b.endpoint.receive(cancel, net.now(), 'agent-a')).toMatchObject({ state: 'durably-queued', durability: 'local-durable' });
+    expect(b.ledger.view().get(c.id)!.cancellation).toBe('requested');
+  });
+
+  it('a recipient result retained below its replicated demand is never answered, and is re-appended (not re-run) once durability returns', () => {
+    const net = createNetwork(kind);
+    let finish = false, calls = 0;
+    const a = net.add('agent-a', ['code'], () => null, new Disk('replicated', 1));
+    const b = net.add('agent-b', ['code'], () => { if (!finish) return null; calls++; return done('ran'); }, new Disk('replicated', 1));
+    const c = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b', { durability: 'replicated' }));
+    net.tick(2);
+    b.disk.durability = 'local-durable'; b.disk.replicas = 0; finish = true;
+    expect(b.endpoint.work(b.worker, net.now())).toHaveLength(0);
+    expect(calls).toBe(1);
+    const b2 = net.restart('agent-b'), offer = offerEnvelope(c);
+    expect(b2.ledger.view().get(c.id)).toMatchObject({ result: null, retained: { terminal: 'completed' } });
+    expect(b2.endpoint.lookup(offer.key, offer.digest, 'agent-a').state).toBe('delivered-to-worker');
+    net.tick(3);
+    expect(a.ledger.view().get(c.id)!.result).toBeNull();
+    b2.disk.durability = 'replicated'; b2.disk.replicas = 1;
+    net.tick(6);
+    expect(calls).toBe(1);
+    expect(b2.endpoint.lookup(offer.key, offer.digest, 'agent-a')).toMatchObject({ state: 'answered', durability: 'replicated' });
+    expect(a.ledger.view().get(c.id)!.collected).toBe(true);
+  });
+
+  it('a result receipt or collection below its replicated demand stays pending across restart and duplicates, and succeeds on retry', () => {
+    const net = createNetwork(kind);
+    let finish = false;
+    const a = net.add('agent-a', ['code'], () => null, new Disk('replicated', 1));
+    const b = net.add('agent-b', ['code'], () => (finish ? done('ran') : null), new Disk('replicated', 1));
+    const c = net.delegate(a, net.request(net.rootAuthority('agent-a'), 'agent-b', { durability: 'replicated' }));
+    net.tick(2);
+    finish = true;
+    const result = b.endpoint.work(b.worker, net.now())[0]!;
+    a.disk.durability = 'local-durable'; a.disk.replicas = 0;
+    expect(a.endpoint.receive(result, net.now(), 'agent-b').state).toBe('refused');
+    const a2 = net.restart('agent-a');
+    expect(a2.endpoint.lookup(result.key, semanticDigest(result), 'agent-b').state).toBe('unknown');
+    expect(a2.endpoint.receive(result, net.now(), 'agent-b').state).toBe('refused');
+    expect(a2.ledger.view().get(c.id)!.result).toBeNull();
+    expect(a2.ledger.outstanding().map(edge => edge.contract.id)).toContain(c.id);
+    a2.disk.durability = 'replicated'; a2.disk.replicas = 1;
+    expect(a2.endpoint.receive(result, net.now(), 'agent-b')).toMatchObject({ state: 'durably-queued', durability: 'replicated' });
+    // The collection append is answered only locally: it is not a collection, and the edge stays owned.
+    a2.disk.nextReceipts = [{ durability: 'local-durable', replicas: 0 }];
+    expect(refusal(a2.ledger.collect(c.id, net.now()))).toContain('replication demand unmet');
+    const reread = net.restart('agent-a');
+    expect(reread.ledger.view().get(c.id)!.collected).toBe(false);
+    expect(reread.ledger.outstanding().map(edge => edge.contract.id)).toContain(c.id);
+    value(reread.ledger.collect(c.id, net.now()));
+    expect(reread.ledger.view().get(c.id)!.collected).toBe(true);
+    expect(reread.ledger.outstanding()).toHaveLength(0);
   });
 });

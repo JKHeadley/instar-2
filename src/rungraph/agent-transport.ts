@@ -159,8 +159,10 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
       if (stored !== digest) return freeze({ key, digest, state: 'refused', refusedWhat: 'receiving-admission',
         authoritative: `conflict:${edge.contract.id}`, result: null, durability: null });
       const state = edge.result ? 'answered' : edge.proven.includes('delivered-to-worker') ? 'delivered-to-worker' : 'durably-queued';
+      // Every positive state claimed here is gated on its own record (acceptance or result) having achieved
+      // the edge's demand, so that demand is the durability being acknowledged — never the edge prefix's.
       return freeze({ key, digest, state: asOwner ? 'durably-queued' : state, authoritative: `ledger:${edge.contract.id}`,
-        result: asRecipient ? edge.result : null, durability: edge.achieved });
+        result: asRecipient ? edge.result : null, durability: edge.contract.durability });
     }
     return freeze({ key, digest, state: 'unknown', authoritative: 'none', result: null, durability: null });
   };
@@ -202,9 +204,12 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
       const edge = ledger.view().get(envelope.edge);
       if (envelope.kind === 'cancel') {
         if (!edge || edge.contract.recipient !== principal || edge.contract.owner !== from) return refuse(envelope, 'cancel');
-        if (!edge.result) ledger.cancel(envelope.edge, from, envelope.reason ?? 'cancelled', at);
+        // An answered edge has nothing left to cancel: the cancel did not happen.
+        if (edge.result) return refuse(envelope, `answered:${envelope.edge}`);
+        // Custody of the cancellation is acknowledged only from the cancel's own achieved append.
+        if (!succeeded(ledger.cancel(envelope.edge, from, envelope.reason ?? 'cancelled', at))) return refuse(envelope, 'cancel-durability');
         return freeze({ key: envelope.key, digest: envelope.digest, state: 'durably-queued', authoritative: `cancel:${envelope.edge}`,
-          result: null, durability: edge.achieved });
+          result: null, durability: edge.contract.durability });
       }
       if (envelope.kind === 'result' && envelope.result && edge && edge.contract.owner === principal) {
         // Only the contract's own recipient may return its result, whatever the result names inside.
@@ -219,6 +224,11 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
       for (const edge of ledger.view().values()) {
         if (edge.contract.recipient !== principal || !edge.acceptance || !edge.executable || edge.result) continue;
         const localRun = edge.acceptance.localRun;
+        // A result already closed but retained below demand is re-appended as-is: never a second worker or close.
+        if (edge.retained) {
+          if (succeeded(ledger.submit(edge.retained, at))) out.push(resultEnvelope(edge.contract, edge.retained, at));
+          continue;
+        }
         if (edge.cancellation !== 'none') {
           // A cancellation confirms no more than descendant settlement proves: wait while any child this
           // run delegated is still unsettled (its own cancellation unconfirmed, no result).

@@ -224,7 +224,7 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory', 'check-agreements'].includes(command)) throw Error('preview: unknown command');
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -244,6 +244,12 @@ async function main() {
     return realpathSync(directory);
   };
   const ownerMachine = options['owner-machine'] ?? hostname();
+  // Rule 33: the one input every declared store agreement is checked against (the loop's cadence and the offline check).
+  const agreementInput = (view, now) => ({ view, runs: readRuns(runsPath), root, now,
+    ownership: observeConversationOwner({ directory: ownersDirectory(), bot: view.genesis.bot, chat: view.genesis.chat, machine: ownerMachine,
+      probePid: pid => process.kill(pid, 0), now }),
+    replay: () => { const replayed = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+      try { return projectionDigest(replayed.view); } finally { replayed.close(); } } });
   // Rule 113: the declared multi-machine posture. Only single-machine has a conversation authority today.
   const posture = options['machine-posture'] ?? process.env.INSTAR_MACHINE_POSTURE ?? 'single-machine';
   if (posture !== 'single-machine' && posture !== 'multi-machine') throw Error('preview: machine-posture must be single-machine or multi-machine');
@@ -264,6 +270,19 @@ async function main() {
       const report = auditJournal(journal.view);
       process.stdout.write(`${JSON.stringify(report)}\n`);
       if (report.findings.length) process.exitCode = 1;
+    } finally { journal.close(); }
+    return;
+  }
+  if (command === 'check-agreements') {
+    // Offline and forced: runs every declared comparison now on this root (a copy), with a read-only journal and no
+    // Telegram call, then reports whether the last exit's frontier still equals the journal so the exit check is measurable.
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      const input = agreementInput(journal.view, wallNow()), frontier = projectionDigest(journal.view);
+      const exited = [...input.runs.launches].reverse().find(run => run.exit !== undefined && run.unfinished !== undefined && !run.nonowner);
+      const records = runDueAgreements(agreementsPath, input, true);
+      process.stdout.write(`${JSON.stringify({ frontier, exitFrontier: exited?.frontier ?? null,
+        frontierMatches: exited?.frontier === frontier, records })}\n`);
     } finally { journal.close(); }
     return;
   }
@@ -559,14 +578,7 @@ async function main() {
   // Rule 33: declared store agreements run at launch and then on their cadence; each completed check is durable.
   const checkAgreements = force => {
     if (!journal) return;
-    try {
-      const g = journal.view.genesis;
-      runDueAgreements(agreementsPath, { view: journal.view, runs: readRuns(runsPath), root, now: wallNow(),
-        ownership: observeConversationOwner({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine,
-          probePid: pid => process.kill(pid, 0), now: wallNow() }),
-        replay: () => { const replayed = openPreviewJournal(journalPath, key(), undefined, undefined, true);
-          try { return projectionDigest(replayed.view); } finally { replayed.close(); } } }, force);
-    } catch { /* an interrupted maintenance pass stays due; the last completed check remains visible */ }
+    try { runDueAgreements(agreementsPath, agreementInput(journal.view, wallNow()), force); } catch { /* an interrupted maintenance pass stays due; the last completed check remains visible */ }
   };
   let retiredReason = null;
   const ownerHeld = () => {
@@ -842,7 +854,11 @@ async function main() {
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || !ownerHeld()) break;
-      serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, journal.view.stop ? 'stop latched' : 'serving');
+      // Attempting another poll is not restoration: while a poll-failure episode is open the owner stays
+      // non-servable with its typed reason; only a successful poll (below) restores service.
+      const unrestored = failedPolls > 0 || conflictedPolls > 0;
+      serviceBeat(!journal.view.stop && wallNow() < journal.view.expires && !unrestored, journal.view.stop ? 'stop latched'
+        : unrestored ? (conflictedPolls ? 'Telegram reports another poller' : 'polling Telegram is failing') : 'serving');
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
           importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
@@ -880,6 +896,7 @@ async function main() {
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
+      if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');
       failedPolls = 0; conflictedPolls = 0;
       worker.intake(updates.result); await worker.drain();
       // Reminders go out only after a successful poll returned nothing new: every

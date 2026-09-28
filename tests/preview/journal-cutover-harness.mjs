@@ -66,9 +66,12 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     { cwd: process.cwd(), env: { ...env('live'), ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] }), 60000);
   const statusOf = () => collect(spawn(process.execPath, [...args, 'status', '--root', liveRoot],
     { cwd: process.cwd(), env: env('live'), stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
+  /** Any non-run command against an arbitrary root (e.g. a copy), with the live role's key and no poller. */
+  const commandOn = (root, command, extraArgs = []) => collect(spawn(process.execPath, [...args, command, '--root', root, ...extraArgs],
+    { cwd: process.cwd(), env: env('live'), stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
   const setUpdates = updates => writeFileSync(join(directory, 'updates.json'), JSON.stringify(updates));
   const setConflicts = count => writeFileSync(join(directory, 'conflicts-remaining'), String(count));
   const calls = () => readFileSync(join(directory, 'telegram.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   return { directory, canaryRoot, liveRoot, startCanary, launchLive, startLive, status, waitForOverlap,
-    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf };
+    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf, commandOn };
 }

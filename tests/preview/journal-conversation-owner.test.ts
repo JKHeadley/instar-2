@@ -194,3 +194,43 @@ it('P14-NF-68 service observations: a live PID is not service; serving, unservab
   expect(assessStranded(observe(10), 0).state).toBe('clear');
   expect(assessStranded(observe(10), 2)).toMatchObject({ state: 'stranded', owner: 'unowned' });
 });
+
+it('P14-NF-68 an unresolved poll failure is never serving: retries stay non-servable until a successful poll restores service', async () => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([]);
+  // Three conflicted polls (short backoff, under the breaker), then Telegram answers.
+  harness.setConflicts(3);
+  const served = await harness.runLive(4);
+  expect(served.status, served.stderr).toBe(0);
+  const { botId, chatId } = world.configuration;
+  const pid = readRuns(join(harness.liveRoot, 'runs.jsonl')).launches.at(-1).pid;
+  const rows = JSON.parse(readFileSync(join(process.env.INSTAR_CONVERSATION_OWNERS, conversationOwnerKey(botId, chatId), 'service.json'), 'utf8'))
+    .filter(row => row.pid === pid);
+  const firstFailure = rows.findIndex(row => !row.servable), restored = rows.findIndex(row => row.reason === 'poll restored');
+  expect(firstFailure).toBeGreaterThan(0);
+  expect(restored).toBeGreaterThan(firstFailure);
+  // Every beat between the first failure and restoration — the loop's retry beats included — is non-servable, typed.
+  const episode = rows.slice(firstFailure, restored);
+  expect(episode.length).toBeGreaterThanOrEqual(5);
+  expect(episode.every(row => !row.servable && row.reason === 'Telegram reports another poller')).toBe(true);
+  expect(rows[restored].servable).toBe(true);
+  // The runner's own sequence, replayed 30 s apart through the real observer: sustained failure is unservable
+  // (stranded), never serving; only the restoration beat returns it to serving.
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'owner-replay-')));
+  const held = claimConversation({ directory, bot: '1', chat: '2', machine: 'studio', root: '/r', key, context, io: productionStorageIO, now: 0 });
+  const observe = now => observeConversationOwner({ directory, bot: '1', chat: '2', machine: 'studio', probePid: () => {}, now });
+  try {
+    let at = 0;
+    for (const [i, row] of rows.entries()) {
+      at += 30000;
+      held.observe(at, row.servable, row.reason);
+      const seen = observe(at + 1);
+      if (i > firstFailure && i < restored) {
+        expect(seen.state).not.toBe('serving');
+        expect(assessStranded(seen, 0).state).not.toBe('clear');
+        if (at - 30000 * (firstFailure + 1) > SERVICE_MIN_OBSERVATION_MS) expect(seen.state).toBe('unservable');
+      }
+      if (i === restored) expect(seen.state).toBe('serving');
+    }
+  } finally { held.release(); rmSync(directory, { recursive: true, force: true }); }
+}, 90000);

@@ -3,7 +3,7 @@
  * completed check is durable. Both sides of each decision: agreement, detected disagreement, and an
  * honestly unmeasurable comparison that is never reported as either. */
 import { expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
@@ -109,3 +109,38 @@ it('serving-runner compares the owner claim against open launches on both sides 
   expect(serving(input([{ at: 1 }], 'serving', '/other')).agree).toBe(false);
   expect(serving(input([{ at: 1 }], 'foreign')).agree).toBeNull();
 });
+
+it('desk recipe: the offline check-agreements runs the comparison on a COPY at a verified frontier, with no Telegram call', async () => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([message(world, 1, 'What is the marker? Juniper.')]);
+  expect((await harness.runLive(2)).status).toBe(0);
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'agreement-copy-')));
+  const copy = join(scratch, 'root'), owners = join(scratch, 'owners');
+  cpSync(harness.liveRoot, copy, { recursive: true });
+  const liveAgreements = readFileSync(join(harness.liveRoot, 'agreements.jsonl'), 'utf8'), calls = harness.calls().length;
+  try {
+    const run = async () => {
+      const result = await harness.commandOn(copy, 'check-agreements', ['--conversation-owners', owners]);
+      expect(result.status, result.stderr).toBe(0);
+      return JSON.parse(result.stdout);
+    };
+    // Untouched copy: the last real exit is at the journal's frontier, so the exit check is measurable and agrees.
+    const clean = await run();
+    expect(clean.frontierMatches).toBe(true);
+    expect(clean.records.find(row => row.id === 'unfinished-at-exit')).toMatchObject({ agree: true, detail: '0 unfinished in both at that exit' });
+    // The forged exit copies the last real exit's frontier; the check is executed, not merely read back.
+    const runs = join(copy, 'runs.jsonl'), exit = readRuns(runs).launches.at(-1), at = Date.now() - 5000;
+    appendFileSync(runs, `\n${JSON.stringify({ v: 1, launch: at, pid: 1 })}\n${JSON.stringify({ v: 1, launch: at, exit: at + 1, reason: 'forged',
+      unfinished: 5, revival: 'queued', frontier: exit.frontier })}\n`);
+    const forged = await run();
+    expect(forged).toMatchObject({ frontierMatches: true, exitFrontier: clean.frontier, frontier: clean.frontier });
+    const detected = forged.records.find(row => row.id === 'unfinished-at-exit');
+    expect(detected).toMatchObject({ agree: false, detail: 'run log exit says 5 unfinished, journal says 0' });
+    // Status stays read-only and shows the executed check's verdict and time.
+    const status = JSON.parse((await harness.commandOn(copy, 'status', ['--conversation-owners', owners])).stdout);
+    expect(status.storeAgreements.find(item => item.id === 'unfinished-at-exit')).toMatchObject({ agree: false, lastCheckedAt: detected.at });
+    // Nothing touched the original root, and no Telegram call was made.
+    expect(readFileSync(join(harness.liveRoot, 'agreements.jsonl'), 'utf8')).toBe(liveAgreements);
+    expect(harness.calls()).toHaveLength(calls);
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+}, 90000);
