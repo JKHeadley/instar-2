@@ -1,3 +1,4 @@
+import { machineLink } from './coherence-check.js';
 /** Live preview reply supervision. Jev's eight measured message questions are
  * batched; ambiguous scores and transport failures use one bounded escalation. */
 export const REPLY_RULES = {
@@ -139,11 +140,35 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
   return reviewReply(text, id, ports, first.ruleIds, originalPrompt);
 }
 
-/** Supervision outcome. Only a completed check may release the original candidate:
- * a Jev PASS or a contextual review PASS. When no judgment was obtained (review budget
- * exhausted, reviewer outage, malformed output) the outcome is `unavailable` and the
- * caller must keep the turn pending, never send it unchecked (Rules 38, 67). */
+/** Supervision outcome, reported honestly: `pass`, `violation` (objections), or
+ * `unavailable` when no judgment was obtained (review budget exhausted, reviewer outage,
+ * malformed output). Objections are signals, never holds (Rules 4, 86; the register's
+ * pre-send pattern): the caller revises once within its existing allowance, then releases
+ * the not-yet-sent candidate with the surviving objections recorded. Unavailability is
+ * recorded as unavailable and never becomes a veto (Rules 77, 95). The exact credential
+ * floor stays with the caller. */
 export type ReplyDecision = { outcome: 'pass' | 'violation' | 'unavailable'; path: ReplyPath; capRefused?: boolean };
+
+/** Rule 106 before every model-written send: the existing post-send link-shape predicate, reused
+ * as a deterministic pre-send signal (never a block, Rule 86). A localhost or file link maps to
+ * the internal-endpoint question and a machine-only path to the raw-path question. */
+export function linkShapeRules(text: string): ReplyRule[] {
+  const rules = new Set<ReplyRule>();
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/u)) {
+    const match = machineLink.exec(sentence);
+    if (match) rules.add(/localhost|127\.0\.0\.1|0\.0\.0\.0|file:\/\//iu.test(match[0]) ? 'api_endpoint' : 'raw_path');
+  }
+  return [...rules];
+}
+export const LINK_SHAPE_REASON = 'link-shape check: a localhost link or machine-only path the operator cannot open (Rule 106)';
+
+/** Most revise rounds per reply: one, inside the existing call allowance. */
+export const REPLY_REVISION_ROUNDS = 1;
+/** The mind's one revision of its own draft. Objections are advisory; the answer stays. */
+export function replyRevisionQuestion(ruleIds: readonly ReplyRule[], reason?: string): string {
+  const selected = ruleIds.filter(id => Object.hasOwn(REPLY_RULES, id));
+  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])))}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Return only the revised reply text inside conclusion.value. No other text.`;
+}
 
 /** Only a contextual reviewer verdict may suppress a non-secret reply (Rules 4, 86). */
 export async function reviewReply(text: string, id: string, ports: ReplyCheckPorts, ruleIds: ReplyRule[],

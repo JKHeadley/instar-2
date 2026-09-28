@@ -24,6 +24,7 @@ export const COHERENCE_RULES = Object.freeze({
   96: 'A Session Grounds in Its Full History (partial signal): possible ungrounded memory claim',
   26: 'Verify the State, Not Its Symbol: API acceptance is not delivery or reading',
   106: 'A Link Handed to a Human Works: no localhost or machine-only paths',
+  86: 'Signal vs. Authority: a pre-send reviewer objection the reply was released with',
 });
 
 export interface CoherenceFinding { rule: number; check: string; excerpt: string }
@@ -57,7 +58,7 @@ const speech = /\b([A-Z][\p{L}'-]+(?: [A-Z][\p{L}'-]+)?) (?:said|says|told (?:yo
 const reported = /\b(?:you (?:said|told|mentioned|wrote|reported)|according to you|per you|you've said|as you put it|your (?:message|note|report))\b/iu;
 const notNames = new Set(['I', 'You', 'We', 'They', 'He', 'She', 'It', 'This', 'That', 'Someone', 'Everyone', 'Nobody',
   'Instar', 'Telegram', 'Claude', 'PREVIEW', 'Preview', 'The', 'Who', 'Which', 'Nothing']);
-const machineLink = /(?:\b(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/\S*)?|\bfile:\/\/\S+|(?:^|\s)(?:~\/|\/Users\/|\/home\/|\/tmp\/|\/var\/)\S+)/iu;
+export const machineLink = /(?:\b(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/\S*)?|\bfile:\/\/\S+|(?:^|\s)(?:~\/|\/Users\/|\/home\/|\/tmp\/|\/var\/)\S+)/iu;
 
 const sentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/u).filter(Boolean);
 
@@ -89,6 +90,16 @@ export function checkReply(input: CoherenceInput): CoherenceFinding[] {
     if (machineLink.test(sentence)) add(106, 'handed over a localhost or machine-only path the operator cannot open', sentence);
   }
   return found;
+}
+
+/** Surviving pre-send objections a reply was released with, as findings for the next
+ * packet: the mind reads them as signals and decides whether a correction is due. */
+export function releaseFindings(reply: string, release: { review: string; objections: readonly string[]; reason?: string; revised: boolean }): CoherenceFinding[] {
+  if (!release.objections.length) return [];
+  const why = release.review === 'unavailable' ? 'a pre-send check was unsure and the full review was unavailable'
+    : `a pre-send reviewer objected${release.revised ? ' to the first draft; this is your revision' : ''}`;
+  return [{ rule: 86, check: `${why} (${release.objections.join(', ')}${release.reason ? `: ${release.reason.slice(0, 120)}` : ''}); it was sent anyway`,
+    excerpt: clip(reply) }];
 }
 
 /** The note the next packet carries: which reply, what, and why. */

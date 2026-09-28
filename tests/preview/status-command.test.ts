@@ -129,7 +129,7 @@ it('keeps a pending date in status after a preference summary settles memory, in
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-it('holds an uncertain check at the call cap, then reviews the exact durable status candidate after a cap raise', async () => {
+it('sends the exact status answer at the call cap with its unrun review recorded, never repeating it after a raise', async () => {
   const root = path(), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
   let sends = 0, jevCalls = 0, reviews = 0;
   const ordinary = createJournalWorker(journal, { now: () => at, stopped: () => false,
@@ -152,18 +152,20 @@ it('holds an uncertain check at the call cap, then reviews the exact durable sta
   try {
     ordinary.intake([update(1, 'ordinary')]); await ordinary.drain();
     checked.intake([update(2, 'status')]); await checked.drain();
-    expect(journal.view.order[1]?.held).toBe('call cap');
+    // Rules 77/95: the spend cap stops the review call, not the no-cost status reply.
+    expect(journal.view.order[1]?.held).toBeUndefined();
     expect(journal.view.order[1]?.answer).toContain('Spend allowance: 1/1');
-    expect(sends).toBe(1);
+    expect(sends).toBe(2);
     expect(jevCalls).toBe(1);
+    expect(reviews).toBe(0);
+    expect(journal.view.calls).toBe(1);
+    expect(journal.view.order[1]?.release).toMatchObject({ review: 'unavailable', reason: 'review not run: call cap reached' });
     raiseJournalCaps(journal, { maxCalls: 2, maxReplies: 3, maxTurns: 5, authority: 'Justin recorded cap raise', at: at + 1 });
     await checked.drain();
-    expect(reviews).toBe(1);
-    expect(jevCalls).toBe(1);
+    expect(reviews).toBe(0);
     expect(sends).toBe(2);
-    expect(journal.view.calls).toBe(2);
     expect(journal.view.order[1]?.sent).toBe(2);
-    expect(journal.view.order[1]?.intent).toContain('Spend allowance: 1/1'); // original snapshot stays exact
+    expect(journal.view.order[1]?.intent).toContain('Spend allowance: 1/1');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -198,7 +200,9 @@ it('keeps a foreign sender out and respects reply cap and stop', async () => {
     expect(journal.view.order[0]?.intent).toBeUndefined();
     worker.intake([update(3, 'how are you doing?')]); await worker.drain();
     expect(journal.view.order[2]?.held).toBe('reply cap');
-    expect(sends).toBe(1);
+    // Past the reply cap the reserve gives one limited answer (Rule 15), counted apart from replies.
+    expect(sends).toBe(2);
+    expect(journal.view.replies).toBe(1);
     worker.stop('operator');
     expect(() => worker.intake([update(4, 'status')])).toThrow('preview stopped');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

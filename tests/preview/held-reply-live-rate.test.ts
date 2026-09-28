@@ -22,7 +22,9 @@ const scores = (uncertain: boolean) => ({ model: 'jev-1.13.0', answers: Object.f
   Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: uncertain && id === 'parks_on_user' ? 0.55 : 0.01 }])) });
 
 for (const fixture of captured.held) {
-  it(`replays held live update ${fixture.update} with its observed cause and one paid review`, async () => {
+  // These live turns were held by a reviewer outage (the observed cause); under Rules 77/95 the
+  // truthful notice now reaches the operator once, with the one paid review never repeated.
+  it(`replays held live update ${fixture.update}: one paid review, then its notice is sent once, never held`, async () => {
     const dir = root(), path = join(dir, 'journal.encrypted');
     try {
       const journal = openPreviewJournal(path, key, genesis());
@@ -43,7 +45,9 @@ for (const fixture of captured.held) {
       await worker.drain();
       const turn = journal.view.order[0]!;
       expect(turn.raw).toContain(fixture.text);
-      expect(turn.held).toBe(fixture.cause);
+      expect(fixture.cause).toBe('reply check unavailable');
+      expect(turn.held).toBeUndefined();
+      expect(turn.release).toMatchObject({ review: 'unavailable' });
       expect(turn.answer).toBe(fixture.workerShape.startsWith('ended uncertain') ? undefined : MODEL_FAILURE_REPLY);
       expect(turn.noticeClass).toBe(fixture.workerShape.startsWith('ended uncertain') ? 'unknown-answer' : undefined);
       expect(turn.replyChecks?.at(-1)).toMatchObject({ verdict: 'unavailable', path: 'subscription' });
@@ -52,7 +56,7 @@ for (const fixture of captured.held) {
           exitCode: 0, outputTokens: 3617, promptBytes: 79561 });
       }
       expect({ answerCalls, reviews, sends, replies: journal.view.replies })
-        .toEqual({ answerCalls: 1, reviews: 1, sends: 0, replies: 0 });
+        .toEqual({ answerCalls: 1, reviews: 1, sends: 1, replies: 1 });
       const callsBeforeReplay = journal.view.calls, modelsBeforeReplay = models;
       journal.close();
       const reopened = openPreviewJournal(path, key);
@@ -63,7 +67,7 @@ for (const fixture of captured.held) {
         checkOutbound: () => {}, send: async () => { sends++; return 2; } });
       await resumed.drain();
       expect({ held: reopened.view.order[0]?.held, models, reviews, sends, calls: reopened.view.calls })
-        .toEqual({ held: fixture.cause, models: modelsBeforeReplay, reviews: 1, sends: 0,
+        .toEqual({ held: undefined, models: modelsBeforeReplay, reviews: 1, sends: 1,
           calls: callsBeforeReplay });
       reopened.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }

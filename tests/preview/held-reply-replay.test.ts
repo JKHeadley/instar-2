@@ -138,18 +138,19 @@ it('replays live-shaped failure classes and measures first-attempt holds by clas
     holdRate: held / results.length, byClass }));
   expect(byClass).toMatchObject({
     ordinary: { total: 2, held: 0 }, 'wrapped-review': { total: 4, held: 0 },
-    'output-cap-answer': { total: 1, held: 0 }, 'output-cap-review': { total: 1, held: 1 },
-    'contradicting-prose': { total: 1, held: 1 }, 'jev-unavailable': { total: 1, held: 0 },
-    'review-timeout': { total: 2, held: 2 },
+    'output-cap-answer': { total: 1, held: 0 }, 'output-cap-review': { total: 1, held: 0 },
+    'contradicting-prose': { total: 1, held: 0 }, 'jev-unavailable': { total: 1, held: 0 },
+    'review-timeout': { total: 2, held: 0 },
   });
-  expect(held).toBe(4);
+  // Rules 77/95: the live-shaped reviewer failures that held 4 of 12 replies now answer every one.
+  expect(held).toBe(0);
   expect(results.filter(row => row.class === 'wrapped-review').every(row =>
     row.modelJsonShapes.counts['reply-review/verdict/tolerated/fenced'] === 1 && row.sends === 1)).toBe(true);
   expect(results.find(row => row.class === 'contradicting-prose')).toMatchObject({
-    held: true, reason: 'reply check unavailable', sends: 0,
+    held: false, sends: 1,
     modelJsonShapes: { counts: { 'reply-review/verdict/malformed/prose-wrapped': 1 } } });
   expect(results.find(row => row.class === 'output-cap-answer')?.intent).toContain(MODEL_FAILURE_REPLY);
   expect(results.find(row => row.class === 'output-cap-review')?.callOutcomeCounts['output-cap']).toBe(1);
   expect(results.filter(row => row.class === 'review-timeout').every(row =>
-    row.lastCallOutcomes.at(-1)?.localLimit === 'timeout' && row.sends === 0)).toBe(true);
+    row.lastCallOutcomes.at(-1)?.localLimit === 'timeout' && row.sends === 1)).toBe(true);
 });

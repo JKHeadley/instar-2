@@ -4,7 +4,8 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { HOLDING_REPLY, JEV_MODEL, REPLY_RULES } from './reply-check.js';
+import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { readFileSync } from 'node:fs';
 import { datedQuestionWindow, dueState, parseDatedItem, selectDatedItems, withinNext48Hours } from './dated-memory.js';
@@ -611,13 +612,14 @@ it('does not repeat an imminent item after an UNKNOWN send intent', async () => 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps an imminent item eligible when the reply check replaces its candidate', async () => {
+it('keeps an imminent item eligible when an objected reply is revised without it', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-imminent-check-'))), path = join(root, 'journal.encrypted');
   try {
     let now = start, rejectOnce = true;
     const sends: string[] = [];
     const journal = openPreviewJournal(path, key, genesis);
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', now),
       model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
         dated: input.question.includes('Invoice due')
           ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
@@ -626,11 +628,12 @@ it('keeps an imminent item eligible when the reply check replaces its candidate'
         jev: async text => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
           .map(id => [id, { type: 'noul', noul: rejectOnce && text.includes('Upcoming:') && id === 'raw_path' ? 1 : 0 }])) }, latencyMs: 1 }),
         escalate: async () => { rejectOnce = false; return { verdict: 'violation' as const, ruleIds: ['raw_path' as const], confidence: 1, latencyMs: 1 }; },
+        revise: async () => ({ state: 'complete' as const, text: 'Okay, noted.' }),
         elapsedMs: () => 0 } });
     worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
     now = Date.UTC(2026, 9, 1, 15);
     worker.intake([update(2, 'Hello')]); await worker.drain();
-    expect(sends[1]).toBe(HOLDING_REPLY);
+    expect(sends[1]).toBe('PREVIEW — Okay, noted.');
     expect(journal.view.mentionedDates.size).toBe(0);
     worker.intake([update(3, 'Another question')]); await worker.drain();
     expect(sends[2]).toContain('Upcoming: Invoice due Oct 3 at 8 am.');

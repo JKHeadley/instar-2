@@ -13,7 +13,9 @@ const genesis = (calls = 2, replies = 3) => ({ kind: 'genesis' as const, bot: '1
 const update = (id: number) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
   from: { id: 7654321 }, date: 1_600_000_000, text: `question ${id}` } });
 
-for (const reason of ['reply check unavailable', 'call cap', 'memory correction pending']) {
+// A self-resolving hold keeps the one delayed notice; a capacity hold gets the prompt limited
+// answer instead (minimal-responder.test.ts); a review outage no longer holds at all.
+for (const reason of ['memory correction pending']) {
   it(`sends one fixed notice only after ten minutes of ${reason}`, async () => {
     const dir = root(), path = join(dir, 'journal.encrypted');
     try {
@@ -37,7 +39,7 @@ for (const reason of ['reply check unavailable', 'call cap', 'memory correction 
       await worker.drain(); await worker.drain();
       expect({ sends, replies: journal.view.replies, held: turn.held, answer: turn.answer, sent: turn.heldNoticeSent })
         .toEqual({ sends: 1, replies: 1, held: reason, answer: undefined, sent: 12 });
-      if (reason === 'call cap') {
+      if (reason === 'memory correction pending') {
         const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
           'tests/preview/journal-agent.mjs', 'status', '--root', dir],
         { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
@@ -59,7 +61,7 @@ for (const reason of ['reply check unavailable', 'call cap', 'memory correction 
 }
 
 for (const receipt of [12, null] as const) {
-  it(`aggregates three held answers and keeps an hourly fence after restart with receipt ${String(receipt)}`, async () => {
+  it(`answers three held messages with one notice and never re-pushes it unchanged, after restart with receipt ${String(receipt)}`, async () => {
     const dir = root(), path = join(dir, 'journal.encrypted');
     try {
       let now = 1_000; const sends: string[] = [];
@@ -68,9 +70,8 @@ for (const receipt of [12, null] as const) {
         checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return receipt; } };
       const worker = createJournalWorker(first, ports);
       worker.intake([update(1), update(2), update(3)]);
-      for (const turn of first.view.order) first.append({ kind: 'hold', id: turn.id, reason: 'call cap', at: now });
+      for (const turn of first.view.order) first.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: now });
       await worker.drain();
-      expect(first.view.order.map(turn => turn.held)).toEqual(['call cap', 'call cap', 'call cap']);
       now += HELD_NOTICE_AFTER_MS + 1;
       await worker.drain();
       expect(sends).toEqual(["PREVIEW — I'm holding 3 answers, including your message from 12:26; it will follow or I'll tell you why"]);
@@ -79,16 +80,13 @@ for (const receipt of [12, null] as const) {
 
       const reopened = openPreviewJournal(path, key);
       const resumed = createJournalWorker(reopened, ports);
-      const nextDue = 1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS;
-      now = nextDue - 1;
-      expect(resumed.nextHeldNoticeAt()).toBe(nextDue);
-      await resumed.drain();
-      expect(sends).toHaveLength(1);
-      now++;
+      // P-14: the same unchanged backlog is never pushed again, not after an hour and not after restart.
+      expect(resumed.nextHeldNoticeAt()).toBeNull();
+      now += 3 * HELD_NOTICE_WINDOW_MS;
       await resumed.drain(); await resumed.drain();
-      expect(sends).toHaveLength(2);
-      expect(reopened.view.replies).toBe(2);
-      expect(reopened.view.order.filter(turn => turn.heldNoticeIntent !== undefined)).toHaveLength(2);
+      expect(sends).toHaveLength(1);
+      expect(reopened.view.replies).toBe(1);
+      expect(reopened.view.order.filter(turn => turn.heldNoticeCoveredBy !== undefined)).toHaveLength(2);
       reopened.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
@@ -121,7 +119,7 @@ it('replays a parent-format burst, keeps both intents fenced, and applies the ho
     await resumed.drain();
     expect(sends).toBe(0);
     resumed.intake([update(3)]);
-    reopened.append({ kind: 'hold', id: reopened.view.order[2]!.id, reason: 'call cap', at: now });
+    reopened.append({ kind: 'hold', id: reopened.view.order[2]!.id, reason: 'memory correction pending', at: now });
     now += HELD_NOTICE_AFTER_MS + 1;
     expect(resumed.nextHeldNoticeAt()).toBe(1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS);
     await resumed.drain(); expect(sends).toBe(0);
@@ -164,7 +162,7 @@ for (const receipt of [12, null] as const) {
         model: async () => { throw Error('model ran'); }, checkOutbound: () => {},
         send: async () => { sends++; return 13; } });
       resumed.intake([update(2)]);
-      reopened.append({ kind: 'hold', id: reopened.view.order[1]!.id, reason: 'call cap', at: now });
+      reopened.append({ kind: 'hold', id: reopened.view.order[1]!.id, reason: 'memory correction pending', at: now });
       now += HELD_NOTICE_AFTER_MS + 1;
       const due = 1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS;
       expect(resumed.nextHeldNoticeAt()).toBe(due);
@@ -190,19 +188,21 @@ it('waits for each turn to age ten minutes before selecting its notice', async (
       send: async input => { updates.push(input.update); return 12; } });
     worker.intake([update(1), update(2)]);
     const [first, second] = journal.view.order;
-    journal.append({ kind: 'hold', id: second!.id, reason: 'call cap', at: now });
+    journal.append({ kind: 'hold', id: second!.id, reason: 'memory correction pending', at: now });
     now += HELD_NOTICE_AFTER_MS / 2;
-    journal.append({ kind: 'hold', id: first!.id, reason: 'call cap', at: now });
+    journal.append({ kind: 'hold', id: first!.id, reason: 'memory correction pending', at: now });
     now += HELD_NOTICE_AFTER_MS / 2 + 1;
     expect(worker.nextHeldNoticeAt()).toBe(now);
     await worker.drain();
+    // The one notice for the aged turn also answers the younger one; neither is pushed twice (P-14).
     expect(updates).toEqual([2]);
     expect(first?.heldNoticeIntent).toBeUndefined();
+    expect(first?.heldNoticeCoveredBy).toBe(second!.id);
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('fences an uncertain notice send and later releases the held answer once', async () => {
+it('fences an uncertain limited answer and later releases the capped answer once', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {
     const first = openPreviewJournal(path, key, genesis(1));
@@ -215,33 +215,26 @@ it('fences an uncertain notice send and later releases the held answer once', as
     first.append({ kind: 'reserve', id, at: now });
     first.append({ kind: 'answer', id, text: 'answer', state: 'complete', at: now });
     first.append({ kind: 'hold', id, reason: 'call cap', at: now });
-    await worker.drain();
-    expect(first.view.order[0]?.held).toBe('call cap');
-    now += HELD_NOTICE_AFTER_MS + 1;
-    await worker.drain(); first.close();
+    await worker.drain(); await worker.drain(); first.close();
     expect(sends).toBe(1);
     const second = openPreviewJournal(path, key);
-    expect(second.view.order[0]?.heldNoticeIntent).toContain("I'm holding 1 answer");
-    expect(second.view.order[0]?.heldNoticeSent).toBeUndefined();
+    expect(second.view.order[0]?.limited?.lead).toBe(id);
+    expect(second.view.order[0]?.limitedSent).toBeUndefined();
     raiseJournalCaps(second, { maxCalls: 3, maxReplies: 3, maxTurns: 3, authority: 'test operator', at: now + 1 });
     const resumed = createJournalWorker(second, { now: () => now + 2, stopped: () => false,
       model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
       send: async input => { sends++; expect(input.expectedText).toBe('PREVIEW — answer'); return 15; } });
     const before = resumed.probe('next');
-    if ('context' in before) {
-      const packet = JSON.parse(before.context);
-      expect(packet.history[0]).toMatchObject({ answer: null, outcome: 'answer pending', heldNotice: true,
-        heldNoticeOutcome: 'delivery UNKNOWN' });
-      expect(before.context).not.toContain("I'm holding my answer to your message from");
-      expect(packet.capability).toContain('do not narrate a past hold or repeat its notice');
-      expect(packet.capability).toContain('Explain a hold when the operator asks about it');
-    }
+    if (!('context' in before)) throw Error('expected a packet');
+    const packet = JSON.parse(before.context);
+    expect(packet.history[0]).toMatchObject({ answer: null, outcome: 'answer pending', limitedAnswer: true,
+      limitedAnswerOutcome: 'limited answer (calls allowance) delivery UNKNOWN' });
+    expect(packet.capability).toContain('do not narrate a past hold or repeat its notice');
     await resumed.drain(); await resumed.drain();
-    expect({ sends, replies: second.view.replies, answerSent: second.view.order[0]?.sent }).toEqual({ sends: 2, replies: 2, answerSent: 15 });
+    expect({ sends, replies: second.view.replies, answerSent: second.view.order[0]?.sent }).toEqual({ sends: 2, replies: 1, answerSent: 15 });
     const after = resumed.probe('next');
     if ('context' in after) expect(JSON.parse(after.context).history[0]).toMatchObject({
-      answer: 'answer', outcome: 'Telegram API accepted', heldNotice: true,
-      heldNoticeOutcome: 'delivery UNKNOWN' });
+      answer: 'answer', outcome: 'Telegram API accepted', limitedAnswer: true });
     second.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -256,7 +249,7 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
       let now = 1_000;
       const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
         model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
-        send: async input => input.expectedText.includes("I'm holding 1 answer") ? noticeReceipt : answerReceipt });
+        send: async input => input.expectedText.includes("I can't answer yet") ? noticeReceipt : answerReceipt });
       worker.intake([update(1)]);
       const id = journal.view.order[0]!.id;
       journal.append({ kind: 'reserve', id, at: now });
@@ -276,14 +269,16 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
       const reported = JSON.parse(status.stdout);
       expect(reported.unknownSends).toBe(unknownSends);
       expect(reported.self).toContain(`${String(unknownSends)} send(s)`);
-      expect(reported.heldNotices).toEqual([{ update: 1, state: noticeReceipt === null ? 'UNKNOWN' : 'api-accepted' }]);
+      expect(reported.heldNotices).toEqual([]);
+      expect(reported.minimalReserve.limitedAnswers).toEqual([{ update: 1, reason: 'calls', covers: [1],
+        state: noticeReceipt === null ? 'UNKNOWN' : 'api-accepted' }]);
 
       const reopened = openPreviewJournal(path, key);
       try {
         const resumed = createJournalWorker(reopened, { now: () => now + 2, stopped: () => false,
           model: async () => { throw Error('model repeated'); }, checkOutbound: () => {}, send: async () => { throw Error('send repeated'); } });
-        const expected = { heldNotice: true,
-          heldNoticeOutcome: noticeReceipt === null ? 'delivery UNKNOWN' : 'Telegram API accepted',
+        const expected = { limitedAnswer: true,
+          limitedAnswerOutcome: `limited answer (calls allowance) ${noticeReceipt === null ? 'delivery UNKNOWN' : 'Telegram API accepted'}`,
           answer: 'answer', outcome: answerReceipt === null ? 'delivery UNKNOWN' : 'Telegram API accepted' };
         const history = resumed.probe('question 1');
         if (!('context' in history)) throw Error(`history unavailable: ${history.reason}`);
@@ -304,7 +299,7 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
   });
 }
 
-it('stop and reply cap prevent a due notice', async () => {
+it('stop prevents every notice; the reply cap no longer silences a capped message', async () => {
   for (const limited of [false, true]) {
     const dir = root();
     try {
@@ -321,12 +316,14 @@ it('stop and reply cap prevent a due notice', async () => {
         const active = createJournalWorker(journal, { now: () => now, stopped: () => false,
           model: async () => 'answer', checkOutbound: () => {}, send: async () => 1 });
         active.intake([update(1)]);
-        journal.append({ kind: 'hold', id: journal.view.order[0]!.id, reason: 'call cap', at: now });
+        journal.append({ kind: 'hold', id: journal.view.order[0]!.id, reason: 'memory correction pending', at: now });
       }
       now += HELD_NOTICE_AFTER_MS + 1;
       if (limited) await worker.drain(); else await expect(worker.drain()).rejects.toThrow('preview stopped');
-      expect(sends).toBe(limited ? 1 : 0);
+      // Rule 15: past the reply cap the reserve still gives the capped message its limited answer.
+      expect(sends).toBe(limited ? 2 : 0);
       expect(journal.view.order.at(-1)?.heldNoticeIntent).toBeUndefined();
+      if (limited) expect(journal.view.order.at(-1)?.limited?.reason).toBe('calls');
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
@@ -345,10 +342,11 @@ it('starts the ten-minute clock at an eligible hold and refuses an expired send'
     journal.append({ kind: 'hold', id, reason: 'prompt overflow', at: now });
     now += HELD_NOTICE_AFTER_MS + 1;
     expect(worker.nextHeldNoticeAt()).toBeNull();
-    journal.append({ kind: 'hold', id, reason: 'reply check unavailable', at: now });
+    journal.append({ kind: 'hold', id, reason: 'memory correction pending', at: now });
     expect(worker.nextHeldNoticeAt()).toBe(now + HELD_NOTICE_AFTER_MS + 1);
+    // A capacity hold is answered by the limited answer, never a delayed notice.
     journal.append({ kind: 'hold', id, reason: 'call cap', at: now + 1 });
-    expect(worker.nextHeldNoticeAt()).toBe(now + HELD_NOTICE_AFTER_MS + 1);
+    expect(worker.nextHeldNoticeAt()).toBeNull();
     now = journal.view.genesis.expires;
     await expect(worker.drain()).rejects.toThrow('preview stopped');
     expect(sends).toBe(0);
@@ -357,31 +355,26 @@ it('starts the ten-minute clock at an eligible hold and refuses an expired send'
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('waits for an eligible held notice even when the update cap wins the reported reason', async () => {
+it('answers a capped message at once from the reserve even when the update cap wins the reported reason', async () => {
   const dir = root();
   try {
     const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, { ...genesis(1, 3), maxTurns: 1 });
-    let now = 1_000; const sends: string[] = [];
+    const now = 1_000; const sends: string[] = [];
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async () => { throw Error('no model slot'); },
       replyCheck: { elapsedMs: () => now, jev: async () => { throw Error('unexpected Jev'); },
         escalate: async () => { throw Error('unexpected review'); } },
       checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return 1; } });
     worker.intake([update(1)]); await worker.drain();
-    const cap = reportJournalCap(journal, now, () => {});
-    expect(cap).toBe('update cap reached');
+    expect(reportJournalCap(journal, now, () => {})).toBe('update cap reached');
     expect(journal.view.order[0]?.held).toBe('call cap');
-    const due = worker.nextHeldNoticeAt();
-    expect(due).toBe(now + HELD_NOTICE_AFTER_MS + 1);
-    const launcher = readFileSync(join(process.cwd(), 'tests/preview/journal-agent.mjs'), 'utf8');
-    const source = launcher.slice(launcher.indexOf('    const waitHeldNotices ='), launcher.indexOf('    for (let i = 0; i < cycles'));
-    const stopAtCap = new Function('reportCap', 'worker', 'summarizeLater', 'signalled', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'journal', 'delay',
-      `let endReason; ${source}; return stopAtCap;`)(() => cap, worker, () => {}, false, { value: false }, () => false, 'offline',
-      () => now, journal, async (ms: number) => { now += ms; }) as () => Promise<boolean>;
-    expect(await stopAtCap()).toBe(true);
-    expect(now).toBeGreaterThanOrEqual(due!);
+    expect(worker.nextHeldNoticeAt()).toBeNull();
     expect(sends).toHaveLength(1);
+    expect(sends[0]).toContain("I can't answer yet");
     await worker.drain(); expect(sends).toHaveLength(1);
+    // The launcher no longer ends its run at a cap: reading continues through the reserve.
+    const launcher = readFileSync(join(process.cwd(), 'tests/preview/journal-agent.mjs'), 'utf8');
+    expect(launcher).not.toContain('stopAtCap');
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

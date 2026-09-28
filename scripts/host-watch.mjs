@@ -150,10 +150,99 @@ export async function supervise(config) {
   }
 }
 
+/** Journal-runner mode (Rules 15, 53, 88; P-14). This separate process restarts the journal
+ * runner after a failed exit with bounded backoff. Only after self-heal is exhausted
+ * (`noticeAfter` consecutive failed restarts) does it prepare ONE incident notice for the single
+ * granted alerts destination, carrying the failed-attempt evidence. The episode is durable before
+ * the send, is never re-sent (also across supervisor restarts), and closes on a clean exit. With no
+ * recorded alerts grant the incident stays local and visible ('unbound'). */
+export const JOURNAL_INCIDENT_LIMITS = Object.freeze({ noticeAfter: 3, perHour: 2 });
+const journalAgent = fileURLToPath(new URL('../tests/preview/journal-agent.mjs', import.meta.url));
+function lastRun(root) {
+  const path = join(root, 'runs.jsonl');
+  if (!existsSync(path)) return null;
+  const rows = readFileSync(path, 'utf8').split('\n').filter(Boolean).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
+  return rows.filter(row => typeof row.reason === 'string').at(-1) ?? null;
+}
+function journalStopped(root) {
+  const reason = lastRun(root)?.reason;
+  return existsSync(join(root, 'preview-stop.json')) || reason === 'operator stop latched' || reason === 'trial expired';
+}
+export function journalIncidentText(episode) {
+  const since = new Date(episode.openedAt).toISOString().slice(0, 16).replace('T', ' ');
+  return `PREVIEW — Incident ${episode.id.slice(0, 8)}: my conversation service stopped and has not recovered after ${episode.noticeAttempts ?? episode.failedAttempts} automatic restarts (since ${since} UTC). Your new messages wait at Telegram and will be read when it is back. Someone needs to check the host machine.`;
+}
+function journalBinding(config) {
+  const index = config.agent.indexOf(journalAgent);
+  if (config.agent[0] !== process.execPath || index < 0 || config.agent[index + 1] !== 'run')
+    throw Error('host watch: journal launcher binding unavailable');
+  return index;
+}
+function sendJournalIncident({ config, path }) {
+  const index = journalBinding(config), args = [...config.agent.slice(1)];
+  args[index] = 'incident-notice';
+  args.push('--episode', path, '--alerts-grant', config.alerts.grant,
+    ...(config.alerts.thread === undefined ? [] : ['--alerts-thread', String(config.alerts.thread)]));
+  const child = spawnSync(process.execPath, args, { cwd: config.cwd, env: process.env,
+    encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'ignore', 'ignore'] });
+  if (child.status !== 0) throw Error('host watch: prepared incident outcome unknown');
+}
+function spawnJournalRunner(config) {
+  return new Promise(resolveExit => {
+    const child = spawn(config.agent[0], config.agent.slice(1), { cwd: config.cwd, env: process.env, stdio: ['ignore', 'inherit', 'inherit'] });
+    child.once('error', () => resolveExit({ code: null, signal: 'launch-error' }));
+    child.once('exit', (code, signal) => resolveExit({ code, signal }));
+  });
+}
+export async function superviseJournal(config, io = {}) {
+  if (!config || typeof config.root !== 'string' || !isAbsolute(config.root) || resolve(config.root) !== config.root
+    || !Array.isArray(config.agent) || config.agent.some(value => typeof value !== 'string')
+    || config.alerts !== undefined && (typeof config.alerts?.grant !== 'string' || !config.alerts.grant.trim()
+      || config.alerts.thread !== undefined && !(Number.isSafeInteger(config.alerts.thread) && config.alerts.thread > 0)))
+    throw Error('host watch: invalid journal configuration');
+  const run = io.spawnRunner ?? spawnJournalRunner, notify = io.notify ?? sendJournalIncident;
+  const now = io.now ?? Date.now, wait = io.wait ?? (ms => new Promise(done => setTimeout(done, ms)));
+  const limits = { ...JOURNAL_INCIDENT_LIMITS, ...(config.limits ?? {}) };
+  const path = join(config.root, 'host-watch.json');
+  const read = () => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, mode: 'journal', open: false, notices: [] };
+  let clean = 0;
+  while (!journalStopped(config.root)) {
+    const outcome = await run(config);
+    const at = now(), episode = read();
+    if (episode.version !== 1 || episode.mode !== 'journal') throw Error('host watch: corrupt journal episode');
+    if (journalStopped(config.root) || outcome.code === 0 && outcome.signal === null) {
+      if (episode.open) writeDurable(path, { ...episode, open: false, closedAt: at });
+      if (journalStopped(config.root)) return 0;
+      // A clean cycle end is ordinary; bound only a runner that exits immediately every time.
+      clean += 1; await wait(Math.min(5000, 250 * clean)); continue;
+    }
+    clean = 0;
+    const failedAttempts = (episode.open ? episode.failedAttempts : 0) + 1;
+    let next = { ...episode, open: true, id: episode.open ? episode.id : randomUUID(), openedAt: episode.open ? episode.openedAt : at,
+      phase: episode.open ? episode.phase : 'recovering', failedAttempts,
+      failures: [...(episode.open ? episode.failures : []), { at, code: outcome.code, signal: outcome.signal,
+        runReason: lastRun(config.root)?.reason ?? null }].slice(-10), notices: episode.notices ?? [] };
+    writeDurable(path, next);
+    if (next.phase === 'recovering' && failedAttempts >= limits.noticeAfter) {
+      if (!config.alerts) writeDurable(path, next = { ...next, phase: 'unbound' });
+      else if (next.notices.filter(time => time > at - 3_600_000).length < limits.perHour) {
+        next = { ...next, phase: 'prepared', preparedAt: at, noticeAttempts: failedAttempts, notices: [...next.notices, at] };
+        next = { ...next, text: journalIncidentText(next) };
+        // The episode, its evidence and exact text are durable before the child can dispatch.
+        writeDurable(path, next);
+        try { notify({ config, path, episode: next }); } catch { /* a prepared incident is never sent twice */ }
+      }
+    }
+    await wait(Math.min(300000, 1000 * 2 ** Math.min(failedAttempts - 1, 8)));
+  }
+  return 0;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const configPath = process.argv[2];
     if (!configPath || !isAbsolute(configPath)) throw Error('host watch: configuration path required');
-    process.exitCode = await supervise(JSON.parse(readFileSync(configPath, 'utf8')));
+    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    process.exitCode = config.mode === 'journal' ? await superviseJournal(config) : await supervise(config);
   } catch { process.stderr.write('host watch stopped; details suppressed\n'); process.exitCode = 0; }
 }

@@ -21,7 +21,7 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
 /** Append the physical result before the adapter can classify or discard it. */
 export function observedSubscriptionIO(physicalIO, policy, operation, append,
   clock = { elapsed: () => performance.now(), at: () => Date.now() }) {
-  const role = operation.endsWith(':reply-review') ? 'reply-review'
+  const role = operation.endsWith(':reply-review') || operation.endsWith(':reply-revision') ? 'reply-review'
     : operation.startsWith('summary:') ? 'summary' : 'model';
   return { ...physicalIO, execute: async command => {
     if (JSON.stringify(command.args) !== JSON.stringify(policy.args)) return physicalIO.execute(command);

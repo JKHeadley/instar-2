@@ -74,20 +74,21 @@ it('fsyncs a ten-update burst in update order across a mid-batch crash, merges t
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('leaves the cursor before the first unrecorded update at the turn cap and resumes after a durable raise', () => {
+it('keeps a burst past the turn cap in the minimal reserve, and those turns become ordinary after a durable raise', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-burst-cap-'))), path = join(root, 'journal.encrypted');
   try {
     let journal = openPreviewJournal(path, key, genesis(5));
     const ports = { now: () => 1790000000000, stopped: () => false,
       model: async () => 'answer', send: async () => 1, checkOutbound: () => {} };
-    expect(createJournalWorker(journal, ports).intake(burst)).toBe(6);
+    // Rule 15: the reserve preserves the rest of the burst instead of leaving it behind the cap.
+    expect(createJournalWorker(journal, ports).intake(burst)).toBe(11);
     expect(journalPollLimit(journal.view)).toBe(0);
-    expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3, 4, 5]);
+    expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(journal.view.order.map(turn => turn.reserve === true)).toEqual([false, false, false, false, false, true, true, true, true, true]);
     journal.close();
     journal = openPreviewJournal(path, key);
     raiseJournalCaps(journal, { maxCalls: 40, maxReplies: 20, maxTurns: 10, maxBytes: 32768,
       authority: 'grant:cap-raise', at: 1790000000000 });
-    expect(journalPollLimit(journal.view)).toBe(5);
     expect(createJournalWorker(journal, ports).intake(burst)).toBe(11);
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     journal.close();

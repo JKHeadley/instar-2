@@ -32,7 +32,9 @@ const testEndpoint = request?.testEndpoint;
 const testMatch = typeof testEndpoint === 'string' ? /^http:\/\/127\.0\.0\.1:(\d{1,5})$/.exec(testEndpoint) : null;
 if (testEndpoint !== undefined && (token !== TEST_TOKEN || !testMatch
   || Number(testMatch[1]) < 1 || Number(testMatch[1]) > 65535)) process.exit(2);
-const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage';
+// answerCallbackQuery only clears a pressed button with a short toast; it carries no message.
+const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage'
+  || request?.method === 'answerCallbackQuery';
 const identityRequestPresent = request?.method !== 'getMe' || (
   typeof request.captureDirectory === 'string' && request.captureDirectory.length > 0
   && record(request.identityBinding));

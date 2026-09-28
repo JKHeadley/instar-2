@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // Fixtures substitute the model and Jev (int11's faithfulness check runs before a summary commits).
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, UNLINKED_EDIT_FLAG } from './journal-test-worker.js';
 import { selfState } from './self-state.js';
 
 const key = new Uint8Array(32).fill(29);
@@ -66,7 +66,7 @@ it('records a fact edit against the original turn, corrects memory, and never re
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-it('keeps foreign and unlinked edits durably without a turn, model call or reply', async () => {
+it('keeps a foreign edit out, and delivers an unlinked operator edit to the mind with its flag (Rule 14)', async () => {
   const directory = root();
   try {
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, genesis);
@@ -76,9 +76,11 @@ it('keeps foreign and unlinked edits durably without a turn, model call or reply
     worker.intake([edit(1, 'orphan'), message(2, 'Known fact.'), edit(3, 'foreign', 42, 99), edit(4, 'different message', 99)]);
     await worker.drain();
     expect(journal.view.cursor).toBe(5);
-    expect(journal.view.order.map(turn => turn.accepted)).toEqual([false, true, false, false]);
-    expect(calls).toBe(1);
-    expect(sends).toBe(1);
+    expect(journal.view.order.map(turn => turn.accepted)).toEqual([true, true, false, true]);
+    expect(journal.view.order[0]?.text).toBe(`${UNLINKED_EDIT_FLAG}\norphan`);
+    expect(journal.view.order[0]?.editOf).toBeUndefined();
+    expect(calls).toBe(3);
+    expect(sends).toBe(3);
     journal.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

@@ -107,33 +107,26 @@ it('sends the fixed too-long notice after a healthy safety check without partial
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('explains that a new update may work after a reviewer outage recovers', async () => {
+it('answers during a reviewer outage, recording the review unavailable, and holds nothing', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-recover-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 8 });
-    let recovered = false, calls = 0, sends = 0;
+    let calls = 0, sends = 0;
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
       model: async () => { calls++; return 'safe answer'; },
       send: async () => { sends++; return sends; }, checkOutbound: () => {},
-      replyCheck: { jev: async () => { if (!recovered) throw Error('Jev unavailable');
-          return { value: jevPass, latencyMs: 1 }; },
+      replyCheck: { jev: async () => { throw Error('Jev unavailable'); },
         escalate: async () => { throw Error('review unavailable'); }, elapsedMs: () => 0 } });
     worker.intake([update(1, 'one', NOON)]); await worker.drain();
-    expect(journal.view.order[0]?.held).toBe('reply check unavailable');
-    expect(heldNotices(journal.view)[0]?.notice).toContain('trying again after it recovers may help');
-    recovered = true;
+    // Rule 95: the advisory reviewer fails toward reachability; the outage is recorded, not a hold.
+    expect(journal.view.order[0]?.held).toBeUndefined();
+    expect(journal.view.order[0]?.sent).toBe(1);
+    expect(journal.view.order[0]?.release?.review).toBe('unavailable');
+    expect(heldNotices(journal.view)).toEqual([]);
     await worker.drain();
-    expect(journal.view.order[0]?.sent).toBeUndefined();
-    worker.intake([update(2, 'one', NOON)]); await worker.drain();
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
     expect(sends).toBe(1);
-    expect(journal.view.order[0]?.sent).toBeUndefined();
-    expect(journal.view.order[1]?.sent).toBe(1);
-    expect(heldNotices(journal.view)).toEqual([{ update: 1, notice: holdNotice('reply check unavailable') }]);
     journal.close();
-    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
-    expect(reopened.view.order.map(turn => turn.update)).toEqual([1, 2]);
-    reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

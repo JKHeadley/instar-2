@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts } from './journal.js';
+import { createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE } from './journal.js';
 
 const key = new Uint8Array(32).fill(19);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-cap-')));
@@ -20,32 +20,35 @@ const worker = (journal: ReturnType<typeof openPreviewJournal>, counts: { calls:
     model: async () => { counts.calls++; return 'answer'; },
     send: async () => { counts.sends++; return counts.sends; }, checkOutbound: () => {} });
 
-it('stops a multi-update poll at maxTurns without poisoning replay or advancing past the unrecorded update', async () => {
+it('keeps reading past maxTurns through the minimal reserve without poisoning replay, and answers ordinarily after a raise', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {
     let journal = openPreviewJournal(path, key, genesis({ maxTurns: 1 }));
     const counts = { calls: 0, sends: 0 }, first = worker(journal, counts);
     const lines: string[] = [];
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBeNull();
-    expect(first.intake([update(2), update(1)])).toBe(2);
-    expect(journal.view.order.map(turn => turn.update)).toEqual([1]);
-    expect(() => journal.append({ kind: 'intake', id: id(2), update: 2, text: 'question 2',
-      raw: JSON.stringify(update(2)), accepted: true, cursor: 3, at: 1000 })).toThrow('capacity');
+    expect(first.intake([update(2), update(1)])).toBe(3);
+    // Rule 15: the second update is preserved by the reserve, not left behind the cap.
+    expect(journal.view.order.map(turn => [turn.update, turn.reserve ?? false])).toEqual([[1, false], [2, true]]);
+    // An ordinary (non-reserve) frame past the allowance is still refused before it is written.
+    expect(() => journal.append({ kind: 'intake', id: id(3), update: 3, text: 'question 3',
+      raw: JSON.stringify(update(3)), accepted: true, cursor: 4, at: 1000 })).toThrow('capacity');
     await first.drain();
-    expect(() => first.pollGate()).toThrow('capacity');
+    expect(counts).toEqual({ calls: 1, sends: 2 });
+    expect(first.pollLimit()).toBe(MINIMAL_RESERVE.turns - 1);
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBe('update cap reached');
     expect(lines).toEqual(['PREVIEW — turns cap reached; work paused. Check status for held work.\n']);
     journal.close();
     journal = openPreviewJournal(path, key);
-    expect(journal.view.cursor).toBe(2);
-    expect(journal.view.order).toHaveLength(1);
+    expect(journal.view.cursor).toBe(3);
+    expect(journal.view.order).toHaveLength(2);
     expect(reportJournalCap(journal, 1001, line => lines.push(line))).toBe('update cap reached');
     expect(lines).toHaveLength(1);
     raiseJournalCaps(journal, { maxCalls: 4, maxReplies: 4, maxTurns: 2, authority: 'Justin recorded raise', at: 1001 });
     const resumed = worker(journal, counts);
     expect(resumed.intake([update(1), update(2)])).toBe(3);
     await resumed.drain();
-    expect({ calls: counts.calls, sends: counts.sends, turns: journal.view.order.length }).toEqual({ calls: 2, sends: 2, turns: 2 });
+    expect({ calls: counts.calls, sends: counts.sends, turns: journal.view.order.length }).toEqual({ calls: 2, sends: 3, turns: 2 });
     expect(reportJournalCap(journal, 1002, line => lines.push(line))).toBe('update cap reached');
     expect(lines).toHaveLength(2);
     journal.close();
@@ -160,7 +163,8 @@ it('holds maxReplies and maxBytes work, and journals one cap report per reached 
     w.intake([update(1)]); await w.drain();
     expect(counts).toEqual({ calls: 0, sends: 0 });
     expect(reachedJournalCap(journal.view)).toEqual({ reason: 'bytes', limit: 128 });
-    expect(() => w.pollGate()).toThrow('capacity');
+    // Rule 15: a reached cap never stops reading the operator.
+    expect(() => w.pollGate()).not.toThrow();
     const lines: string[] = [];
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBe('context byte cap reached');
     expect(reportJournalCap(journal, 1001, line => lines.push(line))).toBe('context byte cap reached');
@@ -219,23 +223,24 @@ it.each(['calls', 'replies'] as const)('reports the %s 80%% and final boundaries
     expect(reportJournalCap(journal, 1001, line => lines.push(line))).not.toBeNull();
     expect(lines).toHaveLength(2);
     active = worker(journal, counts);
-    // int11's status-at-cap gate keeps bounded intake open at the call cap (the held turn
-    // still reaches status); only the reply, turn and byte caps close polling.
-    if (reason === 'calls') expect(() => active.pollGate()).not.toThrow();
-    else expect(() => active.pollGate()).toThrow('capacity');
+    // Rule 15: no ordinary cap closes polling; past the reply cap the reserve answers.
+    expect(() => active.pollGate()).not.toThrow();
     expect(journal.view.cursor).toBe(6);
     // Exercise an already accepted update in the final poll batch.
     active.intake([update(6)]); await active.drain();
     expect(journal.view.order[5]?.held).toBe(reason === 'calls' ? 'call cap' : 'reply cap');
     expect(openQuestionCandidates(journal.view).map(question => question.quote)).toContain('question 6');
     expect(journal.view.cursor).toBe(7);
-    expect(counts.sends).toBe(5);
+    // The capped question gets one limited answer from the reserve, not silence.
+    expect(counts.sends).toBe(6);
+    expect(journal.view.order[5]?.limited?.reason).toBe(reason);
+    expect(journal.view.replies).toBe(5);
     raiseJournalCaps(journal, { maxCalls: reason === 'calls' ? 7 : 8,
       maxReplies: reason === 'replies' ? 7 : 8, maxTurns: 8, authority: 'Justin recorded raise', at: 1002 });
     await active.drain(); await active.drain();
-    expect(journal.view.order[5]?.sent).toBe(6);
+    expect(journal.view.order[5]?.sent).toBe(7);
     expect(openQuestionCandidates(journal.view)).toEqual([]);
-    expect(counts).toEqual({ calls: 6, sends: 6 });
+    expect(counts).toEqual({ calls: 6, sends: 7 });
     expect(journal.view.calls).toBeLessThanOrEqual(journal.view.limits.maxCalls);
     expect(journal.view.replies).toBeLessThanOrEqual(journal.view.limits.maxReplies);
     expect(reportJournalCap(journal, 1003, line => lines.push(line))).toBeNull();
@@ -244,7 +249,7 @@ it.each(['calls', 'replies'] as const)('reports the %s 80%% and final boundaries
     journal = openPreviewJournal(path, key);
     await worker(journal, counts).drain();
     expect(reportJournalCap(journal, 1004, line => lines.push(line))).toBeNull();
-    expect(counts).toEqual({ calls: 6, sends: 6 });
+    expect(counts).toEqual({ calls: 6, sends: 7 });
     expect(lines).toHaveLength(3);
     expect([...journal.view.capReports]).toEqual([`${reason}:80:5`, `${reason}:5`, `${reason}:80:7`]);
     journal.close();

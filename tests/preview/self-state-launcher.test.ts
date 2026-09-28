@@ -81,7 +81,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toMatchObject({ calls: 2, replies: 2, unknownCalls: 0, unknownSends: 0 });
     expect(s.launches).toHaveLength(1);
     expect(s.stepChecks).toBeUndefined();
-    expect(s.launches[0].reason).toBe('reply cap reached');
+    // Rule 15: a reached cap no longer ends the run; the reserve keeps reading until the cycle bound.
+    expect(s.launches[0].reason).toBe('cycle limit reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt[0]).toContain('That is the first recorded launch');
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
@@ -114,7 +115,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(now).toContain('Model attempts: 2 of 6 used, 4 left');
     expect(now).toContain('on the authority "Justin, offline test"');
     expect(now).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
-    expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: reply cap reached\./u);
+    expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: cycle limit reached\./u);
     expect(now).toContain('Launches recorded: 2');
     expect(s.launches).toHaveLength(2);
     expect(s.launches[1].reason).toBe('cycle limit reached');

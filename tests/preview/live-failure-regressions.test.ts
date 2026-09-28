@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createJournalWorker, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE, openPreviewJournal,
   type PreviewPorts } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { HOLDING_REPLY, JEV_MODEL, REPLY_RULES } from './reply-check.js';
+import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(61);
 const now = 1790000000000;
@@ -59,7 +59,7 @@ it('thinking overflow: a 2048-cap answer reporting 8192 output tokens is rejecte
   });
 });
 
-it('review thinking overflow: a 3617-token review outcome holds the candidate without a second paid review', async () => {
+it('review thinking overflow: a 3617-token review outcome releases the candidate once without a second paid review', async () => {
   await withJournal(async journal => {
     const sent: string[] = [];
     let reviews = 0;
@@ -75,15 +75,16 @@ it('review thinking overflow: a 3617-token review outcome holds the candidate wi
     }, elapsedMs: () => 0 };
     const worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Review this answer')]); await worker.drain(); await worker.drain();
-    expect(journal.view.order[0]).toMatchObject({ held: 'reply check unavailable', reviewReserved: true });
+    expect(journal.view.order[0]).toMatchObject({ reviewReserved: true, release: { review: 'unavailable' } });
+    expect(journal.view.order[0]?.held).toBeUndefined();
     expect(journal.view.callOutcomes).toMatchObject([{ role: 'reply-review',
       outcome: { localLimit: 'output-cap', outputTokens: 3617 } }]);
     expect(reviews).toBe(1);
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['PREVIEW — The candidate answer.']);
   });
 });
 
-it('wrapped Decision JSON: an unavailable full-context review holds raw syntax while ordinary JSON passes', async () => {
+it('wrapped Decision JSON: an unavailable full-context review is recorded, never a hold, and ordinary JSON passes', async () => {
   await withJournal(async journal => {
     const sent: string[] = [];
     const wrapped = '```json\n' + JSON.stringify({ type: 'Decision', schemaVersion: 1,
@@ -99,12 +100,12 @@ it('wrapped Decision JSON: an unavailable full-context review holds raw syntax w
           confidence: null, latencyMs: 0 };
       }, elapsedMs: () => 0 } });
     worker.intake([update(1, 'What can you remember?')]); await worker.drain();
-    expect(journal.view.order[0]?.held).toBe('reply check unavailable');
-    expect(journal.view.order[0]?.intent).toBeUndefined();
+    expect(journal.view.order[0]?.held).toBeUndefined();
     expect(journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('unavailable');
-    expect(sent).toEqual([]);
+    expect(journal.view.order[0]?.release).toMatchObject({ review: 'unavailable' });
+    expect(sent).toHaveLength(1);
     worker.intake([update(2, 'What does this journal hold?')]); await worker.drain();
-    expect(sent).toEqual(['PREVIEW — The journal remembers this trial.']);
+    expect(sent[1]).toBe('PREVIEW — The journal remembers this trial.');
   });
 });
 
@@ -156,7 +157,7 @@ it('uncertain effect: a charged unknown answer gets only its loss notice and is 
   });
 });
 
-it('memory denial: full-context review holds a false no-memory claim while a grounded answer passes', async () => {
+it('memory denial: full-context review objects to a false no-memory claim and the mind revises it', async () => {
   await withJournal(async journal => {
     const sent: string[] = [], packets: string[] = [];
     const ports = basePorts(async input => { packets.push(input.context);
@@ -171,13 +172,17 @@ it('memory denial: full-context review holds a false no-memory claim while a gro
         ? { verdict: 'violation' as const, ruleIds: ['claims_blocked' as const],
           reason: 'It claims memory is unavailable without evidence despite the supplied trial memory.', confidence: null, latencyMs: 0 }
         : { verdict: 'pass' as const, ruleIds: [], reason: 'The scoped memory claim matches the supplied trial.', confidence: null, latencyMs: 0 };
-    }, elapsedMs: () => 0 };
+    }, revise: async ({ ruleIds }) => { expect(ruleIds).toEqual(['claims_blocked']);
+      return { state: 'complete' as const, text: 'Yes: this trial keeps a durable journal of what you tell me.' }; },
+    elapsedMs: () => 0 };
     const worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Can you remember what I tell you?')]); await worker.drain();
     worker.intake([update(2, 'What can this preview remember?')]); await worker.drain();
     // The memory self-description piece states the trial memory as durable, journal-scoped memory.
     expect(JSON.parse(packets[0]!).capability).toContain("You have durable memory in this trial's encrypted local journal");
-    expect(sent).toEqual([HOLDING_REPLY, 'PREVIEW — I can use this trial journal to remember earlier turns.']);
+    expect(sent).toEqual(['PREVIEW — Yes: this trial keeps a durable journal of what you tell me.',
+      'PREVIEW — I can use this trial journal to remember earlier turns.']);
+    expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['claims_blocked'], revised: true });
   });
 });
 

@@ -163,7 +163,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         // int11's reply verdict is one exact line, so no JSON wrapper is tolerated or recorded.
         expect(Object.keys(view.modelJsonShapes.counts).filter(key => key.startsWith('reply-review/verdict'))).toEqual([]);
       } else {
-        expect(sends).toHaveLength(0);
+        // A contradicted reply review is unavailable, never a pass nor a veto: the reply is sent
+        // once with the review recorded (Rules 77, 86, 95).
+        expect(sends).toHaveLength(mode === 'reply-contradiction' ? 1 : 0);
         expect(view.modelJsonShapes.counts).toMatchObject({
           [mode === 'reply-contradiction' ? 'reply-review/verdict/malformed/not-json'
             : 'summary-review/verdict/malformed/prose-wrapped']:

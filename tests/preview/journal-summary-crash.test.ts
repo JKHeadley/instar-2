@@ -90,12 +90,13 @@ it.each(cuts)('recovers from %s', cut => {
     expect(recovered.status, `${cut}: ${recovered.stderr}`).toBe(0);
     const sends = lines(root, 'sends.log').map(line => JSON.parse(line) as { update: number; text: string });
     // int11's reply-check budget runs from the durable Jev reservation, so a restart after it
-    // finds the budget spent and holds the reply rather than repeating the check.
+    // finds the budget spent; it never repeats the check and releases the reply with the
+    // review recorded unavailable (Rules 77, 95).
     const interruptedReview = points.indexOf(cut) >= points.indexOf('journal:after:reply-jev-reserve:2')
       && points.indexOf(cut) <= points.indexOf('journal:before:reply-check:3');
     const uncertainSend = points.indexOf(cut) >= points.indexOf('journal:after:intent:2')
       && points.indexOf(cut) < points.indexOf('journal:after:sent:2');
-    if (!interruptedReview && !uncertainSend) expect(sends.filter(item => item.update === 2), cut).toEqual([
+    if (!uncertainSend) expect(sends.filter(item => item.update === 2), cut).toEqual([
       { update: 2, text: 'PREVIEW — Maya has the ORCHID key 731.' },
     ]);
     else expect(sends.filter(item => item.update === 2).length, cut).toBeLessThanOrEqual(1);
@@ -107,7 +108,7 @@ it.each(cuts)('recovers from %s', cut => {
       expect(new Set(frontiers).size, cut).toBe(frontiers.length);
       expect(view.order.map(item => item.update), cut).toEqual([1, 2]);
       expect(view.order[1]?.accepted, cut).toBe(true);
-      if (!interruptedReview && !uncertainSend) {
+      if (!uncertainSend) {
         expect(frontiers.at(-1), cut).toBe(2);
         expect(view.summaries.at(-1)?.text, cut).toBe(baselineMemory);
         expect(JSON.stringify(view.people), cut).toBe(baselinePeople);
@@ -126,8 +127,8 @@ it.each(cuts)('recovers from %s', cut => {
         && points.indexOf(cut) <= points.indexOf('journal:compact:after-reopen:1'))
         expect(frontiers, cut).toContain(1);
       if (interruptedReview) {
-        expect(['reply check unavailable', 'reply check budget exceeded'], cut).toContain(view.order[1]?.held);
-        expect(view.order[1]?.intent, cut).toBeUndefined();
+        expect(view.order[1]?.held, cut).toBeUndefined();
+        expect(view.order[1]?.release?.review, cut).toBe('unavailable');
       }
     } finally { journal.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
