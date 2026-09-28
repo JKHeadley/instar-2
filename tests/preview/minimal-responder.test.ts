@@ -147,7 +147,10 @@ it('delivers an operator photo and an unlinked edit to the mind with flags; serv
 
 it('declares a fail direction for every live gate, with only exact floors failing closed (Rules 4, 95)', () => {
   const closed = PREVIEW_LIVE_GATES.filter(gate => gate.fails === 'closed').map(gate => gate.gate);
-  expect(closed).toEqual(['operator identity and binding', 'credential shape before send', 'operator stop and trial expiry',
+  // cint-2: the two holds kept from cint-1 (Rule 86's secrets exception and build 4's obligation floor) are enumerated.
+  expect(closed).toEqual(['operator identity and binding', 'credential shape before send',
+    'credential named by a check (Jev with no review verdict, or a review violation)',
+    'untracked deferral or unevidenced cannot-do claim (full-context review)', 'operator stop and trial expiry',
     'model call cap', 'minimal reserve bound', 'minimal-path admission (Part Eleven verdict)', 'operator approval request',
     'UNKNOWN call or send']);
   expect(PREVIEW_LIVE_GATES.every(gate => gate.preserves && gate.basis)).toBe(true);

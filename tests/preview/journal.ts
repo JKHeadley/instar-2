@@ -118,6 +118,8 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
   { gate: 'pre-send reply review (Jev and full-context)', fails: 'open', preserves: 'objections on the send record', basis: 'Rules 77, 86, 95' },
   { gate: 'link shape before send', fails: 'open', preserves: 'signal on the send record', basis: 'Rules 86, 106' },
   { gate: 'credential shape before send', fails: 'closed', preserves: 'candidate and message; honest notice sent', basis: 'Rule 4 secret floor (shape, not proof of liveness)' },
+  { gate: 'credential named by a check (Jev with no review verdict, or a review violation)', fails: 'closed', preserves: 'candidate and message; holding reply sent, or a reply-check hold', basis: 'Rule 86 secrets exception' },
+  { gate: 'untracked deferral or unevidenced cannot-do claim (full-context review)', fails: 'closed', preserves: 'candidate, answer and its declared record; holding reply sent, or a reply-check hold', basis: 'Rules 6, 20, 21, 23 (build 4); Rule 86 full-context gate' },
   { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input; a stop act on the independent surface stays there until consumed', basis: 'Rule 4 emergency stop; governed expiry; Eleven §4' },
   { gate: 'model call cap', fails: 'closed', preserves: 'held message; limited answer from the reserve', basis: 'Rule 4 spend floor; Rule 15' },
   { gate: 'ordinary reply and turn caps', fails: 'open', preserves: 'input via the minimal reserve', basis: 'Rule 15' },
