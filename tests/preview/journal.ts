@@ -593,11 +593,12 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
 }
 const channelKey = (item: ChannelItem) => JSON.stringify([item.source, item.account, item.id]);
 /** Rule 29: the envelope form of a turn's writer. A legacy operator turn names the exact binding it was admitted under. */
-export type SessionWriter = Pick<WriterRecord, 'id' | 'kind' | 'adapter' | 'class' | 'reference'>;
+/** The full verified record (class, capture reference and hash) stays on the durable intake row. */
+export type SessionWriter = Pick<WriterRecord, 'id' | 'kind' | 'adapter'>;
 export function sessionWriterOf(view: JournalView, turn: Turn): SessionWriter | undefined {
-  if (turn.writer) return { id: turn.writer.id, kind: turn.writer.kind, adapter: turn.writer.adapter, class: turn.writer.class, reference: turn.writer.reference };
+  if (turn.writer) return { id: turn.writer.id, kind: turn.writer.kind, adapter: turn.writer.adapter };
   return turn.accepted && turn.requestedSummary === undefined && operatorWriter(view, turn, true)
-    ? { id: view.genesis.operator, kind: 'person', adapter: 'legacy-exact-sender-binding', class: 'channel-attested', reference: `legacy:${turn.id}` } : undefined;
+    ? { id: view.genesis.operator, kind: 'person', adapter: 'legacy-exact-sender-binding' } : undefined;
 }
 /** Rule 28: the operator is the verified person principal recorded at intake, bound to the same
  * update bytes. A legacy turn (no recorded writer) keeps the exact sender binding it was admitted under.

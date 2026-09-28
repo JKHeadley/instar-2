@@ -28,6 +28,7 @@ import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
+import { activationNeedsResolvedApproval, resolveActivationApprovals } from './activation-approval.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -101,6 +102,14 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
   sites: { 'preview.journal': 'closed', 'types.decode': 'closed' }, keys: {}, allowRedelegation: false,
   conflictStanding: { ordinary: 'delegate', authority: 'operator' } }, captures: {} };
+/** Rules 94/98: a successor activation's explicit yes and waiver must resolve to operator-signed
+ * records bound to this exact act; their reference strings alone never authorize it. */
+const requireResolvedApproval = (options, activation, operator) => {
+  if (!activationNeedsResolvedApproval(activation)) return;
+  const approvals = JSON.parse(readFileSync(required(options, 'approval-record'), 'utf8'));
+  const resolution = resolveActivationApprovals(activation, Array.isArray(approvals) ? approvals : [approvals], operator);
+  if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
+};
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 const delay = ms => new Promise(done => setTimeout(done, ms));
@@ -488,6 +497,7 @@ async function main() {
       const activation = JSON.parse(bytes);
       const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
       validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+      requireResolvedApproval(options, activation, renewJournal.view.genesis.operator);
       if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
         throw Error('preview: activation differs from journal');
       renewJournalExpiry(renewJournal, { expires: activation.expiresAt, authority: required(options, 'authority'), at: now,
@@ -700,6 +710,7 @@ async function main() {
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
+    requireResolvedApproval(options, activation, g.operator);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {

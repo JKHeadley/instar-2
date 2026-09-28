@@ -5,7 +5,7 @@ import { ENVELOPE_FLOOR } from './model-call-boundary.js';
 /** The exact launcher envelope, shared with its bounded offline path proof. */
 export function prepareJournalEnvelope(input: { question: string; context: string; id: string;
     /** Rule 29: the verified principal whose input this turn is; quoted material never gets one. */
-    writer?: { id: string; kind: string; adapter: string; class: string; reference: string } },
+    writer?: { id: string; kind: string; adapter: string } },
   model: string, grant: string, at: number, maxPromptBytes?: number): string {
   const policy = subscriptionConversationPolicy(model);
   const limit = maxPromptBytes ?? policy.maxPromptBytes;
