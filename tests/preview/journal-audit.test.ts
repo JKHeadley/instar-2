@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -176,7 +176,7 @@ it('audits the recorded packet without emitting bodies and refuses lost provenan
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     const account = 'agent@example.test';
-    importChannelFixture(journal, [{ source: 'email', account, id: 'Sam sent the itinerary.', from: 'sam@example.test',
+    importChannelItems(journal, [{ source: 'conversation', account, id: 'Sam sent the itinerary.', from: 'sam@example.test',
       at: 1789999000000, text: 'Sam sent the itinerary.' }], account, 1790000000000);
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
@@ -394,8 +394,8 @@ it('audits a recorded preference beside an imported source after replay', async 
     const g = { ...genesis, maxBytes: 32768 };
     let journal = openPreviewJournal(path, key, g);
     const rawPackets: object[] = [];
-    importChannelFixture(journal, [{ source: 'email', account: 'agent@example.test', id: 'mail-1',
-      from: 'sam@example.test', at: 1789999000000, subject: 'Studio', text: 'The studio opens Friday.' }],
+    importChannelItems(journal, [{ source: 'conversation', account: 'agent@example.test', id: 'mail-1',
+      from: 'sam@example.test', at: 1789999000000, text: 'The studio opens Friday.' }],
     'agent@example.test', 1790000000000);
     const ports = { now: () => 1790000000000, stopped: () => false,
       prepareModel: (input: { question: string; context: string; id: string }) =>

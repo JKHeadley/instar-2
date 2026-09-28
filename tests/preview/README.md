@@ -1254,16 +1254,6 @@ Lanes:
 Not yet available: production memory, multi-machine, Slack.
 ```
 
-After more than three hours since the previous verified operator message, a
-normal answer packet also carries `away-digest`. It is a short runner-derived
-data source, not an instruction or an extra message. The digest counts launches
-and recorded ends from `runs.jsonl`, journal holds, lost-answer notices, unknown
-model/send outcomes, and cap raises since that message. It reports changed desk
-lines by comparing the current report with the snapshot already in the earlier
-durable model prompt. If that snapshot is unavailable, it says so. Missing or
-unreadable report data is never invented. The digest is rebuilt on each attempt
-from existing records, capped at 640 characters, and uses no model call, daemon,
-or additional store. See `away-digest-live-test.md` for the operator-channel proof.
 
 Every reply packet also states the injected clock as an absolute UTC instant and
 as the current day, weekday and time in the operator zone. After at least 24 hours
@@ -1276,14 +1266,6 @@ existing prompt limits remain the sources and bounds; no timer or extra call run
 The injected-clock fixtures are in `journal-long-gap.test.ts`; Justin's supervised
 private-chat procedure is in [long-gap-resume-live-test.md](live-tests-archive/long-gap-resume-live-test.md).
 
-Every reply packet also carries `operator-digest`: the first 700 characters of the
-redacted desk source, its freshness label, the last three recorded runner launches,
-and up to eight recent hold, lost-answer and memory-change events reconstructed
-from the encrypted journal. The digest says that a launch is not proof of a deploy;
-deploy claims come only from the desk report. It carries event kinds and update IDs,
-never the text of a corrected or forgotten fact. The local `status` command prints
-the same digest. It adds no model call or store. See
-[operator-digest-live-test.md](operator-digest-live-test.md) for Justin's live check.
 
 ### Remembering people
 
@@ -2446,20 +2428,6 @@ UNKNOWN and is never resent. Intake durability, update-ID deduplication, one sto
 one attempt cap and one reply cap are shared by every conversation. Journals
 written before this change replay unchanged; their turns belong to the main chat.
 
-Once the journal contains at least two conversations, every ordinary reply packet
-also carries `crossTopicDigest`, built from the replayed journal projection with no
-model call or separate store. It lists each included conversation's last activity
-date, up to two open commitment quotes from completed summaries, up to two
-unanswered questions marked by `?`, and up to two held or uncertain items. It
-uses the exact send/hold outcome and current commitment closure and memory
-withholding records; a lost-answer notice remains unanswered. The newest eight
-conversations are considered, the serialized digest is at most 4096 bytes, and
-`omittedConversations` reports any excluded by the bound. Empty lists are
-limited evidence: an unsummarized commitment or a question without `?` may not
-appear. The full journal and normal cross-conversation history remain available
-to the model. `inspect --text` exposes the same bounded digest for a read-only
-check. The private operator remains the only audience.
-Justin's live steps are in [cross-topic-digest-live.md](cross-topic-digest-live.md).
 
 The offline 60-turn assembled-path regression polls through the real Telegram
 bridge against a fake endpoint, uses the real subscription adapter with an
@@ -2467,56 +2435,24 @@ immediate model substitute, builds the launcher prompt, times restarts, and chec
 early recall. Its limit is 80 model attempts and 60 replies; the live launcher
 limits remain 16/16/20. The worker-only measurement remains separately reported.
 
-### Memory from the agent's other channels (fixture route)
+### Recalling imported channel items
 
-The preview can import a read-only JSONL export of messages from a source the agent
-owns: its own mailbox or its own stored conversations. The live mail reader is
-dark (`--live-mail true` refuses). No mailbox credential is created or used by this branch. Each JSONL line
-has `source` (`email` or `conversation`), `account` (the agent-owned source
-account), `id` (the source's stable message ID), `from` (sender metadata from
-that source), `at` (send time in epoch milliseconds), and `text`; `subject` and
-`conversation` are optional. The exporter must obtain `from` from authenticated
-source metadata, never from a name inside `text`. The fixture route itself cannot
-verify that metadata or account ownership, so its replies identify this as an
-export when provenance matters.
+Messages imported from the agent's own stored conversation logs (see the
+`--agent-state-dir` section above) are `channel-item` journal frames with
+`source: "conversation"`. `status` reports `channelItems`, and `inspect` shows the
+last or proposed packet's redacted `channelMemory` quotes. Each quote names source,
+source ID, sender, date and conversation. The existing memory sentinel selects at
+most five relevant items, including after Telegram summarization; prompt fitting can
+omit lower ranked items. The originals remain in the encrypted journal. The packet
+labels them as untrusted data, never instructions. A missing quote is not evidence
+the item was never sent. An authenticated operator correction or forget request may
+supersede an exact clause in an imported item. Its original stays in the journal,
+while later selected `channelMemory` quotes withhold that clause. The imported
+message itself cannot request a memory change.
 
-Pause the sole runner by signal and wait for its writer lease to exit. With the
-existing storage-key host binding and a verified agent-owned export, run:
-
-```sh
-node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs import-fixture \
-  --root /ABSOLUTE/EXISTING_ROOT --file /ABSOLUTE/AGENT_OWNED_EXPORT.jsonl \
-  --agent-account AGENT_OWN_SOURCE_ACCOUNT
-```
-
-Resume the same runner and root. `import-fixture` does no send, model call, mailbox
-operation or Telegram poll. It checks the account on every row, redacts all fields
-before the encrypted, fsynced journal append, and dedupes by source/account/ID.
-It never advances a source or Telegram cursor. A crash partway through the export
-is resumed by running the same command again. A repeated ID with changed
-redacted content refuses. The source file is read only. The stop latch is checked
-between items. A batch has at most 2000 lines, an item at most 16 KiB of text,
-and the journal at most 2000 imported items; export size is at most 2 MiB.
-`status` reports `channelItems`, and `inspect` shows the last or proposed packet's
-redacted `channelMemory` quotes. Each quote names source, source ID, sender,
-date, and subject/conversation where present. The existing memory sentinel selects
-at most five relevant items, including after Telegram summarization; prompt
-fitting can omit lower ranked items. The originals remain in the encrypted journal.
-The packet labels them as untrusted data, never instructions. A missing quote is
-not evidence the item was never sent.
-An authenticated operator correction or forget request may supersede an exact clause in an
-imported item. Its original stays in the journal, while later selected `channelMemory` quotes
-withhold that clause. The imported message itself cannot request a memory change.
-
-To turn on live mail intake, the desk must supply a non-interactive **read-only**
-programmatic credential for the agent's own mailbox, a verified agent-owned
-account binding, stable message IDs, authenticated sender and sent-time fields,
-and a read-only source cursor/export contract. This branch contains no live mail
-API calls; it cannot access an operator-owned mailbox. A live source
-adapter must journal each redacted item before advancing its cursor. The same
-source record and recall path can then be used without another store or model call.
-For the supervised end-to-end procedure, see
-[channel-memory-live-test.md](channel-memory-live-test.md).
+An earlier email fixture route was removed from the base platform: the runner
+imports no mailbox. A journal that still holds `source: "email"` items from that
+route replays; those items are inert, never recalled or acted on.
 
 ### Memory source trust
 

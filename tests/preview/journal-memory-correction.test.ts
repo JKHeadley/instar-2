@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, projectMemoryText, replyBody, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, MEMORY_UNDECIDED_REPLY, openPreviewJournal, projectMemoryText, replyBody, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
 
 const key = new Uint8Array(32).fill(17);
@@ -20,11 +20,11 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
   try {
     let journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768 });
     const account = 'agent@example.test';
-    importChannelFixture(journal, [{ source: 'email', account, id: 'archive-1 Silver Crane', from: 'SILVER CRANE operator@example.test',
-      at: 1789999000000, subject: 'Archive access', conversation: 'The archive access phrase is silver crane.',
+    importChannelItems(journal, [{ source: 'conversation', account, id: 'archive-1 Silver Crane', from: 'SILVER CRANE operator@example.test',
+      at: 1789999000000, conversation: 'The archive access phrase is silver crane.',
       text: 'The archive access phrase is silver crane.\nThe studio opening day is Friday.' },
-    { source: 'email', account, id: 'archive-2', from: 'operator@example.test',
-      at: 1789999000000, subject: 'Archive access', conversation: 'Other archive',
+    { source: 'conversation', account, id: 'archive-2', from: 'operator@example.test',
+      at: 1789999000000, conversation: 'Other archive',
       text: 'The archive access phrase for the other account is cedar brook.' }], account, 1790000000000);
     const contexts: string[] = [];
     const ports = { now: () => 1790000000000, stopped: () => false,
@@ -32,7 +32,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
         if (input.id.startsWith('summary:')) {
           const packet = JSON.parse(input.context);
           const source = packet.memoryCandidates.find((item: { message: string }) => item.message.includes('silver crane'));
-          expect(source.sourceLabel).toMatch(/^import:email\/The archive access phrase is silver cra.+\/[a-f0-9]{12}$/u);
+          expect(source.sourceLabel).toMatch(/^import:conversation\/The archive access phrase is silver cra.+\/[a-f0-9]{12}$/u);
           return JSON.stringify({ summary: 'The operator asked to forget an imported archive phrase.', people: [],
             memory: [{ mode: 'forget', source: source.id, quote: 'The archive access phrase is silver crane.' }] });
         }
@@ -59,10 +59,10 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     const otherItem = packet.channelMemory?.find((item: { conversation?: string }) => item.conversation === 'Other archive');
     expect(packet.channelMemory).toHaveLength(2);
     expect(withheldItem?.sourceRef).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
-    expect(withheldItem?.sourceLabel).toMatch(/^import:email\/\[withheld: operator correction or forget\/.+\/[a-f0-9]{12}$/u);
+    expect(withheldItem?.sourceLabel).toMatch(/^import:conversation\/\[withheld: operator correction or forget\/.+\/[a-f0-9]{12}$/u);
     expect(otherItem).toMatchObject({ conversation: 'Other archive',
       quote: 'The archive access phrase for the other account is cedar brook.' });
-    expect(otherItem?.sourceLabel).toMatch(/^import:email\/Other archive\/.+\/[a-f0-9]{12}$/u);
+    expect(otherItem?.sourceLabel).toMatch(/^import:conversation\/Other archive\/.+\/[a-f0-9]{12}$/u);
     expect(journal.view.channelItems.size).toBe(2);
     worker.intake([update(2, 'The studio opening day is Saturday.')]); await worker.drain();
     const contradictionPacket = JSON.parse(contexts.at(-1)!);
@@ -77,7 +77,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
         encoding: 'utf8', timeout: 10000 });
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).withheld).toMatchObject([{
-      channelSource: 'email', channelSourceId: 'archive-1 Silver Crane', reason: 'verified operator requested forgetting' }]);
+      channelSource: 'conversation', channelSourceId: 'archive-1 Silver Crane', reason: 'verified operator requested forgetting' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
@@ -88,12 +88,12 @@ it('forgets a relevant import despite five unrelated near-term dated imports and
     const now = Date.parse('2026-09-26T12:00:00Z');
     const account = 'agent@example.test';
     const target = 'The archive access phrase is silver crane.';
-    importChannelFixture(journal, [
-      { source: 'email', account, id: 'archive-1', from: 'operator@example.test', at: now - 86_400_000,
-        subject: 'Archive access', text: target },
-      ...Array.from({ length: 5 }, (_, index) => ({ source: 'email' as const, account,
+    importChannelItems(journal, [
+      { source: 'conversation', account, id: 'archive-1', from: 'operator@example.test', at: now - 86_400_000,
+        text: target },
+      ...Array.from({ length: 5 }, (_, index) => ({ source: 'conversation' as const, account,
         id: `event-${index}`, from: 'operator@example.test', at: now,
-        subject: 'Ordinary event', text: `Ordinary event ${index} on 2026-09-29.` }))
+        text: `Ordinary event ${index} on 2026-09-29.` }))
     ], account, now);
     const summarySources: string[][] = [], sends: string[] = [];
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
@@ -129,12 +129,12 @@ it('offers the relevant import to an uncued direct forget even when reply eviden
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes: 32768 });
     const now = Date.parse('2026-09-26T12:00:00Z');
     const account = 'agent@example.test', target = 'The archive access phrase is silver crane.';
-    importChannelFixture(journal, [
-      { source: 'email', account, id: 'archive-1', from: 'operator@example.test', at: now - 86_400_000,
-        subject: 'Archive access', text: target },
-      ...Array.from({ length: 5 }, (_, index) => ({ source: 'email' as const, account,
+    importChannelItems(journal, [
+      { source: 'conversation', account, id: 'archive-1', from: 'operator@example.test', at: now - 86_400_000,
+        text: target },
+      ...Array.from({ length: 5 }, (_, index) => ({ source: 'conversation' as const, account,
         id: `event-${index}`, from: 'operator@example.test', at: now,
-        subject: 'Ordinary event', text: `Ordinary event ${index} on 2026-09-29.` }))
+        text: `Ordinary event ${index} on 2026-09-29.` }))
     ], account, now);
     const sends: string[] = [];
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,

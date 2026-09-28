@@ -32,8 +32,8 @@ it('replays a source-dated inventory of people, correction, forgotten marker, co
     ].entries()) journal.append({ kind: 'intake', id: `telegram:12345678:update:${index + 1}`, update: index + 1,
       text: message, raw: JSON.stringify(update(index + 1, message)), accepted: true, cursor: index + 2,
       at: 1790000000000 + index * 60000 });
-    journal.append({ kind: 'channel-item', item: { source: 'email', account: 'agent@example.test', id: 'mail-7',
-      from: 'sam@example.test', at: 1790000100000, subject: 'Project', text: 'Sam sent the project notes.' }, at: 1790000100000 });
+    journal.append({ kind: 'channel-item', item: { source: 'conversation', account: 'agent@example.test', id: 'mail-7',
+      from: 'sam@example.test', at: 1790000100000, text: 'Sam sent the project notes.' }, at: 1790000100000 });
     journal.append({ kind: 'summary-reserve', through: 5, at: 1790000200000 });
     journal.append({ kind: 'summary', through: 5, text: 'Sam is a colleague with a bicycle.',
       people: [{ name: 'Sam', source: 'telegram:12345678:update:1', quote: 'Sam is my colleague.' }],
@@ -114,8 +114,8 @@ it('does not expose forgotten content encoded in imported metadata or candidate 
   try {
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, genesis);
     const quote = 'The archive phrase is silver crane.';
-    const item = { source: 'email' as const, account: 'agent@example.test', id: `archive-7 ${quote}`,
-      from: `sender ${quote}`, at: 1790000100000, subject: 'Archive', text: quote };
+    const item = { source: 'conversation' as const, account: 'agent@example.test', id: `archive-7 ${quote}`,
+      from: `sender ${quote}`, at: 1790000100000, text: quote };
     journal.append({ kind: 'channel-item', item, at: item.at });
     const request = 'Forget the archive phrase.';
     journal.append({ kind: 'intake', id: 'telegram:12345678:update:1', update: 1, text: request,

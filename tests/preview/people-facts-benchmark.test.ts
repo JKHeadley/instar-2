@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(71);
 const now = 1_790_000_000_000;
@@ -61,7 +61,7 @@ it('scores source attribution for 48 people across 160 turns, repeated summaries
     }
     await run.worker.summarizeIfNeeded(true);
     expect(run.journal.view.summaries.length).toBeGreaterThan(20);
-    importChannelFixture(run.journal, [{ source: 'email', account: 'agent@example.test', id: 'same-first-name',
+    importChannelItems(run.journal, [{ source: 'conversation', account: 'agent@example.test', id: 'same-first-name',
       from: 'office@example.test', at: now - 3600_000, text: 'Sam Becker won a regional award.' }],
     'agent@example.test', now);
     run.journal.close();
@@ -81,7 +81,7 @@ it('scores source attribution for 48 people across 160 turns, repeated summaries
         && target.some(item => item.message.includes(`my ${person.role}`))
         && target.some(item => item.message.includes(person.news))) correct++;
       if (target.some(item => !expected.some(id => item.source === `telegram:12345678:update:${id}`)
-        && !(item.source === 'email' && item.message.includes(person.name)))) contaminated++;
+        && !(item.source === 'conversation' && item.message.includes(person.name)))) contaminated++;
     }
     process.stdout.write(`people attribution: ${correct}/${people.length} complete, ${contaminated}/${people.length} contaminated; ${replay.view.summaries.length} summaries, 160 turns\n`);
     expect(correct).toBe(people.length);

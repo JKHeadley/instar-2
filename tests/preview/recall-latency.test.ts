@@ -35,9 +35,8 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     for (let i = 1; i <= 10; i++) view.memory.push({ mode: 'correct', source: view.order[i * 100]!.id,
       quote: `locker note ${i * 100}`, trigger: view.order[i * 100 + 1]!.id,
       replacement: `locker note corrected ${i}` });
-    for (let i = 1; i <= 100; i++) view.channelItems.set(JSON.stringify(['email', 'agent@example.invalid', `mail-${i}`]), { source: 'email', account: 'agent@example.invalid',
-      id: `mail-${i}`, from: 'sam@example.invalid', at: 1790000000000 + i * 1000,
-      subject: 'Cedar project', text: `Sam sent cedar project mail ${i}` });
+    for (let i = 1; i <= 100; i++) view.channelItems.set(JSON.stringify(['conversation', 'agent@example.invalid', `mail-${i}`]), { source: 'conversation', account: 'agent@example.invalid',
+      id: `mail-${i}`, from: 'sam@example.invalid', at: 1790000000000 + i * 1000, text: `Sam sent cedar project mail ${i}` });
     const worker = createJournalWorker(journal, { now: () => 1790003000000, stopped: () => false,
       model: async () => 'I remember the cedar plan.', send: async () => 1, checkOutbound: () => {},
       replyCheck: { elapsedMs: () => performance.now(), jev: async () => ({ latencyMs: 0,
@@ -80,7 +79,10 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // cint-2 re-pin (cbuild-2 merged over cbuild-4): diffed field by field against both parents' packets
     // (583bf4b6… and 3f4a1662…), every field equals the side that changed it, and the capability line is
     // exactly the union of both builds' sentences (nothing lost, nothing new).
-    expect(packetHash).toBe('0cc5fb8bb06633ab5390874c613a7a1465d053942b5d4052ac6291155aa0e6e2');
+    // cint-23-occam re-pin: the email import route and the cross-topic digest were removed. The fixture's
+    // channel items are conversation items (no email subject). Run on the base code with that same fixture,
+    // the packet differs only by the absent crossTopicDigest and the memorySearch items that use its room.
+    expect(packetHash).toBe('ef908084d0b748cdf585ce7fc72842bc5096306fd6b94c286c055ec45da5fd8d');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

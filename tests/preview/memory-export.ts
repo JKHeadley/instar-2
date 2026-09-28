@@ -61,7 +61,7 @@ export function memoryReport(view: ExportView): string {
   sections.push({ title: 'Channel items', rows: [...view.channelItems.values()].map(item => {
     const id = `channel:${JSON.stringify([item.source, item.account, item.id])}`;
     const retired = actions.some(change => change.mode !== 'prefer' && change.source === id);
-    return `- ${retired ? '[affected content withheld]' : safe(item.text)}; source: ${source(id)}${item.subject ? `; subject: ${safe(item.subject)}` : ''}${item.conversation ? `; conversation: ${safe(item.conversation)}` : ''}`;
+    return `- ${retired ? '[affected content withheld]' : safe(item.text)}; source: ${source(id)}${item.conversation ? `; conversation: ${safe(item.conversation)}` : ''}`;
   }) });
   // Newest evidence gets the finite display slots. Counts make every omission visible.
   for (const section of sections) {

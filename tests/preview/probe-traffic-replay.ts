@@ -69,7 +69,7 @@ export interface ProbeReplayResult { rows: SurfaceRow[]; summaries: { count: num
   replayStable: boolean; sends: number; restarts: number }
 
 const BLOCKS = ['history', 'recalled', 'summary', 'period', 'inventory', 'memorySearch', 'openQuestions', 'commitments',
-  'people', 'preferences', 'contradictions', 'crossTopicDigest', 'memory'] as const;
+  'people', 'preferences', 'contradictions', 'memory'] as const;
 
 function measure(question: Question, context: string): SurfaceRow {
   const packet = JSON.parse(context) as Record<string, unknown>;

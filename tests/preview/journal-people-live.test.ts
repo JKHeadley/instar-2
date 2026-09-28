@@ -7,7 +7,6 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
-import { operatorDigest } from './operator-digest.js';
 
 const key = new Uint8Array(32).fill(7);
 const operator = 7654321, model = 'claude-opus-5-5';
@@ -37,8 +36,7 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
       sources: () => {
         const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
         const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
-        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk,
-          operatorDigest(journal.view, runs, desk)];
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk];
       },
       prepareModel: input => prepareJournalEnvelope(input, model, g.grant, Date.now()),
       model: async ({ id, context }) => {

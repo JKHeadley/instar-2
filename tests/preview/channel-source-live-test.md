@@ -2,7 +2,7 @@
 
 Use the existing private preview trial after the desk has landed this build and
 resumed its sole runner with `--agent-state-dir` set to this agent's canonical
-`.instar` directory. Do not use the preview chat as the source. Keep live mail off.
+`.instar` directory. Do not use the preview chat as the source.
 
 1. In an **existing Telegram topic where Echo participates**, send a unique
    message as yourself: `For the channel-memory test, the studio marker is

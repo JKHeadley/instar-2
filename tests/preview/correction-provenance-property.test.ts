@@ -27,8 +27,8 @@ it('traces every active item through random correction, merge, summary and compa
       let compactions = 0;
       let journal = openPreviewJournal(path, key, { ...genesis, maxTurns: count + 2 },
         stage => { if (stage === 'compact:after-reopen') compactions++; }, false, 2048);
-      const imported = { source: 'email' as const, account: 'agent@example.test', id: `mail-${seed}`,
-        from: 'sam@example.test', at: 1789999000000, subject: 'Studio key is blue raven.', text: 'See attached.' };
+      const imported = { source: 'conversation' as const, account: 'agent@example.test', id: `mail-${seed}`,
+        from: 'sam@example.test', at: 1789999000000, text: 'Studio key is blue raven.' };
       const importId = `channel:${JSON.stringify([imported.source, imported.account, imported.id])}`;
       journal.append({ kind: 'channel-item', item: imported, at: 1790000000000 });
       const phrases: { id: string; quote: string }[] = [];
@@ -41,7 +41,7 @@ it('traces every active item through random correction, merge, summary and compa
               : n === 8 ? 'What does Sam have?' : `Sam likes cedar tea number ${n}.`;
         const replace = `Sam likes mint tea number ${n}.`;
         const correct = n === 5 || n > 2 && ![3, 4, 8].includes(n) && next() < .42;
-        const target = n === 2 ? { id: importId, quote: imported.subject }
+        const target = n === 2 ? { id: importId, quote: imported.text }
           : n === 5 ? phrases[0]
           : correct ? phrases[Math.floor(next() * phrases.length)] : undefined;
         const text = target ? `Please correct ${target.quote} The new fact is ${replace}` : quote;

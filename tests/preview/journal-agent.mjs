@@ -2,7 +2,7 @@
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -14,10 +14,9 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules } from './briefing.js';
 import { projectionDigest } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate} from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate} from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
-import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
@@ -67,7 +66,6 @@ import { auditJournal } from './journal-audit.mjs';
 
 import { memoryReport } from './memory-export.js';
 
-import { operatorDigest } from './operator-digest.js';
 import { stepQuestions } from './step-check.js';
 
 
@@ -193,10 +191,8 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const now = wallNow(), log = runs();
     const sources = ordinarySources;
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
-    const digest = turn && awayDigest(view, log, now, turn, [desk]);
     const note = handoff();
-    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, operatorDigest(view, log, desk),
-      ...(digest ? [awayDigestSource(digest)] : []), ...(note ? [note] : [])];
+    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
   };
 };
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
@@ -217,7 +213,6 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   continuity: packet.continuity ?? null,
 
   contradictions: packet.contradictions ?? [],
-  crossTopicDigest: packet.crossTopicDigest ?? null,
   restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
   recalled: packet.recalled?.length ?? 0, recalledIds: (packet.recalled ?? []).map(item => item.id ?? null), recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
   replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
@@ -304,7 +299,7 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
@@ -392,8 +387,6 @@ async function main() {
     }
     try {
       const now = wallNow(), log = readRuns(runsPath);
-      const deskPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
-      const desk = deskStatusSource(readDeskStatus(deskPath), now, deskPath);
       const lastSent = view.view.order.filter(turn => turn.sentAt !== undefined).at(-1);
       const g = view.view.genesis;
       const ownership = observeConversationOwner({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine,
@@ -570,7 +563,6 @@ async function main() {
         rightSource: view.view.people[link.right]?.source, triggerUpdate: view.view.turns.get(link.trigger)?.update })),
 
       launches: log.launches.slice(-3), ...(log.readFailed ? { runLog: 'unreadable' } : {}),
-      digest: operatorDigest(view.view, log, desk).text,
       self: selfState(view.view, readRuns(runsPath), wallNow(), timeZoneOf(options), undefined,
         existsSync(stopPath) || view.view.stop !== null) };
       // Rules 9/39/43/73: proof posture and capability truth from the durable proof log and the replayed journal.
@@ -676,43 +668,11 @@ async function main() {
   if (command === 'import-store') {
     let storeJournal;
     try {
-      if (options['live-mail'] !== undefined && options['live-mail'] !== 'false') throw Error('preview: live mail source is disabled');
       const state = agentState(required(options, 'agent-state-dir'));
       storeJournal = openPreviewJournal(journalPath, key());
       const results = ['telegram', 'slack'].map(source => importSource(storeJournal, state, source, () => existsSync(stopPath)));
       process.stdout.write(`${JSON.stringify({ results, channelItems: storeJournal.view.channelItems.size })}\n`);
     } finally { storeJournal?.close(); storage.close(); }
-    return;
-  }
-  if (command === 'import-fixture') {
-    let fixtureJournal;
-    try {
-      if (options['live-mail'] !== undefined && options['live-mail'] !== 'false')
-        throw Error('preview: live mail source is disabled');
-      if (existsSync(stopPath)) throw Error('preview: stop latched');
-      const file = resolve(required(options, 'file'));
-      if (realpathSync(file) !== file || !lstatSync(file).isFile()) throw Error('preview: substituted fixture');
-      const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
-      let bytes;
-      try {
-        if (!fstatSync(fd).isFile()) throw Error('preview: substituted fixture');
-        const buffer = Buffer.alloc(2 * 1024 * 1024 + 1);
-        let length = 0;
-        while (length < buffer.length) {
-          const count = readSync(fd, buffer, length, buffer.length - length, length);
-          if (count === 0) break;
-          length += count;
-        }
-        if (length > 2 * 1024 * 1024) throw Error('preview: fixture capacity');
-        bytes = buffer.subarray(0, length);
-      } finally { closeSync(fd); }
-      const rows = bytes.toString('utf8').split(/\r?\n/u).filter(Boolean).map(line => JSON.parse(line));
-      fixtureJournal = openPreviewJournal(journalPath, key());
-      if (fixtureJournal.view.genesis.importSource !== undefined && !fixtureJournal.view.imported)
-        throw Error('preview: migration incomplete');
-      const added = importChannelFixture(fixtureJournal, rows, required(options, 'agent-account'), wallNow(), () => existsSync(stopPath));
-      process.stdout.write(`${JSON.stringify({ added, total: fixtureJournal.view.channelItems.size })}\n`);
-    } finally { fixtureJournal?.close(); storage.close(); }
     return;
   }
   if (command === 'renew-expiry') {

@@ -120,7 +120,7 @@ it('indexes only selected compacted turns and imported items', async () => {
     journal.append({ kind: 'summary', through: 2, text: 'Dock seven and Mara locker facts.',
       people: [{ name: 'Mara', source: id(2), quote: 'Mara uses the red locker.' }],
       commitments: [{ in: 'message', source: id(2), quote: 'Remember that Mara uses the red locker.' }], at: 1000 });
-    journal.append({ kind: 'channel-item', item: { source: 'email', account: 'agent@example.test', id: 'mail-7',
+    journal.append({ kind: 'channel-item', item: { source: 'conversation', account: 'agent@example.test', id: 'mail-7',
       from: 'Mara', at: 1000, text: 'Dock seven has a blue marker.' }, at: 1000 });
     worker.intake([update(3, 'What did Mara say about dock seven and the locker?')]);
     await worker.drain();
@@ -132,9 +132,9 @@ it('indexes only selected compacted turns and imported items', async () => {
     expect(audit.summaryThrough).toBe(2);
     expect(audit.history).toEqual([]);
     expect(audit.recalled).toEqual([id(1)]);
-    expect(audit.people).toEqual([id(2), 'channel:["email","agent@example.test","mail-7"]']);
+    expect(audit.people).toEqual([id(2), 'channel:["conversation","agent@example.test","mail-7"]']);
     expect(audit.commitments).toEqual([0]);
-    expect(audit.channelItems).toEqual(['channel:["email","agent@example.test","mail-7"]']);
+    expect(audit.channelItems).toEqual(['channel:["conversation","agent@example.test","mail-7"]']);
     expect(audit.recalled).toHaveLength(packet.recalled?.length ?? 0);
     expect(audit.channelItems).toHaveLength(packet.channelMemory?.length ?? 0);
     worker.intake([update(4, 'What did Mara say about dock seven and the locker?')]);

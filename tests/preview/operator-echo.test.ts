@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
 import { CREDENTIAL_SHAPE_NOTICE, reviewUnavailableReleases } from './journal.js';
 import { HOLDING_REPLY, REPLY_RULES, repeatsOperatorOnly } from './reply-check.js';
 import { statusReply } from './status-command.js';
@@ -179,8 +179,8 @@ describe('operator echo in the journal runner', () => {
     const root = temp();
     const w = world(root, 'Sam said the gate code is 7731.');
     try {
-      importChannelFixture(w.journal, [{ source: 'email', account: 'echo-agent@example.test', id: 'mail-1',
-        from: 'sam@example.test', at: now - 3_600_000, subject: 'Gate', text: 'The gate code is 7731.' }],
+      importChannelItems(w.journal, [{ source: 'conversation', account: 'echo-agent@example.test', id: 'mail-1',
+        from: 'sam@example.test', at: now - 3_600_000, text: 'The gate code is 7731.' }],
       'echo-agent@example.test', now);
       await w.say(1, 'What is the gate code Sam sent?');
       expect(w.calls.jev.at(-1)).toContain('7731');
@@ -280,9 +280,8 @@ describe('review witnesses: imported secrets and older snapshots', () => {
     let checks = 0;
     const sends: string[] = [];
     try {
-      importChannelFixture(journal, [{ source: 'email', account: 'echo-agent@example.test', id: 'mail-1',
-        from: 'sam@example.test', at: now - 3600000, subject: 'Server access',
-        text: 'The server password is violetorchid.' }], 'echo-agent@example.test', now);
+      importChannelItems(journal, [{ source: 'conversation', account: 'echo-agent@example.test', id: 'mail-1',
+        from: 'sam@example.test', at: now - 3600000, text: 'The server password is violetorchid.' }], 'echo-agent@example.test', now);
       const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
         model: async () => JSON.stringify({ reply, memory: [] }),
         send: async input => { sends.push(input.text); return 1; },

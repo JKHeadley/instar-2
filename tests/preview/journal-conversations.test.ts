@@ -53,7 +53,6 @@ it('knows in a topic what the operator said in the main chat, labelled with wher
     const first = JSON.parse(w.seen[0]!.context);
     expect(first.audience.conversation).toBeUndefined();
     expect(first.capability).not.toContain('another conversation');
-    expect(first.crossTopicDigest).toBeUndefined();
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -178,60 +177,6 @@ it('gives the summarizer every turn\'s conversation and date, including the main
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('builds a bounded per-conversation digest from replayed commitments, unanswered questions and holds', async () => {
-  const root = origin();
-  try {
-    const first = world(root);
-    first.worker.intake([update(1, 'Please remember to call Nora.', undefined, 1790000000),
-      update(2, 'The permit arrived.', 7, 1790000060)]);
-    await first.worker.drain();
-    first.journal.append({ kind: 'summary-reserve', through: 2, at: 1790000000000 });
-    first.journal.append({ kind: 'summary', through: 2, text: 'The operator asked to remember a call.',
-      commitments: [{ in: 'message', source: 'telegram:12345678:update:1', quote: 'remember to call Nora' }], at: 1790000000000 });
-    first.worker.intake([update(3, 'Who will review the permit?', 9, 1790000120)]);
-    first.journal.append({ kind: 'hold', id: 'telegram:12345678:update:3', reason: 'call cap', at: 1790000000000 });
-    first.journal.close();
-
-    const second = world(root);
-    const packet = JSON.parse((second.worker.probe('What is open across my topics?') as { context: string }).context);
-    const digest = packet.crossTopicDigest;
-    expect(digest.conversations.map((item: { conversation: string }) => item.conversation))
-      .toEqual(['topic 9', 'topic 7', 'main chat']);
-    expect(digest.conversations[0]).toMatchObject({ lastActivity: '2026-09-21T14:15Z',
-      unansweredQuestions: [{ question: 'Who will review the permit?', outcome: 'call cap' }],
-      heldItems: [{ message: 'Who will review the permit?', status: 'call cap' }] });
-    expect(digest.conversations[1]).toMatchObject({ openCommitments: [], unansweredQuestions: [], heldItems: [] });
-    expect(digest.conversations[2].openCommitments).toEqual([{ id: 0, date: '2026-09-21T14:13Z',
-      quote: 'remember to call Nora', in: 'message' }]);
-    expect(Buffer.byteLength(JSON.stringify(digest))).toBeLessThanOrEqual(4096);
-    expect(second.journal.view.calls).toBe(3); // The digest and probe spend no model slot.
-    second.worker.intake([update(4, 'I called Nora; it is done.', undefined, 1790000180)]);
-    second.journal.append({ kind: 'summary-reserve', through: 4, at: 1790000000000 });
-    second.journal.append({ kind: 'summary', through: 4, text: 'The Nora call was completed.',
-      closed: [{ id: 0, source: 'telegram:12345678:update:4', quote: 'I called Nora; it is done.' }], at: 1790000000000 });
-    const closed = JSON.parse((second.worker.probe('What is still open?') as { context: string }).context);
-    expect(closed.crossTopicDigest.conversations.find((item: { conversation: string }) => item.conversation === 'main chat')
-      .openCommitments).toEqual([]);
-    second.journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it('omits older conversations explicitly when the digest bound is reached', () => {
-  const root = origin();
-  try {
-    const w = world(root);
-    w.worker.intake(Array.from({ length: 12 }, (_, index) => update(index + 1,
-      `Who is handling project ${String(index)}?`, index + 1, 1790000000 + index * 60)));
-    const packet = JSON.parse((w.worker.probe('What is open across my topics?') as { context: string }).context);
-    expect(packet.crossTopicDigest.conversations).toHaveLength(8);
-    expect(packet.crossTopicDigest.omittedConversations).toBe(4);
-    expect(packet.crossTopicDigest.conversations[0].conversation).toBe('topic 12');
-    expect(Buffer.byteLength(JSON.stringify(packet.crossTopicDigest))).toBeLessThanOrEqual(4096);
-    expect(w.journal.view.calls).toBe(0);
-    w.journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
 it('keeps a question with an UNKNOWN send unanswered after replay without resending it', async () => {
   const root = origin();
   try {
@@ -244,17 +189,13 @@ it('keeps a question with an UNKNOWN send unanswered after replay without resend
     await second.worker.drain();
     expect(second.sent).toEqual([]);
     const packet = JSON.parse((second.worker.probe('What is open across my topics?') as { context: string }).context);
-    expect(packet.crossTopicDigest.conversations[0]).toMatchObject({ conversation: 'topic 7',
-      unansweredQuestions: [{ question: 'Who has the map?', outcome: 'delivery UNKNOWN' }],
-      heldItems: [{ message: 'Who has the map?', status: 'delivery UNKNOWN' }] });
-    expect(packet.crossTopicDigest.conversations[1]).toMatchObject({ conversation: 'main chat',
-      unansweredQuestions: [], heldItems: [] });
+    expect(packet.history.find((item: { user: string }) => item.user === 'Who has the map?')).toMatchObject({ outcome: 'delivery UNKNOWN' });
     second.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it.each(['answered', 'rejected', 'empty', 'held'] as const)(
-  'keeps delivered %s outcomes distinguishable in the cross-topic digest after replay', async result => {
+  'keeps delivered %s outcomes distinguishable in history after replay', async result => {
     const root = origin();
     try {
       const replyCheck: PreviewPorts['replyCheck'] = result === 'held' ? {
@@ -275,41 +216,11 @@ it.each(['answered', 'rejected', 'empty', 'held'] as const)(
 
       const second = world(root);
       const packet = JSON.parse((second.worker.probe('What is open across my topics?') as { context: string }).context);
-      const main = packet.crossTopicDigest.conversations.find((item: { conversation: string }) => item.conversation === 'main chat');
-      expect(main).toBeDefined();
-      if (result === 'answered') {
-        expect(main).toMatchObject({ unansweredQuestions: [], heldItems: [] });
+      if (result === 'answered')
         expect(packet.history[0]).toMatchObject({ answer: 'The review is tomorrow.', outcome: 'Telegram API accepted' });
-      } else {
-        const status = result === 'held' ? 'answer withheld: credential-shaped text; notice delivered'
-          : `model failure notice delivered (${result === 'empty' ? 'empty' : 'rejected'})`;
-        expect(main).toMatchObject({
-          unansweredQuestions: [{ question: 'When is the review?', outcome: status }],
-          heldItems: [{ message: 'When is the review?', status }],
-        });
-        expect(packet.history[0].outcome).toBe(status);
-      }
+      else expect(packet.history[0].outcome).toBe(result === 'held' ? 'answer withheld: credential-shaped text; notice delivered'
+        : `model failure notice delivered (${result === 'empty' ? 'empty' : 'rejected'})`);
       expect(second.sent).toEqual([]);
       second.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
-
-it('shrinks the included conversations when item excerpts would exceed the byte ceiling', () => {
-  const root = origin();
-  try {
-    const w = world(root);
-    for (let topic = 1; topic <= 8; topic++) for (let item = 1; item <= 2; item++) {
-      const id = (topic - 1) * 2 + item;
-      w.worker.intake([update(id, `Who owns ${'garden '.repeat(20)}project ${String(topic)} item ${String(item)}?`, topic)]);
-      w.journal.append({ kind: 'hold', id: `telegram:12345678:update:${String(id)}`, reason: 'call cap', at: 1790000000000 });
-    }
-    const packet = JSON.parse((w.worker.probe('What is open across my topics?') as { context: string }).context);
-    const digest = packet.crossTopicDigest;
-    expect(digest.conversations.length).toBeGreaterThan(0);
-    expect(digest.conversations.length).toBeLessThan(8);
-    expect(digest.omittedConversations).toBe(8 - digest.conversations.length);
-    expect(Buffer.byteLength(JSON.stringify(digest))).toBeLessThanOrEqual(4096);
-    expect(digest.conversations[0].unansweredQuestions[0].question).toContain('…');
-    w.journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});

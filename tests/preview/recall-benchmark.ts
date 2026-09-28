@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(63);
 const now = 1_790_000_000_000;
@@ -118,8 +118,8 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
     }, send: async () => 1, checkOutbound: () => {} };
   let worker = createJournalWorker(journal, ports);
   try {
-    importChannelFixture(journal, [{ source: 'email', account, id: 'ferry-archive-1', from: 'clerk@example.test',
-      at: now - 86_400_000, subject: 'Ferry docket', text: clauses.channel }], account, now);
+    importChannelItems(journal, [{ source: 'conversation', account, id: 'ferry-archive-1', from: 'clerk@example.test',
+      at: now - 86_400_000, text: clauses.channel }], account, now);
     const plants = new Map<number, { text: string; thread?: number }>([
       [3, { text: clauses.observatory }], [10, { text: clauses.samPatel }], [11, { text: clauses.samRuiz }],
       [12, { text: clauses.jon }], [13, { text: clauses.john }], [Math.floor(turns * .25), { text: clauses.person }],

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
 import { replyReviewContext } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(41);
@@ -73,13 +73,12 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
     try {
       let worker = createJournalWorker(journal, ports);
       const say = async (message: string) => { worker.intake([update(id++, message)]); await worker.drain(); };
-      const imported = () => { importChannelFixture(journal, [{ source: 'email' as const, account: affectedAccount,
+      const imported = () => { importChannelItems(journal, [{ source: 'conversation' as const, account: affectedAccount,
         id: `archive-${oldImport}`, from: `operator-${oldImport}@example.test`, at: 1789999000000,
-        subject: `Archive ${oldImport}`, conversation: `Archive ${oldImport}`, text: importedClause }],
+        conversation: `Archive ${oldImport}`, text: importedClause }],
       affectedAccount, 1790000000000);
-      importChannelFixture(journal, [{ source: 'email' as const, account: 'agent@example.test', id: `other-${seed}`,
-        from: 'operator@example.test', at: 1789999000001, subject: 'Other archive',
-        text: `The other archive key is ${otherImport}.` }],
+      importChannelItems(journal, [{ source: 'conversation' as const, account: 'agent@example.test', id: `other-${seed}`,
+        from: 'operator@example.test', at: 1789999000001, text: `The other archive key is ${otherImport}.` }],
       'agent@example.test', 1790000000000); };
       if (next() < 0.5) { imported(); await say(savedClause); }
       else { await say(savedClause); imported(); }

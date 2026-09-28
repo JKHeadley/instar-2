@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(31);
 const now = 1790000000000;
@@ -18,8 +18,8 @@ it('labels direct, imported and summary memory after replay; direct facts outran
   try {
     let journal = openPreviewJournal(path, key, genesis);
     const account = 'agent@example.test';
-    importChannelFixture(journal, [{ source: 'email', account, id: 'mail-1', from: 'justin@example.test',
-      at: now - 60000, subject: 'Studio launch', text: 'The studio launch color is blue.' }], account, now);
+    importChannelItems(journal, [{ source: 'conversation', account, id: 'mail-1', from: 'justin@example.test',
+      at: now - 60000, text: 'The studio launch color is blue.' }], account, now);
     let compact = false;
     const contexts: string[] = [];
     const ports = { now: () => now, stopped: () => false,
@@ -66,7 +66,7 @@ it('labels direct, imported and summary memory after replay; direct facts outran
     expect(packet.summary).toMatchObject({ sourceKind: 'inferred-by-summary', text: 'The studio launch day is Thursday.' });
     expect(packet.memorySummary).toBeUndefined();
     expect(packet.recalled).toMatchObject([{ sourceKind: 'operator-stated', user: 'My studio launch day is Tuesday.' }]);
-    expect(packet.channelMemory).toMatchObject([{ sourceKind: 'channel-import', source: 'email',
+    expect(packet.channelMemory).toMatchObject([{ sourceKind: 'channel-import', source: 'conversation',
       from: 'justin@example.test', quote: 'The studio launch color is blue.' }]);
     expect(packet.capability).toContain('hedge summary inference with "I think"');
     expect(packet.capability).toContain('operator-stated wins over inferred-by-summary');

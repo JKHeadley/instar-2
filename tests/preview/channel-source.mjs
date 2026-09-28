@@ -3,7 +3,7 @@
 import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { importChannelFixture } from './journal.js';
+import { importChannelItems } from './journal.js';
 
 const PASS_BYTES = 256 * 1024;
 const PASS_LINES = 64;
@@ -99,7 +99,7 @@ export function importStorePass(journal, state, source, now, stopped) {
       const line = buffer.subarray(start, end).toString('utf8');
       const raw = JSON.parse(line);
       const item = channelRow(source, raw, state.agent, journal.view.genesis.chat, channels);
-      if (item) imported += importChannelFixture(journal, [item], item.account, now, stopped, 'stored-log');
+      if (item) imported += importChannelItems(journal, [item], item.account, now, stopped, 'stored-log');
       start = end + 1; lines++;
     }
     if (length === PASS_BYTES && start === 0) throw Error('preview: channel source line exceeds pass bound');

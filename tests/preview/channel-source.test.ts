@@ -236,6 +236,5 @@ it('CLI imports the real store format and status exposes durable per-source curs
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).channelSources).toMatchObject({ telegram: { scanned: 1, imported: 1, skipped: 0, error: null },
       slack: { scanned: 0, imported: 0, skipped: 0, error: null } });
-    expect(invoke('import-store', ['--agent-state-dir', w.statePath, '--live-mail', 'true']).status).not.toBe(0);
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 }, 30_000);

@@ -88,7 +88,7 @@ export const PREVIEW_CAPABILITY_META: Readonly<Record<string, CapabilityMeta>> =
     acceptance: outcome('reply', 'desk-semantic') },
   'preview.status-pull': { change: 'capability', enabledBy: 'default', sources: [...RUNNER, 'tests/preview/status-command.ts', 'tests/preview/self-state.ts'],
     evidence: { unit: ['tests/preview/status-command.test.ts', 'tests/preview/self-state.test.ts'],
-      integration: ['tests/preview/self-state-launcher.test.ts'], procedure: 'tests/preview/operator-digest-live-test.md' }, acceptance: outcome('status') },
+      integration: ['tests/preview/self-state-launcher.test.ts'], procedure: 'tests/preview/live-tests-archive/status-command-live-test.md' }, acceptance: outcome('status') },
   'preview.channel-memory': { change: 'capability', enabledBy: 'option:agent-state-dir', sources: [...RUNNER, 'tests/preview/channel-source.mjs'],
     evidence: { unit: ['tests/preview/channel-source.test.ts'], integration: ['tests/preview/channel-source-launcher.test.ts'],
       procedure: 'tests/preview/channel-source-live-test.md' }, acceptance: outcome('reply', 'desk-semantic') },

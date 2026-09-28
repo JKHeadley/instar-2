@@ -8,7 +8,6 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { ANSWER_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
-import { operatorDigest } from './operator-digest.js';
 
 const key = new Uint8Array(32).fill(11);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-commitments-')));
@@ -524,8 +523,7 @@ it('the live script reaches compaction and the question carries the open commitm
       sources: () => {
         const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
         const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
-        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk,
-          operatorDigest(journal.view, runs, desk)];
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk];
       },
       prepareModel: input => { const bytes = prepareJournalEnvelope(input, model, g.grant, Date.now());
         if (!input.id.startsWith('summary:')) prepared.push(bytes); return bytes; },

@@ -140,9 +140,9 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       });
       if (!imported || item.source !== imported.source || item.date !== isoMinute(imported.at)
         || item.from !== `${metadata(imported.from, imported)} (export sender metadata, unverified)`
-        || item.message !== `${imported.subject ? `${metadata(imported.subject, imported)} ` : ''}${clean(imported.text)}`.trim()) fault('people-import-source', at);
+        || item.message !== clean(imported.text).trim()) fault('people-import-source', at);
       for (const [m, mention] of list(item?.mentions, `${at}.mentions`).entries()) {
-        if (!imported || mention?.quote !== clean(`${imported.subject ?? ''} ${imported.text}`.trim()))
+        if (!imported || mention?.quote !== clean(imported.text.trim()))
           fault('people-note-source', `${at}.mentions[${m}]`);
       }
       if (imported) add('people-note', at, [{ kind: 'channel-import', source: imported.source,
@@ -192,7 +192,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         || metadata(found.from, found) !== item.from || found.at === undefined) fault('channel-attribution', at);
       if (item.quote !== clean(found.text)) fault('channel-text-source', at);
       if (item.date !== isoMinute(found.at)
-        || item.subject !== (found.subject === undefined ? undefined : metadata(found.subject, found))
+        || item.subject !== undefined
         || item.conversation !== (found.conversation === undefined ? undefined : metadata(found.conversation, found)))
         fault('channel-metadata-source', at);
       add('channel-import', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(rawId) }]);
@@ -202,7 +202,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `memoryCandidates[${n}]`;
     if ((item?.id?.startsWith?.('channel:') || item?.id?.startsWith?.('channel-ref:'))) {
       const found = channel(item.id, at);
-      const projected = found ? `${metadata(found.subject ?? '', found)} ${clean(found.text)}`.trim() : '';
+      const projected = found ? clean(found.text).trim() : '';
       if (found && item.message !== projected.slice(0, 1000) && item.message !== projected)
         fault('candidate-text-source', at);
       if (found && item.reply !== '') fault('candidate-reply-source', at);
@@ -351,7 +351,7 @@ export function auditActiveMemory(view) {
       fault('memory-import-source-absent', at); return null;
     }
     const found = view.channelItems.get(id.slice(8));
-    if (!found || !['email', 'conversation'].includes(found.source)
+    if (!found || found.source !== 'conversation'
       || !found.account || !found.id || !found.from || !Number.isSafeInteger(found.at)
       || typeof found.text !== 'string'
       || JSON.stringify([found.source, found.account, found.id]) !== id.slice(8)) {
@@ -404,7 +404,7 @@ export function auditActiveMemory(view) {
   for (const [n, change] of view.memory.entries()) {
     const at = `memory-change[${n}]`, source = origin(change.source, at), trigger = operator(change.trigger, at);
     const importedItem = change.source.startsWith('channel:') ? view.channelItems.get(change.source.slice(8)) : undefined;
-    const original = importedItem ? `${importedItem.subject ?? ''} ${importedItem.text}`.trim()
+    const original = importedItem ? importedItem.text.trim()
       : view.turns.get(change.source)?.text;
     const replyLinks = (change.replies ?? []).map(id => {
       const link = operator(id, at), reply = view.turns.get(id);

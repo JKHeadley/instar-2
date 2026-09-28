@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { inRequestedPeriod, requestedPeriod } from './period-summary.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
@@ -139,9 +139,8 @@ it('keeps imported email recall and ordinary recall when a period cue is only pa
     journal.append({ kind: 'sent', id, message: 1, at: now });
     journal.append({ kind: 'summary-reserve', through: 1, at: now });
     journal.append({ kind: 'summary', through: 1, text: 'A ferry review was mentioned.', at: now });
-    importChannelFixture(journal, [{ source: 'email', account: 'agent@example.test', id: 'email-1',
-      from: 'captain@example.test', at: Date.UTC(2026, 8, 26, 18), subject: 'Ferry docket',
-      text: 'The ferry docket ID is FERRY-Q7.' }], 'agent@example.test', now);
+    importChannelItems(journal, [{ source: 'conversation', account: 'agent@example.test', id: 'email-1',
+      from: 'captain@example.test', at: Date.UTC(2026, 8, 26, 18), text: 'The ferry docket ID is FERRY-Q7.' }], 'agent@example.test', now);
     const worker = createJournalWorker(journal, { now: () => now, timeZone: zone, stopped: () => false,
       model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
     const probe = (question: string) => {

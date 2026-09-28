@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, importChannelFixture, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { auditPacket } from './journal-audit.mjs';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -515,11 +515,11 @@ it('carries a dated, sourced timeline from imported messages and caps it per per
     let w = world(root, { maxBytes: 16000 });
     const account = 'agent@example.test';
     const at = 1790000000000;
-    const items = Array.from({ length: 12 }, (_, i) => ({ source: 'email' as const, account,
+    const items = Array.from({ length: 12 }, (_, i) => ({ source: 'conversation' as const, account,
       id: `maya-${i + 1}`, from: 'Maya Chen <maya@example.test>', at: at + i * 60000,
       text: `Shipment ${i + 1} is ready.` }));
-    expect(importChannelFixture(w.journal, items, account, at)).toBe(12);
-    importChannelFixture(w.journal, [{ source: 'conversation', account, id: 'first-name-only',
+    expect(importChannelItems(w.journal, items, account, at)).toBe(12);
+    importChannelItems(w.journal, [{ source: 'conversation', account, id: 'first-name-only',
       from: 'justin@example.test', at: at + 12 * 60000,
       text: 'Maya denied ordering shipment 12.' }, { source: 'conversation', account, id: 'about-maya',
       from: 'justin@example.test', at: at + 12 * 60000,

@@ -22,16 +22,15 @@ existing runner and journal; this script does not authorize a second runner.
    that distinction in the reply. If the model returned a plain summary with no
    person notes, record that as incomplete rather than inferring a pass.
 
-3. For the imported side, have the desk use the already documented
-   `import-fixture` procedure while the sole runner is paused. Use a verified
-   agent-owned export with one harmless item whose source metadata says Maya
-   sent it and one item sent by someone else that mentions Maya in its body.
-   Resume the runner. As Justin, ask `What did Maya say, and what was said about
+3. For the imported side, run the sole runner with `--agent-state-dir` (see
+   `channel-source-live-test.md`). In an agent-bound Telegram topic, have Maya
+   send one harmless message and have someone else send one that mentions Maya.
+   Let the runner import them from the agent's own stored log. As Justin, ask `What did Maya say, and what was said about
    her?` Check `inspect --text` and the persisted prompt: the `people` entries
    include each import's source ID, date, source, account and unverified export
    sender label. The reply must distinguish Maya's asserted message from the
    other sender's report. `status.channelItems` must include both imports. If
-   no owned export is available, record this step as untested.
+   no such topic messages are available, record this step as untested.
 
 4. As Justin, send a direct correction of the harmless blue-folder fact, then
    ask about Maya again. Check `status.withheld`, `inspect.next.people`, and the

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal.js';
 import { statedFacts } from './memory-sentinel.js';
 
 const key = new Uint8Array(32).fill(91);
@@ -189,7 +189,7 @@ it('does not promote an imported claim into an automatic operator update', async
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-fact-update-import-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    importChannelFixture(journal, [{ source: 'email', account: 'agent@example.test', id: 'mail-1',
+    importChannelItems(journal, [{ source: 'conversation', account: 'agent@example.test', id: 'mail-1',
       from: 'sender@example.test', at: now - 60000, text: 'The launch is in October.' }], 'agent@example.test', now);
     let offered = false;
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,

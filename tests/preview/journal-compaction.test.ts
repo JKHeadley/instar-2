@@ -35,7 +35,7 @@ function seed(root: string) {
   journal.append({kind:'reserve',id:id(4),at:1012});
   journal.append({kind:'model-uncertain',id:id(4),state:'uncertain',at:1013});
   journal.append({kind:'summary-reserve',through:3,at:1014});
-  journal.append({kind:'channel-item',item:{source:'email',account:'agent@example.test',id:'mail-1',
+  journal.append({kind:'channel-item',item:{source:'conversation',account:'agent@example.test',id:'mail-1',
     from:'friend@example.test',at:1000,text:'remember the blue notebook'},at:1015});
   journal.close();
   return path;

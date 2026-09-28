@@ -36,7 +36,7 @@ it('shows sourced active categories while withholding forgotten content and cred
     withPreference.push({ mode: 'prefer', source: 'telegram:4', quote: 'Please use concise replies.', trigger: 'telegram:4' });
     Object.assign(journal.view, { dated: [{ source: 'telegram:4', quote: 'Review the design tomorrow', when: 'tomorrow',
       day: '2026-09-22', zone: 'UTC' }] });
-    const imported = { source: 'email' as const, account: 'agent@example.test', id: 'm-1', from: 'sam@example.test',
+    const imported = { source: 'conversation' as const, account: 'agent@example.test', id: 'm-1', from: 'sam@example.test',
       at, text: 'Imported note: the locker code is 3310; password: abcdefghijklmnop' };
     journal.view.channelItems.set(JSON.stringify([imported.source, imported.account, imported.id]), imported);
     const output = memoryReport(journal.view);
@@ -47,7 +47,7 @@ it('shows sourced active categories while withholding forgotten content and cred
     expect(output).toContain('## Preferences (1)');
     expect(output).toContain('## Channel items (1)');
     expect(output).toContain('Telegram update 4');
-    expect(output).toContain('email m-1');
+    expect(output).toContain('conversation m-1');
     expect(output).toContain('Review the design tomorrow');
     expect(output).toContain('notebook is green');
     expect(output).not.toContain('notebook is blue');
@@ -141,7 +141,7 @@ it('replays redaction, restored corrections, and exact forgetting through the CL
 it('bounds a large import and reports omissions', () => {
   const view = { people: [], memory: [], dated: [], turns: new Map(), channelItems: new Map() } as unknown as JournalView;
   for (let i = 0; i < 2000; i++) {
-    const item = { source: 'email' as const, account: 'agent@example.test', id: `m-${i}`, from: 'sender@example.test',
+    const item = { source: 'conversation' as const, account: 'agent@example.test', id: `m-${i}`, from: 'sender@example.test',
       at, text: `Message ${i} ${'word '.repeat(100)}` };
     view.channelItems.set(JSON.stringify([item.source, item.account, item.id]), item);
   }

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal.js';
 
 const now = 1_790_000_000_000;
 const facts = [
@@ -100,10 +100,10 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     expect((JSON.parse(agenda.context) as { recalled: { id: string }[] }).recalled
       .some(item => item.id.endsWith(':18'))).toBe(true);
     const account = 'agent@example.test';
-    importChannelFixture(journal, [
-      { source: 'email', account, id: 'ferry-booking', from: 'ferry@example.test',
+    importChannelItems(journal, [
+      { source: 'conversation', account, id: 'ferry-booking', from: 'ferry@example.test',
         at: now - 86_400_000, text: 'The ferry booking number is FQ-17.' },
-      ...Array.from({ length: 5 }, (_, index) => ({ source: 'email', account,
+      ...Array.from({ length: 5 }, (_, index) => ({ source: 'conversation', account,
         id: `dated-${index}`, from: 'calendar@example.test', at: now - 86_400_000,
         text: `An unrelated visit is on 2026-09-${25 + index}.` })),
     ], account, now);
