@@ -46,6 +46,8 @@ run('doc-3', 'document-checks', 'no history markers in a governed body (rule 91)
   'node scripts/check-governed-docs.mjs docs');
 run('doc-4', 'document-checks', 'no whitespace errors',
   'git diff --check origin/main...HEAD || git diff --check HEAD~1');
+run('doc-5', 'document-checks', 'every change is bound to its review record (rules 74, 109, 90)',
+  'node scripts/check-change-review.mjs check');
 
 // types-checks.yml — contract job (this machine's architecture)
 run('types-0', 'constitutional-types', 'npm ci (contract job)', 'npm ci');
@@ -76,5 +78,8 @@ const result = {
   steps,
 };
 writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n');
+// Rule 112: the file above is only the latest pointer; the durable record is appended,
+// hash-chained, to the shared evidence ledger and never overwritten.
+spawnSync(process.execPath, ['scripts/check-change-review.mjs', 'ci', outPath], { stdio: 'inherit' });
 process.stdout.write(`\n=== ci-local ${result.verdict.toUpperCase()} (${verdictReason}) at ${head.slice(0, 8)} (${process.arch}, node ${nodeVersion}); ${passedRequired.length} passed, ${failed.length} failed, ${steps.filter((s) => s.status === 'not-reproducible-locally').length} not reproducible locally -> ${outPath}\n`);
 process.exit(verdict === 'failed' ? 1 : 0);
