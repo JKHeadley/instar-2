@@ -36,7 +36,11 @@ const QUERY_TIMEOUT_MS = 2000;
 // Lower (never raise) the inherited soft and hard limits, then replace the shell
 // with the provider, keeping its pid, process group and descendants under the
 // ceiling. The hard limit matters: runtimes such as Node raise their own soft
-// file limit to the hard limit at startup.
+// file limit to the hard limit at startup. The shell's own variables (PWD, SHLVL,
+// OLDPWD) are removed by env(1), which execs in place, unless the caller supplied
+// them, so the provider receives exactly the variable names it was given (a
+// supplied PWD is reset to the working directory by the shell).
+const SHELL_VARIABLES = Object.freeze(['PWD', 'SHLVL', 'OLDPWD']);
 const LIMIT_SCRIPT = [
   'lim() {',
   '  s=$(ulimit -S "$1") || exit 125',
@@ -44,8 +48,8 @@ const LIMIT_SCRIPT = [
   '  h=$(ulimit -H "$1") || exit 125',
   '  if [ "$h" = unlimited ] || [ "$h" -gt "$2" ]; then ulimit -H "$1" "$2" || exit 125; fi',
   '}',
-  'lim -n "$1"; lim -t "$2"; shift 2',
-  'exec "$@"'].join('\n');
+  'lim -n "$1"; lim -t "$2"; u=; for v in $3; do u="$u -u $v"; done; shift 3',
+  'exec /usr/bin/env $u "$@"'].join('\n');
 
 const plainCompare = (left, right) => {
   if (left.subject.kind !== right.subject.kind || left.subject.instance !== right.subject.instance
@@ -91,6 +95,8 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
   const counters = { admitted: 0, waited: 0, refusedCapacity: 0, completed: 0, killed: {}, leakedDescendants: 0,
     reclaimed: 0, observationFailures: 0 };
   const outcomes = [];
+  /** Highest owned usage seen: live evidence that the ceilings held. */
+  const peak = { launches: 0, memoryBytes: 0, processes: 0 };
   let ports = { compare: plainCompare, priorityGate: null, reconcile: null, now: () => Date.now() };
   let attached = null, inherited = { state: 'unobserved' }, usage = { level: 'normal', observation: 'idle',
     memoryBytes: 0, processes: 0, sampledAt: null };
@@ -121,7 +127,7 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     return { version: 1, at: ports.now(), ceilings, inherited, usage: { ...usage, level: level() },
       active: [...launches.values()].map(l => ({ id: l.id, work: l.work, pid: l.pid ?? null, startedAt: l.startedAt,
         memoryBytes: l.memoryBytes, processes: l.processes, cpuMilliseconds: l.cpuMilliseconds })),
-      waiting: waiters.map(w => w.work), counters, outcomes };
+      waiting: waiters.map(w => w.work), counters, peak, outcomes };
   }
   function persist(force = false) {
     if (!attached?.statePath) return;
@@ -156,6 +162,7 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     const lease = { id: randomUUID(), work, startedAt: ports.now(), pid: null, memoryBytes: 0, processes: 0,
       cpuMilliseconds: 0, members: [], limit: null };
     launches.set(lease.id, lease); counters.admitted++;
+    peak.launches = Math.max(peak.launches, launches.size);
     if (!sampler) sampler = setInterval(() => { void sample(); }, ceilings.sampleMs);
     return lease;
   }
@@ -232,6 +239,7 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
       }
       usage = { observation: 'observed', sampledAt: at,
         memoryBytes: roots.reduce((sum, l) => sum + l.memoryBytes, 0), processes: roots.reduce((sum, l) => sum + l.processes, 0) };
+      peak.memoryBytes = Math.max(peak.memoryBytes, usage.memoryBytes); peak.processes = Math.max(peak.processes, usage.processes);
       for (const lease of roots) {
         const over = (kind, unit, value, ceiling) => ports.compare(measured(kind, `launch:${lease.id}`, unit, value, at),
           measured(kind, `launch:${lease.id}`, unit, ceiling, at)) > 0;
@@ -268,7 +276,8 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     const handles = String(Math.max(16, ceilings.launch.handleCount));
     const cpuSeconds = String(Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000)));
     return new Promise(resolve => {
-      const child = spawn('/bin/sh', ['-c', LIMIT_SCRIPT, 'instar-launch', handles, cpuSeconds, input.executable, ...input.args], {
+      const child = spawn('/bin/sh', ['-c', LIMIT_SCRIPT, 'instar-launch', handles, cpuSeconds,
+        SHELL_VARIABLES.filter(name => input.env?.[name] === undefined).join(' '), input.executable, ...input.args], {
         cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
         shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
       lease.pid = child.pid ?? null;

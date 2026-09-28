@@ -101,6 +101,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(status.credentials.records.find(r => r.name === 'preview-activation')).toMatchObject({
       expiresAt: trial.expiresAt, expirySource: 'activation-record', reminders: expect.arrayContaining([trial.expiresAt]) });
     expect(status.credentials.records.find(r => r.name.startsWith('chat-github-token-'))).toMatchObject({ custody: 'preview-vault' });
+    expect(status.credentials.referencedIn).toEqual([1]);
     expect(JSON.stringify(status)).not.toContain(TOKEN);
     // Rule 40: the packet outcome is a success type, with or without trimming.
     expect(status.packet.capacity).toMatchObject({ outcome: 'success' });

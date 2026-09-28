@@ -208,4 +208,4 @@ it('R3 repeated invalid envelopes retain the admitted prefix without orphan capt
   refused(h.make().verify(), 'peer process refused');
   rmSync(retainedArtifact);
   expect(value(h.make().verify())).toHaveLength(2);
-});
+}, 60000); // Sixteen sequential peer processes; the 10 s default fails under suite load.

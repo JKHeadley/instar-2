@@ -114,6 +114,7 @@ setTimeout(() => { appendFileSync(process.argv[2], 'end ' + process.argv[3] + '\
   expect(settled.active).toEqual([]);
   expect(settled.waiting).toEqual([]);
   expect(settled.counters.admitted).toBe(7);
+  expect(settled.peak.launches).toBe(2);
 });
 
 it('refuses work it cannot admit before its deadline without launching it', { timeout: 30000 }, async () => {
@@ -207,4 +208,16 @@ it('parses process CPU time in both platform formats', () => {
   expect(cpuMilliseconds('1-00:00:01')).toBe(86401000);
   expect(cpuMilliseconds('x:y')).toBeNull();
   appendFileSync(join(dir(), 'noop'), '');
+});
+
+it('hands the provider exactly the supplied variable names through the limit shim, keeping its pid', { timeout: 30000 }, async () => {
+  const root = dir();
+  const report = script(root, 'env.mjs', `process.stdout.write(JSON.stringify({ keys: Object.keys(process.env).filter(k => k !== '__CF_USER_TEXT_ENCODING').sort(), pid: process.pid, ppid: process.ppid }));`);
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({});
+  const bare = JSON.parse((await owner.execute(input(root, report), 'answer')).stdout);
+  expect(bare.keys).toEqual(['PATH']);
+  expect(bare.ppid).toBe(process.pid);
+  const given = { ...input(root, report), env: { PATH: '/usr/bin:/bin', SHLVL: '7', MARK: 'kept' } };
+  expect(JSON.parse((await owner.execute(given, 'answer')).stdout).keys).toEqual(['MARK', 'PATH', 'SHLVL']);
 });

@@ -19,6 +19,9 @@ export async function createProductionHost() {
   const http = action === 'trace' ? await localProvider() : { requests: [], close: async () => {} };
   let ordinal = 0, providerAttempts = 0, fixture;
   const checkpoint = (stage, installed) => {
+    // A fault-injection point carrying capture evidence, not installed state: it
+    // is neither a recorded prefix nor a physical provider/Telegram invocation.
+    if (stage === 'initial-capture-durable') return;
     if (recovery) throw Error('restart attempted a physical invocation');
     durableJSON(join(input.storageRoot, 'recorded-checkpoint.json'), recordedCheckpoint(installed, stage));
     const directory = process.env.INSTAR_U4_RECORDED_SNAPSHOTS;

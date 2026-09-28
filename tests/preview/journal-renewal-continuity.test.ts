@@ -92,12 +92,17 @@ it.each([1, 2])('keeps facts, recall answer, status and expiry through replay an
     const compacted = openPreviewJournal(path, key);
     compacted.compact(); compacted.close();
     const reopened = evidence(root, path);
-    expect(reopened).toEqual(replayed);
+    // Lossless compaction changes nothing the journal says; only its storage
+    // capacity outcome reports the compaction (Rule 40: success, never an error).
+    const content = (e: typeof replayed) => ({ ...e, status: { ...e.status, journalCapacity: undefined } });
+    expect(replayed.status.journalCapacity).toEqual({ outcome: 'success', capacity: 'none' });
+    expect(reopened.status.journalCapacity).toMatchObject({ outcome: 'success', capacity: 'applied' });
+    expect(content(reopened)).toEqual(content(replayed));
     const again = openPreviewJournal(path, key);
     again.compact(); again.close();
-    expect(evidence(root, path)).toEqual(replayed);
+    expect(evidence(root, path)).toEqual(reopened);
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 60000); // Four journal opens and status reads take 5-11 s under suite load.
 
 it.each([firstExpiry, middleExpiry])('refuses stale or earlier expiry %i without changing the journal', expires => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-renew-refuse-')));

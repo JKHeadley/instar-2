@@ -29,7 +29,7 @@ import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { hostResources } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
-import { liveMeasurement, renderMeasured, resourceCompare } from './measured.js';
+import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare } from './measured.js';
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
@@ -337,7 +337,8 @@ async function main() {
       doorways: (() => { const map = readDoorwayMap(doorwaysPath);
         return map ? { map, ...doorwayFreshness(map, statusNow) } : { map: null, fresh: false, models: [] }; })(),
       credentials: (() => { try { const records = createSecretCustody(root, key(), wallNow).records();
-        return { records, due: dueCredentialReminders(records, statusNow) }; } catch { return { records: null, due: null, error: 'registry unreadable' }; } })(),
+        return { records, due: dueCredentialReminders(records, statusNow),
+          referencedIn: view.view.order.filter(turn => turn.text.includes('[credential stored before use: SecretRef ')).map(turn => turn.update) }; } catch { return { records: null, due: null, error: 'registry unreadable' }; } })(),
       reconciliation: usageReconciliation(view.view),
 
       memoryHealth: memoryHealthLine(view.view),
@@ -419,7 +420,7 @@ async function main() {
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-      replyTimings: replyTimings(view.view),
+      replyTimings: measuredTimings(replyTimings(view.view), statusNow),
       lastReplyCheck: view.view.lastReplyCheck,
       lastReplyReview: lastReplyReview(view.view),
       lastReplyTiming: lastSent ? { update: lastSent.update,

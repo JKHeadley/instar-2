@@ -55,12 +55,12 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs,
       captureDirectory: directory, identityBinding: input.identityBinding,
       ...(testEndpoint === null ? {} : { testEndpoint }) })).toString('base64url');
-    // A synchronous, sequential transport child: its V8 heap is capped here and
-    // its elapsed time and output by the options below.
+    // A synchronous, sequential transport child: its V8 heap is capped through NODE_OPTIONS (argv is
+    // unchanged) and its elapsed time and output by the options below.
     const child = spawnSync(process.execPath,
-      ['--max-old-space-size=256', fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
+      [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
       { input: credential, encoding: 'utf8', timeout: input.timeoutMs + 2000, maxBuffer: 2 * 1024 * 1024,
-        env: { PATH: '/usr/bin:/bin' }, stdio: ['pipe', 'pipe', 'ignore'] });
+        env: { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' }, stdio: ['pipe', 'pipe', 'ignore'] });
     if (child.status !== 0) return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
     try {
       const reply = JSON.parse(child.stdout);
