@@ -156,6 +156,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
           modelCalls:{total:3,byJudgment:{answer:1,'reply-review':1,'jev-reply-check':1},byOutcome:{complete:2,failed:1},usageUnknown:1},
           // Rules 42/89: the one reply was accepted and signed as the agent's own speech.
           sendOutcomes:{accepted:1,refused:0,unknown:0,speakers:{agent:1,infrastructure:0}},
+          // Rules 28/29/35: the one admitted turn was written by the verified operator over the test endpoint.
+          intakeWriters:{verifiedOperator:1,scheduler:0,legacyExactBinding:0,testOrigin:1,refused:0},
           coherence:{checked:1,unchecked:0,failed:0,pendingCorrections:0,findings:[]}});
     const stop = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],
@@ -314,3 +316,21 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(readFileSync(join(root, 'model-json-shapes.json'), 'utf8')).not.toMatch(/Noted|rules|Decision/u);
   } finally { endpoint.kill('SIGTERM'); }
 },30000);
+
+it('Rule 35: a test-endpoint composition refuses a production journal before taking its lease or writing a byte', () => {
+  const world = successiveWorld(), root = join(world.directory, 'production-journal');
+  const path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, OFFLINE_STORAGE_KEY, { kind: 'genesis', bot: world.configuration.botId,
+    chat: world.configuration.chatId, operator: world.configuration.operatorSenderId, grant: 'grant:production',
+    configurationDigest: 'sha256:production', expires: 9999999999999, maxCalls: 4, maxReplies: 4, maxTurns: 4, maxBytes: 32768, cursor: 0 });
+  journal.close();
+  const before = readFileSync(path);
+  const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'run', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+      INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9' } });
+  expect(run.status).toBe(1);
+  expect(readFileSync(path).equals(before)).toBe(true);
+  expect(existsSync(join(root, '.writer'))).toBe(false);
+});

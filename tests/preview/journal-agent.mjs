@@ -202,6 +202,8 @@ const judgmentOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summa
   : /^summary:/u.test(id) ? 'summary' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
+/** Rule 29: the verified writer the session envelope carried, or null for a legacy prompt. */
+const writerOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).bindings?.writer ?? null;
 const lastReplyReview = view => {
   const turn = view.order.filter(item => item.reviewState !== undefined).at(-1);
   return turn ? { update: turn.update, state: turn.reviewState, diagnostics: turn.reviewDiagnostics ?? null } : null;
@@ -332,6 +334,12 @@ async function main() {
       unknownSends: sendOutcomeCounts(view.view).unknown,
       sendOutcomes: sendOutcomeCounts(view.view),
       modelCalls: view.view.modelCalls,
+      // Rules 28/29/35: who wrote each admitted turn, by verified origin.
+      intakeWriters: { verifiedOperator: view.view.order.filter(t => t.writer?.kind === 'person').length,
+        scheduler: view.view.order.filter(t => t.writer?.kind === 'system').length,
+        legacyExactBinding: view.view.order.filter(t => t.accepted && !t.writer).length,
+        testOrigin: view.view.order.filter(t => t.writer?.adapter?.endsWith(':offline-test-endpoint')).length,
+        refused: view.view.order.filter(t => !t.accepted).length },
       replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
         unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
@@ -420,7 +428,7 @@ async function main() {
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
-        ...recallView(contextOf(last.prompt)) } : null,
+        writer: writerOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
           outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
         ...(next ? { next } : {}), withheld: withheldView(view.view),
@@ -439,6 +447,13 @@ async function main() {
       if (check.view.genesis.importSource !== importMarker.source || !check.view.imported)
         throw Error('preview: migration incomplete');
     } finally { check.close(); }
+  }
+  // Rule 35: a test composition never takes the writer lease of a production root (or the reverse).
+  if (command === 'run' && existsSync(journalPath)) {
+    const composed = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production';
+    const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try { if ((peek.view.genesis.origin ?? 'production') !== composed) throw Error('preview: composition origin differs from journal'); }
+    finally { peek.close(); }
   }
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,

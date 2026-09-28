@@ -1730,6 +1730,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
 
     }
     if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
+    // Rule 35: a mismatched composition may not even repair or compact this store.
+    if (origin !== undefined && !readOnly && view && view.genesis.origin !== (origin === 'test' ? 'test' : undefined))
+      throw Error(`preview journal: ${origin}-origin write refused by a ${view.genesis.origin ?? 'production'} store`);
     if (offset < sealed.length && strictReadOnly) throw Error('preview journal: incomplete read-only frame');
     if (offset < sealed.length && !readOnly) {
       // Retain the incomplete suffix for diagnosis before removing it from the

@@ -76,17 +76,18 @@ it('a production store refuses test-origin identities and compositions at its wr
     expect(production.view.order).toHaveLength(2);
     production.close();
     // A test composition cannot write a production store at all, even an ordinary record.
-    const fromTest = openPreviewJournal(join(dir, 'production.encrypted'), key, undefined, undefined, false, undefined, false, 'test');
-    expect(() => fromTest.append({ kind: 'legacy-call', at: 2000 })).toThrow('test-origin write refused by a production store');
-    fromTest.close();
+    // It is refused on open, before torn-tail repair or compaction could rewrite the file.
+    expect(() => openPreviewJournal(join(dir, 'production.encrypted'), key, undefined, undefined, false, undefined, false, 'test'))
+      .toThrow('test-origin write refused by a production store');
     const test = openPreviewJournal(join(dir, 'test.encrypted'), key, genesis('test'), undefined, false, undefined, false, 'test');
     test.append(row);
     expect(test.view.order[0]?.writer?.adapter).toBe(TELEGRAM_ADAPTER.test);
     test.close();
     // A production composition cannot write into a test store either.
-    const fromProduction = openPreviewJournal(join(dir, 'test.encrypted'), key, undefined, undefined, false, undefined, false, 'production');
-    expect(() => fromProduction.append({ kind: 'legacy-call', at: 2000 })).toThrow('production-origin write refused by a test store');
-    fromProduction.close();
+    expect(() => openPreviewJournal(join(dir, 'test.encrypted'), key, undefined, undefined, false, undefined, false, 'production'))
+      .toThrow('production-origin write refused by a test store');
+    // Reading is not writing: a read-only handle of either store still opens.
+    openPreviewJournal(join(dir, 'production.encrypted'), key, undefined, undefined, true, undefined, false, 'test').close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
