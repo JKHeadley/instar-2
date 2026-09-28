@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:f9b6977c38be6ca728bb0e54be55d1db38ea316eb98498e27156bb77ba34d6ce
-Source commit: aec40024d9f50d89b32ff82e1888a02cd0b36417
+Register generation: sha256:70b46a7ce7ee0c7fdfcb378b8de9b5551aebc5c7d1dcd38a35d306424023f94d
+Source commit: 8c95c35b015e9c513c2a125dfe981fa74c6b0015
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -11,8 +11,8 @@ Authority: shape-only; entering-force verification required at consumption.
 | held-unreviewed | 0 |
 | declared | 0 |
 | partial | 7 |
-| deferred | 0 |
-| gap | 112 |
+| deferred | 2 |
+| gap | 111 |
 
 {
   "rules": [
@@ -5846,7 +5846,10 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "preview.reply-check.parseJevResponse",
+        "telegram-intake-v1"
+      ]
     },
     {
       "number": 37,
@@ -14412,7 +14415,26 @@ Authority: shape-only; entering-force verification required at consumption.
       "enforcedBy": []
     }
   ],
-  "loops": [],
+  "loops": [
+    {
+      "id": "deferred:preview.reply-check.parseJevResponse:36",
+      "rule": 36,
+      "holder": "preview.reply-check.parseJevResponse",
+      "dueBy": 1793404800000,
+      "part": 7,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    },
+    {
+      "id": "deferred:telegram-intake-v1:36",
+      "rule": 36,
+      "holder": "telegram-intake-v1",
+      "dueBy": 1793404800000,
+      "part": 4,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    }
+  ],
   "prerequisites": [
     {
       "rule": 1,
@@ -14636,11 +14658,6 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 35,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 36,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },
