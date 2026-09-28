@@ -73,8 +73,19 @@ The agent carries responsibility for technical correctness; merging still record
 
 ## Where test temp files go
 
-Test runs put their temporary files on RAM-backed storage so the durable-storage tests never
-swamp the real disk: `INSTAR_TEST_TMP` if set, else the `/Volumes/instar-test-ram` volume on
-macOS (create it with `scripts/ensure-test-ramdisk.sh`) or `/dev/shm` on Linux, else the real
-disk with a loud warning. Set `INSTAR_TEST_REAL_DISK=1` to opt out; `npm run test:durability`
-does exactly that to prove production storage on the real disk once per landing gate.
+Vitest runs put their temporary files on RAM-backed storage so the durable-storage tests never
+swamp the real disk (tests/setup/test-tmp.ts; gate steps that run before Vitest are not
+covered). The root is `INSTAR_TEST_TMP` if set, else the `/Volumes/instar-test-ram` volume on
+macOS (create it with `scripts/ensure-test-ramdisk.sh`) or `/dev/shm` on Linux, else the
+inherited TMPDIR with a loud warning. A root counts as RAM only when verified: on macOS it is on
+an attached `ram://` disk image, on Linux it is tmpfs. An `INSTAR_TEST_TMP` that is not verified
+RAM is still used, with a warning naming it; it must have its own finite size bound.
+
+`npm run test:durability` (part of `test:all`) sets `INSTAR_TEST_REAL_DISK=1`, which places
+temp files in an explicit real-disk directory (`/var/tmp`) regardless of the inherited TMPDIR,
+and runs one small existing case per distinct durable-write primitive there: rename-replace
+with directory sync and the storage lease (production storage), no-replace hard-link
+publication (sealed Telegram identity captures), the session journal, and the native
+full-flush journal with its refusal path (macOS). This shows those paths work on a real
+device (and, for production storage, recover after SIGKILL and reopen); it does not prove
+survival of physical power loss.
