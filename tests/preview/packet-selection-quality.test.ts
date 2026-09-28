@@ -86,7 +86,9 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     // that ride here because memoryCandidates are offered and recalled facts carry units (measured mean 8598).
     // cbuild-4: the obligation guide and governing-constraint keys ride operator packets (measured mean 9293).
     // cbuild-4 repair 2: the need/progress sentence and the capability-key blocker evidence (measured mean 9444).
-    expect(result.packetBytesMean).toBeLessThanOrEqual(9550);
+    // cint-1 live repair: operator packets carry the capabilities the blocker evidence names, and the guide asks
+    // for sentences copied from the reply (measured mean 9767).
+    expect(result.packetBytesMean).toBeLessThanOrEqual(9850);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);
