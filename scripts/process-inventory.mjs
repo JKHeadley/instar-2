@@ -4,7 +4,13 @@
 // A refused or failed read is a `failed` census with no rows, never an empty population;
 // a census past its bound is `partial` with its omitted count.
 import { createHash, randomUUID } from 'node:crypto';
-import { decodeProcessInventory } from '../src/assembly/process-inventory.js';
+
+/** Ten's owner decoder and joins, loaded when a census first runs (they are TypeScript, so a module that
+ * only imports this adapter and never observes, such as a boot child without the source loader, still loads). */
+let tenOwner = null;
+// Source first (the source loader or test runner); the built module for an installed, plain-node host.
+export const loadTenOwner = () => tenOwner ??= import('../src/assembly/process-inventory.js')
+  .catch(() => import('../dist/assembly/process-inventory.js'));
 
 const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=';
 const ADAPTER = 'host-ps-lsof-inventory-v1';
@@ -42,6 +48,7 @@ export function createProcessInventory(ports) {
   return Object.freeze({
     /** One complete current-user census, decoded by the Ten owner decoder. */
     async census() {
+      const { decodeProcessInventory } = await loadTenOwner();
       const id = `inventory:${randomUUID()}`;
       const base = { type: 'ProcessInventory', schemaVersion: 1, id, machine: ports.identity.machine,
         hardwareProfile: ports.identity.hardwareProfile, adapter: ADAPTER, adapterDigest: INVENTORY_ADAPTER_DIGEST,

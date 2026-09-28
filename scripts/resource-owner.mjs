@@ -51,8 +51,7 @@ import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync,
 import { arch, cpus, hostname, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createProcessInventory } from './process-inventory.mjs';
-import { joinWorkingArea, launchMembership } from '../src/assembly/process-inventory.js';
+import { createProcessInventory, loadTenOwner } from './process-inventory.mjs';
 
 const GiB = 1024 ** 3;
 /** Ceilings use the NativeLaunchLimits field names of the effect doorway. */
@@ -370,7 +369,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * candidate bound reached: examined/omitted counted) or `failed` (a refused read): a partial
    * or failed census never reads as empty. */
   async function census(leases) {
-    const snapshot = await inventory.census();
+    let snapshot, ten;
+    // An owner module that cannot load is a failed census (unknown), never an empty one.
+    try { ten = await loadTenOwner(); snapshot = await inventory.census(); }
+    catch { return { state: 'failed', snapshot: { id: `inventory:${randomUUID()}`, adapter: 'unavailable', adapterDigest: 'unavailable' },
+      members: null, rows: null }; }
+    const { launchMembership, joinWorkingArea } = ten;
     if (snapshot.status === 'failed') return { state: 'failed', snapshot, members: null, rows: null };
     const roots = leases.filter(l => l.pid).map(rootOf);
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
@@ -676,8 +680,10 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         ? j.row.workingArea : null, start: typeof j.row.start === 'string' ? j.row.start : null }));
     let escaped = null;
     if (roots.length) {
-      const snapshot = await inventory.census();
-      if (snapshot.status === 'complete') {
+      let snapshot = null, ten = null;
+      try { ten = await loadTenOwner(); snapshot = await inventory.census(); } catch { snapshot = null; }
+      const { launchMembership, joinWorkingArea } = ten ?? {};
+      if (snapshot?.status === 'complete') {
         const { members, candidates } = launchMembership(snapshot, roots, process.pid);
         const all = new Map(members), read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
         if (read.length) for (const [pid, m] of joinWorkingArea(snapshot, roots, read, await inventory.workingDirectories(read))) all.set(pid, m);
