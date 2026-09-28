@@ -65,6 +65,22 @@
         "path": "tests/preview/reply-check.test.ts",
         "hash": "sha256:3cfec1b1703a85a6b85ea1ba6bcdaf21981e679fe696fbed4f83d72e283a8cde"
       }
+    },
+    {
+      "id": "PREVIEW-MODEL-JSON-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/model-json.test.ts",
+        "hash": "sha256:9b18ab68a89a46e5db31e6b8be4cd6b11500ed55ff2b3ea2558dd9bef9eac83f"
+      }
+    },
+    {
+      "id": "PREVIEW-PROVIDER-FAILURE-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/assembly/provider-failure.test.ts",
+        "hash": "sha256:bb47a74bb7ab784a4f73f6fb5c520d8b6c08c4d7563229313fcbcd9d993fa77d"
+      }
     }
   ],
   "probes": [],

@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
   decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
-import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, value, bytes, isDeclarationSource } from './register-source.mjs';
+import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { capabilityBriefing, checkShipped } from './register-shipped.mjs';
 import { loadOwnerReferences, mergeOwnerReferences } from './register-owner-references.mjs';
@@ -134,9 +134,7 @@ export function build(root, commit, options = {}) {
   }
   const wiring = checkWiring(register, input.code, scanned);
   if (wiring.issues.length) throw new Error(wiring.issues.join('\n'));
-  const testsNaming = name => execFileSync('git', ['-C', root, 'grep', '-l', '-F', name, input.commit, '--', 'tests'], { encoding: 'utf8' })
-    .split('\n').map(line => line.slice(input.commit.length + 1)).filter(path => path.endsWith('.test.ts'));
-  const shipped = checkShipped(register, input.inventory, scanned.program, owner, input.show, name => { try { return testsNaming(name); } catch { return []; } });
+  const shipped = checkShipped(register, input.inventory, scanned.program, owner, input.show);
   if (shipped.length) throw new Error(shipped.join('\n'));
   const observations = register.entries.filter(e => e.declaration.kind === 'blocking sites').flatMap(({ declaration: d }) => {
     const rungs = d.requiredFacts.rungs ?? [d.requiredFacts];
@@ -181,6 +179,9 @@ export async function run(args, root = process.cwd()) {
     || isDeclarationSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
   if (bytes(live) !== bytes(Object.keys(result.input.sources).sort())) throw new Error('P3-NF-23: source roster changed; regenerate from a new source commit');
   for (const [path, content] of Object.entries({ ...result.input.sources, ...result.input.code, ...result.ownerArtifacts })) if (readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n') !== content)
+    throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
+  // Documentation, build and package inputs the build consumed (present or absent) are pinned too.
+  for (const path of trailingInputs(root, result.input.consumed))
     throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
   const files = { 'register.json': result.outputs.register, 'rules.md': result.outputs.ruleBook, 'glossary.md': result.outputs.glossary,
     'capabilities.md': result.outputs.capabilities, 'capabilities.json': JSON.stringify(result.capabilities, null, 2) + '\n', 'coverage.md': result.outputs.coverage, 'shape.json': bytes(result.register.shape) + '\n',

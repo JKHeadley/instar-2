@@ -56,17 +56,21 @@ export function shippedInventory(files, show) {
     if (!found) throw new Error(`R5: shipped import ${specifier} from ${from} does not resolve to a committed source`);
     return found;
   };
-  const closures = {};
+  const closures = {}; const wires = {};
   for (const launcher of launchers) {
     const seen = new Set(); const queue = [launcher];
     while (queue.length) {
       const file = queue.shift();
       if (seen.has(file)) continue; seen.add(file);
       for (const specifier of runtimeImports(file, show(file))) {
-        const next = resolveImport(file, specifier); if (next) queue.push(next);
+        const next = resolveImport(file, specifier); if (!next) continue;
+        queue.push(next);
+        // What the launcher itself imports is what it wires in and runs.
+        if (file === launcher) (wires[launcher] ??= new Set()).add(next);
       }
     }
     closures[launcher] = [...seen].sort();
+    wires[launcher] = [launcher, ...wires[launcher] ?? []].sort();
   }
   const shipped = [...new Set([...built, ...Object.values(closures).flat()])].sort();
   const modules = {};
@@ -75,5 +79,5 @@ export function shippedInventory(files, show) {
     modules[dir] ??= { readme: present.has(readme) ? readme : null, files: [] };
     modules[dir].files.push(path);
   }
-  return { launchers: closures, files: shipped, modules };
+  return { launchers: closures, wires, files: shipped, modules };
 }

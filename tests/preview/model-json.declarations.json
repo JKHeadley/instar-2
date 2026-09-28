@@ -39,6 +39,17 @@
       36,
       67
     ],
-    "holds": []
+    "holds": [
+      {
+        "rule": 36,
+        "class": "held",
+        "evidence": {
+          "kind": "fixture",
+          "id": "PREVIEW-MODEL-JSON-ON-CAPTURE",
+          "stage": "build"
+        },
+        "semanticallyReviewed": "never"
+      }
+    ]
   }
 ]

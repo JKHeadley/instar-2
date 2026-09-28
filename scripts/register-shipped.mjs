@@ -4,7 +4,7 @@
 // declared writer file, and a blocking decision that is an ordinary conditional
 // rather than a named function, are not detected here.
 import ts from 'typescript';
-import { resolve } from 'node:path';
+import { posix, resolve } from 'node:path';
 import { consumeResult, deriveProfile } from '../dist/index.js';
 import { moduleOf, sidecarSource } from './register-inventory.mjs';
 
@@ -12,7 +12,7 @@ import { moduleOf, sidecarSource } from './register-inventory.mjs';
 const WRITES = new Set(['writeFileSync', 'appendFileSync', 'writeSync', 'renameSync', 'createWriteStream', 'ftruncateSync', 'truncateSync',
   'copyFileSync', 'unlinkSync', 'rmSync', 'writeFile', 'appendFile', 'rename', 'truncate', 'copyFile', 'unlink', 'rm']);
 // Declarations beside a non-src file name their function as the last dotted segment of their id.
-const BOUNDARIES = new Set(['stores', 'blocking sites', 'parsers', 'judgment points']);
+const BOUNDARIES = new Set(['stores', 'blocking sites', 'parsers', 'judgment points', 'operator actions']);
 const isSidecar = path => /\.(?:declarations|parser)\.json$/.test(path);
 
 // Follow an import alias or an object-literal property (`{ gate }`, `{ gate: gate }`)
@@ -24,6 +24,17 @@ function origin(checker, symbol, depth = 0) {
   if (d && ts.isShorthandPropertyAssignment(d)) return origin(checker, checker.getShorthandAssignmentValueSymbol(d), depth + 1);
   if (d && ts.isPropertyAssignment(d) && ts.isIdentifier(d.initializer)) return origin(checker, checker.getSymbolAtLocation(d.initializer), depth + 1);
   return symbol;
+}
+// The reference is the callee of a call, or an argument to a call or construction,
+// directly or as a property of an object literal written in the argument list
+// (`open({ io: port })`). Stored in a variable's object literal, it is not passed.
+function invokedOrPassed(n) {
+  let e = ts.isPropertyAccessExpression(n.parent) && n.parent.name === n ? n.parent : n;
+  if ((ts.isPropertyAssignment(e.parent) && e.parent.initializer === e || ts.isShorthandPropertyAssignment(e.parent))
+    && ts.isObjectLiteralExpression(e.parent.parent)) e = e.parent.parent;
+  const call = e.parent;
+  return !!call && (ts.isCallExpression(call) || ts.isNewExpression(call))
+    && (call.expression === e || (call.arguments ?? []).includes(e));
 }
 export function durableWriter(path, text) {
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true);
@@ -42,20 +53,24 @@ const features = register => register.entries.map(e => e.declaration).filter(d =
 const readmeLines = (dir, show) => { try { return capabilityLines(show(`${dir === '.' ? '' : dir + '/'}README.md`)); } catch { return []; } };
 const sourceOf = (d, shipped) => isSidecar(d.declaredBy.path) ? sidecarSource(d.declaredBy.path, shipped) : d.declaredBy.path;
 
-// Per launcher: which declared features its installation carries. A launcher's own
-// module enables its declarations; another module's feature is available only when
-// its code is loaded and it is live. Nothing here is hand-listed.
+// Per launcher: which declared features its installation carries, from that launcher's
+// own runtime closure. A feature is available when its declaring source is loaded AND
+// enabled there: the register says it is live, or the launcher itself imports and wires
+// that source. Sharing a directory with the launcher enables nothing. Availability in
+// this installation is separate from the register status (graduation and live proof),
+// which is reported beside it. Nothing here is hand-listed.
 export function capabilityBriefing(register, inventory, show) {
   const text = new Map();
   for (const dir of new Set(features(register).map(d => moduleOf(d.declaredBy.path))))
     for (const line of readmeLines(dir, show)) text.set(`${dir}\u0000${line.id}`, line.text);
   const launchers = {};
   for (const [launcher, closure] of Object.entries(inventory.launchers)) {
-    const own = moduleOf(launcher);
+    const wired = inventory.wires?.[launcher] ?? [launcher];
     launchers[launcher] = features(register).map(d => {
       const module = moduleOf(d.declaredBy.path); const source = sourceOf(d, inventory.files);
       const loaded = source ? closure.includes(source) : closure.some(p => moduleOf(p) === module);
-      const availability = module === own ? 'available' : !loaded ? 'not-loaded' : d.status === 'live' ? 'available' : 'switched-off';
+      const enabled = d.status === 'live' || !!source && wired.includes(source);
+      const availability = !loaded ? 'not-loaded' : enabled ? 'available' : 'switched-off';
       const userFacing = consumeResult(deriveProfile(d.profile, { owner: 'part-three', derivedFrom: register.shape.derivedFrom }, 'capability-briefing'),
         { Success: derived => derived.userFacing, Refused: refusal => { throw new Error(refusal.detail); } });
       return { id: d.id, status: d.status, module, availability, userFacing, text: text.get(`${module}\u0000${d.id}`) ?? null };
@@ -64,8 +79,8 @@ export function capabilityBriefing(register, inventory, show) {
   return { launchers };
 }
 
-// show(path) returns committed bytes; testsNaming(basename) lists committed test files naming a capture.
-export function checkShipped(register, inventory, program, owner, show, testsNaming) {
+// show(path) returns committed bytes; owner carries the committed captures and fixture catalog.
+export function checkShipped(register, inventory, program, owner, show) {
   const issues = []; const shipped = inventory.files; const checker = program.getTypeChecker();
   for (const [dir, m] of Object.entries(inventory.modules)) if (!m.readme || !/^# \S/m.test(show(m.readme)))
     issues.push(`R5: shipped module ${dir} has no documentation entry (${dir === '.' ? '' : dir + '/'}README.md with a heading)`);
@@ -95,9 +110,9 @@ export function checkShipped(register, inventory, program, owner, show, testsNam
   for (const path of shipped) {
     const sf = program.getSourceFile(resolve(path)); if (!sf) continue;
     const scan = n => {
-      // Importing, re-exporting or placing it in an object is not a use; calling or passing it is.
-      if (ts.isIdentifier(n) && names.has(n.text) && !ts.isImportSpecifier(n.parent) && !ts.isExportSpecifier(n.parent)
-        && !ts.isImportClause(n.parent) && !ts.isShorthandPropertyAssignment(n.parent)) {
+      // Only calling it (`gate()`, `worker.gate()`) or passing it as an argument is a use.
+      // Importing, re-exporting, or storing it in an object or variable is not.
+      if (ts.isIdentifier(n) && names.has(n.text) && invokedOrPassed(n)) {
         const s = origin(checker, checker.getSymbolAtLocation(n));
         for (const b of bound) if (n !== b.node && b.symbol && s === b.symbol) used.add(b);
       }
@@ -110,12 +125,24 @@ export function checkShipped(register, inventory, program, owner, show, testsNam
   for (const path of shipped) if (!path.startsWith('src/') && durableWriter(path, show(path))
     && !(beside.get(path) ?? []).some(d => d.kind === 'stores'))
     issues.push(`R7/R32: ${path} writes durable state but declares no store (growth, agent memory, machine scope) beside it`);
-  // Parsers of real-world text are exercised on captured bytes, or carry an honest open loop.
+  // Rule 36: a parser of real-world text either carries an owned deferred loop, or holds the
+  // rule through the existing fixture/check-run evidence path: its hold names a committed
+  // fixture whose test imports this parser's source and reads its genuinely captured bytes.
+  // Whether that test actually ran and passed is the rule graph's check-run question, not this one.
+  const fixtures = owner.catalog?.fixtures ?? [];
   for (const d of declarations.filter(d => d.kind === 'parsers')) {
     const capture = owner.captures.find(c => c.id === d.requiredFacts.fixture);
-    const exercised = capture?.origin === 'captured' && testsNaming(capture.artifact.path.split('/').pop()).length > 0;
-    if (!exercised && !d.holds.some(h => h.rule === 36 && h.class === 'deferred'))
-      issues.push(`R36: parser ${d.id} has no executed test on captured bytes (${capture ? capture.origin + ' ' + capture.artifact.path : 'no capture ' + d.requiredFacts.fixture}) and no deferred Rule 36 loop`);
+    const hold = d.holds.find(h => h.rule === 36);
+    if (hold?.class === 'deferred') continue;
+    const where = capture ? `${capture.origin} ${capture.artifact.path}` : `no capture ${d.requiredFacts.fixture}`;
+    if (!hold || hold.evidence?.kind !== 'fixture') { issues.push(`R36: parser ${d.id} has no Rule 36 fixture evidence on captured bytes (${where}) and no deferred Rule 36 loop`); continue; }
+    const fixture = fixtures.find(f => f.id === hold.evidence.id && f.stage === hold.evidence.stage);
+    const source = sourceOf(d, shipped); const test = fixture?.artifact?.path;
+    const testText = test ? (() => { try { return show(test); } catch { return ''; } })() : '';
+    const imported = [...testText.matchAll(/\bfrom\s+['"](\.[^'"]+)['"]/g)].map(m => posix.normalize(posix.join(posix.dirname(test), m[1])))
+      .some(p => [p, p.replace(/\.js$/, '.ts'), p.replace(/\.mjs$/, '.mts')].includes(source));
+    if (capture?.origin !== 'captured' || !fixture || !imported || !testText.includes(capture.artifact.path.split('/').pop()))
+      issues.push(`R36: parser ${d.id} Rule 36 evidence ${hold.evidence.id} is not a committed test of ${source ?? d.declaredBy.path} on its captured bytes (${where})`);
   }
   // The capability briefing is generated from feature declarations plus their module's own text.
   const lines = new Map();

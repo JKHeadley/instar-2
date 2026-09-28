@@ -146,6 +146,8 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   contradictions: packet.contradictions ?? [],
   crossTopicDigest: packet.crossTopicDigest ?? null,
   restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
+  // The generated capability briefing this turn received, with its register provenance (Rules 78, 84).
+  capabilityNote: (note => note ? { text: note.text, provenance: note.provenance } : null)(packet.sources?.find(source => source.id === 'capability-note')),
   recalled: packet.recalled?.length ?? 0, recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
   replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
     recorded: packet.replyProvenance.recorded !== null,

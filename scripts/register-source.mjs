@@ -1,6 +1,6 @@
 // Build adapter: git/files/clock stay outside the pure core. Rules 26/69/78/84/90.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { canonical, consumeResult, decode } from '../dist/index.js';
 import { decodeShape } from '../dist/register/index.js';
@@ -45,12 +45,28 @@ export function readCommit(root, commit) {
   for (const required of ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'register-source/bootstrap-shape.json'])
     if (!selected.includes(required)) throw new Error(`P3-NF-23: missing source ${required}`);
   const cache = readBlobs(root, commit, files.filter(p => /\.(?:ts|mts|mjs|js|json|md)$/.test(p)));
-  const show = p => { if (!cache.has(p)) cache.set(p, git(['show', `${commit}:${p}`])); return cache.get(p); };
+  // Every committed input the build reads is recorded (null when absent at the commit),
+  // so a pin check covers the documentation, build and package inputs it consumed too.
+  const consumed = new Map();
+  const show = p => {
+    if (!cache.has(p)) try { cache.set(p, git(['show', `${commit}:${p}`])); } catch (error) { consumed.set(p, null); throw error; }
+    consumed.set(p, cache.get(p)); return cache.get(p);
+  };
   const sources = Object.fromEntries(selected.sort().map(p => [p, show(p).replaceAll('\r\n', '\n')]));
   // The wiring scan covers what ships: built src plus every launcher's runtime closure.
   const inventory = shippedInventory(files, show);
+  // A shipped module's documentation entry is consumed even when it is missing.
+  for (const [dir, m] of Object.entries(inventory.modules)) if (!m.readme) consumed.set(`${dir === '.' ? '' : dir + '/'}README.md`, null);
   const code = Object.fromEntries(inventory.files.map(p => [p, show(p)]));
-  return { commit, sources, files, code, inventory, show };
+  return { commit, sources, files, code, inventory, show, consumed };
+}
+// Working-tree paths whose bytes (or absence) differ from what the build consumed at its commit.
+export function trailingInputs(root, consumed) {
+  const norm = text => text === null ? null : text.replaceAll('\r\n', '\n');
+  return [...consumed].filter(([path, content]) => {
+    const file = resolve(root, path);
+    return norm(existsSync(file) ? readFileSync(file, 'utf8') : null) !== norm(content);
+  }).map(([path]) => path).sort();
 }
 export function bootstrapDeclarations(documents, shape) {
   const sources = []; const glossary = documents['docs/03-the-glossary.md'];

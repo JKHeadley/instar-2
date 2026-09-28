@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readCommit } from './register-source.mjs';
+import { readCommit, trailingInputs } from './register-source.mjs';
 import { loadOwnerReferences, ownerManifestPaths } from './register-owner-references.mjs';
 import { shippedInventory } from './register-inventory.mjs';
 import { checkShipped } from './register-shipped.mjs';
@@ -317,8 +317,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     throw new Error('source wiring pin trails ' + path);
   const sourceFiles = input.code; const scanned = scanSources(sourceFiles, owner.decoders);
   const result = checkWiring(register, sourceFiles, scanned);
-  const testsNaming = name => { try { return execFileSync('git', ['grep', '-l', '-F', name, '--', 'tests'], { encoding: 'utf8' }).split('\n').filter(p => p.endsWith('.test.ts')); } catch { return []; } };
-  result.issues.push(...checkShipped(register, input.inventory, scanned.program, owner, input.show, testsNaming));
+  result.issues.push(...checkShipped(register, input.inventory, scanned.program, owner, input.show));
+  for (const path of trailingInputs(process.cwd(), input.consumed)) result.issues.push(`source wiring pin trails ${path}; commit source changes and regenerate`);
   if (result.issues.length) { console.error(result.issues.join('\n')); process.exitCode = 1; }
   else console.log(JSON.stringify({ ...result, completeEnumeration: false, boundary: 'static port calls; reflection, computed ids and plugin construction remain residual' }));
 }

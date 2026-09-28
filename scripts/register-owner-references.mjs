@@ -95,7 +95,9 @@ const contracts = {
   preview: { decoders: {},
     capture: (id, path) => /^PREVIEW-CAPTURE-[A-Z0-9-]+$/.test(id) && /^tests\/(?:preview\/fixtures|fixtures\/provider-failure)\/[^/]+$/.test(path),
     fixture: id => /^PREVIEW-[A-Z0-9-]+$/.test(id) && !id.startsWith('PREVIEW-CAPTURE-'), probe: () => false,
-    test: (_id, kind, path) => kind === 'fixture' && /^tests\/preview\/[a-z0-9-]+\.test\.ts$/.test(path) },
+    test: (id, kind, path) => kind === 'fixture' && (/^tests\/preview\/[a-z0-9-]+\.test\.ts$/.test(path)
+      // The provider-result parser's test on the preview's genuine Claude capture.
+      || id === 'PREVIEW-PROVIDER-FAILURE-ON-CAPTURE' && path === 'tests/assembly/provider-failure.test.ts') },
 };
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))

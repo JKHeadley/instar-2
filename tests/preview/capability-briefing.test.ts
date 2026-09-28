@@ -43,3 +43,38 @@ it('states an unavailable briefing honestly instead of guessing a list', () => {
     for (const f of briefed) expect(text).not.toContain(f.id);
   }
 });
+
+it('the read-only inspection path shows the generated capability note and its register provenance, for the last persisted turn and a next-turn probe', async () => {
+  const { mkdtempSync, realpathSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const { createJournalWorker, openPreviewJournal } = await import('./journal-test-worker.js');
+  const { prepareJournalEnvelope } = await import('./journal-envelope.js');
+  const key = new Uint8Array(32).fill(23);
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-capability-inspect-')));
+  const inspect = (...args: string[]) => {
+    const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'inspect', ...args, '--root', root],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8', timeout: 20000 });
+    expect(result.status, result.stderr).toBe(0);
+    return JSON.parse(result.stdout);
+  };
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 60000, cursor: 0 });
+    const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, { providerAttempts: 20, expiresAt: 9999999999999 }).sources;
+    const worker = createJournalWorker(journal, { now: Date.now, stopped: () => false, sources,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', Date.now()),
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'What can you do?', date: 1790000060 } }]);
+    await worker.drain(); journal.close();
+    const source = JSON.parse(readFileSync('generated/source.json', 'utf8')) as { generation: string };
+    const out = inspect('--text', 'What can you do?', '--model', 'claude-sonnet-5');
+    for (const note of [out.last.capabilityNote, out.next.capabilityNote]) {
+      expect(note.provenance).toMatchObject({ path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: source.generation, commit: generated.commit });
+      expect(note.text).toContain('- preview-requested-summaries: ');
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);

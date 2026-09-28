@@ -23,6 +23,16 @@ describe('both-way rule graph and deadlines', () => {
       expect(graph.edges).toEqual([]); expect(graph.gaps).toEqual([4]);
     }
   });
+  it('P3-NF-15 a dark or soaking holder\'s deferred hold stays an owned, deadline-checked loop, never an edge; retired history mints none', () => {
+    const s = setup(); const deferred = { rule: 4, class: 'deferred', part: 9, ceiling: 1000, owner: 'review', overdueAction: 'surface' };
+    for (const status of ['dark', 'soaking']) {
+      const graph = value(buildRuleGraph(s.build([s.rule(4), s.holder([deferred], { status })]), 'branch', [], catalog, s.context));
+      expect(graph.edges).toEqual([]); expect(graph.loops.filter(l => l.holder !== null)).toEqual([expect.objectContaining({ rule: 4, dueBy: 1000, owner: 'review', part: 9 })]);
+      expect(detail(buildRuleGraph(s.build([s.rule(4), s.holder([{ ...deferred, part: 77 }], { status })]), 'branch', [], catalog, s.context))).toContain('P3-NF-24');
+    }
+    const retired = value(buildRuleGraph(s.build([s.rule(4), s.holder([deferred], { status: 'retired' })]), 'branch', [], catalog, s.context));
+    expect(retired.loops.filter(l => l.holder !== null)).toEqual([]);
+  });
   it('P3-NF-14 a fixture must exist at its stage and a probe must declare cadence', () => {
     const s = setup(); const r = s.build([s.rule(4), s.holder([held])]);
     expect(detail(buildRuleGraph(r, 'branch', [], { ...catalog, fixtures: [{ id: 'fixture:4', stage: 'test' }] }, s.context))).toContain('P3-NF-14');

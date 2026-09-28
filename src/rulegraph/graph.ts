@@ -76,6 +76,14 @@ export function buildRuleGraph(register: GeneratedRegister, branch: string, runs
       // Dark/soaking holders likewise cannot establish live enforcement.
       if (d.status !== 'live') {
         for (const n of [...d.standards, ...d.holds.map(h => h.rule)]) requireThat(known.has(n), `P3-NF-13: ${d.status} ${d.id} names missing rule ${n}`);
+        // A dark or soaking entry's declared debt stays owned and deadline-checked: its deferred
+        // hold becomes a loop, never an edge (it holds nothing while inactive). Retired history does not.
+        if (d.status !== 'retired') for (const h of d.holds) if (h.class === 'deferred') {
+          const shape = register.shape.kinds.find(k => k.name === d.kind);
+          requireThat(shape?.holder && shape.enforceable.includes(h.rule), `P3-NF-18: ${d.kind} may not enforce ${h.rule}`);
+          requireThat(register.shape.parts.includes(h.part), `P3-NF-24: unknown deferred part ${h.part}`);
+          loops.push({ id: `deferred:${d.id}:${h.rule}`, rule: h.rule, holder: d.id, dueBy: h.ceiling, part: h.part, owner: h.owner, overdueAction: h.overdueAction });
+        }
         continue;
       }
       for (const standard of d.standards) requireThat(byNumber.has(standard), `P3-NF-13: standard ${standard} missing for ${d.id}`);
