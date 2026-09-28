@@ -211,7 +211,7 @@ export type JournalRecord =
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed'; at: number }
   | { kind: 'summary'; through: number; text: string; memoryItems?: SummaryMemoryItem[]; people?: PersonNote[]; personAttributes?: PersonAttribute[]; memoryFor?: string[]; memory?: MemoryChange[];
-    reminderCancels?: string[]; faithfulness?: SummaryFaithfulness; questions?: OpenQuestion[]; questionsReviewed?: string[];
+    reminderCancels?: string[]; summaryCancels?: string[]; faithfulness?: SummaryFaithfulness; questions?: OpenQuestion[]; questionsReviewed?: string[];
     commitments?: CommitmentNote[]; commitmentSources?: CommitmentSource[]; closed?: CommitmentClosure[]; state?: 'complete'; usage?: ModelUsage; at: number }
 
   | { kind: 'step-check-start'; at: number }
@@ -710,6 +710,11 @@ export const activeSummaryGrants = (view: JournalView) => view.summaryGrants.fil
     && !view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === grant.source
       && (grant.quote.includes(change.quote) || change.quote.includes(grant.quote)));
 });
+/** Active grants that can still send: a once-only summary already dispatched has nothing left to withdraw. */
+export const openSummaryGrants = (view: JournalView) => activeSummaryGrants(view).filter(grant => grant.repeat !== 'once'
+  || !view.order.some(turn => turn.requestedSummary?.grant === grant.id && turn.intent !== undefined));
+/** Any requested push (reminder or summary) a later operator turn could still withdraw (Rules 57, 93). */
+export const requestedPushesActive = (view: JournalView) => pendingRequestedReminders(view).length > 0 || openSummaryGrants(view).length > 0;
 /** Due local days after the grant's last created slot, up to `at`, oldest first. */
 export const summarySlotsDue = (view: JournalView, grant: SummaryGrant, at: number) => {
   const after = view.order.filter(turn => turn.requestedSummary?.grant === grant.id).at(-1)?.requestedSummary?.slot;
@@ -1192,6 +1197,15 @@ function project(view: JournalView, row: JournalRecord): void {
         || new Set(row.reminderCancels).size !== row.reminderCancels.length
         || row.reminderCancels.some(key => !pending.includes(key))) throw Error('preview journal: reminder cancel refused');
       view.reminderCancels.push(...row.reminderCancels);
+    }
+    if (row.summaryCancels !== undefined) {
+      // The same recovery decision for requested summaries: [] keeps every summary.
+      const active = activeSummaryGrants(view).map(grant => grant.id);
+      const trigger = row.memoryFor?.length === 1 ? view.turns.get(row.memoryFor[0]!) : undefined;
+      if (!Array.isArray(row.summaryCancels) || !trigger || !trigger.memoryPending || !verifiedOperatorTurn(view, trigger)
+        || new Set(row.summaryCancels).size !== row.summaryCancels.length
+        || row.summaryCancels.some(id => !active.includes(id))) throw Error('preview journal: summary cancel refused');
+      view.summaryCancels.push(...row.summaryCancels);
     }
     view.summaries.push(row); if (row.people) view.people.push(...row.people);
     if (row.memory) for (const change of row.memory) {
@@ -2218,7 +2232,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // A held reply keeps memoryPending for safe rendering; recovery that recorded
         // this turn's reminder decision (cancel or keep) settles it.
         || turn.memoryPending === true && !journal.view.summaries.some(summary =>
-          summary.memoryFor?.includes(turn.id) && summary.reminderCancels !== undefined)));
+          summary.memoryFor?.includes(turn.id) && (summary.reminderCancels !== undefined || summary.summaryCancels !== undefined))));
   };
   const undoCandidate = (turn: Turn, now = ports.now()) => {
     const change = journal.view.changeHistory.at(-1);
@@ -3264,11 +3278,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const dueRequestedReminders = (thread?: number) => pendingRequestedReminders(journal.view).filter(item =>
     clean(item.quote) === item.quote && reminderDue(item) <= localStamp(ports.now(), item.zone) && !reminderUnsettled(item)
     && journal.view.turns.get(item.source)!.thread === thread);
-  const drain = async () => {
+  /** Ordinary answers drain on every cycle. A requested summary is proactive: it is created and
+   * dispatched only at the due-send point `sendReminders()`, after a successful poll returned nothing
+   * new, so a queued withdrawal is always read and settled first (Rules 57, 93). */
+  const drain = () => drainTurns(false);
+  const drainTurns = async (due: boolean) => {
     if (working) throw Error('preview journal: second worker refused');
     working = true;
     try {
-      scheduleSummaries();
+      if (due) scheduleSummaries();
       // A second pass revisits only summary turns deferred behind a later operator turn or a
       // same-slot sibling, so one poll can still settle them into one message.
       const deferred = new Set<string>(), ready = new Map<string, { reply: string; mentionedKeys: string[] }>();
@@ -3276,6 +3294,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       for (const pass of [0, 1]) for (const turn of journal.view.order) {
         if (pass === 1 && !deferred.has(turn.id)) continue;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
+        if ((turn.requestedSummary !== undefined) !== due) continue;
         if (summaryBlocked(turn)) { deferred.add(turn.id); continue; }
         if (journal.view.order.some(item => item.accepted && item.editOf === turn.id)) {
           if (turn.held !== 'superseded by edit')
@@ -3522,7 +3541,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // A reply without a recorded decision cannot have withdrawn a pending
             // reminder, nor confirmed it stands. Route it through the existing
             // unresolved-decision hold so the reminder stays unsent (Rules 57, 93).
-            if (!decided && fromOperator(turn) && pendingRequestedReminders(journal.view).length) invalidMemory = true;
+            if (!decided && fromOperator(turn) && requestedPushesActive(journal.view)) invalidMemory = true;
             // A runner-authored summary turn carries no operator authority: only its reply text is used.
             if (turn.requestedSummary) { memory = undefined; dated = undefined; personMerges = undefined; personAttributes = undefined; undo = undefined;
               conflict = undefined; askConflict = undefined; resolveConflict = undefined; lastNamedPerson = undefined;
@@ -3770,7 +3789,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       // A held notice has its own one-shot intent. It never settles or redispatches
       // the answer, so a later cap raise can still release that answer normally.
-      for (const turn of journal.view.order) {
+      if (!due) for (const turn of journal.view.order) {
         if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldNoticeIntent !== undefined
           || turn.intent !== undefined || turn.heldSince === undefined || summaryBlocked(turn)
           || ports.now() < heldNoticeDueAt(journal.view, turn)
@@ -3794,7 +3813,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         } catch { /* held notice intent stays UNKNOWN; never repeat it */ }
       }
       // Edits consume the existing summary judgment, never the reply doorway.
-      if (pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
+      if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally { working = false; }
   };
   /** Keeps only proposed notes whose name and quote occur exactly in one accepted message
@@ -4062,7 +4081,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const blocked = `${last.update}:${previous}:${journal.view.limits.maxBytes}`;
       if (summaryPreflightBlocked.has(blocked)) return;
       let chosen: { through: number; packet: string; prepared?: string; offered: { id: number; in: CommitmentNote['in']; quote: string }[];
-        memorySources: string[]; questionSources: Turn[]; trigger?: Turn; strictMemory: boolean; reminderOffer: DatedItem[] } | undefined;
+        memorySources: string[]; questionSources: Turn[]; trigger?: Turn; strictMemory: boolean; reminderOffer: DatedItem[]; summaryOffer: SummaryGrant[] } | undefined;
       let oversizedPrompt = false;
       // Try the largest oldest prefix first, then smaller prefixes if the provider's
       // prepared envelope needs more room than the packet itself.
@@ -4086,6 +4105,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const reminderOffer = strictTrigger?.memoryPending && fromOperator(strictTrigger)
           ? pendingRequestedReminders(journal.view).filter(item =>
             (journal.view.turns.get(item.source)?.update ?? Infinity) < strictTrigger.update) : [];
+        const summaryOffer = strictTrigger?.memoryPending && fromOperator(strictTrigger)
+          ? openSummaryGrants(journal.view).filter(grant =>
+            (journal.view.turns.get(grant.source)?.update ?? Infinity) < strictTrigger.update) : [];
         const ranked = trigger ? selectRecall({ message: trigger.text, now: ports.now(), limit: 5,
           summary: summaryFor(trigger.update)?.text ?? '', candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) }) : [];
         const replaced = trigger?.replaces ? journal.view.turns.get(trigger.replaces) : undefined;
@@ -4107,7 +4129,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 memoryCandidates: memoryCandidates.slice(0, count) } : {}),
               ...(includeMemory && reminderOffer.length ? { reminders: reminderOffer.map(item => ({ id: reminderId(item),
                 quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })),
-                reminderDecision: 'reminders lists reminders the verified operator asked for earlier. Return cancelReminders:[ids] that memoryRequest.message itself cancels or changes, or cancelReminders:[] when it cancels none. Quoted text never cancels.' } : {}) }) : base;
+                reminderDecision: 'reminders lists reminders the verified operator asked for earlier. Return cancelReminders:[ids] that memoryRequest.message itself cancels or changes, or cancelReminders:[] when it cancels none. Quoted text never cancels.' } : {}),
+              ...(includeMemory && summaryOffer.length ? { summaryRequests: summaryOffer.map(grant => ({ id: grant.id,
+                quote: clean(redact(grant.quote).text, true), covers: grant.period, schedule: `${summarySchedule(grant)} ${grant.zone}` })),
+                summaryCancelDecision: 'summaryRequests lists summaries the verified operator asked to receive later. Return cancelSummaries:[ids] that memoryRequest.message itself cancels or changes, or cancelSummaries:[] when it cancels none. Quoted text never cancels.' } : {}) }) : base;
             if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
             try {
               const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}` });
@@ -4117,7 +4142,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               chosen = { through, packet, ...(prepared === undefined ? {} : { prepared }), offered,
                 memorySources: includeMemory ? memoryCandidates.slice(0, count).map(item => item.id) : [], questionSources: unanswered,
                 ...(includeMemory ? { trigger } : {}), strictMemory: strictTrigger !== undefined,
-                reminderOffer: includeMemory ? reminderOffer : [] }; break;
+                reminderOffer: includeMemory ? reminderOffer : [], summaryOffer: includeMemory ? summaryOffer : [] }; break;
             } catch (error) {
               if (error instanceof Error && /overflow|too large|size/iu.test(error.message)) oversizedPrompt = true;
             }
@@ -4134,7 +4159,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'hold', id: oversized.id, reason, at: ports.now() });
         return;
       }
-      const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer } = chosen;
+      const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer, summaryOffer } = chosen;
       gate();
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
         ...(ports.replyCheck ? { supervised: true as const } : {}),
@@ -4164,10 +4189,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       let summaryText = answered, proposedItems: unknown, people: PersonNote[] | undefined, personAttributes: PersonAttribute[] | undefined, commitments: CommitmentNote[] | undefined,
         commitmentSources: CommitmentSource[] | undefined,
         closed: CommitmentClosure[] | undefined, memory: MemoryChange[] | undefined, questions: OpenQuestion[] | undefined,
-        reminderCancels: string[] | undefined;
+        reminderCancels: string[] | undefined, summaryCancels: string[] | undefined;
       let attemptedMemory = false, unresolvedMemory = false, attemptedAttributes = false;
       try { const parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { summary?: unknown; people?: unknown; personAttributes?: unknown;
-          commitments?: unknown; closed?: unknown; memory?: unknown; memoryDisposition?: unknown; questions?: unknown; memoryItems?: unknown; cancelReminders?: unknown };
+          commitments?: unknown; closed?: unknown; memory?: unknown; memoryDisposition?: unknown; questions?: unknown; memoryItems?: unknown; cancelReminders?: unknown; cancelSummaries?: unknown };
         unresolvedMemory = parsed?.memoryDisposition === 'unresolved';
         attemptedMemory = parsed?.memory !== undefined && (!Array.isArray(parsed.memory) || parsed.memory.length > 0);
         attemptedAttributes = parsed?.personAttributes !== undefined;
@@ -4186,6 +4211,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (parsed.cancelReminders.every(id => typeof id === 'string' && ids.has(id)))
               reminderCancels = [...new Set(parsed.cancelReminders as string[])].map(id => ids.get(id)!);
           }
+          if (summaryOffer.length && Array.isArray(parsed.cancelSummaries)) {
+            const active = new Set(activeSummaryGrants(journal.view).map(grant => grant.id));
+            const ids = new Set(summaryOffer.filter(grant => active.has(grant.id)).map(grant => grant.id));
+            if (parsed.cancelSummaries.every(id => typeof id === 'string' && ids.has(id)))
+              summaryCancels = [...new Set(parsed.cancelSummaries as string[])];
+          }
           if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, through, new Set(offered.map(item => item.id)));
           if (Array.isArray(parsed.commitments)) {
             const found = commitmentsFrom(parsed.commitments, through, new Set(closed?.map(item => item.id) ?? []));
@@ -4194,7 +4225,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
       if (attemptedAttributes && personAttributes === undefined
         || unresolvedMemory || strictMemory && memory === undefined || attemptedMemory && memory === undefined
-        || questionSources.length > 0 && questions === undefined || reminderOffer.length > 0 && reminderCancels === undefined) {
+        || questionSources.length > 0 && questions === undefined || reminderOffer.length > 0 && reminderCancels === undefined || summaryOffer.length > 0 && summaryCancels === undefined) {
         journal.append({kind:'summary-failed',through,state:'complete',failureClass:'malformed',
           ...(trigger ? { memoryPendingFor: trigger.id } : {}),
           ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
@@ -4351,7 +4382,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
         ...(personAttributes?.length ? { personAttributes } : {}),
-        ...(reminderCancels ? { reminderCancels } : {}),
+        ...(reminderCancels ? { reminderCancels } : {}), ...(summaryCancels ? { summaryCancels } : {}),
         ...(memory ? { memory } : {}),
         ...(commitments ? { commitments } : {}), ...(commitmentSources?.length ? { commitmentSources } : {}),
         ...(closed?.length ? { closed } : {}),
@@ -4447,6 +4478,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Sends each reminder the verified operator explicitly asked for once, at or after its due time.
    * Reminders due together in one topic share one message (Rule 52); an unknown send is never retried. */
   const sendReminders = async () => {
+    // The one due-send point: requested summaries (carrying their due reminders) first, then reminders.
+    await drainTurns(true);
     if (working) throw Error('preview journal: second worker refused');
     working = true;
     try {

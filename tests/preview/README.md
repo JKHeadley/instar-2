@@ -1846,7 +1846,11 @@ is unsettled, the period is unsupported, a one-off time has passed, or the previ
 The `summaryDecision` option appears only with a summary cue or an active request; the cue presents
 the option and never decides. A request for a summary *now* is answered now and schedules nothing.
 
-At each poll, `drain()` turns the latest due slot of each active grant into one fsynced
+A requested summary is proactive, so it shares the reminders' one due-send point: `sendReminders()`,
+which the launcher calls only after a successful poll returned nothing new. An ordinary `drain()`
+never creates, generates or dispatches a summary, so a cancellation already waiting in Telegram
+(even behind other updates, or after a restart that interrupted a prepared summary) is read and
+settled first. At that point `sendReminders()` turns the latest due slot of each active grant into one fsynced
 `summary-due` frame. That frame creates a runner-authored turn with no operator authority, carrying
 the resolved calendar window. The ordinary answer path then handles it: reservation within the
 call cap, the model call, period evidence, reply check, one exact send intent and the UNKNOWN fence.
@@ -1870,7 +1874,11 @@ rechecked before generation, before its send intent and before its held notice: 
 later operator message is unsettled, and is never sent once its request is cancelled or retired
 (`withdrawn, not sent` in status). A later verified-operator
 message changes or cancels a request (`cancelSummaries`, with the active requests listed as
-`summaryRequests`). Forgetting or correcting the request clause retires it. `status.requestedSummaries`
+`summaryRequests`). While any requested push (a pending reminder or a summary with a send still
+ahead) is active, an operator reply with no recorded decision enters the same unresolved-decision
+recovery as for reminders: the recovery summary lists those `summaryRequests` and must return
+`cancelSummaries` (`[]` keeps them). Until that decision is recorded, or if recovery cannot produce
+a valid one, the summary is withheld. Forgetting or correcting the request clause retires it. `status.requestedSummaries`
 reports requests, cancellations, active schedules and each slot's state; self-state counts summary
 sends separately from replies. For Justin's supervised procedure, see
 [requested-summary-live-test.md](live-tests-archive/requested-summary-live-test.md).

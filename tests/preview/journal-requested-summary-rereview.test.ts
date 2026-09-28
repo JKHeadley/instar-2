@@ -68,6 +68,10 @@ const harness = (root: string, limits: Partial<typeof genesis> = {}) => {
   const summaries = () => state.sent.filter(item => item.text.startsWith('PREVIEW summary you asked for')).map(item => item.text);
   return { state, open, summaries };
 };
+/** One launcher cycle whose poll returned nothing new: drain, then the requested-push send point. */
+const tick = async (worker: { drain: () => Promise<void>; sendReminders: () => Promise<void> }) => {
+  await worker.drain(); await worker.sendReminders();
+};
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-summary-${name}-`)));
 const status = (root: string) => {
   const run = spawnSync(process.execPath,
@@ -87,10 +91,10 @@ it('regression: cancellation received after slot creation prevents its send', as
     let { journal, worker } = open(true);
     worker.intake([update(1, daily)]); await worker.drain();
     state.now = sixPm(); state.crash = 'after:summary-due';
-    await expect(worker.drain()).rejects.toThrow('crash');
+    await expect(tick(worker)).rejects.toThrow('crash');
     journal.close(); ({ journal, worker } = open());
     worker.intake([update(2, 'stop the 6 pm summary')]);
-    await worker.drain();
+    await tick(worker);
     expect(journal.view.summaryCancels).toHaveLength(1);
     expect(summaries()).toHaveLength(0);
     journal.close();
@@ -102,8 +106,8 @@ it('regression: two summaries due in one topic slot aggregate into one send', as
     const { state, open, summaries } = harness(root);
     const { journal, worker } = open(true);
     worker.intake([update(1, daily, 17), update(2, 'send me a summary of yesterday every day at 6 pm', 17)]);
-    await worker.drain();
-    state.now = sixPm(); await worker.drain();
+    await tick(worker);
+    state.now = sixPm(); await tick(worker);
     expect(summaries()).toHaveLength(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -120,9 +124,9 @@ it('regression: cancelling a created summary does not strand an independent remi
     const { state, open, summaries } = harness(root);
     let opened = open(true); journal = opened.journal; let worker = opened.worker;
     worker.intake([update(1, daily, 17), update(2, 'remind me today at 6 pm to water the plants', 17)]);
-    await worker.drain();
+    await tick(worker);
     state.now = sixPm(); state.crash = 'after:summary-due';
-    await expect(worker.drain()).rejects.toThrow('crash');
+    await expect(tick(worker)).rejects.toThrow('crash');
     journal.close(); opened = open(); journal = opened.journal; worker = opened.worker;
     worker.intake([update(3, 'stop the 6 pm summary', 17)]);
     await worker.drain(); await worker.sendReminders();

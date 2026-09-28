@@ -68,6 +68,10 @@ const harness = (root: string, limits: Partial<typeof genesis> = {}) => {
   const summaries = () => state.sent.filter(item => item.text.startsWith('PREVIEW summary you asked for')).map(item => item.text);
   return { state, open, summaries };
 };
+/** One launcher cycle whose poll returned nothing new: drain, then the requested-push send point. */
+const tick = async (worker: { drain: () => Promise<void>; sendReminders: () => Promise<void> }) => {
+  await worker.drain(); await worker.sendReminders();
+};
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-summary-${name}-`)));
 const status = (root: string) => {
   const run = spawnSync(process.execPath,
@@ -91,9 +95,9 @@ it('sends a requested daily summary once per day, stating its reason, through th
     expect(JSON.parse(state.contexts[0]!.context).summaryDecision).toBeDefined();
     expect(JSON.parse(state.contexts[1]!.context).summaryRequests).toHaveLength(1);
     journal.close(); ({ journal, worker } = open());
-    state.now = sixPm() - 60_000; await worker.drain();
+    state.now = sixPm() - 60_000; await tick(worker);
     expect(summaries()).toEqual([]);
-    state.now = sixPm(); await worker.drain();
+    state.now = sixPm(); await tick(worker);
     expect(summaries()).toEqual([`${header('2026-09-26 18:00')})\nSummary of 2026-09-26 to 2026-09-26: 2 earlier messages.`]);
     // The runner-authored turn carries no operator authority and appears as such in later packets.
     const synthetic = journal.view.order.at(-1)!;
@@ -102,7 +106,7 @@ it('sends a requested daily summary once per day, stating its reason, through th
     expect(journal.view.summaryCancels).toEqual([]);
     expect(journal.view.memory).toEqual([]);
     expect(journal.view.dated).toEqual([]);
-    state.now = sixPm() + 3600_000; await worker.drain();
+    state.now = sixPm() + 3600_000; await tick(worker);
     journal.close(); ({ journal, worker } = open());
     await worker.drain(); await worker.sendReminders();
     expect(summaries()).toHaveLength(1);
@@ -110,7 +114,7 @@ it('sends a requested daily summary once per day, stating its reason, through th
     const later = JSON.parse(state.contexts.at(-1)!.context) as { history: { user: string; from?: string; answer: string | null }[] };
     expect(later.history.find(item => item.user.startsWith('[Scheduled summary'))).toMatchObject({
       from: 'the runner, starting a summary the operator asked for (no operator authority)' });
-    state.now = sixPm(1); await worker.drain();
+    state.now = sixPm(1); await tick(worker);
     expect(summaries()).toHaveLength(2);
     expect(summaries()[1]).toContain(`${header('2026-09-27 18:00')})\nSummary of 2026-09-27 to 2026-09-27`);
     expect(journal.view.replies).toBe(5); // request, lunch, summary, thanks, summary
@@ -130,13 +134,13 @@ it('survives a restart at every durable step of a due summary, sending at most o
       worker.intake([update(1, daily)]); await worker.drain();
       state.now = sixPm(); state.crash = stage;
       // A crash after the receipt is inside the send's own UNKNOWN guard; every earlier one aborts the pass.
-      if (stage === 'after:sent') await worker.drain();
-      else await expect(worker.drain()).rejects.toThrow('crash');
+      if (stage === 'after:sent') await tick(worker);
+      else await expect(tick(worker)).rejects.toThrow('crash');
       journal.close(); ({ journal, worker } = open(false, stage === 'after:answer' ? 4096 : undefined));
-      for (const at of [sixPm(), sixPm() + 60_000, sixPm() + 7200_000]) { state.now = at; await worker.drain(); }
+      for (const at of [sixPm(), sixPm() + 60_000, sixPm() + 7200_000]) { state.now = at; await tick(worker); }
       outcomes[stage] = summaries().length;
       journal.close(); ({ journal, worker } = open());
-      state.now = sixPm(1); await worker.drain();
+      state.now = sixPm(1); await tick(worker);
       // A lost or UNKNOWN slot never blocks the next due slot, and is never re-sent.
       expect(summaries()).toHaveLength(outcomes[stage]! + 1);
       expect(summaries().at(-1)).toContain('(due 2026-09-27 18:00 America/Los_Angeles)');
@@ -154,7 +158,7 @@ it('never pushes a summary the operator did not ask for, including a summary req
     const { state, open, summaries } = harness(root);
     const { journal, worker } = open(true);
     worker.intake([update(1, 'I had lunch with Mia'), update(2, 'summarize today'), update(3, 'remember the ferry leaves at 6 pm')]);
-    await worker.drain();
+    await tick(worker);
     expect(JSON.parse(state.contexts[0]!.context).summaryDecision).toBeUndefined();
     expect(JSON.parse(state.contexts[1]!.context).summaryDecision).toBeDefined();
     expect(state.sent).toHaveLength(3);
@@ -180,11 +184,11 @@ it('changes or cancels a requested summary by a later operator message, durably 
     worker.intake([update(5, 'stop the 7 pm summary')]); await worker.drain();
     expect(state.sent.at(-1)!.text).toContain('I could not tell which summary to cancel, so none was cancelled.');
     journal.close(); ({ journal, worker } = open());
-    state.now = sixPm(); await worker.drain(); // 18:00: the moved summary is not due, the old one is cancelled
+    state.now = sixPm(); await tick(worker); // 18:00: the moved summary is not due, the old one is cancelled
     expect(summaries()).toEqual([]);
-    state.now = sixPm() + 3 * 3600_000; await worker.drain(); // 21:00
+    state.now = sixPm() + 3 * 3600_000; await tick(worker); // 21:00
     expect(summaries()).toHaveLength(1);
-    state.now = Date.UTC(2026, 8, 27, 15); await worker.drain(); // 08:00 next day: that request was cancelled
+    state.now = Date.UTC(2026, 8, 27, 15); await tick(worker); // 08:00 next day: that request was cancelled
     expect(summaries()).toHaveLength(1);
     expect(summaries()[0]).toContain('"send me a summary of today every day at 9 pm" (due 2026-09-26 21:00 America/Los_Angeles)');
     journal.close();
@@ -202,19 +206,20 @@ it('after downtime sends at most one late summary with a note, never a backlog',
     journal.close();
     // Down from Saturday 10:02 until Tuesday 10:00: daily slots Sat, Sun, Mon and the one-off were missed.
     ({ journal, worker } = open());
-    state.now = Date.UTC(2026, 8, 29, 17); await worker.drain(); await worker.drain();
+    state.now = Date.UTC(2026, 8, 29, 17); await tick(worker); await tick(worker);
     expect(summaries()).toHaveLength(2);
     const [late, once] = [summaries().find(text => text.includes(daily))!, summaries().find(text => !text.includes(daily))!];
     expect(late).toContain(`${header('2026-09-28 18:00')}; sent late at 2026-09-29 10:00, and 2 earlier due summaries were skipped, not sent)`);
     expect(late).toContain('Summary of 2026-09-28 to 2026-09-28');
     expect(once).toContain('(due 2026-09-26 19:00 America/Los_Angeles; sent late at 2026-09-29 10:00)');
     journal.close(); ({ journal, worker } = open());
-    state.now = Date.UTC(2026, 8, 29, 18); await worker.drain();
+    state.now = Date.UTC(2026, 8, 29, 18); await tick(worker);
     expect(summaries()).toHaveLength(2);
-    state.now = sixPm(3); await worker.drain(); // Tuesday 18:00, on time.
+    state.now = sixPm(3); await tick(worker); // Tuesday 18:00, on time.
     expect(summaries()).toHaveLength(3);
     expect(summaries()[2]).toContain(`${header('2026-09-29 18:00')})\n`);
     state.now = Date.UTC(2026, 9, 11); await worker.drain(); // at or after expiry nothing more is created
+    await expect(worker.sendReminders()).rejects.toThrow('preview stopped');
     expect(summaries()).toHaveLength(3);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -226,19 +231,19 @@ it('sends the truthful held notice at the call cap, never a made-up summary, and
     const { state, open, summaries } = harness(root, { maxCalls: 1 });
     let { journal, worker } = open(true);
     worker.intake([update(1, daily)]); await worker.drain();
-    state.now = sixPm(); await worker.drain();
+    state.now = sixPm(); await tick(worker);
     expect(journal.view.order.at(-1)).toMatchObject({ held: 'call cap', requestedSummary: { slot: '2026-09-26' } });
     expect(summaries()).toEqual([]);
-    state.now = sixPm() + HELD_NOTICE_AFTER_MS + 1000; await worker.drain();
+    state.now = sixPm() + HELD_NOTICE_AFTER_MS + 1000; await tick(worker);
     expect(state.sent.at(-1)!.text).toBe("PREVIEW — I'm holding the summary you asked for (due 2026-09-26 18:00); it will follow or I'll tell you why");
     journal.close(); ({ journal, worker } = open());
-    await worker.drain();
+    await tick(worker);
     expect(state.sent).toHaveLength(2);
     // The held slot holds the next day's slot rather than stacking a backlog.
-    state.now = sixPm(1); await worker.drain();
+    state.now = sixPm(1); await tick(worker);
     expect(journal.view.order.filter(turn => turn.requestedSummary)).toHaveLength(1);
     raiseJournalCaps(journal, { maxCalls: 4, maxReplies: genesis.maxReplies, maxTurns: genesis.maxTurns, authority: 'operator:raise', at: state.now });
-    await worker.drain(); await worker.drain();
+    await tick(worker); await tick(worker);
     expect(summaries()).toHaveLength(2);
     expect(summaries()[0]).toContain(`${header('2026-09-26 18:00')})\nSummary of 2026-09-26`);
     // The day-two slot follows once the held one is sent; it is on time for its own slot.
@@ -253,9 +258,9 @@ it('sends a truthful notice under the reason line when the summary model outcome
     const { state, open, summaries } = harness(root);
     const { journal, worker } = open(true);
     worker.intake([update(1, daily)]); await worker.drain();
-    state.now = sixPm(); state.uncertain = true; await worker.drain();
+    state.now = sixPm(); state.uncertain = true; await tick(worker);
     expect(summaries()).toEqual([`${header('2026-09-26 18:00')})\nI lost this summary: the model call's outcome is unknown, and I never repeat it. Ask me for a summary if you still want one.`]);
-    await worker.drain();
+    await tick(worker);
     expect(summaries()).toHaveLength(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -268,7 +273,7 @@ it('groups requested reminders due in the same slot and topic into the summary m
     const { journal, worker } = open(true);
     worker.intake([update(1, daily, 17), update(2, 'remind me today at 6 pm to water the plants', 17),
       update(3, 'remind me today at 6 pm to call Priya', 23)]);
-    await worker.drain();
+    await tick(worker);
     state.now = sixPm(); await worker.drain(); await worker.sendReminders();
     const topic17 = state.sent.filter(item => item.thread === 17).slice(2);
     expect(topic17).toHaveLength(1);
@@ -292,12 +297,12 @@ it('refuses an unsettled or unsupported request and says why', async () => {
     const { journal, worker } = open(true);
     worker.intake([update(1, 'send me a summary of today every day at 8'), update(2, 'send me a summary of this week every friday at 5 pm'),
       update(3, 'send me a summary of today today at 9 am')]);
-    await worker.drain();
+    await tick(worker);
     expect(state.sent[0]!.text).toContain('I did not set up the summary you asked for: AM or PM is not settled');
     expect(state.sent[1]!.text).toContain('I will send you a summary of this week every Friday at 17:00');
     expect(state.sent[2]!.text).toContain('I did not set up the summary you asked for: that time has already passed.');
     expect(journal.view.summaryGrants).toHaveLength(1);
-    for (const at of [sixPm(), sixPm(1)]) { state.now = at; await worker.drain(); }
+    for (const at of [sixPm(), sixPm(1)]) { state.now = at; await tick(worker); }
     expect(summaries()).toEqual([]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -317,14 +322,14 @@ it('holds a due summary while stopped or while a later operator message is unset
     const { journal, worker } = open(true);
     worker.intake([update(1, daily)]); await worker.drain();
     state.now = sixPm(); state.stopped = true;
-    await worker.drain();
+    await worker.drain(); await expect(worker.sendReminders()).rejects.toThrow('preview stopped');
     expect(journal.view.order.filter(turn => turn.requestedSummary)).toHaveLength(0);
     state.stopped = false;
     // An operator message not yet answered might cancel it: the slot waits for that decision, which cancels it.
     worker.intake([update(5, 'stop the 6 pm summary')]);
-    await worker.drain();
+    await tick(worker);
     expect(journal.view.summaryCancels).toHaveLength(1);
-    await worker.drain();
+    await tick(worker);
     expect(journal.view.order.filter(turn => turn.requestedSummary)).toHaveLength(0);
     expect(summaries()).toEqual([]);
     journal.close();
@@ -360,14 +365,14 @@ it('never sends an already-created slot whose request a later operator message c
       let { journal, worker } = open(true);
       worker.intake([update(1, daily)]); await worker.drain();
       state.now = sixPm(); state.crash = 'after:summary-due';
-      await expect(worker.drain()).rejects.toThrow('crash');
+      await expect(tick(worker)).rejects.toThrow('crash');
       journal.close(); ({ journal, worker } = open());
       expect(journal.view.order.filter(turn => turn.requestedSummary)).toHaveLength(1);
       worker.intake([update(2, later)]);
-      await worker.drain();
+      await tick(worker);
       expect(journal.view.summaryCancels).toHaveLength(expected === 0 ? 1 : 0);
       expect(summaries()).toHaveLength(expected);
-      await worker.drain(); state.now = sixPm() + 3600_000; await worker.drain();
+      await tick(worker); state.now = sixPm() + 3600_000; await tick(worker);
       expect(summaries()).toHaveLength(expected);
       journal.close();
       expect(status(root).requestedSummaries.slots.map(slot => slot.state)).toEqual([expected === 0 ? 'withdrawn, not sent' : 'accepted']);
@@ -384,10 +389,10 @@ it('sends summaries due in the same slot and topic as one message with its remin
       const yesterday = 'send me a summary of yesterday every day at 6 pm';
       worker.intake([update(1, daily, 17), update(2, yesterday, 17), update(3, 'remind me today at 6 pm to water the plants', 17),
         update(4, 'send me a summary of this week every day at 6 pm', 23)]);
-      await worker.drain();
+      await tick(worker);
       const before = state.sent.length;
       state.now = sixPm(); state.crash = crash;
-      if (crash) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
+      if (crash) await expect(tick(worker)).rejects.toThrow('crash'); else await tick(worker);
       journal.close(); ({ journal, worker } = open());
       await worker.drain(); await worker.sendReminders();
       const topic17 = state.sent.slice(before).filter(item => item.thread === 17);
