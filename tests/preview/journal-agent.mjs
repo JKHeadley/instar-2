@@ -251,6 +251,7 @@ const resourceStatus = (path, view) => {
   // Per-launch evidence of the calls this view still holds (correlated by call id, never a lifetime peak).
   const launches = view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, at, localLimit: outcome.localLimit,
     admission: outcome.resources?.admission ?? null, cleanup: outcome.resources?.cleanup ?? null,
+    peakMemoryBytes: outcome.resources?.peakMemoryBytes ?? null,
     uidProcesses: outcome.resources?.uidProcesses ?? null }));
   let state;
   try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved', durable, enforcement, launches }; }
