@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,7 +52,30 @@ it('never blocks on the link signal: without a reviser the reply is sent with th
     send: async input => { sent.push(input.expectedText); return sent.length; } });
   worker.intake(hello); await worker.drain();
   expect(sent).toEqual(['PREVIEW — It is saved at /Users/me/report.md for you.']);
-  expect(journal.view.order[0]?.release).toEqual({ review: 'violation', objections: ['raw_path'], reason: LINK_SHAPE_REASON, revised: false });
+  expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['raw_path'], reason: LINK_SHAPE_REASON,
+    revised: false, final: { links: ['raw_path'] } });
+}));
+
+it('checks the final candidate: a revision that introduces a localhost link is recorded against the text actually sent', () => withJournal(async journal => {
+  // The review's probe: a link-free draft draws a contextual objection, and the revision adds a
+  // machine-local link. The predicate runs on the exact final text; the finding is advisory, never a hold.
+  const sent: string[] = [];
+  const objection = { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id =>
+    [id, { type: 'noul', noul: id === 'raw_path' ? 0.99 : 0.01 }])) };
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', 1000),
+    model: async () => 'Your report is ready in the usual place.',
+    replyCheck: { elapsedMs: () => 0, jev: async () => ({ value: objection, latencyMs: 1 }),
+      escalate: async () => ({ verdict: 'violation', ruleIds: ['raw_path'], confidence: null, latencyMs: 1, reason: 'names a machine place' }),
+      revise: async () => ({ state: 'complete', text: 'Open http://localhost:4042/new-report for your report.' }) },
+    send: async input => { sent.push(input.expectedText); return sent.length; } });
+  worker.intake(hello); await worker.drain();
+  const final = 'PREVIEW — Open http://localhost:4042/new-report for your report.';
+  expect(sent).toEqual([final]);
+  const release = journal.view.order[0]?.release;
+  expect(release?.revised).toBe(true);
+  expect(release?.objections).toEqual(expect.arrayContaining(['raw_path', 'api_endpoint']));
+  expect(release?.final).toEqual({ digest: createHash('sha256').update(final).digest('hex'), links: ['api_endpoint'] });
 }));
 
 it('builds every fixed outbound template without a link the operator cannot open', () => withJournal(async journal => {

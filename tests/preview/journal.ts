@@ -25,6 +25,10 @@ import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJ
 
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, type StepCheckResult } from './step-check.js';
+import { consumeResult } from '../../src/index.js';
+import type { BoundaryContext, Hash, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
+import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js';
+import type { IndependentSurfaceVerifierPort, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
 
 
 
@@ -75,7 +79,9 @@ export const TOO_LONG_REPLY_NOTICE = 'PREVIEW — I produced an answer, but it w
 export const CREDENTIAL_SHAPE_NOTICE = 'PREVIEW — My answer contained text shaped like a password or access key, so I did not send it. Your message is saved; ask again if you still need an answer.';
 /** A reply released after a pre-send review that objected or could not decide (Rules 77, 86, 95).
  * The objections are signals recorded with the send, never a hold. */
-export interface ReplyRelease { review: 'violation' | 'unavailable'; objections: string[]; reason?: string; revised: boolean }
+export interface ReplyRelease { review: 'violation' | 'unavailable'; objections: string[]; reason?: string; revised: boolean;
+  /** Rule 106 over the exact text sent (after any revision and assembly): its digest and link findings. */
+  final?: { digest: string; links: string[] } }
 export const HELD_NOTICE_AFTER_MS = 600_000;
 /** Rule 95: every live gate of this runner and the way it fails when it cannot decide, chosen by who
  * bears the miss. `closed` gates are only the exact floors Rule 4 names (credential shape as its
@@ -90,42 +96,51 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
   { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input', basis: 'Rule 4 emergency stop; governed expiry' },
   { gate: 'model call cap', fails: 'closed', preserves: 'held message; limited answer from the reserve', basis: 'Rule 4 spend floor; Rule 15' },
   { gate: 'ordinary reply and turn caps', fails: 'open', preserves: 'input via the minimal reserve', basis: 'Rule 15' },
-  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'messages wait at Telegram', basis: 'Rule 60 finite capacity' },
-  { gate: 'operator approval request', fails: 'closed', preserves: 'request and pressed update', basis: 'Rules 82, 98' },
+  { gate: 'minimal reserve bound', fails: 'closed', preserves: 'messages wait at Telegram; presses and /stop still read', basis: 'Rule 60 finite capacity; Rule 15' },
+  { gate: 'minimal-path admission (Part Eleven verdict)', fails: 'closed', preserves: 'message kept; owned outage recorded; /stop latches without a reply', basis: 'Rule 15; Eleven §5' },
+  { gate: 'operator approval request', fails: 'closed', preserves: 'request, challenge and pressed update; raises only on the verified surface', basis: 'Purpose (safeguards); Rules 82, 98' },
   { gate: 'UNKNOWN call or send', fails: 'closed', preserves: 'reservation and intent', basis: 'no duplicate sends floor' },
 ] as const);
 /** The minimal responder's reserve (Rule 15): finite, rolling per hour, and independent of
  * the ordinary trial allowance. Past an ordinary cap it still preserves the operator's
  * messages and gives each one a limited, truthful answer; it makes no model call. */
 export const MINIMAL_RESERVE = Object.freeze({ turns: 12, replies: 6, windowMs: 3_600_000 });
+/** Updates read per poll at every capacity level, so presses behind a waiting message are still seen. */
+export const MINIMAL_POLL_LIMIT = 100;
+/** The approval challenge's lifetime: a raise approved after it must be requested again. */
+export const APPROVAL_CHALLENGE_MS = 3_600_000;
 export type LimitedReason = 'turns' | 'calls' | 'replies';
 /** A prefilled operator request (Rules 79, 82): the operator approves or declines from the phone,
  * never authors. It binds the journal base it was issued against; a changed base makes it stale. */
 export interface ApprovalRequest { id: string; action: 'raise-caps' | 'stop'; base: string;
-  limits?: { maxCalls: number; maxReplies: number; maxTurns: number } }
+  limits?: { maxCalls: number; maxReplies: number; maxTurns: number };
+  /** A raise completes only through this challenge, issued by the independently administered verifier
+   * (Part Nine's port) for exactly this request; a Telegram press can never complete it. */
+  challenge?: SurfaceChallenge }
+/** What a raise completion consumed: the verifier's one-use proof, bound to the exact challenge. */
+export interface VerifiedApproval { challenge: string; principal: string; receipt: string }
+/** The operator's act submitted on the independent approval surface (never through the agent's chat). */
+export interface VerifiedActSubmission { challenge: string; proof: string; decision: 'approve' | 'decline' }
 export type ApprovalOutcome = 'approved' | 'declined' | 'stale' | 'refused';
 export const HELD_NOTICE_WINDOW_MS = 3_600_000;
 /** A due summary created more than this long after its slot says it was sent late. */
 export const SUMMARY_LATE_MINUTES = 15;
 const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable'
   || reason === 'call cap' || reason === 'memory correction pending';
-/** A capacity hold gets the prompt limited answer instead; the held notice remains for holds
- * that usually resolve themselves (legacy reasons still replay). */
-const heldNoticeEligible = (turn: Turn) => heldNoticeReason(turn.held)
-  && (turn.held !== 'call cap' || turn.requestedSummary !== undefined) && turn.limited === undefined
-  && turn.heldNoticeCoveredBy === undefined;
 /** Rule 87: every push is classified at the one send boundary. `status` is pull-only (status,
  * self-state, digest) and is never pushed; a limited answer to an incoming message is its result. */
 export type OutboundDisposition = 'result' | 'action-needed' | 'status';
 export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval';
 export const OUTBOUND_DISPOSITIONS: Readonly<Record<OutboundKind, OutboundDisposition>> = Object.freeze({ reply: 'result',
-  'held-notice': 'result', reminder: 'result', 'limited-answer': 'action-needed', incident: 'action-needed', approval: 'action-needed' });
+  // An unchanged held status is pull-only (Rule 87): it stays in `status`, never a push.
+  'held-notice': 'status', reminder: 'result', 'limited-answer': 'action-needed', incident: 'action-needed', approval: 'action-needed' });
 
 /** Rolling reserve use: accepted reserve turns, and limited answers (one per lead). */
 export const reserveTurnsUsed = (view: JournalView, at: number) =>
   view.order.filter(turn => turn.reserve && turn.at > at - MINIMAL_RESERVE.windowMs).length;
 export const reserveRepliesUsed = (view: JournalView, at: number) =>
-  view.order.filter(turn => turn.limited?.lead === turn.id && turn.limited.at > at - MINIMAL_RESERVE.windowMs).length;
+  view.order.filter(turn => turn.limited?.lead === turn.id && turn.approval?.action !== 'stop'
+    && turn.limited.at > at - MINIMAL_RESERVE.windowMs).length;
 /** A turn past the ordinary turn allowance gets only the limited answer until the allowance grows. */
 export const outsideAllowance = (view: JournalView, turn: Turn) => view.order.indexOf(turn) >= view.limits.maxTurns;
 /** The journal state an operator request is bound to: genesis, current limits and stop. */
@@ -133,12 +148,34 @@ export const approvalBase = (view: JournalView) =>
   createHash('sha256').update(JSON.stringify([genesisHash(view.genesis), view.limits, view.stop])).digest('hex').slice(0, 16);
 export const approvalId = (turnId: string, action: ApprovalRequest['action'], base: string) =>
   createHash('sha256').update(JSON.stringify([turnId, action, base])).digest('hex').slice(0, 16);
-/** Phone-native primary actions, approve first (Rule 80); the payload carries only the request id. */
+/** Phone-native primary actions, approve first (Rule 80); the payload carries only the request id.
+ * Used for the stop confirmation, whose press is the bound operator's brake and grants nothing. */
 export const approvalMarkup = (id: string) => ({ inline_keyboard: [[{ text: 'Approve', callback_data: `ap:${id}` },
   { text: 'Decline', callback_data: `dc:${id}` }]] });
+/** A raise is approved on the independent approval page (the link), never by a chat press; Decline stays a press. */
+export const raiseMarkup = (id: string, link: string | null) => ({ inline_keyboard: [[
+  ...(link === null ? [] : [{ text: 'Review and approve', url: link }]), { text: 'Decline', callback_data: `dc:${id}` }]] });
+export const RAISE_LINK_HINT = 'Open the approval page below to approve it, or tap Decline.';
+export const RAISE_SURFACE_HINT = 'Approve it on your approval page, or tap Decline.';
+export const RAISE_NEEDS_SURFACE = 'A raise is approved on your approval page, not here. Nothing changed.';
+/** The preview's register generation, named in every challenge it asks the verifier to issue. */
+export const PREVIEW_REGISTER_GENERATION = Object.freeze({ owner: 'part-three', name: 'RegisterGeneration',
+  id: 'preview:register' }) as RegisterGenerationReference;
+/** The principal the verifier must prove for a raise: the bound operator, never the channel. */
+export const approvalOperator = (view: JournalView) => `telegram:${view.genesis.operator}`;
+/** The receipt a raise consumes: the verifier's proof for exactly this challenge, operator and decision. */
+export function verifiedApproval(challenge: SurfaceChallenge, proof: VerifiedSurfaceProof,
+  decision: 'approve' | 'decline'): VerifiedApproval | null {
+  if (proof?.challenge !== challenge.id || proof.principal?.id !== challenge.operator
+    || proof.provenance?.class !== 'verified' || typeof proof.provenance.record?.hash !== 'string'
+    || decision === 'approve' && (proof.act === null || proof.act === undefined)) return null;
+  return { challenge: challenge.id, principal: proof.principal.id, receipt: proof.provenance.record.hash };
+}
 /** The open request of one action, if any, still bound to the current base. */
-export const openApproval = (view: JournalView, action: ApprovalRequest['action']) => view.order.find(turn =>
-  turn.approval?.action === action && turn.approval.decision === undefined && turn.approval.base === approvalBase(view));
+export const openApproval = (view: JournalView, action: ApprovalRequest['action'], at?: number) => view.order.find(turn =>
+  turn.approval?.action === action && turn.approval.decision === undefined && turn.approval.base === approvalBase(view)
+  // A raise whose challenge has expired can no longer complete, so a fresh request may be offered.
+  && (at === undefined || turn.approval.challenge === undefined || at <= turn.approval.challenge.expiresAt));
 /** The prefilled cap raise: the capped allowance grows by its original trial amount. */
 export function proposedLimits(view: JournalView, reason: LimitedReason) {
   const { maxCalls, maxReplies, maxTurns } = view.limits, g = view.genesis;
@@ -152,14 +189,17 @@ export function approvalRequestText(view: JournalView, reason: LimitedReason): s
   const [what, from, to, effect] = reason === 'calls' ? ['model call', view.limits.maxCalls, next.maxCalls, 'model calls I may spend']
     : reason === 'replies' ? ['reply', view.limits.maxReplies, next.maxReplies, 'replies I may send']
       : ['message', view.limits.maxTurns, next.maxTurns, 'messages I may take'];
-  return `Approve raising the ${what} allowance from ${from} to ${to}? That adds ${to - from} ${effect} in this trial. Tap Approve or Decline below.`;
+  return `Approve raising the ${what} allowance from ${from} to ${to}? That adds ${to - from} ${effect} in this trial.`;
 }
 function validApproval(view: JournalView, turnId: string, approval: ApprovalRequest, action: ApprovalRequest['action'], text: string,
   reason?: LimitedReason): boolean {
   return approval.action === action && approval.base === approvalBase(view) && approval.id === approvalId(turnId, action, approval.base)
     && view.stop === null && (action === 'stop' ? approval.limits === undefined && text.includes(STOP_CONFIRM_TEXT)
     : reason !== undefined && JSON.stringify(approval.limits) === JSON.stringify(proposedLimits(view, reason))
-      && text.includes(approvalRequestText(view, reason)));
+      && text.includes(approvalRequestText(view, reason))
+      && (approval.challenge === undefined || approval.challenge.request === approval.id && approval.challenge.base === approval.base
+        && approval.challenge.action === 'raise-caps' && approval.challenge.singleUse === true
+        && approval.challenge.operator === approvalOperator(view)));
 }
 /** The limited answer's fixed wording: what happened, what it needs, nothing it cannot keep. */
 export function limitedAnswerText(view: JournalView, reason: LimitedReason, count: number): string {
@@ -247,7 +287,10 @@ export type JournalRecord =
     approval?: ApprovalRequest; at: number }
   /** The verified operator's button press on a prefilled request; its raw Telegram update is kept. */
   | { kind: 'approval-decision'; id: string; request: string; decision: 'approve' | 'decline'; outcome: ApprovalOutcome | 'duplicate';
-    update: number; raw: string; cursor: number; at: number }
+    /** A Telegram press keeps its raw update; a raise's approval instead carries the verifier's receipt. */
+    update?: number; raw?: string; cursor?: number; verified?: VerifiedApproval; at: number }
+  /** The minimal path was not admitted for this message: it stays preserved and the outage is owned (Rule 15). */
+  | { kind: 'minimal-outage'; id: string; missing: string[]; at: number }
   | { kind: 'limited-sent'; id: string; message: number; at: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
@@ -301,7 +344,9 @@ export type JournalRecord =
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
     scope: 'initiated-dated-reminders'; custodian: string; recovery: 'unknown-never-retry'; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number }
-  | { kind: 'stop'; reason: string; at: number }
+  | { kind: 'stop'; reason: string; at: number;
+    /** An exact /stop the minimal path could not confirm by message latches at once; its update is kept. */
+    update?: number; raw?: string }
   | { kind: 'caps'; genesisHash: string; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }
   | { kind: 'expiry'; genesisHash: string; expires: number; activation: string; authority: string; at: number }
   | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; level?: 'near'; at: number }
@@ -346,7 +391,11 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reserve?: true;
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
   limited?: { text: string; at: number; lead: string; reason: LimitedReason }; limitedSent?: number;
-  approval?: ApprovalRequest & { decision?: ApprovalOutcome; decidedBy?: number; applied?: true };
+  /** The owned minimal-path outage for this preserved message: which required dependency was missing. */
+  minimalOutage?: { missing: string[]; at: number };
+  approval?: ApprovalRequest & { decision?: ApprovalOutcome; decidedBy?: number; applied?: true; verified?: VerifiedApproval;
+    /** Every Telegram update that pressed this request; a press seen again is never a second decision. */
+    presses?: number[] };
   /** Set only on a runner-authored turn created from a due slot of a requested summary. */
   requestedSummary?: { grant: string; slot: string; window: SummaryWindow; late?: { minutes: number; skipped: number } };
   /** A requested summary sent inside another summary turn's one message, and that turn's grouped ids. */
@@ -425,10 +474,6 @@ function settleTokens(view: JournalView, key: string, usage?: ModelUsage, jev = 
 const summaryJevTokenKey = (view: JournalView, kind: 'faithfulness' | 'integrity', through: number) =>
   `summary-${kind}:${String(through)}:${String(view.summaryFailures.get(through) ?? 0)}`;
 
-function heldNoticeDueAt(view: JournalView, turn: Turn): number {
-  const lastNotice = lastHeldNoticeAt(view);
-  return Math.max(turn.heldSince! + HELD_NOTICE_AFTER_MS + 1, lastNotice + HELD_NOTICE_WINDOW_MS);
-}
 function lastHeldNoticeAt(view: JournalView, exceptId?: string): number {
   return view.awayEvents.reduce((last, event) => event.kind === 'held-notice-intent' && event.id !== exceptId
     ? Math.max(last, event.at) : last, -Infinity);
@@ -742,6 +787,8 @@ const reminderTail = (view: JournalView, items: readonly DatedItem[], overflow: 
   `${requestedReminderLines(view, items)}${overflow ? `\n${reminderOverflowLine(overflow)}` : ''}`;
 /** Rule 52: requested summaries of one slot that do not fit in full are named in an overview. */
 export const summaryOverviewLead = 'Also due now, saved in full (ask me and I will send it):';
+/** When not even one summary fits beside the rest, the one message is this overview of all of them. */
+export const summaryOverviewOnlyLead = 'PREVIEW — Summaries you asked for are due now, each saved in full (ask me and I will send it):';
 
 /** Windows a requested summary may cover; each is one `requestedPeriod` calendar window. */
 const SUMMARY_PERIOD = /^(?:today|yesterday|this week|last week|this month|last month|past (?:[1-9]|[12]\d|3[01]) days?)$/u;
@@ -1097,8 +1144,9 @@ function project(view: JournalView, row: JournalRecord): void {
     checkCaps(view, row, 'replay');
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
     view.capAuthority = row.authority; view.capRaisedAt = row.at;
-    // A raise the verified operator approved from the phone completes that request.
-    const approved = /^telegram-approval:([0-9a-f]{16}):update:\d+$/u.exec(row.authority)?.[1];
+    // A raise completed through the independent verifier marks its request applied. (The earlier
+    // Telegram-press authority is still read so an older journal replays unchanged.)
+    const approved = /^(?:verified-approval|telegram-approval):([0-9a-f]{16}):/u.exec(row.authority)?.[1];
     const request = approved === undefined ? undefined : view.order.find(turn => turn.approval?.id === approved)?.approval;
     if (request?.decision === 'approved') request.applied = true;
     for (const turn of view.heldTurns) if (turn.held === 'call cap' || turn.held === 'reply cap') {
@@ -1438,7 +1486,8 @@ function project(view: JournalView, row: JournalRecord): void {
       || covered.some(item => !item || !item.accepted || item.intent !== undefined || item.limited !== undefined
         || item.thread !== row.thread || item.requestedSummary !== undefined)
       || row.chat !== view.genesis.chat || row.grant !== view.genesis.grant || view.stop !== null
-      || !['turns', 'calls', 'replies'].includes(row.reason) || reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies
+      || !['turns', 'calls', 'replies'].includes(row.reason)
+      || row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies
       || row.approval !== undefined && (row.approval.action === 'stop' ? !isStopCommand(turn.text) || row.covers.length !== 1
         || !validApproval(view, row.id, row.approval, 'stop', row.text)
         : !validApproval(view, row.id, row.approval, 'raise-caps', row.text, row.reason)))
@@ -1448,16 +1497,30 @@ function project(view: JournalView, row: JournalRecord): void {
     return;
   }
   if (row.kind === 'approval-decision') {
-    const approval = turn.approval;
+    const approval = turn.approval, press = row.update !== undefined;
+    // A Telegram press carries its update and a cursor that never passes an update still waiting at
+    // Telegram. An approved raise instead carries the independent verifier's receipt for its challenge.
     if (!approval || approval.id !== row.request || !['approve', 'decline'].includes(row.decision)
       || (row.outcome === 'duplicate') !== (approval.decision !== undefined)
-      || row.outcome === 'approved' && (row.decision !== 'approve' || approval.base !== approvalBase(view) || view.stop !== null)
+      || row.outcome === 'approved' && (row.decision !== 'approve' || approval.base !== approvalBase(view) || view.stop !== null
+        || (approval.action === 'raise-caps') !== (row.verified !== undefined)
+        || row.verified !== undefined && (row.verified.challenge !== approval.challenge?.id || press))
       || row.outcome === 'declined' && row.decision !== 'decline'
       || !['approved', 'declined', 'stale', 'refused', 'duplicate'].includes(row.outcome)
-      || !Number.isSafeInteger(row.update) || row.cursor !== row.update + 1)
+      || press !== (row.raw !== undefined) || press !== (row.cursor !== undefined)
+      || press && (!Number.isSafeInteger(row.update) || !Number.isSafeInteger(row.cursor) || row.cursor! > row.update! + 1))
       throw Error('preview journal: approval decision order');
-    if (row.outcome !== 'duplicate') { approval.decision = row.outcome; approval.decidedBy = row.update; }
-    view.cursor = Math.max(view.cursor, row.cursor); return;
+    if (row.outcome !== 'duplicate') {
+      approval.decision = row.outcome;
+      if (press) approval.decidedBy = row.update!; else if (row.verified) approval.verified = { ...row.verified };
+    }
+    if (press) { (approval.presses ??= []).push(row.update!); view.cursor = Math.max(view.cursor, row.cursor!); }
+    return;
+  }
+  if (row.kind === 'minimal-outage') {
+    if (!turn.accepted || turn.limited !== undefined || !Array.isArray(row.missing) || !row.missing.length
+      || row.missing.some(item => typeof item !== 'string' || !item)) throw Error('preview journal: minimal outage order');
+    turn.minimalOutage = { missing: [...row.missing], at: row.at }; return;
   }
   if (row.kind === 'limited-sent') {
     if (turn.limited?.lead !== turn.id || turn.limitedSent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0)
@@ -1697,13 +1760,13 @@ function project(view: JournalView, row: JournalRecord): void {
       const overflow = row.reminderOverflow === undefined ? [] : Array.isArray(row.reminderOverflow) && row.reminderOverflow.length
         ? row.reminderOverflow.map(ref => pending.find(item => datedKey(item) === reminderKey(ref))) : [undefined];
       const batches = [...view.reminders.values()].filter(batch => batch.requested).length;
-      if (!turn.requestedSummary || !items.length || [...items, ...overflow].some(item => !item || reminderDue(item) > localStamp(row.at, item.zone)
+      if (!turn.requestedSummary || !items.length && !overflow.length || [...items, ...overflow].some(item => !item || reminderDue(item) > localStamp(row.at, item.zone)
           || view.turns.get(item.source)?.thread !== turn.thread) || new Set([...items, ...overflow]).size !== items.length + overflow.length
         || row.reminderBatch !== batches || row.text === HOLDING_REPLY
         || !row.text.endsWith(`\n${reminderTail(view, items as DatedItem[], overflow.length)}`))
         throw Error('preview journal: grouped reminder refused');
       view.reminders.set(requestedBatchKey(batches), { items: [...row.reminders, ...(row.reminderOverflow ?? [])],
-        text: reminderTail(view, items as DatedItem[], overflow.length), day: items[0]!.day!, at: row.at, requested: true });
+        text: reminderTail(view, items as DatedItem[], overflow.length), day: (items[0] ?? overflow[0])!.day!, at: row.at, requested: true });
       turn.reminderBatch = batches;
     }
     if (row.summaries !== undefined) {
@@ -1848,7 +1911,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (view && (((row.kind === 'intake' || row.kind === 'summary-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns
           && !(row.kind === 'intake' && row.reserve === true && (!row.accepted || reserveTurnsUsed(view, row.at) < MINIMAL_RESERVE.turns)))
         || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
-        || (row.kind === 'limited-intent' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
+        || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve'
           || row.kind === 'reply-revision-reserve') && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
@@ -2047,6 +2110,13 @@ export interface PreviewPorts {
   checkOutbound(text: string): void;
   /** Clears a pressed button on the operator's phone with a short toast; never a push, never required. */
   acknowledge?(callbackId: string, text: string): void;
+  /** Part Eleven's minimal-path owner inputs (Rule 15, §5): its boundary context and the host's current
+   * observation of each required dependency. Absent: the minimal path is never admitted. */
+  minimal?: { context: BoundaryContext; dependencies(): Readonly<Record<MinimalDependency, boolean>> };
+  /** The independently administered approval surface (Part Nine's verifier port). A cap raise completes
+   * only with its verified act; absent, no raise is completable from chat (Purpose; Rules 79, 82, 98). */
+  approvalSurface?: { verifier: IndependentSurfaceVerifierPort; link(challenge: SurfaceChallenge): string | null;
+    acts(): readonly VerifiedActSubmission[] };
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -2094,31 +2164,30 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (disposition === 'status') throw Error('preview: status is pull-only and never pushed');
     return ports.send({ ...input, kind, disposition });
   };
-  const pollLimit = () => {
-    gate();
-    const ordinary = journal.view.limits.maxTurns - journal.view.order.length;
-    return Math.min(100, ordinary > 0 ? ordinary : Math.max(0, MINIMAL_RESERVE.turns - reserveTurnsUsed(journal.view, ports.now())));
-  };
-  const pollGate = () => {
-    if (pollLimit() === 0) throw Error('preview poll capacity reached: minimal reserve spent for this hour');
-  };
-  const nextHeldNoticeAt = () => {
-    return journal.view.order.filter(turn => turn.accepted && heldNoticeEligible(turn)
-    && turn.heldSince !== undefined && turn.intent === undefined && turn.heldNoticeIntent === undefined
-    && journal.view.replies < journal.view.limits.maxReplies)
-      .reduce<number | null>((due, turn) => Math.min(due ?? Infinity, heldNoticeDueAt(journal.view, turn)), null);
-  };
+  // Reading never stops at a capacity bound: stop and approval presses must stay reachable. A message
+  // past every bound waits at Telegram (the cursor holds before it) while later presses are still read.
+  const pollLimit = () => { gate(); return MINIMAL_POLL_LIMIT; };
+  const pollGate = () => { pollLimit(); };
+  let intakeHeld = false;
   const intake = (updates: readonly TelegramUpdate[]) => {
     gate();
+    // Held: an operator message past every bound waits at Telegram and the cursor stays before it.
+    // Later presses and an exact /stop are still read, recorded without moving the cursor (Rules 14, 15).
+    let held = false;
     for (const update of [...updates].sort((a, b) => a.update_id - b.update_id)) {
-      if (update.callback_query && update.update_id >= journal.view.cursor && decideApproval(update)) continue;
+      if (journal.view.stop !== null) break;
+      if (update.callback_query && update.update_id >= journal.view.cursor && decideApproval(update, held)) continue;
+      if (held && update.callback_query) continue;
       const parsed = admittedUpdate(journal.view.genesis, update), prior = journal.view.turns.get(parsed.id);
       if (prior) continue;
-      // A poll may return more than one update even when one slot was left.
-      // Keep the cursor before the first unrecorded update so it can be fetched
-      // after an authorized raise; never append an unreplayable over-cap frame.
       const reserve = journal.view.order.length >= journal.view.limits.maxTurns;
-      if (reserve && parsed.accepted && reserveTurnsUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.turns) break;
+      if (!held && reserve && parsed.accepted && reserveTurnsUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.turns) held = true;
+      if (held) {
+        // The brake needs no reply: an exact /stop past every bound latches at once, its update kept.
+        if (parsed.accepted && isStopCommand(parsed.text))
+          journal.append({ kind: 'stop', reason: 'operator', update: update.update_id, raw: JSON.stringify(update), at: ports.now() });
+        continue;
+      }
       let editOf: string | undefined, replaces: string | undefined;
       if (update.edited_message && parsed.accepted && Number.isSafeInteger(update.edited_message.message_id)
         && update.edited_message.message_id! > 0) {
@@ -2146,41 +2215,67 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }),
         ...(reserve ? { reserve: true as const } : {}) });
     }
+    intakeHeld = held;
     return journal.view.cursor;
   };
-  /** Rules 79/82/98: only the verified operator's press on an exact, current request decides it;
-   * silence, text and a stale base never approve. The raw update is retained with the decision. */
-  const decideApproval = (update: TelegramUpdate): boolean => {
+  /** Rules 79/82/98: the verified operator's press may decline a request or confirm the brake. It can
+   * never approve a cap raise: channel attestation cannot complete authority (Eleven §2), so an Approve
+   * press on a raise decides nothing. Silence, text and a stale base never approve. A press seen again
+   * while the cursor is held is not a second decision. */
+  const decideApproval = (update: TelegramUpdate, held: boolean): boolean => {
     const query = update.callback_query!, match = /^(ap|dc):([0-9a-f]{16})$/u.exec(query.data ?? '');
     const verified = String(query.from?.id) === journal.view.genesis.operator && query.message?.chat?.type === 'private'
       && String(query.message.chat.id) === journal.view.genesis.chat;
     const lead = match && verified ? journal.view.order.find(turn => turn.approval?.id === match[2]) : undefined;
     if (!lead || !match) return false;
     const approval = lead.approval!, decision = match[1] === 'ap' ? 'approve' as const : 'decline' as const;
+    const toast = (text: string) => { try { if (typeof query.id === 'string') ports.acknowledge?.(query.id, text); } catch { /* never required */ } };
+    if (approval.action === 'raise-caps' && decision === 'approve') { toast(RAISE_NEEDS_SURFACE); return false; }
+    const seen = approval.presses?.includes(update.update_id) === true;
+    if (seen && held) return true;
     const outcome = approval.decision !== undefined ? 'duplicate' as const : decision === 'decline' ? 'declined' as const
-      : approval.base !== approvalBase(journal.view) || journal.view.stop !== null ? 'stale' as const
-        : approval.action === 'raise-caps' && unknownCallCounts(journal.view).total > 0 ? 'refused' as const : 'approved' as const;
+      : approval.base !== approvalBase(journal.view) || journal.view.stop !== null ? 'stale' as const : 'approved' as const;
     journal.append({ kind: 'approval-decision', id: lead.id, request: approval.id, decision, outcome, update: update.update_id,
-      raw: JSON.stringify(update), cursor: update.update_id + 1, at: ports.now() });
+      raw: JSON.stringify(update), cursor: held ? journal.view.cursor : update.update_id + 1, at: ports.now() });
     completeApprovals();
-    const toast = outcome === 'duplicate' ? 'Already decided.' : outcome === 'declined' ? 'Declined. Nothing changed.'
+    if (!seen) toast(outcome === 'duplicate' ? 'Already decided.' : outcome === 'declined' ? 'Declined. Nothing changed.'
       : outcome === 'stale' ? 'This request is out of date. Send any message for a fresh one.'
-        : outcome === 'refused' ? 'Not raised: an earlier call has an unknown outcome. Nothing changed.'
-          : approval.action === 'stop' ? 'Stopped. Nothing more will be sent or spent.' : 'Approved. Answering your saved messages now.';
-    try { if (typeof query.id === 'string') ports.acknowledge?.(query.id, toast); } catch { /* a toast is never required */ }
+        : 'Stopped. Nothing more will be sent or spent.');
     return true;
   };
-  /** An approved request is applied exactly once, including after a crash between decision and effect. */
+  /** A confirmed stop latches once. A cap raise completes only here, the moment the independent verifier
+   * accepts the operator's act for the exact current challenge; it is never replayed from journal rows,
+   * which the agent can write. A crash after the decision leaves it unapplied and a fresh request follows. */
   const completeApprovals = () => {
     for (const turn of journal.view.order) {
       const approval = turn.approval;
-      if (approval?.decision !== 'approved' || approval.applied || journal.view.stop !== null) continue;
-      if (approval.action === 'stop') { journal.append({ kind: 'stop', reason: 'operator', at: ports.now() }); return; }
-      if (approval.base !== approvalBase(journal.view) || !approval.limits || unknownCallCounts(journal.view).total > 0) continue;
-      // A raise the journal refuses (for example a newly UNKNOWN call) stays approved-unapplied and
-      // visible; it never crashes intake or the drain.
-      try { raiseJournalCaps(journal, { ...approval.limits, authority: `telegram-approval:${approval.id}:update:${String(approval.decidedBy)}`,
-        at: ports.now() }); } catch { /* retried at the next drain while its base is still current */ }
+      if (approval?.action !== 'stop' || approval.decision !== 'approved' || approval.applied || journal.view.stop !== null) continue;
+      journal.append({ kind: 'stop', reason: 'operator', at: ports.now() }); return;
+    }
+    const surface = ports.approvalSurface;
+    if (!surface || journal.view.stop !== null) return;
+    let acts: readonly VerifiedActSubmission[];
+    try { acts = surface.acts(); } catch { return; }
+    for (const act of acts.slice(0, MINIMAL_POLL_LIMIT)) {
+      const lead = typeof act?.challenge === 'string'
+        ? journal.view.order.find(turn => turn.approval?.challenge?.id === act.challenge) : undefined;
+      const approval = lead?.approval, challenge = approval?.challenge;
+      if (!lead || !approval || !challenge || approval.decision !== undefined || approval.action !== 'raise-caps'
+        || (act.decision !== 'approve' && act.decision !== 'decline') || typeof act.proof !== 'string') continue;
+      let proof: Parameters<typeof verifiedApproval>[1] | null = null;
+      try { consumeResult(surface.verifier.verify(challenge, act.proof, act.decision),
+        { Success: value => { proof = value; }, Refused: () => { proof = null; } }); } catch { proof = null; }
+      const receipt = proof === null ? null : verifiedApproval(challenge, proof, act.decision);
+      if (receipt === null) continue;
+      const now = ports.now();
+      const outcome = act.decision === 'decline' ? 'declined' as const
+        : approval.base !== approvalBase(journal.view) || now > challenge.expiresAt || challenge.base !== approval.base ? 'stale' as const
+          : unknownCallCounts(journal.view).total > 0 ? 'refused' as const : 'approved' as const;
+      journal.append({ kind: 'approval-decision', id: lead.id, request: approval.id, decision: act.decision, outcome,
+        verified: receipt, at: now });
+      if (outcome !== 'approved' || !approval.limits) continue;
+      try { raiseJournalCaps(journal, { ...approval.limits, authority: `verified-approval:${approval.id}:${challenge.id}`, at: now }); }
+      catch { /* refused by the journal (for example a new UNKNOWN call): stays approved-unapplied, visible */ }
     }
   };
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
@@ -4065,8 +4160,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
         } else if (linkRules.length) release = { review: 'violation', objections: linkRules, reason: LINK_SHAPE_REASON, revised: false };
         gate();
-        // Rule 52: requested summaries due at this slot in this topic go out as one message, in fitting parts.
+        // Rule 52: requested summaries due at this slot in this topic, and requested reminders due now in
+        // it, go out as ONE message. Room for the overview of what does not fit and for the reminder count
+        // line is reserved before any full body is chosen, so nothing left over can need a second push.
         const batch: Turn[] = [];
+        const grouped: DatedItem[] = [], groupedOverflow: DatedItem[] = [];
         if (summaryHeader !== undefined) {
           if (summaryBlocked(turn)) { deferred.add(turn.id); continue; }
           ready.set(turn.id, { reply, mentionedKeys: heldBack ? [] : mentionedKeys });
@@ -4074,43 +4172,55 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const siblings = journal.view.order.filter(item => item !== turn && item.requestedSummary !== undefined && item.accepted
             && item.intent === undefined && !summaryBlocked(item) && summaryGroup(journal.view, item) === group);
           if (pass === 0 && siblings.some(item => item.update > turn.update && !item.held)) { deferred.add(turn.id); continue; }
-          const join = (items: Turn[]) => [...items].sort((a, b) => a.update - b.update).map(item => ready.get(item.id)!.reply).join('\n\n');
+          const byUpdate = (items: Turn[]) => [...items].sort((a, b) => a.update - b.update);
           const fitsOne = (text: string) => { const encoded = encodeReply(text);
             return Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096; };
-          for (const item of siblings) {
-            if (!ready.has(item.id)) continue;
-            if (fitsOne(join([turn, ...batch, item]))) batch.push(item);
-          }
-          if (batch.length) {
-            reply = join([turn, ...batch]);
-            mentionedKeys = [...new Set([...mentionedKeys, ...batch.flatMap(item => ready.get(item.id)!.mentionedKeys)])];
-          }
-          // Rule 52: a sibling that does not fit in full is named in a short overview inside this
-          // same message; its full text stays in the journal. Never a second push for the slot.
-          const overflow = siblings.filter(item => ready.has(item.id) && !batch.includes(item));
-          const overview = (items: Turn[]) => `\n\n${summaryOverviewLead}\n${[...items].sort((a, b) => a.update - b.update)
-            .map(item => requestedSummaryHeader(journal.view, item)).join('\n')}`;
-          if (overflow.length && fitsOne(`${reply}${overview(overflow)}`)) {
-            reply = `${reply}${overview(overflow)}`; batch.push(...overflow);
-          }
-        }
-        // Rule 52: requested reminders due now in this conversation join the requested summary's one message.
-        const grouped: DatedItem[] = [], groupedOverflow: DatedItem[] = [];
-        if (summaryHeader !== undefined && !heldBack && !unresolvedReminderMemory()) {
-          const fitsWith = (items: DatedItem[], overflow: number) => {
-            const candidate = encodeReply(`${reply}\n${reminderTail(journal.view, items, overflow)}`);
-            return Buffer.byteLength(candidate) <= 4096 && Array.from(candidate).length <= 4096;
-          };
-          const due = dueRequestedReminders(turn.thread).filter(item => {
+          const headers = (items: Turn[]) => byUpdate(items).map(item => requestedSummaryHeader(journal.view, item)).join('\n');
+          const due = heldBack || unresolvedReminderMemory() ? [] : dueRequestedReminders(turn.thread).filter(item => {
             try { ports.checkOutbound(reminderBody(requestedReminderLines(journal.view, [item]))); return true; } catch { return false; }
           });
-          for (const item of due) if (fitsWith([...grouped, item], due.length - grouped.length - 1)) grouped.push(item);
-          // Rule 52: the rest become one count line in the same message, never a later push.
-          const rest = due.filter(item => !grouped.includes(item));
-          if (grouped.length && rest.length && fitsWith(grouped, rest.length)) groupedOverflow.push(...rest);
-          if (grouped.length) reply = `${reply}\n${reminderTail(journal.view, grouped, groupedOverflow.length)}`;
+          const tail = (items: DatedItem[], overflow: number) => items.length + overflow
+            ? `\n${reminderTail(journal.view, items, overflow)}` : '';
+          const ready_ = siblings.filter(item => ready.has(item.id));
+          const compose = (full: Turn[], over: Turn[]) => `${byUpdate([turn, ...full]).map(item => ready.get(item.id)!.reply).join('\n\n')}${
+            over.length ? `\n\n${summaryOverviewLead}\n${headers(over)}` : ''}`;
+          const minimalTail = tail([], due.length);
+          let summaryText: string;
+          let full: Turn[] = [];
+          if (fitsOne(`${compose([], ready_)}${minimalTail}`)) {
+            for (const item of ready_) {
+              const next = [...full, item];
+              if (fitsOne(`${compose(next, ready_.filter(other => !next.includes(other)))}${minimalTail}`)) full = next;
+            }
+            summaryText = compose(full, ready_.filter(item => !full.includes(item)));
+            batch.push(...ready_);
+            mentionedKeys = [...new Set([...mentionedKeys, ...full.flatMap(item => ready.get(item.id)!.mentionedKeys)])];
+          } else {
+            // Even this summary and an overview do not fit: send one bounded overview naming every due
+            // summary; each full text stays in the journal, retrievable on request.
+            const named = [...ready_];
+            while (named.length && !fitsOne(`${summaryOverviewOnlyLead}\n${headers([turn, ...named])}${minimalTail}`)) named.pop();
+            summaryText = `${summaryOverviewOnlyLead}\n${headers([turn, ...named])}`;
+            batch.push(...named); mentionedKeys = [];
+          }
+          reply = summaryText;
+          // Reminders: every due one is at least counted; as many as fit are written out in full.
+          for (const item of due) if (fitsOne(`${reply}${tail([...grouped, item], due.length - grouped.length - 1)}`)) grouped.push(item);
+          groupedOverflow.push(...due.filter(item => !grouped.includes(item)));
+          reply = `${reply}${tail(grouped, groupedOverflow.length)}`;
         }
         if (Buffer.byteLength(reply) > 4096 || Array.from(reply).length > 4096) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
+        // Rule 106 on the final candidate: a revision or assembly can introduce a link the first check
+        // never saw. The findings are recorded against this exact text; they advise, never hold.
+        if (turn.answer !== undefined) {
+          const links = linkShapeRules(reply);
+          if (links.length) {
+            const prior = release?.objections ?? [];
+            release = { ...(release ?? { review: 'violation' as const, reason: LINK_SHAPE_REASON, revised: false }),
+              objections: [...new Set([...prior, ...links])],
+              final: { digest: createHash('sha256').update(reply).digest('hex'), links } };
+          }
+        }
         const body = encodeReply(reply);
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
@@ -4126,7 +4236,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(approval ? { approval } : {}),
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           ...(release === undefined ? {} : { release }),
-          ...(grouped.length ? { reminderBatch: [...journal.view.reminders.values()].filter(batch => batch.requested).length,
+          ...(grouped.length + groupedOverflow.length ? { reminderBatch: [...journal.view.reminders.values()].filter(batch => batch.requested).length,
             reminders: grouped.map(item => ({ source: item.source, quote: item.quote, when: item.when })),
             ...(groupedOverflow.length ? { reminderOverflow: groupedOverflow.map(item => ({ source: item.source, quote: item.quote, when: item.when })) } : {}) } : {}),
           ...(batch.length ? { summaries: batch.map(item => item.id) } : {}),
@@ -4142,35 +4252,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             journal.append({ kind: 'sent', id: turn.id, message, latencyMs: duration(sendStarted), at: ports.now() });
         } catch { /* exact intent stays UNKNOWN */ }
       }
-      // A held notice has its own one-shot intent. It never settles or redispatches
-      // the answer, so a later cap raise can still release that answer normally.
-      if (!due) for (const turn of journal.view.order) {
-        if (!turn.accepted || !heldNoticeEligible(turn) || turn.heldNoticeIntent !== undefined
-          || turn.intent !== undefined || turn.heldSince === undefined || summaryBlocked(turn)
-          || ports.now() < heldNoticeDueAt(journal.view, turn)
-          || journal.view.replies >= journal.view.limits.maxReplies) continue;
-        gate();
-        const parts = Object.fromEntries(zoneFormatter(ports.timeZone ?? 'UTC').formatToParts(messageTime(turn) ?? turn.at)
-          .map(part => [part.type, part.value]));
-        const heldCount = journal.view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
-        const due = turn.requestedSummary, grant = due && journal.view.summaryGrants.find(item => item.id === due.grant);
-        const reply = due && grant ? `PREVIEW — I'm holding the summary you asked for (due ${due.slot} ${grant.time}); it will follow or I'll tell you why`
-          : `PREVIEW — I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from ${parts.hour}:${parts.minute}; it will follow or I'll tell you why`;
-        ports.checkOutbound(reply);
-        const thread = turn.thread === undefined ? {} : { thread: turn.thread };
-        // One notice answers every held message waiting in this conversation; none is re-pushed (P-14).
-        const covers = journal.view.order.filter(item => item !== turn && item.accepted && heldNoticeEligible(item)
-          && item.heldNoticeIntent === undefined && item.intent === undefined && item.thread === turn.thread
-          && !summaryBlocked(item)).map(item => item.id);
-        journal.append({ kind: 'held-notice-intent', id: turn.id, text: reply, chat: journal.view.genesis.chat,
-          ...thread, update: turn.update, grant: journal.view.genesis.grant, ...(covers.length ? { covers } : {}), at: ports.now() });
-        gate();
-        try { const message = await push('held-notice', { text: reply, expectedText: reply, chat: journal.view.genesis.chat,
-          ...thread, update: turn.update });
-          if (message !== null && Number.isSafeInteger(message) && message > 0)
-            journal.append({ kind: 'held-notice-sent', id: turn.id, message, at: ports.now() });
-        } catch { /* held notice intent stays UNKNOWN; never repeat it */ }
-      }
+      // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
+      // held-notice rows still replay; no new held notice is ever pushed.
       if (!due) await answerLimited();
       // Edits consume the existing summary judgment, never the reply doorway.
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
@@ -4183,7 +4266,56 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     !turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedSummary !== undefined
       || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined ? null
       : outsideAllowance(journal.view, turn) ? 'turns' : turn.held === 'call cap' ? 'calls' : turn.held === 'reply cap' ? 'replies' : null;
+  /** Part Eleven's own verdict (src/operator/live.ts), never a local substitute: the minimal path speaks
+   * only while every required dependency the host observes is admitted. Returns what is missing. */
+  const minimalMissing = (): string[] => {
+    const minimal = ports.minimal;
+    if (!minimal) return ['minimal-path-owner'];
+    let admitted: Readonly<Record<MinimalDependency, boolean>>;
+    try { admitted = minimal.dependencies(); } catch { return ['dependency-observation']; }
+    let missing: string[] = ['minimal-path-owner'];
+    const refused = (result: Result<unknown>) => consumeResult(result, { Success: () => null, Refused: refusal => refusal.detail });
+    consumeResult(evaluateMinimalPath({ admitted, ordinaryUnavailable: ['ordinary allowance'], inputPreserved: true,
+      repairOwner: 'operator approval', maximumExposure: MINIMAL_RESERVE.replies }, minimal.context), {
+      Success: state => {
+        missing = [...state.missing];
+        if (missing.length) return;
+        const detail = refused(minimalResponse(state, { attributable: true, pending: ['preserved operator message'],
+          blocked: [], uncertain: [], emergencyStop: false }, minimal.context));
+        if (detail !== null) missing = [detail];
+      },
+      Refused: refusal => { missing = [refusal.detail]; } });
+    return missing;
+  };
+  /** A raise request exists only with a challenge the independent verifier issued for its exact subject. */
+  const issueRaise = (lead: Turn, reason: LimitedReason): ApprovalRequest | undefined => {
+    const surface = ports.approvalSurface, view = journal.view;
+    if (!surface) return undefined;
+    const base = approvalBase(view), id = approvalId(lead.id, 'raise-caps', base), limits = proposedLimits(view, reason), now = ports.now();
+    const digest = `sha256:${createHash('sha256').update(JSON.stringify([id, 'raise-caps', base, limits, view.genesis.grant])).digest('hex')}` as Hash;
+    const rendering = `sha256:${createHash('sha256').update(approvalRequestText(view, reason)).digest('hex')}` as Hash;
+    let challenge: SurfaceChallenge | null = null;
+    try {
+      consumeResult(surface.verifier.issue({ request: id, requestDigest: digest, renderingDigest: rendering, action: 'raise-caps',
+        scope: { type: 'Scope', schemaVersion: 1, kind: 'conversation', members: [view.genesis.chat] } as unknown as Scope,
+        audience: 'operator-private-chat', operator: approvalOperator(view), requestedBy: 'preview-agent', artifact: digest, base,
+        issuedAt: now, expiresAt: Math.min(view.expires, now + APPROVAL_CHALLENGE_MS), singleUse: true,
+        surface: 'preview-approval-surface', generation: PREVIEW_REGISTER_GENERATION }),
+      { Success: value => { challenge = value; }, Refused: () => { challenge = null; } });
+    } catch { challenge = null; }
+    const issued = challenge as SurfaceChallenge | null;
+    if (!issued || typeof issued.id !== 'string' || !issued.id || issued.request !== id || issued.requestDigest !== digest
+      || issued.base !== base || issued.singleUse !== true || !(issued.expiresAt > now)) return undefined;
+    return { id, action: 'raise-caps', base, limits, challenge: issued };
+  };
+  let limitedRunning = false;
   const answerLimited = async () => {
+    // One pass at a time: the runner calls it between polls while an ordinary drain may be awaiting a model.
+    if (limitedRunning) return;
+    limitedRunning = true;
+    try { await answerLimitedOnce(); } finally { limitedRunning = false; }
+  };
+  const answerLimitedOnce = async () => {
     const groups = new Map<string, { thread?: number; turns: Turn[]; reason: LimitedReason; stop?: true }>();
     for (const turn of journal.view.order) {
       const reason = limitedReason(turn);
@@ -4197,25 +4329,42 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     for (const group of groups.values()) {
       gate();
-      if (reserveRepliesUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.replies) return;
+      // A stop confirmation is bounded by the reserve turn that carried it, not by the answer budget.
+      if (!group.stop && reserveRepliesUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.replies) continue;
       const lead = group.turns[0]!, base = approvalBase(journal.view);
+      const missing = minimalMissing();
+      if (missing.length) {
+        // Not admitted: the message stays preserved and the outage is owned and visible. The brake
+        // needs no reply, so an exact /stop latches at once rather than waiting for one.
+        if (group.stop) { journal.append({ kind: 'stop', reason: 'operator', update: lead.update, raw: lead.raw, at: ports.now() }); return; }
+        if (JSON.stringify(lead.minimalOutage?.missing) !== JSON.stringify(missing))
+          journal.append({ kind: 'minimal-outage', id: lead.id, missing, at: ports.now() });
+        continue;
+      }
       // The limited answer carries the one prefilled request that would clear it (Rules 79, 82).
       const approval: ApprovalRequest | undefined = group.stop ? { id: approvalId(lead.id, 'stop', base), action: 'stop', base }
-        : openApproval(journal.view, 'raise-caps') ? undefined
-          : { id: approvalId(lead.id, 'raise-caps', base), action: 'raise-caps', base, limits: proposedLimits(journal.view, group.reason) };
+        : openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
+      const link = approval?.challenge ? approvalLink(approval.challenge) : null;
       const text = group.stop ? `PREVIEW — ${STOP_CONFIRM_TEXT}` : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
-        ? `\n\n${approvalRequestText(journal.view, group.reason)}` : ''}`;
+        ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}`;
       ports.checkOutbound(text);
       const thread = group.thread === undefined ? {} : { thread: group.thread };
       journal.append({ kind: 'limited-intent', id: lead.id, covers: group.turns.map(turn => turn.id), reason: group.reason,
         text, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, ...(approval ? { approval } : {}), at: ports.now() });
       gate();
+      const markup = approval === undefined ? undefined : approval.action === 'stop' ? approvalMarkup(approval.id) : raiseMarkup(approval.id, link);
       try { const message = await push('limited-answer', { text, expectedText: text, chat: journal.view.genesis.chat, ...thread,
-        update: lead.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) });
+        update: lead.update, ...(markup ? { replyMarkup: markup } : {}) });
         if (message !== null && Number.isSafeInteger(message) && message > 0)
           journal.append({ kind: 'limited-sent', id: lead.id, message, at: ports.now() });
       } catch { /* the limited answer stays UNKNOWN; never repeated */ }
     }
+  };
+  /** A usable approval-page link (Rule 106): complete, https, and never a machine-local address. */
+  const approvalLink = (challenge: SurfaceChallenge) => {
+    let link: string | null = null;
+    try { link = ports.approvalSurface?.link(challenge) ?? null; } catch { link = null; }
+    return typeof link === 'string' && /^https:\/\/[^\s]+$/u.test(link) && !linkShapeRules(link).length ? link : null;
   };
   /** Keeps only proposed notes whose name and quote occur exactly in one accepted message
    * the summary packet showed verbatim; anything else is dropped, never repaired. */
@@ -4941,7 +5090,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       raw: JSON.stringify({ message: { from: { id: journal.view.genesis.operator } } }), accepted: true,
       at: ports.now(), reserved: false });
   };
-  return { intake, drain, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, nextHeldNoticeAt, probe,
+  /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
+   * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
+  const minimal = async () => { gate(); completeApprovals(); await answerLimited(); };
+  return { intake, drain, minimal, intakeHeld: () => intakeHeld, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

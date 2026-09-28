@@ -26,7 +26,6 @@ import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
-import { journalIncidentText } from '../../scripts/host-watch.mjs';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -220,7 +219,7 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory', 'incident-notice'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -237,45 +236,6 @@ async function main() {
   if (command === 'stop') {
     if (!existsSync(journalPath)) throw Error('preview: journal absent');
     if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: wallNow(), reason: 'operator' });
-    return;
-  }
-  if (command === 'incident-notice') {
-    // Rules 53/88: the one incident notice the independent supervisor prepared after self-heal was
-    // exhausted. It goes only to the granted alerts destination (the operator's bound private chat or
-    // one topic in it), never creates a conversation, and is sent at most once: the durable episode is
-    // its cause and its only ledger, so a broken journal cannot silence it or cause a repeat.
-    const episodePath = required(options, 'episode');
-    if (episodePath !== join(root, 'host-watch.json')) throw Error('preview: incident episode path refused');
-    const episode = JSON.parse(readFileSync(episodePath, 'utf8'));
-    const thread = options['alerts-thread'] === undefined ? undefined : number(options['alerts-thread'], 'alerts-thread');
-    if (episode.version !== 1 || episode.mode !== 'journal' || episode.open !== true || episode.phase !== 'prepared'
-      || !Number.isSafeInteger(episode.failedAttempts) || episode.failedAttempts < 1 || !Array.isArray(episode.failures)
-      || episode.failures.length < 1 || episode.text !== journalIncidentText(episode) || !required(options, 'alerts-grant').trim()
-      || required(options, 'chat-id') !== required(options, 'operator-sender-id')) throw Error('preview: incident refused');
-    const sending = { ...episode, phase: 'sending', alertsGrant: options['alerts-grant'], ...(thread === undefined ? {} : { alertsThread: thread }) };
-    durablePreviewWrite(episodePath, sending);
-    if (existsSync(stopPath)) { durablePreviewWrite(episodePath, { ...sending, phase: 'refused-stopped' }); return; }
-    const captures = new Map();
-    const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
-    if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-      || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
-    mkdirSync(join(root, '.writer'), { recursive: true, mode: 0o700 });
-    const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
-      if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
-    }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
-    const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
-      identityBinding: { id: number(required(options, 'bot-id'), 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
-    if (identity.kind !== 'identity') { durablePreviewWrite(episodePath, { ...sending, phase: 'unknown' }); return; }
-    if (redact(episode.text).count) throw Error('preview: outbound secret refused');
-    const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
-      body: { chat_id: options['chat-id'], text: episode.text, ...(thread === undefined ? {} : { message_thread_id: thread }) },
-      timeoutMs: 30000 }, token());
-    let message = null;
-    try { const payload = reply.kind === 'response' && reply.status === 200 ? JSON.parse(reply.bytes) : null;
-      if (payload?.ok === true && String(payload.result?.chat?.id) === options['chat-id'] && payload.result?.text === episode.text
-        && Number.isSafeInteger(payload.result?.message_id)) message = payload.result.message_id; } catch { /* UNKNOWN */ }
-    durablePreviewWrite(episodePath, { ...sending, phase: message === null ? 'unknown' : 'notified',
-      ...(message === null ? {} : { message }) });
     return;
   }
   if (command === 'audit') {
@@ -361,7 +321,18 @@ async function main() {
         reserveTurns: view.view.order.filter(t => t.reserve).length,
         limitedAnswers: view.view.order.filter(t => t.limited?.lead === t.id).map(t => ({ update: t.update, reason: t.limited.reason,
           covers: view.view.order.filter(item => item.limited?.lead === t.id).map(item => item.update),
-          state: t.limitedSent === undefined ? 'UNKNOWN' : 'api-accepted' })) },
+          state: t.limitedSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
+        // An owned outage: the message is preserved and the named required dependency was missing.
+        outages: view.view.order.filter(t => t.minimalOutage && t.limited === undefined).map(t => ({ update: t.update,
+          missing: t.minimalOutage.missing, since: t.minimalOutage.at })) },
+      // Operator requests: a stop press decides the brake; a raise completes only on the verified surface.
+      approvals: view.view.order.filter(t => t.approval).map(t => ({ update: t.update, action: t.approval.action,
+        decision: t.approval.decision ?? 'pending', applied: t.approval.applied === true,
+        verified: t.approval.verified?.challenge ?? null, challenge: t.approval.challenge?.id ?? null })),
+      // The supervisor's incident, when one is open: evidence and why no notice was sent.
+      incident: (() => { try { const e = JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8'));
+        return e.open ? { id: e.id, phase: e.phase, failedAttempts: e.failedAttempts, since: e.openedAt,
+          inhibitedBy: e.inhibitedBy ?? [] } : null; } catch { return null; } })(),
       unknownCalls: unknownCallCounts(view.view).total,
       unknownCallBreakdown: unknownCallCounts(view.view),
       capReports: [...view.view.capReports],
@@ -562,6 +533,7 @@ async function main() {
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
   let handoff = null, reservedAtLaunch = new Set();
+  let identityVerified = false, routeHealthy = true, active = null;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -699,6 +671,17 @@ async function main() {
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
+      // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host only observes each
+      // required dependency. The single-machine installed shape is admitted by the reviewed activation
+      // record (its recorded waiver/P-11 references), the same evidence that admits every preview reply;
+      // the signed P-08 installation join (builds 6/11) replaces it. Nothing here is a caller flag.
+      minimal: { context, dependencies: () => {
+        const activated = typeof active === 'function' && active();
+        return { 'local-facts': !journal.readOnly && !journal.view.stop, register: activated, 'identity-keys': identityVerified,
+          clock: Number.isSafeInteger(wallNow()), lease: !journal.readOnly, fence: !journal.readOnly,
+          'replication-peer': activated, 'conversation-binding': Boolean(journal.view.genesis.chat && journal.view.genesis.operator),
+          route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified };
+      } },
       // The operator's phone: a pressed Approve/Decline button is cleared with a short toast.
       acknowledge: (callbackId, text) => {
         physical.invoke({ token: secretRef('telegram-bot-token'), method: 'answerCallbackQuery',
@@ -721,7 +704,7 @@ async function main() {
     const activationPath = required(options, 'activation-record');
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
-    const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
+    active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
@@ -735,6 +718,7 @@ async function main() {
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
+    identityVerified = true;
     worker.startStepChecks();
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
@@ -745,7 +729,7 @@ async function main() {
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
     let failedPolls = 0, conflictedPolls = 0;
     const pollFailure = async conflict => {
-      failedPolls++;
+      failedPolls++; routeHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
       const reason = exhaustedPollReason(failedPolls, conflictedPolls);
       if (reason) {
@@ -777,10 +761,19 @@ async function main() {
     // A reached cap is a local report, never the end of reachability: past it the minimal
     // reserve keeps reading and answering the operator (Rule 15).
     const reportCap = () => reportJournalCap(journal, wallNow(), line => process.stderr.write(line));
-    const waitForReserve = async () => {
-      const until = clock.elapsed() + 30000;
-      while (!signalled && !workerStop.value && !existsSync(stopPath) && wallNow() < journal.view.expires && clock.elapsed() < until)
-        await delay(Math.min(1000, until - clock.elapsed()));
+    // Rule 15, Eleven §5: ordinary work (model calls, reviews, requested summaries) runs beside the
+    // poll loop and is never awaited by it, so a blocked or failed ordinary worker cannot silence the
+    // minimal path: reading, stop, approvals and limited answers keep their own step every cycle.
+    let drainJob = null, drainError = null;
+    const background = run => {
+      if (drainJob) return;
+      drainJob = run().catch(error => { drainError ??= error; }).then(summarizeLater).finally(() => { drainJob = null; });
+    };
+    // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
+    const waitHeld = async () => {
+      const until = clock.elapsed() + 3000;
+      while (!signalled && !workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
+        await delay(Math.min(250, until - clock.elapsed()));
     };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
@@ -792,13 +785,12 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      if (drainError) throw drainError;
+      worker.gate(); await worker.minimal(); background(() => worker.drain()); worker.gate();
       reportCap();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;
       try { pollLimit = worker.pollLimit(); } catch { break; }
-      // The reserve is spent for this hour: messages stay queued at Telegram until a slot frees.
-      if (pollLimit === 0) { await waitForReserve(); continue; }
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       let result;
       try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
@@ -816,19 +808,22 @@ async function main() {
       let updates;
       try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure(false)) break; continue; }
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
-      failedPolls = 0; conflictedPolls = 0;
+      failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
       worker.intake(updates.result);
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;
-      await worker.drain();
-      // Reminders go out only after a successful poll returned nothing new: every
-      // operator message already waiting (a cancellation included) has been read
-      // and settled first. A failed poll, a backlog or a cap leaves them pending.
-      if (updates.result.length === 0) await worker.sendReminders();
-      summarizeLater();
+      await worker.minimal();
+      if (journal.view.stop) break;
+      // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
+      // running: every operator message already waiting (a cancellation included) has been read and
+      // settled first. A failed poll, a backlog or a cap leaves them pending.
+      background(() => updates.result.length === 0 ? worker.sendReminders() : worker.drain());
       reportCap();
+      if (worker.intakeHeld()) await waitHeld();
 
     }
+    await drainJob;
+    if (drainError && !signalled) throw drainError;
     await summaryJob;
     await stepJob;
     if (stepCheckEnabled) await worker.checkSteps();

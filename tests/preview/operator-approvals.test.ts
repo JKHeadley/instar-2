@@ -1,12 +1,18 @@
 import { expect, it } from 'vitest';
+import { createHmac, randomBytes } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, approvalRequestText, limitedAnswerText } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, approvalRequestText, limitedAnswerText, RAISE_LINK_HINT,
+  RAISE_NEEDS_SURFACE } from './journal-test-worker.js';
+import type { VerifiedActSubmission } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
+import { refusal, success } from '../../src/types/internal.js';
+import type { IndependentSurfaceVerifierPort, SurfaceChallenge } from '../../src/operator/contracts.js';
 
-// Rules 79/82/98: operator-only actions complete from the phone as prefilled Approve/Decline
-// requests bound to the journal base; silence, text and a stale base never approve.
+// Rules 79/82/98 and the Purpose's "the agent never administers its own safeguards": a cap raise
+// completes only with the independently administered verifier's one-use proof for the exact current
+// challenge. A Telegram press, a fabricated journal row, an expired or changed proof never raise.
 const key = new Uint8Array(32).fill(91);
 const genesis = (limits: Partial<{ maxCalls: number; maxReplies: number; maxTurns: number }> = {}) => ({ kind: 'genesis' as const,
   bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
@@ -15,13 +21,44 @@ const message = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 const press = (id: number, data: string, from = 7654321) => ({ update_id: id,
   callback_query: { id: `cb-${id}`, from: { id: from }, data, message: { message_id: 900, chat: { id: 7654321, type: 'private' } } } });
-type Sent = { text: string; markup?: { inline_keyboard: { text: string; callback_data: string }[][] }; kind?: string; disposition?: string };
-const harness = (path: string, boundary?: (stage: string) => void, limits = {}) => {
+type Button = { text: string; callback_data?: string; url?: string };
+type Sent = { text: string; markup?: { inline_keyboard: Button[][] }; kind?: string; disposition?: string };
+
+/** A stand-in for Part Nine's independently administered surface: its signing key never reaches the
+ * worker, its challenges are one-use and expire, and only the operator's act on it yields a proof. */
+function independentSurface(clock: () => number) {
+  const secret = randomBytes(32), issued = new Map<string, SurfaceChallenge>(), used = new Set<string>();
+  const acts: VerifiedActSubmission[] = [];
+  let ordinal = 0;
+  const sign = (challenge: string, decision: string) => createHmac('sha256', secret).update(`${challenge}:${decision}`).digest('hex');
+  const verifier: IndependentSurfaceVerifierPort = { owner: 'part-nine', administration: 'independent',
+    issue(subject) { ordinal++; const challenge = { id: `challenge:${ordinal}`, ...subject } as SurfaceChallenge;
+      issued.set(challenge.id, challenge); return success(challenge); },
+    verify(challenge, proof, decision) {
+      const known = issued.get(challenge.id);
+      if (!known || JSON.stringify(known) !== JSON.stringify(challenge) || used.has(challenge.id)
+        || clock() > challenge.expiresAt || proof !== sign(challenge.id, decision)) return refusal('surface: proof refused', 'surface');
+      used.add(challenge.id);
+      return success({ challenge: challenge.id, principal: { id: challenge.operator },
+        provenance: { class: 'verified', record: { reference: `surface:${challenge.id}`, hash: `sha256:${sign(challenge.id, 'receipt')}` } },
+        act: decision === 'approve' ? { type: 'Authorization' } : null, capture: {} } as never);
+    } };
+  return { issued, acts, sign,
+    /** The operator acting on the independent page (never through the agent's chat). */
+    operatorActs: (challenge: string, decision: 'approve' | 'decline') => acts.push({ challenge, proof: sign(challenge, decision), decision }),
+    port: { verifier, link: (challenge: SurfaceChallenge) => `https://approve.example.org/c/${challenge.id.replace(':', '-')}`,
+      acts: () => [...acts] } };
+}
+
+const harness = (path: string, options: { limits?: object; surface?: boolean; boundary?: (stage: string) => void } = {}) => {
   const sent: Sent[] = [], toasts: string[] = [], calls: string[] = [];
-  const journal = openPreviewJournal(path, key, genesis(limits), boundary);
-  const ports = { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+  let clock = 1000;
+  const surface = independentSurface(() => clock);
+  const journal = openPreviewJournal(path, key, genesis(options.limits ?? {}), options.boundary);
+  const ports = { now: () => clock, stopped: () => false, checkOutbound: () => {},
     model: async (input: { id: string }) => { calls.push(input.id); return 'ordinary answer'; },
     acknowledge: (_id: string, text: string) => { toasts.push(text); },
+    ...(options.surface === false ? {} : { approvalSurface: surface.port }),
     send: async (input: { expectedText: string; replyMarkup?: unknown; kind?: string; disposition?: string }) => {
       const item: Sent = { text: input.expectedText };
       if (input.replyMarkup) item.markup = input.replyMarkup as NonNullable<Sent['markup']>;
@@ -29,101 +66,150 @@ const harness = (path: string, boundary?: (stage: string) => void, limits = {}) 
       if (input.disposition) item.disposition = input.disposition;
       sent.push(item);
       return sent.length; } };
-  return { journal, worker: createJournalWorker(journal, ports), sent, toasts, calls, ports };
+  return { journal, worker: createJournalWorker(journal, ports), sent, toasts, calls, ports, surface,
+    tick: (ms: number) => { clock += ms; } };
 };
 const withRoot = async (run: (path: string) => Promise<void>) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-approvals-')));
   try { await run(join(root, 'journal.encrypted')); } finally { rmSync(root, { recursive: true, force: true }); }
 };
-const buttons = (item: Sent | undefined) => item?.markup?.inline_keyboard[0]!.map(button => button.callback_data) ?? [];
+const buttons = (item: Sent | undefined) => item?.markup?.inline_keyboard[0] ?? [];
+const challengeOf = (journal: ReturnType<typeof openPreviewJournal>) =>
+  journal.view.order.find(turn => turn.approval?.action === 'raise-caps' && turn.approval.decision === undefined)?.approval?.challenge;
 
-it('offers a prefilled raise with the limited answer and applies it only on the operator press', () => withRoot(async path => {
-  const { journal, worker, sent, toasts, calls } = harness(path);
+it('raises only on the verified surface; a chat press and silence never raise, and a replayed proof decides nothing', () => withRoot(async path => {
+  const { journal, worker, sent, toasts, calls, surface } = harness(path);
   worker.intake([message(1, 'one')]); await worker.drain();
   worker.intake([message(2, 'two')]); await worker.drain();
   const offer = sent.at(-1)!;
   expect(offer.text).toContain(limitedAnswerText(journal.view, 'calls', 1));
-  expect(offer.text).toContain(approvalRequestText(journal.view, 'calls'));
+  expect(offer.text).toContain(`${approvalRequestText(journal.view, 'calls')} ${RAISE_LINK_HINT}`);
   expect(offer.text).toContain('from 1 to 2');
   expect(offer.disposition).toBe('action-needed');
+  // Approve first: the link to the independent page, then Decline; no chat Approve button exists.
   const [approve, decline] = buttons(offer);
-  expect(approve).toMatch(/^ap:[0-9a-f]{16}$/u);
-  expect(decline).toBe(approve!.replace('ap:', 'dc:'));
-  // Silence is never consent: time passes and nothing changes (Rule 98).
-  await worker.drain(); await worker.drain();
+  const challenge = challengeOf(journal)!;
+  expect(approve?.url).toBe(`https://approve.example.org/c/${challenge.id.replace(':', '-')}`);
+  expect(decline?.callback_data).toMatch(/^dc:[0-9a-f]{16}$/u);
+  expect(challenge.operator).toBe('telegram:7654321');
+  // Silence is never consent (Rule 98).
+  await worker.drain(); await worker.minimal();
   expect(journal.view.limits.maxCalls).toBe(1);
-  // A stranger's press is preserved as data and decides nothing.
-  worker.intake([press(3, approve!, 999)]);
+  // Channel attestation alone: the verified operator's own Approve press (forged callback data) decides nothing.
+  worker.intake([press(3, decline!.callback_data!.replace('dc:', 'ap:'))]);
   expect(journal.view.limits.maxCalls).toBe(1);
-  worker.intake([press(4, approve!)]);
+  expect(toasts).toEqual([RAISE_NEEDS_SURFACE]);
+  expect(journal.view.order.find(turn => turn.approval)?.approval?.decision).toBeUndefined();
+  // The operator approves on the independent surface: the raise completes with its receipt.
+  surface.operatorActs(challenge.id, 'approve');
+  await worker.minimal();
   expect(journal.view.limits.maxCalls).toBe(2);
-  expect(journal.view.capAuthority).toMatch(/^telegram-approval:[0-9a-f]{16}:update:4$/u);
-  expect(toasts).toEqual(['Approved. Answering your saved messages now.']);
+  expect(journal.view.capAuthority).toBe(`verified-approval:${journal.view.order.find(turn => turn.approval)!.approval!.id}:${challenge.id}`);
+  expect(journal.view.order.find(turn => turn.approval)?.approval?.verified?.challenge).toBe(challenge.id);
   await worker.drain();
   expect(calls).toHaveLength(2);
   expect(sent.at(-1)?.text).toBe('PREVIEW — ordinary answer');
-  // A second press of the same request is recorded as a duplicate and raises nothing.
-  worker.intake([press(5, approve!)]);
+  // The same proof again (replay) and a second pass decide nothing more.
+  await worker.minimal(); await worker.minimal();
   expect(journal.view.limits.maxCalls).toBe(2);
-  expect(toasts.at(-1)).toBe('Already decided.');
   journal.close();
+  // The raise survives replay; the journal rows alone never raise again.
+  const replay = openPreviewJournal(path, key);
+  expect(replay.view.limits.maxCalls).toBe(2);
+  replay.close();
 }));
 
-it('declines without change, and refuses a request made stale by another raise', () => withRoot(async path => {
+it('refuses a fabricated approval row, a wrong or expired proof, and a proof for a moved base', () => withRoot(async path => {
+  const { journal, worker, sent, surface, tick } = harness(path);
+  worker.intake([message(1, 'one'), message(2, 'two')]); await worker.drain();
+  const lead = journal.view.order.find(turn => turn.approval)!, challenge = challengeOf(journal)!;
+  // An agent-written decision with no verifier receipt cannot even be recorded for a raise...
+  expect(() => journal.append({ kind: 'approval-decision', id: lead.id, request: lead.approval!.id, decision: 'approve',
+    outcome: 'approved', update: 3, raw: '{}', cursor: 4, at: 1000 })).toThrow('approval decision order');
+  // ...and one carrying an invented receipt is only a row: nothing raises from journal data.
+  journal.append({ kind: 'approval-decision', id: lead.id, request: lead.approval!.id, decision: 'approve', outcome: 'approved',
+    verified: { challenge: challenge.id, principal: 'telegram:7654321', receipt: 'sha256:invented' }, at: 1000 });
+  await worker.drain(); await worker.minimal();
+  expect(journal.view.limits.maxCalls).toBe(1);
+  journal.close();
+  // A fresh root: a wrong proof and an expired challenge are refused by the verifier and record nothing.
+  const next = path.replace('journal.encrypted', 'second.encrypted');
+  const second = harness(next);
+  second.worker.intake([message(1, 'one'), message(2, 'two')]); await second.worker.drain();
+  const pending = challengeOf(second.journal)!;
+  second.surface.acts.push({ challenge: pending.id, proof: 'not-the-proof', decision: 'approve' });
+  await second.worker.minimal();
+  expect(second.journal.view.limits.maxCalls).toBe(1);
+  expect(second.journal.view.order.find(turn => turn.approval)?.approval?.decision).toBeUndefined();
+  second.tick(3_600_001);
+  second.surface.operatorActs(pending.id, 'approve');
+  await second.worker.minimal();
+  expect(second.journal.view.limits.maxCalls).toBe(1);
+  // The expired request no longer blocks a fresh one: the next capped message gets a new challenge.
+  second.worker.intake([message(3, 'three')]); await second.worker.drain();
+  const challenges = second.journal.view.order.flatMap(turn => turn.approval?.challenge ? [turn.approval.challenge.id] : []);
+  expect(challenges).toHaveLength(2);
+  expect(challenges[1]).not.toBe(pending.id);
+  // A proof for a request whose base moved (a desk raise in between) is recorded stale, not applied.
+  const third = harness(path.replace('journal.encrypted', 'third.encrypted'));
+  third.worker.intake([message(1, 'one'), message(2, 'two')]); await third.worker.drain();
+  const moved = challengeOf(third.journal)!;
+  raiseJournalCaps(third.journal, { maxCalls: 1, maxReplies: 9, maxTurns: 8, authority: 'test: other raise', at: 1000 });
+  third.surface.operatorActs(moved.id, 'approve');
+  await third.worker.minimal();
+  expect(third.journal.view.limits.maxCalls).toBe(1);
+  expect(third.journal.view.order.find(turn => turn.approval)?.approval?.decision).toBe('stale');
+  // The next capped answer offers a fresh request with a fresh challenge.
+  third.worker.intake([message(3, 'three')]); await third.worker.drain();
+  expect(challengeOf(third.journal)?.id).not.toBe(moved.id);
+  expect(sent).toHaveLength(2);
+  second.journal.close(); third.journal.close();
+}));
+
+it('declines from the phone without change; a crash after a verified decision leaves the raise unapplied', () => withRoot(async path => {
   const { journal, worker, sent, toasts } = harness(path);
   worker.intake([message(1, 'one'), message(2, 'two')]); await worker.drain();
-  const [approve, decline] = buttons(sent.at(-1));
-  worker.intake([press(3, decline!)]);
+  const [, decline] = buttons(sent.at(-1));
+  worker.intake([press(3, decline!.callback_data!)]);
   expect(journal.view.limits.maxCalls).toBe(1);
   expect(toasts).toEqual(['Declined. Nothing changed.']);
-  raiseJournalCaps(journal, { maxCalls: 3, maxReplies: 8, maxTurns: 8, authority: 'test: desk raise', at: 1000 });
-  worker.intake([press(4, approve!)]);
-  expect(journal.view.limits.maxCalls).toBe(3);
   expect(journal.view.order.find(turn => turn.approval)?.approval?.decision).toBe('declined');
   journal.close();
-}));
-
-it('marks a request stale when its base moved before the press, and the next capped answer offers a fresh one', () => withRoot(async path => {
-  const { journal, worker, sent, toasts } = harness(path, undefined, { maxCalls: 1 });
-  worker.intake([message(1, 'one'), message(2, 'two')]); await worker.drain();
-  const [approve] = buttons(sent.at(-1));
-  raiseJournalCaps(journal, { maxCalls: 1, maxReplies: 9, maxTurns: 8, authority: 'test: other raise', at: 1000 });
-  worker.intake([press(3, approve!)]);
-  expect(toasts).toEqual(['This request is out of date. Send any message for a fresh one.']);
-  expect(journal.view.limits.maxCalls).toBe(1);
-  worker.intake([message(4, 'three')]); await worker.drain();
-  const [fresh] = buttons(sent.at(-1));
-  expect(fresh).toMatch(/^ap:/u);
-  expect(fresh).not.toBe(approve);
-  journal.close();
-}));
-
-it('applies an approved raise exactly once after a crash between the decision and the raise', () => withRoot(async path => {
   let crash = true;
-  const first = harness(path, stage => { if (crash && stage === 'after:approval-decision') { crash = false; throw Error('crash'); } });
-  first.worker.intake([message(1, 'one'), message(2, 'two')]); await first.worker.drain();
-  const [approve] = buttons(first.sent.at(-1));
-  expect(() => first.worker.intake([press(3, approve!)])).toThrow('crash');
-  first.journal.close();
-  const reopened = openPreviewJournal(path, key);
+  const other = harness(path.replace('journal.encrypted', 'crash.encrypted'),
+    { boundary: stage => { if (crash && stage === 'after:approval-decision') { crash = false; throw Error('crash'); } } });
+  other.worker.intake([message(1, 'one'), message(2, 'two')]); await other.worker.drain();
+  other.surface.operatorActs(challengeOf(other.journal)!.id, 'approve');
+  await expect(other.worker.minimal()).rejects.toThrow('crash');
+  other.journal.close();
+  const reopened = openPreviewJournal(path.replace('journal.encrypted', 'crash.encrypted'), key);
+  const resumed = createJournalWorker(reopened, { ...other.ports });
+  await resumed.minimal(); await resumed.drain();
+  // Fail closed: the one-use proof was consumed but the raise never landed, so nothing is raised
+  // from the recorded row; the operator is offered a fresh request instead.
   expect(reopened.view.limits.maxCalls).toBe(1);
-  const worker = createJournalWorker(reopened, first.ports);
-  await worker.drain();
-  expect(reopened.view.limits.maxCalls).toBe(2);
-  await worker.drain();
-  expect(reopened.view.limits.maxCalls).toBe(2);
+  expect(reopened.view.order.find(turn => turn.approval)?.approval?.decision).toBe('approved');
   reopened.close();
 }));
 
+it('offers no raise to approve when no independent surface is installed; the limited answer still goes', () => withRoot(async path => {
+  const { journal, worker, sent } = harness(path, { surface: false });
+  worker.intake([message(1, 'one'), message(2, 'two')]); await worker.drain();
+  expect(sent.at(-1)?.text).toBe(limitedAnswerText(journal.view, 'calls', 1));
+  expect(sent.at(-1)?.markup).toBeUndefined();
+  expect(journal.view.order.some(turn => turn.approval)).toBe(false);
+  journal.close();
+}));
+
 it('confirms /stop with prefilled buttons and latches the stop only on the operator press', () => withRoot(async path => {
-  const { journal, worker, sent, toasts, calls } = harness(path, undefined, { maxCalls: 4 });
+  const { journal, worker, sent, toasts, calls } = harness(path, { limits: { maxCalls: 4 } });
   worker.intake([message(1, '/stop')]); await worker.drain();
   expect(calls).toHaveLength(0);
   expect(sent.at(-1)?.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
   expect(sent.at(-1)?.kind).toBe('approval');
   const [approve] = buttons(sent.at(-1));
   expect(journal.view.stop).toBeNull();
-  worker.intake([press(2, approve!)]);
+  worker.intake([press(2, approve!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   expect(toasts).toEqual(['Stopped. Nothing more will be sent or spent.']);
   expect(() => worker.gate()).toThrow('preview stopped');
@@ -133,23 +219,23 @@ it('confirms /stop with prefilled buttons and latches the stop only on the opera
 }));
 
 it('keeps the phone stop reachable past the ordinary turn allowance', () => withRoot(async path => {
-  const { journal, worker, sent } = harness(path, undefined, { maxCalls: 4, maxTurns: 1 });
+  const { journal, worker, sent } = harness(path, { limits: { maxCalls: 4, maxTurns: 1 } });
   worker.intake([message(1, 'one')]); await worker.drain();
-  worker.intake([message(2, '/stop')]); await worker.drain();
+  worker.intake([message(2, '/stop')]); await worker.minimal();
   expect(journal.view.order[1]?.reserve).toBe(true);
   expect(sent.at(-1)?.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
-  worker.intake([press(3, buttons(sent.at(-1))[0]!)]);
+  worker.intake([press(3, buttons(sent.at(-1))[0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   journal.close();
 }));
 
-it('raises the turn allowance to cover every reserve turn when the operator approves', () => withRoot(async path => {
-  const { journal, worker, sent, calls } = harness(path, undefined, { maxCalls: 16, maxTurns: 1 });
+it('raises the turn allowance to cover every reserve turn when the operator approves on the surface', () => withRoot(async path => {
+  const { journal, worker, sent, calls, surface } = harness(path, { limits: { maxCalls: 16, maxTurns: 1 } });
   worker.intake([message(1, 'one')]); await worker.drain();
   worker.intake([message(2, 'a'), message(3, 'b'), message(4, 'c'), message(5, 'd')]); await worker.drain();
-  const offer = sent.at(-1)!;
-  expect(offer.text).toContain('from 1 to 6');
-  worker.intake([press(6, buttons(offer)[0]!)]);
+  expect(sent.at(-1)!.text).toContain('from 1 to 6');
+  surface.operatorActs(challengeOf(journal)!.id, 'approve');
+  await worker.minimal();
   expect(journal.view.limits.maxTurns).toBe(6);
   await worker.drain();
   expect(calls).toHaveLength(5);

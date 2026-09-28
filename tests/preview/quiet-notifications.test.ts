@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, OUTBOUND_DISPOSITIONS,
-  reminderOverflowLine, summaryOverviewLead } from './journal-test-worker.js';
+  reminderOverflowLine, summaryOverviewLead, summaryOverviewOnlyLead } from './journal-test-worker.js';
 
 // Rules 52/87 and P-14: one aggregate per topic and slot, overflow as an overview, no repeat of
 // unchanged status, and every push classified at the one send boundary.
@@ -18,8 +18,9 @@ const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     date: Math.floor(start / 1000) + id * 60, ...(thread === undefined ? {} : { message_thread_id: thread }) } });
 type Input = { id: string; question: string; context: string };
+let summaryRepeat = 160;
 const decide = (input: Input) => {
-  if (input.question.startsWith('[Scheduled summary')) return JSON.stringify({ reply: 'Summary detail. '.repeat(160), memory: [], dated: [] });
+  if (input.question.startsWith('[Scheduled summary')) return JSON.stringify({ reply: 'Summary detail. '.repeat(summaryRepeat), memory: [], dated: [] });
   const schedule = /^send me a summary of (today|yesterday) every day at (\d+ ?[ap]m)/u.exec(input.question);
   if (schedule) return JSON.stringify({ reply: 'Okay.', memory: [], dated: [], summaries: [{ quote: input.question,
     when: `every day at ${schedule[2]}`, period: schedule[1], repeat: 'daily' }] });
@@ -37,7 +38,7 @@ const withHarness = async (run: (h: { state: { now: number; sent: { text: string
     model: async (input: Input) => decide(input), checkOutbound: () => {},
     send: async value => { state.sent.push({ text: value.expectedText, ...(value.disposition ? { disposition: value.disposition } : {}) });
       return state.sent.length; } });
-  try { await run({ state, journal, worker, path }); } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  try { await run({ state, journal, worker, path }); } finally { journal.close(); rmSync(root, { recursive: true, force: true }); summaryRepeat = 160; }
 };
 const tick = async (worker: ReturnType<typeof createJournalWorker>) => { await worker.drain(); await worker.sendReminders(); };
 
@@ -71,27 +72,52 @@ it('sends more due reminders than fit as one push with a count line, and none la
   expect(journal.view.reminders.size).toBe(1);
 }));
 
-it('answers a held backlog with one notice and never re-pushes it unchanged, across restart', () => withHarness(async ({ state, journal, worker, path }) => {
+it('never pushes a held backlog: unchanged status stays on the pull surface, across restart', () => withHarness(async ({ state, journal, worker, path }) => {
   worker.intake([update(1, 'one'), update(2, 'two'), update(3, 'three')]);
   for (const turn of journal.view.order) journal.append({ kind: 'hold', id: turn.id, reason: 'reply check unavailable', at: state.now });
-  state.now += HELD_NOTICE_AFTER_MS + 1; await worker.drain();
-  expect(state.sent).toHaveLength(1);
-  expect(state.sent[0]!.text).toContain("I'm holding 3 answers");
-  // P-14: before this build an unchanged backlog drew a second push after an hour.
+  // Before this repair the backlog drew a pushed "I'm holding 3 answers" status line (Rule 87).
+  state.now += HELD_NOTICE_AFTER_MS + 1; await worker.drain(); await worker.minimal();
   state.now += 3 * HELD_NOTICE_WINDOW_MS; await worker.drain(); await worker.drain();
-  expect(state.sent).toHaveLength(1);
-  expect(worker.nextHeldNoticeAt()).toBeNull();
+  expect(state.sent).toHaveLength(0);
+  expect(journal.view.order.filter(turn => turn.held === 'reply check unavailable')).toHaveLength(3);
   journal.close();
   const reopened = openPreviewJournal(path, key);
   const resumed = createJournalWorker(reopened, { now: () => state.now, stopped: () => false, timeZone: zone,
-    model: async () => { throw Error('model ran'); }, checkOutbound: () => {}, send: async () => { throw Error('re-pushed'); } });
-  await resumed.drain();
-  expect(resumed.nextHeldNoticeAt()).toBeNull();
+    model: async () => { throw Error('model ran'); }, checkOutbound: () => {}, send: async () => { throw Error('pushed status'); } });
+  await resumed.drain(); await resumed.minimal();
   reopened.close();
 }));
 
+for (const [repeat, mode] of [[200, 'overview'], [245, 'overview-only']] as const) {
+  it(`keeps one push per slot when the summaries are near the limit (${String(repeat)} repeats), bodies retained`, () => withHarness(async ({ state, journal, worker }) => {
+    summaryRepeat = repeat;
+    worker.intake([update(1, 'send me a summary of today every day at 6 pm', 17),
+      update(2, 'send me a summary of yesterday every day at 6 pm', 17),
+      update(3, 'remind me today at 5 pm to water the plants', 17)]);
+    await tick(worker);
+    const before = state.sent.length;
+    state.now = sixPm; await tick(worker); await tick(worker); await tick(worker);
+    const pushes = state.sent.slice(before);
+    // The review's reproduction: at 245 repeats both summaries fit alone but not together, and this drew two pushes.
+    expect(pushes).toHaveLength(1);
+    expect(Buffer.byteLength(pushes[0]!.text)).toBeLessThanOrEqual(4096);
+    // Room for the overview is reserved first; when not even one full summary fits beside it, the one
+    // message is a bounded overview naming both, with each full text kept.
+    expect(mode === 'overview' ? pushes[0]!.text.includes(summaryOverviewLead) && !pushes[0]!.text.startsWith(summaryOverviewOnlyLead)
+      : pushes[0]!.text.startsWith(summaryOverviewOnlyLead)).toBe(true);
+    // The due reminder joins the same message, in full or as a counted line, never a later push.
+    expect(pushes[0]!.text).toMatch(/water the plants|And 1 more reminder due now/u);
+    expect(journal.view.order.filter(turn => turn.requestedSummary && turn.intent === undefined)).toHaveLength(0);
+    expect(journal.view.order.filter(turn => turn.requestedSummary).every(turn => turn.answer?.startsWith('Summary detail.'))).toBe(true);
+    await tick(worker);
+    expect(state.sent.slice(before)).toHaveLength(1);
+  }));
+}
+
 it('classifies every push at the one send boundary; status is never a pushed kind', () => withHarness(async ({ state, worker }) => {
-  expect(Object.values(OUTBOUND_DISPOSITIONS)).not.toContain('status');
+  // Only the held status is pull-only; the boundary refuses to push any status kind.
+  expect(Object.entries(OUTBOUND_DISPOSITIONS).filter(([, disposition]) => disposition === 'status').map(([kind]) => kind))
+    .toEqual(['held-notice']);
   worker.intake([update(1, 'hello')]); await tick(worker);
   expect(state.sent.map(item => item.disposition)).toEqual(['result']);
 }));

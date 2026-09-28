@@ -2817,14 +2817,22 @@ trial or change any running root.
 
 Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runner:
 
-- **Minimal reserve (Rule 15).** Reaching the turn, reply or call cap no longer stops
-  reading the operator. Past the turn cap each verified operator message is kept by a
-  finite reserve (`MINIMAL_RESERVE`: 12 messages and 6 limited answers per rolling hour,
-  independent of the ordinary allowance; a stranger's update advances the cursor but never
-  spends it). A message a cap keeps from its answer gets one prompt, fixed, truthful limited
-  answer grouped per conversation (no model call), carrying the prefilled request that would
-  clear it. When the reserve is spent for the hour, messages wait at Telegram. `status.minimalReserve`
-  shows use and every limited answer; the mind sees `limitedAnswer` in history.
+- **Minimal responder (Rule 15; Eleven §5).** Reaching the turn, reply or call cap no longer stops
+  reading the operator. Past the turn cap each verified operator message is kept by a finite
+  reserve (`MINIMAL_RESERVE`: 12 messages and 6 limited answers per rolling hour, independent of
+  the ordinary allowance; a stranger's update never spends it). A message a cap keeps from its
+  answer gets one prompt, fixed, truthful limited answer grouped per conversation (no model call).
+  Whether it may speak is Part Eleven's own verdict (`evaluateMinimalPath`/`minimalResponse` in
+  `src/operator/live.ts`) over the host's observation of every required dependency; when one is
+  missing the message stays preserved and an owned outage is recorded (`minimal-outage`,
+  `status.minimalReserve.outages`), and an exact `/stop` latches at once since the brake needs no
+  reply. The single-machine installed shape is admitted by the reviewed activation record (its
+  waiver/P-11 references), the same evidence that admits every preview reply, until the signed
+  P-08 installation join lands. Reading never stops: when every bound is spent the next message
+  waits at Telegram with the cursor before it, while presses and an exact `/stop` behind it are
+  still read. Ordinary work (model calls, review, summaries) runs beside the poll loop and is never
+  awaited by it, so a blocked or failed ordinary worker cannot silence stop, approvals or limited
+  answers.
 - **Operator channel (Rule 14).** A verified operator's photo, voice note or caption, and an edit
   of a message this journal never saw, reach the mind with a plain flag instead of being dropped.
   Service messages and foreign senders take no turn; their raw updates stay preserved.
@@ -2836,54 +2844,40 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
 - **Usable links (Rule 106).** The coherence check's link-shape predicate now also runs before
   every model-written send as a signal feeding the revision; fixed templates carry no link.
 - **One classified send path (Rules 52, 87).** Every push goes through one boundary tagged
-  `result` or `action-needed` (`OUTBOUND_DISPOSITIONS`); status is pull-only. Requested summaries
-  due in one topic and slot go out as one message; what does not fit becomes a short overview
-  (`summaryOverviewLead`) or a count line (`reminderOverflowLine`), never a later push.
-- **Phone approvals (Rules 79, 82, 98).** A cap raise and the emergency stop (`/stop`) are
-  prefilled Approve/Decline buttons in the private chat. Only the verified operator's press on a
-  request still bound to the current journal base decides it (`approval-decision`, raw update
-  kept); silence, text and a stale base never approve, and a stale request is re-offered with the
-  next capped answer. The phone stop stays reachable past every ordinary cap. The operator's
-  Telegram account is the verifier; the journal is agent-writable, so this is the same trust
-  basis as operator identity itself, not a signature the agent cannot forge.
-- **Supervised incidents (Rules 15, 53, 88; P-14).** `scripts/host-watch.mjs` with
-  `{"mode":"journal", "alerts": {"grant": "...", "thread": N}}` restarts the runner after a
-  failed exit with bounded backoff. Only after three consecutive failed restarts does it prepare
-  one incident notice (`host-watch.json`, durable before dispatch, with the failure evidence)
-  and send it once through `journal-agent.mjs incident-notice` to the one granted alerts
-  destination; at most two per rolling hour; a clean run closes the episode. Without a recorded
-  alerts grant the incident stays local (`phase: "unbound"`).
+  `result` or `action-needed` (`OUTBOUND_DISPOSITIONS`); status, including an unchanged held
+  backlog, is pull-only and is never pushed. Requested summaries due in one topic and slot, and
+  requested reminders due then, go out as one message: room for the overview of what does not fit
+  (`summaryOverviewLead`) and for the reminder count line (`reminderOverflowLine`) is reserved
+  before any full body is chosen; when not even one full summary fits beside the rest the message
+  is a bounded overview (`summaryOverviewOnlyLead`). Every full text stays in the journal.
+- **Final-candidate link check (Rule 106).** The link-shape predicate also runs on the exact final
+  text (after a revision or assembly); its findings are recorded as `release.final` against that
+  text's digest. It advises; it never holds.
+- **Approvals (Purpose; Rules 79, 82, 98).** The emergency stop (`/stop`) is a prefilled
+  Approve/Decline confirmation; the bound operator's press latches the brake, which grants nothing.
+  A cap raise is different: it changes a safeguard, so it completes only on the independently
+  administered approval surface (Part Nine's `IndependentSurfaceVerifierPort`). The limited answer
+  carries the prefilled request and a link to that surface (plus a Decline press); the verifier
+  issues a one-use, expiring challenge bound to the request's exact subject and journal base, and
+  the raise is applied only in the moment its proof for that challenge verifies. A Telegram
+  Approve press, silence, a journal row, a wrong, expired or replayed proof, or a moved base never
+  raise. No verifier is installed in this preview, so raises stay with the desk and no raise
+  request is offered by phone.
+- **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
+  `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
+  bounded backoff. After three consecutive failed restarts it records one incident episode with the
+  failure evidence in `host-watch.json` (shown by `status.incident`) and a clean run closes it. It
+  sends nothing: an internal-issue notice must be Part Eight's admitted `infrastructure-notice`
+  effect through Part Ten's confined notice driver, neither of which exists yet, so the episode is
+  `inhibited` and names both (`inhibitedBy`). Without a recorded alerts grant it is `unbound`. An
+  episode an earlier build left uncertain is preserved and never repeated.
 
-### Held-answer notice (journal runner)
-
-When an accepted operator turn remains held for `memory correction pending` (or a
-requested summary at the call cap) for more than ten minutes, the runner sends at
-most one held notice in a rolling hour across the private chat. One notice answers
-every held message then waiting in that conversation (`covers`); an unchanged
-backlog is never pushed again, including after restart (P-14). A capacity hold gets
-the prompt limited answer instead (below). Its fixed text is
-`PREVIEW — I'm holding N answer(s), including your message from HH:MM; it will follow or I'll tell you why`.
-`N` counts accepted answers still held when the notice intent is recorded; the text
-uses `answer` for one and `answers` otherwise. `HH:MM` is the selected turn's
-Telegram message time in the configured `--time-zone`, or the durable intake time
-when Telegram supplied no date. The notice uses the same
-bound private chat, topic, stop, expiry, outbound-secret and reply-cap checks as
-an ordinary send. It uses no model call. The launcher no longer ends its run at a
-cap, so held notices come due in its ordinary loop.
-
-The encrypted journal records the original hold time and one separate exact
-notice intent before dispatch. That intent starts the rolling-hour fence even
-if its send outcome is UNKNOWN. A later eligible turn can receive the next
-notice after the hour; each turn has at most one notice intent. An API-accepted result gets its own receipt;
-an interrupted or uncertain notice stays UNKNOWN and is never sent again.
-The notice consumes one reply-cap slot but does not settle the held answer.
-A later authorized cap raise or recovered check can still send that answer
-through its own one-shot intent. `status.heldNotices` reports each attempt and
-whether Telegram accepted it; model history carries only a notice marker and
-its delivery state, separate from the answer. It does not repeat the fixed
-notice text or put it in the answer outcome. The packet tells the model to leave
-routine held-notice delivery to this fixed path and to explain a hold only when
-the operator asks. This remains a deliberately machine-local preview under its
+Held notices from earlier builds replay unchanged, but no new held notice is pushed: a held
+message's status stays on the pull surface (`status.holds`, self-state and the mind's packet).
+An earlier notice intent that has no receipt stays UNKNOWN and is never sent again;
+`status.heldNotices` reports each earlier attempt, and model history carries only its marker
+and delivery state, separate from the answer. The packet tells the model to explain a hold
+only when the operator asks. This remains a deliberately machine-local preview under its
 existing exclusive writer, with no new store, service, or multi-machine claim.
 See [held-reply-notice-live-test.md](held-reply-notice-live-test.md) for the
 supervised private-chat proof as Justin.

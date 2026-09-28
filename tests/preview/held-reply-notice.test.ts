@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, openPreviewJournal, raiseJournalCaps, reportJournalCap } from './journal.js';
+import { createJournalWorker, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, openPreviewJournal, raiseJournalCaps, reportJournalCap } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(7);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'held-reply-notice-')));
@@ -13,84 +13,37 @@ const genesis = (calls = 2, replies = 3) => ({ kind: 'genesis' as const, bot: '1
 const update = (id: number) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
   from: { id: 7654321 }, date: 1_600_000_000, text: `question ${id}` } });
 
-// A self-resolving hold keeps the one delayed notice; a capacity hold gets the prompt limited
-// answer instead (minimal-responder.test.ts); a review outage no longer holds at all.
-for (const reason of ['memory correction pending']) {
-  it(`sends one fixed notice only after ten minutes of ${reason}`, async () => {
-    const dir = root(), path = join(dir, 'journal.encrypted');
-    try {
-      const journal = openPreviewJournal(path, key, genesis());
-      let now = 1_000, sends = 0;
-      const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'UTC',
-        model: async input => {
-          if (reason === 'memory correction pending' && input.id.startsWith('summary:'))
-            return { state: 'rejected' as const, failureClass: 'rejected' as const };
-          throw Error('held answer ran');
-        }, checkOutbound: () => {},
-        send: async input => { sends++; expect(input.expectedText).toBe("PREVIEW — I'm holding 1 answer, including your message from 12:26; it will follow or I'll tell you why");
-          return 12; } });
-      worker.intake([update(1)]);
-      const turn = journal.view.order[0]!;
-      journal.append({ kind: 'hold', id: turn.id, reason, at: now });
-      expect(worker.nextHeldNoticeAt()).toBe(now + HELD_NOTICE_AFTER_MS + 1);
-      now += HELD_NOTICE_AFTER_MS;
-      await worker.drain(); expect(sends).toBe(0);
-      now++;
-      await worker.drain(); await worker.drain();
-      expect({ sends, replies: journal.view.replies, held: turn.held, answer: turn.answer, sent: turn.heldNoticeSent })
-        .toEqual({ sends: 1, replies: 1, held: reason, answer: undefined, sent: 12 });
-      if (reason === 'memory correction pending') {
-        const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
-          'tests/preview/journal-agent.mjs', 'status', '--root', dir],
-        { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-          encoding: 'utf8', timeout: 10000 });
-        expect(status.status, status.stderr).toBe(0);
-        expect(JSON.parse(status.stdout).heldNotices).toEqual([{ update: 1, state: 'api-accepted' }]);
-      }
-      journal.close();
-      const reopened = openPreviewJournal(path, key);
-      const resumed = createJournalWorker(reopened, { now: () => now + 1_000_000, stopped: () => false,
-        model: async () => { throw Error('held answer ran'); }, checkOutbound: () => {},
-        send: async () => { sends++; return 13; } });
-      await resumed.drain();
-      expect(sends).toBe(1);
-      expect(resumed.nextHeldNoticeAt()).toBeNull();
-      reopened.close();
-    } finally { rmSync(dir, { recursive: true, force: true }); }
-  });
-}
-
-for (const receipt of [12, null] as const) {
-  it(`answers three held messages with one notice and never re-pushes it unchanged, after restart with receipt ${String(receipt)}`, async () => {
-    const dir = root(), path = join(dir, 'journal.encrypted');
-    try {
-      let now = 1_000; const sends: string[] = [];
-      const first = openPreviewJournal(path, key, genesis(1, 4));
-      const ports = { now: () => now, stopped: () => false, model: async () => { throw Error('model ran'); },
-        checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return receipt; } };
-      const worker = createJournalWorker(first, ports);
-      worker.intake([update(1), update(2), update(3)]);
-      for (const turn of first.view.order) first.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: now });
-      await worker.drain();
-      now += HELD_NOTICE_AFTER_MS + 1;
-      await worker.drain();
-      expect(sends).toEqual(["PREVIEW — I'm holding 3 answers, including your message from 12:26; it will follow or I'll tell you why"]);
-      expect(first.view.replies).toBe(1);
-      first.close();
-
-      const reopened = openPreviewJournal(path, key);
-      const resumed = createJournalWorker(reopened, ports);
-      // P-14: the same unchanged backlog is never pushed again, not after an hour and not after restart.
-      expect(resumed.nextHeldNoticeAt()).toBeNull();
-      now += 3 * HELD_NOTICE_WINDOW_MS;
-      await resumed.drain(); await resumed.drain();
-      expect(sends).toHaveLength(1);
-      expect(reopened.view.replies).toBe(1);
-      expect(reopened.view.order.filter(turn => turn.heldNoticeCoveredBy !== undefined)).toHaveLength(2);
-      reopened.close();
-    } finally { rmSync(dir, { recursive: true, force: true }); }
-  });
-}
+// Rule 87: an unchanged held status is pull-only. It stays on `status` and in the mind's packet;
+// it is never pushed, however long it waits. A capacity hold gets the prompt limited answer
+// instead (minimal-responder.test.ts); a review outage no longer holds at all.
+it('never pushes a held status: it stays visible on the pull surface', async () => {
+  const dir = root(), path = join(dir, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis());
+    let now = 1_000, sends = 0;
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'UTC',
+      model: async input => {
+        if (input.id.startsWith('summary:')) return { state: 'rejected' as const, failureClass: 'rejected' as const };
+        throw Error('held answer ran');
+      }, checkOutbound: () => {}, send: async () => { sends++; return 12; } });
+    worker.intake([update(1), update(2)]);
+    for (const turn of journal.view.order) journal.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: now });
+    for (const step of [HELD_NOTICE_AFTER_MS + 1, HELD_NOTICE_WINDOW_MS, 3 * HELD_NOTICE_WINDOW_MS]) {
+      now += step; await worker.drain(); await worker.minimal();
+    }
+    expect({ sends, replies: journal.view.replies }).toEqual({ sends: 0, replies: 0 });
+    expect(journal.view.order.every(turn => turn.heldNoticeIntent === undefined)).toBe(true);
+    journal.close();
+    const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'status', '--root', dir],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+      encoding: 'utf8', timeout: 10000 });
+    expect(status.status, status.stderr).toBe(0);
+    const reported = JSON.parse(status.stdout);
+    expect(reported.heldNotices).toEqual([]);
+    expect(reported.holds.map((item: { update: number }) => item.update)).toEqual([1, 2]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 
 it('replays a parent-format burst, keeps both intents fenced, and applies the hour to the next counted notice', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
@@ -120,11 +73,10 @@ it('replays a parent-format burst, keeps both intents fenced, and applies the ho
     expect(sends).toBe(0);
     resumed.intake([update(3)]);
     reopened.append({ kind: 'hold', id: reopened.view.order[2]!.id, reason: 'memory correction pending', at: now });
-    now += HELD_NOTICE_AFTER_MS + 1;
-    expect(resumed.nextHeldNoticeAt()).toBe(1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS);
-    await resumed.drain(); expect(sends).toBe(0);
-    now = resumed.nextHeldNoticeAt()!;
-    await resumed.drain(); expect(sends).toBe(1);
+    // Earlier notices replay unchanged; no new held status is pushed after them (Rule 87).
+    now += HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS;
+    await resumed.drain(); await resumed.drain();
+    expect(sends).toBe(0);
     reopened.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -163,44 +115,17 @@ for (const receipt of [12, null] as const) {
         send: async () => { sends++; return 13; } });
       resumed.intake([update(2)]);
       reopened.append({ kind: 'hold', id: reopened.view.order[1]!.id, reason: 'memory correction pending', at: now });
-      now += HELD_NOTICE_AFTER_MS + 1;
-      const due = 1_000 + HELD_NOTICE_AFTER_MS + 1 + HELD_NOTICE_WINDOW_MS;
-      expect(resumed.nextHeldNoticeAt()).toBe(due);
-      await resumed.drain(); expect(sends).toBe(0);
-      now = due;
-      await resumed.drain(); expect(sends).toBe(1);
+      now += 2 * HELD_NOTICE_WINDOW_MS;
+      await resumed.drain(); await resumed.drain();
+      expect(sends).toBe(0);
       reopened.compact();
       reopened.close();
       const again = openPreviewJournal(path, key);
-      expect(again.view.awayEvents.filter(event => event.kind === 'held-notice-intent')).toHaveLength(2);
+      expect(again.view.awayEvents.filter(event => event.kind === 'held-notice-intent')).toHaveLength(1);
       again.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 }
-
-it('waits for each turn to age ten minutes before selecting its notice', async () => {
-  const dir = root();
-  try {
-    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(1, 3));
-    let now = 1_000; const updates: number[] = [];
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-      model: async () => { throw Error('model ran'); }, checkOutbound: () => {},
-      send: async input => { updates.push(input.update); return 12; } });
-    worker.intake([update(1), update(2)]);
-    const [first, second] = journal.view.order;
-    journal.append({ kind: 'hold', id: second!.id, reason: 'memory correction pending', at: now });
-    now += HELD_NOTICE_AFTER_MS / 2;
-    journal.append({ kind: 'hold', id: first!.id, reason: 'memory correction pending', at: now });
-    now += HELD_NOTICE_AFTER_MS / 2 + 1;
-    expect(worker.nextHeldNoticeAt()).toBe(now);
-    await worker.drain();
-    // The one notice for the aged turn also answers the younger one; neither is pushed twice (P-14).
-    expect(updates).toEqual([2]);
-    expect(first?.heldNoticeIntent).toBeUndefined();
-    expect(first?.heldNoticeCoveredBy).toBe(second!.id);
-    journal.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
 
 it('fences an uncertain limited answer and later releases the capped answer once', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
@@ -329,32 +254,6 @@ it('stop prevents every notice; the reply cap no longer silences a capped messag
   }
 });
 
-it('starts the ten-minute clock at an eligible hold and refuses an expired send', async () => {
-  const dir = root();
-  try {
-    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
-    let now = 1_000, sends = 0;
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-      model: async () => { throw Error('held answer ran'); }, checkOutbound: () => {},
-      send: async () => { sends++; return 1; } });
-    worker.intake([update(1)]);
-    const id = journal.view.order[0]!.id;
-    journal.append({ kind: 'hold', id, reason: 'prompt overflow', at: now });
-    now += HELD_NOTICE_AFTER_MS + 1;
-    expect(worker.nextHeldNoticeAt()).toBeNull();
-    journal.append({ kind: 'hold', id, reason: 'memory correction pending', at: now });
-    expect(worker.nextHeldNoticeAt()).toBe(now + HELD_NOTICE_AFTER_MS + 1);
-    // A capacity hold is answered by the limited answer, never a delayed notice.
-    journal.append({ kind: 'hold', id, reason: 'call cap', at: now + 1 });
-    expect(worker.nextHeldNoticeAt()).toBeNull();
-    now = journal.view.genesis.expires;
-    await expect(worker.drain()).rejects.toThrow('preview stopped');
-    expect(sends).toBe(0);
-    expect(journal.view.order[0]?.heldNoticeIntent).toBeUndefined();
-    journal.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
-
 it('answers a capped message at once from the reserve even when the update cap wins the reported reason', async () => {
   const dir = root();
   try {
@@ -368,7 +267,6 @@ it('answers a capped message at once from the reserve even when the update cap w
     worker.intake([update(1)]); await worker.drain();
     expect(reportJournalCap(journal, now, () => {})).toBe('update cap reached');
     expect(journal.view.order[0]?.held).toBe('call cap');
-    expect(worker.nextHeldNoticeAt()).toBeNull();
     expect(sends).toHaveLength(1);
     expect(sends[0]).toContain("I can't answer yet");
     await worker.drain(); expect(sends).toHaveLength(1);

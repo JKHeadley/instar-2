@@ -150,14 +150,19 @@ export async function supervise(config) {
   }
 }
 
-/** Journal-runner mode (Rules 15, 53, 88; P-14). This separate process restarts the journal
- * runner after a failed exit with bounded backoff. Only after self-heal is exhausted
- * (`noticeAfter` consecutive failed restarts) does it prepare ONE incident notice for the single
- * granted alerts destination, carrying the failed-attempt evidence. The episode is durable before
- * the send, is never re-sent (also across supervisor restarts), and closes on a clean exit. With no
- * recorded alerts grant the incident stays local and visible ('unbound'). */
-export const JOURNAL_INCIDENT_LIMITS = Object.freeze({ noticeAfter: 3, perHour: 2 });
-const journalAgent = fileURLToPath(new URL('../tests/preview/journal-agent.mjs', import.meta.url));
+/** Journal-runner mode (Rules 15, 88; P-14). This separate process restarts the journal runner
+ * after a failed exit with bounded backoff. When self-heal is exhausted (`incidentAfter` consecutive
+ * failed restarts) it records ONE durable incident episode with the failed-attempt evidence, visible
+ * on the pull surface (`status`). It never sends: an internal-issue notice must travel as Part Eight's
+ * admitted `infrastructure-notice` effect through Part Ten's confined notice driver, under the alerts
+ * grant, and neither exists in this build. The outward notice therefore stays inhibited, naming both
+ * missing owners (Rules 53, 88, 95; Eight §9; Fourteen §14), instead of a host script sending around
+ * them. Without a recorded alerts grant it is 'unbound'. An earlier episode is preserved as recorded:
+ * an uncertain earlier delivery is never repeated. */
+export const JOURNAL_INCIDENT_LIMITS = Object.freeze({ incidentAfter: 3 });
+export const INCIDENT_NOTICE_SEAMS = Object.freeze([
+  'part-eight infrastructure-notice payload (seam-response-effects-payloads.md)',
+  'part-ten confined notice driver (seam-response-assembly-followup.md)']);
 function lastRun(root) {
   const path = join(root, 'runs.jsonl');
   if (!existsSync(path)) return null;
@@ -167,25 +172,6 @@ function lastRun(root) {
 function journalStopped(root) {
   const reason = lastRun(root)?.reason;
   return existsSync(join(root, 'preview-stop.json')) || reason === 'operator stop latched' || reason === 'trial expired';
-}
-export function journalIncidentText(episode) {
-  const since = new Date(episode.openedAt).toISOString().slice(0, 16).replace('T', ' ');
-  return `PREVIEW — Incident ${episode.id.slice(0, 8)}: my conversation service stopped and has not recovered after ${episode.noticeAttempts ?? episode.failedAttempts} automatic restarts (since ${since} UTC). Your new messages wait at Telegram and will be read when it is back. Someone needs to check the host machine.`;
-}
-function journalBinding(config) {
-  const index = config.agent.indexOf(journalAgent);
-  if (config.agent[0] !== process.execPath || index < 0 || config.agent[index + 1] !== 'run')
-    throw Error('host watch: journal launcher binding unavailable');
-  return index;
-}
-function sendJournalIncident({ config, path }) {
-  const index = journalBinding(config), args = [...config.agent.slice(1)];
-  args[index] = 'incident-notice';
-  args.push('--episode', path, '--alerts-grant', config.alerts.grant,
-    ...(config.alerts.thread === undefined ? [] : ['--alerts-thread', String(config.alerts.thread)]));
-  const child = spawnSync(process.execPath, args, { cwd: config.cwd, env: process.env,
-    encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'ignore', 'ignore'] });
-  if (child.status !== 0) throw Error('host watch: prepared incident outcome unknown');
 }
 function spawnJournalRunner(config) {
   return new Promise(resolveExit => {
@@ -197,14 +183,13 @@ function spawnJournalRunner(config) {
 export async function superviseJournal(config, io = {}) {
   if (!config || typeof config.root !== 'string' || !isAbsolute(config.root) || resolve(config.root) !== config.root
     || !Array.isArray(config.agent) || config.agent.some(value => typeof value !== 'string')
-    || config.alerts !== undefined && (typeof config.alerts?.grant !== 'string' || !config.alerts.grant.trim()
-      || config.alerts.thread !== undefined && !(Number.isSafeInteger(config.alerts.thread) && config.alerts.thread > 0)))
+    || config.alerts !== undefined && (typeof config.alerts?.grant !== 'string' || !config.alerts.grant.trim()))
     throw Error('host watch: invalid journal configuration');
-  const run = io.spawnRunner ?? spawnJournalRunner, notify = io.notify ?? sendJournalIncident;
+  const run = io.spawnRunner ?? spawnJournalRunner;
   const now = io.now ?? Date.now, wait = io.wait ?? (ms => new Promise(done => setTimeout(done, ms)));
   const limits = { ...JOURNAL_INCIDENT_LIMITS, ...(config.limits ?? {}) };
   const path = join(config.root, 'host-watch.json');
-  const read = () => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, mode: 'journal', open: false, notices: [] };
+  const read = () => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, mode: 'journal', open: false };
   let clean = 0;
   while (!journalStopped(config.root)) {
     const outcome = await run(config);
@@ -221,18 +206,11 @@ export async function superviseJournal(config, io = {}) {
     let next = { ...episode, open: true, id: episode.open ? episode.id : randomUUID(), openedAt: episode.open ? episode.openedAt : at,
       phase: episode.open ? episode.phase : 'recovering', failedAttempts,
       failures: [...(episode.open ? episode.failures : []), { at, code: outcome.code, signal: outcome.signal,
-        runReason: lastRun(config.root)?.reason ?? null }].slice(-10), notices: episode.notices ?? [] };
+        runReason: lastRun(config.root)?.reason ?? null }].slice(-10) };
+    if (next.phase === 'recovering' && failedAttempts >= limits.incidentAfter)
+      next = config.alerts ? { ...next, phase: 'inhibited', incidentAt: at, alertsGrant: config.alerts.grant, inhibitedBy: [...INCIDENT_NOTICE_SEAMS] }
+        : { ...next, phase: 'unbound', incidentAt: at };
     writeDurable(path, next);
-    if (next.phase === 'recovering' && failedAttempts >= limits.noticeAfter) {
-      if (!config.alerts) writeDurable(path, next = { ...next, phase: 'unbound' });
-      else if (next.notices.filter(time => time > at - 3_600_000).length < limits.perHour) {
-        next = { ...next, phase: 'prepared', preparedAt: at, noticeAttempts: failedAttempts, notices: [...next.notices, at] };
-        next = { ...next, text: journalIncidentText(next) };
-        // The episode, its evidence and exact text are durable before the child can dispatch.
-        writeDurable(path, next);
-        try { notify({ config, path, episode: next }); } catch { /* a prepared incident is never sent twice */ }
-      }
-    }
     await wait(Math.min(300000, 1000 * 2 ** Math.min(failedAttempts - 1, 8)));
   }
   return 0;

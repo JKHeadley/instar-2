@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE } from './journal.js';
+import { createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(19);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-cap-')));
@@ -35,7 +35,7 @@ it('keeps reading past maxTurns through the minimal reserve without poisoning re
       raw: JSON.stringify(update(3)), accepted: true, cursor: 4, at: 1000 })).toThrow('capacity');
     await first.drain();
     expect(counts).toEqual({ calls: 1, sends: 2 });
-    expect(first.pollLimit()).toBe(MINIMAL_RESERVE.turns - 1);
+    expect(first.pollLimit()).toBe(MINIMAL_POLL_LIMIT);
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBe('update cap reached');
     expect(lines).toEqual(['PREVIEW — turns cap reached; work paused. Check status for held work.\n']);
     journal.close();

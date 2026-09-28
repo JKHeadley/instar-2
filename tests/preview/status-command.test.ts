@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
 import { isStatusCommand, statusReply } from './status-command.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext } from './reply-check.js';
 
