@@ -10,7 +10,9 @@ import { activeSummaryGrants, pendingRequestedReminders, unknownCallCounts, type
 export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string } & RunEnd;
 /** What an exit leaves for the next launch (Rules 55, 68): the consecutive poll-failure pressure a restart must
  * not erase, and whether eligible accepted work remains queued for revival or is inhibited by a stop/expiry. */
-export interface RunEnd { pollPressure?: { failed: number; conflicted: number }; unfinished?: number; revival?: 'queued' | 'inhibited' | 'none' }
+export interface RunEnd { pollPressure?: { failed: number; conflicted: number }; unfinished?: number; revival?: 'queued' | 'inhibited' | 'none';
+  /** Rule 63: this launch found another runner serving the conversation and retired without polling or sending. */
+  nonowner?: { machine: string | null; since: number | null } }
 export interface RunLog { launches: ({ at: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number }
 
 /** Appends one line and fsyncs it before returning; the first write also fsyncs the directory. */
@@ -48,6 +50,9 @@ export function readRuns(path: string): RunLog {
         && Number.isSafeInteger(pressure.conflicted) && pressure.conflicted >= 0) entry.pollPressure = { failed: pressure.failed, conflicted: pressure.conflicted };
       if (Number.isSafeInteger(row.unfinished) && row.unfinished! >= 0) entry.unfinished = row.unfinished!;
       if (row.revival === 'queued' || row.revival === 'inhibited' || row.revival === 'none') entry.revival = row.revival;
+      const nonowner = (row as { nonowner?: { machine?: unknown; since?: unknown } }).nonowner;
+      if (nonowner && typeof nonowner === 'object') entry.nonowner = { machine: typeof nonowner.machine === 'string' ? nonowner.machine : null,
+        since: Number.isSafeInteger(nonowner.since) ? nonowner.since as number : null };
     }
   }
   return log;

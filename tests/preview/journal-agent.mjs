@@ -27,6 +27,8 @@ import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
+import { hostname, homedir } from 'node:os';
+import { claimConversation, observeConversationOwner } from './conversation-owner.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -235,6 +237,15 @@ async function main() {
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
   const shapesPath = join(root, 'model-json-shapes.json');
+  // Rule 63: conversation ownership is claimed in a HOST-scope directory so a second root for the same
+  // conversation is fenced too. Tests point it at a per-file temporary directory.
+  const ownersDirectory = () => {
+    const directory = resolve(options['conversation-owners'] ?? process.env.INSTAR_CONVERSATION_OWNERS
+      ?? join(homedir(), '.instar', 'conversation-owners'));
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    return realpathSync(directory);
+  };
+  const ownerMachine = options['owner-machine'] ?? hostname();
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
@@ -274,7 +285,17 @@ async function main() {
       const deskPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
       const desk = deskStatusSource(readDeskStatus(deskPath), now, deskPath);
       const lastSent = view.view.order.filter(turn => turn.sentAt !== undefined).at(-1);
+      const g = view.view.genesis;
+      const ownership = observeConversationOwner({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine,
+        probePid: pid => process.kill(pid, 0), now });
+      // Stranded: accepted operator messages wait while nobody live on this machine serves the conversation.
+      const waiting = view.view.order.filter(turn => turn.accepted && turn.intent === undefined && turn.sent === undefined).length;
+      const retired = log.launches.filter(run => run.nonowner).length;
       process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+      ownership: { ...ownership, holder: ownership.holder && { machine: ownership.holder.machine, since: ownership.holder.since,
+        thisRoot: ownership.holder.root === root } },
+      stranded: waiting > 0 && ownership.state !== 'serving' ? { waiting, owner: ownership.state } : null,
+      duplicateLaunchesRetired: retired,
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
@@ -525,7 +546,13 @@ async function main() {
     return;
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
-  let handoff = null, reservedAtLaunch = new Set();
+  let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null;
+  // Rule 63: the conversation fence. Losing it stops new work; an effect never dispatches without it.
+  const ownerHeld = () => {
+    if (ownerClaim?.owner && ownerClaim.verify()) return true;
+    if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; workerStop.value = true; }
+    return false;
+  };
   // Rule 55: poll-failure pressure is episode state carried across restarts in the run log, never reset by a relaunch.
   let failedPolls = 0, conflictedPolls = 0;
   const workerStop = { value: false };
@@ -559,6 +586,18 @@ async function main() {
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
+    ownerClaim = claimConversation({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine, root,
+      key: key(), context, io: productionStorageIO, now: wallNow() });
+    if (!ownerClaim.owner) {
+      // Duplicate retirement: a non-owner neither polls (the platform keeps the input for the owner) nor sends.
+      const at = wallNow(), holder = ownerClaim.holder;
+      appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
+      appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `not the conversation owner: ${ownerClaim.reason}`,
+        revival: 'none', nonowner: { machine: holder?.machine ?? null, since: holder?.since ?? null } });
+      process.stderr.write('preview: this conversation is served by another runner; this launch retired without polling or sending\n');
+      process.exitCode = 3;
+      return;
+    }
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
     const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
@@ -596,7 +635,7 @@ async function main() {
       if (!response.ok) throw Error('preview: Jev unavailable');
       return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
     };
-    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
@@ -653,6 +692,8 @@ async function main() {
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
       send: async ({ text, expectedText, chat, thread }) => {
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop) return null;
+        // The fence is consumed immediately before dispatch; without it the intent stays UNKNOWN, never repeated.
+        if (!ownerHeld()) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
           body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }) },
           timeoutMs: 30000 }, token());
@@ -746,7 +787,7 @@ async function main() {
     }
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
-      if (signalled || workerStop.value || existsSync(stopPath)) break;
+      if (signalled || workerStop.value || existsSync(stopPath) || !ownerHeld()) break;
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
           importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
@@ -834,7 +875,7 @@ async function main() {
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
-      journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
+      journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }
   }
 }

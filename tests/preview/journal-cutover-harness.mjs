@@ -23,14 +23,17 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     '--expires-at', String(activation.expiresAt), '--activation-record', activationPath,
     '--login-profile', profilePath, '--model', world.model, '--max-cycles', String(cycles),
     '--max-poll-seconds', '1'];
-  const env = role => ({ ...process.env, ...childEnv, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
+  const env = (role, fenced = false) => ({ ...process.env, ...childEnv, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
     INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: token,
     INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: '',
-    INSTAR_PREVIEW_CUTOVER_WORLD: directory, INSTAR_PREVIEW_CUTOVER_ROLE: role });
+    INSTAR_PREVIEW_CUTOVER_WORLD: directory, INSTAR_PREVIEW_CUTOVER_ROLE: role,
+    // The canary is an outside poller (another host's fence), so only Telegram's own conflict separates it.
+    // A fenced canary shares this host's owner directory: a second runner for the same conversation.
+    ...(role === 'canary' && !fenced ? { INSTAR_CONVERSATION_OWNERS: join(directory, 'owners-canary') } : {}) });
   const canaryRoot = join(directory, 'cutover-canary');
   const liveRoot = join(directory, 'cutover-live');
-  const startCanary = () => spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
-    { cwd: process.cwd(), env: env('canary'), stdio: 'ignore' });
+  const startCanary = (fenced = false) => spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
+    { cwd: process.cwd(), env: env('canary', fenced), stdio: 'ignore' });
   const launchLive = cycles => spawnSync(process.execPath, launchArgs(liveRoot, 'live', cycles),
     { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 30000 });
   const status = () => spawnSync(process.execPath, [...args,
