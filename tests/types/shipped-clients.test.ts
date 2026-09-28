@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { currentRuntime } from '../../scripts/composition-digest.mjs';
 import { lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores, NATIVE_HARNESS, parityMatrix,
   registerDeclarationSources, shippedClientFiles } from '../../scripts/check-architecture.mjs';
+// @ts-expect-error The self-hosting harness is JavaScript.
+import { selfHostCompositionEvidence } from '../preview/self-host-harness.mjs';
 
 const read = (path: string) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
 
@@ -112,12 +114,21 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   // the tool inventory that decides which paths are checked, the production IO, the transport authority — a changed
   // runtime, or missing entry points each leave the tuple uncertified until its contract is re-run and re-declared.
   const edited = (path: string, text: string) => (file: string) => file === path ? text : read(file);
+  const declarations = sources[harness];
   for (const path of ['tests/preview/self-host-owners.ts', 'src/assembly/tool-inventory.ts', 'scripts/production-boot-io.mjs', 'src/transport/authority.ts',
-    'tests/preview/provider-owners.ts', 'scripts/slice-ts-loader.mjs']) {
-    const drift = lintParityRegister(sources, edited(path, `${read(path)}\n// changed executed bytes\n`), doorways)
+    'tests/preview/provider-owners.ts', 'scripts/slice-ts-loader.mjs',
+    // Executed but not source: the built core the replica storage loads, and the compiler the loader runs.
+    'dist/index.js', 'dist/types/internal.js', 'node_modules/typescript/lib/typescript.js']) {
+    const changed = edited(path, `${read(path)}\n// changed executed bytes\n`);
+    const drift = lintParityRegister(sources, changed, doorways)
       .map(issue => issue.detail).filter(detail => !clean.includes(detail));
     expect(drift, path).toEqual([expect.stringContaining('preview-self-host-native × claude-code-subscription × darwin × self-hosting: conformance is not for the current composition bytes')]);
+    // The harness's own admission agrees: no executed file outside the certified bytes can leave it claiming exact support.
+    const evidence = selfHostCompositionEvidence(declarations, changed);
+    expect(evidence.files, path).toContain(path);
+    expect(evidence.supported, path).toBe(false);
   }
+  expect(selfHostCompositionEvidence(declarations, read).supported).toBe(true);
   expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
     metrics[metrics.findIndex(metric => metric.includes('.self-hosting.runtime='))] = 'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.runtime=node-24';
   }))).toContain(`preview-self-host-native × claude-code-subscription × darwin × self-hosting: certified on node-24, running ${currentRuntime()}`);
