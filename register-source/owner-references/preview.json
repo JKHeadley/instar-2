@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent.test.ts",
-        "hash": "sha256:924fdfa9c04153965f79e411c54120d45da0ad9f7ec0149ec0526c353768ae81"
+        "hash": "sha256:3609db1fca860fe77c07bfca59c1c588c4b2607d514031602745dc69335f23a9"
       }
     },
     {
@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-memory-correction.test.ts",
-        "hash": "sha256:6359b278590a62a3d546ec926f21496558056c7dee0d657e524310fb841d7bc6"
+        "hash": "sha256:dd47c753544b5e88412dd2857f76aee1230874d726d754437fb2197e3b5876ef"
       }
     },
     {
@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-dated-memory.test.ts",
-        "hash": "sha256:1dd8a27ddfe328b88908ff7df4f928424f687830d19305d592064e88e31b0982"
+        "hash": "sha256:a54f64334b70b6b72c6174b670b43f4d63accafef002da073c9954adcfbb569c"
       }
     },
     {
@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:3cfec1b1703a85a6b85ea1ba6bcdaf21981e679fe696fbed4f83d72e283a8cde"
+        "hash": "sha256:08fd9ef1acf14478c8c223fedf682b455aca74abfbbc199ade10b9d6a4e2e399"
       }
     },
     {
