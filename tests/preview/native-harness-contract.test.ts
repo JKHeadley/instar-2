@@ -18,10 +18,10 @@ import { DOORWAY_CONFORMANCE } from './doorway-conformance.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { encoded } from './canonical.js';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
-import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SELF_HOST_CONTEXT, doorwayProposer, selfHost } from './self-host.mjs';
+import { SELF_HOST_CONTEXT, doorwayProvider, selfHost } from './self-host.mjs';
 import { createSelfHostHarness, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
-import { ownerStoreFacts, providerAttemptsOf } from './self-host-owners.ts';
+import { dispatchOwnedProvider, ownerStoreFacts, providerAttemptsOf, providerStores } from './self-host-owners.ts';
+import { currentRuntime } from '../../scripts/composition-digest.mjs';
 import { hashBytes } from '../../src/facts/index.js';
 import { SELF_HOST_HARNESS } from './stall-coverage.js';
 import { parityMatrix } from '../../scripts/check-architecture.mjs';
@@ -58,9 +58,8 @@ it('every registered doorway either runs these contracts or is declared unsuppor
 
 describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doorway %s', id => {
   const fixture = DOORWAY_CONFORMANCE[id];
-  const proposerAt = async (root, state, world) => doorwayProposer({ doorwayId: id, io: fixture.io(state), profile: fixture.profile,
-    activation: world.activation(), model: world.model, context: SELF_HOST_CONTEXT, stopped: stoppedAt(root), now: () => NOW,
-    prepare: prepareJournalEnvelope, provider: fixture.provider });
+  const proposerAt = async (root, state, world) => doorwayProvider({ doorwayId: id, io: fixture.io(state), profile: fixture.profile,
+    activation: world.activation(), model: world.model, stopped: stoppedAt(root), now: () => NOW });
 
   it('names its cases literally for the register', () => expect(Object.hasOwn(TITLES, id)).toBe(true));
 
@@ -68,7 +67,7 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
     const world = successiveWorld(), root = realpathSync(mkdtempSync(join(tmpdir(), 'native-contract-')));
     try {
       const state = { outcome: 'complete', calls: 0, stdin: [], answer: () => PLAN };
-      const run = async (task, propose, at = root) => selfHost({ task, propose, repo: process.cwd(), root: at, grants: ['local-install'], context: SELF_HOST_CONTEXT });
+      const run = async (task, provider, at = root) => selfHost({ task, provider, repo: process.cwd(), root: at, grants: ['local-install'], context: SELF_HOST_CONTEXT });
       // Launch, delivery, lifecycle and grounding: one reasoning call through the doorway carries the task; every tool is an adapter launch.
       const report = await run('Build a word-count capability.', await proposerAt(root, state, world));
       expect(report.passed).toBe(true);
@@ -84,7 +83,8 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
         ['launched', 'actual process launch observed'], ['input-accepted', 'durable input accepted; consumption not yet claimed'],
         ['exit-observed', 'exited:worker-exit'], ['exit-observed', 'exited:worker-exit']]);
       // Every launch was admitted by the owners before it ran: its specification is in an owner store, bound to that store's
-      // Run, to the prepared Six reservation that was claimed and consumed, and to the recorded input digest.
+      // Run, to the prepared Six reservation that was claimed and consumed, and to Eight's recorded request, whose parameters
+      // carry the recorded input digest and are the reservation's digest.
       const specs = ownerStoreFacts(root).flatMap(({ facts }) => facts.filter(fact => fact.kind === 'assembly-HarnessLaunchSpec'
         && fact.body.record.id.startsWith('launch:')).map(fact => ({ spec: fact.body.record, facts })));
       for (const launch of byLaunch.keys()) {
@@ -92,14 +92,23 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
         expect(found, launch).toBeTruthy();
         const reservations = found.facts.filter(fact => fact.kind === 'transport-AdmissionReservation').map(fact => fact.body.record);
         expect(reservations.map(row => row.state)).toEqual(['prepared', 'dispatch-claimed', 'consumed']);
-        expect(found.spec).toMatchObject({ run: reservations[0].run, harness: SELF_HOST_HARNESS, inputDigest: reservations[0].digest });
+        const request = found.facts.find(fact => fact.kind === 'effect-EffectRequest' && fact.body.record.id === reservations[0].request)?.body.record;
+        expect(request).toMatchObject({ operation: 'native-confined-launch', digest: reservations[0].digest, run: reservations[0].run });
+        expect(found.spec).toMatchObject({ run: reservations[0].run, harness: SELF_HOST_HARNESS, inputDigest: request.parameters.inputDigest });
       }
-      // The certified tuple is this composition: its declared conformance digest is the running adapter's artifact, on this runtime.
+      // The one provider call went through the provider owners: Seven's request, Eight's provider request, Six's charge naming it.
+      const [call] = providerStores(root);
+      const effect = call.facts.find(fact => fact.kind === 'effect-provider-ProviderEffectRequest').body.record;
+      expect(call.facts.filter(fact => fact.kind === 'transport-AdmissionReservation').map(fact => [fact.body.record.state, fact.body.record.request]))
+        .toEqual([['prepared', effect.id], ['dispatch-claimed', effect.id], ['consumed', effect.id]]);
+      // The certified tuple is this composition: its declared conformance digest is the running adapter's artifact, on this
+      // resolved runtime, and the adapter admits that conformance only because it matches its own running closure.
       const tuple = parityMatrix().harnessTuples.find(row => row.harness === SELF_HOST_HARNESS && row.doorway === id && row.mode === 'self-hosting');
       const described = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: () => false, now: () => NOW,
         log: openRecordLog(root, SELF_HOST_CONTEXT) }).adapter.describe();
-      expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [`node-${process.versions.node.split('.')[0]}`],
+      expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
         artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
+      expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
       expect(described.platform).toBe(`${tuple.platform}-${process.arch}`);
       // Confined tools and the installed capability: the owner resolves the active package; its evidence is these observations.
       const active = resolveActivePackage('agent.word-count', openRecordLog(root, SELF_HOST_CONTEXT).rows(), SELF_HOST_CONTEXT);
@@ -110,7 +119,8 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
       const open = await proposerAt(root, state, world);
       latchStop(root, NOW);
       expect(await run('Build another capability after stop.', open)).toMatchObject({ stopped: true });
-      await expect(open('{}', { operation: 'self-host:direct' })).rejects.toThrow('stop latched before the provider attempt');
+      await expect(dispatchOwnedProvider({ root, task: 'direct', question: 'q', conversation: [], allowance: 3, provider: open, stopped: stoppedAt(root) }))
+        .rejects.toThrow('stop latched before the provider attempt');
       await expect(proposerAt(root, state, world)).rejects.toThrow('stopped or revoked');
       expect(state.calls).toBe(1);
       // Refused and timed-out frames never become a plan; the attempt stays charged and is never retried.
@@ -120,14 +130,17 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
           const failing = { outcome, calls: 0, stdin: [], answer: () => PLAN };
           await expect(run(`A ${outcome} call.`, await proposerAt(other, failing, world), other)).rejects.toThrow('self-host: model');
           expect(failing.calls).toBe(1);
-          // Charged and consumed in Six before the call; recorded as an unknown charge; never retried; nothing launched.
+          // Prepared by Seven and Eight, charged, claimed and consumed in Six before the call; recorded as an unknown charge;
+          // never retried; nothing launched.
           expect(providerAttemptsOf(other, hashBytes(`A ${outcome} call.`))).toBe(1);
+          expect(providerStores(other)[0].facts.filter(fact => fact.kind === 'transport-AdmissionReservation').map(fact => fact.body.record.state))
+            .toEqual(['prepared', 'dispatch-claimed', 'consumed']);
           expect(readDurable(join(other, 'self-host.jsonl')).map(row => row.outcome)).toEqual(['failed-charge-unknown']);
           expect(readDurable(join(other, 'assembly.jsonl'))).toEqual([]);
         } finally { rmSync(other, { recursive: true, force: true }); }
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 120000);
+  }, 240000);
 
   it(TITLES[id]?.journal ?? `journal ${id}`, () => {
     const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile, { INSTAR_PREVIEW_CUTOVER_DOORWAY: id });

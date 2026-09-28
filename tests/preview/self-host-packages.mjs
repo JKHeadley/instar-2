@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { hashBytes } from '../../src/facts/index.js';
-import { resolveActivePackage, stageLocalCapability } from '../../src/assembly/index.js';
+import { decodeAssemblyRecord, resolveActivePackage, stageLocalCapability } from '../../src/assembly/index.js';
 
 const take = result => { if (result.kind !== 'Success') throw Error(`self-host: refused ${result.detail ?? ''}`); return result.value; };
 const fsyncPath = path => { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
@@ -71,44 +71,96 @@ export function createPackageLifecycle({ context, log, harness, stopped, work })
     if (!existsSync(path) || hashBytes(readFileSync(path, 'utf8')) !== entry.digest) throw Error(`self-host: retained artifact ${pkg.id} changed`);
   } };
 
+  /** One confined probe of exact retained bytes: the entrypoint export called with the declared input. */
+  const probe = async pkg => {
+    verify(pkg);
+    const declared = probeOf(pkg), entry = pkg.entrypoints.find(item => item.id === declared.entrypoint);
+    if (!entry) throw Error('self-host: probe names no entrypoint');
+    const probed = await harness.run({ mode: 'confined', kind: 'probe', tool: 'probe', work, entry: join(directory(pkg), entry.path), export: declared.export, input: declared.input });
+    const line = probed.stdout?.split('\n').find(text => text.startsWith('@probe '));
+    let actual; try { actual = line ? JSON.parse(line.slice(7)).value : undefined; } catch { actual = undefined; }
+    const passed = !probed.refused && probed.code === 0 && line !== undefined && JSON.stringify(actual) === JSON.stringify(declared.expect);
+    return { passed, probed, actual, probeEvidence: passed ? [probed.observation] : [] };
+  };
   /** Exercise exact retained bytes in confinement: the package's tests over them, then its entrypoint probe. */
   const exercise = async pkg => {
     verify(pkg);
-    const probe = probeOf(pkg);
-    const retained = [...pkg.entrypoints, ...probe.tests].map(entry => ({ path: entry.path, bytes: readFileSync(join(directory(pkg), entry.path), 'utf8') }));
-    const tested = probe.tests.length ? await harness.run({ mode: 'confined', kind: 'test', tool: 'package-test', work,
-      directory: harness.stageWork(retained), files: probe.tests.map(file => file.path) }) : null;
-    const entry = pkg.entrypoints.find(item => item.id === probe.entrypoint);
-    if (!entry) throw Error('self-host: probe names no entrypoint');
-    const probed = await harness.run({ mode: 'confined', kind: 'probe', tool: 'probe', work, entry: join(directory(pkg), entry.path), export: probe.export, input: probe.input });
-    const line = probed.stdout?.split('\n').find(text => text.startsWith('@probe '));
-    let actual; try { actual = line ? JSON.parse(line.slice(7)).value : undefined; } catch { actual = undefined; }
-    const probePassed = !probed.refused && probed.code === 0 && line !== undefined && JSON.stringify(actual) === JSON.stringify(probe.expect);
+    const declared = probeOf(pkg);
+    const retained = [...pkg.entrypoints, ...declared.tests].map(entry => ({ path: entry.path, bytes: readFileSync(join(directory(pkg), entry.path), 'utf8') }));
+    const tested = declared.tests.length ? await harness.run({ mode: 'confined', kind: 'test', tool: 'package-test', work,
+      directory: harness.stageWork(retained), files: declared.tests.map(file => file.path) }) : null;
+    const probed = await probe(pkg);
     const testsPassed = tested === null || (!tested.refused && tested.code === 0);
-    return { passed: probePassed && testsPassed, tested, probed, actual,
-      testEvidence: tested && testsPassed ? [tested.observation] : [], probeEvidence: probePassed ? [probed.observation] : [] };
+    return { ...probed, passed: probed.passed && testsPassed, tested, testEvidence: tested && testsPassed ? [tested.observation] : [] };
   };
 
-  const transition = (pkg, from, to, predecessors, evidence, prior, cause) => log.append({ type: 'PackageTransition', schemaVersion: 1,
+  /**
+   * D14 §9: every lifecycle step names the six/eight operation that caused it — the admitted launch
+   * (its Six operation and the consumed dispatch claim) that exercised or observed this exact package.
+   * A step with no admitted launch behind it is refused, never given an invented reference.
+   */
+  const causeOf = (...runs) => {
+    const run = runs.find(item => item && !item.refused && item.operation && item.claim);
+    if (!run) throw Error('self-host: no admitted operation stands behind this lifecycle step');
+    return { operation: run.operation, claim: run.claim };
+  };
+  const draft = (pkg, from, to, predecessors, evidence, prior, cause, admitted) => ({ type: 'PackageTransition', schemaVersion: 1,
     id: `transition:${pkg.namespace}:${randomUUID()}`, predecessors, dependencyFacts: [], package: pkg.namespace, manifestDigest: pkg.contentDigest,
     priorActiveDigest: prior?.contentDigest ?? '', machine: 'local', scope: 'workspace', cause, responsiblePrincipal: 'agent', grants: ['local-install'],
     generation: 'self-host:generation:1', testEvidence: evidence.testEvidence, migrationEvidence: [], probeEvidence: evidence.probeEvidence,
-    operation: `operation:switch:${randomUUID()}`, claim: `claim:${work}`, observedArtifactDigest: pkg.contentDigest, from, to, outstandingWork: [] });
+    operation: admitted.operation, claim: admitted.claim, observedArtifactDigest: pkg.contentDigest, from, to, outstandingWork: [] });
+  const transition = (...args) => log.append(draft(...args));
   const byDigest = digest => packages().find(pkg => pkg.contentDigest === digest) ?? null;
   /** The owner's resolution must name exactly this package before a switch counts as done. */
   const resolvesTo = pkg => active(pkg.namespace)?.contentDigest === pkg.contentDigest;
+  /** Whether the owner would resolve this package if the candidate switch were recorded (nothing is written). */
+  const wouldResolve = (pkg, candidate) => {
+    const decoded = take(decodeAssemblyRecord('PackageTransition', candidate, context));
+    const resolved = resolveActivePackage(pkg.namespace, [...log.rows(), { fact: { id: decoded.id, kind: 'assembly-PackageTransition' }, record: decoded,
+      taint: [], conflicts: [] }], context);
+    return resolved.kind === 'Success' && resolved.value.contentDigest === pkg.contentDigest;
+  };
   const lastActive = pkg => transitions(pkg.namespace).filter(row => row.to === 'active' && row.observedArtifactDigest === pkg.contentDigest).at(-1);
+  /**
+   * Record `active` only when the owner will resolve exactly this package from it, and confirm that
+   * it does after the write; otherwise nothing reports the switch as done.
+   */
+  const commitActive = candidate => {
+    const pkg = byDigest(candidate.observedArtifactDigest) ?? { namespace: candidate.package, contentDigest: candidate.observedArtifactDigest };
+    if (!wouldResolve(pkg, candidate)) return null;
+    const written = log.append(candidate);
+    return resolvesTo(pkg) ? written : null;
+  };
 
-  /** Re-prove a retained earlier version and make it the head again (rollback). */
+  /** Re-prove a retained earlier version and make it the head again (rollback); null unless the owner then resolves it. */
   const restore = async (prior, after) => {
     const proven = await exercise(prior);
     if (!proven.passed) return null;
-    return transition(prior, 'activating', 'active', [after.id], { testEvidence: lastActive(prior)?.testEvidence ?? proven.testEvidence,
-      probeEvidence: proven.probeEvidence }, null, 'rollback: the replacement was inhibited');
+    return commitActive(draft(prior, 'activating', 'active', [after.id], { testEvidence: lastActive(prior)?.testEvidence ?? proven.testEvidence,
+      probeEvidence: proven.probeEvidence }, null, 'rollback: the replacement was inhibited', causeOf(proven.probed)));
+  };
+  /**
+   * The switch (D14 §9 activating): observe the exact retained artifact in confinement, then record
+   * `active` only if the owner resolves it. An unobservable or unresolvable switch is inhibited under
+   * that observation's operation and the prior usable version is restored, in this same step.
+   */
+  const activate = async (pkg, after, prior, testEvidence, cause) => {
+    const observed = await probe(pkg);
+    const admitted = causeOf(observed.probed);
+    if (observed.passed && commitActive(draft(pkg, 'activating', 'active', [after.id], { testEvidence, probeEvidence: observed.probeEvidence }, prior, cause, admitted)))
+      return { completed: true, evidence: observed };
+    const head = transitions(pkg.namespace).find(row => row.predecessors.includes(after.id) && row.to === 'active');
+    // A written-but-unresolved active head (the owner changed between check and write) is inhibited under a fresh observation.
+    const inhibited = head ? transition(pkg, 'active', 'inhibited', [head.id], { testEvidence: [], probeEvidence: [] }, prior,
+      'owner resolution refused the switch', causeOf((await probe(pkg)).probed))
+      : transition(pkg, 'activating', 'inhibited', [after.id], { testEvidence: [], probeEvidence: [] }, prior,
+        observed.passed ? 'owner resolution refused the switch' : 'the switch observation failed', admitted);
+    const restored = prior ? await restore(prior, inhibited) : null;
+    return { completed: false, inhibited: inhibited.id, restored: restored ? prior.contentDigest : null, evidence: observed };
   };
 
   return Object.freeze({
-    active, head, directory, exercise,
+    active, head, directory, exercise, probe,
     /** Stage (inert): the core stager over exact bytes, refusing a version label that already names other bytes. */
     stage(declaration, archive, tests) {
       if (tests.length === 0) throw Error('self-host: a package needs its own tests before it can be activated');
@@ -127,23 +179,22 @@ export function createPackageLifecycle({ context, log, harness, stopped, work })
       if (!packages().some(item => item.id === pkg.id)) log.append(pkg);
       const evidence = await exercise(pkg);
       if (!evidence.passed) {
-        const inhibited = transition(pkg, 'staged', 'inhibited', current ? [current.id] : [], evidence, prior, 'exercise failed');
+        const inhibited = transition(pkg, 'staged', 'inhibited', current ? [current.id] : [], evidence, prior, 'exercise failed', causeOf(evidence.probed, evidence.tested));
         const restored = prior ? await restore(prior, inhibited) : null;
         return { passed: false, inhibited: inhibited.id, active: restored ? prior.contentDigest : null, evidence };
       }
       if (stopped()) throw Error('self-host: stop latched before activation');
-      const activating = transition(pkg, 'eligible', 'activating', current ? [current.id] : [], evidence, prior, 'exercised in confinement');
+      const activating = transition(pkg, 'eligible', 'activating', current ? [current.id] : [], evidence, prior, 'exercised in confinement', causeOf(evidence.probed));
       if (crashAfterActivating) throw Object.assign(Error('self-host: simulated crash during activation'), { cut: true });
-      const switched = transition(pkg, 'activating', 'active', [activating.id], evidence, prior, 'activation observed');
-      if (!resolvesTo(pkg)) {
-        // The owner cannot resolve the switch: never report success; keep the prior usable version.
-        const inhibited = transition(pkg, 'active', 'inhibited', [switched.id], evidence, prior, 'owner resolution refused the switch');
-        const restored = prior ? await restore(prior, inhibited) : null;
-        return { passed: false, inhibited: inhibited.id, active: restored ? prior.contentDigest : null, evidence };
-      }
+      const switched = await activate(pkg, activating, prior, evidence.testEvidence, 'activation observed');
+      // The owner cannot resolve the switch: never report success; the prior usable version is kept.
+      if (!switched.completed) return { passed: false, inhibited: switched.inhibited, active: switched.restored, evidence };
       return { passed: true, active: pkg.contentDigest, evidence };
     },
-    /** Complete or roll back every interrupted switch, and repair an active head the owner cannot resolve (run before new work). */
+    /**
+     * Complete or roll back every interrupted switch, and repair an active head the owner cannot
+     * resolve (run before new work). `completed` is reported only when the owner resolves the package.
+     */
     async recover() {
       const namespaces = [...new Set(packages().map(pkg => pkg.namespace))], outcomes = [];
       for (const namespace of namespaces) {
@@ -152,16 +203,24 @@ export function createPackageLifecycle({ context, log, harness, stopped, work })
         const pkg = byDigest(current.observedArtifactDigest), prior = current.priorActiveDigest ? byDigest(current.priorActiveDigest) : null;
         if (current.to === 'active') {
           if (active(namespace)) continue;
-          // An active label the owner cannot resolve is not a usable version: inhibit it and restore the prior one.
+          // An active label the owner cannot resolve is not a usable version: inhibit it and restore the prior one. The
+          // inhibition names a real admitted launch — a fresh observation of that package, or else the rollback's own
+          // re-proof of the prior version; with neither, nothing is written and the head is reported unresolved.
+          const observed = pkg ? await probe(pkg).catch(() => null) : null;
+          const proven = observed && !observed.probed.refused ? null : prior ? await exercise(prior).catch(() => null) : null;
+          const cause = observed && !observed.probed.refused ? observed.probed : proven?.passed && proven.tested ? proven.tested : null;
+          if (!cause) { outcomes.push({ namespace, unresolved: current.observedArtifactDigest }); continue; }
           const inhibited = transition(pkg ?? { namespace, contentDigest: current.observedArtifactDigest }, 'active', 'inhibited', [current.id],
-            { testEvidence: [], probeEvidence: [] }, prior, 'owner resolution refused the active head');
-          outcomes.push({ namespace, inhibited: current.observedArtifactDigest, restored: prior && await restore(prior, inhibited) ? prior.contentDigest : null }); continue;
+            { testEvidence: [], probeEvidence: [] }, prior, 'owner resolution refused the active head', causeOf(cause));
+          const restored = !prior ? null : proven ? commitActive(draft(prior, 'activating', 'active', [inhibited.id], { testEvidence: lastActive(prior)?.testEvidence
+            ?? proven.testEvidence, probeEvidence: proven.probeEvidence }, null, 'rollback: the replacement was inhibited', causeOf(proven.probed)))
+            : await restore(prior, inhibited);
+          outcomes.push({ namespace, inhibited: current.observedArtifactDigest, restored: restored ? prior.contentDigest : null }); continue;
         }
         if (current.to === 'activating' && pkg) {
-          const evidence = await exercise(pkg);
-          if (evidence.passed) { transition(pkg, 'activating', 'active', [current.id], evidence, prior, 'recovered interrupted activation'); outcomes.push({ namespace, completed: pkg.contentDigest }); continue; }
-          const inhibited = transition(pkg, 'activating', 'inhibited', [current.id], evidence, prior, 'recovery exercise failed');
-          outcomes.push({ namespace, inhibited: pkg.contentDigest, restored: prior && await restore(prior, inhibited) ? prior.contentDigest : null }); continue;
+          const switched = await activate(pkg, current, prior, current.testEvidence, 'recovered interrupted activation');
+          outcomes.push(switched.completed ? { namespace, completed: pkg.contentDigest }
+            : { namespace, inhibited: pkg.contentDigest, restored: switched.restored }); continue;
         }
         if (current.to === 'inhibited' && prior) outcomes.push({ namespace, restored: await restore(prior, current) ? prior.contentDigest : null });
       }

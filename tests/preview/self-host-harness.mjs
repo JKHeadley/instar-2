@@ -22,7 +22,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { SELF_HOST_HARNESS, SELF_HOST_STALL_COVERAGE } from './stall-coverage.js';
 import { createSelfHostOwners } from './self-host-owners.ts';
-import { compositionDigest, currentRuntime } from '../../scripts/composition-digest.mjs';
+import { compositionClosure, compositionDigest, currentRuntime, fileDigest } from '../../scripts/composition-digest.mjs';
 
 export const CONFINEMENT_LIMITS = Object.freeze({ wallMs: 20000, memoryMb: 256, outputBytes: 4096, hostToolMs: 600000, graceMs: 5000 });
 const WORKER_PROFILE = new URL('../../deploy/macos/fixed-worker/worker.sb', import.meta.url);
@@ -72,18 +72,24 @@ export function openRecordLog(root, context) {
 }
 
 /**
- * Rules 26, 49, 69, 115 (D17 §2): the exact bytes the supported self-hosting tuple was certified on.
- * The declaration names the composition's files and runtime; the digest is recomputed from the
- * files as they are now, so changing the driver, the owners, the runner or the runtime changes it.
+ * Rules 26, 49, 69, 115 (D17 §2): the exact composition the supported self-hosting tuple was certified
+ * on. The declaration names the composition's entry points and the resolved runtime; the files are the
+ * entries' static import closure, and the digest is recomputed from those files as they are now, on the
+ * runtime actually running. `supported` is true only when the declared conformance and runtime match
+ * this running composition exactly.
  */
 export function selfHostCompositionEvidence(declarations = JSON.parse(readFileSync(DECLARATIONS, 'utf8')),
   read = path => { try { return readFileSync(new URL(path, REPOSITORY), 'utf8'); } catch { return null; } }) {
   const metrics = declarations.flatMap(entry => entry.requiredFacts?.metrics ?? []);
   const prefix = `harness.${SELF_HOST_HARNESS}.`;
   const fact = name => metrics.filter(metric => metric.startsWith(prefix) && metric.includes(`.self-hosting.${name}=`)).map(metric => metric.slice(metric.indexOf('=') + 1));
-  const [files] = fact('files'), [declared] = fact('conformance'), list = (files ?? '').split(',').filter(Boolean);
-  // The digest is of the files as they are now, on the runtime actually running this process.
-  return { files: list, runtime: currentRuntime(), declared: declared ?? null, digest: compositionDigest(currentRuntime(), list, read) ?? hashBytes('incomplete composition') };
+  const [entries] = fact('entries'), [declared] = fact('conformance'), [runtime] = fact('runtime');
+  const closure = compositionClosure((entries ?? '').split(',').filter(Boolean), read, 'src/assembly/harness.declarations.json');
+  const running = currentRuntime();
+  const digest = closure.complete && closure.files.length ? compositionDigest(running, closure.files, read) : null;
+  return { entries: (entries ?? '').split(',').filter(Boolean), files: closure.files, runtime: running, declaredRuntime: runtime ?? null,
+    declared: declared ?? null, digest: digest ?? hashBytes('incomplete composition'),
+    supported: digest !== null && declared === digest && runtime === running };
 }
 
 /** The confined runner: the fixed program the profile lets run. Its main thread holds the wall bound. */
@@ -170,6 +176,17 @@ export function physicalScopeRefusal(path, roots) {
   if (real !== expected || !inside(real, root.real)) return `${path} leaves its granted root through a link`;
   return null;
 }
+
+/** An absolute executable, or the first match on PATH; null when there is none. */
+const resolveExecutable = name => {
+  if (typeof name !== 'string' || !name) return null;
+  if (name.startsWith('/')) return name; // an absent absolute path is declared as is; its start fails at the release leaf
+  for (const directory of (process.env.PATH ?? '').split(':').filter(Boolean)) {
+    const candidate = join(directory, name);
+    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+};
 
 const bootIdentity = () => `boot:${Math.round(Date.now() / 1000 - uptime())}`;
 
@@ -277,22 +294,31 @@ export function createSelfHostHarness({ root, context, stopped, now, log, resolv
     },
   });
   const adapter = createNativeHarnessAdapter({ id: SELF_HOST_HARNESS, artifact, platform: `${process.platform}-${process.arch}`,
-    conformance: `self-host:${composition.declared ?? 'undeclared'}`, driver, stallCoverage: SELF_HOST_STALL_COVERAGE, context, clock: now,
+    // The declared conformance is admitted only for the exact running closure and runtime; otherwise unproven.
+    conformance: composition.supported ? `self-host:${composition.declared}` : `self-host:unproven:${composition.digest}`, driver, stallCoverage: SELF_HOST_STALL_COVERAGE, context, clock: now,
     generation: () => 'self-host:generation:1' });
-  let ordinal = 0;
   const run = async plan => {
+    // The executable each launch declares to Eight is the resolved file, and its digest is that file's bytes.
+    const executable = plan.mode === 'confined' ? release.runtime : resolveExecutable(plan.argv[0]);
     const recorded = plan.mode === 'confined'
       ? { mode: 'confined', kind: plan.kind, tool: plan.tool, work: plan.work, wallMs, ...(plan.kind === 'probe'
         ? { entry: plan.entry, export: plan.export, input: plan.input ?? null } : { directory: plan.directory, files: plan.files }) }
-      : { mode: 'host', kind: 'tool', tool: plan.tool, work: plan.work, argv: plan.argv, cwd: plan.cwd, credentials: plan.credentials,
-        paths: plan.paths ?? [], roots: plan.roots ?? [] };
+      : { mode: 'host', kind: 'tool', tool: plan.tool, work: plan.work, argv: executable ? [executable, ...plan.argv.slice(1)] : plan.argv, cwd: plan.cwd,
+        credentials: plan.credentials, paths: plan.paths ?? [], roots: plan.roots ?? [] };
     if (stopped()) return { tool: plan.tool, refused: 'stop latched', observations: [] };
     for (const reference of recorded.credentials ?? [])
       if (!resolveCredential(reference)) return { tool: plan.tool, refused: `credential ${reference} is not resolvable by its owner`, observations: [] };
     let owners;
     try {
       owners = createSelfHostOwners({ root, invocation: randomUUID(), harness: SELF_HOST_HARNESS, digests, bootId, stopped, leaf, now });
-      const admitted = owners.admitLaunch({ plan: recorded, step: `${plan.kind}:${++ordinal}`, workingScope: plan.mode === 'confined' ? release.release : plan.cwd,
+      if (!executable) throw Error(`self-host: ${plan.argv[0]} is not an executable on this host`);
+      const digestOf = path => existsSync(path) ? fileDigest(path) : hashBytes(`absent:${path}`);
+      const target = plan.mode === 'confined'
+        ? { executable, executableDigest: digestOf(executable), boundaryDigest: hashBytes(`${release.profileDigest}\0${release.runnerDigest}`),
+          restrictedIdentity: 'sandbox:worker.sb:empty-environment', profile: 'deploy/macos/fixed-worker/worker.sb' }
+        : { executable, executableDigest: digestOf(executable), boundaryDigest: hashBytes(JSON.stringify({ environment: 'scrubbed', roots: recorded.roots })),
+          restrictedIdentity: 'host-tool:scrubbed-environment', profile: 'host-tool' };
+      const admitted = owners.admitLaunch({ plan: recorded, target, workingScope: plan.mode === 'confined' ? release.release : plan.cwd,
         portHandles: plan.mode === 'confined' ? ['confined-worker-profile'] : ['host-tool', ...plan.credentials.map(name => `credential:${name}`)],
         wallMs, artifact });
       const handle = { ...admitted, owners, plan: recorded, monitor: [], processIdentity: null };
@@ -309,19 +335,13 @@ export function createSelfHostHarness({ root, context, stopped, now, log, resolv
       const exit = log.append(take(adapter.observe({ launch: spec.id, delivery: accepted.value.id, operation: admitted.operation })));
       observations.push(...handle.monitor.slice(1), exit);
       return { tool: plan.tool, code: state.exit.code, timedOut: state.exit.expired, output: tail(`${state.stdout}${state.stderr}`), stdout: state.stdout,
-        operation: admitted.operation, launch: spec.id, observation: exit.id, observations: observations.map(item => item.id) };
+        operation: admitted.operation, claim: admitted.claim, launch: spec.id, observation: exit.id, observations: observations.map(item => item.id) };
     } catch (error) {
       if (error?.cut) throw error;
       return { tool: plan.tool, refused: tail(error?.message ?? error), observations: [] };
     } finally { owners?.close(); }
   };
-  /** One provider attempt, charged and consumed in Six before `invoke(operation)` runs through Six. */
-  const dispatchProvider = async (task, invoke, allowance) => {
-    if (stopped()) throw Error('self-host: stop latched before the provider attempt');
-    const owners = createSelfHostOwners({ root, invocation: randomUUID(), harness: SELF_HOST_HARNESS, digests, bootId, stopped, leaf, now });
-    try { return await owners.dispatchProvider(task, invoke, allowance); } finally { owners.close(); }
-  };
-  return Object.freeze({ adapter, release, artifact, composition, run, dispatchProvider, stageWork: files => stageWork(release, files) });
+  return Object.freeze({ adapter, release, artifact, composition, run, stageWork: files => stageWork(release, files) });
 }
 
 /**

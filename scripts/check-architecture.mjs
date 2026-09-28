@@ -5,7 +5,7 @@ import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { importClosure } from './import-closure.mjs';
-import { compositionDigest, currentRuntime } from './composition-digest.mjs';
+import { compositionClosure, compositionDigest, currentRuntime } from './composition-digest.mjs';
 
 export function createProgram(extra = {}) {
   const configPath = ts.findConfigFile(process.cwd(), ts.sys.fileExists, 'tsconfig.json');
@@ -268,7 +268,7 @@ const CHANNEL_SOURCE = /^src\/conversation\/([a-z]+)\.declarations\.json$/u;
 const CHANNEL_STATE = /^([a-z]+)\.operation\.([a-z-]+)\.(supported|inhibited|unsupported|unproven)$/u;
 const CHANNEL_FACT = /^([a-z]+)\.operation\.([a-z-]+)\.(evidence|reason)=(.+)$/u;
 const TUPLE_STATE = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(supported|unsupported|unproven)$/u;
-const TUPLE_FACT = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(evidence|artifact|route|reason|files|runtime|conformance)=(.+)$/u;
+const TUPLE_FACT = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-]+)\.(evidence|artifact|route|reason|entries|runtime|conformance)=(.+)$/u;
 /**
  * Rule 105 (with 30, 115): the feature-by-channel and harness-by-doorway parity matrix, derived
  * from the register's own declarations (the facts the generated register and capability briefing
@@ -280,14 +280,15 @@ const TUPLE_FACT = /^harness\.([a-z0-9:-]+)\.([a-z0-9-]+)\.([a-z0-9_-]+)\.([a-z-
  * - any declaration declares a harness tuple cell
  *   `harness.<harness>.<doorway>.<platform>.<mode>.<supported|unsupported|unproven>`, plus, when
  *   supported, `.artifact=<composition id>@<code path>`, `.route=<doorway id>@<registering module>`,
- *   `.files=<the composition's files, comma-separated>`, `.runtime=node-<major>`,
- *   `.conformance=<compositionDigest of those files on that runtime>` and `.evidence=<test file>#<test title>`,
+ *   `.entries=<the composition's entry points, comma-separated>` (its files are their static import closure),
+ *   `.runtime=node-<version>@<sha256 of the runtime executable>`,
+ *   `.conformance=<compositionDigest of that closure on that runtime>` and `.evidence=<test file>#<test title>`,
  *   and `.reason=<text>` otherwise.
  */
 export function parityMatrix(sources = registerDeclarationSources()) {
   const channels = [], cells = new Map(), tuples = new Map(), stray = [];
   const cellOf = (map, key, init) => { if (!map.has(key)) map.set(key, { ...init, states: [], evidence: [], reason: [], artifact: [], route: [],
-    files: [], runtime: [], conformance: [] }); return map.get(key); };
+    entries: [], runtime: [], conformance: [] }); return map.get(key); };
   for (const [path, entries] of Object.entries(sources)) {
     const channel = CHANNEL_SOURCE.exec(path)?.[1];
     if (channel) channels.push(channel);
@@ -311,11 +312,11 @@ export function parityMatrix(sources = registerDeclarationSources()) {
   }
   const evidenceOf = value => { const at = value.indexOf('#'); return at < 0 ? { file: value, title: '' } : { file: value.slice(0, at), title: value.slice(at + 1) }; };
   const settle = cell => {
-    const { states, evidence, reason, artifact, route, files, runtime, conformance, ...rest } = cell;
+    const { states, evidence, reason, artifact, route, entries, runtime, conformance, ...rest } = cell;
     const status = states.length === 1 ? (states[0] === 'inhibited' ? 'unsupported' : states[0]) : undefined;
     return { ...rest, status, declaredStates: states, ...(states[0] === 'inhibited' ? { inhibited: true } : {}),
       ...(evidence.length ? { evidence: evidence.map(evidenceOf) } : {}), ...(reason.length ? { reason: reason.join('; ') } : {}),
-      ...(artifact.length ? { artifact } : {}), ...(route.length ? { route } : {}), ...(files.length ? { files } : {}),
+      ...(artifact.length ? { artifact } : {}), ...(route.length ? { route } : {}), ...(entries.length ? { entries } : {}),
       ...(runtime.length ? { runtime } : {}), ...(conformance.length ? { conformance } : {}) };
   };
   const features = [...new Set([...cells.values()].map(cell => cell.feature))].sort().map(id => ({ id,
@@ -355,14 +356,16 @@ export function lintParityRegister(sources = registerDeclarationSources(), read 
     const [routeId, routePath] = tuple.route?.length === 1 ? tuple.route[0].split('@') : [];
     if (routeId !== tuple.doorway || !routePath || !registeredDoorways(read(routePath) ?? '').includes(routeId))
       flag(`${where}: supported without its registered route`, tuple.source);
-    // D17 §2: support is bound to the exact composition bytes and runtime its conformance ran on.
-    const files = tuple.files?.length === 1 ? tuple.files[0].split(',') : [];
+    // D17 §2: support is bound to the exact composition — the static import closure of its declared
+    // entry points — and the resolved runtime its conformance ran on.
+    const entries = tuple.entries?.length === 1 ? tuple.entries[0].split(',') : [];
     const runtime = tuple.runtime?.length === 1 ? tuple.runtime[0] : null;
-    if (!files.length || !files.includes(artifactPath) || !files.includes(routePath) || !runtime)
-      flag(`${where}: supported without its composition files and runtime`, tuple.source);
+    const closure = entries.length ? compositionClosure(entries, read, tuple.source) : { files: [], complete: false };
+    if (!entries.length || !closure.complete || !closure.files.includes(artifactPath) || !closure.files.includes(routePath) || !runtime)
+      flag(`${where}: supported without complete composition entry points (closure reaching its artifact and route) and runtime`, tuple.source);
     else if (runtime !== currentRuntime()) flag(`${where}: certified on ${runtime}, running ${currentRuntime()}`, tuple.source);
     else {
-      const digest = compositionDigest(runtime, files, read);
+      const digest = compositionDigest(runtime, closure.files, read);
       if (!digest || tuple.conformance?.length !== 1 || tuple.conformance[0] !== digest)
         flag(`${where}: conformance is not for the current composition bytes (now ${digest ?? 'a missing file'}); re-run its contract and re-declare`, tuple.source);
     }

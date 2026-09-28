@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Rules 2 and 115 (D14 §9): the native harness develops, tests, packages, installs and exercises a
 // local capability unattended, through the public ports every harness has: reasoning through a
-// registered model doorway (each attempt charged and consumed in Six before it is invoked through
-// Six), tools only as admitted proposals dispatched through one interface, execution admitted by
+// registered model doorway (each attempt prepared by Seven and Eight, charged in Six and dispatched
+// by Eight), tools only as admitted proposals dispatched through one interface, execution admitted by
 // the owners and launched through the S8 boundary into Eight's confinement, packaging and
 // activation on the owners' package records.
 // This file owns process, clock and filesystem; nothing here widens a grant or runs a shell.
@@ -13,6 +13,10 @@ import { DEVELOPMENT_TOOLS } from '../../src/assembly/index.js';
 import { redact } from '../../src/recall/redact.js';
 import { appendDurable, createSelfHostHarness, dispatchTool, latchStop, openRecordLog, stoppedAt } from './self-host-harness.mjs';
 import { createPackageLifecycle } from './self-host-packages.mjs';
+import { dispatchOwnedProvider } from './self-host-owners.ts';
+
+/** The question the harness asks its doorway; the task, tools and plan shape travel as its context. */
+export const SELF_HOST_QUESTION = 'Plan the requested local capability as JSON only, inside your answer string.';
 
 export const SELF_HOST_LIMITS = Object.freeze({ rounds: 3, attempts: 3, files: 20, fileBytes: 65536, tools: 8 });
 const SAFE_FILE = /^(?!-)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:mjs|js|json|md)$/u;
@@ -44,12 +48,13 @@ const parsePlan = text => {
 };
 
 /**
- * One bounded, unattended self-hosting run. `propose(prompt, { operation })` is the harness's
- * reasoning through its model doorway under the durable attempt id. Generated files are written
+ * One bounded, unattended self-hosting run. `provider` is the harness's registered model doorway
+ * ({ model, framing, invocationBinding, routeFactory }, from `doorwayProvider`); every attempt goes
+ * through the provider owners (`dispatchOwnedProvider`). Generated files are written
  * as data only; they execute only inside the native adapter's confined driver. The run ends at an
  * installed, exercised package, a refusal, the stop latch, the attempt allowance or the round limit.
  */
-export async function selfHost({ task, propose, repo, root, grants, context, scopes, resolveCredential, now = () => Date.now(),
+export async function selfHost({ task, provider, repo, root, grants, context, scopes, resolveCredential, now = () => Date.now(),
   wallMs, crashAfterActivating = false, allowance }) {
   for (const path of [repo, root]) if (!isAbsolute(path)) throw Error('self-host: absolute paths required');
   mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -63,12 +68,16 @@ export async function selfHost({ task, propose, repo, root, grants, context, sco
   let feedback = null;
   for (let round = 1; round <= SELF_HOST_LIMITS.rounds; round++) {
     if (stopped()) { record({ phase: 'stopped', round }); return { passed: false, stopped: true, rounds: round - 1, recovered }; }
-    let reply, attempt = null;
+    let reply;
     try {
-      reply = await harness.dispatchProvider(key, async operation => { attempt = operation;
-        return propose(selfHostPrompt(task, feedback), { operation, stopped }); }, allowance ?? SELF_HOST_LIMITS.attempts);
-      record({ phase: 'provider', round, operation: attempt, outcome: 'answered' });
-    } catch (error) { if (attempt) record({ phase: 'provider', round, operation: attempt, outcome: 'failed-charge-unknown' }); throw error; }
+      const call = await dispatchOwnedProvider({ root, task: key, question: SELF_HOST_QUESTION, conversation: [{ request: JSON.parse(selfHostPrompt(task, feedback)) }],
+        allowance: allowance ?? SELF_HOST_LIMITS.attempts, provider, stopped, now });
+      reply = call.answer.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '');
+      record({ phase: 'provider', round, operation: call.operation, request: call.request, outcome: 'answered' });
+    } catch (error) {
+      if (error?.operation !== undefined) record({ phase: 'provider', round, operation: error.operation, outcome: 'failed-charge-unknown' });
+      throw error;
+    }
     const plan = parsePlan(reply);
     const real = realpathSync(scope);
     for (const file of plan.files) {
@@ -132,36 +141,18 @@ const yieldTurn = () => new Promise(done => setImmediate(done));
 const summary = item => ({ tool: item.tool, code: item.code ?? null, refused: item.refused ?? null, timedOut: item.timedOut ?? false, output: item.output ?? '' });
 
 /**
- * Reasoning through a registered doorway: the route is created with the real stop latch as its
- * active predicate, and every invocation carries the durable attempt id as its operation.
+ * Reasoning through a registered doorway: its route constructor, the successive-turn framing and the
+ * activation's exact invocation binding, with the real stop latch as the route's active predicate. The
+ * route is constructed per attempt by the provider owners, never called here.
  */
-export function doorwayProposer({ doorwayId, io, profile, activation, model, context, stopped, now = () => Date.now(), provider = 'anthropic',
-  prepare, deadlineMs = 180000 }) {
-  return import('../../src/assembly/production-provider.js').then(({ DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionConversationPolicy, subscriptionDoorway,
-    SUBSCRIPTION_CONVERSATION_FRAMING }) => {
-    const doorway = subscriptionDoorway(doorwayId ?? DEFAULT_SUBSCRIPTION_DOORWAY), policy = subscriptionConversationPolicy(model);
-    const created = doorway.create({ context, credential: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: profile.reference },
-      profile, resolveProfile: () => profile, provider, model, route: 'preview-subscription',
-      disclosure: 'Self-hosting run; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING, io, now, active: () => !stopped(),
-      adapterEvidenceContract: { reference: activation.reference, version: activation.profileDigest, ...doorway.contract,
-        successfulFinalReplyReasons: [...doorway.contract.successfulFinalReplyReasons], endpoint: profile.loginProfileIdentity,
-        account: profile.expectedAccount, credentialReference: profile.reference, controller: 'preview-self-host',
-        sourceEvidence: [activation.reference], terminalEvidence: activation.reference, strength: 'attestation',
-        maxMetadataBytes: policy.maxMetadataBytes, maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes } });
-    if (created.kind !== 'Success') throw Error(`self-host: doorway refused ${created.detail ?? ''}`);
-    const route = created.value;
-    return async (prompt, { operation }) => {
-      if (stopped()) throw Error('self-host: stop latched before the provider attempt');
-      const prepared = prepare({ question: 'Plan the requested local capability as JSON only, inside your answer string.',
-        context: JSON.stringify({ request: JSON.parse(prompt) }), id: operation }, model, activation.trial ?? 'self-host', now());
-      const result = await route.invoke(prepared, { operation, deadline: now() + deadlineMs, timeout: policy.timeout,
-        maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 });
-      if (result.state !== 'complete' || !result.bytes) throw Error(`self-host: model ${result.state}`);
-      const value = JSON.parse(result.bytes)?.conclusion?.value;
-      if (typeof value !== 'string') throw Error('self-host: model returned no plan');
-      return value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '');
-    };
-  });
+export async function doorwayProvider({ doorwayId, io, profile, activation, model, stopped, now = () => Date.now() }) {
+  const { DEFAULT_SUBSCRIPTION_DOORWAY, SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionDoorway, validateSubscriptionActivation } = await import('../../src/assembly/production-provider.js');
+  const { stage2InvocationBinding, stage2RouteFactory } = await import('./stage2-provider.js');
+  const doorway = subscriptionDoorway(doorwayId ?? DEFAULT_SUBSCRIPTION_DOORWAY), framing = SUBSCRIPTION_CONVERSATION_FRAMING;
+  if (stopped()) throw Error('self-host: subscription preview stopped or revoked');
+  validateSubscriptionActivation(activation, profile, model, now(), framing);
+  return Object.freeze({ doorway: doorway.id, model, framing, invocationBinding: stage2InvocationBinding({ activation, profile, model, framing }),
+    routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing, create: doorway.create }) });
 }
 
 export const SELF_HOST_CONTEXT = Object.freeze({ site: 'preview.journal', preserved: 'preview:self-host', register: {
@@ -189,15 +180,12 @@ const main = async () => {
   if (grants.some(grant => !GRANTS.has(grant))) throw Error('self-host: unknown grant');
   const scopeRoots = (options['scope-roots'] ?? root).split(':').map(path => resolve(path));
   const model = options.model, stopped = stoppedAt(root);
-  const { validateSubscriptionActivation, SUBSCRIPTION_CONVERSATION_FRAMING } = await import('../../src/assembly/production-provider.js');
   const { createSubscriptionProviderIO } = await import('../../scripts/production-boot-io.mjs');
-  const { prepareJournalEnvelope } = await import('./journal-envelope.js');
   const activation = JSON.parse(readFileSync(options['activation-record'], 'utf8'));
   const profile = JSON.parse(readFileSync(options['login-profile'], 'utf8'));
-  validateSubscriptionActivation(activation, profile, model, Date.now(), SUBSCRIPTION_CONVERSATION_FRAMING);
-  const propose = await doorwayProposer({ doorwayId: options.doorway, io: createSubscriptionProviderIO({ repository: process.cwd(), stopped }),
-    profile, activation, model, context: SELF_HOST_CONTEXT, stopped, prepare: prepareJournalEnvelope });
-  const report = await selfHost({ task: options.task, propose, repo: process.cwd(), root, grants, context: SELF_HOST_CONTEXT,
+  const provider = await doorwayProvider({ doorwayId: options.doorway, io: createSubscriptionProviderIO({ repository: process.cwd(), stopped }),
+    profile, activation, model, stopped });
+  const report = await selfHost({ task: options.task, provider, repo: process.cwd(), root, grants, context: SELF_HOST_CONTEXT,
     scopes: { roots: scopeRoots }, resolveCredential: operatorCredential });
   process.stdout.write(`${JSON.stringify({ ...report, tools: report.tools?.map(item => ({ tool: item.tool, code: item.code ?? null,
     refused: item.refused ?? null, observation: item.observation ?? null })) })}\n`);

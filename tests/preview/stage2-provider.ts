@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionPolicyFor, validateSubscriptionActivation,
-  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING } from '../../src/assembly/production-provider.js';
-import type { SubscriptionActivationRecord, SubscriptionFraming } from '../../src/assembly/production-provider.js';
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, subscriptionInvocationPolicy, subscriptionPolicyFor, validateSubscriptionActivation,
+  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
+  SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
+import type { SubscriptionActivationRecord, SubscriptionDoorway, SubscriptionFraming } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 
 export const OWNER_WINDOW_MS = 300000;
@@ -24,14 +25,18 @@ export function submittedEnvelope(input: { provider: string; model: string; rout
   return encoded({ ...bindings, messages: [{ role: 'user', content: question }, { role: 'context', content: context }],
     attachments: [], tools: [], settings: STAGE2_SETTINGS, outputSchema: STAGE2_OUTPUT_SCHEMA });
 }
-export function inputMeasurements(question: string, context: string, submitted: string) {
-  const system = Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8');
+/** The measured prompt envelope of a framing: its system prompt and its complete-prompt ceiling (the historical v2 default is unchanged). */
+const framed = (framing?: SubscriptionFraming) => framing === SUBSCRIPTION_CONVERSATION_FRAMING
+  ? { system: SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, maximum: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES }
+  : { system: SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, maximum: 4096 };
+export function inputMeasurements(question: string, context: string, submitted: string, framing?: SubscriptionFraming) {
+  const { system: prompt, maximum } = framed(framing), system = Buffer.byteLength(prompt, 'utf8');
   return Object.freeze({ system, prompt: system + Buffer.byteLength(submitted, 'utf8'), question: Buffer.byteLength(question), context: Buffer.byteLength(context),
-    submitted: Buffer.byteLength(submitted), maximum: 4096 });
+    submitted: Buffer.byteLength(submitted), maximum });
 }
-export function requireInputBound(question: string, context: string, submitted: string): void {
-  const lengths = inputMeasurements(question, context, submitted);
-  if (lengths.submitted > 4096 || lengths.prompt > 4096)
+export function requireInputBound(question: string, context: string, submitted: string, framing?: SubscriptionFraming): void {
+  const lengths = inputMeasurements(question, context, submitted, framing);
+  if (lengths.submitted > lengths.maximum || lengths.prompt > lengths.maximum)
     throw Object.assign(new Error('preview: complete input bound'), { previewBound: lengths });
 }
 /** Includes identities, sourceResult and escaping, not just the visible text. */
@@ -64,12 +69,14 @@ export function stage2InvocationBinding(input: { activation: SubscriptionActivat
     systemPromptDigest: `sha256:${createHash('sha256').update(system, 'utf8').digest('hex')}`,
     framing: invocationPolicy.framing, invocationPolicy });
 }
-export { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionPolicyFor, SUBSCRIPTION_CONVERSATION_FRAMING };
+export { subscriptionInvocationPolicy, subscriptionPolicyFor, SUBSCRIPTION_CONVERSATION_FRAMING };
 
 export function stage2RouteFactory(input: {
   activation: SubscriptionActivationRecord; profile: ProviderSubscriptionProfile; model: string;
   io: import('../../src/assembly/production-provider.js').SubscriptionProviderIO;
   now: () => number; active: () => boolean; framing?: SubscriptionFraming;
+  /** A registered doorway's route constructor (default: the default registered doorway's). */
+  create?: SubscriptionDoorway['create'];
 }) {
   return ({ evidence, context, current, deadline }: any) => {
     const p = input.profile, a = input.activation;
@@ -86,7 +93,7 @@ export function stage2RouteFactory(input: {
         claim: { subject: a.reference, predicate, value } }).id;
     const sourceEvidence = record('provider-response-source-contract', source);
     const terminalEvidence = record('provider-response-terminal-contract', terminal);
-    const result = createClaudeCodeSubscriptionRoute({ ...input, io: { ...input.io, execute: command => {
+    const result = (input.create ?? subscriptionDoorway(DEFAULT_SUBSCRIPTION_DOORWAY).create)({ ...input, io: { ...input.io, execute: command => {
       if (!current() || !input.active() || input.now() + command.timeout > deadline) throw new Error('preview: provider current authority refused');
       return input.io.execute(command);
     } }, provider: 'anthropic', route: STAGE2_ROUTE,
