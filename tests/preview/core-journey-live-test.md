@@ -34,7 +34,9 @@ Never reset a root and never resend an UNKNOWN effect.
    bounded recap marked partial if anything was omitted. Then ask “Remind me today at
    HH:MM am/pm to stretch” (about 15 minutes ahead); the reply states the due time, `status.reminders.pending`
    lists it, and exactly one reminder quoting the request arrives at that time. Details:
-   [requested-reminder-live-test.md](live-tests-archive/requested-reminder-live-test.md).
+   [requested-reminder-live-test.md](live-tests-archive/requested-reminder-live-test.md). A summary
+   asked for later (“send me a summary of today at HH:MM pm”) arrives once at that time with its
+   reason line; see [requested-summary-live-test.md](live-tests-archive/requested-summary-live-test.md).
 
 Record the `status` excerpts after steps 1, 3, 4 and 6, every intent/result ID, any UNKNOWN,
 reply-check paths, and whether each answer matched the expected fact. A plain answer that
