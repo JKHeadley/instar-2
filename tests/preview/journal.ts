@@ -2003,17 +2003,32 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
   /** Rule 110: the continuity owed by `turn`'s reply when its context was compacted through `through`:
-   * none once a sent reply has accounted for that frontier. Everything comes from journal evidence
-   * about the exact last inbound before the pause, never from the model's recollection. */
+   * none once a reply whose delivery Telegram confirmed has accounted for that frontier. An account
+   * whose send stayed UNKNOWN retires nothing: the next reply carries that episode's pre-pause
+   * message forward (the UNKNOWN send itself is never replayed). Everything comes from journal
+   * evidence about the exact last inbound before the pause, never from the model's recollection. */
   const continuityFor = (turn: Turn, through: number) => {
-    if (turn.requestedSummary || journal.view.order.some(item => (item.continuity?.summarizedThrough ?? -1) >= through)) return undefined;
-    const before = journal.view.order.filter(item => item.accepted && !item.requestedSummary && item.update < turn.update).at(-1);
+    if (turn.requestedSummary) return undefined;
+    const confirmed = journal.view.order.filter(item => item.continuity && item.sent !== undefined)
+      .reduce((max, item) => Math.max(max, item.continuity!.summarizedThrough), -1);
+    if (confirmed >= through) return undefined;
+    const unresolved = journal.view.order.find(item => item.continuity && item.sent === undefined
+      && item.update < turn.update && item.continuity.summarizedThrough > confirmed);
+    const before = unresolved ? journal.view.turns.get(unresolved.continuity!.prePauseInbound)
+      : journal.view.order.filter(item => item.accepted && !item.requestedSummary && item.update < turn.update).at(-1);
     if (!before) return undefined;
     const edit = journal.view.order.find(item => item.replaces === before.id && item.update < turn.update);
+    // A receipt proves the text was delivered, not that it answered: a delivered failure,
+    // loss, holding or size notice leaves the message open with its real outcome (Rule 26).
+    const notice = before.sent === undefined ? undefined : knownNonAnswer(before) ? outcome(before)
+      : replyBody(before) === TOO_LONG_REPLY_NOTICE ? 'too-long reply notice delivered'
+        : replyBody(before) === MEMORY_UNDECIDED_REPLY ? 'memory-not-recorded notice delivered'
+          : replyBody(before) === HOLDING_REPLY ? 'holding reply delivered' : undefined;
     const [disposition, reference]: [ContinuityAccount['disposition'], string] = edit ? ['superseded', `your edit #${edit.update}`]
-      : before.sent !== undefined ? ['addressed', `Telegram message ${before.sent}`]
-        : before.intent !== undefined ? ['pending', 'my reply to it was prepared but its delivery is unconfirmed']
-          : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
+      : notice !== undefined ? ['pending', `${notice} as Telegram message ${before.sent}, not an answer`]
+        : before.sent !== undefined ? ['addressed', `Telegram message ${before.sent}`]
+          : before.intent !== undefined ? ['pending', 'my reply to it was prepared but its delivery is unconfirmed']
+            : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
     const label = `#${before.update}, ${dated(before)}`;
     return { before, label, disposition, reference, disclosure: continuityDisclosure(label, through, disposition, reference) };
   };

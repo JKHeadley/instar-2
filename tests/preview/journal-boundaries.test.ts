@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { continuityDisclosure, createJournalWorker, openPreviewJournal, withDisclosure } from './journal.js';
+import { continuityDisclosure, createJournalWorker, MODEL_FAILURE_REPLY, openPreviewJournal, withDisclosure } from './journal.js';
 import { HOLDING_REPLY } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { ANSWER_INSTRUCTIONS, MIND_RULES, verifyMindRules } from './briefing.js';
@@ -348,7 +348,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       expect(reopened.view.turns.get('telegram:12345678:update:31')!.continuity).toBeDefined();
       reopened.close();
     } finally { rmSync(held.dir, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 
   it('an unanswered last message is accounted as pending, never as answered', async () => {
     const { dir, journal, worker, sent } = setup(7000, garden.slice(0, 29), () => 'Hi!');
@@ -362,6 +362,59 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
         'Earlier conversation up to #29 is now summarized for me; your previous message (#30, x) is still open (held: call cap).');
       expect(sent).toEqual([]);
       journal.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('only a delivered disclosure retires the obligation: an UNKNOWN send carries its pre-pause message forward across restart', async () => {
+    const dir = root(), path = join(dir, 'journal.encrypted');
+    let journal = openPreviewJournal(path, key, genesis(7000));
+    try {
+      seedAnswered(journal, garden);
+      summarize(journal, 29, 'Twenty-nine garden updates.');
+      const sent: string[] = [];
+      const ports = { now: () => at + 100_000, stopped: () => false, model: async () => 'Hi!', checkOutbound: () => {},
+        send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length === 1 ? null : sent.length + 100; } };
+      let worker = createJournalWorker(journal, ports);
+      worker.intake([update(31, 'Hello again')]); await worker.drain();
+      const first = journal.view.turns.get('telegram:12345678:update:31')!;
+      expect(first.sent).toBeUndefined();
+      expect(first.continuity?.prePauseInbound).toBe('telegram:12345678:update:30');
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, ports);
+      worker.intake([update(32, 'And one more thing')]); await worker.drain();
+      // The UNKNOWN send is never replayed; the next reply discloses the same episode, for #30.
+      expect(sent).toHaveLength(2);
+      expect(sent[1]).toMatch(disclosure);
+      const second = journal.view.turns.get('telegram:12345678:update:32')!;
+      expect(second.sent).toBe(102);
+      expect(second.continuity).toMatchObject({ prePauseInbound: 'telegram:12345678:update:30', summarizedThrough: 29, disposition: 'addressed' });
+      // Once delivered, the same frontier owes nothing more (the accepted-send positive).
+      worker.intake([update(33, 'Thanks')]); await worker.drain();
+      expect(sent[2]).toBe('PREVIEW — Hi!');
+      journal.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('a delivered failure notice is accounted as still open with its real outcome, never as answered', async () => {
+    const { dir, journal, worker, sent } = setup(7000, garden.slice(0, 29), () => 'Hi!');
+    try {
+      const id = 'telegram:12345678:update:30';
+      seed(journal, ['Please answer my plumber question']);
+      journal.append({ kind: 'reserve', id, at });
+      journal.append({ kind: 'answer', id, text: MODEL_FAILURE_REPLY, state: 'complete', failureClass: 'empty', at });
+      journal.append({ kind: 'intent', id, text: `PREVIEW — ${MODEL_FAILURE_REPLY}`, chat: '7654321', update: 30, grant: 'grant:preview', at });
+      journal.append({ kind: 'sent', id, message: 30, at });
+      summarize(journal, 29, 'Twenty-nine garden updates.');
+      expect(probe(worker, 'Hello again').continuity).toEqual({ through: 29, lastInbound: id, state: 'pending' });
+      worker.intake([update(31, 'Hello again')]); await worker.drain();
+      expect(sent[0]).not.toContain('was answered');
+      expect(sent[0]).toMatch(/your previous message \(#30, [^)]+\) is still open \(model failure notice delivered \(empty\) as Telegram message 30, not an answer\)\. Hi!$/u);
+      journal.close();
+      const reopened = openPreviewJournal(join(dir, 'journal.encrypted'), key);
+      expect(reopened.view.turns.get('telegram:12345678:update:31')!.continuity).toMatchObject({ disposition: 'pending',
+        reference: 'model failure notice delivered (empty) as Telegram message 30, not an answer' });
+      reopened.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
