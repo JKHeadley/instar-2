@@ -24,7 +24,7 @@ import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from '
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
 import { unlabeledRecall } from './answer-provenance.js';
-import { interpretStepJev, type StepCheckResult } from './step-check.js';
+import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
 import type { Directive } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
@@ -77,7 +77,7 @@ export const HELD_NOTICE_AFTER_MS = 600_000;
 export const HELD_NOTICE_WINDOW_MS = 3_600_000;
 /** A due summary created more than this long after its slot says it was sent late. */
 export const SUMMARY_LATE_MINUTES = 15;
-const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable'
+const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable' || reason === 'step check unavailable'
   || reason === 'call cap' || reason === 'memory correction pending';
 
 const conflictQuestion = (item: Pick<MemoryConflict, 'first' | 'second'>) =>
@@ -295,7 +295,9 @@ export type JournalRecord =
     commitmentRefusals?: number; state?: 'complete'; usage?: ModelUsage; at: number }
 
   /** `boundaries: ['cleanup']` extends the dark step observer to each reply's cleanup Result (build 9, Rule 38). */
-  | { kind: 'step-check-start'; boundaries?: ['cleanup']; at: number }
+  | { kind: 'step-check-start'; boundaries?: ['cleanup'] | ['business']; at: number }
+  /** Opens a pre-send business step (preparation, due selection, reminder text) the worker validates before acting. */
+  | { kind: 'step-open'; step: string; at: number }
   | { kind: 'step-check-reserve'; step: string; evidence: string; at: number }
   | { kind: 'step-check'; step: string; result: StepCheckResult; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
@@ -369,7 +371,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
   /** Flagged replies whose correction note no later model call has carried yet. */
   corrections: string[];
-  stepCheckStarted: boolean; stepCheckCleanup: boolean; stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
+  stepCheckStarted: boolean; stepCheckCleanup: boolean;
+  /** The step supervisor also reaches intake, preparation, due selection and reminder text (absent on older journals). */
+  stepCheckBusiness?: true;
+  stepChecks: Map<string, { output?: string; reserved?: true; result?: StepCheckResult }>;
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number }; lastReplyCheck: ReplyCheckResult | null }
 
@@ -674,6 +679,16 @@ const verifiedOperatorTurn = (view: JournalView, turn: Turn) => {
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const datedKey = (item: DatedItem) => JSON.stringify([item.source, item.quote, item.when]);
 const reminderKey = (item: ReminderRef) => JSON.stringify([item.source, item.quote, item.when]);
+/** The prepared packet as step evidence: bounded, and marked when clipped; a missing packet cannot be judged. */
+export const packetEvidence = (prompt: string | undefined): object => {
+  if (prompt === undefined) return { error: 'prepared packet not recorded' };
+  const bytes = Buffer.from(prompt);
+  return bytes.length <= 24_000 ? { packet: prompt, packetClipped: false }
+    : { packet: bytes.subarray(0, 24_000).toString('utf8').replace(/\uFFFD+$/u, ''), packetClipped: true };
+};
+/** Business steps the worker validates before the next consequential step (Rule 38; scheduled work §5): a requested
+ * summary's due selection and preparation, before its model call; a reminder's due selection and text, before its send. */
+export const presendStep = (step: string) => /^(select-due|prepare):requested-summary:/u.test(step) || /^reminder-(due|send):reminder-[0-9a-f]{10}$/u.test(step);
 const reminderBatchKey = (day: string, thread?: number) => JSON.stringify([day, thread ?? null]);
 export const activeDated = (view: JournalView) => view.dated.filter(item => !view.memory.some(change =>
   change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
@@ -934,7 +949,9 @@ const localStamp = (at: number, zone: string) => {
 };
 /** A requested reminder without an hour is sent at 09:00 on its local day. */
 export const reminderDue = (item: DatedItem) => `${item.day ?? ''} ${item.time ?? '09:00'}`;
-export const reminderId = (item: DatedItem) => `reminder-${createHash('sha256').update(datedKey(item)).digest('hex').slice(0, 10)}`;
+export const reminderId = (item: Pick<DatedItem, 'source' | 'quote' | 'when'>) => `reminder-${createHash('sha256').update(datedKey(item as DatedItem)).digest('hex').slice(0, 10)}`;
+/** The identity a requested summary's pre-model checks carry: the digest of the exact packet they validated. */
+export const packetDigest = (packet: string) => createHash('sha256').update(packet).digest('hex').slice(0, 16);
 const turnSentAt = (turn: Turn) => {
   try { const sent = (JSON.parse(turn.raw) as { message?: { date?: unknown } }).message?.date;
     if (typeof sent === 'number' && Number.isSafeInteger(sent) && sent > 0) return sent * 1000; } catch { /* raw kept verbatim */ }
@@ -1074,6 +1091,10 @@ const summaryGroup = (view: JournalView, turn: Turn) => {
 const SYNTHETIC_UPDATE_STEP = 1 / 1024;
 /** "Everything before this turn": integer Telegram updates keep their old meaning. */
 const before = (update: number) => update - SYNTHETIC_UPDATE_STEP / 4;
+/** The journal's update domain: a Telegram update id, or a synthetic update on the 1/1024 grid that a requested
+ * summary receives. One definition, read by every consumer that names an operation by its update. */
+export const isJournalUpdate = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+  && value >= 0 && Number.isSafeInteger(value / SYNTHETIC_UPDATE_STEP);
 export const nextSyntheticUpdate = (view: JournalView) => {
   const top = view.order.reduce((max, turn) => Math.max(max, turn.update), 0), base = Math.floor(top);
   const step = Math.round((top - base) / SYNTHETIC_UPDATE_STEP) + 1;
@@ -1333,7 +1354,9 @@ function project(view: JournalView, row: JournalRecord): void {
     const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
       ...(row.thread === undefined ? {} : { thread: row.thread }),
       ...(row.editOf === undefined ? {} : { editOf: row.editOf, replaces: row.replaces }) };
-    view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor); return;
+    view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor);
+    if (view.stepCheckBusiness && row.accepted) view.stepChecks.set(`intake:${row.id}`, {});
+    return;
   }
   if (row.kind === 'channel-item') {
     const item = row.item, key = channelKey(item);
@@ -1575,10 +1598,18 @@ function project(view: JournalView, row: JournalRecord): void {
     return;
   }
   if (row.kind === 'step-check-start') {
-    const cleanup = row.boundaries?.length === 1 && row.boundaries[0] === 'cleanup';
-    if (row.boundaries !== undefined && !cleanup || (cleanup ? view.stepCheckCleanup : view.stepCheckStarted))
+    const boundary = row.boundaries?.length === 1 ? row.boundaries[0] : undefined;
+    const cleanup = boundary === 'cleanup', business = boundary === 'business';
+    if (row.boundaries !== undefined && !cleanup && !business
+      || (cleanup ? view.stepCheckCleanup : business ? view.stepCheckBusiness : view.stepCheckStarted))
       throw Error('preview journal: step check already started');
-    view.stepCheckStarted = true; if (cleanup) view.stepCheckCleanup = true; return;
+    view.stepCheckStarted = true; if (cleanup) view.stepCheckCleanup = true; if (business) view.stepCheckBusiness = true; return;
+  }
+  if (row.kind === 'step-open') {
+    if (!view.stepCheckBusiness || view.stepChecks.has(row.step) || !presendStep(row.step)
+      || [...view.stepChecks.values()].filter(item => item.reserved).length >= view.limits.maxCalls)
+      throw Error('preview journal: step open refused');
+    view.stepChecks.set(row.step, {}); return;
   }
   if (row.kind === 'step-check-reserve') {
     const step = view.stepChecks.get(row.step);
@@ -1683,7 +1714,9 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation');
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.reserved = true; turn.reservedAt = row.at; if (row.prompt !== undefined) turn.prompt = row.prompt; if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
+    turn.reserved = true; turn.reservedAt = row.at; if (row.prompt !== undefined) turn.prompt = row.prompt;
+    if (view.stepCheckBusiness && turn.requestedSummary === undefined) view.stepChecks.set(`prepare:${row.id}`, {});
+    if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
     if (hits) { turn.recallHits = hits.turns; turn.channelRecallHits = hits.channels; }
     view.calls++;
     view.lastPrompt = { kind: 'answer', id: turn.id, prompt: row.prompt ?? null, memoryCount: view.memory.length,
@@ -2195,7 +2228,7 @@ export interface PreviewPorts {
   /** Uses the same pinned Jev route as reply supervision, only after exact preservation cannot decide. */
   summaryCheck?(evidence: string): Promise<unknown>;
 
-  stepCheck?: { jev(state: string): Promise<{ value: unknown; latencyMs: number }> };
+  stepCheck?: { jev(state: string, questions?: Record<string, { type: string; instructions: string }>): Promise<{ value: unknown; latencyMs: number }> };
   /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture). */
   statusExtra?(): readonly string[];
   boundary?(stage: string): void;
@@ -2208,6 +2241,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
   const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
   let checkingSteps = false;
+  /** Step checks dispatched by this process and not yet settled; any other reserved step was cut off by a crash. */
+  const stepsInFlight = new Set<string>();
   // One packet build tries many size variants over the same dated evidence; select once per input.
   let datedMemo: { key: string; value: ReturnType<typeof selectDatedItems> } | undefined;
   const datedSelection = (items: readonly DatedItem[], question: string, now: number, zone: string) => {
@@ -3674,7 +3709,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Requested reminders due now in one conversation whose own line may be sent. */
   const dueRequestedReminders = (thread?: number) => pendingRequestedReminders(journal.view).filter(item =>
     clean(item.quote) === item.quote && reminderDue(item) <= localStamp(ports.now(), item.zone) && !reminderUnsettled(item)
-    && journal.view.turns.get(item.source)!.thread === thread);
+    && reminderCleared(item) && journal.view.turns.get(item.source)!.thread === thread);
   /** Ordinary answers drain on every cycle. A requested summary is proactive: it is created and
    * dispatched only at the due-send point `sendReminders()`, after a successful poll returned nothing
    * new, so a queued withdrawal is always read and settled first (Rules 57, 93). */
@@ -3792,6 +3827,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
           const { question, context, prepared, carried, dropped, grounding } = selected;
+          // Rule 38 / scheduled work §5: a requested summary's due selection and prepared packet are validated before
+          // its model call. The pipeline fails closed: a violation or an unavailable check holds it, visibly.
+          if (turn.requestedSummary !== undefined) {
+            const packet = prepared ?? JSON.stringify({ question, context });
+            const digest = packetDigest(packet);
+            const outcome = await validateBefore([
+              { id: `select-due:${turn.id}:${digest}`, evidence: () => summaryDueEvidence(turn, `select-due:${turn.id}:${digest}`) },
+              { id: `prepare:${turn.id}:${digest}`, evidence: () => ({ step: `prepare:${turn.id}:${digest}`,
+                request: turn.text, ...packetEvidence(packet) }) }]);
+            const hold = outcome === 'violation' ? 'step check violation' : outcome === 'unavailable' ? 'step check unavailable'
+              : outcome === 'pending' ? 'call cap' : null;
+            if (hold) { if (turn.held !== hold) journal.append({ kind: 'hold', id: turn.id, reason: hold, at: ports.now() }); continue; }
+          }
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
@@ -4925,80 +4973,167 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
   };
   const startStepChecks = () => {
-    // One start record connects the observer to cleanup Results too; a journal started before that keeps
-    // its earlier steps and gains the cleanup boundary from this record on.
+    // One start record per boundary set connects the observer to cleanup Results, then to every other business
+    // Result (intake, preparation, due selection, reminder text); a journal started earlier gains them from here on.
     if (ports.stepCheck && !journal.view.stepCheckCleanup)
       journal.append({ kind: 'step-check-start', boundaries: ['cleanup'], at: ports.now() });
+    if (ports.stepCheck && !journal.view.stepCheckBusiness)
+      journal.append({ kind: 'step-check-start', boundaries: ['business'], at: ports.now() });
   };
-  /** Observe completed model steps after the send path. A reservation survives a crash;
-   * an interrupted Jev request becomes unavailable and is never dispatched twice. */
+  const operatorBinding = () => ({ operator: journal.view.genesis.operator, chat: journal.view.genesis.chat, chatType: 'private' });
+  /** The journal evidence each observed step's question needs, rebuilt from the durable view. */
+  const stepEvidence = (stepId: string, step: { output?: string }): object => {
+    if (stepId.startsWith('intake:')) {
+      const turn = journal.view.turns.get(stepId.slice('intake:'.length))!;
+      let message: { from?: { id?: unknown }; chat?: { id?: unknown; type?: unknown } } | undefined;
+      try { message = (JSON.parse(turn.raw) as { message?: typeof message }).message; } catch { message = undefined; }
+      return { step: stepId, admitted: turn.accepted, recorded: { sender: String(message?.from?.id ?? 'absent'),
+        chat: String(message?.chat?.id ?? 'absent'), chatType: String(message?.chat?.type ?? 'absent') }, binding: operatorBinding() };
+    }
+    if (stepId.startsWith('prepare:')) {
+      const turn = journal.view.turns.get(stepId.slice('prepare:'.length))!;
+      return { step: stepId, request: clean(redact(turn.text).text, true, turn.id), ...packetEvidence(turn.prompt) };
+    }
+    if (stepId.startsWith('cleanup:')) {
+      const turn = journal.view.turns.get(stepId.slice('cleanup:'.length))!;
+      return { step: stepId, modelOutput: sentText(turn) ?? null, journal: { coherenceFindings: turn.checked ?? [],
+        coherenceCheckFailed: turn.checkFailed === true, memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
+        memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
+        delivery: turn.sent === undefined ? 'send outcome UNKNOWN' : 'Telegram API accepted' } };
+    }
+    if (stepId.startsWith('answer:')) {
+      const turn = journal.view.turns.get(stepId.slice('answer:'.length))!;
+      return { step: stepId, modelOutput: turn.answer, journal: { answerRecorded: true,
+        memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
+        memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
+        replyIntent: turn.intent ?? null, delivery: turn.intent === undefined ? 'no send intent'
+          : turn.sent === undefined ? 'send outcome UNKNOWN' : 'Telegram API accepted' } };
+    }
+    if (stepId.startsWith('summary-failed:')) return { step: stepId, modelOutput: step.output,
+      journal: { summaryRecorded: false, previousSummaryRetained: true, failureRecorded: true } };
+    const summary = journal.view.summaries.find(item => `summary:${item.through}` === stepId)!;
+    return { step: stepId, modelOutput: summary.text, journal: { summaryRecorded: true,
+      through: summary.through, memoryChanges: summary.memory ?? [], people: summary.people ?? [],
+      commitments: summary.commitments ?? [], closed: summary.closed ?? [] } };
+  };
+  /** One bounded Jev judgment of one step: reserved durably before dispatch, redacted, and never dispatched twice.
+   * Returns the verdict, or null when the step cannot be checked now (another check holds it, or the cap is reached). */
+  const runStep = async (stepId: string, evidence: object): Promise<StepCheckResult | null> => {
+    const step = journal.view.stepChecks.get(stepId);
+    if (!ports.stepCheck || !step || stepsInFlight.has(stepId)) return null;
+    if (step.result) return step.result;
+    if (step.reserved) {
+      journal.append({ kind: 'step-check', step: stepId, result: { verdict: 'unavailable',
+        reason: 'Jev request interrupted; outcome unknown', score: null, latencyMs: 0 }, at: ports.now() });
+      return journal.view.stepChecks.get(stepId)!.result!;
+    }
+    if ([...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return null;
+    stepsInFlight.add(stepId);
+    try {
+      let detectedSecrets = 0;
+      const serialized = JSON.stringify(evidence, (_key, value: unknown) => {
+        if (typeof value !== 'string') return value;
+        const checked = redact(value);
+        detectedSecrets += checked.count;
+        return checked.text;
+      });
+      const redacted = redact(serialized);
+      const state = redacted.text;
+      const unavailableReason = 'error' in evidence ? String((evidence as { error: unknown }).error)
+        : detectedSecrets || redacted.count ? 'secret detected in step evidence'
+          : stepId.startsWith('summary-failed:') && !(evidence as { modelOutput?: unknown }).modelOutput ? 'model answer unavailable for safe checking'
+            : Buffer.byteLength(state) > 32768 ? 'evidence exceeds bound' : null;
+      journal.append({ kind: 'step-check-reserve', step: stepId,
+        evidence: unavailableReason ? JSON.stringify({ step: stepId, error: unavailableReason }) : state,
+        at: ports.now() });
+      let result: StepCheckResult;
+      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires)
+        result = { verdict: 'unavailable', reason: 'preview stopped before Jev dispatch', score: null, latencyMs: 0 };
+      else if (unavailableReason) result = { verdict: 'unavailable', reason: unavailableReason, score: null, latencyMs: 0 };
+      else try {
+        const answer = await ports.stepCheck.jev(state, stepQuestionsFor(stepId));
+        result = interpretStepJev(answer.value, answer.latencyMs, stepQuestionFor(stepId));
+      } catch {
+        result = { verdict: 'unavailable', reason: 'Jev unavailable or malformed result', score: null, latencyMs: 0 };
+      }
+      journal.append({ kind: 'step-check', step: stepId, result, at: ports.now() });
+      return result;
+    } finally { stepsInFlight.delete(stepId); }
+  };
+  /** Observe completed steps after the send path. Pre-send steps belong to the path that opened them. */
   const checkSteps = async () => {
     if (!ports.stepCheck || !journal.view.stepCheckStarted || checkingSteps) return;
     checkingSteps = true;
     try {
       for (const [stepId, step] of journal.view.stepChecks) {
         if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
-        if (step.result) continue;
-        if (step.reserved) {
-          journal.append({ kind: 'step-check', step: stepId, result: { verdict: 'unavailable',
-            reason: 'Jev request interrupted; outcome unknown', score: null, latencyMs: 0 }, at: ports.now() });
-          continue;
-        }
-        if ([...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return;
-        const evidence = stepId.startsWith('cleanup:') ? (() => {
-          const turn = journal.view.turns.get(stepId.slice('cleanup:'.length))!;
-          return { step: stepId, modelOutput: sentText(turn) ?? null, journal: { coherenceFindings: turn.checked ?? [],
-            coherenceCheckFailed: turn.checkFailed === true, memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
-            memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
-            delivery: turn.sent === undefined ? 'send outcome UNKNOWN' : 'Telegram API accepted' } };
-        })() : stepId.startsWith('answer:') ? (() => {
-          const turn = journal.view.turns.get(stepId.slice('answer:'.length))!;
-          return { step: stepId, modelOutput: turn.answer, journal: { answerRecorded: true,
-            memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
-            memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
-            replyIntent: turn.intent ?? null, delivery: turn.intent === undefined ? 'no send intent'
-              : turn.sent === undefined ? 'send outcome UNKNOWN' : 'Telegram API accepted' } };
-        })() : stepId.startsWith('summary-failed:') ? { step: stepId, modelOutput: step.output,
-          journal: { summaryRecorded: false, previousSummaryRetained: true, failureRecorded: true } } : (() => {
-          const summary = journal.view.summaries.find(item => `summary:${item.through}` === stepId)!;
-          return { step: stepId, modelOutput: summary.text, journal: { summaryRecorded: true,
-            through: summary.through, memoryChanges: summary.memory ?? [], people: summary.people ?? [],
-            commitments: summary.commitments ?? [], closed: summary.closed ?? [] } };
-        })();
-        let detectedSecrets = 0;
-        const serialized = JSON.stringify(evidence, (_key, value: unknown) => {
-          if (typeof value !== 'string') return value;
-          const checked = redact(value);
-          detectedSecrets += checked.count;
-          return checked.text;
-        });
-        const redacted = redact(serialized);
-        const state = redacted.text;
-        const unavailableReason = detectedSecrets || redacted.count ? 'secret detected in step evidence'
-          : stepId.startsWith('summary-failed:') && !step.output ? 'model answer unavailable for safe checking'
-            : Buffer.byteLength(state) > 32768 ? 'evidence exceeds bound' : null;
-        journal.append({ kind: 'step-check-reserve', step: stepId,
-          evidence: unavailableReason ? JSON.stringify({ step: stepId, error: unavailableReason }) : state,
-          at: ports.now() });
-        let result: StepCheckResult;
-        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires)
-          result = { verdict: 'unavailable', reason: 'preview stopped before Jev dispatch', score: null, latencyMs: 0 };
-        else if (unavailableReason) result = { verdict: 'unavailable', reason: unavailableReason, score: null, latencyMs: 0 };
-        else try {
-          const answer = await ports.stepCheck.jev(state);
-          result = interpretStepJev(answer.value, answer.latencyMs);
-        } catch {
-          result = { verdict: 'unavailable', reason: 'Jev unavailable or malformed result', score: null, latencyMs: 0 };
-        }
-        journal.append({ kind: 'step-check', step: stepId, result, at: ports.now() });
+        if (step.result || presendStep(stepId) || stepsInFlight.has(stepId)) continue;
+        if (!step.reserved && [...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return;
+        await runStep(stepId, step.reserved ? {} : stepEvidence(stepId, step));
       }
     } finally { checkingSteps = false; }
-
+  };
+  /** The recorded request and schedule a requested summary's due selection must agree with. */
+  const summaryDueEvidence = (turn: Turn, step: string): object => {
+    const due = turn.requestedSummary!, grant = journal.view.summaryGrants.find(item => item.id === due.grant);
+    if (!grant) return { error: 'summary grant not recorded' };
+    return { step, request: clean(redact(grant.quote).text, true, grant.source), schedule: summarySchedule(grant), zone: grant.zone,
+      slot: due.slot, dueAt: isoMinute(wallEpoch(due.slot, grant.time, grant.zone)), selectedAt: isoMinute(turn.at),
+      late: due.late ?? null };
+  };
+  /** Opens (once) and judges the pre-send steps named here. 'validated' lets the next consequential step run; a
+   * violation or unavailable verdict is returned for the caller's declared failure direction; 'pending' means the
+   * check could not run now (another check holds it, or the reservation cap is reached). */
+  const validateBefore = async (steps: readonly { id: string; evidence: () => object }[]): Promise<'off' | 'validated' | 'violation' | 'unavailable' | 'pending'> => {
+    if (!ports.stepCheck || !journal.view.stepCheckBusiness) return 'off';
+    const verdicts: (StepCheckResult | null)[] = [];
+    for (const step of steps) {
+      gate();
+      if (!journal.view.stepChecks.has(step.id)) {
+        if ([...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return 'pending';
+        journal.append({ kind: 'step-open', step: step.id, at: ports.now() });
+      }
+      const existing = journal.view.stepChecks.get(step.id)!;
+      verdicts.push(await runStep(step.id, existing.reserved || existing.result ? {} : step.evidence()));
+    }
+    if (verdicts.some(item => item === null)) return 'pending';
+    if (verdicts.some(item => item!.verdict === 'violation')) return 'violation';
+    return verdicts.every(item => item!.verdict === 'pass') ? 'validated' : 'unavailable';
+  };
+  const reminderStepEvidence = (item: DatedItem) => {
+    const source = journal.view.turns.get(item.source)!;
+    return {
+      due: () => ({ step: `reminder-due:${reminderId(item)}`, request: clean(redact(item.quote).text, true, item.source),
+        requestedAt: isoMinute(source.at), when: item.when, scheduled: { day: item.day, time: item.time ?? '09:00', zone: item.zone },
+        dueLocal: reminderDue(item), selectedAtLocal: localStamp(ports.now(), item.zone) }),
+      send: () => ({ step: `reminder-send:${reminderId(item)}`, request: clean(redact(item.quote).text, true, item.source),
+        when: item.when, line: requestedReminderLines(journal.view, [item]) }),
+    };
+  };
+  /** Rule 38 / scheduled work §5: a requested reminder's due selection and its text are validated before its send.
+   * The reminder pipeline fails open: only a violation keeps it unsent; an unavailable check lets it send, visibly. */
+  const reminderCleared = (item: DatedItem) => {
+    if (!ports.stepCheck || !journal.view.stepCheckBusiness) return true;
+    const results = [`reminder-due:${reminderId(item)}`, `reminder-send:${reminderId(item)}`].map(id => journal.view.stepChecks.get(id)?.result);
+    return results.every(result => result !== undefined && result.verdict !== 'violation');
+  };
+  const validateDueReminders = async () => {
+    if (!ports.stepCheck || !journal.view.stepCheckBusiness) return;
+    for (const item of pendingRequestedReminders(journal.view)) {
+      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+      if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(ports.now(), item.zone) || reminderUnsettled(item)) continue;
+      const evidence = reminderStepEvidence(item);
+      const outcome = await validateBefore([{ id: `reminder-due:${reminderId(item)}`, evidence: evidence.due },
+        { id: `reminder-send:${reminderId(item)}`, evidence: evidence.send }]);
+      if (outcome === 'pending') return;
+    }
   };
   /** Sends each reminder the verified operator explicitly asked for once, at or after its due time.
    * Reminders due together in one topic share one message (Rule 52); an unknown send is never retried. */
   const sendReminders = async () => {
-    // The one due-send point: requested summaries (carrying their due reminders) first, then reminders.
+    // The one due-send point: each due reminder's steps are validated first, then requested summaries (carrying
+    // their due reminders), then reminders.
+    await validateDueReminders();
     await drainTurns(true);
     if (working) throw Error('preview journal: second worker refused');
     working = true;
@@ -5008,7 +5143,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const groups = new Map<string, { thread?: number; items: DatedItem[] }>();
       for (const item of pendingRequestedReminders(journal.view)) {
         if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(ports.now(), item.zone)
-          || reminderUnsettled(item)) continue;
+          || reminderUnsettled(item) || !reminderCleared(item)) continue;
         // A requested summary created for this conversation carries its due reminders (Rule 52).
         // A withdrawn summary never sends, so it carries nothing (Rule 93).
         if (journal.view.order.some(turn => summaryAwaitingSend(turn) && turn.held === undefined

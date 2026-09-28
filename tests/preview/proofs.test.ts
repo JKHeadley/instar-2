@@ -7,7 +7,7 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import type { JournalView, Turn } from './journal.js';
 import { CRITICAL_PIPELINES, PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, planVersion, projectionSections, proofPosture,
   stepCoverage, verificationPlanInput } from './proofs.js';
-import type { ProofPorts, ProofRecord } from './proofs.js';
+import type { Observed, ProofPorts, ProofRecord } from './proofs.js';
 import { appendProof, readProofs } from './proof-log.js';
 import { decodeVerificationRecord } from '../../src/verification/index.js';
 
@@ -39,12 +39,25 @@ async function world(options: { review?: boolean } = {}) {
     botIdentity: () => ({ id: 12345678 }), boundBot: 12345678, supervisors, ...extra });
   return { root, path, journal, clock, say, ports };
 }
+const delivered = { attempts: 1, accepted: 1, latestAccepted: true, latestReceipt: 7 };
+/** An observation each plan's own `confirms` accepts: what a genuine passing probe retains. */
+const SAMPLE: Record<string, Observed> = { startup: { identity: 12345678, boundBot: 12345678, cursor: 0, turns: 0 },
+  'telegram-identity': { identity: 12345678, boundBot: 12345678 }, 'journal-restore': { sections: 30, cursor: 1, restored: true, differing: null },
+  'reply-drain': { unfinished: 0, oldestUnfinishedAgeMs: null, backlogOverdue: false, inhibition: null },
+  'reply-delivered': delivered, 'held-notice-delivered': delivered, 'reminder-delivered': delivered, 'requested-summary-delivered': delivered,
+  'status-answered': delivered, 'provider-outcomes': { observedCalls: 1, completed: 1 },
+  'reply-review-reached': { sentAnswers: 1, reviewed: 1, unreviewed: 0 },
+  'spend-cap-refusal': { calls: 5, maxCalls: 5, replies: 1, maxReplies: 5, refusals: 1 },
+  'summary-checked': { summaries: 1, checked: 1, unchecked: 0, lost: 0 }, 'step-check-reached': { steps: 1, verdicts: 1, pending: 0 } };
 /** A probe run at `at`, observing a source produced at `observedAt`. */
-const run = (id: string, at: number, disposition: 'passed' | 'failed' | 'unknown', observedAt: number | null = at, generation = 'g1'): ProofRecord =>
-  executeProof({ ...plan(id), probe: () => ({ disposition, observed: { n: 1 }, detail: disposition, observedAt }) },
+const run = (id: string, at: number, disposition: 'passed' | 'failed' | 'unknown', observedAt: number | null = at, generation = 'g1',
+  observed: Observed = SAMPLE[id]!): ProofRecord =>
+  executeProof({ ...plan(id), probe: () => ({ disposition, observed, detail: disposition, observedAt }) },
     { now: () => at } as ProofPorts, generation, () => 0);
+/** The launch history: the startup record that names the code generation a source was produced under. */
+const launch = (generation = 'g1', startedAt = T0 - HOUR) => run('startup', startedAt, 'passed', startedAt, generation);
 const at = (records: ProofRecord[], now: number, generation = 'g1', ports = { supervisors }) =>
-  new Map(proofPosture(PREVIEW_PROOF_PLANS, records, generation, ports, now).map(row => [row.plan, row]));
+  new Map(proofPosture(PREVIEW_PROOF_PLANS, [launch(generation), ...records], generation, ports, now).map(row => [row.plan, row]));
 /** A view with only the fields a probe reads; the rest of the projection is irrelevant to it. */
 const view = (fields: Partial<JournalView>): JournalView => ({ order: [], turns: new Map(), summaries: [], stepChecks: new Map(), callOutcomes: [],
   reminders: new Map(), awayEvents: [], memory: [], calls: 0, replies: 0, limits: genesis, stop: null, expires: 9999999999999, ...fields }) as unknown as JournalView;
@@ -62,7 +75,7 @@ describe("posture and due work through Nine's decoders and derivations", () => {
   it('distinguishes never-run, healthy, failed, stale, not-current and inactive', () => {
     expect(at([], T0).get('journal-restore')).toMatchObject({ posture: 'unknown', last: null, overdueBy: T0 });
     expect(at([run('journal-restore', T0, 'passed')], T0 + HOUR).get('journal-restore')).toMatchObject({
-      posture: 'healthy', lastSuccessAt: T0, dueAt: T0 + 6 * HOUR, overdueBy: 0, undecodable: 0 });
+      posture: 'healthy', lastSuccessAt: T0, dueAt: T0 + 6 * HOUR, overdueBy: 0, undecodable: 0, conflicts: 0, sourceUnavailable: false });
     expect(at([run('journal-restore', T0, 'passed'), run('journal-restore', T0 + HOUR, 'failed')], T0 + 2 * HOUR).get('journal-restore')!.posture).toBe('failed');
     expect(at([run('journal-restore', T0, 'unknown', null)], T0 + HOUR).get('journal-restore')!.posture).toBe('unknown');
     // Past the freshness window the witness no longer binds: Nine reads that as unknown, never healthy.
@@ -89,6 +102,50 @@ describe("posture and due work through Nine's decoders and derivations", () => {
     const genuine = run('journal-restore', T0, 'passed');
     expect(at([{ ...genuine, observed: { n: 2 } }], T0 + HOUR).get('journal-restore')!.posture).toBe('unknown');
     expect(run('journal-restore', T0, 'passed', null)).toMatchObject({ disposition: 'unknown', capture: null });
+  });
+  it("a pass is resolved from its retained observation: an empty observation with its own digest is never healthy (Astra MF1)", () => {
+    // What the probe claims: `passed` over `{}`; the executor refuses to record that as a pass at all.
+    expect(run('journal-restore', T0, 'passed', T0, 'g1', {})).toMatchObject({ disposition: 'unknown' });
+    // A forged record — `passed`, `{}` and the canonical digest of `{}` — binds no witness either.
+    const forged = { ...run('journal-restore', T0, 'failed', T0, 'g1', {}), disposition: 'passed' as const };
+    expect(forged.capture).toMatch(/^sha256:/u);
+    expect(at([forged], T0 + 10).get('journal-restore')!.posture).toBe('unknown');
+    // Neighbor: the same attempt retaining a genuine restore observation is healthy.
+    expect(at([run('journal-restore', T0, 'passed')], T0 + 10).get('journal-restore')!.posture).toBe('healthy');
+  });
+  it('two dispositions for one logical attempt are a conflict in either order, never a file-order choice (Astra MF1)', () => {
+    const passed = run('journal-restore', T0, 'passed'), failed = { ...passed, disposition: 'failed' as const };
+    for (const records of [[failed, passed], [passed, failed]])
+      expect(at(records, T0 + 10).get('journal-restore')).toMatchObject({ posture: 'unknown', conflicts: 1, sourceUnavailable: true });
+  });
+  it('a refused newest attempt is an unavailable source; the earlier pass does not stand in for it (Astra MF1)', () => {
+    const earlier = run('journal-restore', T0, 'passed');
+    const torn = { ...earlier, startedAt: T0 + 1, completedAt: T0, disposition: 'failed' as const };
+    expect(at([earlier, torn], T0 + 10).get('journal-restore')).toMatchObject({ posture: 'unknown', undecodable: 1, sourceUnavailable: true });
+    // Neighbor: the refused line BEFORE the pass leaves the newest attempt available.
+    expect(at([torn, earlier], T0 + 10).get('journal-restore')).toMatchObject({ posture: 'healthy', undecodable: 1, sourceUnavailable: false });
+    // Through the durable log: a malformed newest line of the plan is refused by the reader and still counts as unavailable.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-proof-refused-')));
+    const path = join(root, 'proofs.jsonl');
+    for (const record of [launch(), earlier]) appendProof(path, record);
+    appendFileSync(path, `${JSON.stringify({ ...earlier, startedAt: T0 + 5, completedAt: T0 + 4 })}\n`);
+    const log = readProofs(path);
+    expect(log.refused).toEqual([{ plan: 'journal-restore', after: 2 }]);
+    const posture = proofPosture(PREVIEW_PROOF_PLANS, log.proofs, 'g1', { supervisors }, T0 + 10, log.refused).find(row => row.plan === 'journal-restore')!;
+    expect(posture).toMatchObject({ posture: 'unknown', sourceUnavailable: true });
+  });
+  it('re-probing an old reply under new code is not current proof; a reply the new code sent is (Astra MF1)', () => {
+    const reply = (sentAt: number) => view({ order: [turn('u1', { sent: 4, sentAt })] });
+    const oldLaunch = launch('old-code', T0 - HOUR), newLaunch = launch('new-code', T0 + 30 * MINUTE);
+    const reprobe = executeProof(plan('reply-delivered'), { now: () => T0 + HOUR, liveView: () => reply(T0) } as ProofPorts, 'new-code', () => 0);
+    expect(reprobe).toMatchObject({ disposition: 'passed', observedAt: T0 });
+    const posture = (records: ProofRecord[]) => proofPosture(PREVIEW_PROOF_PLANS, [oldLaunch, newLaunch, ...records], 'new-code', { supervisors }, T0 + HOUR + 10)
+      .find(row => row.plan === 'reply-delivered')!.posture;
+    expect(posture([reprobe])).toBe('unknown');
+    const fresh = executeProof(plan('reply-delivered'), { now: () => T0 + HOUR, liveView: () => reply(T0 + 45 * MINUTE) } as ProofPorts, 'new-code', () => 0);
+    expect(posture([fresh])).toBe('healthy');
+    // With no launch history at all, no source has a known executing version: nothing is healthy.
+    expect(proofPosture(PREVIEW_PROOF_PLANS, [fresh], 'new-code', { supervisors }, T0 + HOUR + 10).find(row => row.plan === 'reply-delivered')!.posture).toBe('unknown');
   });
   it('the executor takes one most-overdue cadence plan and never a launch plan', () => {
     expect(nextDuePlan(PREVIEW_PROOF_PLANS, [], 'g1', { supervisors }, T0)!.trigger).toBe('cadence');
@@ -203,7 +260,8 @@ describe('every critical pipeline step, over its complete population (Rule 38)',
     const rows = coverage({ order: [reviewed, bare], turns: new Map([['u1', reviewed], ['u2', bare]]) })['operator-reply']!;
     for (const step of ['answer', 'interpret', 'send'])
       expect(row(rows, step)).toMatchObject({ population: 2, validated: 1, missing: 1, state: 'missing' });
-    expect(row(rows, 'intake')).toMatchObject({ state: 'validated', bootstrap: expect.any(String) });
+    // Intake has a supervisor of its own (the step supervisor): with it off, intake is missing, never exempt.
+    expect(row(rows, 'intake')).toMatchObject({ state: 'missing', supervisors: ['step-check'] });
     const both = coverage({ order: [reviewed], turns: new Map([['u1', reviewed]]) })['operator-reply']!;
     expect(row(both, 'send').state).toBe('validated');
   });
@@ -220,12 +278,14 @@ describe('every critical pipeline step, over its complete population (Rule 38)',
     const flagged = turn('u1', { sent: 1, sentAt: T0, replyChecks: [{ verdict: 'violation', ruleIds: [], confidence: 1, path: 'holding', latencyMs: 0 }] });
     expect(row(coverage({ order: [flagged], turns: new Map([['u1', flagged]]) })['operator-reply']!, 'send').state).toBe('failed');
   });
-  it('a reminder send has no supervisor: missing with its declared open direction; no invented deterministic validation', () => {
-    const reminders = new Map([['r1', { items: [], text: 'x', day: '2026-09-22', at: T0, sent: 3, sentAt: T0 }]]);
-    const pipeline = coverage({ reminders: reminders as JournalView['reminders'] })['requested-reminder']!;
+  it('no business step is exempt: every roster step names a supervisor, and an unobserved reminder is missing with its open direction', () => {
+    const reminders = new Map([['r1', { items: [{ source: 'u1', quote: 'call Sam', when: 'at 5' }], text: 'x', day: '2026-09-22', at: T0,
+      requested: true, sent: 3, sentAt: T0 }]]);
+    const pipeline = coverage({ reminders: reminders as JournalView['reminders'] }, { ...supervisors, stepCheck: true })['requested-reminder']!;
     expect(pipeline.failureDirection).toBe('open');
-    expect(pipeline.rows.map(r => r.state)).toEqual(['missing', 'missing']);
-    expect(Object.values(CRITICAL_PIPELINES).flatMap(p => p.steps).filter(s => s.bootstrap).map(s => s.step)).toEqual(['intake', 'select-due']);
+    expect(pipeline.rows.map(r => [r.boundary, r.population, r.state])).toEqual([['select-due', 1, 'missing'], ['send', 1, 'missing']]);
+    for (const step of Object.values(CRITICAL_PIPELINES).flatMap(p => p.steps)) expect(step.supervisors.length, step.step).toBeGreaterThan(0);
+    expect(Object.values(CRITICAL_PIPELINES).flatMap(p => p.steps).some(s => 'bootstrap' in s)).toBe(false);
     expect(Object.keys(stepCoverage(view({}), supervisors))).toEqual(Object.keys(CRITICAL_PIPELINES));
   });
 });
@@ -242,7 +302,7 @@ it('the proof log keeps valid rows, counts torn or malformed ones, and reports a
   expect(log.proofs).toHaveLength(1);
   expect(log.liveProofs).toHaveLength(1);
   writeFileSync(path, '');
-  expect(readProofs(join(root, 'absent.jsonl'))).toEqual({ proofs: [], liveProofs: [], unreadable: 0, available: true });
+  expect(readProofs(join(root, 'absent.jsonl'))).toEqual({ proofs: [], liveProofs: [], unreadable: 0, available: true, refused: [] });
   mkdirSync(join(root, 'dir.jsonl'));
   expect(readProofs(join(root, 'dir.jsonl')).available).toBe(false);
 });

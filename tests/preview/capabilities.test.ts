@@ -151,12 +151,27 @@ describe('a live proof binds the capability to its own actual outcome in the lau
     expect(proof('preview.spend-cap', 4, view([held], { awayEvents: [{ kind: 'hold', at: NOW + 3, id: 'u4', reason: 'call cap' }] } as Partial<JournalView>)))
       .toMatchObject({ ok: true, record: { messageId: null } });
   });
+  it('a stop proof refuses any accepted send past the latch, a reminder included; one sent before it is fine', () => {
+    const latched = { stopLatch: { latchedAt: NOW + 50 }, launches: [{ at: NOW - 10, exit: NOW + 60, reason: 'operator stop latched' }] };
+    const withReminder = (sentAt: number) => view([question], { cursor: 1, reminders: new Map([['r', { items: [{ source: 'u1', quote: 'call Sam', when: '17:00' }],
+      text: 'x', day: '2026-09-22', at: NOW, requested: true, sent: 30, sentAt }]]) } as Partial<JournalView>);
+    expect(proof('preview.stop', 1, withReminder(NOW + 70), latched)).toMatchObject({ ok: false });
+    expect(proof('preview.stop', 1, withReminder(NOW + 40), latched)).toMatchObject({ ok: true, record: { capability: 'preview.stop' } });
+  });
+  it('a requested summary proves itself at its own synthetic update, the journal\'s operation identity; an off-grid update refuses', () => {
+    const summary = turn(1.0009765625, { id: 'requested-summary:s:2026-09-22', text: '[Scheduled summary]', sent: 31, sentAt: NOW + 4,
+      requestedSummary: { grant: 's', slot: '2026-09-22', window: { from: '2026-09-22', through: '2026-09-22' } } as NonNullable<Turn['requestedSummary']> });
+    const v = view([turn(1, { sent: 11, sentAt: NOW }), summary]);
+    expect(proof('preview.requested-summaries', 1, v)).toMatchObject({ ok: false });
+    expect(proof('preview.requested-summaries', 1.0009765625, v)).toMatchObject({ ok: true, record: { update: 1.0009765625, messageId: 31 } });
+    expect(proof('preview.requested-summaries', 1.1, v)).toMatchObject({ ok: false, reason: expect.stringMatching(/update domain/u) });
+  });
 });
 
 describe('capability rows count only enabled, currently proven protection', () => {
   const versions = Object.fromEntries(inventory.capabilities.map(c => [c.declaration.id, `v:${c.declaration.id}`]));
   const posture = (plan: string, value: string): PlanPosture => ({ plan, kind: 'critical-outcome', capability: '', rules: [], required: true,
-    posture: value as PlanPosture['posture'], undecodable: 0, last: null, lastSuccessAt: value === 'healthy' ? NOW : null, dueAt: 0, overdueBy: 0 });
+    posture: value as PlanPosture['posture'], undecodable: 0, conflicts: 0, sourceUnavailable: false, last: null, lastSuccessAt: value === 'healthy' ? NOW : null, dueAt: 0, overdueBy: 0 });
   const base = { classify, versions, enabled: { default: true, 'option:step-check': false, 'option:agent-state-dir': false } as const,
     status: { replies: 0, calls: 0, replyTimings: {}, lastReplyTiming: null, callOutcomeCounts: {} }, liveProofs: [], proofs: [], now: NOW };
   it('confirmed needs every declared outcome healthy; a stop is confirmed only by its current live proof', () => {

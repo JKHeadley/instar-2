@@ -13,6 +13,7 @@
  * missing join stays in the denominator as a gap. */
 import { PREVIEW_PROOF_PLANS, probeId, replyTurn, requestedSummaryTurn, statusTurn } from './proofs.js';
 import type { LiveProofRecord, PlanPosture, ProofRecord } from './proofs.js';
+import { isJournalUpdate } from './journal.js';
 import type { JournalView, Turn } from './journal.js';
 
 export type Adjectives = Readonly<Record<'critical' | 'significant' | 'userFacing' | 'irreversible', boolean>>;
@@ -294,6 +295,7 @@ export function resolveLiveProof(input: LiveProofInput): LiveProofResult {
   if (!d.requiredFacts.liveProof || !capability.acceptance) return refuse('capability names no live proof');
   if (capability.acceptance.tier === 'desk-semantic' && !input.deskObservation?.trim())
     return refuse('this capability needs the desk-recorded semantic observation (--desk-observation)');
+  if (!isJournalUpdate(update)) return refuse('the update is outside the journal\'s update domain');
   const turn = view.order.find(item => item.update === update);
   const sent = (item: Turn | undefined) => item?.sent !== undefined && item.sentAt !== undefined ? { message: item.sent, at: item.sentAt } : null;
   let found: { message: number | null; at: number } | null = null;
@@ -319,7 +321,9 @@ export function resolveLiveProof(input: LiveProofInput): LiveProofResult {
       const latch = input.stopLatch;
       const running = latch && input.launches.find(run => run.at <= latch.latchedAt && (run.exit ?? Number.MAX_SAFE_INTEGER) >= latch.latchedAt);
       const ranPast = latch && input.launches.some(run => run.at > latch.latchedAt);
-      const sentAfter = latch && view.order.some(item => (item.sentAt ?? 0) > latch.latchedAt || (item.heldNoticeSentAt ?? 0) > latch.latchedAt);
+      // Every send the journal accepts counts: replies, held notices and reminders alike.
+      const sentAfter = latch && (view.order.some(item => (item.sentAt ?? 0) > latch.latchedAt || (item.heldNoticeSentAt ?? 0) > latch.latchedAt)
+        || [...view.reminders.values()].some(item => (item.sentAt ?? 0) > latch.latchedAt));
       found = latch && Number.isSafeInteger(latch.latchedAt) && (!running || running.reason === 'operator stop latched')
         && !ranPast && !sentAfter && update === view.cursor ? { message: null, at: latch.latchedAt } : null; break;
     }

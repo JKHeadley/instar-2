@@ -4,10 +4,13 @@
  * counted as unreadable, never guessed at. */
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { LiveProofRecord, ProofRecord } from './proofs.js';
+import { isJournalUpdate } from './journal.js';
+import type { LiveProofRecord, ProofRecord, RefusedProof } from './proofs.js';
 
-/** `available` is false when the log exists but cannot be read: an unreadable store, never an empty history. */
-export interface ProofLog { proofs: ProofRecord[]; liveProofs: LiveProofRecord[]; unreadable: number; available: boolean }
+/** `available` is false when the log exists but cannot be read: an unreadable store, never an empty history.
+ * `refused` keeps each refused attempt line that still names its plan, and its position, so posture reads a
+ * refused newest attempt as an unavailable source instead of falling back to an earlier pass. */
+export interface ProofLog { proofs: ProofRecord[]; liveProofs: LiveProofRecord[]; unreadable: number; available: boolean; refused: RefusedProof[] }
 
 export function appendProof(path: string, record: ProofRecord | LiveProofRecord): void {
   const fresh = !existsSync(path);
@@ -25,7 +28,7 @@ const text = (value: unknown): value is string => typeof value === 'string' && v
 const time = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 
 export function readProofs(path: string): ProofLog {
-  const log: ProofLog = { proofs: [], liveProofs: [], unreadable: 0, available: true };
+  const log: ProofLog = { proofs: [], liveProofs: [], unreadable: 0, available: true, refused: [] };
   let content = '';
   try { content = readFileSync(path, 'utf8'); }
   catch (error) { return (error as { code?: string }).code === 'ENOENT' ? log : { ...log, available: false }; }
@@ -41,10 +44,12 @@ export function readProofs(path: string): ProofLog {
         || typeof row.detail !== 'string' || observed === null || typeof observed !== 'object' || Array.isArray(observed)
         || !Object.values(observed).every(scalar) || !(row.observedAt === null || time(row.observedAt))
         || !(row.capture === null || typeof row.capture === 'string' && /^sha256:[a-f0-9]{64}$/u.test(row.capture))
-        || (row.capture === null) !== (row.observedAt === null)) { log.unreadable++; continue; }
+        || (row.capture === null) !== (row.observedAt === null)) {
+        log.unreadable++; log.refused.push({ plan: row.plan as string, after: log.proofs.length }); continue;
+      }
       log.proofs.push(row as unknown as ProofRecord);
     } else if (text(row.liveProof)) {
-      if (!text(row.capability) || !text(row.version) || !text(row.generation) || !time(row.update) || !(row.messageId === null || time(row.messageId))
+      if (!text(row.capability) || !text(row.version) || !text(row.generation) || !isJournalUpdate(row.update) || !(row.messageId === null || time(row.messageId))
         || !time(row.observedAt) || !time(row.recordedAt) || !['outcome-observed', 'desk-observed'].includes(row.fact as string)
         || (row.fact === 'desk-observed') !== text(row.deskObservation) || !(row.deskObservation === null || text(row.deskObservation))) { log.unreadable++; continue; }
       log.liveProofs.push(row as unknown as LiveProofRecord);

@@ -6,23 +6,24 @@
  * and clock. That keeps the reading to the ports; it does not by itself make an
  * observation genuine — the witness binding below does that.
  *
- * Every plan and attempt is decoded by Nine's own record decoder (`decodeVerificationRecord`),
- * and each passing attempt carries an Evidence witness whose observedAt is the source
- * time. Posture is Nine's `probeBoundToCurrentEvidence` + `deriveGuardPosture`: a record
- * that does not decode is an unavailable source, a pass whose witness is not fresh at the
- * reading instant is not bound, and re-reading old evidence never renews it. The preview
- * runs no fact store, so this module supplies the same inputs the runtime service's
- * `posture` resolves from the spine; the distributed spine is build 11's side. */
+ * Every plan and attempt is decoded by Nine's own record decoder (`decodeVerificationRecord`) and merged by
+ * Nine's `mergeVerificationRecords`: two attempts with one logical identity and different content are a
+ * conflict, an unavailable source, never resolved by file order. A passing attempt's Evidence witness is
+ * resolved from its retained observation — the plan's `confirms` must hold over exactly what was captured —
+ * and bound to the source time and the executing code generation named by the launch history (the startup
+ * records). Posture is Nine's `probeBoundToCurrentEvidence` + `deriveGuardPosture`: a refused newest attempt
+ * is an unavailable source, a witness past its window no longer binds, and re-reading an old source under new
+ * code never renews it. The preview runs no fact store; the distributed spine is build 11's side. */
 import { canonical, consumeResult, decode, decodeMeasurement } from '../../src/index.js';
 import type { Clock, DecodeContext, Evidence, Result } from '../../src/index.js';
 import { genesisHash } from '../../src/facts/index.js';
 import type { FactContext } from '../../src/facts/index.js';
-import { decodeVerificationRecord, deriveGuardPosture, deriveVerificationDue, probeBoundToCurrentEvidence,
-  supervisionCoverage } from '../../src/verification/index.js';
+import { decodeVerificationRecord, deriveGuardPosture, deriveVerificationDue, mergeVerificationRecords, probeBoundToCurrentEvidence,
+  supervisionCoverage, verificationIdentity } from '../../src/verification/index.js';
 import type { GuardPosture, ProbePostureResolution, ProbeRecord, VerificationPlan } from '../../src/verification/index.js';
 import { isStatusCommand } from './status-command.js';
 import { loopHealth } from './obligations.js';
-import { durableProjection } from './journal.js';
+import { durableProjection, packetDigest, reminderId } from './journal.js';
 import type { JournalView, Turn } from './journal.js';
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
@@ -76,6 +77,9 @@ export interface ProofPlan {
   /** False only for an optional port that is off in this launch: its posture is inactive, never healthy. */
   required(ports: Pick<ProofPorts, 'supervisors'>): boolean;
   probe(ports: ProofPorts): ProofOutcome;
+  /** Whether a retained observation itself shows the outcome. A witness is resolved from this, never from a
+   * `passed` label: an empty or unrelated observation binds nothing, whatever disposition it carries. */
+  confirms(observed: Observed): boolean;
 }
 export const WITNESSES = ['telegram.bot-api', 'preview.durable-journal', 'model.provider', 'preview.reply-reviewer',
   'preview.summary-reviewer', 'jev.step-supervisor'] as const;
@@ -112,7 +116,7 @@ interface Attempt { message: number | undefined; attemptAt: number; acceptedAt: 
 function delivery(rows: readonly Attempt[], now: number, freshness: number, noun: string): ProofOutcome {
   const latest = rows.at(-1);
   const observed = { attempts: rows.length, accepted: rows.filter(row => row.message !== undefined).length,
-    latestAccepted: latest ? latest.message !== undefined : null };
+    latestAccepted: latest ? latest.message !== undefined : null, latestReceipt: latest?.message ?? null };
   if (!latest) return outcome('unknown', observed, `no ${noun} send has been attempted yet`, null);
   if (latest.message === undefined)
     return outcome('failed', observed, `the newest ${noun} send has no Telegram acceptance; its outcome is unknown`, latest.attemptAt);
@@ -136,20 +140,28 @@ const identity = (ports: ProofPorts, label: string): ProofOutcome => {
 };
 
 const cadence = (id: string, kind: PlanKind, capability: string, witness: Witness, rules: readonly number[], observes: string,
-  cadenceMs: number, freshnessMs: number, probe: ProofPlan['probe'], required: ProofPlan['required'] = () => true): ProofPlan =>
-  ({ id, kind, capability, witness, rules, observes, cadenceMs, freshnessMs, trigger: 'cadence', required, probe });
+  cadenceMs: number, freshnessMs: number, confirms: ProofPlan['confirms'], probe: ProofPlan['probe'],
+  required: ProofPlan['required'] = () => true): ProofPlan =>
+  ({ id, kind, capability, witness, rules, observes, cadenceMs, freshnessMs, trigger: 'cadence', required, probe, confirms });
+const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+/** The bound bot answered for itself. */
+const identityConfirmed = (o: Observed) => count(o.identity) && o.identity > 0 && o.identity === o.boundBot;
+/** Telegram's acceptance of the newest attempt, with its receipt. */
+const deliveryConfirmed = (o: Observed) => o.latestAccepted === true && count(o.latestReceipt) && o.latestReceipt > 0
+  && count(o.accepted) && o.accepted > 0;
 
 export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
   { id: 'startup', kind: 'startup', rules: [9, 26, 43], capability: 'preview.durable-intake', witness: 'telegram.bot-api', trigger: 'launch',
     observes: 'the authenticated bot identity answer and the replayed journal at launch', cadenceMs: 30 * DAY, freshnessMs: 30 * DAY,
-    required: () => true, probe: ports => {
+    required: () => true, confirms: o => identityConfirmed(o) && count(o.cursor) && count(o.turns), probe: ports => {
       const result = identity(ports, 'at launch'), view = ports.liveView();
       return { ...result, observed: { ...result.observed, cursor: view.cursor, turns: view.order.length, ...ports.launch } };
     } },
   cadence('telegram-identity', 'critical-outcome', 'preview.reply', 'telegram.bot-api', [26, 43],
-    'a fresh authenticated getMe answer bound to the recorded bot id', 6 * HOUR, 12 * HOUR, ports => identity(ports, 'now')),
+    'a fresh authenticated getMe answer bound to the recorded bot id', 6 * HOUR, 12 * HOUR, identityConfirmed, ports => identity(ports, 'now')),
   cadence('journal-restore', 'restore', 'preview.durable-intake', 'preview.durable-journal', [9, 26, 43],
-    'a fresh read-only replay of the encrypted journal compared section by section with the live projection', 6 * HOUR, 12 * HOUR, ports => {
+    'a fresh read-only replay of the encrypted journal compared section by section with the live projection', 6 * HOUR, 12 * HOUR,
+    o => o.restored === true && o.differing === null && count(o.sections) && o.sections > 0 && count(o.cursor), ports => {
       const at = ports.now(), live = projectionSections(ports.liveView());
       const base = { sections: Object.keys(live).length, cursor: ports.liveView().cursor };
       let durable: Readonly<Record<string, string>>;
@@ -162,7 +174,8 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
           `the durable replay differs from the live projection in ${differing.join(', ')}`, at);
     }),
   cadence('reply-drain', 'critical-outcome', 'preview.reply', 'preview.durable-journal', [9, 43],
-    'accepted operator messages in the journal and whether each was settled', 15 * MINUTE, HOUR, ports => {
+    'accepted operator messages in the journal and whether each was settled', 15 * MINUTE, HOUR,
+    o => count(o.unfinished) && typeof o.backlogOverdue === 'boolean' && !(o.backlogOverdue && o.inhibition === null), ports => {
       const at = ports.now(), health = loopHealth(ports.liveView(), at);
       const observed = { unfinished: health.unfinished, oldestUnfinishedAgeMs: health.oldestUnfinishedAgeMs,
         backlogOverdue: health.backlogOverdue, inhibition: health.inhibition };
@@ -172,10 +185,11 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
         : 'accepted work is settled or within its drain limit', at);
     }),
   cadence('reply-delivered', 'critical-outcome', 'preview.reply', 'telegram.bot-api', [26, 43],
-    "Telegram's acceptance of the newest operator reply and its acceptance time", HOUR, DAY,
+    "Telegram's acceptance of the newest operator reply and its acceptance time", HOUR, DAY, deliveryConfirmed,
     ports => delivery(turnAttempts(ports.liveView(), replyTurn), ports.now(), DAY, 'operator reply')),
   cadence('provider-outcomes', 'critical-outcome', 'preview.reply', 'model.provider', [39, 43],
-    'the recorded outcomes of answer calls made inside the freshness window', HOUR, 6 * HOUR, ports => {
+    'the recorded outcomes of answer calls made inside the freshness window', HOUR, 6 * HOUR,
+    o => count(o.completed) && o.completed > 0 && count(o.observedCalls) && o.observedCalls >= o.completed, ports => {
       const at = ports.now(), recent = answerCalls(ports.liveView()).filter(row => at - row.at < 6 * HOUR && row.at <= at).slice(-3);
       const completed = recent.filter(completedCall);
       const observed = { observedCalls: recent.length, completed: completed.length };
@@ -184,7 +198,8 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
         : outcome('failed', observed, 'the recent answer calls all failed', recent.at(-1)!.at);
     }),
   cadence('reply-review-reached', 'duty', 'preview.reply-review', 'preview.reply-reviewer', [9, 38, 73],
-    'each sent model answer and the passing review recorded for it before the send', HOUR, 6 * HOUR, ports => {
+    'each sent model answer and the passing review recorded for it before the send', HOUR, 6 * HOUR,
+    o => count(o.sentAnswers) && o.sentAnswers > 0 && o.reviewed === o.sentAnswers && o.unreviewed === 0, ports => {
       const at = ports.now(), { answers, reviewed } = sentAnswers(ports.liveView());
       const observed = { sentAnswers: answers.length, reviewed: reviewed.length, unreviewed: answers.length - reviewed.length };
       if (answers.length === 0) return outcome('unknown', observed, 'no sent answer yet to observe', null);
@@ -192,12 +207,12 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
         : outcome('failed', observed, `${answers.length - reviewed.length} sent answers have no passing review`, at);
     }),
   cadence('held-notice-delivered', 'critical-outcome', 'preview.held-reply-notice', 'telegram.bot-api', [43],
-    "Telegram's acceptance of the newest held-reply notice and its acceptance time", HOUR, 7 * DAY,
+    "Telegram's acceptance of the newest held-reply notice and its acceptance time", HOUR, 7 * DAY, deliveryConfirmed,
     ports => delivery(ports.liveView().order.filter(turn => turn.heldNoticeIntent !== undefined)
       .map(turn => ({ message: turn.heldNoticeSent, attemptAt: turn.heldSince ?? turn.at, acceptedAt: turn.heldNoticeSentAt })),
     ports.now(), 7 * DAY, 'held-reply notice')),
   cadence('reminder-delivered', 'critical-outcome', 'preview.reminders', 'telegram.bot-api', [43],
-    "Telegram's acceptance of the newest requested reminder, and no reminder overdue", HOUR, 7 * DAY, ports => {
+    "Telegram's acceptance of the newest requested reminder, and no reminder overdue", HOUR, 7 * DAY, deliveryConfirmed, ports => {
       const view = ports.liveView(), at = ports.now(), health = loopHealth(view, at);
       if (health.overdueReminders > 0 && health.inhibition === null)
         return outcome('failed', { overdue: health.overdueReminders }, `${health.overdueReminders} reminders are overdue with nothing inhibiting them`, at);
@@ -205,13 +220,15 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
         .map(item => ({ message: item.sent, attemptAt: item.at, acceptedAt: item.sentAt })), at, 7 * DAY, 'reminder');
     }),
   cadence('requested-summary-delivered', 'critical-outcome', 'preview.requested-summaries', 'telegram.bot-api', [43],
-    "Telegram's acceptance of the newest requested summary and its acceptance time", HOUR, 7 * DAY,
+    "Telegram's acceptance of the newest requested summary and its acceptance time", HOUR, 7 * DAY, deliveryConfirmed,
     ports => delivery(turnAttempts(ports.liveView(), requestedSummaryTurn), ports.now(), 7 * DAY, 'requested summary')),
   cadence('status-answered', 'critical-outcome', 'preview.status-pull', 'telegram.bot-api', [43],
-    "Telegram's acceptance of the newest status reply and its acceptance time", HOUR, 7 * DAY,
+    "Telegram's acceptance of the newest status reply and its acceptance time", HOUR, 7 * DAY, deliveryConfirmed,
     ports => delivery(turnAttempts(ports.liveView(), statusTurn), ports.now(), 7 * DAY, 'status reply')),
   cadence('spend-cap-refusal', 'critical-outcome', 'preview.spend-cap', 'preview.durable-journal', [15, 43],
-    'used allowances against their limits, and the holds a reached allowance recorded instead of spending', HOUR, 30 * DAY, ports => {
+    'used allowances against their limits, and the holds a reached allowance recorded instead of spending', HOUR, 30 * DAY,
+    o => count(o.refusals) && o.refusals > 0 && count(o.calls) && count(o.maxCalls) && o.calls <= o.maxCalls
+      && count(o.replies) && count(o.maxReplies) && o.replies <= o.maxReplies, ports => {
       const view = ports.liveView(), at = ports.now();
       const refusals = view.awayEvents.filter(event => event.kind === 'hold' && CAP_HOLDS.has(event.reason ?? ''));
       const observed = { calls: view.calls, maxCalls: view.limits.maxCalls, replies: view.replies, maxReplies: view.limits.maxReplies,
@@ -224,7 +241,8 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
       return outcome('passed', observed, 'a reached allowance held the work instead of spending, and no allowance is exceeded', latest.at);
     }),
   cadence('summary-checked', 'duty', 'preview.rolling-summary', 'preview.summary-reviewer', [9, 38],
-    'each committed rolling summary and the faithfulness verdict recorded with it', 6 * HOUR, DAY, ports => {
+    'each committed rolling summary and the faithfulness verdict recorded with it', 6 * HOUR, DAY,
+    o => count(o.summaries) && o.summaries > 0 && o.checked === o.summaries && o.unchecked === 0, ports => {
       const at = ports.now(), summaries = ports.liveView().summaries;
       const checked = summaries.filter(summary => summary.faithfulness !== undefined);
       const observed = { summaries: summaries.length, checked: checked.length, unchecked: summaries.length - checked.length,
@@ -234,7 +252,8 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
         : outcome('failed', observed, `${summaries.length - checked.length} of ${summaries.length} committed summaries carry no faithfulness verdict`, at);
     }),
   cadence('step-check-reached', 'duty', 'preview.step-check', 'jev.step-supervisor', [9, 38, 73],
-    'each completed answer, cleanup and summary step and the step verdict recorded for it', 6 * HOUR, DAY, ports => {
+    'each completed business step and the step verdict recorded for it', 6 * HOUR, DAY,
+    o => count(o.steps) && o.steps > 0 && o.verdicts === o.steps && o.pending === 0, ports => {
       const at = ports.now(), steps = [...ports.liveView().stepChecks.values()];
       const done = steps.filter(item => item.result !== undefined).length;
       const observed = { steps: steps.length, verdicts: done, pending: steps.length - done };
@@ -295,47 +314,82 @@ function probeInput(record: ProofRecord, plan: ProofPlan) {
     missingPhases: record.disposition === 'unknown' ? ['observation'] : [], captureStatus: record.capture ? 'available' : 'missing',
     costs: [{ resource: 'model-calls', amount: 0 }] };
 }
-/** The witness a passing attempt carries: its source, the SOURCE time and the capture of what it observed. */
-function witnessInput(record: ProofRecord, plan: ProofPlan, context: DecodeContext) {
+/** The executing version of a source outcome, from the launch history: the generation of the newest startup
+ * recorded at or before the source time. A source produced under other code is history, not current proof. */
+export function sourceGeneration(records: readonly ProofRecord[], observedAt: number | null): string | null {
+  if (observedAt === null) return null;
+  return records.filter(row => row.plan === 'startup' && row.startedAt <= observedAt)
+    .sort((a, b) => a.startedAt - b.startedAt).at(-1)?.generation ?? null;
+}
+/** The witness a passing attempt carries, resolved from its retained observation: the observation must itself show
+ * the outcome, the source must have been produced by the code generation the record claims, and the claim binds
+ * the source time, the executing generation and the capture of exactly what was observed. */
+function witnessInput(record: ProofRecord, plan: ProofPlan, context: DecodeContext, executing: string | null) {
+  if (record.disposition !== 'passed' || record.capture === null || record.observedAt === null
+    || record.capture !== hashOf(record.observed) || !plan.confirms(record.observed) || executing !== record.generation) return null;
   return { type: 'Evidence', schemaVersion: 1, id: `evidence:${recordId(record)}`,
-    claim: { subject: plan.capability, predicate: 'probe-passed', value: { ...bindingOf(record), subjectDigest: subjectDigest(plan) } },
-    source: plan.witness, observedAt: clockAt(context, record.observedAt ?? 0), freshFor: plan.freshnessMs,
+    claim: { subject: plan.capability, predicate: 'probe-passed', value: { ...bindingOf(record), subjectDigest: subjectDigest(plan),
+      sourceGeneration: executing, observation: record.capture } },
+    source: plan.witness, observedAt: clockAt(context, record.observedAt), freshFor: plan.freshnessMs,
     capture: { reference: `capture:${recordId(record)}`, hash: record.capture }, strength: 'observation' };
 }
 
 export interface PlanPosture {
   plan: string; kind: PlanKind; capability: string; rules: readonly number[]; required: boolean; posture: GuardPosture;
-  /** Records of this plan that Nine's decoders refused (a torn or altered attempt): an unavailable source, never a result. */
+  /** Records of this plan that Nine's decoders or the log reader refused (a torn or altered attempt). */
   undecodable: number;
+  /** Immutable disagreements between attempts sharing one logical identity (Nine's merge): the source is unavailable. */
+  conflicts: number;
+  /** The newest source is refused, conflicted or absent from the launch history: unavailable, never an earlier pass. */
+  sourceUnavailable: boolean;
   last: { at: number; disposition: ProofDisposition; detail: string; generation: string; observed: Observed; observedAt: number | null } | null;
   lastSuccessAt: number | null; dueAt: number; overdueBy: number;
 }
-/** Posture per plan from the durable records, through Nine's decoders and derivations. */
+/** A proof-log line of this plan that the reader refused, and how many valid records preceded it in the log. */
+export interface RefusedProof { plan: string; after: number }
+/** Posture per plan from the durable records, through Nine's decoders, merge and derivations. The adapter supplies
+ * what Nine's runtime service resolves from the spine: decoded plans and attempts, the merged record set with its
+ * conflicts, per-attempt source availability, and the current independently resolved Evidence inventory. */
 export function proofPosture(plans: readonly ProofPlan[], records: readonly ProofRecord[], generation: string,
-  ports: Pick<ProofPorts, 'supervisors'>, now: number): PlanPosture[] {
+  ports: Pick<ProofPorts, 'supervisors'>, now: number, refused: readonly RefusedProof[] = []): PlanPosture[] {
   const captures: Record<string, string> = {};
   for (const record of records) if (record.capture) captures[`capture:${recordId(record)}`] = encode(record.observed).bytes;
   const context = decodeContext(captures), at = clockAt(context, now), facts = factContext(context, at);
   return plans.map(plan => {
     const required = plan.required(ports);
     const decodedPlan = attempt(decodeVerificationRecord('VerificationPlan', verificationPlanInput(plan, generation, required), BOUNDARY));
-    const own = records.filter(record => record.plan === plan.id && record.planVersion === planVersion(plan));
-    const current = own.filter(record => record.generation === generation);
+    const positions = records.map((record, index) => ({ record, index }))
+      .filter(({ record }) => record.plan === plan.id && record.planVersion === planVersion(plan));
+    const current = positions.filter(({ record }) => record.generation === generation);
     const evidence: Evidence[] = [];
-    const decoded = current.map(record => {
-      const witness = record.disposition === 'passed' && record.capture && record.observedAt !== null
-        ? attempt(decode('Evidence', witnessInput(record, plan, context), context)) : null;
+    const decoded = current.map(({ record, index }) => {
+      const input = witnessInput(record, plan, context, sourceGeneration(records, record.observedAt));
+      const witness = input ? attempt(decode('Evidence', input, context)) : null;
       if (witness) evidence.push(witness);
-      return { record, probe: attempt(decodeVerificationRecord('ProbeRecord', probeInput(record, plan), BOUNDARY)) };
+      return { record, index, probe: attempt(decodeVerificationRecord('ProbeRecord', probeInput(record, plan), BOUNDARY)) };
     });
-    const resolved: (ProbePostureResolution & { record: ProofRecord })[] = decodedPlan ? decoded.flatMap(({ record, probe }) => probe
-      ? [{ record, probe, sourceStatus: 'available' as const, bound: probeBoundToCurrentEvidence(decodedPlan, probe, at, evidence, context, facts, BOUNDARY) }] : []) : [];
-    const undecodable = decoded.filter(row => !row.probe).length;
-    const posture = decodedPlan ? deriveGuardPosture(decodedPlan, resolved, at, generation, true).posture : 'unknown';
-    const probes: ProbeRecord[] = resolved.map(row => row.probe);
+    const valid = decoded.filter((row): row is typeof row & { probe: ProbeRecord } => row.probe !== null);
+    // Nine's merge: attempts sharing one logical identity with different content are a conflict, never file order.
+    const merged = mergeVerificationRecords(valid.map(row => row.probe));
+    const conflicted = new Set(merged.conflicts.flatMap(conflict => valid.filter(row =>
+      conflict.facts.includes(verificationIdentity(row.probe).canonicalHash)).map(row => row.probe.id)));
+    const resolved: (ProbePostureResolution & { record: ProofRecord })[] = decodedPlan ? valid.map(({ record, probe }) => {
+      const available = !conflicted.has(probe.id);
+      return { record, probe, sourceStatus: available ? 'available' as const : 'unavailable' as const,
+        bound: available && probeBoundToCurrentEvidence(decodedPlan, probe, at, evidence, context, facts, BOUNDARY) };
+    }) : [];
+    // The newest attempt is the last in the append-only log; a refused newest line is an unavailable source.
+    const newestValid = valid.at(-1)?.index ?? -1;
+    const undecodable = decoded.length - valid.length + refused.filter(row => row.plan === plan.id).length;
+    const sourceUnavailable = conflicted.size > 0 || (decoded.at(-1) !== undefined && decoded.at(-1)!.probe === null)
+      || refused.some(row => row.plan === plan.id && row.after > newestValid);
+    const derived = decodedPlan ? deriveGuardPosture(decodedPlan, resolved, at, generation, true).posture : 'unknown';
+    const posture: GuardPosture = sourceUnavailable && derived !== 'inactive' ? 'unknown' : derived;
+    const probes: ProbeRecord[] = valid.map(row => row.probe);
     const [due] = decodedPlan ? deriveVerificationDue([decodedPlan as VerificationPlan], probes, at) : [];
-    const last = own.at(-1), success = resolved.filter(row => row.record.disposition === 'passed' && row.bound).at(-1)?.record;
+    const last = positions.at(-1)?.record, success = resolved.filter(row => row.record.disposition === 'passed' && row.bound).at(-1)?.record;
     return { plan: plan.id, kind: plan.kind, capability: plan.capability, rules: plan.rules, required, posture, undecodable,
+      conflicts: merged.conflicts.length, sourceUnavailable,
       last: last ? { at: last.completedAt, disposition: last.disposition, detail: last.detail, generation: last.generation,
         observed: last.observed, observedAt: last.observedAt } : null,
       lastSuccessAt: success?.completedAt ?? null, dueAt: due?.dueAt ?? 0, overdueBy: required ? due?.overdueBy ?? 0 : 0 };
@@ -361,30 +415,32 @@ export function executeProof(plan: ProofPlan, ports: ProofPorts, generation: str
   // A source time after the attempt ended is not an observation this attempt made.
   const observedAt = result.observedAt !== null && Number.isSafeInteger(result.observedAt) && result.observedAt <= completedAt ? result.observedAt : null;
   return { v: 1, plan: plan.id, planVersion: planVersion(plan), generation, startedAt, completedAt,
-    disposition: result.disposition === 'passed' && observedAt === null ? 'unknown' : result.disposition,
+    disposition: result.disposition === 'passed' && (observedAt === null || !plan.confirms(result.observed)) ? 'unknown' : result.disposition,
     observed: result.observed, detail: result.detail, observedAt, capture: observedAt === null ? null : hashOf(result.observed) };
 }
 
-/** Rule 38: every business step of each critical pipeline, the supervisor that reaches it, and what a
- * missing supervisor does. `bootstrap` is the one deterministic exception the scheduled-work design
- * allows: the finite admission that lets the supervised work start at all. */
-export interface PipelineStep { step: string; supervisors: readonly Supervisor[]; bootstrap?: string }
+/** Rule 38: every business step of each critical pipeline, and the supervisor that reaches it. No business step is
+ * exempt: the only deterministic bootstrap the scheduled-work design allows admits the supervisor call itself, and
+ * that is not a roster member. A step whose supervisor is off in a launch, or has no verdict, stays visible as missing. */
+export interface PipelineStep { step: string; supervisors: readonly Supervisor[] }
 export type Supervisor = 'reply-review' | 'summary-review' | 'step-check';
 export interface Pipeline { failureDirection: 'open' | 'closed'; steps: readonly PipelineStep[]; owner: string }
 export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.freeze({
-  'operator-reply': { failureDirection: 'closed', owner: 'reply review holds the send without a pass; cleanup and preparation gaps stay visible',
+  'operator-reply': { failureDirection: 'closed',
+    owner: 'reply review holds the send without a pass; the step supervisor observes intake, preparation, answer and cleanup',
     steps: [
-      { step: 'intake', supervisors: [], bootstrap: 'exact verified-operator sender and chat binding admits the supervised reply' },
-      { step: 'prepare-packet', supervisors: [] },
+      { step: 'intake', supervisors: ['step-check'] },
+      { step: 'prepare-packet', supervisors: ['step-check'] },
       { step: 'answer', supervisors: ['reply-review', 'step-check'] },
       { step: 'interpret', supervisors: ['reply-review'] },
       { step: 'send', supervisors: ['reply-review'] },
       { step: 'cleanup', supervisors: ['step-check'] },
     ] },
-  'requested-summary': { failureDirection: 'closed', owner: 'reply review holds the send without a pass',
+  'requested-summary': { failureDirection: 'closed',
+    owner: 'the step supervisor validates due selection and preparation before the model call; reply review holds the send without a pass',
     steps: [
-      { step: 'select-due', supervisors: [], bootstrap: "exact due slot of the operator's own summary grant admits the supervised summary" },
-      { step: 'prepare-packet', supervisors: [] },
+      { step: 'select-due', supervisors: ['step-check'] },
+      { step: 'prepare-packet', supervisors: ['step-check'] },
       { step: 'summarize', supervisors: ['reply-review', 'step-check'] },
       { step: 'send', supervisors: ['reply-review'] },
     ] },
@@ -394,10 +450,10 @@ export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.fre
       { step: 'commit-summary', supervisors: ['summary-review'] },
     ] },
   'requested-reminder': { failureDirection: 'open',
-    owner: 'no bounded reviewer reaches a reminder before its send; the design seam (P15-NF-42/44, ledger #23) is unlanded',
+    owner: 'the step supervisor validates due selection and the reminder line before the send; only a violation keeps it unsent',
     steps: [
-      { step: 'select-due', supervisors: [] },
-      { step: 'send', supervisors: [] },
+      { step: 'select-due', supervisors: ['step-check'] },
+      { step: 'send', supervisors: ['step-check'] },
     ] },
 });
 
@@ -432,18 +488,31 @@ function operations(view: JournalView, pipeline: string, supervisors: ProofPorts
       return [step, best];
     })) });
   if (pipeline === 'operator-reply') return view.order.filter(turn => replyTurn(turn) && turn.intent !== undefined).map(turn => byTurn(turn, {
-    'prepare-packet': [], answer: [['reply-review', turn.id], ['step-check', `answer:${turn.id}`]], interpret: [['reply-review', turn.id]],
+    intake: [['step-check', `intake:${turn.id}`]], 'prepare-packet': [['step-check', `prepare:${turn.id}`]],
+    answer: [['reply-review', turn.id], ['step-check', `answer:${turn.id}`]], interpret: [['reply-review', turn.id]],
     send: [['reply-review', turn.id]], cleanup: [['step-check', `cleanup:${turn.id}`]] }));
-  if (pipeline === 'requested-summary') return view.order.filter(turn => requestedSummaryTurn(turn) && turn.intent !== undefined).map(turn => byTurn(turn, {
-    'prepare-packet': [], summarize: [['reply-review', turn.id], ['step-check', `answer:${turn.id}`]], send: [['reply-review', turn.id]] }));
+  if (pipeline === 'requested-summary') return view.order.filter(turn => requestedSummaryTurn(turn) && turn.intent !== undefined).map(turn => {
+    // The pre-model checks bound to the packet this summary was actually prepared with.
+    const packet = turn.prompt === undefined ? null : packetDigest(turn.prompt);
+    const bound = (prefix: string) => [...view.stepChecks.keys()].filter(key => key.startsWith(`${prefix}:${turn.id}:`)
+      && (packet === null || key.endsWith(`:${packet}`)));
+    return byTurn(turn, { 'select-due': bound('select-due').map(key => ['step-check', key] as [Supervisor, string]),
+      'prepare-packet': bound('prepare').map(key => ['step-check', key] as [Supervisor, string]),
+      summarize: [['reply-review', turn.id], ['step-check', `answer:${turn.id}`]], send: [['reply-review', turn.id]] });
+  });
   if (pipeline === 'rolling-summary') return view.summaries.map(summary => ({ id: `summary:${summary.through}`, states: {
     summarize: [stepState(view, 'summary-review', `summary:${summary.through}`, supervisors), stepState(view, 'step-check', `summary:${summary.through}`, supervisors)]
       .filter(item => item !== null).sort((a, b) => Number(b.state === 'validated') - Number(a.state === 'validated'))[0],
     'commit-summary': stepState(view, 'summary-review', `summary:${summary.through}`, supervisors) ?? undefined } }));
-  return [...view.reminders.entries()].filter(([, item]) => item.sent !== undefined || item.at > 0).map(([id]) => ({ id: `reminder:${id}`, states: {} }));
+  // One operation per requested reminder actually sent or attempted; a legacy morning batch has no reminder steps.
+  return [...view.reminders.entries()].flatMap(([key, batch]) => batch.requested ? batch.items.map(ref => {
+    const id = reminderId(ref);
+    return { id, states: { 'select-due': stepState(view, 'step-check', `reminder-due:${id}`, supervisors) ?? undefined,
+      send: stepState(view, 'step-check', `reminder-send:${id}`, supervisors) ?? undefined } };
+  }) : [{ id: `reminder:${key}`, states: {} }]);
 }
 export interface StepCoverageRow {
-  boundary: string; supervisors: readonly Supervisor[]; bootstrap: string | null;
+  boundary: string; supervisors: readonly Supervisor[];
   /** Operations (actual attempts) of this pipeline; each boundary is judged over all of them. */
   population: number; validated: number; failed: number; unavailable: number; missing: number;
   state: StepState | 'no-population'; references: readonly string[];
@@ -456,7 +525,6 @@ export function stepCoverage(view: JournalView, supervisors: ProofPorts['supervi
     const rows = declared.steps.map(step => {
       const counts = { validated: 0, failed: 0, unavailable: 0, missing: 0 }, references: string[] = [];
       for (const operation of population) {
-        if (step.bootstrap) { counts.validated++; continue; }
         const seen = operation.states[step.step];
         const [row] = supervisionCoverage([step.step], seen && seen.state !== 'failed' ? [{ boundary: step.step, state: seen.state === 'validated' ? 'validated' : 'unavailable',
           attempt: seen.attempt, resolution: seen.resolution, operation: operation.id, recursivelySupervisesOwnCall: false }] : []);
@@ -466,7 +534,7 @@ export function stepCoverage(view: JournalView, supervisors: ProofPorts['supervi
       }
       const state = population.length === 0 ? 'no-population' as const : counts.failed ? 'failed' as const
         : counts.missing ? 'missing' as const : counts.unavailable ? 'unavailable' as const : 'validated' as const;
-      return { boundary: step.step, supervisors: step.supervisors, bootstrap: step.bootstrap ?? null, population: population.length, ...counts, state, references };
+      return { boundary: step.step, supervisors: step.supervisors, population: population.length, ...counts, state, references };
     });
     return [pipeline, { failureDirection: declared.failureDirection, owner: declared.owner, rows }];
   }));

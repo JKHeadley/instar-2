@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, probeTurn, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, probeTurn, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE, isJournalUpdate } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -149,7 +149,7 @@ const proofReport = (view, log, launch, now) => {
   const versions = launch && Object.keys(launch.versions).length ? launch.versions : capabilityVersions();
   const supervisors = { replyReview: true, summaryReview: true, stepCheck: launch?.stepCheck ?? false };
   const generation = launch?.generation ?? versions['preview.proofs'];
-  return { generation, versions, supervisors, proofs: proofPosture(PREVIEW_PROOF_PLANS, log.proofs, generation, { supervisors }, now),
+  return { generation, versions, supervisors, proofs: proofPosture(PREVIEW_PROOF_PLANS, log.proofs, generation, { supervisors }, now, log.refused ?? []),
     enabled: { default: true, 'option:step-check': supervisors.stepCheck, 'option:agent-state-dir': launch?.agentState ?? false },
     stepCoverage: stepCoverage(view, supervisors) };
 };
@@ -474,7 +474,9 @@ async function main() {
     // record all refuse; a capability whose outcome is semantic also needs the desk's recorded observation.
     const capability = inventory().capabilities.find(item => item.declaration.id === required(options, 'capability'));
     if (!capability) throw Error('preview: unknown capability');
-    const update = number(required(options, 'update'), 'update', 0);
+    // The journal's own update domain: a requested summary's synthetic update is a real operation identity.
+    const update = Number(required(options, 'update'));
+    if (!isJournalUpdate(update)) throw Error('preview: invalid update');
     const view = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try {
       const result = resolveLiveProof({ capability, view: view.view, update, deskObservation: options['desk-observation'] ?? null,
@@ -731,7 +733,7 @@ async function main() {
             shape => recordShape(shapesPath, 'summary-review', 'verdict', 'malformed', shape));
         }
       },
-      ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
+      ...(stepCheckEnabled ? { stepCheck: { jev: (text, questions) => invokeJev(text, questions ?? stepQuestions) } } : {}),
       statusExtra: () => {
         if (!proofLaunch) return [];
         const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
