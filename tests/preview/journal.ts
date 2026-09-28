@@ -2190,6 +2190,8 @@ export interface PreviewPorts {
   summaryCheck?(evidence: string): Promise<unknown>;
 
   stepCheck?: { jev(state: string): Promise<{ value: unknown; latencyMs: number }> };
+  /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture). */
+  statusExtra?(): readonly string[];
   boundary?(stage: string): void;
 }
 
@@ -3751,7 +3753,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (turn.held) continue;
         gate();
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
-          const answer = statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC');
+          const answer = statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC', ports.statusExtra?.() ?? []);
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },

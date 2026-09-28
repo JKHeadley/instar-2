@@ -7,7 +7,7 @@ import { loopStatusLines } from './obligations.js';
 
 export const isStatusCommand = (text: string): boolean => /^(?:status|how are you doing)\s*[?.!]?$/iu.test(text.trim());
 
-export function statusReply(view: JournalView, now: number, zone: string): string {
+export function statusReply(view: JournalView, now: number, zone: string, extra: readonly string[] = []): string {
   const local = localParts(now, zone);
   const today = `${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
   const turns = view.order.reduce((count, turn) => {
@@ -36,6 +36,7 @@ export function statusReply(view: JournalView, now: number, zone: string): strin
     `Pending memory decisions: ${pending.length}${pending.length ? ` (updates ${pending.map(turn => turn.update).join(', ')})` : ''}.`,
     `Next dated item: ${nextText}.`,
     ...loopStatusLines(view, now),
+    ...extra,
     `Spend allowance: ${view.calls}/${view.limits.maxCalls} subscription attempts; ${view.jevChecks}/${view.limits.maxReplies} Jev checks. Dollar spend/cap: not recorded in this journal. Replies: ${view.replies}/${view.limits.maxReplies} used.`,
   ].join('\n');
 }
