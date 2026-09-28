@@ -33,7 +33,7 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
 /** Rules 4, 10, 57, 86, 116: the one exact test that skips the second check. It judges no
  * meaning and uses no keyword list. Apart from a fixed set of connective words, every token
  * of the reply must appear verbatim and in order inside ONE earlier message from the verified
- * operator in this private chat, as one contiguous run of that message's non-connective tokens. Words from two
+ * operator in this private chat: after a leading run of fixed connectives, the rest of the reply must be one unbroken run of that message's raw tokens. Words from two
  * messages, from imported sources, other senders or the agent's own replies, reordered words
  * or any added word fail it and keep the existing review. The exact credential wall runs
  * before this test and again on the send body (REPLY_RULES.credential). */
@@ -43,15 +43,18 @@ export const replyTokens = (text: string): string[] =>
 const echoConnectives = new Set(['you', 'your', 'yours', 'i', 'me', 'my', 'it', 'its', 'is', 'was', 'are', 'were',
   'the', 'a', 'an', 'told', 'said', 'that', 'and', '—', '–', '-']);
 export function repeatsOperatorOnly(reply: string, operatorMessages: readonly string[]): boolean {
-  const content = replyTokens(reply.replace(/^PREVIEW — /u, ''))
-    .filter(token => !echoConnectives.has(token.toLowerCase()));
+  // Only a LEADING run of fixed connectives ("It is", "Your", "You told me the") is ignored; every
+  // remaining token must appear verbatim as one unbroken run of ONE operator message's RAW tokens.
+  // Nothing is removed from the source, so no value can be stitched from separated words.
+  const tokens = replyTokens(reply.replace(/^PREVIEW — /u, ''));
+  let lead = 0;
+  while (lead < tokens.length && echoConnectives.has(tokens[lead]!.toLowerCase())) lead++;
+  const content = tokens.slice(lead);
   if (!content.length) return false;
-  // Contiguous, not a subsequence: with connectives removed from both sides, the reply's words
-  // must be one unbroken run of ONE operator message, so no value is stitched from scattered words.
   return operatorMessages.some(message => {
-    const source = replyTokens(message).filter(token => !echoConnectives.has(token.toLowerCase()));
+    const source = replyTokens(message);   // exact, case-sensitive equality
     for (let start = 0; start + content.length <= source.length; start++)
-      if (content.every((token, i) => source[start + i] === token)) return true;
+      if (content.every((token, k) => source[start + k] === token)) return true;
     return false;
   });
 }

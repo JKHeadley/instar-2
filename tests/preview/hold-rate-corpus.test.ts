@@ -72,12 +72,12 @@ it('measures first-attempt held replies on a mixed conversation corpus', async (
       rate: totalHeld / corpus.length, reasons, categories, reviews }));
     expect(totalHeld / corpus.length).toBeLessThanOrEqual(0.1);
     // The two technical rows add words the operator never wrote, so they keep the existing
-    // review. Five replies are built only from one operator message plus fixed connectives
-    // ("Good morning!", and the garden, Mira, desk and notebook recalls), so they take the
-    // exact operator-echo path.
+    // review. Four replies are an unbroken run of one operator message after leading connectives
+    // ("Good morning!", and the garden, Mira and notebook recalls), so they take the exact
+    // operator-echo path; the desk recall rephrases ("moved it" vs "moved my desk") and is reviewed.
     expect(reviews).toBe(2);
     expect(journal.view.replyCheckPaths.subscription).toBe(2);
-    expect(journal.view.replyCheckPaths['operator-echo']).toBe(5);
+    expect(journal.view.replyCheckPaths['operator-echo']).toBe(4);
     expect(journal.view.order.filter(turn => turn.intent)).toHaveLength(corpus.length);
     expect(journal.view.memory).toEqual([]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

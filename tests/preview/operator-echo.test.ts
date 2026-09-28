@@ -62,6 +62,8 @@ describe('the exact operator-echo test', () => {
     // Contiguity (Astra desk review MUST-FIX 1): scattered words cannot be stitched into a value.
     expect(repeatsOperatorOnly('It is violet orchid.', ['The violet flowers are beside the orchid. What did Sam send?'])).toBe(false);
     expect(repeatsOperatorOnly('It is violet orchid.', ['My recovery phrase is violet orchid.'])).toBe(true);
+    // Astra r2 MUST-FIX 1: connectives are never removed from inside the source.
+    expect(repeatsOperatorOnly('It is violet orchid.', ['I said violet and you said orchid. What did Sam send?'])).toBe(false);
   });
 
   it('judges no meaning and uses no keyword list (Rule 10): only the exact source test decides', () => {
@@ -189,7 +191,8 @@ describe('Astra repair witnesses under the Rules 4/10 reading', () => {
     { name: 'PIN with its label, from that one message: sent', own: 'My account login PIN is 5823.', reply: 'Your account login PIN is 5823.', echo: true },
     { name: 'same PIN with its label omitted: sent', own: 'My account login PIN is 5823.', reply: 'It is 5823.', echo: true },
     { name: 'a number the operator never gave: reviewed', own: 'My account login PIN is 9911.', reply: 'It is 5823.', echo: false },
-    { name: 'one-time code from that one message: sent', own: 'My bank sent a one-time code to sign in: 5823.', reply: 'Your one-time code to sign in is 5823.', echo: true },
+    { name: 'one-time code rephrased with an added "is": reviewed', own: 'My bank sent a one-time code to sign in: 5823.', reply: 'Your one-time code to sign in is 5823.', echo: false },
+    { name: 'one-time code repeated verbatim from that one message: sent', own: 'My bank sent a one-time code to sign in: 5823.', reply: 'Your one-time code to sign in: 5823.', echo: true },
     { name: 'same value with an added word: reviewed', own: 'My account login PIN is 5823.', reply: 'Your current PIN is 5823.', echo: false },
   ])('$name', async ({ own, reply, echo }) => {
     expect(repeatsOperatorOnly(reply, [own])).toBe(echo);

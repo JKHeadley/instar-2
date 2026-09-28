@@ -2333,7 +2333,7 @@ operator's own words to that operator goes straight to the send path, without Je
 or the review. The test is exact and judges no meaning (`repeatsOperatorOnly` in
 `reply-check.ts`, Rules 4 and 10): apart from a small fixed set of connective words
 (you, your, I, me, my, it, is, was, the, a, told, said, that, and, dashes), every
-token of the reply appears verbatim as one contiguous run (connectives removed on both sides) inside ONE earlier accepted
+token of the reply after a leading run of those connectives appears verbatim as one unbroken run of the raw words of ONE earlier accepted
 message from the verified operator in this private chat. Words from two messages,
 reordered words, any added word, and anything from an imported source, another
 sender or the agent's own replies keep the full check. There is no keyword or
