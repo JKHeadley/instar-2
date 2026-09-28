@@ -30,23 +30,34 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
 }
 
 
-/** Rules 4, 57, 86, 116: the one exact test that skips the second check. A reply only
- * repeats the verified operator when it contains at least one code-like token and every
- * code-like token equals, whole, a token of the operator's own messages in this chat.
- * Code-like: a digit, a path/command/key/address character, a leading hyphen, camelCase,
- * or four or more capitals. Plain words are not tested: a self-stop or hand-back phrased
- * in words, or a letter-only secret the exact wall does not recognise, is not caught on
- * this path. The exact secret wall runs before this test and again at send. */
+/** Rules 4, 57, 86, 116: the one closed exact form that skips the second check. A reply
+ * only repeats the verified operator when (1) it carries at least one code-like token and
+ * every code-like token equals, whole, a token of the operator's own messages in this chat;
+ * (2) every other word is either a word of those operator messages or one of the fixed
+ * connectives below, so no imported or invented content can ride along; and (3) it names
+ * no authentication secret (REPLY_RULES.credential: such a secret stays under review even
+ * when the operator supplied it). Code-like: a digit, a path/command/key/address character,
+ * a leading hyphen, camelCase, or four or more capitals. The exact secret wall runs before
+ * this test and again at send. */
 const tokenEdges = /^["'“‘(\[{<]+|["'”’)\]}>.,;:!?…]+$/gu;
 export const replyTokens = (text: string): string[] =>
   text.split(/\s+/u).map(token => token.replace(tokenEdges, '')).filter(Boolean);
 export const codeLikeToken = (token: string): boolean => /[0-9/\\_=@$~`<>{}[\]|#:.*^%&+]/u.test(token)
   || /^-./u.test(token) || /\p{Ll}\p{Lu}/u.test(token) || /^\p{Lu}{4,}$/u.test(token);
+const echoConnectives = new Set(['you', 'your', 'yours', 'i', 'me', 'my', 'the', 'a', 'an', 'is', 'are', 'was',
+  'were', 'it', 'its', 'from', 'to', 'now', 'and', 'of', 'for', 'that', 'this', 'current', 'currently', 'changed',
+  'corrected', 'updated', 'noted', 'still', 'earlier', 'before', 'previously', 'then', 'set', '→', '—', '-']);
+const authenticationTerm = /(pass(word|code|phrase)|\bpins?\b|log-?[io]n|sign-?in|\botp\b|\b[0-9]fa\b|\bmfa\b|token|\bkeys?\b|api-?key|secret|credential|\bauth|verification|cvv)/iu;
 export function repeatsOperatorOnly(reply: string, operatorMessages: readonly string[]): boolean {
-  const spans = replyTokens(reply.replace(/^PREVIEW — /u, '')).filter(codeLikeToken);
+  const body = reply.replace(/^PREVIEW — /u, '');
+  if (authenticationTerm.test(body)) return false;
+  const tokens = replyTokens(body);
+  const spans = tokens.filter(codeLikeToken);
   if (!spans.length) return false;
   const own = new Set(operatorMessages.flatMap(replyTokens));
-  return spans.every(span => own.has(span));
+  const ownWords = new Set([...own].map(word => word.toLowerCase()));
+  return spans.every(span => own.has(span))
+    && tokens.every(token => codeLikeToken(token) || ownWords.has(token.toLowerCase()) || echoConnectives.has(token.toLowerCase()));
 }
 
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';

@@ -71,11 +71,11 @@ it('measures first-attempt held replies on a mixed conversation corpus', async (
     console.info('hold-rate corpus', JSON.stringify({ total: corpus.length, held: totalHeld,
       rate: totalHeld / corpus.length, reasons, categories, reviews }));
     expect(totalHeld / corpus.length).toBeLessThanOrEqual(0.1);
-    // The two technical rows repeat the operator's own command and path back to the operator,
-    // so the exact operator-echo path releases them without Jev or the review.
-    expect(reviews).toBe(0);
-    expect(journal.view.replyCheckPaths.subscription).toBe(0);
-    expect(journal.view.replyCheckPaths['operator-echo']).toBe(2);
+    // The two technical rows add words the operator never wrote, so the closed operator-echo
+    // form does not apply and they keep the existing review.
+    expect(reviews).toBe(2);
+    expect(journal.view.replyCheckPaths.subscription).toBe(2);
+    expect(journal.view.replyCheckPaths['operator-echo']).toBe(0);
     expect(journal.view.order.filter(turn => turn.intent)).toHaveLength(corpus.length);
     expect(journal.view.memory).toEqual([]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

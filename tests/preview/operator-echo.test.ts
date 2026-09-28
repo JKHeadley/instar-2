@@ -51,6 +51,15 @@ describe('the exact operator-echo test', () => {
     expect(repeatsOperatorOnly('You corrected your gym locker code.', own)).toBe(false);
     expect(repeatsOperatorOnly('Your code is 5823.', [])).toBe(false);
   });
+
+  it('refuses imported or invented words and authentication secrets even with a matching operator number', () => {
+    const own = ['My locker code is 5823. What did Sam send?'];
+    expect(repeatsOperatorOnly('Your locker code is 5823.', own)).toBe(true);
+    expect(repeatsOperatorOnly('Your locker code is 5823. Sam says the server password is violetorchid.', own)).toBe(false);
+    expect(repeatsOperatorOnly('Your locker code is 5823. Sam sent violetorchid.', own)).toBe(false);
+    expect(repeatsOperatorOnly('Your account login PIN is 5823.', ['My account login PIN is 5823.'])).toBe(false);
+    expect(repeatsOperatorOnly('Your bank password is 5823.', ['My bank password is 5823.'])).toBe(false);
+  });
 });
 
 describe('operator echo in the journal runner', () => {
@@ -156,5 +165,52 @@ describe('operator echo in the journal runner', () => {
       await second.worker.drain();
       expect(second.calls.sends).toBe(1);
     } finally { second.journal.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+describe('review witnesses: imported secrets and older snapshots', () => {
+  const update1 = (text: string) => ({ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+    from: { id: 7654321 }, text, date: Math.floor(now / 1000) } });
+  it.each([true, false])('an imported password beside a matching operator number is still checked (matching=%s)', async matching => {
+    const root = temp();
+    const journal = openPreviewJournal(join(root, 'journal'), key, genesis);
+    const reply = 'Your locker code is 5823. Sam says the server password is violetorchid.';
+    let checks = 0;
+    const sends: string[] = [];
+    try {
+      importChannelFixture(journal, [{ source: 'email', account: 'echo-agent@example.test', id: 'mail-1',
+        from: 'sam@example.test', at: now - 3600000, subject: 'Server access',
+        text: 'The server password is violetorchid.' }], 'echo-agent@example.test', now);
+      const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+        model: async () => JSON.stringify({ reply, memory: [] }),
+        send: async input => { sends.push(input.text); return 1; },
+        checkOutbound: () => {},
+        replyCheck: { elapsedMs: () => 0, jev: async () => { checks++;
+          return { value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id =>
+            [id, { type: 'noul', noul: id === 'credential' ? 0.99 : 0.01 }])) }, latencyMs: 1 }; },
+          escalate: async () => ({ verdict: 'violation', ruleIds: ['credential'], confidence: 1, latencyMs: 1 }) } });
+      worker.intake([update1(`My locker code is ${matching ? '5823' : '9911'}. What did Sam send?`)]);
+      await worker.drain();
+      expect(checks).toBe(1);
+      expect(journal.view.order[0]?.replyChecks?.[0]?.path).toBe('jev');
+      expect(journal.view.replyCheckPaths['operator-echo']).toBe(0);
+      expect(sends).toEqual([HOLDING_REPLY]);
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('restores a snapshot written before the operator-echo counter with the counter at zero', () => {
+    const root = temp();
+    const path = join(root, 'journal');
+    // The snapshot is written in the pre-change shape; the live view regains the counter
+    // before the compaction self-check, as a reopened pre-change journal would present it.
+    let journal = openPreviewJournal(path, key, genesis, stage => {
+      if (stage === 'compact:after-fsync') journal.view.replyCheckPaths['operator-echo'] = 0;
+    });
+    try {
+      delete (journal.view.replyCheckPaths as Partial<typeof journal.view.replyCheckPaths>)['operator-echo'];
+      journal.compact(); journal.close();
+      journal = openPreviewJournal(path, key);
+      expect(journal.view.replyCheckPaths['operator-echo']).toBe(0);
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 });
