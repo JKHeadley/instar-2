@@ -7,7 +7,8 @@
 // being refreshed by assertion.
 import { readFileSync } from 'node:fs';
 import { durablePreviewWrite } from './state.js';
-import { compareLive, liveMeasurement, renderMeasured } from './measured.js';
+import { liveMeasurement, renderMeasured } from './measured.js';
+import { modelEntryFresh } from '../../src/register/index.js';
 
 export const DOORWAY_FRESH_MS = 24 * 60 * 60 * 1000;
 export type ModelState = 'unverified' | 'verified' | 'changed' | 'unavailable' | 'retired';
@@ -18,32 +19,41 @@ export interface DoorwayModel {
 }
 export interface Doorway {
   readonly id: string; readonly billing: 'subscription' | 'metered';
-  /** Price evidence the route actually reports; never scraped or assumed. */
-  readonly price: Readonly<{ state: 'unavailable'; reason: string }>;
+  /** Price evidence the route actually reports; never scraped or assumed. An unavailable reading is
+   * itself an observation with its time and window: past the window it is stale and not trusted. */
+  readonly price: Readonly<{ state: 'unavailable'; reason: string; observedAt?: number; freshForMs?: number }>;
   readonly models: readonly DoorwayModel[];
 }
-export interface DoorwayMap { readonly version: 1; readonly doorways: readonly Doorway[] }
+/** The last verdict of the standing freshness check, and when the verdict last changed. */
+export interface DoorwayCheck { readonly at: number; readonly fresh: boolean; readonly since: number; readonly failing: readonly string[] }
+export interface DoorwayMap { readonly version: 1; readonly doorways: readonly Doorway[]; readonly check?: DoorwayCheck }
 export interface InstalledDoorway { readonly id: string; readonly billing: 'subscription' | 'metered'; readonly model: string; readonly priceReason: string }
 
-/** Merge the installed routes into the persisted map. A model no longer installed is retained as `retired`. */
-export function installDoorways(previous: DoorwayMap | null, installed: readonly InstalledDoorway[]): DoorwayMap {
+/** Merge the installed routes into the persisted map. A model no longer installed is retained as `retired`.
+ * `at` is the installation's observation time of each route's (unavailable) price evidence. */
+export function installDoorways(previous: DoorwayMap | null, installed: readonly InstalledDoorway[], at?: number): DoorwayMap {
   const doorways = installed.map(route => {
     const prior = previous?.doorways.find(d => d.id === route.id);
-    const models = (prior?.models ?? []).map(m => m.id === route.model ? m : { ...m, state: 'retired' as const });
+    // A retired model installed again rejoins the checked population unverified: its
+    // old verification is not evidence for the new installation (the A→B→A case).
+    const models = (prior?.models ?? []).map(m => m.id !== route.model ? { ...m, state: 'retired' as const }
+      : m.state === 'retired' ? { id: m.id, state: 'unverified' as const, verifiedAt: null, freshForMs: m.freshForMs,
+        evidence: null, strength: null } : m);
     if (!models.some(m => m.id === route.model)) models.push({ id: route.model, state: 'unverified', verifiedAt: null,
       freshForMs: DOORWAY_FRESH_MS, evidence: null, strength: null });
-    return { id: route.id, billing: route.billing, price: { state: 'unavailable' as const, reason: route.priceReason }, models };
+    return { id: route.id, billing: route.billing, price: { state: 'unavailable' as const, reason: route.priceReason,
+      ...(at === undefined ? {} : { observedAt: at, freshForMs: DOORWAY_FRESH_MS }) }, models };
   });
   const retired = (previous?.doorways ?? []).filter(d => !installed.some(r => r.id === d.id))
     .map(d => ({ ...d, models: d.models.map(m => ({ ...m, state: 'retired' as const })) }));
-  return { version: 1, doorways: [...doorways, ...retired] };
+  return { version: 1, doorways: [...doorways, ...retired], ...(previous?.check ? { check: previous.check } : {}) };
 }
 
 export type ExchangeObservation = Readonly<{ ok: true; reportedModels: readonly string[]; evidence: string }
   | { ok: false; reason: string; evidence: string }>;
 /** Record one real exchange on an installed route's exact model. */
 export function observeExchange(map: DoorwayMap, doorway: string, model: string, observation: ExchangeObservation, at: number): DoorwayMap {
-  return { version: 1, doorways: map.doorways.map(d => d.id !== doorway ? d : { ...d, models: d.models.map(m => {
+  return { ...map, doorways: map.doorways.map(d => d.id !== doorway ? d : { ...d, models: d.models.map(m => {
     if (m.id !== model || m.state === 'retired') return m;
     if (!observation.ok) return { ...m, state: 'unavailable', unavailableAt: at, unavailableReason: observation.reason };
     const reported = observation.reportedModels;
@@ -57,20 +67,39 @@ export function observeExchange(map: DoorwayMap, doorway: string, model: string,
 
 export interface ModelFreshness { readonly doorway: string; readonly model: string; readonly state: ModelState | 'stale';
   readonly fresh: boolean; readonly age: string | null; readonly verifiedAt: number | null; readonly observedId?: string }
-/** Rule 56's check: every installed model's verification age within its window, else it fails. */
-export function doorwayFreshness(map: DoorwayMap, now: number): { readonly fresh: boolean; readonly models: readonly ModelFreshness[] } {
+export interface PriceFreshness { readonly doorway: string; readonly state: 'unavailable' | 'stale'; readonly reason: string;
+  readonly observedAt: number | null; readonly trusted: boolean }
+/** Rule 56's check: every installed model's verification age within its window, decided by the
+ * register's own model-map age check (`modelEntryFresh`), else it fails. Price evidence is reported
+ * with its observation time: an unavailable reading past its window is stale and flagged, and price
+ * evidence is informational, so it never makes the model map fresh or stale. */
+export function doorwayFreshness(map: DoorwayMap, now: number): { readonly fresh: boolean; readonly models: readonly ModelFreshness[];
+  readonly prices: readonly PriceFreshness[] } {
   const models = map.doorways.flatMap(d => d.models.filter(m => m.state !== 'retired').map(m => {
     if (m.state !== 'verified' || m.verifiedAt === null)
       return { doorway: d.id, model: m.id, state: m.state, fresh: false, age: null, verifiedAt: m.verifiedAt,
         ...(m.observedId ? { observedId: m.observedId } : {}) };
-    const instance = `${d.id}/${m.id}`;
-    const age = liveMeasurement('doorway-verification-age', instance, now - m.verifiedAt, now);
-    const window = liveMeasurement('doorway-verification-age', instance, m.freshForMs, now);
-    const fresh = age.value >= 0 && compareLive(age, window) <= 0;
+    const age = liveMeasurement('doorway-verification-age', `${d.id}/${m.id}`, now - m.verifiedAt, now);
+    const fresh = modelEntryFresh(m.verifiedAt, m.freshForMs, now);
     return { doorway: d.id, model: m.id, state: fresh ? 'verified' as const : 'stale' as const, fresh,
       age: renderMeasured(age), verifiedAt: m.verifiedAt };
   }));
-  return { fresh: models.length > 0 && models.every(m => m.fresh), models };
+  const prices = map.doorways.filter(d => d.models.some(m => m.state !== 'retired')).map(d => {
+    const observedAt = d.price.observedAt ?? null;
+    const current = observedAt !== null && modelEntryFresh(observedAt, d.price.freshForMs ?? 0, now);
+    return { doorway: d.id, state: current ? 'unavailable' as const : 'stale' as const, reason: d.price.reason, observedAt, trusted: false };
+  });
+  return { fresh: models.length > 0 && models.every(m => m.fresh), models, prices };
+}
+
+/** The standing freshness process (Rule 56): run from the agent's existing bounded poll cycle, with no
+ * model call of its own. It records the current verdict, and when the verdict last changed, so an
+ * idle installation shows its map going stale without anyone asking for status. */
+export function standingDoorwayCheck(map: DoorwayMap, now: number): DoorwayMap {
+  const verdict = doorwayFreshness(map, now);
+  const failing = verdict.models.filter(m => !m.fresh).map(m => `${m.doorway}/${m.model}:${m.state}`);
+  const changed = !map.check || map.check.fresh !== verdict.fresh || map.check.failing.join() !== failing.join();
+  return { ...map, check: { at: now, fresh: verdict.fresh, since: changed ? now : map.check!.since, failing } };
 }
 
 export function readDoorwayMap(path: string): DoorwayMap | null {

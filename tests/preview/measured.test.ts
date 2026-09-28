@@ -1,6 +1,6 @@
 // Rule 13: live quantities carry their subject; a cross-subject comparison refuses.
 import { expect, it } from 'vitest';
-import { clockDifference, compareLive, liveMeasurement, measuredTimings, renderMeasured, resourceCompare } from './measured.js';
+import { clockDifference, compareLive, liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
 
 it('compares live quantities of one subject and refuses a different subject, instance or unit', () => {
   const memory = liveMeasurement('owned-process-memory', 'launch:a', 300, 1000);
@@ -37,4 +37,20 @@ it('renders reply timings as subject-bound claims and compares the Jev p95 with 
   expect(measuredTimings({ ...timings, jev: { count: 1, p50Ms: 400, p95Ms: 400 } }, 5000).jevWithinBudget).toBe(true);
   expect(measuredTimings({ ...timings, jev: none }, 5000).jevWithinBudget).toBeNull();
   expect(measured.budgetMs).toBe(30000);
+});
+
+it('admits sampled resource points through the measurement owner\'s ResourcePoint contract, and reports a refusal', () => {
+  const point = { id: 's1:42', machine: 'machine:host', processIncarnation: '42:Mon Sep 28 02:00:00 2026', sourceSample: 's1', at: 5000,
+    hardwareProfile: 'hardware:darwin-arm64-8cpu', classifierGeneration: 'classifier:owned-launch-v1', cadenceMs: 1000,
+    state: 'observed' as const, cpuTimeMs: 250, monotonicIntervalMs: 1000, rssBytes: 4096, heapBytes: null,
+    heapState: 'unsupported' as const, pid: 42, launch: 'l1' };
+  expect(resourcePointClaims([point], 8)).toEqual([{ launch: 'l1', process: point.processIncarnation, state: 'observed', sourceSample: 's1',
+    rss: `4096 bytes of resident memory (${point.processIncarnation})`, cpu: `25% of one core over 1000 ms (${point.processIncarnation})` }]);
+  // A first sighting has no interval yet: no CPU claim, never a zero.
+  expect(resourcePointClaims([{ ...point, cpuTimeMs: null, monotonicIntervalMs: null }], 8)[0]).toMatchObject({ cpu: null });
+  // A missing sample stays missing.
+  expect(resourcePointClaims([{ ...point, state: 'missing', cpuTimeMs: null, monotonicIntervalMs: null, rssBytes: null, heapState: 'missing' }], 8)[0])
+    .toMatchObject({ state: 'missing', rss: null, cpu: null });
+  // The contract refuses a point whose CPU and interval presence differ.
+  expect(resourcePointClaims([{ ...point, monotonicIntervalMs: null }], 8)[0]).toMatchObject({ state: 'refused' });
 });

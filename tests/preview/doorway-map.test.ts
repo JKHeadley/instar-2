@@ -1,7 +1,8 @@
 // Rule 56: the installed doorway/model map carries exact ids and verification
 // times; a map older than its window, unverified, changed or unavailable fails.
 import { expect, it } from 'vitest';
-import { DOORWAY_FRESH_MS, doorwayFreshness, installDoorways, observeExchange, subscriptionExchange } from './doorway-map.js';
+import { DOORWAY_FRESH_MS, doorwayFreshness, installDoorways, observeExchange, standingDoorwayCheck, subscriptionExchange } from './doorway-map.js';
+import { modelEntryFresh } from '../../src/register/index.js';
 
 const installed = [{ id: 'preview-subscription', billing: 'subscription' as const, model: 'claude-opus-4-8', priceReason: 'charge not reported by the subscription route' },
   { id: 'typesafe-jev', billing: 'metered' as const, model: 'jev-1.13.0', priceReason: 'no price reported by the route' }];
@@ -44,6 +45,20 @@ it('retains a model no longer installed as retired, outside the freshness check'
   expect(doorwayFreshness(map, 20).models.map(m => m.model)).toEqual(['claude-fable-5']);
 });
 
+it('returns a reinstalled model (A→B→A) to the checked population, unverified until a real exchange', () => {
+  let map = installDoorways(null, installed);
+  map = observeExchange(map, 'preview-subscription', 'claude-opus-4-8', { ok: true, reportedModels: [], evidence: 'one' }, 10);
+  map = observeExchange(map, 'typesafe-jev', 'jev-1.13.0', { ok: true, reportedModels: [], evidence: 'two' }, 10);
+  map = installDoorways(map, [{ ...installed[0]!, model: 'claude-fable-5' }, installed[1]!]);
+  map = installDoorways(map, installed);
+  // Without the repair the reinstalled model stayed retired: freshness omitted it and reported fresh on Jev alone.
+  expect(doorwayFreshness(map, 20)).toMatchObject({ fresh: false, models: [
+    { model: 'claude-opus-4-8', state: 'unverified', fresh: false }, { model: 'jev-1.13.0', state: 'verified', fresh: true }] });
+  expect(map.doorways[0]!.models.find(m => m.id === 'claude-fable-5')!.state).toBe('retired');
+  map = observeExchange(map, 'preview-subscription', 'claude-opus-4-8', { ok: true, reportedModels: [], evidence: 'three' }, 30);
+  expect(doorwayFreshness(map, 40)).toMatchObject({ fresh: true });
+});
+
 it('discovers the subscription outcome from the exchange, ignoring local resource limits', () => {
   const frame = JSON.stringify({ type: 'result', is_error: false, modelUsage: { 'claude-opus-4-8': {} } });
   expect(subscriptionExchange({ code: 0, limited: false, stdout: frame }, 'op')).toEqual({ ok: true, reportedModels: ['claude-opus-4-8'], evidence: 'exchange:op' });
@@ -53,4 +68,32 @@ it('discovers the subscription outcome from the exchange, ignoring local resourc
   expect(subscriptionExchange({ code: null, limited: true, localLimit: 'timeout', stdout: '' }, 'op')).toMatchObject({ ok: false, reason: 'timeout' });
   expect(subscriptionExchange({ code: null, limited: true, localLimit: 'memory', stdout: '' }, 'op')).toBeNull();
   expect(subscriptionExchange({ code: null, limited: true, localLimit: 'capacity', stdout: '' }, 'op')).toBeNull();
+});
+
+it('runs a standing check through the register\'s model-map age rule: current, then stale while idle, with no exchange', () => {
+  // The register's deadline check and the live map decide with the same function, on both sides of the window.
+  expect(modelEntryFresh(1000, DOORWAY_FRESH_MS, 1000 + DOORWAY_FRESH_MS)).toBe(true);
+  expect(modelEntryFresh(1000, DOORWAY_FRESH_MS, 1001 + DOORWAY_FRESH_MS)).toBe(false);
+  expect(modelEntryFresh(2000, DOORWAY_FRESH_MS, 1000)).toBe(false);
+  let map = installDoorways(null, installed, 1000);
+  map = observeExchange(map, 'preview-subscription', 'claude-opus-4-8', { ok: true, reportedModels: [], evidence: 'a' }, 1000);
+  map = observeExchange(map, 'typesafe-jev', 'jev-1.13.0', { ok: true, reportedModels: [], evidence: 'b' }, 1000);
+  map = standingDoorwayCheck(map, 2000);
+  expect(map.check).toEqual({ at: 2000, fresh: true, since: 2000, failing: [] });
+  map = standingDoorwayCheck(map, 3000);
+  expect(map.check).toMatchObject({ at: 3000, fresh: true, since: 2000 });
+  // Idle: no exchange happens, and the standing check alone records the transition to stale.
+  const idle = 1001 + DOORWAY_FRESH_MS;
+  map = standingDoorwayCheck(map, idle);
+  expect(map.check).toEqual({ at: idle, fresh: false, since: idle,
+    failing: ['preview-subscription/claude-opus-4-8:stale', 'typesafe-jev/jev-1.13.0:stale'] });
+  // A later real exchange returns part of it to current; the verdict change is recorded again.
+  map = observeExchange(map, 'preview-subscription', 'claude-opus-4-8', { ok: true, reportedModels: [], evidence: 'c' }, idle + 5);
+  map = standingDoorwayCheck(map, idle + 10);
+  expect(map.check).toMatchObject({ fresh: false, since: idle + 10, failing: ['typesafe-jev/jev-1.13.0:stale'] });
+  // Unavailable price evidence carries its observation time and window, and goes stale (untrusted) too.
+  expect(doorwayFreshness(map, 1000).prices).toEqual([
+    { doorway: 'preview-subscription', state: 'unavailable', reason: installed[0]!.priceReason, observedAt: 1000, trusted: false },
+    { doorway: 'typesafe-jev', state: 'unavailable', reason: installed[1]!.priceReason, observedAt: 1000, trusted: false }]);
+  expect(doorwayFreshness(map, idle).prices.map(p => p.state)).toEqual(['stale', 'stale']);
 });

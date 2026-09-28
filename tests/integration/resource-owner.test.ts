@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, cpuMilliseconds } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 
 type Ceilings = typeof RESOURCE_CEILINGS;
@@ -47,11 +47,12 @@ for (let i = 0; i < n; i++) appendFileSync(process.argv[2], spawn('/bin/sleep', 
 setTimeout(() => process.exit(0), Number(process.argv[4]));`);
   const owner = createResourceOwner(ceilings({ launch: { processCount: 4 } }));
   await owner.attach({});
-  expect(await owner.execute(input(root, fork, [pids, '8', '20000']), 'maintenance'))
-    .toMatchObject({ limited: true, localLimit: 'processes' });
+  const over = await owner.execute(input(root, fork, [pids, '8', '3000']), 'maintenance');
   const forked = readFileSync(pids, 'utf8').trim().split('\n').map(Number);
+  // Either the kernel refused forks past the bound (a pid-less spawn), or the sampler killed the tree.
+  expect(over.localLimit === 'processes' || forked.some(pid => !Number.isSafeInteger(pid))).toBe(true);
   await settle(200);
-  expect(forked.filter(alive)).toEqual([]);
+  expect(forked.filter(pid => Number.isSafeInteger(pid)).filter(alive)).toEqual([]);
   // Within the ceiling it completes normally.
   writeFileSync(pids, '');
   expect(await owner.execute(input(root, fork, [pids, '1', '600']), 'maintenance'))
@@ -167,25 +168,154 @@ setTimeout(() => { process.stdout.write(String(b.length)); }, 2500);`);
   expect(answer).toMatchObject({ code: 0, limited: false, stdout: String(64 * 1024 * 1024) });
 });
 
-it('reclaims an evidenced orphan from a dead launcher and never signals a reused pid', { timeout: 30000 }, async () => {
+it('recovery observes an orphan without signalling it, keeps a live owner\'s row, and closes only verified-gone rows', { timeout: 30000 }, async () => {
   const root = dir(), ledgerPath = join(root, 'owned-launches.json');
   const orphan = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' });
   const stranger = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' });
+  const neighbour = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' });
+  const ownerProcess = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' });
   try {
-    await settle(100);
+    await settle(150);
     const start = (pid: number) => execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+    const dead = { pid: 999999, start: 'Thu Jan  1 00:00:00 1970' };
     writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: {
-      orphan: { pid: orphan.pid, start: start(orphan.pid!), owner: { pid: 1, start: 0 } },
-      // The recorded incarnation differs: the pid now names someone else.
-      reused: { pid: stranger.pid, start: 'Thu Jan  1 00:00:00 1970', owner: { pid: 1, start: 0 } } } }));
+      orphan: { pid: orphan.pid, start: start(orphan.pid!), owner: dead, members: { [orphan.pid!]: start(orphan.pid!) } },
+      // The recorded incarnation differs: the pid now names someone else, so the row is verified gone.
+      reused: { pid: stranger.pid, start: 'Thu Jan  1 00:00:00 1970', owner: dead },
+      // A live launcher (same incarnation still running) owns this launch: never judged by another owner.
+      live: { pid: neighbour.pid, start: start(neighbour.pid!), owner: { pid: ownerProcess.pid, start: start(ownerProcess.pid!) } } } }));
     const owner = createResourceOwner(ceilings());
     await owner.attach({ ledgerPath });
     await settle(100);
-    expect(alive(orphan.pid!)).toBe(false);
-    expect(alive(stranger.pid!)).toBe(true);
-    expect(owner.snapshot().counters.reclaimed).toBe(1);
-    expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
-  } finally { try { process.kill(-stranger.pid!, 'SIGKILL'); } catch { /* ended */ } try { process.kill(-orphan.pid!, 'SIGKILL'); } catch { /* ended */ } }
+    // Disposal needs the unlanded typed recovery effect: nothing is signalled.
+    expect([orphan.pid, stranger.pid, neighbour.pid].map(pid => alive(pid!))).toEqual([true, true, true]);
+    expect(owner.snapshot().orphans).toEqual(expect.arrayContaining([
+      expect.objectContaining({ launch: 'orphan', state: 'surviving', surviving: 1 }),
+      expect.objectContaining({ launch: 'live', state: 'live-owner' })]));
+    expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).sort()).toEqual(['live', 'orphan']);
+    // Once the orphan is verified gone its row closes; the live owner's row is still untouched.
+    process.kill(orphan.pid!, 'SIGKILL'); await settle(150);
+    const next = createResourceOwner(ceilings());
+    await next.attach({ ledgerPath });
+    expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches)).toEqual(['live']);
+    expect(alive(neighbour.pid!)).toBe(true);
+  } finally {
+    for (const child of [orphan, stranger, neighbour, ownerProcess]) try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ }
+  }
+});
+
+it('records launch evidence durably before the provider runs, and never runs a launch it could not record', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'owned-launches.json'), marker = join(root, 'ran');
+  // The provider reads the ledger as its first act: its own row must already be there.
+  const probe = script(root, 'probe.mjs', `import { readFileSync, writeFileSync } from 'node:fs';
+const rows = Object.values(JSON.parse(readFileSync(process.argv[2], 'utf8')).launches);
+writeFileSync(process.argv[3], 'ran'); process.stdout.write(JSON.stringify(rows.map(r => r.pid === process.pid && typeof r.start === 'string')));`);
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ ledgerPath });
+  expect(JSON.parse((await owner.execute(input(root, probe, [ledgerPath, marker]), 'answer')).stdout)).toEqual([true]);
+  expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
+  // A ledger that cannot be written: the launch is refused and the provider never starts.
+  const broken = dir(), brokenLedger = join(broken, 'owned-launches.json'), brokenMarker = join(broken, 'ran');
+  writeFileSync(brokenLedger, 'not json');
+  const refusing = createResourceOwner(ceilings());
+  await refusing.attach({ ledgerPath: brokenLedger });
+  expect(await refusing.execute(input(broken, probe, [brokenLedger, brokenMarker]), 'answer'))
+    .toMatchObject({ limited: true, localLimit: 'capacity', stdout: '' });
+  await settle(200);
+  expect(existsSync(brokenMarker)).toBe(false);
+  expect(refusing.snapshot().outcomes.at(-1)).toMatchObject({ kind: 'capacity-refused', level: 'launch-evidence-unrecorded' });
+});
+
+it('holds an immediate fork burst with the kernel process bound, before any sample, and inherits it in descendants', { timeout: 30000 }, async () => {
+  const root = dir();
+  // No sampler can act: the launch lives well under one sample interval.
+  const burst = script(root, 'burst.mjs', `import { spawn } from 'node:child_process';
+const kids = []; let refused = 0;
+for (let i = 0; i < 40; i++) { const c = spawn('/bin/sleep', ['5'], { stdio: 'ignore' }); c.on('error', () => { refused++; }); kids.push(c); }
+setTimeout(() => { const started = kids.filter(c => c.pid).length; kids.forEach(c => { try { c.kill('SIGKILL'); } catch {} });
+  process.stdout.write(JSON.stringify({ started, refused })); }, 300);`);
+  const bounded = createResourceOwner({ ...ceilings({ launch: { processCount: 4 } }), sampleMs: 60000 });
+  await bounded.attach({});
+  const held = await bounded.execute(input(root, burst), 'answer');
+  const heldCounts = JSON.parse(held.stdout);
+  expect(held.resources.enforcement).toMatchObject({ processGrowth: 'hard', treeHandles: 'hard', memory: 'sampled' });
+  expect(heldCounts.refused).toBeGreaterThan(0);
+  expect(heldCounts.started).toBeLessThan(40);
+  // The other side: a roomy ceiling lets the same burst run.
+  const roomy = createResourceOwner({ ...ceilings({ launch: { processCount: 200 } }), sampleMs: 60000 });
+  await roomy.attach({});
+  expect(JSON.parse((await roomy.execute(input(root, burst), 'answer')).stdout)).toEqual({ started: 40, refused: 0 });
+  // A grandchild inherits the per-process handle ceiling: the limit is not only on the top process.
+  const files = script(root, 'files.mjs', `import { closeSync, openSync } from 'node:fs'; const held = [];
+try { while (held.length < 4096) held.push(openSync('/dev/null', 'r')); } catch {}
+held.forEach(fd => closeSync(fd)); process.stdout.write(String(held.length));`);
+  const parent = script(root, 'parent.mjs', `import { execFileSync } from 'node:child_process';
+process.stdout.write(execFileSync(process.execPath, [process.argv[2]], { encoding: 'utf8' }));`);
+  const handles = createResourceOwner(ceilings({ launch: { handleCount: 64 } }));
+  await handles.attach({});
+  const grandchild = Number((await handles.execute(input(root, parent, [files]), 'answer')).stdout);
+  expect(grandchild).toBeGreaterThan(0);
+  expect(grandchild).toBeLessThan(64);
+});
+
+it('reclaims a detached descendant that left the process group, by its recorded incarnation', { timeout: 30000 }, async () => {
+  const root = dir(), pids = join(root, 'pids');
+  const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+const c = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));
+setTimeout(() => process.exit(0), 700);`);
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ ledgerPath: join(root, 'owned-launches.json') });
+  const result = await owner.execute(input(root, escape, [pids]), 'maintenance');
+  const detached = Number(readFileSync(pids, 'utf8'));
+  await settle(200);
+  expect(alive(detached)).toBe(false);
+  expect(result.resources).toMatchObject({ leakedDescendants: 1, cleanup: 'verified' });
+  expect(JSON.parse(readFileSync(join(root, 'owned-launches.json'), 'utf8')).launches).toEqual({});
+});
+
+it('treats denied observation as unknown: no unhandled rejection, maintenance defers, the kernel bounds still hold', { timeout: 30000 }, async () => {
+  const root = dir(), rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => { rejections.push(reason); };
+  process.on('unhandledRejection', onRejection);
+  try {
+    const hold = script(root, 'hold.mjs', `setTimeout(() => process.stdout.write('done'), 1200);`);
+    const denied = () => Promise.reject(Object.assign(Error('spawn EPERM'), { code: 'EPERM' }));
+    const owner = createResourceOwner(ceilings({ aggregate: { launches: 3 }, reserveLaunches: 1 }));
+    const attached = await owner.attach({ query: denied, statePath: join(root, 'resources.json'), priorityGate: shouldRunScheduledPriority });
+    expect(attached.inherited).toEqual({ state: 'unknown' });
+    const answer = owner.execute(input(root, hold), 'answer');
+    await settle(500);
+    expect(owner.snapshot().usage).toMatchObject({ observation: 'failed', level: 'unknown' });
+    expect(shouldRunScheduledPriority('medium', 'unknown')).toBe(false);
+    const maintenance = await owner.execute(input(root, hold, [], 300), 'maintenance');
+    expect(maintenance).toMatchObject({ limited: true, localLimit: 'capacity' });
+    const done = await answer;
+    expect(done).toMatchObject({ code: 0, stdout: 'done' });
+    // Unknown process count: the growth bound is reported unavailable, never claimed hard.
+    expect(done.resources.enforcement).toMatchObject({ cpuPerProcess: 'hard', processGrowth: 'unavailable', treeHandles: 'unavailable' });
+    expect(owner.snapshot().counters.observationFailures).toBeGreaterThan(0);
+    await settle(100);
+    expect(rejections).toEqual([]);
+  } finally { process.off('unhandledRejection', onRejection); }
+});
+
+it('keeps sampled points in the measurement contract shape and the bounded view across restart', { timeout: 30000 }, async () => {
+  const root = dir(), statePath = join(root, 'resources.json');
+  const hold = script(root, 'hold.mjs', `const b = Buffer.alloc(8 * 1024 * 1024, 1); setTimeout(() => process.stdout.write(String(b.length)), 900);`);
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ statePath });
+  const running = owner.execute(input(root, hold), 'answer');
+  await settle(650);
+  const sample = owner.snapshot().sample;
+  expect(sample).toMatchObject({ census: { state: 'complete', omitted: 0 }, machine: expect.stringMatching(/^machine:/u),
+    hardwareProfile: expect.stringMatching(/^hardware:/u) });
+  expect(sample.points[0]).toMatchObject({ state: 'observed', sourceSample: sample.sourceSample,
+    processIncarnation: expect.stringMatching(/^\d+:/u), rssBytes: expect.any(Number) });
+  await running;
+  expect(owner.snapshot().observer.ticks).toBeGreaterThan(0);
+  const before = owner.snapshot().counters.completed;
+  const restarted = createResourceOwner(ceilings());
+  expect((await restarted.attach({ statePath })).counters.completed).toBe(before);
 });
 
 it('records an owned launch in the durable ledger while it runs', { timeout: 30000 }, async () => {
@@ -195,9 +325,11 @@ it('records an owned launch in the durable ledger while it runs', { timeout: 300
   await owner.attach({ ledgerPath });
   const running = owner.execute(input(root, hold), 'answer');
   await settle(400);
-  const rows = Object.values(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches) as { pid: number; start: string }[];
+  const rows = Object.values(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches) as { pid: number; start: string; members: object; owner: { pid: number } }[];
   expect(rows).toHaveLength(1);
   expect(rows[0]!.start).toMatch(/\d{4}/u);
+  expect(rows[0]!.owner.pid).toBe(process.pid);
+  expect(rows[0]!.members).toMatchObject({ [rows[0]!.pid]: rows[0]!.start });
   await running;
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
 });
@@ -220,4 +352,18 @@ it('hands the provider exactly the supplied variable names through the limit shi
   expect(bare.ppid).toBe(process.pid);
   const given = { ...input(root, report), env: { PATH: '/usr/bin:/bin', SHLVL: '7', MARK: 'kept' } };
   expect(JSON.parse((await owner.execute(given, 'answer')).stdout).keys).toEqual(['MARK', 'PATH', 'SHLVL']);
+});
+
+it('keeps the file shim identical to the one limit script, and holds the transport child\'s handles with argv[1] preserved', () => {
+  expect(readFileSync(LIMIT_FILE, 'utf8')).toBe(LIMIT_FILE_TEXT);
+  const root = dir();
+  const report = script(root, 'report.mjs', `import { closeSync, openSync } from 'node:fs'; const held = [];
+try { while (held.length < 999) held.push(openSync('/dev/null', 'r')); } catch {}
+held.forEach(fd => closeSync(fd)); process.stdout.write(JSON.stringify({ args: process.argv.slice(2), handles: held.length }));`);
+  const argv = limitedFileArgv({ label: 'REQUEST', executable: process.execPath, args: [report, 'REQUEST'], handles: 64, cpuSeconds: 5,
+    processLimit: null, env: { PATH: '/usr/bin:/bin' } });
+  expect(argv[1]).toBe('REQUEST');
+  const out = JSON.parse(execFileSync('/bin/sh', argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } }));
+  expect(out.args).toEqual(['REQUEST']);
+  expect(out.handles).toBeLessThan(64);
 });

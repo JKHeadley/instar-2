@@ -1,11 +1,13 @@
 // Rule 100: a secret handed to the agent is stored before it is spent, and a
 // fixed-lifetime credential carries its expiry and escalating reminder schedule.
-import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createSecretCustody, dueCredentialReminders, jwtExpiry, reminderSchedule, secretRef } from './secret-custody.js';
+import type { CredentialRecord } from './secret-custody.js';
 import { credentialSpans } from '../../src/recall/redact.js';
 
 const key = new Uint8Array(32).fill(23);
@@ -47,8 +49,7 @@ it('keeps the original when custody fails: no SecretRef, no loss', () => {
     const custody = createSecretCustody(dir, key, () => 5000);
     expect(() => custody.store({ value: TOKEN, kind: 'github-token', source: 's' })).toThrow();
     const raw = JSON.stringify({ message: { text: `keep ${TOKEN}` } });
-    expect(custody.custody({ text: `keep ${TOKEN}`, raw, source: 's' })).toEqual({ text: `keep ${TOKEN}`, raw });
-    expect(custody.failures).toBe(1);
+    expect(custody.custody({ text: `keep ${TOKEN}`, raw, source: 's' })).toEqual({ text: `keep ${TOKEN}`, raw, custody: { state: 'failed' } });
     expect(custody.records()).toEqual([]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -58,9 +59,9 @@ it('records a known fixed expiry with escalating reminders and exposes only due 
   expect(jwtExpiry(jwt(exp))).toBe(exp * 1000);
   expect(jwtExpiry('not.a.jwt')).toBeNull();
   const expiresAt = exp * 1000, start = expiresAt - 10 * DAY;
-  expect(reminderSchedule(expiresAt, start)).toEqual([expiresAt - 7 * DAY, expiresAt - 3 * DAY, expiresAt - DAY,
+  expect(reminderSchedule(expiresAt)).toEqual([expiresAt - 7 * DAY, expiresAt - 3 * DAY, expiresAt - DAY,
     expiresAt - 6 * HOUR, expiresAt - HOUR, expiresAt]);
-  expect(reminderSchedule(null, start)).toEqual([]);
+  expect(reminderSchedule(null)).toEqual([]);
   const dir = root();
   try {
     const custody = createSecretCustody(dir, key, () => start);
@@ -72,6 +73,43 @@ it('records a known fixed expiry with escalating reminders and exposes only due 
       dueAt: expiresAt - 3 * DAY, remaining: expect.stringMatching(/^172800000 ms of credential-remaining /u) })]);
     expect(dueCredentialReminders(records, expiresAt + 1)[0]).toMatchObject({ stage: 5, dueAt: expiresAt });
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('keeps a due reminder across restart re-registration and exposes the current stage on near-expiry registration', () => {
+  const expiresAt = 2_000_000_000_000, dir = root();
+  try {
+    let now = expiresAt - 10 * DAY;
+    const custody = createSecretCustody(dir, key, () => now);
+    const register = (extra = {}) => custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record',
+      identity: 'activation:a', recordedAt: now, expiresAt, expirySource: 'activation-record', reminders: reminderSchedule(expiresAt),
+      renewal: { standing: 'none', smallestHumanAction: 'renew' }, ...extra });
+    register();
+    now = expiresAt - 2 * DAY;
+    const before = dueCredentialReminders(custody.records(), now);
+    expect(before).toEqual([expect.objectContaining({ stage: 1, dueAt: expiresAt - 3 * DAY })]);
+    // A restart re-registers the same credential and expiry: the due stage survives (it used to vanish).
+    register();
+    expect(dueCredentialReminders(custody.records(), now)).toEqual(before);
+    expect(custody.records()[0]!.recordedAt).toBe(expiresAt - 10 * DAY);
+    // Delivery state a reminder driver (Build 4) adds is preserved by a same-expiry re-registration.
+    const withDelivery = { ...custody.records()[0]!, delivered: [0] } as CredentialRecord;
+    custody.register(withDelivery); register();
+    expect(custody.records()[0]).toMatchObject({ delivered: [0] });
+    // A changed expiry replaces the record and shows its currently due stage at once.
+    const later = expiresAt + 2 * DAY;
+    const { delivered: _delivered, ...current } = custody.records()[0] as CredentialRecord & { delivered?: unknown };
+    custody.register({ ...current, recordedAt: now, expiresAt: later, reminders: reminderSchedule(later) });
+    expect(dueCredentialReminders(custody.records(), now)).toEqual([expect.objectContaining({ stage: 0, dueAt: later - 7 * DAY })]);
+    expect(custody.records()[0]).not.toHaveProperty('delivered');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  const fresh = root();
+  try {
+    // First registration already inside the 7-day window: the current stage is due immediately.
+    const custody = createSecretCustody(fresh, key, () => expiresAt - 5 * HOUR);
+    custody.register({ name: 'late', kind: 'activation', custody: 'activation-record', identity: 'a', recordedAt: expiresAt - 5 * HOUR,
+      expiresAt, expirySource: 'activation-record', reminders: reminderSchedule(expiresAt), renewal: { standing: 'none', smallestHumanAction: 'renew' } });
+    expect(dueCredentialReminders(custody.records(), expiresAt - 5 * HOUR)).toEqual([expect.objectContaining({ stage: 3, dueAt: expiresAt - 6 * HOUR })]);
+  } finally { rmSync(fresh, { recursive: true, force: true }); }
 });
 
 const update = (id: number, text: string) => ({ update_id: id,
@@ -101,6 +139,12 @@ it.each([['with custody', true], ['without custody', false]])('intake %s: the mo
       expect(turn.raw).not.toContain(TOKEN);
       expect(seen.join('')).toContain(`SecretRef preview/${ref.name}`);
       expect(custody.resolve(ref)).toBe(TOKEN);
+      // Two artifacts: the original bytes sealed in custody, and this redacted row with the true bytes' arrival hash.
+      const original = JSON.stringify(update(1, `please keep my github token ${TOKEN} safe`));
+      expect(turn.custody).toEqual({ state: 'stored', capture: expect.stringMatching(/^capture-/u), secrets: [ref.name],
+        arrival: `sha256:${createHash('sha256').update(original).digest('hex')}` });
+      expect(custody.resolve(secretRef((turn.custody as { capture: string }).capture))).toBe(original);
+      expect(custody.missing([(turn.custody as { capture: string }).capture, ref.name])).toEqual([]);
     } else {
       expect(turn.text).toContain(TOKEN);
       expect(custody.records()).toEqual([]);
@@ -108,6 +152,38 @@ it.each([['with custody', true], ['without custody', false]])('intake %s: the mo
     journal.close();
     const replay = openPreviewJournal(join(dir, 'journal.encrypted'), key);
     expect(replay.view.order[0]!.text).toBe(turn.text);
+    expect(replay.view.order[0]!.custody).toEqual(turn.custody);
     replay.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('records a failed custody durably on the intake row and detects a lost sealed object by name', async () => {
+  const dir = root();
+  try {
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
+    writeFileSync(join(dir, 'vault'), 'not a directory');
+    const failing = createSecretCustody(dir, key, () => 1000);
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, secrets: failing,
+      model: async () => 'Noted.', send: async () => 77, checkOutbound: () => {} });
+    worker.intake([update(1, `keep ${TOKEN}`)]);
+    await worker.drain();
+    journal.close();
+    // The failure survives restart: it is a journal fact, not a process counter (it used to reset to 0).
+    const reopened = openPreviewJournal(join(dir, 'journal.encrypted'), key);
+    expect(reopened.view.order[0]).toMatchObject({ update: 1, custody: { state: 'failed' } });
+    expect(reopened.view.order[0]!.text).toContain(TOKEN);
+    reopened.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  const lost = root();
+  try {
+    const custody = createSecretCustody(lost, key, () => 1000);
+    const ref = custody.store({ value: TOKEN, kind: 'github-token', source: 's' });
+    expect(custody.missing([ref.name])).toEqual([]);
+    unlinkSync(join(lost, 'vault', `${ref.name}.sealed`));
+    const restarted = createSecretCustody(lost, key, () => 2000);
+    // The registry still lists it; the live check reports the loss by name, never a value, and use is refused.
+    expect(restarted.records().map(r => r.name)).toEqual([ref.name]);
+    expect(restarted.missing([ref.name])).toEqual([ref.name]);
+    expect(() => restarted.resolve(ref)).toThrow();
+  } finally { rmSync(lost, { recursive: true, force: true }); }
 });

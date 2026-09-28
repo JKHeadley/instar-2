@@ -4,6 +4,8 @@
 // compared only through compareMeasurements, which refuses a mismatched subject.
 import { compareMeasurements, consumeResult, decodeMeasurement } from '../../src/index.js';
 import type { Clock, DecodeContext, Measurement, Result } from '../../src/index.js';
+import { cpuUtilization } from '../../src/measurement/index.js';
+import type { MeasurementDecodeContext, ResourcePoint } from '../../src/measurement/index.js';
 
 /** Every live measured subject and its only admitted unit. */
 export const LIVE_SUBJECTS = Object.freeze({
@@ -75,4 +77,33 @@ export function measuredTimings<T extends { budgetMs: number; answer: Distributi
     : compareLive(liveMeasurement('reply-check-latency', 'preview-replies/jev', timings.jev.p95Ms, at),
       liveMeasurement('reply-check-latency', 'preview-replies/jev', timings.budgetMs, at)) <= 0;
   return { ...timings, claims, jevWithinBudget };
+}
+
+/** A resource sample point as the host launch observer writes it (plain unix-ms `at`). */
+export interface OwnerPoint { id: string; machine: string; processIncarnation: string; sourceSample: string; at: number;
+  hardwareProfile: string; classifierGeneration: string; cadenceMs: number; state: 'observed' | 'missing' | 'failed';
+  cpuTimeMs: number | null; monotonicIntervalMs: number | null; rssBytes: number | null; heapBytes: number | null;
+  heapState: 'reported' | 'unsupported' | 'missing'; pid: number; launch: string }
+/** docs/20 §6 on the status path: every sampled point is admitted as a Part Sixteen ResourcePoint
+ * (machine, hardware profile, source sample, process incarnation, CPU over a monotonic interval) by
+ * the measurement owner's own validator, and its CPU is rendered with its one-core basis. A point
+ * the contract refuses is reported as refused, never silently dropped. */
+export type ResourcePointClaim = { launch: string; process: string; state: OwnerPoint['state']; sourceSample: string;
+  rss: string | null; cpu: string | null } | { launch: string; process: string; state: 'refused'; reason: string };
+export function resourcePointClaims(points: readonly OwnerPoint[], cores: number): ResourcePointClaim[] {
+  return points.map((point): ResourcePointClaim => {
+    const types: DecodeContext = { ...context, register: { ...context.register, sites: { 'preview.measured': 'closed' },
+      entries: [...context.register.entries, point.machine, point.hardwareProfile, point.classifierGeneration] } };
+    const measurement: MeasurementDecodeContext = { site: 'preview.measured', preserved: 'preview:measured',
+      register: types.register, types, registeredContracts: {} };
+    const admitted: ResourcePoint = { id: point.id, machine: point.machine, processIncarnation: point.processIncarnation,
+      sourceSample: point.sourceSample, at: liveClock(point.at), hardwareProfile: point.hardwareProfile,
+      classifierGeneration: point.classifierGeneration, cadenceMs: point.cadenceMs, state: point.state, cpuTimeMs: point.cpuTimeMs,
+      monotonicIntervalMs: point.monotonicIntervalMs, rssBytes: point.rssBytes, heapBytes: point.heapBytes, heapState: point.heapState };
+    return consumeResult<number | null, ResourcePointClaim>(cpuUtilization(admitted, cores, 'one-core', measurement), {
+      Success: percent => ({ launch: point.launch, process: point.processIncarnation, state: point.state, sourceSample: point.sourceSample,
+        rss: point.rssBytes === null ? null : `${point.rssBytes} bytes of resident memory (${point.processIncarnation})`,
+        cpu: percent === null ? null : `${Math.round(percent * 10) / 10}% of one core over ${Math.round(point.monotonicIntervalMs!)} ms (${point.processIncarnation})` }),
+      Refused: refused => ({ launch: point.launch, process: point.processIncarnation, state: 'refused' as const, reason: refused.detail }) });
+  });
 }

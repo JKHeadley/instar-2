@@ -9,13 +9,14 @@
 // are registry facts with an escalating reminder schedule. Build 4 seam:
 // `dueCredentialReminders` is the due-work input its reminder driver consumes;
 // this module sends nothing and renews nothing on its own.
-import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { consumeResult, decode } from '../../src/index.js';
 import type { DecodeContext, SecretRef } from '../../src/index.js';
 import { credentialSpans } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
+import type { IntakeCustody } from './journal.js';
 import { liveMeasurement, renderMeasured } from './measured.js';
 
 export const VAULT = 'preview';
@@ -43,9 +44,11 @@ export const secretRef = (name: string): SecretRef => consumeResult(decode('Secr
   { type: 'SecretRef', schemaVersion: 1, vault: VAULT, name }, context), {
   Success: value => value, Refused: refused => { throw Error(`custody: ${refused.detail}`); } });
 
-export function reminderSchedule(expiresAt: number | null, from: number): readonly number[] {
+/** The schedule is a function of the expiry alone, so stage N always means the same offset
+ * and a re-registration (a restart, a repeated token) can never postpone a stage already due. */
+export function reminderSchedule(expiresAt: number | null): readonly number[] {
   if (expiresAt === null) return [];
-  return [...REMINDER_OFFSETS_MS.map(offset => expiresAt - offset).filter(at => at > from), expiresAt];
+  return [...REMINDER_OFFSETS_MS.map(offset => expiresAt - offset), expiresAt];
 }
 /** Known fixed expiry of a JSON Web Token, from its own `exp` claim. */
 export function jwtExpiry(value: string): number | null {
@@ -84,8 +87,13 @@ export function createSecretCustody(root: string, key: Uint8Array, now: () => nu
     if (saved.version !== 1 || !Array.isArray(saved.records)) throw Error('custody: registry malformed');
     return saved.records;
   };
+  /** Registering the same credential and expiry again keeps its first record and any delivery
+   * state a reminder driver added (Build 4); a new or changed expiry replaces it. */
   const register = (record: CredentialRecord): void => {
-    durablePreviewWrite(registryPath, { version: 1, records: [...read().filter(r => r.name !== record.name), record] });
+    const records = read(), prior = records.find(r => r.name === record.name);
+    const kept = prior && prior.expiresAt === record.expiresAt
+      ? { ...prior, ...record, recordedAt: prior.recordedAt, reminders: reminderSchedule(record.expiresAt) } : record;
+    durablePreviewWrite(registryPath, { version: 1, records: [...records.filter(r => r.name !== record.name), kept] });
   };
   const seal = (name: string, value: string) => {
     const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -100,18 +108,22 @@ export function createSecretCustody(root: string, key: Uint8Array, now: () => nu
     decipher.setAAD(Buffer.from(`preview-vault:${name}`)); decipher.setAuthTag(Buffer.from(sealed.tag, 'base64'));
     return Buffer.concat([decipher.update(Buffer.from(sealed.data, 'base64')), decipher.final()]).toString('utf8');
   };
-  let failures = 0;
+  /** Durable write then read-back: the sealed object exists and opens to exactly `value`. */
+  const keep = (name: string, value: string): void => {
+    if (!existsSync(join(vault, `${name}.sealed`)) || open(name) !== value) {
+      durablePreviewWrite(join(vault, `${name}.sealed`), seal(name, value));
+      if (open(name) !== value) throw Error('custody: read-back differs');
+    }
+  };
+  const tag = (value: string) => createHmac('sha256', key).update(value).digest('hex').slice(0, 16);
   /** Durable write, then read-back, then registry: only after all three is a SecretRef returned. */
   const store = (input: { value: string; kind: string; source: string }): SecretRef => {
-    const name = `chat-${input.kind}-${createHmac('sha256', key).update(input.value).digest('hex').slice(0, 16)}`;
+    const name = `chat-${input.kind}-${tag(input.value)}`;
     const ref = secretRef(name);
-    if (!existsSync(join(vault, `${name}.sealed`)) || open(name) !== input.value) {
-      durablePreviewWrite(join(vault, `${name}.sealed`), seal(name, input.value));
-      if (open(name) !== input.value) throw Error('custody: read-back differs');
-    }
+    keep(name, input.value);
     const at = now(), expiresAt = input.kind === 'jwt' ? jwtExpiry(input.value) : null;
     register({ name, kind: input.kind, custody: 'preview-vault', identity: `${input.kind} supplied in ${input.source}`,
-      recordedAt: at, expiresAt, expirySource: expiresAt === null ? 'unknown' : 'jwt-exp', reminders: reminderSchedule(expiresAt, at),
+      recordedAt: at, expiresAt, expirySource: expiresAt === null ? 'unknown' : 'jwt-exp', reminders: reminderSchedule(expiresAt),
       renewal: { standing: 'none', smallestHumanAction: 'send the replacement through the private operator chat; it is stored before use' } });
     return ref;
   };
@@ -120,23 +132,34 @@ export function createSecretCustody(root: string, key: Uint8Array, now: () => nu
       if (ref.vault !== VAULT) throw Error('custody: foreign vault');
       return open(ref.name);
     },
-    get failures() { return failures; },
-    /** The intake port: vault-first replacement of every credential in one verified operator message. */
-    custody(input: { text: string; raw: string; source: string }): { text: string; raw: string } {
-      const spans = credentialSpans(input.text);
-      if (!spans.length) return { text: input.text, raw: input.raw };
+    /** Live loss detection over the referenced custody: each named object must exist and open.
+     * Never returns a value; a missing or unreadable object is reported by name only. */
+    missing(names: readonly string[]): readonly string[] {
+      return [...new Set(names)].filter(name => { try { open(name); return false; } catch { return true; } });
+    },
+    /** The intake port (docs/08 intake step 2): the credential spans of one verified operator message
+     * go to custody before it is recorded. Two artifacts result: the original bytes sealed in custody
+     * (`capture`), and the redacted row carrying SecretRef markers plus the true bytes' arrival hash.
+     * A failure returns the original with a durable `failed` disposition; nothing is spendable. */
+    custody(input: { text: string; raw: string; source: string }): { text: string; raw: string; custody?: IntakeCustody } {
+      const found = new Map<string, string>();
+      for (const scanned of [input.raw, input.text])
+        for (const span of credentialSpans(scanned)) found.set(scanned.slice(span.start, span.end), span.kind);
+      if (!found.size) return { text: input.text, raw: input.raw };
       try {
-        const markers = new Map<string, string>();
-        for (const span of spans) {
-          const value = input.text.slice(span.start, span.end);
-          markers.set(value, storedMarker(store({ value, kind: span.kind, source: input.source })));
+        const markers = new Map<string, string>(), secrets: string[] = [];
+        for (const [value, kind] of found) {
+          const ref = store({ value, kind, source: input.source });
+          markers.set(value, storedMarker(ref)); secrets.push(ref.name);
         }
+        const arrival = `sha256:${createHash('sha256').update(input.raw, 'utf8').digest('hex')}`;
+        const capture = `capture-${tag(input.raw)}`;
+        keep(capture, input.raw);
         return { text: replaceStrings(input.text, markers) as string,
-          raw: JSON.stringify(replaceStrings(JSON.parse(input.raw), markers)) };
+          raw: JSON.stringify(replaceStrings(JSON.parse(input.raw), markers)), custody: { state: 'stored', arrival, capture, secrets } };
       } catch {
         // Durable intake still holds: the encrypted journal keeps the original, redacted for every consumer.
-        failures++;
-        return { text: input.text, raw: input.raw };
+        return { text: input.text, raw: input.raw, custody: { state: 'failed' } };
       }
     },
   });

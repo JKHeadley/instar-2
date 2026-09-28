@@ -147,3 +147,31 @@ it('observes a paid summary review and reopens; rejects malformed diagnostics be
     replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('keeps each owned launch\'s resource facts on its durable call-outcome row across restart and compaction', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-call-resources-')));
+  const key = new Uint8Array(32).fill(7), path = join(root, 'journal.encrypted');
+  const id = 'telegram:12345678:update:1';
+  const resources = { enforcement: { cpuPerProcess: 'hard', handlesPerProcess: 'hard', processGrowth: 'hard', treeHandles: 'hard',
+    memory: 'sampled', treeCpu: 'sampled' }, peakMemoryBytes: 1024, peakProcesses: 3, treeCpuMilliseconds: 40, census: 'complete',
+    leakedDescendants: 2, cleanup: 'unresolved', provider: 'prose must not travel' };
+  try {
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+      operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 });
+    journal.append({ kind: 'intake', id, update: 1, text: 'question', raw: 'question', accepted: true, cursor: 2, at: 1000 });
+    journal.append({ kind: 'reserve', id, at: 1001 });
+    const outcome = subscriptionCallOutcome(physical(frame(3), { resources }), 40, 10, 2048, 16384);
+    const { provider: _prose, ...kept } = resources;
+    expect(outcome.resources).toEqual(kept);
+    // A malformed resource record is refused, not stored.
+    expect(() => journal.append({ kind: 'call-outcome', id, role: 'model', outcome: { ...outcome, resources: { ...outcome.resources, census: 'lots' } }, at: 1009 }))
+      .toThrow(/call outcome malformed/u);
+    journal.append({ kind: 'call-outcome', id, role: 'model', outcome, at: 1010 });
+    journal.compact();
+    journal.close();
+    const replayed = openPreviewJournal(path, key, undefined, undefined, true);
+    expect(Object.fromEntries(replayed.view.callOutcomeCounts)).toMatchObject({ 'leaked-descendants': 2, 'cleanup-unresolved': 1 });
+    replayed.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

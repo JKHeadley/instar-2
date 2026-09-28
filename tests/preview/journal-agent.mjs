@@ -29,8 +29,8 @@ import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { hostResources } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
-import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare } from './measured.js';
-import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
+import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
+import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 
@@ -103,6 +103,14 @@ const typesafeKey = () => {
 };
 /** Rule 56: the run's durable doorway map; set by `run`, observed at every real exchange. */
 let doorwayMapPath = null;
+/** Rule 56's standing process, from the bounded poll cycle: at most once a minute, no model call. */
+let doorwayCheckedAt = null;
+const checkDoorways = () => {
+  if (!doorwayMapPath || doorwayCheckedAt !== null && wallNow() - doorwayCheckedAt < 60000) return;
+  doorwayCheckedAt = wallNow();
+  try { const map = readDoorwayMap(doorwayMapPath); if (map) writeDoorwayMap(doorwayMapPath, standingDoorwayCheck(map, doorwayCheckedAt)); }
+  catch { /* the check is evidence; the next cycle retries */ }
+};
 const observeDoorway = (doorway, model, observation) => {
   if (!doorwayMapPath || !observation) return;
   try { const map = readDoorwayMap(doorwayMapPath); if (map) writeDoorwayMap(doorwayMapPath, observeExchange(map, doorway, model, observation, wallNow())); }
@@ -233,14 +241,20 @@ const packetStatus = view => {
     capacity: packetCapacity(last.packetDropped, last.packetLimit ?? view.limits.maxBytes) };
 };
 /** The resource owner's persisted snapshot, with its live quantities rendered as measured claims (Rule 13). */
-const resourceStatus = path => {
+const resourceStatus = (path, view) => {
+  // Durable waste/repair facts come from the journal's call-outcome rows (they survive restart and
+  // compaction); the owner's file is the bounded live view.
+  const counts = view.callOutcomeCounts, durable = Object.fromEntries(['capacity', 'memory', 'processes', 'cpu', 'aggregate', 'timeout',
+    'leaked-descendants', 'cleanup-unresolved'].map(key => [key, counts.get(key) ?? 0]));
+  const enforcement = view.callOutcomes.at(-1)?.outcome.resources?.enforcement ?? null;
   let state;
-  try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved' }; }
-  if (state?.version !== 1) return { state: 'unobserved' };
+  try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved', durable, enforcement }; }
+  if (state?.version !== 1) return { state: 'unobserved', durable, enforcement };
   const claims = (state.active ?? []).flatMap(launch => [
     renderMeasured(liveMeasurement('owned-process-memory', `launch:${launch.id}`, launch.memoryBytes, state.at)),
     renderMeasured(liveMeasurement('owned-process-count', `launch:${launch.id}`, launch.processes, state.at))]);
-  return { ...state, claims };
+  const points = state.sample?.points ? resourcePointClaims(state.sample.points, state.identity?.cores ?? 1) : [];
+  return { ...state, claims, points, durable, enforcement: enforcement ?? state.lastLaunch?.enforcement ?? null };
 };
 
 const stepCheckView = view => ({ total: view.stepChecks.size,
@@ -333,12 +347,23 @@ async function main() {
           : null,
       packet: packetStatus(view.view),
       journalCapacity: journalCapacity(view.compacted, PREVIEW_JOURNAL_COMPACT_BYTES),
-      resources: resourceStatus(resourcesPath),
+      resources: resourceStatus(resourcesPath, view.view),
       doorways: (() => { const map = readDoorwayMap(doorwaysPath);
-        return map ? { map, ...doorwayFreshness(map, statusNow) } : { map: null, fresh: false, models: [] }; })(),
-      credentials: (() => { try { const records = createSecretCustody(root, key(), wallNow).records();
-        return { records, due: dueCredentialReminders(records, statusNow),
-          referencedIn: view.view.order.filter(turn => turn.text.includes('[credential stored before use: SecretRef ')).map(turn => turn.update) }; } catch { return { records: null, due: null, error: 'registry unreadable' }; } })(),
+        return map ? { map, ...doorwayFreshness(map, statusNow), standing: map.check ?? null } : { map: null, fresh: false, models: [], prices: [], standing: null }; })(),
+      credentials: (() => {
+        // Rule 100 + purpose Rule 2: custody dispositions are durable on the intake rows, and every
+        // referenced vault object (original capture, stored secret, vaulted registry row) is
+        // checked live on this read path, so a lost or failed custody is visible, never silent.
+        const turns = view.view.order.filter(turn => turn.custody);
+        const custody = { stored: turns.filter(t => t.custody.state === 'stored').length,
+          failed: turns.filter(t => t.custody.state === 'failed').map(t => t.update), missing: null };
+        try { const vault = createSecretCustody(root, key(), wallNow), records = vault.records();
+          custody.missing = vault.missing([...turns.flatMap(t => t.custody.state === 'stored' ? [t.custody.capture, ...t.custody.secrets] : []),
+            ...records.filter(r => r.custody === 'preview-vault').map(r => r.name)]);
+          return { records, due: dueCredentialReminders(records, statusNow), custody,
+            intact: custody.failed.length === 0 && custody.missing.length === 0,
+            referencedIn: view.view.order.filter(turn => turn.text.includes('[credential stored before use: SecretRef ')).map(turn => turn.update) };
+        } catch { return { records: null, due: null, custody, intact: false, error: 'registry unreadable' }; } })(),
       reconciliation: usageReconciliation(view.view),
 
       memoryHealth: memoryHealthLine(view.view),
@@ -714,9 +739,9 @@ async function main() {
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     // Rule 56: the installed routes' exact model ids, merged into the durable map.
     doorwayMapPath = doorwaysPath;
-    writeDoorwayMap(doorwaysPath, installDoorways(readDoorwayMap(doorwaysPath), [
+    writeDoorwayMap(doorwaysPath, standingDoorwayCheck(installDoorways(readDoorwayMap(doorwaysPath), [
       { id: 'preview-subscription', billing: 'subscription', model: options.model, priceReason: 'the subscription route reports no billed charge' },
-      { id: 'typesafe-jev', billing: 'metered', model: JEV_MODEL, priceReason: 'the Jev route reports no price' }]));
+      { id: 'typesafe-jev', billing: 'metered', model: JEV_MODEL, priceReason: 'the Jev route reports no price' }], wallNow()), wallNow()));
     // Rule 100: installed credentials' identity and known fixed expiry. Values stay in their custody.
     const recordedAt = wallNow();
     for (const record of [
@@ -729,7 +754,7 @@ async function main() {
       { name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: activation.reference,
         expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: 'approve a renewed activation record' }])
       custody.register({ name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
-        expiresAt: record.expiresAt, expirySource: record.expirySource, reminders: reminderSchedule(record.expiresAt, recordedAt),
+        expiresAt: record.expiresAt, expirySource: record.expirySource, reminders: reminderSchedule(record.expiresAt),
         renewal: { standing: 'none', smallestHumanAction: record.smallestHumanAction } });
     const captures = new Map();
     const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
@@ -809,6 +834,7 @@ async function main() {
         }
       }
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      checkDoorways();
       if (await stopAtCap()) break;
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {

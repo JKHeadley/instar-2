@@ -1,25 +1,43 @@
-// The one physical resource owner of a host process (Rules 60, 61).
+// The one physical resource owner of a host process (Rules 60, 61), in the fixed
+// Ten physical host. It is the host's launch adapter, not the Six resource-set
+// authority or the Ten process census: those seams (SEAM-LEDGER rows 36, 40, 63)
+// are unlanded, and this adapter reports the bounds it can and cannot hold instead
+// of claiming them.
 //
-// Every provider launch passes this owner's admission. An admitted launch runs
-// under OS per-process CPU-time and open-handle ceilings, and its observed
-// descendant tree is held to per-launch and aggregate memory/process ceilings.
-// Self-triggered maintenance keeps a reserved launch for answer work and yields
-// under pressure through the injected scheduled-priority brake, so maintenance
-// settles instead of competing forever. Output size and elapsed time remain
-// separate bounds; neither is treated as a memory or process ceiling.
+// Every provider launch passes this owner's admission and runs through a limit
+// shim. What the kernel holds (hard, before any observation):
+//   - per-process CPU time and open handles (RLIMIT_CPU, RLIMIT_NOFILE, soft and hard);
+//   - process growth of the whole launched tree (RLIMIT_NPROC set to the user's
+//     current process count plus the launch's process ceiling): a fork past it is
+//     refused by the kernel, so the tree's size, and with it its total handles
+//     (processes × handles), are bounded however fast it forks or detaches;
+// all inherited by every descendant, including one that leaves the process group.
+// What is only sampled (memory, the tree's summed CPU): there is no unprivileged
+// per-tree memory limit on macOS, so these are enforced on observation and every
+// launch record says `sampled` for them rather than `hard`.
 //
-// Observation is confined to owned launches: queries name the owned process
-// group or owned parent pids, and signals reach only processes attributed to an
-// owned launch in the same sample. Unrelated host applications are neither
-// listed nor signalled.
+// The provider does not start until its launch evidence (pid, start evidence,
+// owner) is durably recorded: the shim waits on a go signal the owner sends only
+// after the ledger write, and exits unexecuted if the owner dies first.
 //
-// Build 8 seam: `outcomes` in the persisted snapshot (and readResourceOutcomes)
-// are the waste (limit kills, capacity refusals) and repair (leaked-descendant
-// cleanup, orphan reclaim) records a retrospective consumer reads.
+// Observation is confined to owned launches: queries name the owned process group,
+// owned parent pids, or pids this owner recorded with their start evidence. A pid
+// is attributed or signalled only while its start evidence matches the recorded
+// incarnation. A failed or denied query is `unknown`, never a rejection.
+//
+// Recovery after a crash is observation only. Disposing of a process left by a dead
+// launcher is a recovery effect that needs the typed Part Eight process effect and
+// the Ten driver seams, which are not landed; until then surviving orphans are
+// reported with their evidence and their rows stay in the durable ledger.
+//
+// Waste and repair facts for each launch travel with its result (`resources`), and
+// the journal's call-outcome row keeps them durably; `outcomes` here is a bounded view.
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { arch, cpus, hostname, platform } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const GiB = 1024 ** 3;
 /** Ceilings use the NativeLaunchLimits field names of the effect doorway. */
@@ -28,28 +46,48 @@ export const RESOURCE_CEILINGS = Object.freeze({
   aggregate: Object.freeze({ memoryBytes: 4 * GiB, processCount: 64, launches: 3 }),
   reserveLaunches: 1,
   sampleMs: 1000,
+  /** Bounded census per tick: more owned processes than this is a partial sample. */
+  censusLimit: 256,
 });
 const WORK = Object.freeze({ answer: 'critical', review: 'critical', maintenance: 'medium' });
 const OUTCOME_LIMIT = 32;
 const QUERY_TIMEOUT_MS = 2000;
+const GATE_TIMEOUT_MS = 5000;
+const UNKNOWN = Symbol('unknown');
 
-// Lower (never raise) the inherited soft and hard limits, then replace the shell
-// with the provider, keeping its pid, process group and descendants under the
-// ceiling. The hard limit matters: runtimes such as Node raise their own soft
-// file limit to the hard limit at startup. The shell's own variables (PWD, SHLVL,
-// OLDPWD) are removed by env(1), which execs in place, unless the caller supplied
-// them, so the provider receives exactly the variable names it was given (a
-// supplied PWD is reset to the working directory by the shell).
+// Wait for the owner's go signal (fd 3) when gated, then lower (never raise) the
+// inherited soft and hard limits, then replace the shell with the provider,
+// keeping its pid, process group and descendants under the ceiling. The hard
+// limit matters: runtimes such as Node raise their own soft file limit to the hard
+// limit at startup. The process limit is lowered last, because the shell's own
+// command substitutions fork. The shell's own variables (PWD, SHLVL, OLDPWD) are
+// removed by env(1), which execs in place, unless the caller supplied them.
 const SHELL_VARIABLES = Object.freeze(['PWD', 'SHLVL', 'OLDPWD']);
 const LIMIT_SCRIPT = [
+  'if [ "$5" = gate ]; then read -r go <&3 || exit 125; [ "$go" = go ] || exit 125; exec 3<&-; fi',
   'lim() {',
   '  s=$(ulimit -S "$1") || exit 125',
   '  if [ "$s" = unlimited ] || [ "$s" -gt "$2" ]; then ulimit -S "$1" "$2" || exit 125; fi',
   '  h=$(ulimit -H "$1") || exit 125',
   '  if [ "$h" = unlimited ] || [ "$h" -gt "$2" ]; then ulimit -H "$1" "$2" || exit 125; fi',
   '}',
-  'lim -n "$1"; lim -t "$2"; u=; for v in $3; do u="$u -u $v"; done; shift 3',
+  'lim -n "$1"; lim -t "$2"; if [ -n "$3" ]; then lim -u "$3"; fi',
+  'u=; for v in $4; do u="$u -u $v"; done; shift 5',
   'exec /usr/bin/env $u "$@"'].join('\n');
+
+/** The same shim as a file, for a caller whose first argument is a fixed label (the Telegram bridge keeps
+ * its request at argv[1]): the file drops the label, then runs LIMIT_SCRIPT unchanged. */
+export const LIMIT_FILE = fileURLToPath(new URL('./limit-exec.sh', import.meta.url));
+export const LIMIT_FILE_TEXT = `shift\n${LIMIT_SCRIPT}\n`;
+export function limitedFileArgv({ label, executable, args, handles, cpuSeconds, processLimit, env }) {
+  return [LIMIT_FILE, label, String(handles), String(cpuSeconds), processLimit === null ? '' : String(processLimit),
+    SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), '', executable, ...args];
+}
+/** The shim argv for one limited process: the one definition every launch uses. */
+export function limitedArgv({ executable, args, handles, cpuSeconds, processLimit, env, gated }) {
+  return ['-c', LIMIT_SCRIPT, 'instar-launch', String(handles), String(cpuSeconds), processLimit === null ? '' : String(processLimit),
+    SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), gated ? 'gate' : '', executable, ...args];
+}
 
 const plainCompare = (left, right) => {
   if (left.subject.kind !== right.subject.kind || left.subject.instance !== right.subject.instance
@@ -58,13 +96,18 @@ const plainCompare = (left, right) => {
 };
 const measured = (kind, instance, unit, value, at) => ({ subject: { kind, instance }, unit, value, at });
 
-function query(file, args) {
-  return new Promise(resolve => execFile(file, args, { timeout: QUERY_TIMEOUT_MS, maxBuffer: 1024 * 1024,
-    env: { PATH: '/usr/bin:/bin' } }, (error, stdout) => {
-    // pgrep exits 1 when nothing matches; ps may exit 1 when a listed pid ended.
-    if (error && (typeof error.code !== 'number' || error.code > 1)) resolve(null);
-    else resolve(String(stdout));
-  }));
+/** Every observation resolves: a denied or failed query is `null` (unknown), never a rejection.
+ * execFile throws synchronously when the host refuses to spawn (EPERM), so that is caught too. */
+export function hostQuery(file, args) {
+  return new Promise(resolve => {
+    try {
+      execFile(file, args, { timeout: QUERY_TIMEOUT_MS, maxBuffer: 1024 * 1024, env: { PATH: '/usr/bin:/bin' } }, (error, stdout) => {
+        // pgrep exits 1 when nothing matches; ps may exit 1 when a listed pid ended.
+        if (error && (typeof error.code !== 'number' || error.code > 1)) resolve(null);
+        else resolve(String(stdout));
+      });
+    } catch { resolve(null); }
+  });
 }
 const pids = text => text === null ? null : text.split(/\s+/u).filter(Boolean).map(Number).filter(Number.isSafeInteger);
 /** ps `time`: [[dd-]hh:]mm:ss[.cc] on both macOS and Linux. */
@@ -90,22 +133,32 @@ export function readResourceOutcomes(statePath) {
   catch { return []; }
 }
 
+/** The machine and hardware identity every resource sample carries (docs/20 §6). */
+export const HOST_IDENTITY = Object.freeze({ machine: `machine:${hostname()}`,
+  hardwareProfile: `hardware:${platform()}-${arch()}-${cpus().length}cpu`, cores: Math.max(1, cpus().length),
+  producer: 'preview-host-launch-observer', classifierGeneration: 'classifier:owned-launch-v1' });
+
 export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
+  const censusLimit = ceilings.censusLimit ?? RESOURCE_CEILINGS.censusLimit;
   const launches = new Map(), waiters = [];
-  const counters = { admitted: 0, waited: 0, refusedCapacity: 0, completed: 0, killed: {}, leakedDescendants: 0,
-    reclaimed: 0, observationFailures: 0 };
-  const outcomes = [];
+  let counters = { admitted: 0, waited: 0, refusedCapacity: 0, completed: 0, killed: {}, leakedDescendants: 0,
+    orphansObserved: 0, observationFailures: 0, partialSamples: 0 };
+  let outcomes = [];
   /** Highest owned usage seen: live evidence that the ceilings held. */
-  const peak = { launches: 0, memoryBytes: 0, processes: 0 };
-  let ports = { compare: plainCompare, priorityGate: null, reconcile: null, now: () => Date.now() };
+  let peak = { launches: 0, memoryBytes: 0, processes: 0 };
+  let ports = { compare: plainCompare, priorityGate: null, reconcile: null, now: () => Date.now(), query: hostQuery,
+    monotonic: () => performance.now() };
   let attached = null, inherited = { state: 'unobserved' }, usage = { level: 'normal', observation: 'idle',
     memoryBytes: 0, processes: 0, sampledAt: null };
+  let lastSample = null, observer = { ticks: 0, queries: 0, elapsedMs: 0, lastTickMs: null };
+  let orphans = [], lastLaunch = null;
   let sampling = false, sampler = null, pump = null, lastPersist = 0;
+  const query = (file, args) => { observer.queries++; return ports.query(file, args).catch(() => null); };
 
   const priorityOf = work => WORK[work] ?? 'medium';
   const level = () => {
     if (!launches.size) return 'normal';
-    if (usage.observation === 'failed') return 'unknown';
+    if (usage.observation !== 'observed') return usage.observation === 'idle' ? 'normal' : 'unknown';
     const fraction = Math.max(usage.memoryBytes / ceilings.aggregate.memoryBytes,
       usage.processes / ceilings.aggregate.processCount);
     return fraction >= 1 ? 'shutdown' : fraction >= 0.85 ? 'critical' : fraction >= 0.6 ? 'elevated' : 'normal';
@@ -123,11 +176,15 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     if (outcomes.length > OUTCOME_LIMIT) outcomes.shift();
     persist(true);
   };
+  /** Which bounds this host holds hard, and which only by observation. */
+  const enforcement = processLimit => ({ cpuPerProcess: 'hard', handlesPerProcess: 'hard',
+    processGrowth: processLimit === null ? 'unavailable' : 'hard',
+    treeHandles: processLimit === null ? 'unavailable' : 'hard', memory: 'sampled', treeCpu: 'sampled' });
   function snapshot() {
-    return { version: 1, at: ports.now(), ceilings, inherited, usage: { ...usage, level: level() },
+    return { version: 1, at: ports.now(), identity: HOST_IDENTITY, ceilings, inherited, usage: { ...usage, level: level() },
       active: [...launches.values()].map(l => ({ id: l.id, work: l.work, pid: l.pid ?? null, startedAt: l.startedAt,
-        memoryBytes: l.memoryBytes, processes: l.processes, cpuMilliseconds: l.cpuMilliseconds })),
-      waiting: waiters.map(w => w.work), counters, peak, outcomes };
+        memoryBytes: l.memoryBytes, processes: l.processes, cpuMilliseconds: l.cpuMilliseconds, enforcement: l.enforcement })),
+      waiting: waiters.map(w => w.work), counters, peak, observer, sample: lastSample, lastLaunch, orphans, outcomes };
   }
   function persist(force = false) {
     if (!attached?.statePath) return;
@@ -136,9 +193,16 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     lastPersist = now;
     try { durableWrite(attached.statePath, snapshot()); } catch { /* status is a view; enforcement never depends on it */ }
   }
+  function readLedger() {
+    if (!attached?.ledgerPath || !existsSync(attached.ledgerPath)) return {};
+    const saved = JSON.parse(readFileSync(attached.ledgerPath, 'utf8'));
+    if (saved?.version !== 1 || !saved.launches || typeof saved.launches !== 'object') throw Error('resource ledger malformed');
+    return saved.launches;
+  }
+  /** Throws when the durable write fails: callers decide what an unrecorded launch means. */
   function ledger(update) {
     if (!attached?.ledgerPath) return;
-    const rows = existsSync(attached.ledgerPath) ? JSON.parse(readFileSync(attached.ledgerPath, 'utf8')).launches : {};
+    const rows = readLedger();
     update(rows);
     durableWrite(attached.ledgerPath, { version: 1, launches: rows });
   }
@@ -160,7 +224,8 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
   }
   function reserve(work) {
     const lease = { id: randomUUID(), work, startedAt: ports.now(), pid: null, memoryBytes: 0, processes: 0,
-      cpuMilliseconds: 0, members: [], limit: null };
+      cpuMilliseconds: 0, members: [], known: new Map(), limit: null, enforcement: null,
+      peakMemoryBytes: 0, peakProcesses: 0, census: 'none', previous: new Map() };
     launches.set(lease.id, lease); counters.admitted++;
     peak.launches = Math.max(peak.launches, launches.size);
     if (!sampler) sampler = setInterval(() => { void sample(); }, ceilings.sampleMs);
@@ -181,6 +246,7 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
       memoryBytes: 0, processes: 0 }; }
     wake(); persist(true);
   }
+  /** Signal only pids attributed in this sample or re-verified against their recorded start evidence. */
   function terminate(lease, reason, members = lease.members) {
     if (lease.limit) return;
     lease.limit = reason;
@@ -189,31 +255,41 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     for (const pid of members) try { process.kill(pid, 'SIGKILL'); } catch { /* ended between sample and signal */ }
     record({ kind: 'limit-kill', work: lease.work, reason, memoryBytes: lease.memoryBytes, processes: lease.processes });
   }
-  /** Owned trees only: the owned groups plus descendants of owned pids. */
+  const splitRow = line => {
+    const parts = line.trim().split(/\s+/u);
+    const [pid, ppid, pgid, rss, time] = parts, start = parts.slice(5).join(' ');
+    const cpu = time === undefined ? null : cpuMilliseconds(time);
+    if (!pid || cpu === null || !start || ![pid, ppid, pgid, rss].every(n => Number.isSafeInteger(Number(n)))) return null;
+    return { pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), rssBytes: Number(rss) * 1024, cpu, start };
+  };
+  /** Owned trees only: owned groups, descendants of owned pids, and recorded members. The census
+   * is `complete`, `partial` (traversal or census bound reached: examined/omitted counted) or
+   * `failed` (a query was refused): a partial or failed census never reads as empty. */
   async function ownedTree(roots) {
     const members = new Set(roots.map(l => l.pid));
+    for (const lease of roots) for (const pid of lease.known.keys()) members.add(pid);
     const group = pids(await query('/usr/bin/pgrep', ['-g', roots.map(l => l.pid).join(',')]));
-    if (group === null) return null;
+    if (group === null) return { state: 'failed', rows: null };
     group.forEach(pid => members.add(pid));
-    let frontier = [...members];
-    for (let depth = 0; depth < 16 && frontier.length; depth++) {
+    let frontier = [...members], truncated = false;
+    for (let depth = 0; frontier.length; depth++) {
+      if (depth >= 16 || members.size > censusLimit) { truncated = true; break; }
       const children = pids(await query('/usr/bin/pgrep', ['-P', frontier.join(',')]));
-      if (children === null) return null;
+      if (children === null) return { state: 'failed', rows: null };
       frontier = children.filter(pid => !members.has(pid));
       frontier.forEach(pid => members.add(pid));
     }
-    const table = await query('/bin/ps', ['-o', 'pid=,ppid=,pgid=,rss=,time=', '-p', [...members].join(',')]);
-    if (table === null) return null;
+    const examined = [...members].slice(0, censusLimit), omitted = members.size - examined.length;
+    const table = await query('/bin/ps', ['-o', 'pid=,ppid=,pgid=,rss=,time=,lstart=', '-p', examined.join(',')]);
+    if (table === null) return { state: 'failed', rows: null };
     const rows = new Map();
-    for (const line of table.split('\n')) {
-      const [pid, ppid, pgid, rss, time] = line.trim().split(/\s+/u);
-      const cpu = time === undefined ? null : cpuMilliseconds(time);
-      if (!pid || cpu === null || ![pid, ppid, pgid, rss].every(n => Number.isSafeInteger(Number(n)))) continue;
-      rows.set(Number(pid), { ppid: Number(ppid), pgid: Number(pgid), rssBytes: Number(rss) * 1024, cpu });
-    }
-    return rows;
+    for (const line of table.split('\n')) { const row = splitRow(line); if (row) rows.set(row.pid, row); }
+    return { state: truncated || omitted > 0 ? 'partial' : 'complete', rows, examined: examined.length, omitted };
   }
   function ownerOf(pid, rows, roots) {
+    const row = rows.get(pid);
+    // A recorded member is ours only while it is the same incarnation.
+    for (const lease of roots) if (lease.known.has(pid)) return lease.known.get(pid) === row?.start ? lease : null;
     for (let current = pid, hops = 0; current && hops < 64; hops++) {
       const root = roots.find(l => l.pid === current || rows.get(current)?.pgid === l.pid);
       if (root) return root;
@@ -222,29 +298,66 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     return null;
   }
   async function sample() {
-    const roots = [...launches.values()].filter(l => l.pid);
+    const roots = [...launches.values()].filter(l => l.pid && l.running);
     if (sampling || !roots.length) return;
     sampling = true;
+    const started = ports.monotonic(), queriesBefore = observer.queries;
     try {
-      const rows = await ownedTree(roots);
-      const at = ports.now();
-      if (rows === null) {
-        counters.observationFailures++; usage = { ...usage, observation: 'failed', sampledAt: at }; return;
+      const census = await ownedTree(roots);
+      const at = ports.now(), monotonicAt = ports.monotonic();
+      if (census.state === 'failed') {
+        counters.observationFailures++; usage = { ...usage, observation: 'failed', sampledAt: at };
+        lastSample = { sourceSample: randomUUID(), ...HOST_IDENTITY, at, census: { state: 'failed', examined: 0, omitted: null }, points: [] };
+        return;
       }
+      if (census.state === 'partial') counters.partialSamples++;
+      const sourceSample = randomUUID(), points = [], joined = [];
       for (const lease of roots) Object.assign(lease, { memoryBytes: 0, processes: 0, cpuMilliseconds: 0, members: [] });
-      for (const [pid, row] of rows) {
-        const lease = ownerOf(pid, rows, roots);
+      for (const [pid, row] of census.rows) {
+        const lease = ownerOf(pid, census.rows, roots);
         if (!lease) continue;
         lease.memoryBytes += row.rssBytes; lease.processes++; lease.cpuMilliseconds += row.cpu; lease.members.push(pid);
+        if (!lease.known.has(pid)) { lease.known.set(pid, row.start); joined.push(lease); }
+        // docs/20 §6: CPU consumed across a recorded monotonic interval, per process incarnation.
+        const incarnation = `${pid}:${row.start}`, prior = lease.previous.get(incarnation);
+        points.push({ id: `${sourceSample}:${pid}`, machine: HOST_IDENTITY.machine, processIncarnation: incarnation,
+          sourceSample, at, hardwareProfile: HOST_IDENTITY.hardwareProfile, classifierGeneration: HOST_IDENTITY.classifierGeneration,
+          cadenceMs: ceilings.sampleMs, state: 'observed', launch: lease.id, pid, startEvidence: row.start,
+          cpuTimeMs: prior ? Math.max(0, row.cpu - prior.cpu) : null,
+          monotonicIntervalMs: prior && monotonicAt > prior.monotonicAt ? monotonicAt - prior.monotonicAt : null,
+          cumulativeCpuMs: row.cpu, rssBytes: row.rssBytes, heapBytes: null, heapState: 'unsupported' });
+        lease.previous.set(incarnation, { cpu: row.cpu, monotonicAt });
       }
-      usage = { observation: 'observed', sampledAt: at,
+      for (const point of points) if (point.cpuTimeMs === null || point.monotonicIntervalMs === null) {
+        point.cpuTimeMs = null; point.monotonicIntervalMs = null;
+      }
+      // Recorded members that were not seen are missing samples, never zero.
+      for (const lease of roots) for (const [pid, start] of lease.known)
+        if (!census.rows.has(pid) || census.rows.get(pid).start !== start)
+          points.push({ id: `${sourceSample}:${pid}`, machine: HOST_IDENTITY.machine, processIncarnation: `${pid}:${start}`, sourceSample, at,
+            hardwareProfile: HOST_IDENTITY.hardwareProfile, classifierGeneration: HOST_IDENTITY.classifierGeneration,
+            cadenceMs: ceilings.sampleMs, state: 'missing', launch: lease.id, pid, startEvidence: start, cpuTimeMs: null,
+            monotonicIntervalMs: null, cumulativeCpuMs: null, rssBytes: null, heapBytes: null, heapState: 'missing' });
+      // New members join the durable ledger with their start evidence, so recovery and completion
+      // can find a member that later leaves the group, and never mistake a reused pid for it.
+      for (const lease of new Set(joined)) try {
+        ledger(rows => { if (rows[lease.id]) rows[lease.id].members = Object.fromEntries(lease.known); });
+      } catch { /* the kernel bounds still hold; completion still re-verifies known members */ }
+      usage = { observation: census.state === 'complete' ? 'observed' : 'partial', sampledAt: at,
         memoryBytes: roots.reduce((sum, l) => sum + l.memoryBytes, 0), processes: roots.reduce((sum, l) => sum + l.processes, 0) };
+      lastSample = { sourceSample, ...HOST_IDENTITY, at, census: { state: census.state, examined: census.examined, omitted: census.omitted },
+        points };
       peak.memoryBytes = Math.max(peak.memoryBytes, usage.memoryBytes); peak.processes = Math.max(peak.processes, usage.processes);
       for (const lease of roots) {
+        lease.peakMemoryBytes = Math.max(lease.peakMemoryBytes, lease.memoryBytes);
+        lease.peakProcesses = Math.max(lease.peakProcesses, lease.processes);
+        if (lease.census !== 'partial') lease.census = census.state;
         const over = (kind, unit, value, ceiling) => ports.compare(measured(kind, `launch:${lease.id}`, unit, value, at),
           measured(kind, `launch:${lease.id}`, unit, ceiling, at)) > 0;
         if (over('owned-process-memory', 'bytes', lease.memoryBytes, ceilings.launch.memoryBytes)) terminate(lease, 'memory');
         else if (over('owned-process-count', 'processes', lease.processes, ceilings.launch.processCount)) terminate(lease, 'processes');
+        // The tree's summed CPU against its budget: each process is also held by RLIMIT_CPU.
+        else if (over('owned-process-cpu', 'ms', lease.cpuMilliseconds, ceilings.launch.cpuMilliseconds)) terminate(lease, 'cpu');
       }
       const aggregate = (kind, unit, value, ceiling) => ports.compare(measured(kind, 'host-owned-launches', unit, value, at),
         measured(kind, 'host-owned-launches', unit, ceiling, at)) > 0;
@@ -256,53 +369,106 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
         if (victim) terminate(victim, 'aggregate');
       }
     } catch { counters.observationFailures++; usage = { ...usage, observation: 'failed' }; }
-    finally { sampling = false; persist(); wake(); }
-  }
-  async function startEvidence(pid) {
-    const text = await query('/bin/ps', ['-o', 'lstart=', '-p', String(pid)]);
-    return text?.trim() || null;
-  }
-  async function cleanupGroup(lease) {
-    // Descendants left behind after the provider exits keep the group id alive, so
-    // the id cannot have been reused: every remaining member is owned.
-    const left = pids(await query('/usr/bin/pgrep', ['-g', String(lease.pid)]));
-    if (left?.length) {
-      try { process.kill(-lease.pid, 'SIGKILL'); } catch { /* ended meanwhile */ }
-      counters.leakedDescendants += left.length;
-      record({ kind: 'leaked-descendants', work: lease.work, processes: left.length });
+    finally {
+      // docs/20 §6: the observer's own cost is recorded under its own subject.
+      const tick = Math.max(0, ports.monotonic() - started);
+      observer = { ticks: observer.ticks + 1, queries: observer.queries, elapsedMs: observer.elapsedMs + tick, lastTickMs: tick,
+        lastTickQueries: observer.queries - queriesBefore };
+      sampling = false; persist(); wake();
     }
   }
-  function run(input, lease) {
-    const handles = String(Math.max(16, ceilings.launch.handleCount));
-    const cpuSeconds = String(Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000)));
+  /** A process's start evidence; `null` when it does not exist, `UNKNOWN` when the query failed. */
+  async function startEvidence(pid) {
+    const text = await query('/bin/ps', ['-o', 'lstart=', '-p', String(pid)]);
+    return text === null ? UNKNOWN : text.trim() || null;
+  }
+  /** The kernel bound on the launched tree: the user's current process count plus the launch ceiling. */
+  async function processLimit() {
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+    if (uid === null || uid === 0) return null;
+    const listed = pids(await query('/bin/ps', ['-U', String(uid), '-o', 'pid=']));
+    return listed === null || listed.length === 0 ? null : listed.length + ceilings.launch.processCount;
+  }
+  /** After the provider exits: remaining group members and every recorded member still the same
+   * incarnation (one that left the group included) are reclaimed by the live owner of this launch.
+   * Returns how many were left behind and whether any remain unverified. */
+  async function cleanupTree(lease) {
+    let leaked = 0, unresolved = false;
+    const group = pids(await query('/usr/bin/pgrep', ['-g', String(lease.pid)]));
+    if (group === null) unresolved = true;
+    else if (group.length) {
+      // Members keep the group id alive, so it cannot have been reused: every member is owned.
+      try { process.kill(-lease.pid, 'SIGKILL'); } catch { /* ended meanwhile */ }
+      leaked += group.length;
+    }
+    const recorded = [...lease.known].filter(([pid]) => pid !== lease.pid && !group?.includes(pid));
+    if (recorded.length) {
+      const table = await query('/bin/ps', ['-o', 'pid=,ppid=,pgid=,rss=,time=,lstart=', '-p', recorded.map(([pid]) => pid).join(',')]);
+      if (table === null) unresolved = true;
+      else {
+        const rows = new Map(table.split('\n').map(splitRow).filter(Boolean).map(row => [row.pid, row]));
+        for (const [pid, start] of recorded) if (rows.get(pid)?.start === start) {
+          try { process.kill(pid, 'SIGKILL'); leaked++; } catch { /* ended meanwhile */ }
+        }
+      }
+    }
+    if (leaked) {
+      counters.leakedDescendants += leaked;
+      record({ kind: 'leaked-descendants', work: lease.work, processes: leaked });
+    }
+    return { leaked, unresolved };
+  }
+  function run(input, lease, limitValue) {
+    const handles = Math.max(16, ceilings.launch.handleCount);
+    const cpuSeconds = Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000));
+    lease.enforcement = enforcement(limitValue);
     return new Promise(resolve => {
-      const child = spawn('/bin/sh', ['-c', LIMIT_SCRIPT, 'instar-launch', handles, cpuSeconds,
-        SHELL_VARIABLES.filter(name => input.env?.[name] === undefined).join(' '), input.executable, ...input.args], {
-        cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
-        shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
+      let child;
+      try {
+        child = spawn('/bin/sh', limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
+          processLimit: limitValue, env: input.env, gated: true }), {
+          cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
+          shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+      } catch { resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); return; }
       lease.pid = child.pid ?? null;
       let chunks = [], size = 0, limited = false, localLimit = null;
       const fail = reason => { if (limited) return; limited = true; localLimit = reason; chunks = [];
         if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* A group may be gone or unavailable. */ }
         try { child.kill('SIGKILL'); } catch { /* Timer and stop callbacks must never throw. */ }
       };
-      if (lease.pid) {
-        const owner = attached?.owner;
-        void startEvidence(lease.pid).then(start => {
-          if (start && launches.has(lease.id)) try { ledger(rows => { rows[lease.id] = { pid: lease.pid, start, owner }; }); }
-          catch { /* the timeout and ceilings still hold this launch */ }
-        });
-      }
+      const gate = child.stdio[3];
+      gate?.on('error', () => { /* a gate closed by an exited shell is harmless */ });
+      // Durable launch evidence before the provider runs: the shim waits for this go signal.
+      const openGate = async () => {
+        if (!lease.pid) return;
+        const evidence = await startEvidence(lease.pid), start = typeof evidence === 'string' ? evidence : null;
+        if (start) lease.known.set(lease.pid, start);
+        try {
+          ledger(rows => { rows[lease.id] = { pid: lease.pid, start, owner: attached?.owner ?? null,
+            members: Object.fromEntries(lease.known), enforcement: lease.enforcement }; });
+        } catch {
+          // The launch could not be recorded: it never runs (the owner refuses it rather than lose it).
+          counters.refusedCapacity++;
+          record({ kind: 'capacity-refused', work: lease.work, level: 'launch-evidence-unrecorded' });
+          fail('capacity'); return;
+        }
+        if (limited) return;
+        lease.running = true;
+        try { gate.end('go\n'); } catch { fail(null); }
+      };
+      const gateTimer = setTimeout(() => { if (!lease.running) fail('capacity'); }, GATE_TIMEOUT_MS);
+      void openGate().catch(() => fail('capacity'));
       const timer = setTimeout(() => fail('timeout'), input.timeout);
       const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null); }, 25) : undefined;
-      child.on('error', () => { clearTimeout(timer); clearInterval(stopTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
+      child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
       child.stdin.on('error', () => fail(null));
       child.stdout.on('data', chunk => {
         size += chunk.length;
         if (size > input.maxBytes) fail('size'); else if (!limited) chunks.push(chunk);
       });
       child.on('close', (code, signal) => {
-        clearTimeout(timer); clearInterval(stopTimer);
+        clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer);
+        lease.running = false;
         if (lease.limit) { limited = true; localLimit = lease.limit; chunks = []; }
         else if (signal === 'SIGXCPU' && !limited) {
           limited = true; localLimit = 'cpu'; chunks = [];
@@ -310,36 +476,57 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
           record({ kind: 'limit-kill', work: lease.work, reason: 'cpu' });
         }
         const stdoutBytes = Buffer.concat(chunks);
-        const done = () => {
-          try { ledger(rows => { delete rows[lease.id]; }); } catch { /* reclaimed at the next attach */ }
-          resolve({ code, limited, localLimit, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes) });
+        const done = ({ leaked, unresolved }) => {
+          // A row is removed only once every recorded member is verified gone; otherwise it stays
+          // for recovery to observe (the launch evidence is never discarded while unresolved).
+          if (!unresolved) try { ledger(rows => { delete rows[lease.id]; }); } catch { /* observed at the next attach */ }
+          const resources = { enforcement: lease.enforcement, peakMemoryBytes: lease.peakMemoryBytes, peakProcesses: lease.peakProcesses,
+            treeCpuMilliseconds: lease.cpuMilliseconds, census: lease.census, leakedDescendants: leaked, cleanup: unresolved ? 'unresolved' : 'verified' };
+          lastLaunch = { work: lease.work, at: ports.now(), ...resources };
+          resolve({ code, limited, localLimit, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes), resources });
         };
-        if (lease.pid) void cleanupGroup(lease).finally(done); else done();
+        if (lease.pid) cleanupTree(lease).then(done, () => done({ leaked: 0, unresolved: true }));
+        else done({ leaked: 0, unresolved: false });
       });
       child.stdin.end(input.stdin, 'utf8');
     });
   }
-  async function reclaim() {
-    if (!attached?.ledgerPath || !existsSync(attached.ledgerPath)) return;
+  /** Observation-only recovery (docs/18 §§8, 14): a row is examined against its owner and every
+   * recorded member's incarnation. A live owner, an unknown reading or a surviving member keeps the
+   * row; nothing is signalled, because disposal needs the unlanded typed recovery effect. Only a row
+   * whose owner is gone and whose every recorded member is verified gone (missing, or the pid now
+   * names another incarnation) is closed. */
+  async function recover() {
+    orphans = [];
     let rows;
-    try { rows = JSON.parse(readFileSync(attached.ledgerPath, 'utf8')).launches ?? {}; }
-    catch { return; }
+    try { rows = readLedger(); } catch { orphans = [{ launch: null, state: 'unknown', reason: 'ledger unreadable' }]; return; }
+    const closed = [];
     for (const [id, row] of Object.entries(rows)) {
-      if (!Number.isSafeInteger(row?.pid) || row.pid <= 1 || typeof row.start !== 'string') continue;
-      const current = await startEvidence(row.pid);
-      const verdict = ports.reconcile ? ports.reconcile(row, current)
-        : current === null ? 'missing' : current === row.start ? 'same' : 'new-incarnation';
-      // A pid now naming another incarnation is not ours: never signal it.
-      if (verdict === 'new-incarnation') continue;
-      const members = pids(await query('/usr/bin/pgrep', ['-g', String(row.pid)])) ?? [];
-      if (verdict === 'same' || members.length) {
-        try { process.kill(-row.pid, 'SIGKILL'); } catch { /* ended meanwhile */ }
-        if (verdict === 'same') try { process.kill(row.pid, 'SIGKILL'); } catch { /* ended meanwhile */ }
-        counters.reclaimed++;
-        record({ kind: 'reclaimed-orphan', launch: id, processes: members.length + Number(verdict === 'same' && !members.includes(row.pid)) });
+      const members = Object.entries(row?.members ?? {}).map(([pid, start]) => [Number(pid), start]);
+      if (Number.isSafeInteger(row?.pid) && !members.some(([pid]) => pid === row.pid)) members.push([row.pid, row.start ?? null]);
+      // A live owner (the same incarnation still running, or unknown) owns its launch: never ours to judge.
+      const owner = row?.owner;
+      const ownerNow = owner && Number.isSafeInteger(owner.pid) ? await startEvidence(owner.pid) : null;
+      if (ownerNow === UNKNOWN || owner && typeof owner.start === 'string' && ownerNow === owner.start) {
+        orphans.push({ launch: id, state: ownerNow === UNKNOWN ? 'unknown' : 'live-owner', owner: owner.pid }); continue;
       }
+      let surviving = 0, unknown = 0;
+      for (const [pid, start] of members) {
+        if (!Number.isSafeInteger(pid) || pid <= 1 || typeof start !== 'string') { unknown++; continue; }
+        const current = await startEvidence(pid);
+        if (current === UNKNOWN) { unknown++; continue; }
+        const verdict = ports.reconcile ? ports.reconcile({ pid, start }, current)
+          : current === null ? 'missing' : current === start ? 'same' : 'new-incarnation';
+        if (verdict === 'same') surviving++;
+        else if (verdict !== 'missing' && verdict !== 'new-incarnation') unknown++;
+      }
+      if (surviving || unknown) {
+        counters.orphansObserved++;
+        orphans.push({ launch: id, state: surviving ? 'surviving' : 'unknown', surviving, unknown, members: members.length });
+        record({ kind: 'orphan-observed', launch: id, surviving, unknown });
+      } else closed.push(id);
     }
-    ledger(all => { for (const id of Object.keys(all)) delete all[id]; });
+    if (closed.length) try { ledger(all => { for (const id of closed) delete all[id]; }); } catch { /* observed again next attach */ }
   }
   async function observeInherited() {
     const text = await query('/bin/sh', ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
@@ -360,12 +547,23 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
     /** One owner per process: a second attach is refused. */
     async attach(options = {}) {
       if (attached) throw Error('resource owner already attached');
-      attached = { ledgerPath: options.ledgerPath ?? null, statePath: options.statePath ?? null,
-        owner: { pid: process.pid, start: Math.floor(performance.timeOrigin) } };
       ports = { compare: options.compare ?? plainCompare, priorityGate: options.priorityGate ?? null,
-        reconcile: options.reconcile ?? null, now: options.now ?? (() => Date.now()) };
+        reconcile: options.reconcile ?? null, now: options.now ?? (() => Date.now()), query: options.query ?? hostQuery,
+        monotonic: options.monotonic ?? (() => performance.now()) };
+      attached = { ledgerPath: options.ledgerPath ?? null, statePath: options.statePath ?? null, owner: { pid: process.pid, start: null } };
+      const own = await startEvidence(process.pid);
+      attached.owner.start = typeof own === 'string' ? own : null;
+      // The bounded view continues across restarts instead of being overwritten empty.
+      if (attached.statePath) try {
+        const prior = JSON.parse(readFileSync(attached.statePath, 'utf8'));
+        if (prior?.version === 1) {
+          if (Array.isArray(prior.outcomes)) outcomes = prior.outcomes.slice(-OUTCOME_LIMIT);
+          if (prior.counters && typeof prior.counters === 'object') counters = { ...counters, ...prior.counters, killed: { ...prior.counters.killed } };
+          if (prior.peak && typeof prior.peak === 'object') peak = { ...peak, ...prior.peak };
+        }
+      } catch { /* no prior view */ }
       await observeInherited();
-      await reclaim();
+      await recover();
       persist(true);
       return snapshot();
     },
@@ -373,7 +571,7 @@ export function createResourceOwner(ceilings = RESOURCE_CEILINGS) {
       if (input.stopped?.()) return { code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
       const lease = await admit(work, input.timeout, input.stopped);
       if (!lease) return { code: null, limited: true, localLimit: input.stopped?.() ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
-      try { return await run(input, lease); }
+      try { return await run(input, lease, await processLimit()); }
       finally { counters.completed++; release(lease); }
     },
     observeInherited,

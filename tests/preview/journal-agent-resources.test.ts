@@ -87,6 +87,11 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       inherited: { state: 'observed', effectivePerLaunch: { handleCount: expect.any(Number) } },
       counters: { admitted: status.calls, refusedCapacity: 0 } });
     expect(status.resources.counters.admitted).toBeGreaterThanOrEqual(2);
+    // Each launch's bounds are declared by what the host holds, and its facts are durable in the journal.
+    expect(status.resources.enforcement).toMatchObject({ cpuPerProcess: 'hard', handlesPerProcess: 'hard', memory: 'sampled', treeCpu: 'sampled',
+      processGrowth: expect.stringMatching(/^(hard|unavailable)$/u) });
+    expect(status.resources.durable).toMatchObject({ 'cleanup-unresolved': 0, capacity: 0 });
+    expect(status.resources.orphans).toEqual([]);
     expect(JSON.parse(readFileSync(join(root, 'owned-launches.json'), 'utf8')).launches).toEqual({});
     // Rule 56: the answered exchanges verified the exact provider-reported id; the unreachable Jev route is an unavailable reading.
     expect(status.doorways.models).toEqual([
@@ -94,6 +99,9 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
         age: expect.stringMatching(/ ms of doorway-verification-age \(preview-subscription\//u) }),
       expect.objectContaining({ doorway: 'typesafe-jev', state: 'unavailable', fresh: false })]);
     expect(status.doorways.fresh).toBe(false);
+    // The standing check ran from the poll cycle, with no status request needed.
+    expect(status.doorways.standing).toMatchObject({ fresh: false, failing: expect.arrayContaining([expect.stringMatching(/^typesafe-jev\//u)]) });
+    expect(status.doorways.prices.map(p => p.state)).toEqual(['unavailable', 'unavailable']);
     expect(status.doorways.map.doorways[0].models[0]).toMatchObject({ strength: 'provider-reported' });
     // Rule 100: the vault record and the installed credentials' identity and expiry.
     const names = status.credentials.records.map(r => r.name);
@@ -102,6 +110,9 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       expiresAt: trial.expiresAt, expirySource: 'activation-record', reminders: expect.arrayContaining([trial.expiresAt]) });
     expect(status.credentials.records.find(r => r.name.startsWith('chat-github-token-'))).toMatchObject({ custody: 'preview-vault' });
     expect(status.credentials.referencedIn).toEqual([1]);
+    // Custody is intact and checked live: the original capture and the stored secret both open.
+    expect(status.credentials.custody).toEqual({ stored: 1, failed: [], missing: [] });
+    expect(status.credentials.intact).toBe(true);
     expect(JSON.stringify(status)).not.toContain(TOKEN);
     // Rule 40: the packet outcome is a success type, with or without trimming.
     expect(status.packet.capacity).toMatchObject({ outcome: 'success' });

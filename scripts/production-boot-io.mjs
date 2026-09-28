@@ -1,12 +1,24 @@
 // The fixed Ten physical host. No worker receives these OS ports.
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
   readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { hostResources } from './resource-owner.mjs';
+import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+
+/** The transport child's own bounds: a few handles, and no descendants beyond itself and a helper. */
+const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
+/** The user's current process count plus the transport ceiling, or null (reported unavailable) when it cannot be read. */
+function transportProcessLimit() {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (uid === null || uid === 0) return null;
+  let count = 0;
+  try { count = execFileSync('/bin/ps', ['-U', String(uid), '-o', 'pid='], { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
+    stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(line => line.trim()).length; } catch { count = 0; }
+  return count > 0 ? count + TRANSPORT_LIMITS.processCount : null;
+}
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
   probePid: pid => { process.kill(pid, 0); }, join, resolve, closeSync, constants, existsSync,
@@ -55,12 +67,18 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs,
       captureDirectory: directory, identityBinding: input.identityBinding,
       ...(testEndpoint === null ? {} : { testEndpoint }) })).toString('base64url');
-    // A synchronous, sequential transport child: its V8 heap is capped through NODE_OPTIONS (argv is
-    // unchanged) and its elapsed time and output by the options below.
-    const child = spawnSync(process.execPath,
-      [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
+    // A synchronous, sequential transport child through the same limit shim as every provider launch
+    // (Rule 60): kernel-held per-process CPU time and handles, and a process-growth bound. Its V8 heap
+    // is capped through NODE_OPTIONS (argv is unchanged), and its elapsed time and output by the
+    // options below. Its RSS is not held by any unprivileged kernel limit on this host.
+    const env = { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' };
+    // The request stays at argv[1] (the file shim's label), as the recorded transports read it.
+    const child = spawnSync('/bin/sh', limitedFileArgv({ label: request, executable: process.execPath,
+      args: [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
+      handles: TRANSPORT_LIMITS.handleCount, cpuSeconds: Math.ceil((input.timeoutMs + 2000) / 1000) + 1,
+      processLimit: transportProcessLimit(), env }),
       { input: credential, encoding: 'utf8', timeout: input.timeoutMs + 2000, maxBuffer: 2 * 1024 * 1024,
-        env: { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' }, stdio: ['pipe', 'pipe', 'ignore'] });
+        env, stdio: ['pipe', 'pipe', 'ignore'] });
     if (child.status !== 0) return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
     try {
       const reply = JSON.parse(child.stdout);
