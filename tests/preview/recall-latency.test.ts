@@ -43,7 +43,7 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
       replyCheck: { elapsedMs: () => performance.now(), jev: async () => ({ latencyMs: 0,
         value: { model: 'jev-1.13.0', answers: Object.fromEntries([
           'raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self',
-          'claims_blocked', 'parks_on_user',
+          'claims_blocked', 'parks_on_user', 'defers_work', 'unrecorded_blocker',
         ].map(id => [id, { type: 'noul', noul: 0 }])) } }),
       escalate: async () => { throw Error('Jev should pass'); } } });
     view.limits.maxBytes = 1_000_000;

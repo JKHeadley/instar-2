@@ -33,6 +33,9 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     { cwd: process.cwd(), env: env('canary'), stdio: 'ignore' });
   const launchLive = cycles => spawnSync(process.execPath, launchArgs(liveRoot, 'live', cycles),
     { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 30000 });
+  /** The live runner as a child the test can kill at a chosen moment (a crash with no exit record). */
+  const startLive = cycles => spawn(process.execPath, launchArgs(liveRoot, 'live', cycles),
+    { cwd: process.cwd(), env: env('live'), stdio: 'ignore' });
   const status = () => spawnSync(process.execPath, [...args,
     'status', '--root', liveRoot], { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 10000 });
   const waitForOverlap = async () => {
@@ -50,6 +53,6 @@ export function cutoverHarness(world, profile, childEnv = {}) {
   const setUpdates = updates => writeFileSync(join(directory, 'updates.json'), JSON.stringify(updates));
   const setConflicts = count => writeFileSync(join(directory, 'conflicts-remaining'), String(count));
   const calls = () => readFileSync(join(directory, 'telegram.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
-  return { directory, canaryRoot, liveRoot, startCanary, launchLive, status, waitForOverlap,
+  return { directory, canaryRoot, liveRoot, startCanary, launchLive, startLive, status, waitForOverlap,
     stopCanary, releaseOverlap, setUpdates, setConflicts, calls };
 }

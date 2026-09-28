@@ -13,7 +13,7 @@ const update = (id: number, text: string) => ({ update_id: id, message: {
   chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 const jevPass = { model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } };
 const replyPass = { model: 'jev-1.13.0', answers: Object.fromEntries(
-  ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user']
+  ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user', 'defers_work', 'unrecorded_blocker']
     .map(rule => [rule, { type: 'noul', noul: 0.01 }])) };
 
 /** A repeatable random stream makes failures reproducible by seed and step. */

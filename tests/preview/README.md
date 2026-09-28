@@ -336,6 +336,19 @@ a launchd job. An existing trial that lacks the recorded host-notice authority
 cannot send this notice; the reviewed live proof must use a new trial with that
 authority recorded at creation.
 
+The journal runner (`tests/preview/journal-agent.mjs run`) is supervised by the
+same script when its config carries `"journal": true` (the `agent` array must
+name `journal-agent.mjs run` with `--root` equal to `root`). This is the consumer
+of the run log's exit disposition: an exit recording `revival: "queued"` (accepted
+work or scheduled obligation work remains and nothing inhibits it) is relaunched;
+`inhibited` (stop latch, journal stop, expiry, exhausted allowance, signal pause)
+and `none` end supervision. A crash, refusal, unrecorded exit, or a clean exit
+that ran under a minute counts toward `maxRestarts` consecutive relaunches
+(default 10) with exponential backoff from `backoffMs` (default 1000) capped at
+`maxBackoffMs` (default 300000). The stop latch is checked before each launch
+and during every wait. Every relaunch re-derives authority, allowances, poll
+pressure and UNKNOWN fences from the journal and run log; nothing is reset.
+
 ## Desk cutover and retained evidence
 
 The desk alone runs source review, commits, pins, register regeneration, final gate and live cutover.

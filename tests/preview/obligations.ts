@@ -1,9 +1,9 @@
 /** The agent's one population of open obligations, projected from the durable journal
- * (Rules 8, 46, 64, 83, 92, 93, 99). Nothing here is stored beside the journal: replay
+ * (Rules 8, 46, 64, 68, 83, 92, 93, 99). Nothing here is stored beside the journal: replay
  * rebuilds it exactly, and every item stays open until a recorded cause closes it. */
 import { dueState } from './dated-memory.js';
-import { LOOP_REVISIT_MS, loopRevisits, openBlockers, openDirectives, openQuestionCandidates, pendingRequestedReminders,
-  probeTurn, wallEpoch, type JournalView, type Turn } from './journal.js';
+import { LOOP_REVISIT_MS, commitmentOpen, commitmentWaitsOn, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
+  openDirectives, openQuestionCandidates, pendingRequestedReminders, probeTurn, wallEpoch, type JournalView, type Turn } from './journal.js';
 
 /** Measured engineering defaults (Rule 46/64): accepted work older than this, or no forward
  * progress for this long while work waits, is reported as overdue on the pull surface. */
@@ -24,9 +24,8 @@ export function openLoops(view: JournalView, now: number): OpenLoop[] {
   const loops: OpenLoop[] = [], revisits = loopRevisits(view);
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source);
-    if (view.closed.has(id) || !source || probeTurn(view, source) || view.memory.some(change => change.mode === 'forget'
-      && change.source === note.source && note.quote.includes(change.quote))) return;
-    const waitsOn = note.waitsOn ?? note.agentPromise?.waitsOn;
+    if (!source || !commitmentOpen(view, id)) return;
+    const waitsOn = commitmentWaitsOn(view, id);
     const nextAt = (revisits.get(id) ?? source.at) + LOOP_REVISIT_MS;
     const defect: LoopDefect | undefined = note.agentPromise?.due && dueState(note.agentPromise.due, now) === 'overdue'
       ? 'overdue-check-in' : waitsOn === undefined ? 'undeclared-dependency' : undefined;
@@ -54,34 +53,54 @@ export function openLoops(view: JournalView, now: number): OpenLoop[] {
 
 export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; revisitDue: number;
   overdueCheckIns: number; overdueRechecks: number; overdueReminders: number; undeclared: number; refusedCommitments: number;
-  unfinished: number; oldestUnfinishedAt: number | null; oldestUnfinishedAgeMs: number | null; backlogOverdue: boolean;
+  /** Accepted work not yet done: unanswered operator turns plus obligation work steps due now. */
+  unfinished: number; unansweredTurns: number; dueWork: number;
+  /** Work steps whose start has no result yet, results waiting for a reply to carry them, and scheduled future steps. */
+  workInFlight: number; awaitingDelivery: number; scheduledWork: number; nextWorkAt: number | null;
+  rejectedDeclarations: number;
+  oldestUnfinishedAt: number | null; oldestUnfinishedAgeMs: number | null; backlogOverdue: boolean;
   lastProgressAt: number | null; progressAgeMs: number | null; state: 'idle' | 'progressing' | 'stalled';
-  inhibition: string | null; correctionsWaiting: number }
+  inhibition: string | null; deliveryInhibition: string | null; correctionsWaiting: number }
 
-/** Forward progress, backlog age and overdue obligations for the existing pull surface (Rules 46, 64, 92, 99).
- * An inhibition (stop, expiry, allowance, hold) is shown beside the backlog; it never counts as completion. */
+/** Forward progress, backlog age and overdue obligations for the existing pull surface (Rules 46, 64, 68, 92, 99).
+ * Progress is measured per waiting item: an unrelated reply or a summary never makes a stalled obligation look
+ * progressing. An inhibition (stop, expiry, allowance, capacity, hold, missing grant) is shown beside the
+ * backlog; it never counts as completion. */
 export function loopHealth(view: JournalView, now: number): LoopHealth {
   const loops = openLoops(view, now);
   const byKind = { commitment: 0, directive: 0, blocker: 0, question: 0, reminder: 0 } as Record<LoopKind, number>;
   for (const loop of loops) byKind[loop.kind]++;
-  const unfinished = view.order.filter(turn => turn.accepted && !probeTurn(view, turn) && !settled(view, turn));
-  const oldest = unfinished[0];
-  const lastProgressAt = Math.max(0, ...view.order.map(turn => turn.sentAt ?? 0), ...view.summaries.map(summary => summary.at)) || null;
-  const waitingSince = oldest ? Math.max(oldest.at, lastProgressAt ?? 0) : null;
+  const turns = view.order.filter(turn => turn.accepted && !probeTurn(view, turn) && !settled(view, turn));
+  const schedule = obligationSchedule(view);
+  const due = schedule.filter(item => !item.inFlight && !item.awaitingDelivery && item.slot <= now);
+  const future = schedule.filter(item => !item.inFlight && !item.awaitingDelivery && item.slot > now && Number.isFinite(item.slot));
+  const awaitingDelivery = schedule.filter(item => item.awaitingDelivery).length;
+  const waiting = [...turns.map(turn => turn.at), ...due.map(item => item.slot)].sort((a, b) => a - b);
+  const oldestAt = waiting[0];
+  const worked = Object.values(view.obligationWork).filter(work => work.inFlight === undefined && work.outcome !== undefined
+    && work.outcome !== 'uncertain' && work.outcome !== 'failed').map(work => work.last);
+  const lastProgressAt = Math.max(0, ...view.order.map(turn => turn.sentAt ?? 0), ...worked) || null;
+  const oldestTurn = turns[0];
   const inhibition = view.stop ?? (now >= view.expires ? 'trial expired'
     : view.calls >= view.limits.maxCalls ? 'model-call allowance used'
-      : view.replies >= view.limits.maxReplies ? 'reply allowance used'
-        : oldest?.held !== undefined ? `held: ${oldest.held}` : null);
+      : turns.length && view.replies >= view.limits.maxReplies ? 'reply allowance used'
+        : oldestTurn?.held !== undefined ? `held: ${oldestTurn.held}`
+          : due.length && !obligationCapacity(view) ? 'model-call capacity reserved for replies' : null);
   return { open: loops.length, byKind, revisitDue: loops.filter(loop => loop.revisitDue && loop.kind === 'commitment').length,
     overdueCheckIns: loops.filter(loop => loop.defect === 'overdue-check-in').length,
     overdueRechecks: loops.filter(loop => loop.defect === 'overdue-recheck').length,
     overdueReminders: loops.filter(loop => loop.defect === 'overdue-reminder').length,
     undeclared: loops.filter(loop => loop.defect === 'undeclared-dependency').length, refusedCommitments: view.commitmentRefusals,
-    unfinished: unfinished.length, oldestUnfinishedAt: oldest?.at ?? null, oldestUnfinishedAgeMs: oldest ? Math.max(0, now - oldest.at) : null,
-    backlogOverdue: oldest !== undefined && now - oldest.at > BACKLOG_AGE_LIMIT_MS,
+    unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
+    workInFlight: schedule.filter(item => item.inFlight).length, awaitingDelivery, scheduledWork: future.length,
+    nextWorkAt: future.length ? Math.min(...future.map(item => item.slot)) : null, rejectedDeclarations: view.rejectedObligations,
+    oldestUnfinishedAt: oldestAt ?? null, oldestUnfinishedAgeMs: oldestAt === undefined ? null : Math.max(0, now - oldestAt),
+    backlogOverdue: oldestAt !== undefined && now - oldestAt > BACKLOG_AGE_LIMIT_MS,
     lastProgressAt, progressAgeMs: lastProgressAt === null ? null : Math.max(0, now - lastProgressAt),
-    state: !oldest ? 'idle' : now - waitingSince! > PROGRESS_STALL_MS ? 'stalled' : 'progressing',
-    inhibition: oldest || view.stop ? inhibition : null, correctionsWaiting: view.corrections.length };
+    state: oldestAt === undefined ? 'idle' : now - oldestAt > PROGRESS_STALL_MS ? 'stalled' : 'progressing',
+    inhibition: oldestAt !== undefined || view.stop ? inhibition : null,
+    deliveryInhibition: awaitingDelivery ? `no grant for unsolicited sends; ${awaitingDelivery} finished ${awaitingDelivery === 1 ? 'result waits' : 'results wait'} for your next message` : null,
+    correctionsWaiting: view.corrections.length };
 }
 
 const age = (ms: number) => ms < 3_600_000 ? `${Math.floor(ms / 60_000)} min` : `${Math.floor(ms / 3_600_000)} h ${Math.floor(ms % 3_600_000 / 60_000)} min`;
@@ -93,11 +112,13 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
   return [
     `Open loops: ${health.open}${kinds.length ? ` (${kinds.join(', ')})` : ''}; ${health.revisitDue} due to resurface with your next message.`,
     health.unfinished
-      ? `Backlog: ${health.unfinished} unfinished; oldest ${age(health.oldestUnfinishedAgeMs!)}${health.backlogOverdue ? `, over the ${age(BACKLOG_AGE_LIMIT_MS)} limit` : ''}${health.inhibition ? `; waiting on ${health.inhibition}` : ''}.`
+      ? `Backlog: ${health.unfinished} unfinished (${health.unansweredTurns} message${health.unansweredTurns === 1 ? '' : 's'}, ${health.dueWork} due work step${health.dueWork === 1 ? '' : 's'}); oldest ${age(health.oldestUnfinishedAgeMs!)}${health.backlogOverdue ? `, over the ${age(BACKLOG_AGE_LIMIT_MS)} limit` : ''}${health.inhibition ? `; waiting on ${health.inhibition}` : ''}.`
       : `Backlog: none${health.inhibition ? `; ${health.inhibition}` : ''}.`,
     `Progress: ${health.state}; last ${health.progressAgeMs === null ? 'none yet' : `${age(health.progressAgeMs)} ago`}.`,
+    `Scheduled work: ${health.scheduledWork} waiting for their time${health.workInFlight ? `, ${health.workInFlight} in progress` : ''}${health.deliveryInhibition ? `; ${health.deliveryInhibition}` : ''}.`,
     `Overdue: ${health.overdueCheckIns} check-ins, ${health.overdueRechecks} blocker rechecks, ${health.overdueReminders} reminders; corrections awaiting your next message: ${health.correctionsWaiting}.`,
     ...(health.undeclared || health.refusedCommitments
       ? [`Commitments without a declared dependency: ${health.undeclared} open (older records), ${health.refusedCommitments} refused at creation.`] : []),
+    ...(health.rejectedDeclarations ? [`Declared obligations I could not record: ${health.rejectedDeclarations} (each sent only after a full review).`] : []),
   ];
 }

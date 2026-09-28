@@ -4,11 +4,16 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork,
+  LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE } from './journal-test-worker.js';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
 import { statusReply } from './status-command.js';
-import { DECLARED_OBLIGATIONS_GUIDE, replyReviewContext, replyReviewQuestion } from './reply-check.js';
+import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replyReviewContext, replyReviewQuestion, type ReplyRule } from './reply-check.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
+import { redact } from '../../src/recall/redact.js';
 import { appendRun, readRuns } from './self-state.js';
+// @ts-expect-error Physical launchd watcher is JavaScript.
+import { lastJournalRun, superviseJournal } from '../../scripts/host-watch.mjs';
 
 const key = new Uint8Array(32).fill(23);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-obligations-')));
@@ -21,15 +26,37 @@ const filler = (i: number) => `ordinary turn ${i}: the garden, errands and plans
 const day = (at: number) => new Date(at).toISOString().slice(0, 10);
 
 type Answer = string | Record<string, unknown>;
+type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
+  verdict?: (context: Record<string, unknown>) => 'pass' | 'violation' };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
-  waitsOn?: boolean } = {}) {
+  waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer; review?: Review; stopped?: () => boolean } = {}) {
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(options.maxBytes, options.maxCalls));
   const clock = { now: T0 };
-  const contexts = new Map<string, string>();
-  const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'UTC',
+  const contexts = new Map<string, string>(), reviews: Record<string, unknown>[] = [], work: string[] = [], sent: string[] = [];
+  const review = options.review;
+  const worker = createJournalWorker(journal, { now: () => clock.now, stopped: options.stopped ?? (() => false), timeZone: 'UTC',
     prepareModel: input => input.context,
+    ...(review ? { replyCheck: { elapsedMs: () => 0,
+      jev: async (text: string, questions?: Record<string, unknown>) => ({ latencyMs: 0, value: { model: 'jev-1.13.0',
+        answers: Object.fromEntries(Object.keys(questions ?? REPLY_RULES).map(rule => [rule,
+          { type: 'noul', noul: review.jev?.(text)[rule as ReplyRule] ?? 0.01 }])) } }),
+      escalate: async (text: string, id: string, originalPrompt?: string, rules?: readonly ReplyRule[]) => {
+        // The same context the live runner builds: the answer's packet plus its declared record. This world's
+        // prepared prompt is the bare packet, so it is wrapped the way the live envelope carries it.
+        const envelope = JSON.stringify({ messages: [{ role: 'user', content: journal.view.turns.get(id)!.text },
+          { role: 'context', content: JSON.stringify({ packet: JSON.parse(originalPrompt!) }) }] });
+        const context = JSON.parse(replyReviewContext(envelope, text, rules, declaredObligations(journal.view, id))) as Record<string, unknown>;
+        reviews.push(context);
+        const verdict = review.verdict?.(context) ?? 'pass';
+        return { verdict, ruleIds: verdict === 'pass' ? [] : [rules?.[0] ?? 'defers_work'], confidence: null, latencyMs: 0 };
+      } } } : {}),
     model: async input => {
+      if (input.id.startsWith('obligation:')) {
+        work.push(input.id);
+        const answer = options.work?.(JSON.parse(input.context) as Record<string, unknown>) ?? { outcome: 'continue', note: 'Still working.' };
+        return typeof answer === 'string' ? answer : JSON.stringify(answer);
+      }
       if (input.id.startsWith('summary:')) {
         const packet = JSON.parse(input.context) as { history: { user: string }[] };
         const commitments = packet.history.filter(turn => /remember/iu.test(turn.user))
@@ -40,7 +67,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
       const answer = options.answer?.(input.question, input.context) ?? 'Noted.';
       return typeof answer === 'string' ? answer : JSON.stringify({ memory: [], ...answer });
     },
-    send: async () => 1, checkOutbound: () => {} });
+    send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   let next = 1;
   /** One operator message dated at the current clock, answered and summarized. */
   const say = async (text: string) => {
@@ -49,7 +76,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
       date: Math.floor(clock.now / 1000) } }]);
     await worker.drain(); await worker.summarizeIfNeeded();
   };
-  return { journal, worker, clock, say, contexts, path };
+  return { journal, worker, clock, say, contexts, path, reviews, work, sent };
 }
 const status = (root: string) => {
   const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
@@ -226,7 +253,7 @@ it('shows backlog age, inhibition and stalled progress on the pull surface, and 
     expect(held).toMatchObject({ unfinished: 1, backlogOverdue: true, state: 'stalled', inhibition: 'model-call allowance used' });
     expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ unfinished: 1, backlogOverdue: false, state: 'progressing' });
     const lines = loopStatusLines(w.journal.view, w.clock.now + BACKLOG_AGE_LIMIT_MS + 60_000);
-    expect(lines.join('\n')).toContain('Backlog: 1 unfinished; oldest 31 min, over the 30 min limit; waiting on model-call allowance used.');
+    expect(lines.join('\n')).toContain('Backlog: 1 unfinished (1 message, 0 due work steps); oldest 31 min, over the 30 min limit; waiting on model-call allowance used.');
     expect(lines.join('\n')).toContain('Progress: stalled');
     w.journal.close();
     const drained = origin();
@@ -250,14 +277,258 @@ it('gives the contextual reviewer the attached investigation record and the gove
   expect(replyReviewQuestion(['credential'])).not.toContain(DECLARED_OBLIGATIONS_GUIDE);
 });
 
-it('keeps poll-failure pressure and the revival disposition in the run log across a restart (Rules 55, 68)', () => {
+
+const LATER = 'I’ll look into the invoice question later today.';
+const INVOICE = 'Can you check the invoice question?';
+it('works a due deferral with no further inbound, keeps its result for the next reply, and settles it on delivery (Rules 8, 22, 46, 64, 92)', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: question => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'The tomatoes look fine.',
+    work: context => (context.obligation as { quote: string }).quote === LATER
+      ? { outcome: 'report', report: 'The invoice is for 120 dollars and is due on Friday.' } : { outcome: 'continue', note: 'x' } });
+    await w.say(INVOICE);
+    expect(w.journal.view.commitments).toMatchObject([{ in: 'reply', quote: LATER, owner: 'agent', waitsOn: 'nothing', loop: 'deferral' }]);
+    const calls = w.journal.view.calls;
+    // Before its cadence nothing is due, and the scheduled tick makes no call.
+    w.clock.now += LOOP_REVISIT_MS - 60_000;
+    expect(await w.worker.workObligations()).toBe(false);
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ unfinished: 0, dueWork: 0, scheduledWork: 1, state: 'idle' });
+    // Past it, with no inbound message at all, the obligation is unfinished work and the tick consumes it.
+    w.clock.now += 2 * 60_000;
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ unfinished: 1, dueWork: 1, state: 'progressing', inhibition: null });
+    w.clock.now += 31 * 60_000;
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'stalled', backlogOverdue: true });
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.work).toHaveLength(1);
+    expect(w.journal.view.calls).toBe(calls + 1);
+    // Done, but the reply-only grant has no unsolicited send: the result waits, visibly, for the next reply.
+    expect(w.sent).toHaveLength(1);
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ unfinished: 0, awaitingDelivery: 1,
+      deliveryInhibition: 'no grant for unsolicited sends; 1 finished result waits for your next message' });
+    expect(await w.worker.workObligations()).toBe(false);
+    // The next unrelated message carries it, and the reply actually sent settles the commitment.
+    await w.say('How are the tomatoes?');
+    expect(w.sent.at(-1)).toContain('Follow-up on "I’ll look into the invoice question later today.": The invoice is for 120 dollars and is due on Friday.');
+    expect(w.journal.view.closed.get(0)).toMatchObject({ id: 0, quote: 'The invoice is for 120 dollars and is due on Friday.' });
+    expect(loopHealth(w.journal.view, w.clock.now + 3 * DAY)).toMatchObject({ open: 0, unfinished: 0, awaitingDelivery: 0, scheduledWork: 0, state: 'idle' });
+    w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(reopened.view.closed.has(0)).toBe(true);
+    expect(reopened.view.obligationWork['commitment:0']).toMatchObject({ attempts: 1, outcome: 'report' });
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('starts scheduled work only inside the stop, allowance and capacity fences, and never repeats an interrupted start (Rules 55, 68)', async () => {
+  const root = origin();
+  try {
+    let stopped = false;
+    const w = world(root, { maxCalls: 5, stopped: () => stopped, answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }),
+      work: () => { throw Error('provider lost mid-call'); } });
+    await w.say(INVOICE);
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    // Stop latched: no start.
+    stopped = true;
+    await expect(w.worker.workObligations()).rejects.toThrow('preview stopped');
+    expect(w.work).toHaveLength(0);
+    stopped = false;
+    // A call whose outcome is lost is UNKNOWN: recorded once, not repeated in that slot.
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 1, outcome: 'uncertain' });
+    expect(await w.worker.workObligations()).toBe(false);
+    expect(dueObligationWork(w.journal.view, w.clock.now)).toEqual([]);
+    // A start left without a result by a crash is closed as uncertain by the next process, never re-run.
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: w.clock.now });
+    w.journal.close();
+    const again = world(root, { maxCalls: 5, work: () => ({ outcome: 'continue', note: 'Checked the ledger; one line remains.' }) });
+    again.clock.now = w.clock.now;
+    expect(await again.worker.workObligations()).toBe(false);
+    expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 2, outcome: 'uncertain' });
+    expect(again.work).toHaveLength(0);
+    // Measured capacity: at three quarters of the call allowance scheduled work yields to replies, visibly.
+    again.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(again.journal.view.calls).toBe(3);
+    expect(await again.worker.workObligations()).toBe(false);
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ dueWork: 1, inhibition: 'model-call capacity reserved for replies' });
+    again.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('rechecks a settled blocker through the scheduled owner when due, and delivers a cleared wall (Rules 20, 99)', async () => {
+  const root = origin();
+  let outcome: Answer = { outcome: 'still-blocked', recheck: day(T0 + 61 * DAY) };
+  try {
+    const w = world(root, { answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.',
+      work: () => outcome });
+    await w.say('Can you book the dentist appointment online?');
+    expect(openBlockers(w.journal.view)).toHaveLength(1);
+    w.clock.now += 29 * DAY;
+    expect(await w.worker.workObligations()).toBe(false);
+    w.clock.now += 2 * DAY;
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ overdueRechecks: 1, dueWork: 1 });
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.blockers[0]).toMatchObject({ rechecks: [{ outcome: 'still-blocked' }] });
+    expect(w.journal.view.blockers[0]!.recheckAt).toBe(Date.parse(`${day(T0 + 61 * DAY)}T09:00:00Z`));
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ overdueRechecks: 0, dueWork: 0 });
+    outcome = { outcome: 'cleared', report: 'The clinic now takes bookings by email, which I can draft for you.' };
+    w.clock.now = w.journal.view.blockers[0]!.recheckAt + 60_000;
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(openBlockers(w.journal.view)).toEqual([]);
+    await w.say('Anything new?');
+    expect(w.sent.at(-1)).toContain('The clinic now takes bookings by email');
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('never releases a deferral the runner cannot track on a text-only pass (Rule 6)', async () => {
+  const untracked = (verdict: 'pass' | 'violation') => ({ review: { verdict: (context: Record<string, unknown>) =>
+    ((context.declaredObligations as { loops: unknown[] }).loops.length ? 'pass' : verdict) as 'pass' | 'violation',
+  jev: (text: string) => (text.includes('later today') ? { defers_work: 0.9 } : {}) } });
+  for (const [label, openLoops, sendsDeferral, tracked] of [
+    ['unmatched declaration', [{ kind: 'deferral', quote: 'A clause that was never in this reply.', waitsOn: 'nothing' }], false, 0],
+    ['no declaration', undefined, false, 0],
+    ['tracked declaration', [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }], true, 1],
+  ] as const) {
+    const root = origin();
+    try {
+      const w = world(root, { ...untracked('violation'), answer: () => ({ reply: LATER, ...(openLoops ? { openLoops } : {}) }) });
+      await w.say(INVOICE);
+      // The contextual reviewer always judged it, with what the runner admitted and refused.
+      expect(w.reviews, label).toHaveLength(1);
+      expect((w.reviews[0]!.declaredObligations as { rejected?: unknown }).rejected, label)
+        .toEqual(label === 'unmatched declaration' ? { loops: 1 } : undefined);
+      expect(w.sent.some(text => text.includes(LATER)), label).toBe(sendsDeferral);
+      if (!sendsDeferral) expect(w.sent.at(-1), label).toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
+      // The sent reply and its durable commitment agree.
+      expect(w.journal.view.commitments.filter(note => note.loop), label).toHaveLength(tracked);
+      if (label === 'unmatched declaration') expect(loopStatusLines(w.journal.view, w.clock.now).join('\n')).toContain('Declared obligations I could not record: 1');
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('sends a final cannot-do claim only with its admitted investigation, judged by the contextual reviewer (Rules 20, 21, 23, 103)', async () => {
+  const reviewer = { verdict: (context: Record<string, unknown>) =>
+    ((context.declaredObligations as { blocker: unknown }).blocker ? 'pass' : 'violation') as 'pass' | 'violation',
+  jev: (text: string) => (text.includes('can’t book') ? { unrecorded_blocker: 0.92 } : {}) };
+  for (const [label, proposal, sends] of [
+    ['admitted investigation', blocker(), true],
+    ['empty avenue set', blocker({ avenues: [] }), false],
+    ['no investigation declared', undefined, false],
+  ] as const) {
+    const root = origin();
+    try {
+      const w = world(root, { review: reviewer, answer: () => ({ reply: CLAIM, ...(proposal ? { blocker: proposal } : {}) }) });
+      await w.say('Can you book the dentist appointment online?');
+      expect(w.reviews, label).toHaveLength(1);
+      const declared = w.reviews[0]!.declaredObligations as { blocker: unknown; capabilities: { externalTools: string } };
+      expect(declared.capabilities.externalTools).toBe('none');
+      expect(w.sent.some(text => text.includes(CLAIM)), label).toBe(sends);
+      expect(openBlockers(w.journal.view), label).toHaveLength(sends ? 1 : 0);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('keeps an older directive in the complete packet after compaction, and refuses one past the room it has (Rule 93)', async () => {
+  const root = origin();
+  try {
+    const label = (i: number) => `For project ${String.fromCharCode(65 + i)}, always label every report ${String.fromCharCode(65 + i)}${'a'.repeat(360)}.`;
+    const w = world(root, { maxBytes: 32000, answer: question => /^For project/u.test(question)
+      ? { reply: 'Standing instruction recorded.', directives: [{ quote: question }] } : 'Noted.' });
+    for (let i = 0; i < 20; i++) { w.clock.now += 60_000; await w.say(label(i)); }
+    expect(openDirectives(w.journal.view)).toHaveLength(20);
+    for (let i = 0; i < 20; i++) { w.clock.now += 60_000; await w.say(filler(i)); }
+    await w.worker.summarizeIfNeeded(true);
+    expect(w.journal.view.summaries.length).toBeGreaterThan(0);
+    const probe = w.worker.probe('Write the status report for project A.');
+    if ('reason' in probe) throw Error(probe.reason);
+    const packet = JSON.parse(probe.context) as { directives: { id: number; quote: string }[]; moreDirectives?: number };
+    expect(packet.directives.map(item => item.id)).toEqual([...Array(20).keys()]);
+    expect(packet.directives[0]!.quote).toBe(label(0));
+    expect(packet.moreDirectives).toBeUndefined();
+    // Past half the context bound a new directive is refused aloud, never admitted to be dropped later.
+    const small = origin();
+    try {
+      const s = world(small, { maxBytes: 8000, answer: question => /^For project/u.test(question)
+        ? { reply: 'Standing instruction recorded.', directives: [{ quote: question }] } : 'Noted.' });
+      for (let i = 0; i < 12; i++) { s.clock.now += 60_000; await s.say(label(i)); }
+      const admitted = openDirectives(s.journal.view).length;
+      expect(admitted).toBeGreaterThan(0);
+      expect(admitted).toBeLessThan(12);
+      expect(openDirectives(s.journal.view).reduce((total, item) => total + Buffer.byteLength(JSON.stringify(item.note.quote)) + 120, 0))
+        .toBeLessThanOrEqual(8000 * DIRECTIVE_SHARE);
+      expect(s.journal.view.order.at(-1)!.intent).toContain('I have not saved that standing instruction');
+      s.journal.close();
+    } finally { rmSync(small, { recursive: true, force: true }); }
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60000);
+
+it('redacts every declared field before the reviewer context reaches a provider (secret floor)', () => {
+  const sentinel = 'password=syntheticReviewSecret123';
+  expect(redact(sentinel).count).toBeGreaterThan(0);
+  const prompt = JSON.stringify({ messages: [{ role: 'user', content: 'Can you book it?' },
+    { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private-chat' }, history: [] } }) }] });
+  const declared = { loops: [], blocker: { ...blocker(), avenues: [{ avenue: 'booking site', disposition: 'tried', evidence: `site said ${sentinel}` }] } };
+  const context = replyReviewContext(prompt, CLAIM, ['claims_blocked'], declared);
+  expect(context).not.toContain(sentinel);
+  expect(context).toContain('booking site');
+  const prepared = prepareJournalEnvelope({ question: 'Judge the reply.', context, id: 'review' }, 'claude-sonnet-5', 'grant:preview', T0, 409600);
+  expect(prepared).not.toContain(sentinel);
+});
+
+it('folds every recorded poll attempt into one episode, so a launch killed before its exit record loses nothing (Rule 55)', () => {
   const root = origin();
   try {
     const path = join(root, 'runs.jsonl');
     appendRun(path, { v: 1, launch: 1, pid: 1 });
-    appendRun(path, { v: 1, launch: 1, exit: 2, reason: 'Telegram polling conflict after 5 attempts',
-      pollPressure: { failed: 5, conflicted: 5 }, unfinished: 2, revival: 'queued' });
-    expect(readRuns(path).launches).toEqual([{ at: 1, exit: 2, reason: 'Telegram polling conflict after 5 attempts',
-      pollPressure: { failed: 5, conflicted: 5 }, unfinished: 2, revival: 'queued' }]);
+    for (let i = 0; i < 5; i++) appendRun(path, { v: 1, launch: 1, poll: 'conflicted', at: 2 + i });
+    appendRun(path, { v: 1, launch: 1, exit: 9, reason: 'Telegram polling conflict after 5 attempts', unfinished: 0, revival: 'none' });
+    appendRun(path, { v: 1, launch: 10, pid: 2 });
+    appendRun(path, { v: 1, launch: 10, poll: 'conflicted', at: 11 }); // killed before any exit record
+    appendRun(path, { v: 1, launch: 12, pid: 3 });
+    const log = readRuns(path);
+    expect(log.pollPressure).toEqual({ failed: 6, conflicted: 6 });
+    expect(log.unreadable).toBe(0);
+    expect(log.launches.map(run => run.exit)).toEqual([9, undefined, undefined]);
+    appendRun(path, { v: 1, launch: 12, poll: 'restored', at: 13 });
+    appendRun(path, { v: 1, launch: 12, poll: 'failed', at: 14 });
+    expect(readRuns(path).pollPressure).toEqual({ failed: 1, conflicted: 0 });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('revives a queued runner, stops on inhibited or none, and bounds relaunches after crashes (Rules 55, 68)', async () => {
+  const root = origin();
+  try {
+    const agent = join(process.cwd(), 'tests/preview/journal-agent.mjs');
+    const config = { journal: true, root, agent: [process.execPath, agent, 'run', '--root', root], maxRestarts: 3, backoffMs: 1, maxBackoffMs: 4 };
+    const path = join(root, 'runs.jsonl');
+    let launch = 0;
+    const script: ((at: number) => { code: number | null; signal: string | null })[] = [];
+    const waits: number[] = [];
+    const run = (revival?: 'queued' | 'inhibited' | 'none', code = 0) => (at: number) => {
+      appendRun(path, { v: 1, launch: at, pid: at });
+      if (revival) appendRun(path, { v: 1, launch: at, exit: at + 1, reason: 'cycle limit reached', unfinished: 1, revival });
+      return { code, signal: null };
+    };
+    const supervise = () => superviseJournal(config, { launch: async () => script[launch]!(++launch * 10),
+      wait: async (_root: string, ms: number) => { waits.push(ms); } });
+    // Queued work after a clean exit is relaunched; an inhibited exit ends supervision.
+    script.push(run('queued'), run('queued'), run('inhibited'));
+    expect(await supervise()).toBe(0);
+    expect(launch).toBe(3);
+    expect(lastJournalRun(root)).toEqual({ launch: 30, revival: 'inhibited' });
+    // Crashes (no exit record) are relaunched with backoff, at most maxRestarts times in a row.
+    launch = 0; script.length = 0; waits.length = 0;
+    for (let i = 0; i < 10; i++) script.push(run(undefined, 1));
+    expect(await supervise()).toBe(0);
+    expect(launch).toBe(4);
+    expect(waits).toEqual([1, 2, 4]);
+    expect(() => superviseJournal({ ...config, agent: [process.execPath, agent, 'run', '--root', '/elsewhere'] })).rejects.toThrow('invalid journal launch configuration');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
