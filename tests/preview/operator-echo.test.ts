@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
+import { reviewUnavailableReleases } from './journal.js';
 import { HOLDING_REPLY, REPLY_RULES, repeatsOperatorOnly } from './reply-check.js';
 import { statusReply } from './status-command.js';
 
@@ -98,7 +99,7 @@ describe('operator echo in the journal runner', () => {
     } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 
-  it('still checks the same reply when it adds a code the operator never gave (held, as before)', async () => {
+  it('still checks the same reply when it adds a code the operator never gave (Rule 86 then releases it)', async () => {
     const root = temp();
     const w = world(root, 'The gym locker code is 5823 now. The spare locker code is 9911.');
     try {
@@ -107,8 +108,11 @@ describe('operator echo in the journal runner', () => {
       const turn = w.journal.view.order[2]!;
       expect(w.calls.jev.at(-1)).toContain('9911');
       expect(w.calls.reviews).toBe(1);
-      expect(turn.intent).toBeUndefined();
-      expect(turn.held).toBe('reply check unavailable');
+      // Not an echo: Jev and the full-context review both ran. The review gave no verdict and
+      // Jev's flags name no secret, so under Rule 86 they only signal and the reply is sent.
+      expect(turn.intent).toBe('PREVIEW — The gym locker code is 5823 now. The spare locker code is 9911.');
+      expect(turn.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'violation'], ['subscription', 'unavailable']]);
+      expect(reviewUnavailableReleases(w.journal.view)).toEqual({ total: 1, byRule: { claims_blocked: 1, parks_on_user: 1 } });
       expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(0);
     } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
