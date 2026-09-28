@@ -137,6 +137,20 @@ describe('governed documents go through the version chain (Rule 90)', () => {
     r.write('docs/g.md', doc); r.git('rm', '-q', 'docs/g.changelog.json'); r.write('reviews/change.md', record(base, '<!-- 3 -->')); r.commit('drop the history');
     expect(r.check('check').out).toContain('docs/g.changelog.json existed at the change\'s base and is now removed');
   }, 120_000);
+  it('treats regenerated register output as derived, not as a governed or authored document (Rule 91)', () => {
+    const r = repo();
+    const generated = (source: string) => `# Generated rules\n\nSource commit: ${source}\n\n# Rule 91\n\n**Status: approved. Governed.**\n\nA deferred item needs a commitment.\n`;
+    r.write('generated/rules.md', generated('a')); r.write('generated/register.json', '{"text":"follow-up work is deferred"}\n');
+    r.write('docs/g.md', doc); const base = r.commit('base'); adopt(r);
+    r.write('generated/rules.md', generated('b')); r.write('generated/register.json', '{"text":"follow-up work is deferred","source":"b"}\n');
+    r.write('reviews/change.md', record(base)); r.commit('regenerate');
+    const ok = r.check('check'); expect(ok.out).toContain('change-review check OK'); expect(ok.status).toBe(0);
+    // The authored neighbour is still held: the same text in a governed document needs a version and a disposition.
+    r.write('docs/g.md', doc.replace('The body.', 'A deferred item needs a commitment.')); r.write('reviews/change.md', record(base, '<!-- 1 -->')); r.commit('authored edit');
+    const held = r.check('check').out;
+    expect(held).toContain('governed docs/g.md changed without a new version');
+    expect(held).toContain("needs 'Deferral: docs/g.md:5");
+  }, 120_000);
 });
 
 describe('prompt findings reach the record (Rules 12, 27)', () => {

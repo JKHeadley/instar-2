@@ -94,6 +94,7 @@ function allowed(file, lineNo) {
 // output (generated/, NAME.changelog.md) is not a governed document (rule 91): it is rebuilt
 // from governed sources, and the register check refuses drift.
 const GENERATED = /(^|\/)generated\/|\.changelog\.md$/;
+export const isGeneratedOutput = (file) => GENERATED.test(file);
 export function trackedDocuments(root = ".") {
   try {
     return execFileSync("git", ["-C", root, "ls-files", "*.md"], { encoding: "utf8" }).split("\n")

@@ -40,7 +40,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { RED_CLASSES, RESIDUE_SEVERITIES, addedLineHits, artifactDecision, isPromptSourceFile, isTestFile, landingVerdict, parseRecord,
   scanPrompts, subjectDigest, suggestTier, validateRecord } from './change-review.mjs';
-import { indexedSections, isGoverned } from './check-governed-docs.mjs';
+import { indexedSections, isGeneratedOutput, isGoverned } from './check-governed-docs.mjs';
 
 const CHECKER = 'scripts/check-change-review.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
@@ -75,7 +75,8 @@ function addedLines(base, last) {
     if (l.startsWith('+++ ')) { path = l === '+++ /dev/null' ? null : l.slice(6); continue; }
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l);
     if (hunk) { line = Number(hunk[1]); continue; }
-    if (path && l.startsWith('+')) { out.push({ path, line, text: l.slice(1) }); line++; }
+    // Generated output is rebuilt from sources that are scanned where they are authored.
+    if (path && l.startsWith('+')) { if (!isGeneratedOutput(path)) out.push({ path, line, text: l.slice(1) }); line++; }
   }
   return out;
 }
@@ -102,7 +103,7 @@ function governedVersionErrors(entry) {
   const touched = new Map(); // governing document -> whether its body (or a section) changed
   for (const path of entry.subject) {
     if (path.endsWith('.changelog.json')) { const doc = path.replace(/\.changelog\.json$/, '.md'); if (!touched.has(doc)) touched.set(doc, false); continue; }
-    if (!path.endsWith('.md')) continue;
+    if (!path.endsWith('.md') || isGeneratedOutput(path)) continue; // generated output is not a governed document (Rule 91)
     for (const doc of new Set([governingAt(entry.base, path), governingAt(entry.last, path)].filter(Boolean))) touched.set(doc, true);
   }
   for (const [doc, bodyChanged] of touched) {
