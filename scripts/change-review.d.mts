@@ -13,6 +13,8 @@ export interface RecordContext {
   readonly promptFindings: readonly PromptFinding[]; readonly promptSourcesChanged: readonly string[];
   readonly deferrals: readonly string[]; readonly skips: readonly string[];
   exists(path: string): boolean;
+  read(path: string): string | null;
+  resolvesEvidence(locator: string): boolean;
 }
 export interface Verdict { readonly errors: string[]; readonly notes: string[] }
 export interface LedgerEntry {
@@ -22,8 +24,10 @@ export interface LedgerEntry {
 export interface LandingContext {
   readonly heads: readonly string[]; readonly head: string; readonly tree: string; readonly record: string;
   readonly author: string; readonly subject: readonly string[];
+  readonly desk?: { readonly reviewer: string; readonly artifact: string; readonly gateResultsSha256: string } | undefined;
   artifactHash(path: string): string | null;
-  convergenceEligible(record: never, author: string, population: never): boolean;
+  artifactDecision(path: string): 'YES' | 'NO' | null;
+  convergenceEligible: ((record: never, author: string, population: never) => boolean) | null;
 }
 export const TIERS: readonly string[];
 export const RED_CLASSES: readonly string[];
@@ -36,4 +40,5 @@ export function scanPrompts(files: readonly { path: string; text: string }[]): {
 export function addedLineHits(added: readonly { path: string; line: number; text: string }[]): { deferrals: string[]; skips: string[] };
 export function subjectDigest(entries: readonly { path: string; blob: string | null }[]): string;
 export function validateRecord(record: ParsedRecord, ctx: RecordContext): Verdict;
+export function artifactDecision(text: string): 'YES' | 'NO' | null;
 export function landingVerdict(record: ParsedRecord, entries: readonly LedgerEntry[], ctx: LandingContext): Verdict;
