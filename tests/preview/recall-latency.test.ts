@@ -66,7 +66,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // conflict/fact-update/held/exact-unit guidance changed this packet. Simplify re-pin: every retained
     // person note is now eligible (no active/archive partition), so single-term "Sam N" names match mail; the
     // compacted answer contract and single compact summary changed the bytes again.
-    expect(packetHash).toBe('3c84f3acac27ab185bf7cdaea8c2cf349572a60ebb9bb01ceed355666a77236b');
+    // int13 re-pin: diffed against int12's packet, only the capability line (requested reminders and
+    // summaries replace the retired morning-reminder grant) and datedDecision's remind:true clause changed.
+    expect(packetHash).toBe('1164bfd6da13f91008ef4fec51ebebaa0384563c297550f35a072bfd9877cacc');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

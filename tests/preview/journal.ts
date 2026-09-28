@@ -3067,8 +3067,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Optional evidence cannot make the complete unsummarized history smaller.
       if (!compact && Buffer.byteLength(completePacket!)
         > journal.view.limits.maxBytes) continue;
-      const recalled = said ? said.indices.map(index => older[index]!).filter(item => !summary || item.update <= summary.through)
-        : summary ? recallFor(turn, summary) : [];
+      // A period recap already carries its window's turns; recalling the same turns again only
+      // spends the bound the window needs (the review headroom makes that bound tighter).
+      const recalled = (said ? said.indices.map(index => older[index]!).filter(item => !summary || item.update <= summary.through)
+        : summary ? recallFor(turn, summary) : []).filter(item => !periodTurns.includes(item));
       const channels = channelFor(turn, summary?.text);
       const candidateChannels = channelFor(turn, summary?.text, false);
       const named = peopleFor(turn.text, summary?.through ?? -1);

@@ -80,7 +80,8 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
       packetBytesMean: Math.round(bytes / corpus.length), rows };
     process.stdout.write(`${JSON.stringify(result)}\n`);
     expect(result.recall).toBe(1);
-    expect(result.precision).toBeGreaterThanOrEqual(0.2);
+    // int13: the two turns before a terse follow-up stay recalled; one question gains one such turn (measured 12/61).
+    expect(result.precision).toBeGreaterThanOrEqual(12 / 61);
     // int12: other pieces add fixed reply instructions, plus conflict/fact-update and exact-unit guidance
     // that ride here because memoryCandidates are offered and recalled facts carry units (measured mean 8598).
     expect(result.packetBytesMean).toBeLessThanOrEqual(8704);
