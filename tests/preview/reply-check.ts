@@ -33,7 +33,7 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
 /** Rules 4, 10, 57, 86, 116: the one exact test that skips the second check. It judges no
  * meaning and uses no keyword list. Apart from a fixed set of connective words, every token
  * of the reply must appear verbatim and in order inside ONE earlier message from the verified
- * operator in this private chat (a subsequence of that message's tokens). Words from two
+ * operator in this private chat, as one contiguous run of that message's non-connective tokens. Words from two
  * messages, from imported sources, other senders or the agent's own replies, reordered words
  * or any added word fail it and keep the existing review. The exact credential wall runs
  * before this test and again on the send body (REPLY_RULES.credential). */
@@ -46,14 +46,13 @@ export function repeatsOperatorOnly(reply: string, operatorMessages: readonly st
   const content = replyTokens(reply.replace(/^PREVIEW — /u, ''))
     .filter(token => !echoConnectives.has(token.toLowerCase()));
   if (!content.length) return false;
+  // Contiguous, not a subsequence: with connectives removed from both sides, the reply's words
+  // must be one unbroken run of ONE operator message, so no value is stitched from scattered words.
   return operatorMessages.some(message => {
-    const source = replyTokens(message);
-    let at = 0;
-    for (const token of content) {
-      while (at < source.length && source[at] !== token) at++;
-      if (at++ >= source.length) return false;
-    }
-    return true;
+    const source = replyTokens(message).filter(token => !echoConnectives.has(token.toLowerCase()));
+    for (let start = 0; start + content.length <= source.length; start++)
+      if (content.every((token, i) => source[start + i] === token)) return true;
+    return false;
   });
 }
 

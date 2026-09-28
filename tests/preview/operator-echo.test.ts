@@ -59,6 +59,9 @@ describe('the exact operator-echo test', () => {
     expect(repeatsOperatorOnly('Your code is 5823.', [])).toBe(false);
     // The agent's own earlier replies are not a source.
     expect(repeatsOperatorOnly('Noted, thanks.', own)).toBe(false);
+    // Contiguity (Astra desk review MUST-FIX 1): scattered words cannot be stitched into a value.
+    expect(repeatsOperatorOnly('It is violet orchid.', ['The violet flowers are beside the orchid. What did Sam send?'])).toBe(false);
+    expect(repeatsOperatorOnly('It is violet orchid.', ['My recovery phrase is violet orchid.'])).toBe(true);
   });
 
   it('judges no meaning and uses no keyword list (Rule 10): only the exact source test decides', () => {
