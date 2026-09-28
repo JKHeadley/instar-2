@@ -1,5 +1,5 @@
-import { HARNESS_STALL_CLASSES } from '../../src/assembly/index.js';
-import type { HarnessStallCoverage } from '../../src/assembly/index.js';
+import { HARNESS_STALL_CLASSES } from '../../src/assembly/stall-coverage.js';
+import type { HarnessStallCoverage } from '../../src/assembly/stall-coverage.js';
 
 /** A complete Rule 59 stall table for adapter fixtures that exercise other contracts. */
 export function stallCoverageFixture(harness: string): HarnessStallCoverage {
