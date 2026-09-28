@@ -39,6 +39,7 @@ import { appendProof, readProofs } from './proof-log.js';
 import { hostname, homedir } from 'node:os';
 import { assessStranded, claimConversation, observeConversationOwner, recordRefusal, refusedLaunches, SUPPORTED_POSTURE } from './conversation-owner.js';
 import { agreementLine, agreementStatus, runDueAgreements } from './store-agreements.js';
+import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -82,6 +83,16 @@ const parse = values => {
   if (options['reminder-grant-reference'] !== undefined)
     throw Error('preview: --reminder-grant-reference is retired; the operator grants each reminder by asking for it');
   return { command, options };
+};
+// Eleven §§2, 4 (P-02): the operator's independently administered approval page
+// (scripts/approval-surface.mjs, run under the operator's OS identity). Installed only when all three are
+// given; the runner reads the operator's store and writes only its own request outbox.
+const approvalSurfaceOf = options => {
+  const given = ['approval-store', 'approval-outbox', 'approval-operator-uid'].filter(name => options[name] !== undefined);
+  if (!given.length) return null;
+  if (given.length !== 3) throw Error('preview: --approval-store, --approval-outbox and --approval-operator-uid go together');
+  return createApprovalSurfaceClient({ store: options['approval-store'], outbox: options['approval-outbox'],
+    operatorUid: number(options['approval-operator-uid'], 'approval-operator-uid', 0), now: wallNow });
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
 const number = (value, name, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) => {
@@ -472,6 +483,9 @@ async function main() {
         // An owned outage: the message is preserved and the named required dependency was missing.
         outages: view.view.order.filter(t => t.minimalOutage && t.limited === undefined).map(t => ({ update: t.update,
           missing: t.minimalOutage.missing, since: t.minimalOutage.at })) },
+      // The independent approval page: whether it is installed and can approve now (a passkey is enrolled).
+      approvalSurface: (() => { try { return approvalSurfaceOf(options)?.status() ?? { installed: false }; }
+        catch (error) { return { installed: false, reason: error instanceof Error ? error.message : 'invalid' }; } })(),
       // Operator requests: a stop press decides the brake; a raise completes only on the verified surface.
       approvals: view.view.order.filter(t => t.approval).map(t => ({ update: t.update, action: t.approval.action,
         decision: t.approval.decision ?? 'pending', applied: t.approval.applied === true,
@@ -937,7 +951,8 @@ async function main() {
       return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
         agreementLine(agreementsPath, wallNow())];
     };
-    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    const approvalSurface = approvalSurfaceOf(options);
+    worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,

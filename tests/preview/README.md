@@ -2932,13 +2932,11 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   with an installed owner. Ordinary work runs beside the poll loop and is never awaited by it. A
   failed ordinary pass no longer ends the run: the minimal path answers at once (reason `worker`)
   and the ordinary pass is retried with backoff; eight consecutive failures open the breaker and end
-  the run for the host supervisor. The live runner installs **no** independent surface: Part Nine's
-  verifier (for example `scripts/fixed-installation-verifier-clock-observer.mjs`, which runs under
-  the operator's own OS identity with the operator's own signing factor) is an operator installation
-  this preview cannot perform for itself. Until it is installed (build 3b), a chat `/stop` reaches the
-  latch through the backlog scan up to the waiting store's bound; a stop behind more than 240 reserve
-  plus 1000 waiting updates within the hour is honestly unreachable by chat, and the host `stop`
-  command remains a local brake only.
+  the run for the host supervisor. Without the independent approval page (next item), a chat
+  `/stop` reaches the latch through the backlog scan up to the waiting store's bound; a stop behind
+  more than 240 reserve plus 1000 waiting updates within the hour is unreachable by chat, and the
+  host `stop` command remains a local brake only. With the page installed and a passkey enrolled,
+  its standing Stop reaches the latch at any backlog depth.
 - **Operator channel (Rule 14).** A verified operator's photo, voice note or caption, and an edit
   of a message this journal never saw, reach the mind with a plain flag instead of being dropped.
   Service messages and foreign senders take no turn; their raw updates stay preserved.
@@ -2972,8 +2970,41 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   (`raiseSubject`) and compared with the challenge, so limits substituted into the journal cannot
   ride a genuine proof. Such a request is recorded `refused`, and a fresh one follows. A Telegram
   Approve press, silence, a journal row, a wrong, expired or replayed proof, or a moved base never
-  raise. No verifier is installed in this preview, so raises stay with the desk and no raise
-  request is offered by phone.
+  raise. Where the chat's limited answer is inhibited (the live posture above), the raise is still
+  offered on the approval page itself (`approval-request`): one open request at a time, never again
+  at a base the operator declined, and a refused issue retried after a minute. Once approved there,
+  the saved messages get their ordinary answers.
+- **The independent approval page (Eleven §§2, 4, 5; P-02, P-04; build 3b).**
+  `scripts/approval-surface.mjs` is the operator's own process, never the agent's: it refuses to
+  start under the agent's OS identity, keeps its records in an operator-owned store the agent can
+  read but not write (`surface.json`, `keys.json`, `acts/`, private `private/`), listens on loopback
+  only, and is published over HTTPS only under a recorded ingress grant (`ingressGrant`, "nothing
+  outward by default"). The approval gesture is a passkey on the operator's phone (P-02): the page
+  asks the phone to sign the exact challenge, decision and a fresh page nonce, with user
+  verification. The page renders a request in its own fixed wording (a raise must match the one
+  template and hash to the challenge's rendering digest; the stop is the page's own text), puts the
+  primary action first, and has no field the operator authors. A decision is recorded write-once;
+  a replay finds it and stops. The runner (`tests/preview/approval-surface-client.mjs`) writes
+  requests only into its own outbox, reads the store only if it is owned by the configured operator
+  identity (never its own) and writable by nobody else, re-verifies every act's signature against
+  the enrolled passkeys, and consumes each act once. Chat steering (P-04) stays limited to what
+  grants nothing: the `/stop` press and a raise's Decline; no chat act completes a raise, because no
+  exposure acceptance for a compromised chat token is recorded. The page lists pending requests
+  pull-first (the standing Stop first); nothing about it is pushed.
+
+  Install (the operator, once): create a separate OS user for the page (for example
+  `sudo sysadminctl -addUser instar-approvals`), and as that user create the store (mode 0755) and a
+  config file it owns (mode 0600): `{"operator":"telegram:OPERATOR_ID","operatorUid":UID_OF_THAT_USER,
+  "agentUid":RUNNER_UID,"store":"/ABS/STORE","outbox":"/ABS/RUNNER_OUTBOX","publicBase":"https://STABLE.HOST",
+  "ingressGrant":"desk:approvals-ingress-DATE","port":PORT}`. The runner's outbox is a directory the
+  runner owns, mode 0755. Publish `127.0.0.1:PORT` at that stable HTTPS host (a named tunnel; a
+  passkey is bound to the host name, so an ephemeral tunnel name breaks it). Run
+  `node scripts/approval-surface.mjs serve CONFIG` as that user, then `... enroll CONFIG` prints a
+  one-use enrolment link (15 minutes) to open on the phone; enrol a second passkey or a synced
+  passkey as the recovery route. Start the runner with `--approval-store /ABS/STORE
+  --approval-outbox /ABS/RUNNER_OUTBOX --approval-operator-uid UID_OF_THAT_USER`; `status
+  .approvalSurface` then reads `{ installed: true, ready: true, page, passkeys }`. A store owned by
+  the runner's own identity is refused (`installed: false`).
 - **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
   `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
   bounded backoff. After three consecutive failed restarts it records one incident episode with the

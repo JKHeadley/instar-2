@@ -480,6 +480,9 @@ export type JournalRecord =
     update?: number; raw?: string; cursor?: number; verified?: VerifiedApproval; at: number }
   /** The minimal path was not admitted for this message: it stays preserved and the outage is owned (Rule 15). */
   | { kind: 'minimal-outage'; id: string; missing: string[]; at: number }
+  /** A cap raise offered on the independent approval page while the chat's limited answer is not
+   * admitted: the request exists on the operator's own surface, not in the conversation (Eleven §2). */
+  | { kind: 'approval-request'; id: string; reason: RaiseReason; approval: ApprovalRequest; at: number }
   | { kind: 'limited-sent'; id: string; message: number; at: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
@@ -631,6 +634,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   limited?: { text: string; at: number; lead: string; reason: LimitedReason }; limitedSent?: number;
   /** The owned minimal-path outage for this preserved message: which required dependency was missing. */
   minimalOutage?: { missing: string[]; at: number };
+  /** The capped allowance an `approval-request` row offered to raise (its limited answer carries it otherwise). */
+  approvalReason?: RaiseReason;
   approval?: ApprovalRequest & { decision?: ApprovalOutcome; decidedBy?: number; applied?: true; verified?: VerifiedApproval;
     /** Every Telegram update that pressed this request; a press seen again is never a second decision. */
     presses?: number[] };
@@ -2296,6 +2301,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (press) { (approval.presses ??= []).push(row.update!); view.cursor = Math.max(view.cursor, row.cursor!); }
     return;
   }
+  if (row.kind === 'approval-request') {
+    if (!turn.accepted || turn.limited !== undefined || view.stop !== null || !['turns', 'calls', 'replies'].includes(row.reason)
+      || row.approval?.challenge === undefined || openApproval(view, 'raise-caps', row.at) !== undefined
+      || turn.approval !== undefined && turn.approval.decision === undefined && row.at <= (turn.approval.challenge?.expiresAt ?? Infinity)
+      || !validApproval(view, row.id, row.approval, 'raise-caps', approvalRequestText(view, row.reason), row.reason))
+      throw Error('preview journal: approval request order');
+    turn.approval = { ...row.approval }; turn.approvalReason = row.reason; return;
+  }
   if (row.kind === 'minimal-outage') {
     if (!turn.accepted || turn.limited !== undefined || !Array.isArray(row.missing) || !row.missing.length
       || row.missing.some(item => typeof item !== 'string' || !item)) throw Error('preview journal: minimal outage order');
@@ -3015,7 +3028,10 @@ export interface PreviewPorts {
   /** The independently administered approval surface (Part Nine's verifier port). A cap raise completes
    * only with its verified act; absent, no raise is completable from chat (Purpose; Rules 79, 82, 98). */
   approvalSurface?: { verifier: IndependentSurfaceVerifierPort; link(challenge: SurfaceChallenge): string | null;
-    acts(): readonly VerifiedActSubmission[] };
+    acts(): readonly VerifiedActSubmission[];
+    /** The exact wording a raise will show, handed to the surface before its challenge is issued; the
+     * surface renders it only if it is the fixed template and hashes to the rendering digest. */
+    wording?(renderingDigest: Hash, text: string): void };
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -3223,7 +3239,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // The exact subject, before the one-use proof is spent: the challenge the verifier issued must
       // bind these very limits and wording. A substituted journal row is refused, visibly, and the
       // genuine proof stays unspent; a fresh request follows.
-      const reason = lead.limited?.reason;
+      const reason = lead.limited?.reason ?? lead.approvalReason;
       const subject = reason === undefined || reason === 'worker' || !approval.limits ? null
         : raiseSubject(journal.view, approval.id, approval.base, reason, approval.limits);
       if (!subject || challenge.request !== approval.id || challenge.base !== approval.base
@@ -5550,6 +5566,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const { requestDigest: digest, renderingDigest: rendering } = raiseSubject(view, id, base, reason, limits);
     let challenge: SurfaceChallenge | null = null;
     try {
+      surface.wording?.(rendering, approvalRequestText(view, reason));
       consumeResult(surface.verifier.issue({ request: id, requestDigest: digest, renderingDigest: rendering, action: 'raise-caps',
         scope: { type: 'Scope', schemaVersion: 1, kind: 'conversation', members: [view.genesis.chat] } as unknown as Scope,
         audience: 'operator-private-chat', operator: approvalOperator(view), requestedBy: 'preview-agent', artifact: digest, base,
@@ -5593,6 +5610,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const link = stopPage();
     return link === null ? markup : { inline_keyboard: [...(markup?.inline_keyboard ?? []), [{ text: STOP_PAGE_BUTTON, url: link }]] };
   };
+  /** With the chat's limited answer not admitted, the raise that would clear the cap is still offered on
+   * the operator's independent approval page (pull-first, Eleven §2): one open request at a time, none
+   * again at a base the operator already declined, and a refused issue retried after a pause (Rule 55). */
+  let raiseIssueRetryAt = 0;
+  const offerRaise = (lead: Turn, reason: LimitedReason) => {
+    const view = journal.view, now = ports.now(), base = approvalBase(view);
+    if (reason === 'worker' || !ports.approvalSurface || journal.readOnly || now < raiseIssueRetryAt
+      || openApproval(view, 'raise-caps', now) !== undefined
+      || view.order.some(turn => turn.approval?.action === 'raise-caps' && turn.approval.base === base && turn.approval.decision === 'declined')) return;
+    const approval = issueRaise(lead, reason);
+    if (approval === undefined) { raiseIssueRetryAt = now + 60_000; return; }
+    journal.append({ kind: 'approval-request', id: lead.id, reason, approval, at: now });
+  };
   let limitedRunning = false;
   const answerLimited = async () => {
     // One pass at a time: the runner calls it between polls while an ordinary drain may be awaiting a model.
@@ -5624,6 +5654,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (group.stop) { journal.append({ kind: 'stop', reason: 'operator', update: lead.update, raw: lead.raw, at: ports.now() }); return; }
         if (JSON.stringify(lead.minimalOutage?.missing) !== JSON.stringify(missing))
           journal.append({ kind: 'minimal-outage', id: lead.id, missing, at: ports.now() });
+        offerRaise(lead, group.reason);
         continue;
       }
       // The limited answer carries the one prefilled request that would clear it (Rules 79, 82).
