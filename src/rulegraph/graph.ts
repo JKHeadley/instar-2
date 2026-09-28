@@ -68,10 +68,16 @@ export function buildRuleGraph(register: GeneratedRegister, branch: string, runs
     }
     const edges: { rule: number; holder: string; class: RuleGraph['edges'][number]['class']; portion?: string; remainder?: string }[] = [];
     const loops: { id: string; rule: number; holder: string | null; dueBy: number; part: number | null; owner: string; overdueAction: string }[] = [];
+    // Rule 69: an inactive entry's governing references still resolve, against every
+    // rule version the register retains (retired rules stay as history).
+    const known = new Set(register.entries.filter(e => e.declaration.kind === 'rules').map(e => number(e.declaration.requiredFacts.number, 'rule.number')));
     for (const { declaration: d } of register.entries) {
       // History stays in the register. Retired holders have no current power.
       // Dark/soaking holders likewise cannot establish live enforcement.
-      if (d.status !== 'live') continue;
+      if (d.status !== 'live') {
+        for (const n of [...d.standards, ...d.holds.map(h => h.rule)]) requireThat(known.has(n), `P3-NF-13: ${d.status} ${d.id} names missing rule ${n}`);
+        continue;
+      }
       for (const standard of d.standards) requireThat(byNumber.has(standard), `P3-NF-13: standard ${standard} missing for ${d.id}`);
       for (const h of d.holds) {
         requireThat(byNumber.has(h.rule), `P3-NF-13: holder ${d.id} names missing rule ${h.rule}`);
