@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS } from './journal-test-worker.js';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
@@ -50,6 +51,14 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
   };
   return { journal, worker, clock, say, contexts, path };
 }
+const status = (root: string) => {
+  const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'status', '--root', root],
+  { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+    encoding: 'utf8', timeout: 20000 });
+  expect(result.status, result.stderr).toBe(0);
+  return JSON.parse(result.stdout) as { directives: { quote: string }[]; obligations: { byKind: Record<string, number> } };
+};
 const quotes = (context: string) => ((JSON.parse(context) as { commitments?: { items: { quote: string }[] }[] }).commitments ?? [])
   .flatMap(entry => entry.items.map(item => item.quote));
 
@@ -134,6 +143,9 @@ it('admits an operator directive, carries it into every later packet with no exp
     const reopened = openPreviewJournal(w.path, key);
     expect(openDirectives(reopened.view)).toHaveLength(1);
     reopened.close();
+    const pulled = status(root);
+    expect(pulled.directives.map(item => item.quote)).toEqual([AISLE]);
+    expect(pulled.obligations.byKind.directive).toBe(1);
     const again = world(root, { maxBytes: 16000, answer: (question, context) => {
       const listed = (JSON.parse(context) as { directives?: { id: number }[] }).directives ?? [];
       return { reply: 'Dropped.', closeDirectives: listed.map(item => ({ id: item.id, kind: 'completed' })) };
