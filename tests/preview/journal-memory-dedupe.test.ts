@@ -30,7 +30,7 @@ it.each(['first', 'repeat'] as const)('keeps one restated item and withholds bot
           quote: targetQuote, replacement: 'my gym locker code is 4412' }] : [];
       return JSON.stringify({ summary: memory.length ? 'The gym locker code was corrected to 4412.' : 'A gym locker code was remembered.',
         people: [], commitments: packet.history.filter(turn => turn.user.includes('remember') || turn.user.startsWith('Remember'))
-          .map(turn => ({ in: 'message', quote: turn.user })), closed: [], memory });
+          .map(turn => ({ in: 'message', quote: turn.user, waitsOn: 'nothing' })), closed: [], memory });
     }, send: async () => 1, checkOutbound: () => {} });
   try {
     let worker = makeWorker();
@@ -88,7 +88,7 @@ it.each(['existing', 'fresh'] as const)('records one source when an %s item has 
       const packet = JSON.parse(input.context) as { history: { user: string }[] };
       return JSON.stringify({ summary: 'The locker code was remembered.', people: [], memory: [], closed: [],
         commitments: packet.history.flatMap(turn => turn.user === request
-          ? [{ in: 'message', quote: request }, { in: 'message', quote: request.trim() }] : []) });
+          ? [{ in: 'message', quote: request, waitsOn: 'nothing' }, { in: 'message', quote: request.trim(), waitsOn: 'nothing' }] : []) });
     }, send: async () => 1, checkOutbound: () => {} });
   try {
     if (target === 'existing') {
@@ -116,7 +116,7 @@ it('counts pending links against the 49-source limit', async () => {
       if (!input.id.startsWith('summary:')) return 'Noted.';
       const packet = JSON.parse(input.context) as { history: { user: string }[] };
       return JSON.stringify({ summary: 'The locker code was remembered.', people: [], memory: [], closed: [],
-        commitments: packet.history.filter(turn => turn.user === request).map(() => ({ in: 'message', quote: request })) });
+        commitments: packet.history.filter(turn => turn.user === request).map(() => ({ in: 'message', quote: request, waitsOn: 'nothing' })) });
     }, send: async () => 1, checkOutbound: () => {} });
   try {
     worker.intake(Array.from({ length: 49 }, (_, index) => update(index + 1, request)));
@@ -144,7 +144,7 @@ it('keeps punctuation that is the remembered value distinct', async () => {
       if (!input.id.startsWith('summary:')) return 'Noted.';
       const packet = JSON.parse(input.context) as { history: { user: string }[] };
       return JSON.stringify({ summary: 'The required suffix was remembered.', people: [], memory: [], closed: [],
-        commitments: packet.history.map(turn => ({ in: 'message', quote: turn.user })) });
+        commitments: packet.history.map(turn => ({ in: 'message', quote: turn.user, waitsOn: 'nothing' })) });
     }, send: async () => 1, checkOutbound: () => {} });
   try {
     for (const [index, suffix] of ['!', '?'].entries()) {
@@ -169,7 +169,7 @@ it('keeps a renewed request active after an earlier closure in the same summary'
       const packet = JSON.parse(input.context) as { history: { user: string }[] };
       return JSON.stringify({ summary: 'The book request was discussed.', people: [], memory: [], closed: [],
         commitments: packet.history.filter(turn => turn.user === first || turn.user === repeat)
-          .map(turn => ({ in: 'message', quote: turn.user, ...(turn.user === repeat ? { closedBy: done } : {}) })) });
+          .map(turn => ({ in: 'message', quote: turn.user, waitsOn: 'nothing', ...(turn.user === repeat ? { closedBy: done } : {}) })) });
     }, send: async () => 1, checkOutbound: () => {} });
   try {
     worker.intake([update(1, first)]); await worker.drain(); await worker.summarizeIfNeeded(true);
@@ -193,7 +193,7 @@ it('starts a new item when an identical earlier request was closed', async () =>
       if (!input.id.startsWith('summary:')) return 'Noted.';
       const packet = JSON.parse(input.context) as { history: { user: string }[]; openCommitments?: { id: number }[] };
       return JSON.stringify({ summary: 'The book request was discussed.', people: [], memory: [],
-        commitments: packet.history.filter(item => item.user === request).map(() => ({ in: 'message', quote: request })),
+        commitments: packet.history.filter(item => item.user === request).map(() => ({ in: 'message', quote: request, waitsOn: 'nothing' })),
         closed: packet.history.some(item => item.user === done) && packet.openCommitments?.length
           ? [{ id: packet.openCommitments[0]!.id, quote: done }] : [] });
     }, send: async () => 1, checkOutbound: () => {} });

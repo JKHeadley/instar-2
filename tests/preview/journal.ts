@@ -26,6 +26,7 @@ import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJ
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, type StepCheckResult } from './step-check.js';
 import type { Directive } from '../../src/index.js';
+import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 
 
@@ -132,16 +133,21 @@ export interface DirectiveNote { source: string; quote: string; at: number; supe
 /** The governed boundaries a preview refusal may cite (Rule 103). Each names a real preview
  * governance source; a boundary that is none of these is a proposal for the operator. */
 export const GOVERNING_CONSTRAINTS = Object.freeze({
-  'reply-only-grant': 'replies plus operator-requested reminders or summaries; nothing else unprompted',
-  'no-tools': 'no external tools, accounts or scheduler beyond the journal',
-  'operator-authority': 'an approval, credential or policy choice only the verified operator holds',
-  'spend-allowance': 'the recorded call and reply allowances',
-  'operator-stop': 'the operator stop latch and trial expiry',
-  'secret-custody': 'a live secret never leaves custody',
+  'reply-only-grant': 'replies and requested reminders or summaries only',
+  'no-tools': 'no external tools or accounts',
+  'operator-authority': 'an approval, credential or policy only the operator holds',
+  'spend-allowance': 'recorded call and reply allowances',
+  'operator-stop': 'stop latch and trial expiry',
+  'secret-custody': 'live secrets stay in custody',
 } as const);
 export type GoverningConstraint = keyof typeof GOVERNING_CONSTRAINTS;
+/** Rules 18, 21: the current capability and owned-identity read of this preview runner, consulted by the obligation
+ * work step and the reply review before a cannot-do or needs-a-person claim is accepted. It is fixed by the runner's
+ * construction: one private Telegram bot identity, no external tools or accounts, and the reply-only trial grant. */
+export const PREVIEW_CAPABILITIES = Object.freeze({ externalTools: 'none', accounts: 'none',
+  sends: GOVERNING_CONSTRAINTS['reply-only-grant'], ownedIdentities: ['the Telegram bot this trial runs as'] });
 /** How the answer model declares the obligations its reply creates or settles (Rules 6, 18, 20-23, 93, 99, 103). */
-export const OBLIGATION_DECISION = 'Only when they apply, add: directives:[{quote:exact clause of this message giving a standing instruction beyond this reply,supersedes?:listed directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}] when this message ends a listed directive; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:exact clause of your reply,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now). Act on what you own. A cannot-do or needs-a-person claim that stands after every lawful avenue adds blocker:{kind:"cannot-do"|"needs-human",claim:exact reply clause,avenues:[{avenue,disposition:"tried"|"outside-standing"|"inapplicable",evidence}],constraint:governingConstraints id,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. A missing tool is no-tools. Never refuse behind a boundary absent from governingConstraints; propose it instead.';
+export const OBLIGATION_DECISION = 'When one applies, add: directives:[{quote:exact clause of this message setting a standing instruction beyond this reply,supersedes?:directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}]; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:exact reply clause,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now); for a cannot-do or needs-a-person claim that survives every lawful avenue, blocker:{kind:"cannot-do"|"needs-human",claim:exact reply clause,avenues:[{avenue,disposition:"tried"|"outside-standing"|"inapplicable",evidence}],constraint:governingConstraints key,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. A missing tool is no-tools. Refuse only behind a governingConstraints key; propose any other boundary.';
 /** Rules 20, 21, 23, 99: a settled cannot-do or needs-a-person claim the agent actually sent,
  * with its finite lawful avenues, the smallest outside action and a future recheck. */
 export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' | 'needs-human';
@@ -151,14 +157,24 @@ export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' 
 export type ProposedBlocker = Omit<BlockerNote, 'source' | 'at' | 'rechecks'>;
 /** What one answer proposed for the obligation population before its reply is sent. */
 type AnswerObligations = { directives?: { quote: string; supersedes?: number }[];
-  directiveClosures?: { id: number; kind: 'Completed' | 'Superseded' }[]; invalidDirective?: boolean;
-  loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[] };
+  directiveClosures?: { id: number; kind: 'Completed' | 'Superseded' }[]; invalidDirective?: boolean; directivesFull?: true;
+  loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[]; rejected?: RejectedObligations };
 /** A due recheck of settled blocker `id`: still blocked (with its next recheck) or cleared. */
 export interface BlockerRecheck { id: number; outcome: 'still-blocked' | 'cleared'; recheckAt?: number }
+/** The share of the context bound open directives may occupy; each rides every answer packet (Rule 93). */
+export const DIRECTIVE_SHARE = 0.35;
 /** A settled blocker is re-verified at most this long after it is recorded or last rechecked. */
 export const BLOCKER_RECHECK_MAX_MS = 90 * 86_400_000;
 /** An open loop is resurfaced to the agent at least this often, whether or not a later message relates to it. */
 export const LOOP_REVISIT_MS = 24 * 3_600_000;
+/** What one scheduled work step concluded. `uncertain` closes a start whose result was lost to a crash:
+ * that slot is never repeated, and the next cadence slot is a new bounded attempt. */
+export type ObligationOutcome = 'report' | 'continue' | 'waiting' | 'still-blocked' | 'cleared' | 'failed' | 'uncertain';
+export interface ObligationWork { attempts: number; last: number; lastSlot: number; inFlight?: number;
+  outcome?: ObligationOutcome; note?: string; waitsOn?: 'operator' | 'external';
+  report?: { text: string; at: number; delivered?: string } }
+/** Declared obligations an answer proposed that failed admission; they force the full contextual review. */
+export interface RejectedObligations { loops?: number; blocker?: true; rechecks?: true }
 interface CommitmentSource { id: number; source: string; quote: string }
 /** A later operator message, quoted exactly, that says commitment `id` is done, withdrawn or no longer needed. */
 export interface CommitmentClosure { id: number; source: string; quote: string }
@@ -208,7 +224,11 @@ export type JournalRecord =
     /** Rule 93: standing directives this verified operator message gave, and directives it completed or superseded. */
     directives?: { quote: string; supersedes?: number }[]; directiveClosures?: { id: number; kind: 'Completed' | 'Superseded' }[];
     /** Proposed with the answer; each becomes durable only on the intent of a reply that actually says it. */
-    loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[]; at: number }
+    loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
+    /** Declared obligations the answer proposed but the runner could not admit, kept visible (Rules 2, 6, 20). */
+    rejected?: RejectedObligations;
+    /** Completed obligation work whose result this answer carries to the operator (Rules 8, 92). */
+    reports?: string[]; at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
@@ -223,9 +243,15 @@ export type JournalRecord =
 
 
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
+  /** Rules 8, 22, 92, 99, 102: one scheduled piece of work on a due obligation, started at most once per slot. */
+  | { kind: 'obligation-start'; obligation: string; slot: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; report?: string; note?: string;
+    waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
     /** Rules 6, 20-23, 83, 99: obligations the sent reply itself declares, recorded in the same intent. */
     loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
+    /** Obligation work results this sent reply delivers; delivery settles the obligation (Rules 8, 92). */
+    reports?: string[];
     /** Requested reminders due in the same topic, grouped into a requested summary's one message (Rule 52). */
     reminderBatch?: number; reminders?: ReminderRef[];
     /** Other requested summaries due in the same topic and slot, sent inside this one message (Rule 52). */
@@ -293,7 +319,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   /** When the answer reservation was recorded: the moment its packet resurfaced the loops it carried (Rule 8). */
   reservedAt?: number;
   /** Obligations the answer proposed; the intent of a reply that says them makes them durable. */
-  answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[] }
+  answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[];
+  answerRejected?: RejectedObligations; answerReports?: string[] }
 
 
 
@@ -334,6 +361,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   directives: DirectiveNote[]; blockers: BlockerNote[];
   /** Summary-proposed commitments refused at creation for an undeclared owner or dependency (Rule 83). */
   commitmentRefusals: number;
+  /** Scheduled work per obligation key (`commitment:N` / `blocker:N`), and answer proposals the runner refused. */
+  obligationWork: Record<string, ObligationWork>; rejectedObligations: number;
   changeHistory: RecordedChange[]; undos: { change: number; trigger: string; at: number }[];
 
 
@@ -528,6 +557,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
     directives: saved.directives ?? [], blockers: saved.blockers ?? [], commitmentRefusals: saved.commitmentRefusals ?? 0,
+    obligationWork: saved.obligationWork ?? {}, rejectedObligations: saved.rejectedObligations ?? 0,
     turns, order: saved.order.map(id => turns.get(id)!),
     heldTurns: new Set([...turns.values()].filter(turn => turn.held !== undefined)), channelItems: new Map(saved.channelItems),
     summaryReservations: new Map(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
@@ -654,6 +684,13 @@ const reminderMorning = (item: DatedItem, now: number) => {
   return day === item.day && local.hour >= 8 && local.hour < 12;
 };
 const requestedBatchKey = (batch: number) => JSON.stringify(['requested', batch]);
+/** What a reply's answer declared and what the runner refused, with the current capability read, for its
+ * contextual review (Rules 6, 18, 20, 21, 23, 103). The review context redacts every string of it. */
+export const declaredObligations = (view: JournalView, id: string) => {
+  const turn = view.turns.get(id);
+  return { blocker: turn?.answerBlocker ?? null, loops: turn?.answerLoops ?? [],
+    ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: PREVIEW_CAPABILITIES };
+};
 /** The most recent items whose JSON fits `bytes`, kept in their original order. */
 const recentWithin = <T>(items: readonly T[], bytes: number): T[] => {
   const kept: T[] = [];
@@ -707,6 +744,122 @@ export function loopRevisits(view: JournalView): Map<number, number> {
   }
   return seen;
 }
+/** A commitment is open until a recorded closure, an operator forgetting, or its source's removal ends it. */
+export function commitmentOpen(view: JournalView, id: number): boolean {
+  const note = view.commitments[id], source = note && view.turns.get(note.source);
+  return !!note && !!source && !view.closed.has(id) && !probeTurn(view, source) && !view.memory.some(change => change.mode === 'forget'
+    && change.source === note.source && note.quote.includes(change.quote));
+}
+/** What an open commitment waits on now: a completed work step may have moved it onto the operator or an outside party. */
+export const commitmentWaitsOn = (view: JournalView, id: number): string | undefined => {
+  const note = view.commitments[id]!;
+  return view.obligationWork[`commitment:${id}`]?.waitsOn ?? note.waitsOn
+    ?? (note.agentPromise ? note.agentPromise.due ? 'date' : note.agentPromise.waitsOn : undefined);
+};
+const pendingReport = (work: ObligationWork | undefined) => work?.report !== undefined && work.report.delivered === undefined;
+/** Rules 8, 22, 46, 92, 99, 102: each open agent-owned obligation that the agent can act on without anyone else,
+ * with the slot its next scheduled work step is due. Derived from durable state only; the verified operator's own
+ * message (or the agent's reply to it) is the authority, so a probe or another sender's message never schedules work. */
+export function obligationSchedule(view: JournalView): { key: string; kind: 'commitment' | 'blocker'; id: number; slot: number;
+  inFlight: boolean; awaitingDelivery: boolean }[] {
+  const items: ReturnType<typeof obligationSchedule> = [];
+  const next = (key: string, first: number) => { const work = view.obligationWork[key];
+    return Math.max(first, work ? work.last + LOOP_REVISIT_MS : first); };
+  view.commitments.forEach((note, id) => {
+    const source = view.turns.get(note.source), key = `commitment:${id}`, work = view.obligationWork[key];
+    if (!commitmentOpen(view, id) || !source || !operatorTurn(view, source) || !(note.owner === 'agent' || note.agentPromise)) return;
+    const waits = commitmentWaitsOn(view, id), due = note.agentPromise?.due;
+    const first = waits === 'nothing' ? source.at + LOOP_REVISIT_MS
+      : waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone) : undefined;
+    if (first === undefined && !pendingReport(work)) return;
+    items.push({ key, kind: 'commitment', id, slot: next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
+      awaitingDelivery: pendingReport(work) });
+  });
+  openBlockers(view).forEach(({ id, note }) => {
+    const source = view.turns.get(note.source), key = `blocker:${id}`, work = view.obligationWork[key];
+    if (!source || !operatorTurn(view, source)) return;
+    items.push({ key, kind: 'blocker', id, slot: next(key, note.recheckAt), inFlight: work?.inFlight !== undefined,
+      awaitingDelivery: pendingReport(work) });
+  });
+  for (const [key, work] of Object.entries(view.obligationWork))
+    if (key.startsWith('blocker:') && pendingReport(work) && !items.some(item => item.key === key))
+      items.push({ key, kind: 'blocker', id: Number(key.slice(8)), slot: Infinity, inFlight: false, awaitingDelivery: true });
+  return items;
+}
+/** Work steps due now: never one in flight or one whose result still waits to reach the operator. */
+export const dueObligationWork = (view: JournalView, now: number) =>
+  obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && item.slot <= now);
+/** Completed results waiting for a reply to carry them: the reply-only grant has no unsolicited send. */
+export const pendingReports = (view: JournalView) => obligationSchedule(view).filter(item => item.awaitingDelivery)
+  .map(item => ({ key: item.key, text: view.obligationWork[item.key]!.report!.text, subject: item.kind === 'commitment'
+    ? view.commitments[item.id]!.quote : view.blockers[item.id]!.claim }));
+function workTarget(view: JournalView, key: string): 'commitment' | 'blocker' | undefined {
+  const match = /^(commitment|blocker):(0|[1-9][0-9]*)$/u.exec(key);
+  if (!match) return undefined;
+  const id = Number(match[2]);
+  return match[1] === 'commitment' ? commitmentOpen(view, id) ? 'commitment' : undefined
+    : openBlockers(view).some(item => item.id === id) ? 'blocker' : undefined;
+}
+function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { kind: 'obligation-start' | 'obligation-result' }>): void {
+  const kind = workTarget(view, row.obligation), work = view.obligationWork[row.obligation];
+  const tokenKey = `obligation:${row.obligation}:${row.slot}`;
+  if (row.kind === 'obligation-start') {
+    if (!kind || !Number.isSafeInteger(row.slot) || row.slot > row.at || work?.inFlight !== undefined || pendingReport(work)
+      || work !== undefined && row.slot <= work.lastSlot) throw Error('preview journal: repeated obligation work');
+    reserveTokens(view, tokenKey, 'answer', row.maxInputTokens ?? view.limits.maxBytes, row.maxOutputTokens ?? subscriptionOutputMaximum);
+    view.calls++;
+    view.obligationWork[row.obligation] = { ...work, attempts: (work?.attempts ?? 0) + 1, last: row.at, lastSlot: row.slot, inFlight: row.slot };
+    return;
+  }
+  const outcomes: readonly ObligationOutcome[] = kind === 'blocker' ? ['still-blocked', 'cleared', 'failed', 'uncertain']
+    : ['report', 'continue', 'waiting', 'failed', 'uncertain'];
+  const reports = row.outcome === 'report' || row.outcome === 'cleared';
+  if (!kind || !work || work.inFlight !== row.slot || !outcomes.includes(row.outcome)
+    || reports !== (row.report !== undefined) || row.report !== undefined && !boundedText(row.report, 1, 1500)
+    || row.note !== undefined && (!boundedText(row.note, 1, 500) || row.outcome !== 'continue' && row.outcome !== 'waiting')
+    || (row.outcome === 'waiting') !== (row.waitsOn === 'operator' || row.waitsOn === 'external')
+    || (row.outcome === 'still-blocked') !== (row.recheckAt !== undefined)
+    || row.recheckAt !== undefined && !recheckInRange(row.recheckAt, row.at)) throw Error('preview journal: obligation result order');
+  settleTokens(view, tokenKey, row.usage);
+  const { inFlight: _done, ...rest } = work;
+  view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
+    ...(row.note === undefined ? {} : { note: row.note }), ...(row.waitsOn === undefined ? {} : { waitsOn: row.waitsOn }),
+    ...(row.report === undefined ? {} : { report: { text: row.report, at: row.at } }) };
+  if (kind === 'blocker' && (row.outcome === 'still-blocked' || row.outcome === 'cleared')) {
+    const note = view.blockers[Number(row.obligation.slice(8))]!;
+    note.rechecks.push({ source: `work:${row.obligation}:${row.slot}`, outcome: row.outcome, at: row.at });
+    if (row.recheckAt !== undefined) note.recheckAt = row.recheckAt;
+  }
+}
+/** Measured capacity for scheduled obligation work (the existing 1.x priority brake): it runs as medium-priority
+ * work, so it yields once three quarters of the recorded model-call allowance is used and never takes the last calls
+ * an operator reply and its review need. */
+export function obligationCapacity(view: JournalView): boolean {
+  const { calls } = view, { maxCalls } = view.limits;
+  return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
+}
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. For a blocker-recheck, test the claim again against every avenue: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days} or {"outcome":"cleared","report":<what is now possible>}. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
+/** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
+export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string):
+  Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt'> {
+  let value: { outcome?: unknown; report?: unknown; note?: unknown; waitsOn?: unknown; recheck?: unknown };
+  try { value = JSON.parse(output) as typeof value; } catch { return { outcome: 'failed' }; }
+  const text = (field: unknown, max: number) => typeof field === 'string' && field.trim() && Buffer.byteLength(field.trim()) <= max
+    ? redact(field.trim()).text : undefined;
+  const report = text(value?.report, 1500), note = text(value?.note, 500);
+  if (kind === 'commitment') {
+    if (value?.outcome === 'report' && report) return { outcome: 'report', report };
+    if (value?.outcome === 'continue' && note) return { outcome: 'continue', note };
+    if (value?.outcome === 'waiting' && note && (value.waitsOn === 'operator' || value.waitsOn === 'external'))
+      return { outcome: 'waiting', note, waitsOn: value.waitsOn };
+    return { outcome: 'failed' };
+  }
+  if (value?.outcome === 'cleared' && report) return { outcome: 'cleared', report };
+  const recheckAt = typeof value?.recheck === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(value.recheck)
+    && Number.isFinite(Date.parse(`${value.recheck}T00:00:00Z`)) ? wallEpoch(value.recheck, '09:00', zone) : undefined;
+  if (value?.outcome === 'still-blocked' && recheckAt !== undefined && recheckInRange(recheckAt, at)) return { outcome: 'still-blocked', recheckAt };
+  return { outcome: 'failed' };
+}
 /** Rule 93: only the verified operator admits, completes or supersedes a directive, by exact quote from the message. */
 function applyDirectives(view: JournalView, turn: Turn, row: Extract<JournalRecord, { kind: 'answer' }>): void {
   if (row.directives === undefined && row.directiveClosures === undefined) return;
@@ -745,6 +898,18 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
     if (turn.answerBlocker === undefined || !same(row.blocker, turn.answerBlocker) || !row.text.includes(row.blocker.claim)
       || row.blocker.recheckAt <= row.at) throw Error('preview journal: invalid blocker');
     view.blockers.push({ ...row.blocker, source: turn.id, at: row.at, rechecks: [] });
+  }
+  if (row.reports !== undefined) {
+    // Delivery of a completed work result in a reply actually sent settles the obligation (evidenced settlement).
+    if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
+      || row.reports.some(key => !turn.answerReports?.includes(key) || !pendingReport(view.obligationWork[key])
+        || !row.text.includes(view.obligationWork[key]!.report!.text))) throw Error('preview journal: invalid obligation report');
+    for (const key of row.reports) {
+      const report = view.obligationWork[key]!.report!;
+      report.delivered = turn.id;
+      const id = Number(key.slice(11));
+      if (key.startsWith('commitment:') && !view.closed.has(id)) view.closed.set(id, { id, source: turn.id, quote: report.text });
+    }
   }
   if (row.blockerRechecks !== undefined) {
     const open = new Set(openBlockers(view).map(item => item.id));
@@ -1260,6 +1425,7 @@ function project(view: JournalView, row: JournalRecord): void {
     view.lastPrompt = { kind: 'summary', through: row.through, prompt: row.prompt ?? null, memoryCount: view.memory.length,
       summaryCount: view.summaries.length, closedCount: view.closed.size }; return;
   }
+  if (row.kind === 'obligation-start' || row.kind === 'obligation-result') { projectObligationWork(view, row); return; }
   if (row.kind === 'summary-candidate') {
     if (!view.summaryReservations.has(row.through) || view.summaryCandidates.has(row.through))
       throw Error('preview journal: summary candidate order');
@@ -1568,9 +1734,24 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.lastNamedPerson) turn.lastNamedPerson = row.lastNamedPerson;
     applyDirectives(view, turn, row);
     if (row.loops !== undefined) { if (!validLoops(row.loops)) throw Error('preview journal: invalid reply loop'); turn.answerLoops = row.loops; }
-    if (row.blocker !== undefined) { if (!validBlocker(row.blocker, row.at)) throw Error('preview journal: invalid blocker'); turn.answerBlocker = row.blocker; }
-    if (row.blockerRechecks !== undefined) { if (!validRechecks(view, row.blockerRechecks, row.at)) throw Error('preview journal: invalid blocker recheck');
+    // Ranges are judged from the reservation that produced this answer, exactly as the worker judged them.
+    const decidedFrom = turn.reservedAt ?? row.at;
+    if (row.blocker !== undefined) { if (!validBlocker(row.blocker, decidedFrom)) throw Error('preview journal: invalid blocker'); turn.answerBlocker = row.blocker; }
+    if (row.blockerRechecks !== undefined) { if (!validRechecks(view, row.blockerRechecks, decidedFrom)) throw Error('preview journal: invalid blocker recheck');
       turn.answerRechecks = row.blockerRechecks; }
+    if (row.rejected !== undefined) {
+      const { loops = 0, blocker, rechecks } = row.rejected;
+      if (!Number.isSafeInteger(loops) || loops < 0 || loops > 50 || blocker !== undefined && blocker !== true || rechecks !== undefined && rechecks !== true
+        || Object.keys(row.rejected).some(key => key !== 'loops' && key !== 'blocker' && key !== 'rechecks')
+        || loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0) === 0) throw Error('preview journal: invalid rejected obligations');
+      turn.answerRejected = row.rejected; view.rejectedObligations += loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0);
+    }
+    if (row.reports !== undefined) {
+      if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
+        || row.reports.some(key => !pendingReport(view.obligationWork[key]) || !row.text.includes(view.obligationWork[key]!.report!.text)))
+        throw Error('preview journal: invalid obligation report');
+      turn.answerReports = row.reports;
+    }
     if (row.state) turn.modelState = row.state;
     if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
@@ -1759,7 +1940,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -1836,7 +2017,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], summaryCancels: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0 }, lastReplyCheck: null };
       } else project(view!, row);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -3050,10 +3231,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const summaryRequests = activeSummaryGrants(journal.view).slice(0, 10);
     const summaryDecision = awayFor !== undefined && fromOperator(awayFor)
       && (summaryRequests.length > 0 || /\b(?:summar|recap|digest|brief)/iu.test(awayFor.text));
-    const directiveItems = awayFor === undefined ? [] : recentWithin(openDirectives(journal.view).map(({ id, note }) => {
+    // Rule 93: every open directive grounds every answer, whatever its age; admission keeps them within the context bound.
+    const directiveItems = awayFor === undefined ? [] : openDirectives(journal.view).map(({ id, note }) => {
       const source = journal.view.turns.get(note.source)!;
       return { id, quote: clean(redact(note.quote).text, true, note.source), since: dated(source), sourceLabel: turnLabel(source) };
-    }), 4096);
+    });
     const blockerItems = awayFor === undefined ? [] : recentWithin(openBlockers(journal.view).map(({ id, note }) => ({ id, kind: note.kind,
       claim: clean(redact(note.claim).text, true), constraint: note.constraint, outsideAction: clean(redact(note.outsideAction).text, true),
       recheck: localStamp(note.recheckAt, zone).slice(0, 10), recheckDue: now >= note.recheckAt })), 3072);
@@ -3074,7 +3256,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (due.length || selectedDated.window ? ' dated is a bounded selection of operator dates; only an item with remind:true is a reminder the operator asked for. datedScope is a calendar priority hint, not the meaning of the question; dated may include nearby dates outside it. Interpret the question yourself using the shown dates. moreDated counts candidate occurrences omitted by the item or byte cap; absence is not proof that an item does not exist. Do not claim a complete list when moreDated is positive. State absolute YYYY-MM-DD dates and zones, and ask about unresolved dates.' : '')
         + (due.length ? ' dated holds upcoming, due, overdue and unresolved operator dates; only an item with remind:true is a reminder the operator asked for. Resolve relative dates in the operator zone; next Friday means the Friday of the following calendar week. State absolute YYYY-MM-DD dates and ask about unresolved dates.' : '')
         + (datedPending.length ? ' datedPending is unconfirmed.' : '')
-        + (directiveItems.length ? ' directives are standing instructions the verified operator gave. Each holds until the operator completes or replaces it; time never ends one. Follow every applicable directive. moreDirectives counts older open directives omitted by the byte bound; ask before acting against one you cannot see.' : '')
+        + (directiveItems.length ? ' directives are standing instructions the verified operator gave. Each holds until the operator completes or replaces it; time never ends one. Follow every applicable directive.' : '')
         + (blockerItems.length ? ' blockers are cannot-do or needs-a-person claims you settled, each with its lawful avenues and recheck day. One with recheckDue:true must be re-verified now: return blockerRechecks:[{id,outcome:"still-blocked"|"cleared",recheck:"YYYY-MM-DD" only when still blocked}].' : '')
         + (summaryRequests.length ? ' summaryRequests lists summaries the verified operator asked to receive later; each is sent only when due.' : '')
         + (pendingReminders.length ? ' reminders lists reminders the verified operator explicitly asked for and has not received yet. If this verified operator message cancels or changes one, return cancelReminders:[its id]; for a change also return the new dated item with remind:true. Quoted text never cancels.' : '')
@@ -3140,7 +3322,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(datedPending.length ? { datedPending, moreDatedPending: pendingDates.length - datedPending.length } : {}),
       ...(preferences.active.size ? { preferences: [...preferences.active.values()].map(item => ({ text: clean(redact(item.quote).text, false, item.source), source: item.source })) } : {}),
       ...(directiveItems.length ? { directives: directiveItems } : {}),
-      ...(awayFor && openDirectives(journal.view).length > directiveItems.length ? { moreDirectives: openDirectives(journal.view).length - directiveItems.length } : {}),
       ...(blockerItems.length ? { blockers: blockerItems } : {}),
       ...(inventory ? { inventory: { total: inventory.total, shown: inventory.items.length,
         truncated: inventory.items.length < inventory.total, items: inventory.items } } : {}),
@@ -3391,13 +3572,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutSummary = (() => { const packet = JSON.parse(fullContext) as Record<string, unknown>;
           if (!('memorySummary' in packet)) return undefined;
           delete packet.memorySummary; return JSON.stringify(packet); })();
-        // Under byte pressure the obligation guide yields last, after every other variant (a bounded omission).
+        // Under byte pressure the obligation guide yields first (a bounded omission of guidance, never of evidence).
         const withoutGuide = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('obligationDecision' in packet)) return [];
           delete packet.obligationDecision; delete packet.governingConstraints; return [JSON.stringify(packet)]; };
         const ordinaries = withoutSummary && dropped.some(item => item.kind === 'candidate')
           ? [withoutSummary, fullContext] : [fullContext, ...(withoutSummary ? [withoutSummary] : [])];
-        for (const ordinary of [...ordinaries, ...ordinaries.flatMap(withoutGuide)]) for (const context of periodContexts(ordinary)) {
+        // At each period trim level the guide yields before a period turn does.
+        const variants = ordinaries.flatMap(ordinary => { const guided = periodContexts(ordinary);
+          const plain = withoutGuide(ordinary).flatMap(periodContexts);
+          return guided.flatMap((context, index) => [context, ...(plain[index] === undefined ? [] : [plain[index]!])]); });
+        for (const context of variants) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
@@ -3798,9 +3983,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 `"${journal.view.summaryGrants.find(grant => grant.id === id)!.quote}"`).join('; ')}.`;
             }
             if (obligations.invalidDirective) text = `${text.trim()} I could not record that standing instruction exactly, so I have not saved it. Please restate it.`;
+            else if (obligations.directivesFull) text = `${text.trim()} I have not saved that standing instruction: the ones I already hold fill the space I keep for them in every answer. Tell me which one is done or replaced, and I will save this one.`;
             else for (const item of obligations.directives ?? []) text = `${text.trim()} Standing instruction saved until you say it is done or replace it: "${item.quote}".`;
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
+            // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
+            // A result another unsent answer already carries is not repeated in this one.
+            const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
+              && item.intent === undefined).flatMap(item => item.answerReports ?? []));
+            if (text.trim() && fromOperator(turn) && !probe && !turn.requestedSummary)
+              for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
+                const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
+                if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) > 3500) break;
+                text = `${text.trimEnd()}${line}`; reports.push(item.key);
+              }
             journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
@@ -3815,6 +4011,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(obligations.loops?.length ? { loops: obligations.loops } : {}),
               ...(obligations.blocker ? { blocker: obligations.blocker } : {}),
               ...(obligations.blockerRechecks?.length ? { blockerRechecks: obligations.blockerRechecks } : {}),
+              ...(obligations.rejected ? { rejected: obligations.rejected } : {}), ...(reports.length ? { reports } : {}),
               ...(fromOperator(turn) && !probe && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
@@ -3924,10 +4121,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 result: { ...result, candidateDigest }, at: ports.now() }) };
 
             let checked: ReplyDecision;
-            if (turn.jevReserved) {
+            // Rules 6, 20, 23: a deferral or blocker the answer identified but the runner refused is never
+            // released on Jev's text-only pass; the contextual reviewer judges it with the declared record.
+            if (turn.answerRejected && !turn.jevReserved) checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
+            else if (turn.jevReserved) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
               // Older durable Jev verdicts omitted uncertain rules when another rule was positive.
-              // On recovery, review all eight rather than treating those omitted rules as cleared.
+              // On recovery, review every rule rather than treating those omitted rules as cleared.
               checked = await reviewReply(reply, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
             } else if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
@@ -4080,7 +4280,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * only exact quotes, listed ids and complete finite records, so nothing is paraphrased into authority. */
   const obligationsFrom = (parsed: { directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown;
     blockerRechecks?: unknown }, turn: Turn, reply: string, context: string, at: number): AnswerObligations => {
-    const result: AnswerObligations = {}, zone = ports.timeZone ?? 'America/Los_Angeles';
+    const result: AnswerObligations = {}, zone = ports.timeZone ?? 'America/Los_Angeles', decidedFrom = turn.reservedAt ?? at;
     const packet = JSON.parse(context) as { directives?: { id: number }[]; blockers?: { id: number }[] };
     const listed = new Set((packet.directives ?? []).map(item => item.id)), open = new Set(openDirectives(journal.view).map(item => item.id));
     const present = (value: unknown) => value !== undefined && !(Array.isArray(value) && !value.length);
@@ -4088,7 +4288,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const added = (parsed.directives ?? []) as { quote?: unknown; supersedes?: unknown }[];
       const closes = (parsed.closeDirectives ?? []) as { id?: unknown; kind?: unknown }[];
       const known = (id: unknown): id is number => typeof id === 'number' && listed.has(id) && open.has(id);
-      if (!fromOperator(turn) || probeTurn(journal.view, turn) || turn.requestedSummary !== undefined
+      if (!verifiedOperatorTurn(journal.view, turn) || probeTurn(journal.view, turn) || turn.requestedSummary !== undefined
         || !Array.isArray(added) || !Array.isArray(closes) || added.length > 5 || closes.length > 10
         || added.some(item => !item || !boundedText(item.quote, 8, 500) || !turn.text.includes(item.quote)
           || Object.keys(item).some(key => key !== 'quote' && key !== 'supersedes') || item.supersedes !== undefined && !known(item.supersedes))
@@ -4099,6 +4299,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : (closing.add(item.id as number), [{ id: item.id as number, kind: item.kind === 'completed' ? 'Completed' as const : 'Superseded' as const }]));
         result.directives = added.flatMap(item => quotes.has(item.quote as string) ? [] : (quotes.add(item.quote as string), [{ quote: item.quote as string,
           ...(item.supersedes === undefined || closing.has(item.supersedes as number) ? {} : (closing.add(item.supersedes as number), { supersedes: item.supersedes as number })) }]));
+        // Every open directive rides every packet, so admission keeps them within DIRECTIVE_SHARE of the context
+        // bound (with their packet labels); past it the operator is told plainly, instead of an older directive
+        // silently leaving the packet or crowding out the message it should govern.
+        const kept = openDirectives(journal.view).filter(item => !closing.has(item.id)).map(item => item.note.quote);
+        if (result.directives.length && [...kept, ...result.directives.map(item => item.quote)]
+          .reduce((total, quote) => total + Buffer.byteLength(JSON.stringify(quote)) + 120, 0)
+          > journal.view.limits.maxBytes * DIRECTIVE_SHARE) { result.directives = []; result.directivesFull = true; }
       }
     }
     if (Array.isArray(parsed.openLoops)) {
@@ -4110,13 +4317,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
       const unique = loops.filter((loop, index) => loops.findIndex(other => other.quote === loop.quote) === index);
       if (unique.length) result.loops = unique;
+      // Rules 2, 6: a deferral the model identified but the runner cannot track is kept visible and forces review.
+      const refused = Math.min(50, parsed.openLoops.length - loops.length);
+      if (refused > 0) result.rejected = { ...result.rejected, loops: refused };
     }
     if (parsed.blocker && typeof parsed.blocker === 'object') {
       const value = parsed.blocker as { kind?: unknown; claim?: unknown; avenues?: unknown; constraint?: unknown; outsideAction?: unknown; recheck?: unknown };
       const blocker = { kind: value.kind, claim: value.claim, avenues: Array.isArray(value.avenues)
         ? value.avenues.map(item => ({ avenue: item?.avenue, disposition: item?.disposition, evidence: item?.evidence })) : value.avenues,
         constraint: value.constraint, outsideAction: value.outsideAction, recheckAt: dayEpoch(value.recheck, zone) };
-      if (validBlocker(blocker, at) && reply.includes(blocker.claim)) result.blocker = blocker;
+      if (validBlocker(blocker, decidedFrom) && reply.includes(blocker.claim)) result.blocker = blocker;
+      else result.rejected = { ...result.rejected, blocker: true };
     }
     if (Array.isArray(parsed.blockerRechecks) && parsed.blockerRechecks.length) {
       const offered = new Set((packet.blockers ?? []).map(item => item.id));
@@ -4125,7 +4336,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         return value?.outcome === 'cleared' ? { id: value.id, outcome: 'cleared' }
           : { id: value?.id, outcome: value?.outcome, recheckAt: dayEpoch(value?.recheck, zone) };
       });
-      if (rechecks.every(item => offered.has(item.id as number)) && validRechecks(journal.view, rechecks, at)) result.blockerRechecks = rechecks;
+      if (rechecks.every(item => offered.has(item.id as number)) && validRechecks(journal.view, rechecks, decidedFrom)) result.blockerRechecks = rechecks;
+      else result.rejected = { ...result.rejected, rechecks: true };
     }
     return result;
   };
@@ -4137,7 +4349,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ? turn.answerBlocker : undefined;
     const rechecks = turn.answerRechecks?.every(item => open.has(item.id) && (item.recheckAt === undefined || item.recheckAt > at))
       ? turn.answerRechecks : undefined;
-    return { ...(loops?.length ? { loops } : {}), ...(blocker ? { blocker } : {}), ...(rechecks ? { blockerRechecks: rechecks } : {}) };
+    const reports = turn.answerReports?.filter(key => reply.includes(journal.view.obligationWork[key]?.report?.text ?? '\u0000')
+      && journal.view.obligationWork[key]?.report?.delivered === undefined);
+    return { ...(loops?.length ? { loops } : {}), ...(blocker ? { blocker } : {}), ...(rechecks ? { blockerRechecks: rechecks } : {}),
+      ...(reports?.length ? { reports } : {}) };
   };
   /** Keeps only proposed commitments whose quote occurs exactly in the named side (the message, or
    * the agent's own answer) of one accepted turn the summary packet showed; anything else is dropped. */
@@ -4818,6 +5033,63 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
     } finally { working = false; }
   };
+  /** Starts reserved by this process; any other start without a result was cut off by a crash. */
+  const startedHere = new Set<string>();
+  const clip = (value: string, bytes: number) => Buffer.byteLength(value) <= bytes ? value
+    : `${Buffer.from(value).subarray(0, bytes).toString('utf8').replace(/\uFFFD+$/u, '')}…`;
+  /** Rules 8, 22, 46, 92, 97, 99, 102: the scheduled consumer of due obligation work. Each tick starts at most one
+   * step: durably reserved before the call (at most once per slot), inside the stop, expiry, allowance and measured
+   * capacity fences, with the reserved result kept for the operator's next reply because the trial's reply-only
+   * grant has no unsolicited send. Returns whether a step ran. */
+  const workObligations = async (): Promise<boolean> => {
+    if (working) throw Error('preview journal: second worker refused');
+    working = true;
+    try {
+      gate();
+      for (const item of obligationSchedule(journal.view)) {
+        const slot = journal.view.obligationWork[item.key]?.inFlight;
+        if (slot !== undefined && !startedHere.has(`${item.key}:${slot}`))
+          journal.append({ kind: 'obligation-result', obligation: item.key, slot, outcome: 'uncertain', at: ports.now() });
+      }
+      const now = ports.now(), item = dueObligationWork(journal.view, now)[0];
+      if (!item || !obligationCapacity(journal.view)) return false;
+      const zone = ports.timeZone ?? 'America/Los_Angeles', work = journal.view.obligationWork[item.key];
+      const obligation = item.kind === 'commitment' ? (() => {
+        const note = journal.view.commitments[item.id]!, source = journal.view.turns.get(note.source)!;
+        return { kind: note.loop ?? (note.agentPromise ? 'promise' : note.in === 'message' ? 'request' : 'promise'),
+          quote: clean(redact(note.quote).text, true, note.source), waitsOn: commitmentWaitsOn(journal.view, item.id),
+          since: dated(source), operatorMessage: clip(clean(redact(source.text).text, true, source.id), 2000),
+          ...(sentText(source) ? { yourReply: clip(clean(redact(sentText(source)!).text, true), 2000) } : {}) };
+      })() : (() => {
+        const note = journal.view.blockers[item.id]!;
+        return { kind: 'blocker-recheck', claim: clean(redact(note.claim).text, true), constraint: note.constraint,
+          avenues: note.avenues.map(avenue => ({ avenue: redact(avenue.avenue).text, disposition: avenue.disposition,
+            evidence: redact(avenue.evidence).text })), outsideAction: redact(note.outsideAction).text,
+          recheckDue: localStamp(note.recheckAt, zone).slice(0, 10) };
+      })();
+      const context = JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
+        ...(work?.note ? { lastProgress: clean(redact(work.note).text, true) } : {}),
+        directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
+        governingConstraints: GOVERNING_CONSTRAINTS, capabilities: PREVIEW_CAPABILITIES });
+      if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
+      const id = `obligation:${item.key}:${item.slot}`, question = OBLIGATION_WORK_QUESTION;
+      const prepared = ports.prepareModel?.({ question, context, id });
+      journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot,
+        maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: now });
+      startedHere.add(`${item.key}:${item.slot}`);
+      const settle = (result: Omit<Extract<JournalRecord, { kind: 'obligation-result' }>, 'kind' | 'obligation' | 'slot' | 'at'>) =>
+        journal.append({ kind: 'obligation-result', obligation: item.key, slot: item.slot, ...result, at: ports.now() });
+      let answer: Awaited<ReturnType<PreviewPorts['model']>>;
+      try { answer = await ports.model({ question, context, id, ...(prepared === undefined ? {} : { prepared }) }); }
+      catch { settle({ outcome: 'uncertain' }); return true; }
+      const usage = typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {};
+      if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
+      if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
+      const decided = obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone);
+      settle({ ...decided, ...usage });
+      return true;
+    } finally { working = false; }
+  };
   /** Read-only: the packet a next message with this text would get now. No append, no call. */
   const probe = (text: string) => {
     const last = journal.view.order.at(-1);
@@ -4827,7 +5099,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       raw: JSON.stringify({ message: { from: { id: journal.view.genesis.operator } } }), accepted: true,
       at: ports.now(), reserved: false });
   };
-  return { intake, drain, sendReminders, summarizeIfNeeded, checkCoherence, gate, pollGate, startStepChecks, checkSteps, nextHeldNoticeAt, probe,
+  return { intake, drain, sendReminders, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, startStepChecks, checkSteps, nextHeldNoticeAt, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

@@ -108,12 +108,37 @@ it('a relaunch inherits an exhausted poll episode: one delayed trial poll, not a
   const second = harness.launchLive(1000);
   expect(second.status).toBe(1);
   expect(polls()).toBe(6);
-  const ends = readRuns(join(harness.liveRoot, 'runs.jsonl')).launches;
-  expect(ends.map(run => run.pollPressure)).toEqual([{ failed: 5, conflicted: 5 }, { failed: 6, conflicted: 6 }]);
-  expect(ends.map(run => run.revival)).toEqual(['none', 'none']);
+  const runs = () => readRuns(join(harness.liveRoot, 'runs.jsonl'));
+  expect(runs().pollPressure).toEqual({ failed: 6, conflicted: 6 });
+  expect(runs().launches.map(run => run.revival)).toEqual(['none', 'none']);
   harness.setConflicts(0);
   const healed = harness.launchLive(2);
   expect(healed.status).toBe(0);
-  expect(readRuns(join(harness.liveRoot, 'runs.jsonl')).launches.at(-1)!.pollPressure).toEqual({ failed: 0, conflicted: 0 });
-  expect(readFileSync(join(harness.liveRoot, 'runs.jsonl'), 'utf8')).toContain('"revival":"none"');
+  expect(runs().pollPressure).toEqual({ failed: 0, conflicted: 0 });
+  expect(readFileSync(join(harness.liveRoot, 'runs.jsonl'), 'utf8')).toContain('"poll":"restored"');
+}, 60000);
+
+it('a process killed mid-episode keeps every failed poll it made: the replacement continues the same episode (Rule 55)', async () => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([]);
+  harness.setConflicts(100);
+  const polls = () => { try { return harness.calls().filter(call => call.kind === 'poll' && call.role === 'live').length; } catch { return 0; } };
+  const runs = () => readRuns(join(harness.liveRoot, 'runs.jsonl'));
+  // Killed during its backoff after two failed polls, before it can write any exit record.
+  const child = harness.startLive(1000);
+  const exited = new Promise(done => child.once('exit', (_code, signal) => done(signal)));
+  for (let i = 0; i < 400 && polls() < 2; i++) await new Promise(done => setTimeout(done, 25));
+  await new Promise(done => setTimeout(done, 100));
+  child.kill('SIGKILL');
+  expect(await exited).toBe('SIGKILL');
+  expect(runs().launches.at(-1)!.exit).toBeUndefined();
+  const made = polls();
+  expect(made).toBeGreaterThanOrEqual(1);
+  expect(made).toBeLessThan(5);
+  expect(runs().pollPressure).toEqual({ failed: made, conflicted: made });
+  const replacement = harness.launchLive(1000);
+  expect(replacement.status).toBe(1);
+  // It spends only the attempts the episode had left, never a fresh five.
+  expect(polls() - made).toBe(5 - made);
+  expect(runs().pollPressure).toEqual({ failed: 5, conflicted: 5 });
 }, 60000);

@@ -269,7 +269,7 @@ function world(root: string, malformedMemory: false | 'missing' | 'invalid' | 'u
         return JSON.stringify({ summary,
           people: [{ name: 'Sam', quote: 'Sam knows My gym locker code is 3310.' },
             { name: 'Riley', quote: "Riley's gym locker code is 3310." }],
-          commitments: [{ in: 'message', quote: 'locker code is 3310' }], closed: [], memory });
+          commitments: [{ in: 'message', quote: 'locker code is 3310', waitsOn: 'nothing' }], closed: [], memory });
       }
       prompts.set(input.question, input.context);
       if (malformedMemory === 'normal-summary' || malformedMemory === 'normal-summary-unresolved') return 'Acknowledged.';

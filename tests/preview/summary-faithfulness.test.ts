@@ -220,7 +220,7 @@ it.each([['lost', 0.99], ['supervisor outage', 0.01]] as const)(
           }
           if (questions) throw Error('supervisor unavailable');
           return { value: { model: 'jev-1.13.0', answers: Object.fromEntries(
-            ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user']
+            ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user', 'defers_work', 'unrecorded_blocker']
               .map(id => [id, { type: 'noul', noul: 0 }])) }, latencyMs: 1 };
         }, escalate: async () => { throw Error('unexpected review'); } },
         send: async () => 1, checkOutbound: () => {} });

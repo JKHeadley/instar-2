@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -161,11 +161,6 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
       : packet[part] ? [packet[part]] : []).map(item => item.sourceLabel ?? null)])),
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
-/** What a reply's answer declared, for its contextual review (Rules 20, 21, 23, 103). */
-const declaredObligations = (view, id) => {
-  const turn = view.turns.get(id);
-  return { blocker: turn?.answerBlocker ?? null, loops: turn?.answerLoops ?? [] };
-};
 const withheldView = view => {
   const preferenceKeys = new Set();
   for (const change of view.memory) {
@@ -405,7 +400,8 @@ async function main() {
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
-      obligations: loopHealth(view.view, wallNow()),
+      // Absolute times only: the ages are derivable and would make two reads of one journal differ.
+      obligations: (({ oldestUnfinishedAgeMs: _age, progressAgeMs: _progress, ...health }) => health)(loopHealth(view.view, wallNow())),
       directives: openDirectives(view.view).map(({ id, note }) => ({ id, update: view.view.turns.get(note.source)?.update,
         quote: redact(note.quote).text, since: note.at })),
       blockers: openBlockers(view.view).map(({ id, note }) => ({ id, update: view.view.turns.get(note.source)?.update, kind: note.kind,
@@ -566,7 +562,8 @@ async function main() {
     if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; workerStop.value = true; }
     return false;
   };
-  // Rule 55: poll-failure pressure is episode state carried across restarts in the run log, never reset by a relaunch.
+  // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
+  // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
@@ -749,11 +746,12 @@ async function main() {
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
     checkAgreements(true);
-    const carried = runs.launches.at(-2)?.pollPressure;
-    if (carried) { failedPolls = carried.failed; conflictedPolls = carried.conflicted; }
+    ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
     const pollFailure = async conflict => {
       failedPolls++;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
+      try { appendRun(runsPath, { v: 1, launch: launchedAt, poll: conflict ? 'conflicted' : 'failed', at: wallNow() }); }
+      catch { endReason = 'run log unavailable'; process.exitCode = 1; return false; }
       const reason = exhaustedPollReason(failedPolls, conflictedPolls);
       if (reason) {
         endReason = reason;
@@ -765,6 +763,12 @@ async function main() {
         await delay(Math.min(100, until - clock.elapsed()));
       return true;
     };
+    // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
+    if (exhaustedPollReason(failedPolls, conflictedPolls)) {
+      const until = clock.elapsed() + Math.min(conflictedPolls >= 5 ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls, 7));
+      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
+        await delay(Math.min(100, until - clock.elapsed()));
+    }
         let summaryJob = null, stepJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
@@ -798,12 +802,6 @@ async function main() {
       await waitHeldNotices();
       return true;
     };
-    // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
-    if (exhaustedPollReason(failedPolls, conflictedPolls)) {
-      const until = clock.elapsed() + Math.min(conflictedPolls >= 5 ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls, 7));
-      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
-        await delay(Math.min(100, until - clock.elapsed()));
-    }
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || !ownerHeld()) break;
@@ -814,7 +812,10 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      worker.gate(); await worker.drain();
+      // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick.
+      try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
+      summarizeLater(); worker.gate();
       checkAgreements(false);
       if (await stopAtCap()) break;
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
@@ -839,6 +840,8 @@ async function main() {
       let updates;
       try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure(false)) break; continue; }
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
+      // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
+      if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
       failedPolls = 0; conflictedPolls = 0;
       worker.intake(updates.result); await worker.drain();
       // Reminders go out only after a successful poll returned nothing new: every
@@ -887,11 +890,16 @@ async function main() {
           : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched' : endReason ?? 'error (details suppressed)';
         // Rule 68: eligible accepted work left behind is queued for the next launch unless a stop, expiry,
         // allowance or signal pause inhibits it; either way it stays visible, never counted as done.
-        const health = journal ? loopHealth(journal.view, wallNow()) : null;
-        const inhibited = signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
-          || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
-        const end = { pollPressure: { failed: failedPolls, conflicted: conflictedPolls },
-          ...(health ? { unfinished: health.unfinished, revival: health.unfinished === 0 ? 'none' : inhibited ? 'inhibited' : 'queued' } : {}) };
+        // Scheduled obligation work not yet due also needs a live runner when its time comes.
+        let end = {};
+        try {
+          const health = journal ? loopHealth(journal.view, wallNow()) : null;
+          const inhibited = signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
+            || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
+          const remaining = health ? health.unfinished + health.scheduledWork : 0;
+          if (health) end = { unfinished: health.unfinished, revival: remaining === 0 ? 'none' : inhibited ? 'inhibited' : 'queued',
+            ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }) };
+        } catch { /* an exit without a disposition is revived by the host watcher as a crash */ }
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {

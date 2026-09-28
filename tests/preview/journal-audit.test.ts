@@ -55,7 +55,7 @@ it('attributes merged reply commitments to each recorded reply', async () => {
         { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
       model: async input => input.id.startsWith('summary:')
         ? JSON.stringify({ summary: 'The request was remembered.', people: [],
-          commitments: [{ in: 'reply', quote: promise }], closed: [] }) : promise,
+          commitments: [{ in: 'reply', quote: promise, waitsOn: 'nothing' }], closed: [] }) : promise,
       send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(1, 'Remember the first thing.')]); await worker.drain();
     await worker.summarizeIfNeeded(true);
@@ -364,7 +364,7 @@ it('checks open commitments at reservation, including a closure by that summary 
         const packet = JSON.parse(input.context);
         return JSON.stringify({ summary: 'A dentist task.', people: [],
           commitments: packet.history.some((item: { user: string }) => item.user === 'Remind me to call the dentist.')
-            ? [{ in: 'message', quote: 'Remind me to call the dentist.' }] : [],
+            ? [{ in: 'message', quote: 'Remind me to call the dentist.', waitsOn: 'nothing' }] : [],
           closed: packet.history.some((item: { user: string }) => item.user === 'I already called the dentist.')
             ? [{ id: 0, quote: 'I already called the dentist.' }] : [] });
       }, send: async () => 1, checkOutbound: () => {} });

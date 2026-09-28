@@ -43,7 +43,7 @@ const resumeWith = async queued => {
         : { reply: 'Okay.', memory: [], dated: [], summaries: [{ quote: request, when, period: 'today', repeat: 'once' }] }),
       replyCheck: { elapsedMs: () => 0, escalate: async () => { throw Error('unexpected review'); },
         jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(['raw_path', 'cli_command', 'config_key',
-          'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user'].map(rule => [rule, { type: 'noul', noul: 0.01 }])) },
+          'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user', 'defers_work', 'unrecorded_blocker'].map(rule => [rule, { type: 'noul', noul: 0.01 }])) },
         latencyMs: 0 }) } });
     worker.intake([update(1, request)]); await worker.drain();
     expect(journal.view.summaryGrants).toHaveLength(1);

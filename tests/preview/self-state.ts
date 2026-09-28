@@ -6,14 +6,21 @@ import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
 import { activeSummaryGrants, pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
-/** One line per launch, one per recorded end of that launch (paired by `launch`). */
-export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string } & RunEnd;
-/** What an exit leaves for the next launch (Rules 55, 68): the consecutive poll-failure pressure a restart must
- * not erase, and whether eligible accepted work remains queued for revival or is inhibited by a stop/expiry. */
-export interface RunEnd { pollPressure?: { failed: number; conflicted: number }; unfinished?: number; revival?: 'queued' | 'inhibited' | 'none';
+/** One line per launch, one per recorded end of that launch (paired by `launch`), and one per poll attempt that
+ * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
+ * failures records the restoration that closes the episode. */
+export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string } & RunEnd
+  | { v: 1; launch: number; poll: PollEvent; at: number };
+export type PollEvent = 'failed' | 'conflicted' | 'restored';
+/** What an exit leaves for the next launch (Rule 68): whether eligible accepted work remains queued for revival or is
+ * inhibited by a stop, expiry or allowance, and when the next scheduled work step falls due. */
+export interface RunEnd { unfinished?: number;
+  revival?: 'queued' | 'inhibited' | 'none'; nextWorkAt?: number;
   /** Rule 63: this launch found another runner serving the conversation and retired without polling or sending. */
   nonowner?: { machine: string | null; since: number | null } }
-export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number }
+export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number;
+  /** The current poll-failure episode, folded in order over every launch; a crash cannot erase an attempt. */
+  pollPressure?: { failed: number; conflicted: number } }
 
 /** Appends one line and fsyncs it before returning; the first write also fsyncs the directory. */
 export function appendRun(path: string, record: RunRecord): void {
@@ -28,16 +35,24 @@ export function appendRun(path: string, record: RunRecord): void {
 }
 /** A missing log is an empty history; a torn or malformed line is counted, never guessed at. */
 export function readRuns(path: string): RunLog {
-  const log: RunLog = { launches: [], unreadable: 0 };
+  const log: RunLog = { launches: [], unreadable: 0, pollPressure: { failed: 0, conflicted: 0 } };
   let text = '';
   try { text = readFileSync(path, 'utf8'); } catch { return log; }
   const byLaunch = new Map<number, RunLog['launches'][number]>();
   for (const line of text.split('\n')) {
     if (!line) continue;
-    let row: Partial<RunRecord & { exit: number; reason: string; pid: number } & RunEnd>;
+    let row: Partial<RunRecord & { exit: number; reason: string; pid: number; poll: PollEvent; at: number } & RunEnd>;
     try { row = JSON.parse(line) as typeof row; } catch { log.unreadable++; continue; }
     if (row === null || typeof row !== 'object' || Array.isArray(row)
       || row.v !== 1 || !Number.isSafeInteger(row.launch)) { log.unreadable++; continue; }
+    if (row.poll !== undefined) {
+      if (!byLaunch.has(row.launch!) || !Number.isSafeInteger(row.at)
+        || row.poll !== 'failed' && row.poll !== 'conflicted' && row.poll !== 'restored') { log.unreadable++; continue; }
+      const pressure = log.pollPressure!;
+      log.pollPressure = row.poll === 'restored' ? { failed: 0, conflicted: 0 }
+        : { failed: pressure.failed + 1, conflicted: row.poll === 'conflicted' ? pressure.conflicted + 1 : 0 };
+      continue;
+    }
     if (row.exit === undefined) {
       if (byLaunch.has(row.launch!)) { log.unreadable++; continue; }
       const entry: RunLog['launches'][number] = { at: row.launch! };
@@ -47,11 +62,9 @@ export function readRuns(path: string): RunLog {
       const entry = byLaunch.get(row.launch!);
       if (!entry || entry.exit !== undefined || !Number.isSafeInteger(row.exit) || typeof row.reason !== 'string') { log.unreadable++; continue; }
       entry.exit = row.exit; entry.reason = row.reason;
-      const pressure = row.pollPressure;
-      if (pressure && Number.isSafeInteger(pressure.failed) && pressure.failed >= 0
-        && Number.isSafeInteger(pressure.conflicted) && pressure.conflicted >= 0) entry.pollPressure = { failed: pressure.failed, conflicted: pressure.conflicted };
       if (Number.isSafeInteger(row.unfinished) && row.unfinished! >= 0) entry.unfinished = row.unfinished!;
       if (row.revival === 'queued' || row.revival === 'inhibited' || row.revival === 'none') entry.revival = row.revival;
+      if (Number.isSafeInteger(row.nextWorkAt)) entry.nextWorkAt = row.nextWorkAt!;
       const nonowner = (row as { nonowner?: { machine?: unknown; since?: unknown } }).nonowner;
       if (nonowner && typeof nonowner === 'object') entry.nonowner = { machine: typeof nonowner.machine === 'string' ? nonowner.machine : null,
         since: Number.isSafeInteger(nonowner.since) ? nonowner.since as number : null };
