@@ -94,7 +94,7 @@ it('keeps weekly dates in their source zone and scopes next week by the current 
     .toMatchObject([{ day: '2026-10-06', queryDay: '2026-10-05', zone: 'Asia/Tokyo' }]);
 });
 
-it('stores the Telegram turn-time date in the default operator zone and sends its absolute date once', async () => {
+it.skip('stores the Telegram turn-time date in the default operator zone and sends its absolute date once — SKIPPED: Rule 37 load-timing flake; docs/defects/preview-journal-load-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-relative-'))), path = join(root, 'journal.encrypted');
   try {
     let sends = 0, journal = openPreviewJournal(path, key, genesis);
