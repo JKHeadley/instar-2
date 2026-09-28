@@ -68,7 +68,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
   } finally { endpoint.kill('SIGTERM'); }
 }, 30000);
 
-it.each(['SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and resumes on launch', async signal => {
+it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and resumes on launch', async signal => {
   const world = successiveWorld(), root = join(world.directory, 'idle-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log');
