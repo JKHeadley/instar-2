@@ -5,7 +5,10 @@ import { closeSync, existsSync, fstatSync, fsyncSync, openSync, readFileSync, re
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { isAbsolute } from 'node:path';
-import { canonicalText } from '../dist/decode/canonical.js';
+import { canonical } from '../dist/index.js';
+
+// Rule 115: shipped clients use the public core ports only; the canonical text comes from `canonical`.
+const canonicalText = value => { const result = canonical(value); return result.kind === 'Success' ? result.value.bytes : null; };
 
 // The strict v1 wire codec is S8's (src/assembly/production-launch-boundary.ts);
 // this service imports the built bytes instead of keeping a second copy.

@@ -1,0 +1,57 @@
+{
+  "type": "ParityRegister",
+  "schemaVersion": 1,
+  "note": "Rules 30, 105, 115: the feature-by-channel and feature-by-harness evidence matrix. A supported cell cites a captured test; an unsupported or unproven cell states why. A declared channel operation, a channel adapter or a registered doorway without its row fails the architecture check.",
+  "channels": ["telegram", "slack"],
+  "features": [
+    { "id": "ordinary-reply", "cells": {
+      "telegram": { "status": "supported", "evidence": { "file": "tests/preview/journal-cutover.test.ts", "title": "refuses a recorded long-poll overlap, then restarts and answers once from durable intake" } },
+      "slack": { "status": "unproven", "reason": "the Slack reply adapter is declared dark (slack-ordinary-reply, gate P12-NF-28) and the live runner does not answer in Slack" } } },
+    { "id": "durable-intake", "cells": {
+      "telegram": { "status": "supported", "evidence": { "file": "tests/preview/journal-burst.test.ts", "title": "fsyncs a ten-update burst in update order across a mid-batch crash, merges the edit, and sends once per other turn" } },
+      "slack": { "status": "supported", "evidence": { "file": "tests/conversation/slack-preparation.test.ts", "title": "P12-NF-19 writes the exact envelope capture and receipt before ack, then uses the shared intake owner" } } } },
+    { "id": "channel-memory-import", "cells": {
+      "telegram": { "status": "supported", "evidence": { "file": "tests/preview/channel-source.test.ts", "title": "imports only agent-participating Telegram user rows with the stored authenticated sender ID" } },
+      "slack": { "status": "supported", "evidence": { "file": "tests/preview/channel-source.test.ts", "title": "accepts Slack only from channels bound to this agent and from platform user IDs" } } } },
+    { "id": "status-command", "cells": {
+      "telegram": { "status": "supported", "evidence": { "file": "tests/preview/status-command.test.ts", "title": "sends a durable fixed reply through the reply check and cap without a generation call, even at the call cap" } },
+      "slack": { "status": "unproven", "reason": "status replies ride the ordinary reply path, which is unproven in Slack" } } },
+    { "id": "requested-reminder", "cells": {
+      "telegram": { "status": "supported", "evidence": { "file": "tests/preview/journal-reminder.test.ts", "title": "sends a requested reminder once at its due time with its reason, across restarts at every step" } },
+      "slack": { "status": "unproven", "reason": "a reminder is an initiated send; no Slack send surface is installed on the live path" } } },
+    { "id": "requested-summary", "cells": {
+      "telegram": { "status": "supported", "evidence": { "file": "tests/preview/journal-requested-summary.test.ts", "title": "sends a requested daily summary once per day, stating its reason, through the answer path" } },
+      "slack": { "status": "unproven", "reason": "a requested summary is an initiated send; no Slack send surface is installed on the live path" } } },
+    { "id": "too-long-notice", "cells": {
+      "telegram": { "status": "supported", "evidence": { "file": "tests/preview/journal-long-message.test.ts", "title": "records an over-maxBytes operator turn and sends one checked too-long notice across replay" } },
+      "slack": { "status": "unproven", "reason": "depends on the Slack ordinary reply, which is unproven" } } },
+    { "id": "media", "cells": {
+      "telegram": { "status": "unsupported", "reason": "inhibited by the Telegram adapter declaration (telegram.operation.media.inhibited)" },
+      "slack": { "status": "unsupported", "reason": "a non-text Slack message is held with a receipt and no reply operation" } } },
+    { "id": "reaction", "cells": {
+      "telegram": { "status": "unsupported", "reason": "inhibited by the Telegram adapter declaration" },
+      "slack": { "status": "unsupported", "reason": "no Slack reaction operation is installed" } } },
+    { "id": "typing", "cells": {
+      "telegram": { "status": "unsupported", "reason": "inhibited by the Telegram adapter declaration" },
+      "slack": { "status": "unsupported", "reason": "no Slack typing operation is installed" } } },
+    { "id": "delete", "cells": {
+      "telegram": { "status": "unsupported", "reason": "inhibited by the Telegram adapter declaration" },
+      "slack": { "status": "unsupported", "reason": "no Slack delete operation is installed" } } },
+    { "id": "edit", "cells": {
+      "telegram": { "status": "unsupported", "reason": "inhibited by the Telegram adapter declaration" },
+      "slack": { "status": "unsupported", "reason": "no Slack edit operation is installed" } } },
+    { "id": "aggregate", "cells": {
+      "telegram": { "status": "unsupported", "reason": "inhibited by the Telegram adapter declaration" },
+      "slack": { "status": "unsupported", "reason": "no Slack aggregate operation is installed" } } }
+  ],
+  "harnessTuples": [
+    { "harness": "preview-journal-native", "doorway": "claude-code-subscription", "platform": "darwin", "status": "supported",
+      "evidence": { "file": "tests/preview/harness-contract.test.ts", "title": "admits the route and captures the exact submitted context" },
+      "modes": { "ordinary-exhaustion-recovery": "supported: every turn re-grounds from the journal; the first reply after a summary boundary accounts for the last inbound (build 2)",
+        "preventive-compaction": "unsupported: no typed context-pressure observation exists for an exact live incarnation (D17 section 6); stays dark" } },
+    { "harness": "session-harness:claude-code", "doorway": "claude-code-subscription", "platform": "darwin", "status": "unproven",
+      "reason": "the tmux session adapter has holder lifecycle tests but no live conversation path; its Rule 59 table is not yet captured from real sessions" },
+    { "harness": "session-harness:codex-cli", "doorway": "none", "platform": "darwin", "status": "unsupported",
+      "reason": "no Codex model doorway is registered; the session driver can launch Codex but no admitted route or captured frames exist" }
+  ]
+}

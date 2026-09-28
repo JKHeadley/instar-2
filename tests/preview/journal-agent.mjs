@@ -2,16 +2,21 @@
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { redact } from '../../src/recall/redact.js';
-import { durablePreviewWrite } from './state.js';
+import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
+import { importClosure } from '../../scripts/import-closure.mjs';
+import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
+import { briefingDigestOf, codeDigestOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
+  updatePacketItem } from './installation.js';
 import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
@@ -131,6 +136,25 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
       ...(digest ? [awayDigestSource(digest)] : []), ...(note ? [note] : [])];
   };
 };
+/** The installed runner, read from this checkout: repository paths only, never outside it. */
+const RUNNER_ENTRY = 'tests/preview/journal-agent.mjs';
+const repoRead = path => { try { return readFileSync(resolve(process.cwd(), path), 'utf8'); } catch { return null; } };
+const repoFile = path => { try { return lstatSync(resolve(process.cwd(), path)).isFile(); } catch { return false; } };
+/** Rule 59: the harness's silent-stop table is admitted, with every captured case resolved, before a launch. */
+const admitHarness = () => admitPreviewHarness(repoRead);
+/** Rules 26, 44: the exact code this process loads (its static import closure) and the checkout revision. */
+const installedCode = () => {
+  const closure = importClosure([RUNNER_ENTRY], repoRead, repoFile);
+  if (closure.unresolved.length || closure.computed.length) throw Error('preview: installed runner closure unresolved');
+  let revision = null;
+  try { revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: process.cwd(), encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim() || null; } catch { revision = null; }
+  return { revision, files: closure.files.length,
+    codeDigest: codeDigestOf(closure.files.map(path => ({ path, bytes: readFileSync(resolve(process.cwd(), path)) }))) };
+};
+/** What the agent is told about itself, independent of the trial's changing limits. */
+const briefingDigest = () => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
+  SOURCE_PINS, { providerAttempts: 0, expiresAt: 0 }).sources.map(source => source.text), ANSWER_INSTRUCTIONS]);
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
@@ -232,6 +256,8 @@ async function main() {
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
   if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
+  // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.
+  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); }
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -307,6 +333,16 @@ async function main() {
           ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
           : null,
       packet: packetStatus(view.view),
+      installation: (() => {
+        const rows = installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), last = rows.at(-1);
+        if (!last) return null;
+        let installed = null; try { installed = installedCode(); } catch { installed = null; }
+        const update = installedUpdateFrom(rows, last, last.launch + 1);
+        return { lastLaunch: { revision: last.revision, codeDigest: last.codeDigest, files: last.files, launch: last.launch },
+          installed, stale: installed === null ? null : installed.codeDigest !== last.codeDigest,
+          harness: last.harness, doorway: last.doorway, stallClasses: last.stallClasses, briefingDigest: last.briefingDigest,
+          update, updateDelivered: update ? updateDelivery(update, view.view.order) : null };
+      })(),
 
       memoryHealth: memoryHealthLine(view.view),
 
@@ -535,7 +571,7 @@ async function main() {
     return;
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
-  let handoff = null, reservedAtLaunch = new Set();
+  let handoff = null, reservedAtLaunch = new Set(), installation = null, installUpdate = null;
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
@@ -611,6 +647,10 @@ async function main() {
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
+      // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
+      installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
+      statusLines: () => installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
+        installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
@@ -696,7 +736,10 @@ async function main() {
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = wallNow();
-    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid });
+    installation = { ...installedCode(), briefingDigest: briefingDigest(), harness: PREVIEW_JOURNAL_HARNESS,
+      stallClasses: PREVIEW_JOURNAL_STALL_COVERAGE.rows.length, doorway: options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY };
+    installUpdate = installedUpdateFrom(installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), installation, launchedAt);
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation });
     runs = readRuns(runsPath);
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
@@ -814,17 +857,20 @@ async function main() {
     function modelRoute(operation) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       const policy = subscriptionConversationPolicy(options.model);
+      // Rule 30: the doorway is selected by its registered id; its parser and terminal contract stay in the adapter.
+      const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
       const contract = { reference: activation.reference, version: activation.profileDigest,
-        parserReference: 'claude-code-json-result', parserVersion: '1', endpoint: profile.loginProfileIdentity,
+        ...doorway.contract, successfulFinalReplyReasons: [...doorway.contract.successfulFinalReplyReasons],
+        endpoint: profile.loginProfileIdentity,
         account: profile.expectedAccount, credentialReference: profile.reference, controller: 'preview-journal',
-        sourceEvidence: [activation.reference], terminalEvidence: activation.reference, terminalReasonField: 'subtype',
-        successfulFinalReplyReasons: ['success'], strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
+        sourceEvidence: [activation.reference], terminalEvidence: activation.reference,
+        strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
       const physicalIO = createSubscriptionProviderIO({ repository: process.cwd(),
         stopped: () => workerStop.value || existsSync(stopPath) || !active() });
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
         { elapsed: () => performance.now(), at: wallNow });
-      return take(createClaudeCodeSubscriptionRoute({ context, credential: secretRef(profile.reference), profile,
+      return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
         io,

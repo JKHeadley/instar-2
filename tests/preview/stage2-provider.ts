@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { canonical, decode } from '../../src/index.js';
+import { decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionPolicyFor, validateSubscriptionActivation,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionFraming } from '../../src/assembly/production-provider.js';
@@ -10,11 +10,8 @@ export const STAGE2_SETTINGS = Object.freeze({ automaticRetries: 0, maxTokens: 2
 export const STAGE2_OUTPUT_SCHEMA = Object.freeze({ type: 'Decision' });
 export const STAGE2_ROUTE = 'preview-subscription';
 export const STAGE2_DISCLOSURE = 'Supervised unconfined subscription preview; charge and quiescence UNKNOWN';
-export function encoded(value: unknown) {
-  const result = canonical(value);
-  if (result.kind !== 'Success') throw new Error('preview: canonical encoding refused');
-  return result.value;
-}
+import { encoded } from './canonical.js';
+export { encoded };
 
 /** Application bindings and retained conversation are measured data. */
 export function decisionContext(bindings: unknown, selectedContext: readonly unknown[]): string {

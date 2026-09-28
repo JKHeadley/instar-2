@@ -8,7 +8,9 @@ import type {
   HarnessLaunchSpec,
   HarnessObservation,
   NativeHarnessDriverPort,
+  HarnessStallCoverage,
 } from '../assembly/index.js';
+import { stallCoverageGaps } from '../assembly/index.js';
 import type { HarnessRuntimeHandle } from './contracts.js';
 import type { HarnessEvidenceHolder, RuntimeHandleHolder } from './holder.js';
 import { decodeHarnessRuntimeHandle } from './records.js';
@@ -20,6 +22,8 @@ export interface SessionHarnessAdapterInput {
   readonly conformance: string;
   readonly machine: string;
   readonly driver: NativeHarnessDriverPort;
+  /** Rule 59: the enumerated silent-stop table; an incomplete one refuses onboarding. */
+  readonly stallCoverage: HarnessStallCoverage;
   readonly handles: RuntimeHandleHolder;
   readonly evidence: HarnessEvidenceHolder;
   readonly context: AssemblyDecodeContext;
@@ -171,6 +175,9 @@ function handleMatchesSpec(handle: HarnessRuntimeHandle, spec: HarnessLaunchSpec
 export function createSessionHarnessAdapter(input: SessionHarnessAdapterInput): SessionHarnessAdapterPackage {
   requireValue(input.id && input.platform && input.conformance && input.machine, 'adapter identity fields are required');
   requireValue(input.driver.owner === 'part-eight', 'harness driver must be the landed Eight-owned public port');
+  const stallGaps = stallCoverageGaps(input.stallCoverage);
+  requireValue(stallGaps.length === 0 && input.stallCoverage.harness === input.id,
+    `harness stall coverage incomplete: ${stallGaps.join('; ') || 'coverage names another harness'}`);
   requireValue(input.handles.owner === 'part-thirteen' && input.handles.machine === input.machine,
     'adapter requires a real machine-local Part Thirteen handle holder');
   requireValue(input.evidence.owner === 'part-thirteen' && input.evidence.machine === input.machine,

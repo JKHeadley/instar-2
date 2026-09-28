@@ -5,7 +5,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { previewTurnId } from './state.js';
+import { previewTurnId } from './durable-write.js';
 import { redact } from '../../src/recall/redact.js';
 import { namedTerms, selectRecall, selectSaidTurns, similarName, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
@@ -2232,6 +2232,10 @@ export function renewJournalExpiry(journal: ReturnType<typeof openPreviewJournal
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Extra lines for the fixed status reply, supplied by the runner (ownership, store checks). */
+  statusLines?(): readonly string[];
+  /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
+  installedUpdate?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
   elapsed?(): number;
   timeZone?: string;
@@ -3651,7 +3655,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as MemorySourceKind, source: 'channel-import',
           message: `${cleanMetadata(item.subject ?? '', item)} ${clean(redact(item.text).text, true)}`.trim().slice(0, 1000), reply: '' }))];
         for (const datedBase of datedVariants(base)) {
+        const installedUpdate = fromOperator(turn) ? ports.installedUpdate?.() ?? null : null;
         const fullContext = JSON.stringify({ ...JSON.parse(datedBase) as object,
+          ...(installedUpdate ? { installedUpdate } : {}),
           // Only when the last inbound message is out of the verbatim view (neither history nor recalled).
           ...(compact && summary && !selectedRecall.some(item => item.id === previous?.id) ? compactionFor(summary.through) ?? {} : {}),
           // Rule 11: how much of the summarized history recall can reach by meaning, not only by words.
@@ -3853,7 +3859,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (turn.held) continue;
         gate();
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
-          const answer = statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC');
+          const answer = [statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC'), ...(ports.statusLines?.() ?? [])].join('\n');
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },

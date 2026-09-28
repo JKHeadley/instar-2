@@ -8,11 +8,12 @@ import {createRunGraph,isProductionGroundedRunGraph} from '../../src/rungraph/in
 import {groundedAssemblyRuntimeFixture,installProduction} from './genuine-production-fixture.js';
 import {productionComposition} from './production-fixture.js';
 import {value} from '../facts/fixtures.js';
+import { stallCoverageFixture } from './stall-coverage-fixture.js';
 type Outcome = { accepted: boolean; value?: unknown; detail?: string };
 const outcome=(r:any):Outcome=>consumeResult<unknown,Outcome>(r,{Success:value=>({accepted:true,value}),Refused:refusal=>({accepted:false,detail:refusal.detail})});
 for(const substitution of ['reader-runtime','native-driver','context-history','unchanged-control']) it(`Astra F8 ${substitution}: boot refuses substituted owners or keeps original genuine delegation`,()=>{
  const f=groundedAssemblyRuntimeFixture(),installed=installProduction(f),p=f.groundingFor({scope:installed.binding.scope});
- const nativeInput:any={id:f.harnessId,artifact:f.launch.artifactDigest,platform:'darwin-arm64',conformance:'conformance:1',context:p.context,clock:()=>100,generation:()=>f.run.generation.id,contextDeliveryDriver:p.driver,driver:{owner:'part-eight',launch:()=>{throw Error('unused')},deliver:()=>{throw Error('unused')},observe:()=>{throw Error('unused')}}};
+ const nativeInput:any={id:f.harnessId,stallCoverage:stallCoverageFixture(f.harnessId),artifact:f.launch.artifactDigest,platform:'darwin-arm64',conformance:'conformance:1',context:p.context,clock:()=>100,generation:()=>f.run.generation.id,contextDeliveryDriver:p.driver,driver:{owner:'part-eight',launch:()=>{throw Error('unused')},deliver:()=>{throw Error('unused')},observe:()=>{throw Error('unused')}}};
  const harness=createNativeHarnessAdapter(nativeInput);f.composition.harnesses.splice(0,f.composition.harnesses.length,harness);
  const input:any={scope:installed.binding.scope,runtime:p.runtime,harness,context:p.context,clock:p.clock,sample:p.sample};
  const reader=createProductionGroundingReader(input);
