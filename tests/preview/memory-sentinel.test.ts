@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { namedWindow, selectRecall } from './memory-sentinel.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { PREVIEW_CONTINUED_TURNS, PREVIEW_RECALL_LIMIT } from './journal.js';
 
 const now = 1790000000000, hour = 3_600_000, day = 24 * hour;
 const filler = (i: number) => ({ text: `ordinary turn ${i}: weather, errands and plans for the week noted`, at: now - 10 * day + i * 60000 });
@@ -250,7 +251,8 @@ it('retains a contextual source when incidental direct matches fill the recall s
       expect(packet.historyMode).toBe('summary-plus-recent');
       expect(packet.recalled?.map(item => item.id)).toContain('telegram:12345678:update:3');
       expect(packet.recalled?.find(item => item.id.endsWith(':3'))?.user).toContain('ranunculus');
-      expect(packet.recalled?.length).toBeLessThanOrEqual(5);
+      // The recall limit plus the two continued turns kept beside a terse follow-up.
+      expect(packet.recalled?.length).toBeLessThanOrEqual(PREVIEW_RECALL_LIMIT + PREVIEW_CONTINUED_TURNS);
       expect(Buffer.byteLength(result.context)).toBeLessThanOrEqual(genesis.maxBytes);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }

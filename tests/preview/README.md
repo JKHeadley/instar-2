@@ -1380,6 +1380,26 @@ newer report supports it. No new store, call or service is
 used. See [people-attribute-history-live-test.md](live-tests-archive/people-attribute-history-live-test.md)
 for Justin's supervised check after integration.
 
+The answer to such a question is often terse ("second", "the dentist one",
+"neither, a new one"). When the rolling summary has already covered the two
+turns just before a new message, the memory sentinel now recalls both verbatim
+beside it, ahead of its ordinary word-matched recall, so the question and any
+answer already given stay visible. Turns still in `history` are not repeated.
+The model decides whether the message answers either one; no word test does.
+These items yield first under the prompt bound, like other recalled turns, and
+a question three or more turns back relies on ordinary recall. The offline
+`clarification-binding.ts` harness drives the real journal, replay and summary
+with a stub that binds only to what its packet shows, over two conflicts, six
+terse replies, nine timing conditions and four not-an-answer controls. At
+`3695117d` its 54 cases bound 43 and dropped 11: 8 lost their question after
+interleaved messages and compaction, and 3 were held (below). None bound to the
+wrong question and all controls held. With the carried turns alone, 47 bind.
+Integrated with this runner's full original history for short conversations,
+51 bind; the three remaining are the disagreement fixture, where the stub asks
+again rather than binding and the reply is not held. It measures packet
+evidence, not real-model reading. Justin's check is
+[clarification-reply-live-test.md](live-tests-archive/clarification-reply-live-test.md).
+
 ### Remembering commitments
 
 An explicit first-person promise in the agent's **actual send intent** is captured immediately,
