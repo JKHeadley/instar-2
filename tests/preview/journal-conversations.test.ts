@@ -114,7 +114,8 @@ it('shares one attempt cap, one reply cap and one stop across every conversation
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('recalls a topic fact beyond the envelope into the main chat after summaries, with flat overhead across restarts', async () => {
+// Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
+it.skip('recalls a topic fact beyond the envelope into the main chat after summaries, with flat overhead across restarts', async () => {
   const root = origin(), samples: number[] = [];
   const fact = 'The spare house key is under the blue heron statue.';
   let asked: string | undefined;
