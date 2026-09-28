@@ -1254,7 +1254,7 @@ it('summarizes and answers with pending corrections and a commitment before any 
       model: async input => { seen.push(input);
         return input.id.startsWith('summary:')
           ? JSON.stringify({ summary: 'The operator asked me to remember a Friday dentist appointment.', people: [],
-            commitments: [{ in: 'message', quote: request }], closed: [] })
+            commitments: [{ in: 'message', quote: request, waitsOn: 'nothing' }], closed: [] })
           : 'I can remember that, but I cannot schedule a reminder.';
       },
       send: async () => 3, checkOutbound: () => {} });
