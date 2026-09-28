@@ -37,15 +37,15 @@ type Packet = { history: { user: string; answer: string | null }[]; openCommitme
  * an invention. It closes an open item only when a history message really says so. */
 const extractor = (bad = true) => (context: string) => {
   const packet = JSON.parse(context) as Packet;
-  const commitments: { in: string; quote: string; closedBy?: string }[] = [];
+  const commitments: { in: string; quote: string; waitsOn?: string; closedBy?: string }[] = [];
   for (const turn of packet.history) {
-    if (/remember|remind/iu.test(turn.user)) commitments.push({ in: 'message', quote: turn.user });
-    if (turn.answer?.includes(PROMISE)) commitments.push({ in: 'reply', quote: PROMISE });
+    if (/remember|remind/iu.test(turn.user)) commitments.push({ in: 'message', quote: turn.user, waitsOn: 'nothing' });
+    if (turn.answer?.includes(PROMISE)) commitments.push({ in: 'reply', quote: PROMISE, waitsOn: 'nothing' });
   }
   const closing = packet.history.find(turn => turn.user === DONE);
   if (closing) for (const item of commitments) if (item.quote.includes('dentist')) item.closedBy = 'I already called the dentist';
-  if (bad) commitments.push({ in: 'message', quote: 'Remember my locker code.' }, { in: 'reply', quote: LOCKER },
-    { in: 'message', quote: PROMISE }, { in: 'message', quote: 'Remember to buy the boat on Sunday.' });
+  if (bad) commitments.push({ in: 'message', quote: 'Remember my locker code.', waitsOn: 'nothing' }, { in: 'reply', quote: LOCKER, waitsOn: 'nothing' },
+    { in: 'message', quote: PROMISE, waitsOn: 'nothing' }, { in: 'message', quote: 'Remember to buy the boat on Sunday.', waitsOn: 'nothing' });
   const closed = closing ? (packet.openCommitments ?? []).filter(item => item.quote.includes('dentist'))
     .map(item => ({ id: item.id, quote: 'I already called the dentist' })) : [];
   if (bad) closed.push({ id: 0, quote: 'the locker is done' }, { id: 99, quote: 'I already called the dentist' });
@@ -372,7 +372,7 @@ it('refuses a closure for an open item omitted from the summary packet', async (
         const packet = JSON.parse(input.context) as Packet;
         packets.push(packet);
         return JSON.stringify({ summary: 'The earlier request remains open.', people: [],
-          commitments: packet.history.filter(turn => turn.user.includes('Please remember')).map(turn => ({ in: 'message', quote: turn.user })),
+          commitments: packet.history.filter(turn => turn.user.includes('Please remember')).map(turn => ({ in: 'message', quote: turn.user, waitsOn: 'nothing' })),
           closed: [{ id: 0, quote: 'I already called the dentist' }] });
       },
       send: async () => 1, checkOutbound: () => {} });

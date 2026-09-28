@@ -49,12 +49,18 @@ export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, 
 }
 
 export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
-  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge only these rules: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret even if the operator supplied it. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach of a selected rule; uncertainty is PASS. Use only listed rule IDs. No other text.`;
+  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge only these rules: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret even if the operator supplied it. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach of a selected rule; uncertainty is PASS. Use only listed rule IDs. No other text.${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
 }
 
+/** Rules 20, 21, 23, 103: a settled cannot-do or needs-a-person claim is judged against the investigation record the
+ * writer attached, never accepted on wording alone; a refusal behind an ungoverned boundary is not evidence. */
+export const DECLARED_OBLIGATIONS_GUIDE = ' For claims_blocked and parks_on_user, packet.declaredObligations.blocker (null when absent) is the investigation record attached to this reply. A final claim that something cannot be done, or that only a person can do it, is evidenced only when that record lists the lawful avenues used and cites a governingConstraints id; a missing tool is not proof that only a person can act. A refusal citing a boundary that is not a governingConstraints entry is claims_blocked.';
+/** What the writer declared with this reply: its settled blocker record and the loops it opened. */
+export interface DeclaredObligations { blocker: unknown; loops: unknown[] }
 /** Reuse the exact packet that grounded the proposed answer, including its
  * audience, sources, memory and conversation history. */
-export function replyReviewContext(originalPrompt: string, candidateReply: string, flagged: readonly ReplyRule[] = []): string {
+export function replyReviewContext(originalPrompt: string, candidateReply: string, flagged: readonly ReplyRule[] = [],
+  declared?: DeclaredObligations): string {
   const messages = JSON.parse(originalPrompt).messages as { role: string; content: string }[];
   const packet = JSON.parse(messages.find(message => message.role === 'context')?.content ?? '').packet;
   const operatorMessage = messages.find(message => message.role === 'user')?.content;
@@ -63,7 +69,7 @@ export function replyReviewContext(originalPrompt: string, candidateReply: strin
     throw Error('preview: full reply-review context malformed');
   const selected = flagged.length ? flagged : rules;
   if (selected.some(id => !Object.hasOwn(REPLY_RULES, id))) throw Error('preview: reply-review rule absent');
-  return JSON.stringify({ ...packet, operatorMessage, candidateReply,
+  return JSON.stringify({ ...packet, operatorMessage, candidateReply, ...(declared ? { declaredObligations: declared } : {}),
     rules: Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])) });
 }
 

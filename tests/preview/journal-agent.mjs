@@ -26,6 +26,7 @@ import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
+import { loopHealth } from './obligations.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -157,6 +158,11 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
       : packet[part] ? [packet[part]] : []).map(item => item.sourceLabel ?? null)])),
   corrections: (packet.corrections ?? []).map(item => ({ update: item.update, date: item.date, rules: item.findings.map(f => f.rule),
     problems: item.findings.map(f => f.possibleProblem) })) });
+/** What a reply's answer declared, for its contextual review (Rules 20, 21, 23, 103). */
+const declaredObligations = (view, id) => {
+  const turn = view.turns.get(id);
+  return { blocker: turn?.answerBlocker ?? null, loops: turn?.answerLoops ?? [] };
+};
 const withheldView = view => {
   const preferenceKeys = new Set();
   for (const change of view.memory) {
@@ -375,6 +381,7 @@ async function main() {
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths,
+      obligations: loopHealth(view.view, wallNow()),
       replyTimings: replyTimings(view.view),
       lastReplyCheck: view.view.lastReplyCheck,
       lastReplyReview: lastReplyReview(view.view),
@@ -514,6 +521,8 @@ async function main() {
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
   let handoff = null, reservedAtLaunch = new Set();
+  // Rule 55: poll-failure pressure is episode state carried across restarts in the run log, never reset by a relaunch.
+  let failedPolls = 0, conflictedPolls = 0;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -607,7 +616,7 @@ async function main() {
           const question = replyReviewQuestion(reviewRules ?? []);
 
           const prepared = modelEnvelope({ question,
-            context: replyReviewContext(originalPrompt, text, reviewRules), id: `${id}:reply-review` });
+            context: replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id)), id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
@@ -675,7 +684,8 @@ async function main() {
     runs = readRuns(runsPath);
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
-    let failedPolls = 0, conflictedPolls = 0;
+    const carried = runs.launches.at(-2)?.pollPressure;
+    if (carried) { failedPolls = carried.failed; conflictedPolls = carried.conflicted; }
     const pollFailure = async conflict => {
       failedPolls++;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
@@ -723,6 +733,12 @@ async function main() {
       await waitHeldNotices();
       return true;
     };
+    // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
+    if (exhaustedPollReason(failedPolls, conflictedPolls)) {
+      const until = clock.elapsed() + Math.min(conflictedPolls >= 5 ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls, 7));
+      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
+        await delay(Math.min(100, until - clock.elapsed()));
+    }
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
@@ -803,7 +819,14 @@ async function main() {
       if (launchedAt !== null) {
         const reason = signalName ? `paused by signal ${signalName}` : journal?.view.stop === 'trial expired' ? 'trial expired'
           : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched' : endReason ?? 'error (details suppressed)';
-        try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason }); } catch { /* the next launch reports an unrecorded end */ }
+        // Rule 68: eligible accepted work left behind is queued for the next launch unless a stop, expiry,
+        // allowance or signal pause inhibits it; either way it stays visible, never counted as done.
+        const health = journal ? loopHealth(journal.view, wallNow()) : null;
+        const inhibited = signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
+          || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
+        const end = { pollPressure: { failed: failedPolls, conflicted: conflictedPolls },
+          ...(health ? { unfinished: health.unfinished, revival: health.unfinished === 0 ? 'none' : inhibited ? 'inhibited' : 'queued' } : {}) };
+        try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
       journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);

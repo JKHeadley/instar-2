@@ -7,8 +7,11 @@ import { redact } from '../../src/recall/redact.js';
 import { activeSummaryGrants, pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`). */
-export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string };
-export interface RunLog { launches: { at: number; exit?: number; reason?: string }[]; unreadable: number }
+export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string } & RunEnd;
+/** What an exit leaves for the next launch (Rules 55, 68): the consecutive poll-failure pressure a restart must
+ * not erase, and whether eligible accepted work remains queued for revival or is inhibited by a stop/expiry. */
+export interface RunEnd { pollPressure?: { failed: number; conflicted: number }; unfinished?: number; revival?: 'queued' | 'inhibited' | 'none' }
+export interface RunLog { launches: ({ at: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number }
 
 /** Appends one line and fsyncs it before returning; the first write also fsyncs the directory. */
 export function appendRun(path: string, record: RunRecord): void {
@@ -29,7 +32,7 @@ export function readRuns(path: string): RunLog {
   const byLaunch = new Map<number, RunLog['launches'][number]>();
   for (const line of text.split('\n')) {
     if (!line) continue;
-    let row: Partial<RunRecord & { exit: number; reason: string; pid: number }>;
+    let row: Partial<RunRecord & { exit: number; reason: string; pid: number } & RunEnd>;
     try { row = JSON.parse(line) as typeof row; } catch { log.unreadable++; continue; }
     if (row === null || typeof row !== 'object' || Array.isArray(row)
       || row.v !== 1 || !Number.isSafeInteger(row.launch)) { log.unreadable++; continue; }
@@ -40,6 +43,11 @@ export function readRuns(path: string): RunLog {
       const entry = byLaunch.get(row.launch!);
       if (!entry || entry.exit !== undefined || !Number.isSafeInteger(row.exit) || typeof row.reason !== 'string') { log.unreadable++; continue; }
       entry.exit = row.exit; entry.reason = row.reason;
+      const pressure = row.pollPressure;
+      if (pressure && Number.isSafeInteger(pressure.failed) && pressure.failed >= 0
+        && Number.isSafeInteger(pressure.conflicted) && pressure.conflicted >= 0) entry.pollPressure = { failed: pressure.failed, conflicted: pressure.conflicted };
+      if (Number.isSafeInteger(row.unfinished) && row.unfinished! >= 0) entry.unfinished = row.unfinished!;
+      if (row.revival === 'queued' || row.revival === 'inhibited' || row.revival === 'none') entry.revival = row.revival;
     }
   }
   return log;

@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
+import { readRuns } from './self-state.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 
 it('refuses a recorded long-poll overlap, then restarts and answers once from durable intake', async () => {
@@ -95,3 +96,24 @@ globalThis.fetch = async () => {
   expect(existsSync(attemptedFetch)).toBe(false);
   expect(harness.calls().filter(call => call.kind === 'send')).toHaveLength(1);
 });
+
+it('a relaunch inherits an exhausted poll episode: one delayed trial poll, not a fresh five (Rule 55)', () => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([]);
+  harness.setConflicts(100);
+  const first = harness.launchLive(1000);
+  expect(first.status).toBe(1);
+  const polls = () => harness.calls().filter(call => call.kind === 'poll' && call.role === 'live').length;
+  expect(polls()).toBe(5);
+  const second = harness.launchLive(1000);
+  expect(second.status).toBe(1);
+  expect(polls()).toBe(6);
+  const ends = readRuns(join(harness.liveRoot, 'runs.jsonl')).launches;
+  expect(ends.map(run => run.pollPressure)).toEqual([{ failed: 5, conflicted: 5 }, { failed: 6, conflicted: 6 }]);
+  expect(ends.map(run => run.revival)).toEqual(['none', 'none']);
+  harness.setConflicts(0);
+  const healed = harness.launchLive(2);
+  expect(healed.status).toBe(0);
+  expect(readRuns(join(harness.liveRoot, 'runs.jsonl')).launches.at(-1)!.pollPressure).toEqual({ failed: 0, conflicted: 0 });
+  expect(readFileSync(join(harness.liveRoot, 'runs.jsonl'), 'utf8')).toContain('"revival":"none"');
+}, 60000);

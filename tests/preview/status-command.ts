@@ -3,6 +3,7 @@ import { redact } from '../../src/recall/redact.js';
 import { dueState, localParts } from './dated-memory.js';
 import { messageTime } from './self-state.js';
 import type { JournalView } from './journal.js';
+import { loopStatusLines } from './obligations.js';
 
 export const isStatusCommand = (text: string): boolean => /^(?:status|how are you doing)\s*[?.!]?$/iu.test(text.trim());
 
@@ -34,6 +35,7 @@ export function statusReply(view: JournalView, now: number, zone: string): strin
     `Held replies: ${held.size ? [...held].map(([reason, count]) => `${count} ${reason}`).join('; ') : 'none'}.`,
     `Pending memory decisions: ${pending.length}${pending.length ? ` (updates ${pending.map(turn => turn.update).join(', ')})` : ''}.`,
     `Next dated item: ${nextText}.`,
+    ...loopStatusLines(view, now),
     `Spend allowance: ${view.calls}/${view.limits.maxCalls} subscription attempts; ${view.jevChecks}/${view.limits.maxReplies} Jev checks. Dollar spend/cap: not recorded in this journal. Replies: ${view.replies}/${view.limits.maxReplies} used.`,
   ].join('\n');
 }
