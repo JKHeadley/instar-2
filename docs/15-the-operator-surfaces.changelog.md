@@ -4,6 +4,10 @@ _Generated from `15-the-operator-surfaces.changelog.json` by `scripts/render-cha
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-09-28 · approved — Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written.
+
+- **Mark the design approved as written.** — Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction. _(topic-52075-2026-09-28T16:09Z)_
+
 ## Revision 5 · 2026-09-24 · draft — Bounded Slack second-channel constitutional amendment from astra-slack-closedset-ruling.md; operator approval PENDING; no merge or runtime activation.
 
 - **Include the bounded Slack reply in the fixed profile’s operator-accepted operation set.** — The operator-facing dependency verdict must describe the same closed set and permanent-machine-loss model as the purpose. _(astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING)_

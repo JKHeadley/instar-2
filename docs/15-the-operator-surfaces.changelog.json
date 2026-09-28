@@ -1,5 +1,21 @@
 [
   {
+    "revision": 6,
+    "date": "2026-09-28",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written."
+    },
+    "changes": [
+      {
+        "what": "Mark the design approved as written.",
+        "why": "Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction.",
+        "ref": "topic-52075-2026-09-28T16:09Z"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-09-24",
     "status": "draft",
@@ -27,7 +43,9 @@
       {
         "what": "Make the minimal dependency verdict admit the policy-bound single-machine operation set without a peer and require the real peer for the peer-backed or replication-demand arm.",
         "why": "Eleven must test the installed durability demand rather than hard-code a peer into every deployment shape.",
-        "commits": ["1b5ac4c"]
+        "commits": [
+          "1b5ac4c"
+        ]
       }
     ]
   },
@@ -43,7 +61,9 @@
       {
         "what": "Make the minimal-plane seam satisfy Eight's approved operation durability demand and tie local loss to independently entered operator acceptance.",
         "why": "Eleven must permit both the replicated peer arm and the approved local-only arm without treating a pull request as authority.",
-        "commits": ["f106575"]
+        "commits": [
+          "f106575"
+        ]
       }
     ]
   },
@@ -59,7 +79,9 @@
       {
         "what": "Make the minimal responder consume the exact approved operation durability demand and separate verifier selection from readiness.",
         "why": "The fixed profile must retain the peer unless its exact local-loss policy is accepted, and installation metadata must not manufacture an independent verifier.",
-        "commits": ["1b960e7"]
+        "commits": [
+          "1b960e7"
+        ]
       }
     ]
   },
@@ -75,7 +97,9 @@
       {
         "what": "Initial Part Eleven design.",
         "why": "Define the verified operator edge and first composed slice.",
-        "commits": ["102266d36b536adddc2356074ab12dc6e6fc8407"]
+        "commits": [
+          "102266d36b536adddc2356074ab12dc6e6fc8407"
+        ]
       }
     ]
   }
