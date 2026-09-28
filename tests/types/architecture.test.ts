@@ -77,3 +77,18 @@ describe('NF-10: intent-decision sites never branch on a literal meaning classif
       'NF-10 promiseProposals branches on a literal meaning classifier']);
   });
 });
+
+describe('NF-11: every memory retrieval entry point selects through the recall owner (Rule 11)', () => {
+  it('flags a word-match-only entry point and an unlisted ranking site, and passes the live runner', async () => {
+    const { lintRetrievalSites } = await import('../../scripts/check-architecture.mjs');
+    expect(lintRetrievalSites()).toEqual([]);
+    const flagged = lintRetrievalSites({ 'tests/preview/journal.ts': [
+      'const ownedRecall = (q: string) => composeRecall({ query: q });',
+      'const recallFor = (turn: Turn) => selectRecall({ message: turn.text });',
+      'const searchFor = (turn: Turn) => ownedRecall(turn.text, selectRecall({ message: turn.text }));',
+      'const newRecall = (turn: Turn) => selectRecall({ message: turn.text });',
+    ].join('\n') }).map((issue: { rule: string; detail: string }) => `${issue.rule} ${issue.detail}`);
+    expect(flagged).toEqual(['NF-11 selectRecall in newRecall is an unlisted retrieval call site',
+      'NF-11 recallFor does not select through ownedRecall']);
+  });
+});

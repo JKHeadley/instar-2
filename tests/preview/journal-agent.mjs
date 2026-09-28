@@ -145,13 +145,12 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   inventory: packet.inventory ?? null,
   memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
   meaningIndexCoverage: packet.meaningIndexCoverage ?? null,
-  compaction: packet.compaction ? { lastInbound: packet.compaction.lastInbound.id,
-    summarizedThrough: packet.compaction.summarizedThrough } : null,
+  continuity: packet.continuity ?? null,
 
   contradictions: packet.contradictions ?? [],
   crossTopicDigest: packet.crossTopicDigest ?? null,
   restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
-  recalled: packet.recalled?.length ?? 0, recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
+  recalled: packet.recalled?.length ?? 0, recalledIds: (packet.recalled ?? []).map(item => item.id ?? null), recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
   replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
     recorded: packet.replyProvenance.recorded !== null,
     history: packet.replyProvenance.recorded?.history?.length ?? 0,
@@ -428,7 +427,11 @@ async function main() {
         instructions: instructionsOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
           outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null,
-          ...(reply.compaction ? { compactionAccount: reply.compaction } : {}) } : null,
+          ...(reply.continuity ? { continuity: reply.continuity } : {}) } : null,
+        // Rules 11 and 110: the latest summary frontier and which operator updates the meaning index covers.
+        summaryFrontier: view.view.summaries.at(-1)?.through ?? null,
+        meaningIndexed: [...new Set(view.view.summaries.flatMap(item => item.concepts ?? [])
+          .map(item => view.view.turns.get(item.source)?.update))].filter(update => update !== undefined).slice(-100),
         agentPromises: view.view.commitments.flatMap((note, id) => note.agentPromise ? [{ id, quote: note.quote,
           action: note.agentPromise.action, closed: view.view.closed.has(id) }] : []).slice(-10),
         ...(next ? { next } : {}), withheld: withheldView(view.view),

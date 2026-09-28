@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, projectMemoryText, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, importChannelFixture, MEMORY_UNDECIDED_REPLY, openPreviewJournal, projectMemoryText, replyBody, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
 
 const key = new Uint8Array(32).fill(17);
@@ -489,14 +489,14 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(w.journal.view.summaries.length).toBeGreaterThan(0);
     const question = 'What is my gym locker code?';
     await w.say(id++, question);
-    // If the filler before this question fell out of the verbatim packet, the reply first discloses the
-    // compaction and accounts for that message (Rule 110), then answers; otherwise it just answers.
+    // If this answer's context was compacted past a frontier no sent reply has accounted for, the sent
+    // reply first discloses it and accounts for the last message (Rule 110), then answers.
     const asked = w.journal.view.order.at(-1)!;
     expect(asked.answer?.endsWith('Your gym locker code is 3310.')).toBe(true);
-    expect(asked.answer!.startsWith('Earlier conversation is now summarized for me.')).toBe(asked.compaction !== undefined);
+    expect(asked.intent!.startsWith('PREVIEW — Earlier conversation up to #')).toBe(asked.continuity !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Changed My gym locker code is 3310 → my gym locker code is 4412.');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('PREVIEW — Changed My gym locker code is 3310 → my gym locker code is 4412.');
     w.journal.close(); w = world(root);
     await w.say(id++, question);
     const corrected = JSON.parse(w.prompts.get(question)!);

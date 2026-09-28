@@ -86,7 +86,9 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     // that ride here because memoryCandidates are offered and recalled facts carry units (measured mean 8598).
     // cbuild-2: every verified operator packet is offered the summary-scheduling decision and bounded
     // memory search (Rules 10 and 11, no keyword prerequisite); search uses only leftover room (measured mean 9486).
-    expect(result.packetBytesMean).toBeLessThanOrEqual(9600);
+    // cbuild-2 repair: a probe from a not-yet-accounted summary frontier carries the Rule 110 continuity note
+    // and the meaning index's disposition (measured mean 9601).
+    expect(result.packetBytesMean).toBeLessThanOrEqual(9728);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);

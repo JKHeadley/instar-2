@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { createHash } from 'node:crypto';
+import { continuityDisclosure, createJournalWorker, openPreviewJournal, withDisclosure } from './journal.js';
+import { HOLDING_REPLY } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { ANSWER_INSTRUCTIONS, MIND_RULES, verifyMindRules } from './briefing.js';
 
@@ -58,7 +60,7 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     const instructions = prepared.messages[2]!.content;
     expect(instructions).toBe(ANSWER_INSTRUCTIONS);
     expect(instructions).toContain('promises:[{quote:exact reply sentence');
-    expect(instructions).toContain('If packet.compaction is present');
+    expect(instructions).toContain('If packet.continuity is present');
     expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
     expect(instructions).toContain('not an operator message, not quoted data');
@@ -161,27 +163,96 @@ describe('Rule 10: meaning decides which intentions reach judgment, never a keyw
   });
 });
 
-describe('Rule 11 and G6: recall reaches a paraphrase by meaning, with honest coverage', () => {
+
+describe('Rule 11 and G6: recall reaches a paraphrase by meaning through the recall owner', () => {
   const target = 'My bicycle lock code is 4471.';
-  const build = (withConcepts: boolean) => {
+  const targetId = 'telegram:12345678:update:1';
+  const cues = ['bike', 'combination', 'padlock', 'lock combination'];
+  const note = (i: number) => `Bike ride notes ${i}: hills and flats. ${'Long climb, steady pace. '.repeat(24)}`;
+  /** The live worker end to end: answers and rolling summaries go through the real paths; the model is a stub. */
+  const live = (concepts: (context: string) => { source: string; terms: string[] }[]) => {
     const dir = root();
-    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
-    // Newer turns share a word with the question and would fill every lexical recall slot.
-    seed(journal, [target, ...Array.from({ length: 24 }, (_, i) => `Bike ride notes ${i}: hills and flats. ${'y'.repeat(3000)}`)]);
-    summarize(journal, 25, 'The operator rides often and keeps ride notes.', withConcepts
-      ? [{ source: 'telegram:12345678:update:1', terms: ['bike', 'combination', 'padlock', 'lock combination'] }] : undefined);
-    const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
-      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
-    return { dir, journal, worker };
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(12 * 1024));
+    const summaryContexts: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, send: async () => 1, checkOutbound: () => {},
+      // The summary's faithfulness check passes (a stand-in for Jev), so rolling summaries advance normally.
+      summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0 } } }),
+      model: async input => {
+        if (!input.id.startsWith('summary:')) return 'Noted.';
+        summaryContexts.push(input.context);
+        return JSON.stringify({ summary: 'The operator rides often and keeps ride notes.', people: [], questions: [], memory: [],
+          concepts: concepts(input.context) });
+      } });
+    return { dir, journal, worker, summaryContexts };
   };
-  it('a question sharing no word with the original reaches it through the summary-maintained meaning terms', () => {
-    for (const withConcepts of [true, false]) {
-      const { dir, journal, worker } = build(withConcepts);
+  const drive = async (worker: ReturnType<typeof createJournalWorker>, count: number) => {
+    worker.intake([update(1, target)]); await worker.drain();
+    for (let i = 0; i < count; i++) { worker.intake([update(i + 2, note(i))]); await worker.drain(); }
+  };
+  /** What reached the prepared answer input as recalled originals. */
+  const recalledIds = (packet: Packet) => (packet.recalled as { id?: string; user?: string }[] ?? []).map(item => `${item.id} ${item.user ?? ''}`);
+
+  it('a source indexed by the real summary pass is reached later through the real doorway under lexical-slot pressure', async () => {
+    for (const indexed of [true, false]) {
+      const { dir, journal, worker } = live(context => indexed && context.includes(targetId) ? [{ source: targetId, terms: cues }] : []);
       try {
+        await drive(worker, 24);
+        expect(journal.view.summaries.length).toBeGreaterThan(0);
+        expect(journal.view.summaries.some(item => item.concepts?.some(c => c.source === targetId))).toBe(indexed);
         const packet = probe(worker, 'What is the combination for my bike?');
         expect(packet.historyMode).toBe('summary-plus-recent');
-        expect(JSON.stringify(packet.recalled ?? []).includes('4471'), `concepts=${withConcepts}`).toBe(withConcepts);
-        expect(packet.meaningIndexCoverage).toMatchObject({ summarizedMessages: 25, meaningIndexed: withConcepts ? 1 : 0 });
+        // Pressure: the word ranker alone fills every slot with newer "Bike ride notes".
+        const ride = recalledIds(packet).filter(text => text.includes('Bike ride notes')).length;
+        expect(ride).toBeGreaterThanOrEqual(2);
+        expect(recalledIds(packet).some(text => text.includes('4471')), `indexed=${indexed}`).toBe(indexed);
+        expect(packet.meaningIndexCoverage).toMatchObject({ meaningIndexed: indexed ? 1 : 0, disposition: 'degraded' });
+        journal.close();
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    }
+  });
+
+  it('messages summarized before they had meaning terms are offered again and converge', async () => {
+    let backlogSeen = false;
+    const { dir, journal, worker, summaryContexts } = live(context => {
+      const packet = JSON.parse(context) as { indexBacklog?: { id: string }[] };
+      if (!packet.indexBacklog?.some(item => item.id === targetId)) return [];
+      backlogSeen = true;
+      return [{ source: targetId, terms: cues }];
+    });
+    try {
+      await drive(worker, 24);
+      expect(backlogSeen).toBe(true);
+      // The first summary covered the target with no terms; a later pass indexed it from the backlog.
+      const first = journal.view.summaries.findIndex(item => item.through >= 1);
+      expect(journal.view.summaries[first]!.concepts ?? []).toEqual([]);
+      expect(journal.view.summaries.slice(first + 1).some(item => item.concepts?.some(c => c.source === targetId))).toBe(true);
+      expect(summaryContexts.some(context => context.includes('"indexBacklog"'))).toBe(true);
+      const packet = probe(worker, 'What is the combination for my bike?');
+      expect(recalledIds(packet).some(text => text.includes('4471'))).toBe(true);
+      journal.close();
+      const reopened = openPreviewJournal(join(dir, 'journal.encrypted'), key);
+      expect(reopened.view.summaries.some(item => item.concepts?.some(c => c.source === targetId))).toBe(true);
+      reopened.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('a charging semantic reranker is refused by the ordinary zero helper budget; a zero-charge one is used', () => {
+    for (const charge of [1, 0]) {
+      const dir = root();
+      try {
+        const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(12 * 1024));
+        seed(journal, [target, ...Array.from({ length: 24 }, (_, i) => note(i))]);
+        summarize(journal, 25, 'The operator rides often and keeps ride notes.');
+        let calls = 0;
+        const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
+          model: async () => 'ok', send: async () => 1, checkOutbound: () => {},
+          recallReranker: { id: 'test-semantic', chargePerCall: charge, rerank: (_query, candidates) => {
+            calls++;
+            return { kind: 'Success', value: candidates.flatMap((text, index) => text.includes('bicycle') ? [index] : []) } as never;
+          } } });
+        const packet = probe(worker, 'What is the combination for my bike?');
+        expect(calls).toBe(charge ? 0 : 2);
+        expect(recalledIds(packet).some(text => text.includes('4471'))).toBe(!charge);
         journal.close();
       } finally { rmSync(dir, { recursive: true, force: true }); }
     }
@@ -200,59 +271,118 @@ describe('Rule 11 and G6: recall reaches a paraphrase by meaning, with honest co
   });
 });
 
-describe('Rule 110: the first reply after a model-context compaction discloses it and accounts for the last message', () => {
+describe('Rule 110: the first reply sent from a compacted context discloses it and accounts for the last message', () => {
   const plumber = `Can you check the plumber quote? ${'Line item detail. '.repeat(260)}`;
-  const setup = (maxBytes: number, reply: (packet: Packet) => string) => {
+  const setup = (maxBytes: number, texts: readonly string[], reply: (packet: Packet) => string,
+    extra: Partial<Parameters<typeof createJournalWorker>[1]> = {}) => {
     const dir = root();
     const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(maxBytes));
+    const sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
-      model: async ({ context }) => reply(JSON.parse(context) as Packet), send: async () => 1, checkOutbound: () => {} });
-    seedAnswered(journal, Array.from({ length: 30 }, (_, i) => i === 29 ? plumber : `Update ${i}: errands.`));
-    return { dir, journal, worker };
+      model: async ({ context }) => reply(JSON.parse(context) as Packet), send: async input => { sent.push(input.expectedText); return sent.length + 100; },
+      checkOutbound: () => {}, ...extra });
+    seedAnswered(journal, texts);
+    return { dir, journal, worker, sent };
   };
-  const accounted = (packet: Packet) => {
-    const last = (packet.compaction as { lastInbound: { id: string } } | undefined)?.lastInbound.id;
-    return JSON.stringify({ reply: 'Earlier conversation is summarized now. You asked about the plumber quote; it looks fair.',
-      memory: [], ...(last ? { compactionAccount: { lastInbound: last, disposition: 'answering-now', disclosure: 'Earlier conversation is summarized now.' } } : {}) });
-  };
-  it('is not a compaction while the last message is still verbatim in history or recalled', async () => {
-    const { dir, journal, worker } = setup(1024 * 1024, accounted);
+  const garden = [...Array.from({ length: 29 }, (_, i) => `Update ${i}: ${'garden '.repeat(240)}`), 'The latest short message.'];
+  const errands = [...Array.from({ length: 29 }, (_, i) => `Update ${i}: errands.`), plumber];
+  const disclosure = /^PREVIEW — Earlier conversation up to #29 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. /u;
+
+  it('a context reduced to summary-plus-recent is a compaction even while the last message is still verbatim', async () => {
+    const { dir, journal, worker, sent } = setup(7000, garden, () => 'Hi!');
     try {
-      expect(probe(worker, 'Hello again').compaction).toBeUndefined();
-      summarize(journal, 30, 'Thirty updates, ending with a plumber quote question.');
-      const packet = probe(worker, 'Hello again');
-      expect(packet.historyMode).toBe('complete');
-      journal.close();
-    } finally { rmSync(dir, { recursive: true, force: true }); }
-  });
-  it('carries the exact last inbound id once it is out of verbatim view, and records the model account', async () => {
-    const { dir, journal, worker } = setup(7000, accounted);
-    try {
-      summarize(journal, 30, 'Thirty updates, ending with a plumber quote question.');
+      summarize(journal, 29, 'Twenty-nine garden updates.');
       const packet = probe(worker, 'Hello again');
       expect(packet.historyMode).toBe('summary-plus-recent');
-      expect(JSON.stringify(packet.recalled ?? [])).not.toContain('Line item detail');
-      expect(packet.compaction).toMatchObject({ lastInbound: { id: 'telegram:12345678:update:30' }, summarizedThrough: 30 });
+      expect(JSON.stringify(packet.history)).toContain('The latest short message.');
+      expect(packet.continuity).toEqual({ through: 29, lastInbound: 'telegram:12345678:update:30', state: 'addressed' });
       worker.intake([update(31, 'Hello again')]); await worker.drain();
+      expect(sent[0]).toMatch(disclosure);
+      expect(sent[0]!.endsWith(' Hi!')).toBe(true);
       const turn = journal.view.turns.get('telegram:12345678:update:31')!;
-      expect(turn.compaction).toEqual({ lastInbound: 'telegram:12345678:update:30', summarizedThrough: 30,
-        disposition: 'answering-now', by: 'model' });
-      expect(turn.intent).toContain('Earlier conversation is summarized now.');
+      expect(turn.continuity).toMatchObject({ prePauseInbound: 'telegram:12345678:update:30', summarizedThrough: 29,
+        disposition: 'addressed', reference: 'Telegram message 30', grounding: turn.grounding!.packetSha256 });
+      expect(sent[0]!.startsWith(`PREVIEW — ${turn.continuity!.disclosure} `)).toBe(true);
+      // The next reply from the same frontier owes nothing more.
+      worker.intake([update(32, 'And one more thing')]); await worker.drain();
+      expect(sent[1]).toBe('PREVIEW — Hi!');
+      expect(probe(worker, 'Hello').continuity).toBeUndefined();
       journal.close();
-      // The account is durable: it replays from the journal.
       const reopened = openPreviewJournal(join(dir, 'journal.encrypted'), key);
-      expect(reopened.view.turns.get('telegram:12345678:update:31')!.compaction?.by).toBe('model');
+      expect(reopened.view.turns.get('telegram:12345678:update:31')!.continuity?.disposition).toBe('addressed');
       reopened.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
-  it('an unaccounted first reply gets a fixed disclosure naming the exact last message', async () => {
-    const { dir, journal, worker } = setup(7000, () => 'Hi!');
+
+  it('complete history is not a compaction, even when a summary exists', () => {
+    const { dir, journal, worker } = setup(1024 * 1024, garden, () => 'Hi!');
     try {
-      summarize(journal, 30, 'Thirty updates.');
-      worker.intake([update(31, 'Hello again')]); await worker.drain();
-      const turn = journal.view.turns.get('telegram:12345678:update:31')!;
-      expect(turn.compaction).toMatchObject({ lastInbound: 'telegram:12345678:update:30', by: 'fixed', disposition: 'answered' });
-      expect(turn.intent).toMatch(/Earlier conversation is now summarized for me\. Your last message before this one \(.+\) was answered\. Hi!/u);
+      summarize(journal, 29, 'Twenty-nine garden updates.');
+      const packet = probe(worker, 'Hello again');
+      expect(packet.historyMode).toBe('complete');
+      expect(packet.continuity).toBeUndefined();
+      journal.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('the disclosure survives a size notice and a holding reply, and is bound to the text actually sent', async () => {
+    const tooLong = setup(7000, errands, () => 'x'.repeat(4100));
+    try {
+      summarize(tooLong.journal, 30, 'Errands and a plumber quote question.');
+      tooLong.worker.intake([update(31, 'Hello again')]); await tooLong.worker.drain();
+      expect(tooLong.sent[0]).toMatch(/^PREVIEW — Earlier conversation up to #30 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. I produced an answer, but it was too long/u);
+      const turn = tooLong.journal.view.turns.get('telegram:12345678:update:31')!;
+      expect(turn.continuity?.replyDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
+      tooLong.journal.close();
+    } finally { rmSync(tooLong.dir, { recursive: true, force: true }); }
+    const held = setup(7000, errands, () => 'An answer the review holds.', {
+      replyCheck: { elapsedMs: () => 1, jev: async () => { throw Error('Jev unavailable'); },
+        escalate: async () => ({ verdict: 'violation' as const, ruleIds: [], confidence: null, latencyMs: 1 }) } });
+    try {
+      summarize(held.journal, 30, 'Errands and a plumber quote question.');
+      held.worker.intake([update(31, 'Hello again')]); await held.worker.drain();
+      const turn = held.journal.view.turns.get('telegram:12345678:update:31')!;
+      expect(held.sent[0]).toBe(withDisclosure(HOLDING_REPLY, turn.continuity!.disclosure));
+      held.journal.close();
+      const reopened = openPreviewJournal(join(held.dir, 'journal.encrypted'), key);
+      expect(reopened.view.turns.get('telegram:12345678:update:31')!.continuity).toBeDefined();
+      reopened.close();
+    } finally { rmSync(held.dir, { recursive: true, force: true }); }
+  });
+
+  it('an unanswered last message is accounted as pending, never as answered', async () => {
+    const { dir, journal, worker, sent } = setup(7000, garden.slice(0, 29), () => 'Hi!');
+    try {
+      seed(journal, ['The latest short message.']);
+      journal.append({ kind: 'hold', id: 'telegram:12345678:update:30', reason: 'call cap', at });
+      summarize(journal, 29, 'Twenty-nine garden updates.');
+      const packet = probe(worker, 'Hello again');
+      expect(packet.continuity).toEqual({ through: 29, lastInbound: 'telegram:12345678:update:30', state: 'pending' });
+      expect(continuityDisclosure('#30, x', 29, 'pending', 'held: call cap')).toBe(
+        'Earlier conversation up to #29 is now summarized for me; your previous message (#30, x) is still open (held: call cap).');
+      expect(sent).toEqual([]);
+      journal.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('replay refuses an account whose disclosure is not the sent text', () => {
+    const dir = root();
+    try {
+      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(7000));
+      seedAnswered(journal, garden);
+      summarize(journal, 29, 'Garden.');
+      const id = 'telegram:12345678:update:31';
+      seed(journal, ['Hello again']);
+      journal.append({ kind: 'reserve', id, grounding: { packetSha256: 'p', summaryThrough: 29, compactedThrough: 29, history: [], recalled: [],
+        people: [], commitments: [], channelItems: [], corrections: [], memoryChanges: [], memoryCandidates: [] }, at });
+      journal.append({ kind: 'answer', id, text: 'Hi!', state: 'complete', at });
+      const before = journal.view.turns.get('telegram:12345678:update:30')!;
+      const account = { prePauseInbound: before.id, capture: createHash('sha256').update(before.raw).digest('hex'), summarizedThrough: 29,
+        grounding: 'p', disposition: 'addressed' as const, reference: 'Telegram message 30',
+        disclosure: continuityDisclosure('#30, x', 29, 'addressed', 'Telegram message 30') };
+      const text = 'PREVIEW — Everything is fine today.';
+      expect(() => journal.append({ kind: 'intent', id, text, chat: '7654321', update: 31, grant: 'grant:preview',
+        continuity: { ...account, replyDigest: createHash('sha256').update(text).digest('hex') }, at })).toThrow('continuity account refused');
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

@@ -550,8 +550,14 @@ it('the live script reaches compaction and the question carries the open commitm
     await say(LIVE_FILLER); fillers++;
     worker.intake([update(id++, question)]);
     await worker.drain();
-    const last = run(root, 'inspect').last;
+    const inspected = run(root, 'inspect'), last = inspected.last;
     expect(last.historyMode).toBe('summary-plus-recent');
+    // Rules 11 and 110 on the desk's surface: the summary frontier, and the continuity account of the
+    // first reply sent from a compacted context, bound to the exact text sent.
+    expect(inspected.summaryFrontier).toBe(journal.view.summaries.at(-1)!.through);
+    const accounted = journal.view.order.find(turn => turn.continuity)!;
+    expect(accounted.intent!.startsWith(`PREVIEW — ${accounted.continuity!.disclosure} `)).toBe(true);
+    expect(run(root, 'inspect', '--update', String(accounted.update)).reply.continuity).toEqual(accounted.continuity);
     // The read-only inspect surface names the standing instructions the prepared prompt carried.
     expect(last.instructions.rules).toEqual(MIND_RULES.map(([rule]) => rule));
     expect(last.commitments.flatMap((entry: { items: { quote: string }[] }) => entry.items.map(item => item.quote)))

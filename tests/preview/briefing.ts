@@ -138,13 +138,14 @@ export function verifyMindRules(readSource: (path: string) => string): void {
 
 /** The answer protocol for decisions only the answering model can read by meaning (Rule 10) and
  * for a reply after a context compaction (Rule 110). It rides beside the mind-held rules in the
- * trusted instruction message; the packet carries only the data (`compaction`, commitment ids). */
+ * trusted instruction message; the packet carries only the data (`continuity`, commitment ids). */
 export const ANSWER_PROTOCOL = [
   'Answer protocol. If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:exact date phrase in it}]; '
     + 'if it carries out an open commitment item with owner agent, add fulfilled:[{id,quote:exact reply excerpt}]. A conditional or quoted example is not a promise.',
-  'If packet.compaction is present, your context was compacted: compaction.lastInbound, the message before this one, is now only in the summary. '
-    + 'Open with one short sentence saying earlier conversation is summarized and account for that message; never imply recall the evidence lacks. '
-    + 'Return JSON with reply and compactionAccount:{lastInbound:its id,disposition:"answered"|"answering-now"|"still-open"|"no-reply-needed",disclosure:that exact sentence}.',
+  'If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary. '
+    + 'The application opens your reply with a fixed sentence disclosing that and the recorded state of continuity.lastInbound, the last message before this one; do not write that sentence yourself. '
+    + 'If that message is still open, address it or say what remains open; never imply recall the evidence lacks.',
+  'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.',
 ].join('\n');
 /** The exact instruction content of every answer call, identical before and after compaction (Rule 47). */
 export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${ANSWER_PROTOCOL}`;

@@ -9,6 +9,8 @@ import { previewTurnId } from './state.js';
 import { redact } from '../../src/recall/redact.js';
 import { namedTerms, selectRecall, selectSaidTurns, similarName, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
+import { composeRecall } from '../../src/recall/retrieve.js';
+import type { RecallRerankPort } from '../../src/recall/contracts.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
@@ -70,16 +72,26 @@ export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memor
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export const TOO_LONG_INPUT_NOTICE = 'PREVIEW — Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'PREVIEW — I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
-/** Rule 110: `compaction` is carried when the last message received before this one is visible
- * only through the summary (the model's context was compacted past it). The standing answer
- * protocol (briefing.ts) requires the first reply to disclose that and account for that exact
- * message; an unaccounted reply gets this fixed disclosure. */
 export const SEARCH_GUIDANCE = ' memorySearch contains bounded, ranked evidence from this journal for the current question. Cite the source and date, present current values before superseded history, and report forgotten counts without content. A miss is not proof of absence; truncated means the citation list is incomplete. Imported sender metadata keeps its recorded provenance.';
-export const COMPACTION_DISPOSITIONS = ['answered', 'answering-now', 'still-open', 'no-reply-needed'] as const;
-export const compactionNotice = (last: { sourceLabel: string; answered: boolean }) =>
-  `Earlier conversation is now summarized for me. Your last message before this one (${last.sourceLabel}) ${last.answered ? 'was answered' : 'has no answer from me yet'}.`;
-export interface CompactionAccount { lastInbound: string; summarizedThrough: number;
-  disposition: typeof COMPACTION_DISPOSITIONS[number]; by: 'model' | 'fixed' }
+/** Rule 110 (run-graph §8 `ContinuityAccounting`). A summary frontier that replaces verbatim
+ * history in an answer's context is a compaction, whether or not the last inbound message still
+ * fits verbatim. The first reply sent after it opens with a fixed disclosure composed from the
+ * journal's own evidence about the exact last inbound before the pause; the send intent records
+ * the account, bound to the digest of the text actually sent (holding and size notices too). */
+export const CONTINUITY_DISPOSITIONS = ['addressed', 'superseded', 'pending'] as const;
+export interface ContinuityAccount { prePauseInbound: string; capture: string; summarizedThrough: number; grounding: string;
+  disposition: typeof CONTINUITY_DISPOSITIONS[number]; reference: string; disclosure: string; replyDigest: string }
+const continuityHead = (through: number) => `Earlier conversation up to #${through} is now summarized for me; your previous message (`;
+const continuityTail = (disposition: ContinuityAccount['disposition'], reference: string) =>
+  `) ${disposition === 'addressed' ? 'was answered' : disposition === 'superseded' ? `was replaced by ${reference}` : `is still open (${reference})`}.`;
+export const continuityDisclosure = (label: string, through: number, disposition: ContinuityAccount['disposition'], reference: string) =>
+  `${continuityHead(through)}${label}${continuityTail(disposition, reference)}`;
+/** A turn's sent reply without its Rule 110 disclosure (for measurement of the answer itself). */
+export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
+  turn.intent === undefined || !turn.continuity ? turn.intent : turn.intent.replace(`${turn.continuity.disclosure} `, '');
+/** The reply with the disclosure as its first sentence, after the surface marker. */
+export const withDisclosure = (reply: string, disclosure: string) =>
+  reply.startsWith('PREVIEW — ') ? `PREVIEW — ${disclosure} ${reply.slice('PREVIEW — '.length)}` : `${disclosure} ${reply}`;
 export const HELD_NOTICE_AFTER_MS = 600_000;
 export const HELD_NOTICE_WINDOW_MS = 3_600_000;
 /** A due summary created more than this long after its slot says it was sent late. */
@@ -147,7 +159,9 @@ export interface SummaryGrant { id: string; source: string; quote: string; when:
 export interface SummaryWindow { from: string; through: string; zone: string }
 /** IDs in the exact answer packet, captured before its model call. Indexes refer to
  * append-only journal projections; the digest binds this list to the packet bytes. */
-export interface ReplyGrounding { packetSha256: string; summaryThrough: number | null; history: string[]; recalled: string[];
+export interface ReplyGrounding { packetSha256: string; summaryThrough: number | null;
+  /** The summary frontier that replaced verbatim history in this context (absent for complete history). */
+  compactedThrough?: number; history: string[]; recalled: string[];
   people: string[]; commitments: number[]; channelItems: string[]; corrections: string[];
   memoryChanges: number[]; memoryCandidates: string[] }
 
@@ -160,6 +174,8 @@ export interface SummaryMemoryItem { source: string; quote: string }
 export interface SummaryConcept { source: string; terms: string[] }
 export const CONCEPT_TERMS_LIMIT = 12;
 export const CONCEPT_SOURCES_LIMIT = 16;
+/** Older summarized operator messages without meaning terms, offered to each summary pass. */
+export const INDEX_BACKLOG_LIMIT = 8;
 /** Bounded, normalized meaning terms; undefined when the proposal is not a valid list. */
 export function conceptTerms(value: unknown): string[] | undefined {
   if (!Array.isArray(value) || value.length > CONCEPT_TERMS_LIMIT) return undefined;
@@ -187,8 +203,7 @@ export type JournalRecord =
     resolveConflict?: { askedBy: string; winner: string }; lastNamedPerson?: string; usage?: ModelUsage; latencyMs?: number;
     /** Model-proposed promises and fulfillments, validated as exact quotes of this answer (Rule 10). */
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
-    /** Rule 110: how the first reply after a context compaction accounted for the last inbound message. */
-    compaction?: CompactionAccount; at: number }
+    at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
@@ -206,6 +221,8 @@ export type JournalRecord =
   | { kind: 'intent'; id: string; text: string; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
     /** Open agent promises this reply carries out, as the model proposed them; absent on legacy rows. */
     fulfills?: number[];
+    /** Rule 110: the first reply after a compaction accounts for the last inbound before the pause. */
+    continuity?: ContinuityAccount;
     /** Requested reminders due in the same topic, grouped into a requested summary's one message (Rule 52). */
     reminderBatch?: number; reminders?: ReminderRef[];
     /** Other requested summaries due in the same topic and slot, sent inside this one message (Rule 52). */
@@ -272,7 +289,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reminderBatch?: number;
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
-  compaction?: CompactionAccount }
+  /** Rule 110: the continuity account the send intent recorded for this reply. */
+  continuity?: ContinuityAccount }
 
 
 
@@ -1379,6 +1397,8 @@ function project(view: JournalView, row: JournalRecord): void {
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation');
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
+    if (row.grounding?.compactedThrough !== undefined && (!Number.isSafeInteger(row.grounding.compactedThrough)
+      || row.grounding.compactedThrough >= turn.update)) throw Error('preview journal: compacted grounding order');
     turn.reserved = true; if (row.prompt !== undefined) turn.prompt = row.prompt; if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
     if (hits) { turn.recallHits = hits.turns; turn.channelRecallHits = hits.channels; }
     view.calls++;
@@ -1432,12 +1452,6 @@ function project(view: JournalView, row: JournalRecord): void {
       || row.fulfills?.some(item => !row.text.includes(item.quote) || !view.commitments[item.id]?.agentPromise))
       throw Error('preview journal: unsupported promise proposal');
     if (row.promises?.length) turn.proposedPromises = row.promises;
-    if (row.compaction) {
-      const last = view.turns.get(row.compaction.lastInbound);
-      if (!last || last.update >= turn.update || last.update > row.compaction.summarizedThrough
-        || !COMPACTION_DISPOSITIONS.includes(row.compaction.disposition)) throw Error('preview journal: compaction account order');
-      turn.compaction = row.compaction;
-    }
     if (row.fulfills?.length) turn.proposedFulfills = row.fulfills;
     if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     if (row.unlabeledRecall) turn.unlabeledRecall = true;
@@ -1543,6 +1557,22 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.fulfills?.some(id => !view.commitments[id]?.agentPromise || view.commitments[id]!.source === turn.id))
       throw Error('preview journal: invalid promise fulfillment');
     if (row.fulfills !== undefined) turn.intentFulfills = row.fulfills;
+    if (row.continuity !== undefined) {
+      // The account binds the exact pre-pause capture, the reply's own compacted grounding and the
+      // text actually sent; the disclosure is that reply's first sentence.
+      const account = row.continuity, before = view.turns.get(account.prePauseInbound);
+      if (!before || before.update >= turn.update || turn.requestedSummary || !Number.isSafeInteger(account.summarizedThrough)
+        || account.summarizedThrough >= turn.update || turn.grounding?.compactedThrough !== account.summarizedThrough
+        || account.grounding !== turn.grounding.packetSha256
+        || account.capture !== createHash('sha256').update(before.raw).digest('hex')
+        || !CONTINUITY_DISPOSITIONS.includes(account.disposition) || !account.reference
+        || !account.disclosure.startsWith(continuityHead(account.summarizedThrough))
+        || !account.disclosure.endsWith(continuityTail(account.disposition, account.reference))
+        || !row.text.startsWith(withDisclosure('PREVIEW — ', account.disclosure).trimEnd())
+        || account.replyDigest !== createHash('sha256').update(row.text).digest('hex'))
+        throw Error('preview journal: continuity account refused');
+      turn.continuity = account;
+    }
     for (const promise of row.promises ?? []) view.commitments.push({ in: 'reply', source: turn.id, quote: promise.quote, agentPromise: promise });
     for (const key of row.mentionedDates ?? []) view.mentionedDates.add(key);
     if (row.reminders !== undefined) {
@@ -1889,6 +1919,9 @@ export interface PreviewPorts {
 
   stepCheck?: { jev(state: string): Promise<{ value: unknown; latencyMs: number }> };
   boundary?(stage: string): void;
+  /** Optional semantic stage of the recall owner (`composeRecall`). Ordinary conversation reserves
+   * no helper spend (Part 21 §7), so a charging port is refused as over budget; none is bound live. */
+  recallReranker?: RecallRerankPort;
 }
 
 /** Exactly one worker calls drain. A reserved call or prepared send with no
@@ -1969,19 +2002,45 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return journal.view.cursor;
   };
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
-  /** Rule 11: meaning terms each summary recorded for the messages it covered, latest first.
-   * Recall matches them beside the original words, so a paraphrase with no shared word still
-   * reaches the original; the original quote, never these terms, is what the model is shown. */
+  /** Rule 110: the continuity owed by `turn`'s reply when its context was compacted through `through`:
+   * none once a sent reply has accounted for that frontier. Everything comes from journal evidence
+   * about the exact last inbound before the pause, never from the model's recollection. */
+  const continuityFor = (turn: Turn, through: number) => {
+    if (turn.requestedSummary || journal.view.order.some(item => (item.continuity?.summarizedThrough ?? -1) >= through)) return undefined;
+    const before = journal.view.order.filter(item => item.accepted && !item.requestedSummary && item.update < turn.update).at(-1);
+    if (!before) return undefined;
+    const edit = journal.view.order.find(item => item.replaces === before.id && item.update < turn.update);
+    const [disposition, reference]: [ContinuityAccount['disposition'], string] = edit ? ['superseded', `your edit #${edit.update}`]
+      : before.sent !== undefined ? ['addressed', `Telegram message ${before.sent}`]
+        : before.intent !== undefined ? ['pending', 'my reply to it was prepared but its delivery is unconfirmed']
+          : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
+    const label = `#${before.update}, ${dated(before)}`;
+    return { before, label, disposition, reference, disclosure: continuityDisclosure(label, through, disposition, reference) };
+  };
+  /** Rule 11: meaning terms the summary work recorded for each operator message (the derived index).
+   * The recall owner ranks by them beside the original words, so a paraphrase with no shared word
+   * still reaches the original; the original quote, never these terms, is what the model is shown. */
   const meaningIndex = () => {
-    const index = new Map<string, string>();
-    for (const summary of journal.view.summaries) for (const item of summary.concepts ?? []) index.set(item.source, item.terms.join(' '));
+    const index = new Map<string, string[]>();
+    for (const summary of journal.view.summaries) for (const item of summary.concepts ?? []) index.set(item.source, item.terms);
     return index;
   };
-  /** Honest coverage of the meaning index over summarized operator messages. */
+  /** Honest coverage of the meaning index over summarized operator messages; degraded while any lack terms. */
   const meaningCoverage = (through: number) => {
     const index = meaningIndex();
     const summarized = journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update <= through);
-    return { summarizedMessages: summarized.length, meaningIndexed: summarized.filter(item => index.has(item.id)).length };
+    const meaningIndexed = summarized.filter(item => index.has(item.id)).length;
+    return { summarizedMessages: summarized.length, meaningIndexed,
+      disposition: meaningIndexed === summarized.length ? 'complete' as const : 'degraded' as const };
+  };
+  /** Rule 11: every memory retrieval entry point selects through the recall owner. The memory
+   * sentinel's word ranking is its lexical first stage; the derived index and any bound semantic
+   * stage are fused there. Ordinary conversation reserves no helper spend (Part 21 §7). */
+  const ownedRecall = (query: string, lexical: readonly number[], candidates: readonly { id: string; text: string; indexable: boolean }[], maxResults: number) => {
+    const index = meaningIndex();
+    return composeRecall({ query, lexical, maxResults, stopped: ports.stopped, spend: { reserve: () => false },
+      ...(ports.recallReranker ? { reranker: ports.recallReranker } : {}),
+      candidates: candidates.map(item => ({ text: item.text, indexable: item.indexable, ...(index.has(item.id) ? { cues: index.get(item.id)! } : {}) })) });
   };
   /** Telegram's own send time survives import; the local intake time is the fallback. */
   const sentAt = (turn: Turn) => {
@@ -2033,12 +2092,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const words = new Set(terms(clean(item.text, true, item.id)));
         return topic.every(term => words.has(term));
       }) : undefined;
-    const meaning = meaningIndex();
-    const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
+    const texts = older.map(item => `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)}`);
+    const lexical = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
       ...(previous ? { previous } : {}),
-      candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${clean(sentText(item) ?? '', true, item.id)} ${meaning.get(item.id) ?? ''}`,
-        measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) })
-      .map(index => older[index]!);
+      candidates: older.map((item, index) => ({ text: texts[index]!, measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) });
+    const ranked = ownedRecall(turn.text, lexical, older.map((item, index) => ({ id: item.id, text: texts[index]!, indexable: fromOperator(item) })),
+      PREVIEW_RECALL_LIMIT).order.map(index => older[index]!);
     // A nearby date is useful context, but five unrelated dates must not hide
     // the source that actually matches the question.
     const dated = asksForUpcoming(turn.text) ? older.filter(item => dueSoon(clean(item.text, true))).at(-1) : undefined;
@@ -2588,7 +2647,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
-  const holdingReply = (item: Turn) => item.intent === HOLDING_REPLY
+  const holdingReply = (item: Turn) => (item.intent === HOLDING_REPLY
+    || item.continuity !== undefined && item.intent === withDisclosure(HOLDING_REPLY, item.continuity.disclosure))
     && item.replyChecks?.some(check => check.verdict === 'violation') === true;
   const knownNonAnswer = (item: Turn) => item.noticeClass !== undefined || modelFailure(item) || holdingReply(item);
   const heldNoticeOutcome = (item: Turn) => item.heldNoticeSent === undefined ? 'delivery UNKNOWN' : 'Telegram API accepted';
@@ -2735,9 +2795,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         .map(item => ({ id: channelMemoryId(item), text: `${item.subject ?? ''} ${item.text}`, at: item.at,
           source: `${item.source} ${publicMemoryId(channelMemoryId(item))} (export)`, date: isoMinute(item.at),
           conversation: item.conversation ? cleanMetadata(item.conversation, item) : undefined })) ];
-    const summary = summaryFor(before(turn.update))?.text, meaning = meaningIndex();
-    const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: sources.length,
-      ...(summary ? { summary } : {}), candidates: sources.map(item => ({ text: `${item.text} ${meaning.get(item.id) ?? ''}`, at: item.at })) });
+    const summary = summaryFor(before(turn.update))?.text;
+    const lexical = selectRecall({ message: turn.text, now: ports.now(), limit: sources.length,
+      ...(summary ? { summary } : {}), candidates: sources.map(item => ({ text: item.text, at: item.at })) });
+    const covered = summaryFor(before(turn.update))?.through ?? -1;
+    const owned = ownedRecall(turn.text, lexical, sources.map(item => ({ id: item.id, text: item.text,
+      indexable: (journal.view.turns.get(item.id)?.update ?? Infinity) <= covered })), sources.length);
+    const ranked = [...owned.order];
     ranked.sort((left, right) => {
       const historical = (index: number) => Number(journal.view.memory.some(change => change.source === sources[index]!.id && change.historical));
       return historical(left) - historical(right) || (!historical(left) ? sources[right]!.at - sources[left]!.at : 0);
@@ -3090,11 +3154,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
     const unresolved = openQuestionCandidates(journal.view).filter(note => journal.view.turns.get(note.source)!.update < turn.update);
     const previous = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).at(-1);
-    // Rule 110: a packet whose summary now covers the last message received before this one is a
-    // model-context compaction for this reply. Journal file compaction never produces this field.
-    const compactionFor = (through: number) => previous && !previous.requestedSummary && !turn.requestedSummary
-      && previous.update <= through ? { compaction: { lastInbound: { id: previous.id, sourceLabel: turnLabel(previous),
-        answered: previous.intent !== undefined, delivery: outcome(previous) }, summarizedThrough: through } } : undefined;
+    // Rule 110: a summary frontier not yet accounted by a sent reply replaces verbatim history in this
+    // context, so this is a compaction whether or not the last inbound still fits verbatim. The
+    // model is told; the application writes the disclosure into the reply it sends (continuityFor).
+    const continuityNotes = new Map<number, { continuity: { through: number; lastInbound: string; state: ContinuityAccount['disposition'] } } | undefined>();
+    const continuityNote = (through: number) => {
+      if (!continuityNotes.has(through)) {
+        const account = continuityFor(turn, through);
+        continuityNotes.set(through, account ? { continuity: { through, lastInbound: account.before.id, state: account.disposition } } : undefined);
+      }
+      return continuityNotes.get(through);
+    };
     const related = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_QUESTION_LIMIT - 2,
       ...(previous ? { previous: `${clean(previous.text, true)} ${replyFor(previous)}` } : {}),
       summary: summaryFor(before(turn.update))?.text ?? '',
@@ -3273,8 +3343,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           message: `${cleanMetadata(item.subject ?? '', item)} ${clean(redact(item.text).text, true)}`.trim().slice(0, 1000), reply: '' }))];
         for (const datedBase of datedVariants(base)) {
         const fullContext = JSON.stringify({ ...JSON.parse(datedBase) as object,
-          // Only when the last inbound message is out of the verbatim view (neither history nor recalled).
-          ...(compact && summary && !selectedRecall.some(item => item.id === previous?.id) ? compactionFor(summary.through) ?? {} : {}),
+          ...(compact && summary ? continuityNote(summary.through) ?? {} : {}),
           // Rule 11: how much of the summarized history recall can reach by meaning, not only by words.
           ...(compact && summary ? { meaningIndexCoverage: meaningCoverage(summary.through) } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
@@ -3310,6 +3379,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const shownOpen = open.filter((_, index) => has('commitment', index));
             const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),
               summaryThrough: packet.summary?.through ?? (packet.memorySummary ? summaryFor(before(turn.update))?.through ?? null : null),
+              ...(packet.summary ? { compactedThrough: packet.summary.through } : {}),
               history: journal.view.order.filter(item => remembered(item) && item.update < turn.update
                 && (!packet.summary || item.update > packet.summary.through)).map(item => item.id),
               recalled: selectedRecall.filter(item => !new Set([...shownPeople.map(note => note.source),
@@ -3525,7 +3595,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               resolveConflict: { askedBy: string; winner: string } | undefined, requested: boolean[] = [],
               reminderCancels: string[] | undefined, invalidCancel = false, decided = false, summaryGrants: SummaryGrant[] | undefined,
               summaryRefusals: string[] = [], summaryCancels: string[] | undefined, invalidSummary = false, invalidSummaryCancel = false,
-              promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [], compactionProposal: unknown;
+              promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; summaries?: unknown; cancelSummaries?: unknown;
@@ -3567,7 +3637,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   .map(item => item.id!));
                 const answerText = replyAnswer ?? (typeof replyValue === 'string' ? replyValue : '');
                 promises = promiseProposals(parsed.promises, answerText) ?? [];
-                compactionProposal = (parsed as { compactionAccount?: unknown }).compactionAccount;
                 fulfills = fulfillmentProposals(parsed.fulfilled, answerText, offeredPromises) ?? [];
                 if (parsed.dated !== undefined) dated = datedFrom(parsed.dated, turn);
                 if (parsed.dated !== undefined && dated === undefined) invalidDate = true;
@@ -3700,25 +3769,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
-            // Rule 110: the first reply after a context compaction discloses it and accounts for
-            // the exact last inbound message; the model's validated account, or a fixed notice.
-            const compacted = (JSON.parse(context) as { compaction?: { lastInbound: { id: string; sourceLabel: string; answered: boolean };
-              summarizedThrough: number } }).compaction;
-            let compaction: CompactionAccount | undefined;
-            if (compacted && text.trim() && !turn.requestedSummary) {
-              const proposal = compactionProposal as { lastInbound?: unknown; disposition?: unknown; disclosure?: unknown } | undefined;
-              const disposition = COMPACTION_DISPOSITIONS.find(item => item === proposal?.disposition);
-              if (proposal && typeof proposal === 'object' && proposal.lastInbound === compacted.lastInbound.id && disposition
-                && typeof proposal.disclosure === 'string' && proposal.disclosure.trim().length >= 8 && text.includes(proposal.disclosure))
-                compaction = { lastInbound: compacted.lastInbound.id, summarizedThrough: compacted.summarizedThrough, disposition, by: 'model' };
-              else {
-                text = `${compactionNotice(compacted.lastInbound)} ${text.trim()}`;
-                compaction = { lastInbound: compacted.lastInbound.id, summarizedThrough: compacted.summarizedThrough,
-                  disposition: compacted.lastInbound.answered ? 'answered' : 'still-open', by: 'fixed' };
-              }
-            }
             journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
-              state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }), ...(compaction ? { compaction } : {}),
+              state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
               ...(reminderCancels?.length ? { reminderCancels } : {}),
               ...(summaryGrants?.length ? { summaryGrants } : {}), ...(summaryCancels?.length ? { summaryCancels } : {}),
@@ -3752,9 +3804,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
             : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
+        // Rule 110: the first reply sent from a compacted context opens with the fixed disclosure, on
+        // whatever text is finally sent (answer, loss, size or holding notice), and the intent records it.
+        const continuity = turn.grounding?.compactedThrough === undefined ? undefined
+          : continuityFor(turn, turn.grounding.compactedThrough);
+        const disclosed = (text: string) => continuity ? withDisclosure(text, continuity.disclosure) : text;
+        reply = disclosed(reply);
         const proposedBody = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
         if (Buffer.byteLength(proposedBody) > 4096 || Array.from(proposedBody).length > 4096)
-          reply = TOO_LONG_REPLY_NOTICE;
+          reply = disclosed(TOO_LONG_REPLY_NOTICE);
         // A requested summary always leads with why it was sent (Rule 54); a held, lost or
         // failed summary sends a truthful notice under the same header, never a made-up summary.
         const summaryHeader = turn.requestedSummary ? requestedSummaryHeader(journal.view, turn) : undefined;
@@ -3853,7 +3911,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
           }
-          if (decision === 'violation') { reply = summaryHeader === undefined ? HOLDING_REPLY
+          if (decision === 'violation') { reply = summaryHeader === undefined ? disclosed(HOLDING_REPLY)
             : `${summaryHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`; heldBack = true; }
           else if (decision === 'unavailable') {
             // A refused review reservation waits on `raise-caps` like any call-cap hold.
@@ -3913,6 +3971,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           fulfills: probeTurn(journal.view, turn) ? [] : (turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
             && journal.view.commitments[item.id]?.agentPromise && !journal.view.closed.has(item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
+          ...(continuity && turn.grounding ? { continuity: { prePauseInbound: continuity.before.id,
+            capture: createHash('sha256').update(continuity.before.raw).digest('hex'), summarizedThrough: turn.grounding.compactedThrough!,
+            grounding: turn.grounding.packetSha256, disposition: continuity.disposition, reference: continuity.reference,
+            disclosure: continuity.disclosure, replyDigest: createHash('sha256').update(reply).digest('hex') } } : {}),
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
         const sendStarted = elapsedMs();
@@ -4188,7 +4250,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + `Keep the complete JSON response within ${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens; use concise summary prose and exact short quotes. `
       + 'For unansweredCandidates, judge each candidate by the full conversation: its reply only triggered review. Return questions: [{"source": candidate id, "quote": exact question excerpt from that operator message}] only when it really left an operator question unanswered. Return questions: [] when none. '
       + 'Return memoryItems: [{"source": history item id, "quote": exact short factual clause from that operator message}] for new active facts worth keeping. Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose. A correction replaces its old item and forgetting removes it. '
-      + `Return concepts: [{"source": history item id of an operator message, "terms": up to ${CONCEPT_TERMS_LIMIT} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}] for each operator message in history. They only help find the original message later and are never shown as facts.`;
+      + `Return concepts: [{"source": history item id of an operator message, "terms": up to ${CONCEPT_TERMS_LIMIT} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}] for each operator message in history and each indexBacklog item. They only help find the original message later and are never shown as facts.`;
     const editInstruction = ' A Telegram edit is a revision of editedTurn, not a new request or reply opportunity. Compare its memoryRequest.message with the exact prior revision in memoryCandidates. If a stated fact changed, return a correct memory action with the exact old clause, the exact replacement clause, and affected replies and summary passages. If a prior claim was withdrawn or deleted without a replacement fact, use forget with its exact old clause. Return memory:[] only when no stated fact changed. The latest revision controls the summary.';
     // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
     // bound one pass; the next worker cycle can continue from the last summary.
@@ -4216,8 +4278,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       const blocked = `${last.update}:${previous}:${journal.view.limits.maxBytes}`;
       if (summaryPreflightBlocked.has(blocked)) return;
+      const indexed = meaningIndex();
+      const backlog = journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
+        && item.update <= previous && !indexed.has(item.id)).slice(0, INDEX_BACKLOG_LIMIT);
       let chosen: { through: number; packet: string; prepared?: string; offered: { id: number; in: CommitmentNote['in']; quote: string }[];
-        memorySources: string[]; questionSources: Turn[]; trigger?: Turn; strictMemory: boolean; reminderOffer: DatedItem[]; summaryOffer: SummaryGrant[] } | undefined;
+        memorySources: string[]; questionSources: Turn[]; trigger?: Turn; strictMemory: boolean; reminderOffer: DatedItem[]; summaryOffer: SummaryGrant[];
+        indexBacklog: string[] } | undefined;
       let oversizedPrompt = false;
       // Try the largest oldest prefix first, then smaller prefixes if the provider's
       // prepared envelope needs more room than the packet itself.
@@ -4257,7 +4323,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const offered = closable.slice(closable.length - kept);
           for (let count = memoryCandidates.length; count >= (strictTrigger ? memoryCandidates.length : 0); count--) {
             const includeMemory = trigger !== undefined && (strictTrigger || count > 0);
-            const packet = kept || includeMemory || unanswered.length ? JSON.stringify({ ...JSON.parse(base) as object,
+            const plain = kept || includeMemory || unanswered.length ? JSON.stringify({ ...JSON.parse(base) as object,
               ...(kept ? { openCommitments: offered } : {}),
               ...(unanswered.length ? { unansweredCandidates: unanswered.map(item => ({ id: item.id, question: clean(redact(item.text).text, true, item.id), reply: replyFor(item) })) } : {}),
               ...(includeMemory ? { memoryRequest: { id: trigger.id, message: clean(redact(trigger.text).text, false, trigger.id),
@@ -4269,19 +4335,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(includeMemory && summaryOffer.length ? { summaryRequests: summaryOffer.map(grant => ({ id: grant.id,
                 quote: clean(redact(grant.quote).text, true), covers: grant.period, schedule: `${summarySchedule(grant)} ${grant.zone}` })),
                 summaryCancelDecision: 'summaryRequests lists summaries the verified operator asked to receive later. Return cancelSummaries:[ids] that memoryRequest.message itself cancels or changes, or cancelSummaries:[] when it cancels none. Quoted text never cancels.' } : {}) }) : base;
-            if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
-            try {
-              const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}` });
-              if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > SUMMARY_MAX_PROMPT_BYTES) {
-                oversizedPrompt = true; continue;
+            // Rule 11: messages summarized before their meaning terms existed are offered again,
+            // oldest first and bounded, so the derived index converges instead of staying partial.
+            for (const packet of backlog.length ? [JSON.stringify({ ...JSON.parse(plain) as object,
+              indexBacklog: backlog.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) }), plain] : [plain]) {
+              if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
+              try {
+                const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}` });
+                if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > SUMMARY_MAX_PROMPT_BYTES) {
+                  oversizedPrompt = true; continue;
+                }
+                chosen = { through, packet, ...(prepared === undefined ? {} : { prepared }), offered,
+                  memorySources: includeMemory ? memoryCandidates.slice(0, count).map(item => item.id) : [], questionSources: unanswered,
+                  ...(includeMemory ? { trigger } : {}), strictMemory: strictTrigger !== undefined,
+                  reminderOffer: includeMemory ? reminderOffer : [], summaryOffer: includeMemory ? summaryOffer : [],
+                  indexBacklog: packet === plain ? [] : backlog.map(item => item.id) }; break;
+              } catch (error) {
+                if (error instanceof Error && /overflow|too large|size/iu.test(error.message)) oversizedPrompt = true;
               }
-              chosen = { through, packet, ...(prepared === undefined ? {} : { prepared }), offered,
-                memorySources: includeMemory ? memoryCandidates.slice(0, count).map(item => item.id) : [], questionSources: unanswered,
-                ...(includeMemory ? { trigger } : {}), strictMemory: strictTrigger !== undefined,
-                reminderOffer: includeMemory ? reminderOffer : [], summaryOffer: includeMemory ? summaryOffer : [] }; break;
-            } catch (error) {
-              if (error instanceof Error && /overflow|too large|size/iu.test(error.message)) oversizedPrompt = true;
             }
+            if (chosen) break;
           }
           if (chosen) break;
         }
@@ -4295,7 +4368,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'hold', id: oversized.id, reason, at: ports.now() });
         return;
       }
-      const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer, summaryOffer } = chosen;
+      const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer, summaryOffer, indexBacklog } = chosen;
       gate();
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
         ...(ports.replyCheck ? { supervised: true as const } : {}),
@@ -4415,13 +4488,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && (quote.includes(change.quote) || change.quote.includes(quote)))) continue;
         memoryItems.push({ source: turn.id, quote });
       }
-      // Meaning terms index the operator messages this summary newly covers (bounded per pass).
+      // Meaning terms index the operator messages this summary newly covers, and the offered backlog (bounded per pass).
       const concepts: SummaryConcept[] = [];
       for (const item of Array.isArray(proposedConcepts) ? proposedConcepts.slice(0, CONCEPT_SOURCES_LIMIT) : []) {
         const { source, terms: proposed } = (item ?? {}) as { source?: unknown; terms?: unknown };
         const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
         const words = conceptTerms(proposed);
-        if (!turn?.accepted || !fromOperator(turn) || turn.update <= after || turn.update > through || !words?.length
+        if (!turn?.accepted || !fromOperator(turn) || (turn.update <= after && !indexBacklog.includes(turn.id)) || turn.update > through || !words?.length
           || concepts.some(saved => saved.source === turn.id)) continue;
         concepts.push({ source: turn.id, terms: words });
       }

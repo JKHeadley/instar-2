@@ -71,7 +71,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // cbuild-2 re-pin: every verified operator packet now carries the summary-scheduling decision and
     // bounded memory search without keyword prerequisites (Rule 10), and summarized packets report
     // meaningIndexCoverage (Rule 11); the memory decision notes that undo exists only via undoDecision.
-    expect(packetHash).toBe('24e8179421fce380f803078f769561072169a24ff5bcec2c90e2c08584f9d026');
+    // cbuild-2 repair re-pin: removing only `continuity` (Rule 110's note for a not-yet-accounted summary
+    // frontier) and `meaningIndexCoverage.disposition` reproduces the prior pin 24e81794…f9d026 exactly.
+    expect(packetHash).toBe('3f4a1662ef236fbb4900377d270ce225d93d2394480aad43c1a2ba3676a7dafc');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

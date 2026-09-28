@@ -68,9 +68,9 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
       process.stdout.write(`packet pressure ${limit}: bytes=${Buffer.byteLength(probe.context)} kept=${kept.map(id => id.split(':').at(-1)).join(',')} dropped=${probe.dropped.map(item => `${item.kind}:${item.source.split(':').at(-1)}`).join(',')} open=${packet.openQuestions?.length ?? 0}\n`);
       expect(Buffer.byteLength(probe.context)).toBeLessThanOrEqual(limit);
       if (limit === 3950 + GUIDANCE) {
-        // Open question link wins the one-item boundary. cbuild-2: dropping the last inbound message
-        // (5000) now adds the compaction marker (Rule 110), so under this pressure the packet may keep no
-        // recall item at all; whatever survives is still only the link.
+        // Open question link wins the one-item boundary. cbuild-2: the Rule 110 continuity note rides in
+        // every compacted packet here, so under this pressure the packet may keep no recall item at all;
+        // whatever survives is still only the link.
         expect(kept.every(id => id === source(200))).toBe(true);
       }
       if (limit === 4200 + GUIDANCE) {
@@ -92,18 +92,18 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
     const questions = journal.view.questions.splice(0);
     const withoutOpen = worker.probe('What is the harbor key handoff status?');
     if ('reason' in withoutOpen) throw Error(withoutOpen.reason);
-    // cbuild-2: without the open-question tie, the last inbound turn (5000) yields and the packet
-    // carries the compaction marker for it (Rule 110), leaving room for one relevant item, not two.
-    const openless = (JSON.parse(withoutOpen.context) as { recalled?: { id: string }[]; compaction?: { lastInbound: { id: string } } });
-    expect(openless.recalled?.map(item => item.id)).toEqual([source(100)]);
-    expect(openless.compaction?.lastInbound.id).toBe(source(5000));
+    // cbuild-2: every compacted packet from a not-yet-accounted summary frontier carries the small Rule 110
+    // continuity note naming the last inbound turn (5000); two relevant items still fit beside it.
+    const openless = (JSON.parse(withoutOpen.context) as { recalled?: { id: string }[]; continuity?: { lastInbound: string } });
+    expect(openless.recalled?.map(item => item.id)).toEqual([source(100), source(500)]);
+    expect(openless.continuity?.lastInbound).toBe(source(5000));
     delete recentTurn.sent;
     const withoutSignals = worker.probe('What is the harbor key handoff status?');
     if ('reason' in withoutSignals) throw Error(withoutSignals.reason);
     const before = (JSON.parse(withoutSignals.context) as { recalled?: { id: string }[] }).recalled?.map(item => item.id) ?? [];
-    // Without reference signals the newest relevant item survives beside the compaction marker (cbuild-2).
-    expect(before).toEqual([source(500)]);
-    expect((JSON.parse(withoutSignals.context) as { compaction?: unknown }).compaction).toBeDefined();
+    // Without reference signals the two newest relevant items survive beside the continuity note (cbuild-2).
+    expect(before).toEqual([source(400), source(500)]);
+    expect((JSON.parse(withoutSignals.context) as { continuity?: unknown }).continuity).toBeDefined();
     process.stdout.write(`packet pressure 4200 without reference signals: kept=${before.map(id => id.split(':').at(-1)).join(',')} needed=0/2\n`);
     recentTurn.sent = sent;
     journal.view.questions.push(...questions);

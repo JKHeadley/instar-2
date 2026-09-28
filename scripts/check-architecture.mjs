@@ -1,4 +1,4 @@
-// Rules 1, 10, 26, 31, 40, 42, 69, 96. This uses TypeScript's resolved types, not identifier spelling.
+// Rules 1, 10, 11, 26, 31, 40, 42, 69, 96. This uses TypeScript's resolved types, not identifier spelling.
 import ts from 'typescript';
 import { readdirSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
@@ -140,9 +140,48 @@ export function lintIntentSites(sources = Object.fromEntries(Object.keys(INTENT_
   }
   return issues;
 }
+/** Rule 11 (NF-11): recall is by meaning. Every memory retrieval entry point in the live runner
+ * selects through the recall owner (`composeRecall`, which fuses the lexical first stage with the
+ * derived meaning index and any bound semantic stage). A word-match ranker called anywhere else
+ * must be a listed advisory candidate-ranking site, so a new retrieval path cannot silently be
+ * word-match only. */
+export const RETRIEVAL_SITES = Object.freeze({
+  'tests/preview/journal.ts': { owner: 'composeRecall', adapter: 'ownedRecall', rankers: ['selectRecall', 'selectSaidTurns'],
+    entryPoints: ['recallFor', 'searchFor'],
+    // Bounded advisory offers the model judges: imports, open items, reply provenance, dated turns, summary candidates.
+    advisory: ['channelFor', 'relatedOpenFor', 'replyProvenanceFor', 'preparedFor', 'runSummary'] },
+});
+export function lintRetrievalSites(sources = Object.fromEntries(Object.keys(RETRIEVAL_SITES)
+  .map(path => [path, ts.sys.readFile(resolve(path)) ?? '']))) {
+  const issues = [];
+  for (const [path, text] of Object.entries(sources)) {
+    const site = RETRIEVAL_SITES[path];
+    if (!site) continue;
+    const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+    const line = node => source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+    const called = (node, name) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === name;
+    const found = new Set();
+    const visit = (node, enclosing) => {
+      let within = enclosing;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+        && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) within = node.name.text;
+      if (ts.isFunctionDeclaration(node) && node.name) within = node.name.text;
+      if (called(node, site.adapter) && site.entryPoints.includes(within)) found.add(within);
+      if (called(node, site.owner) && within === site.adapter) found.add(site.adapter);
+      if (site.rankers.some(name => called(node, name)) && !site.entryPoints.includes(within) && !site.advisory.includes(within))
+        issues.push({ file: path, line: line(node), rule: 'NF-11', detail: `${node.expression.text} in ${within ?? 'module scope'} is an unlisted retrieval call site` });
+      ts.forEachChild(node, child => visit(child, within));
+    };
+    visit(source, undefined);
+    for (const entry of site.entryPoints) if (!found.has(entry))
+      issues.push({ file: path, line: 1, rule: 'NF-11', detail: `${entry} does not select through ${site.adapter}` });
+    if (!found.has(site.adapter)) issues.push({ file: path, line: 1, rule: 'NF-11', detail: `${site.adapter} does not call ${site.owner}` });
+  }
+  return issues;
+}
 function walk(path) { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${path}/${e.name}`) : e.name.endsWith('.ts') ? [`${path}/${e.name}`] : []); }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const program = createProgram(); const issues = [...lintProgram(program, walk('src')), ...lintIntentSites()];
+  const program = createProgram(); const issues = [...lintProgram(program, walk('src')), ...lintIntentSites(), ...lintRetrievalSites()];
   if (issues.length) { console.error(JSON.stringify(issues, null, 2)); process.exitCode = 1; }
   else console.log('architecture checks passed');
 }
