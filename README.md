@@ -70,3 +70,11 @@ Review model (operator decision, 2026-09-03): the independent review desk runs e
 request to convergence first; the operator then reviews a concise plain-language overview and
 decides only the direction-, value-, and policy-level questions, which each PR lists explicitly.
 The agent carries responsibility for technical correctness; merging still records the approval.
+
+## Where test temp files go
+
+Test runs put their temporary files on RAM-backed storage so the durable-storage tests never
+swamp the real disk: `INSTAR_TEST_TMP` if set, else the `/Volumes/instar-test-ram` volume on
+macOS (create it with `scripts/ensure-test-ramdisk.sh`) or `/dev/shm` on Linux, else the real
+disk with a loud warning. Set `INSTAR_TEST_REAL_DISK=1` to opt out; `npm run test:durability`
+does exactly that to prove production storage on the real disk once per landing gate.
