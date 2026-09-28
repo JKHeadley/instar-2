@@ -732,6 +732,21 @@ it('shares one budget across Jev and fallback, releasing only a verdict within i
   }
 });
 
+it('keeps a reviewer VIOLATION that returns after the deadline (Rule 42), while a late pass stays unavailable', async () => {
+  let now = 1000;
+  const records: ReplyCheckResult[] = [];
+  const result = await checkReply('candidate', 'turn:1', {
+    now: () => now, deadlineAt: now + REPLY_CHECK_BUDGET_MS, elapsedMs: () => now,
+    jev: async () => ({ value: scores({ claims_blocked: 0.91 }), latencyMs: 100 }),
+    reserveEscalation: () => true,
+    escalate: async () => { now += REPLY_CHECK_BUDGET_MS + 1;
+      return { verdict: 'violation', ruleIds: ['claims_blocked'], confidence: null, latencyMs: REPLY_CHECK_BUDGET_MS + 1 }; },
+    record: row => records.push(row),
+  });
+  expect(result.outcome).toBe('violation');
+  expect(records.at(-1)).toMatchObject({ verdict: 'violation', ruleIds: ['claims_blocked'], path: 'subscription' });
+});
+
 it('does not reserve fallback after Jev consumes the entire budget', async () => {
   let now = 1000, reviews = 0;
   const records: ReplyCheckResult[] = [];

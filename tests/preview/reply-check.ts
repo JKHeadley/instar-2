@@ -159,6 +159,11 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   const fallbackStarted = ports.elapsedMs();
   try {
     const result = await ports.escalate(text, id, originalPrompt, ruleIds.length ? ruleIds : rules, ports.deadlineAt);
+    // A returned VIOLATION is a real refusal: keep it even if the deadline passed meanwhile (Rule 42).
+    if (result.verdict === 'violation') {
+      ports.record({ ...result, path: 'subscription' });
+      return { outcome: 'violation', path: 'subscription' };
+    }
     if (expired(ports)) {
       ports.record(budgetResult('subscription', ruleIds, Math.max(0, ports.elapsedMs() - fallbackStarted)));
       return { outcome: 'unavailable', path: 'subscription' };
