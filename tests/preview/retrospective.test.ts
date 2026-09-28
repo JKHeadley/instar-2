@@ -7,7 +7,7 @@ import { createJournalWorker, openPreviewJournal, retrospectiveCases, type Journ
 import { GRAVITY_WELLS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS, RETRO_PENDING_RECHECK_MS, RETRO_STALE_CASE_MS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION,
   WAIVER_EVIDENCE_UNAVAILABLE, benchmarkReruns, disciplineSource, eligibleCases, feedbackDispositions, feedbackRecordOf, latestGrades,
   openFindings, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, retrospectivePlan, retrospectivePopulation,
-  retrospectiveStatusLine, standingGrantCandidates, validateRetrospective, RETRO_MAX_STATE_BYTES, RETRO_WAIVER_BYTES,
+  retrospectiveStatusLine, standingGrantCandidates, validateRetrospective, waiverPacket, RETRO_MAX_STATE_BYTES, RETRO_WAIVER_BYTES,
   type RetroCase } from './retrospective.js';
 
 const key = new Uint8Array(32).fill(21);
@@ -854,6 +854,7 @@ describe('Repair round 3 MUST-FIX B: accumulated waiver evidence never stops a r
       expect(first.summary.actsWithoutPriorWaiver.length).toBeLessThan(400);
       expect(first.summary.actsWithoutPriorWaiver.length + first.summary.notShown.actsWithoutPriorWaiver).toBe(400);
       expect(first.acts.length + first.notShown.acts).toBe(400);
+      expect(first).toMatchObject({ sizeUnavailable: { acts: 0, waivers: 0 }, summary: { sizeUnavailable: { actsWithoutPriorWaiver: 0 } } });
       expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThanOrEqual(RETRO_WAIVER_BYTES);
       // The worker itself produces the pass, with the owed message and answer cases inspected.
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
@@ -866,6 +867,44 @@ describe('Repair round 3 MUST-FIX B: accumulated waiver evidence never stops a r
       w.advance(RETRO_STALE_CASE_MS);
       const next = retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), DIGEST, evidence)!;
       expect(carried(next.state).acts.some(row => !shown.has(row.id))).toBe(true);
+    } finally { w.done(); }
+  });
+
+  it('a single reference too large to ever fit is reported size-unavailable, and the owed cases still proceed', async () => {
+    // Nothing upstream limits an id's length: one 25 KiB id must not breach the bound through the summary arrays.
+    const huge = `act:${'x'.repeat(25 * 1024)}`;
+    const acts = [{ id: huge, rule: '26', scope: 'deploy', at: 1, predecessors: [] as string[] },
+      ...Array.from({ length: 3 }, (_, index) => ({ id: `act:${String(index)}`, rule: '26', scope: 'deploy', at: 2 + index, predecessors: [] as string[] }))];
+    const evidence = { waivers: { authorizations: [], acts } };
+    type Waiver = { summary: { actsWithoutPriorWaiver: string[]; counts: { actsWithoutPriorWaiver: number };
+      notShown: { actsWithoutPriorWaiver: number }; sizeUnavailable: { actsWithoutPriorWaiver: number } };
+      acts: { id: string }[]; notShown: { acts: number }; sizeUnavailable: { acts: number } };
+    for (const rotation of [0, 1, 2]) {
+      const { packet, refs } = waiverPacket(evidence, rotation)!;
+      const value = packet as Waiver;
+      expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThanOrEqual(RETRO_WAIVER_BYTES);
+      expect(JSON.stringify(value)).not.toContain(huge);
+      expect(refs).not.toContain(huge);
+      // The exact total survives, and the oversized item is named as size-unavailable, never promised to a later page.
+      expect(value.summary.counts.actsWithoutPriorWaiver).toBe(4);
+      expect(value.summary.sizeUnavailable.actsWithoutPriorWaiver).toBe(1);
+      expect(value.sizeUnavailable.acts).toBe(1);
+      expect(value.summary.actsWithoutPriorWaiver.every(id => ['act:0', 'act:1', 'act:2'].includes(id))).toBe(true);
+      expect(value.summary.actsWithoutPriorWaiver.length + value.summary.notShown.actsWithoutPriorWaiver + 1).toBe(4);
+      expect(value.acts.map(row => row.id).sort()).toEqual(['act:0', 'act:1', 'act:2']);
+      expect(value.notShown.acts).toBe(0);
+    }
+    const w = world({ evidence: () => evidence });
+    try {
+      await w.converse(words.slice(0, 10));
+      const population = retrospectiveCases(w.journal.view);
+      const plan = retrospectivePlan(w.journal.view, population, w.at(), DIGEST, evidence);
+      expect(plan).not.toBeNull();
+      expect(plan!.cases).toHaveLength(population.length);
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[0]).toMatchObject({ state: 'complete' });
+      expect(owedIds(w.journal.view)).toHaveLength(0);
     } finally { w.done(); }
   });
 });

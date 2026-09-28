@@ -119,26 +119,30 @@ export interface RetroSiblingEvidence {
   waivers?: { authorizations: readonly Authorization[]; acts: readonly WaiverAct[] };
 }
 export const WAIVER_EVIDENCE_UNAVAILABLE = 'unavailable: the waiver authority/provenance producer (build 5) has supplied no waiver authorizations or acts to this consumer';
-/** One rotating page of rows within a byte budget: a page always fits, and nothing is excluded forever —
- * a later pass shows the next page, so every source row stays reachable through the existing packet route. */
+/** One rotating page of rows within a byte budget: a page always fits, and nothing that can fit is excluded
+ * forever — a later pass shows the next page, so every such row stays reachable through the existing packet
+ * route. A row larger than the whole budget can never fit on any page: it is counted in `sizeUnavailable`
+ * instead of being promised to a later page. */
 function rotatingPage<T>(rows: readonly T[], budget: number, rotation: number, maxRows = Number.MAX_SAFE_INTEGER) {
   const pages: T[][] = [];
-  let page: T[] = [], bytes = 0;
+  let page: T[] = [], bytes = 0, sizeUnavailable = 0;
   for (const row of rows) {
     const size = Buffer.byteLength(JSON.stringify(row)) + 1;
+    if (size > budget) { sizeUnavailable += 1; continue; }
     if (page.length && (bytes + size > budget || page.length >= maxRows)) { pages.push(page); page = []; bytes = 0; }
     page.push(row); bytes += size;
   }
   if (page.length) pages.push(page);
-  if (!pages.length) return { rows: [] as T[], page: 0, pages: 0 };
+  if (!pages.length) return { rows: [] as T[], page: 0, pages: 0, sizeUnavailable };
   const index = ((rotation % pages.length) + pages.length) % pages.length;
-  return { rows: pages[index]!, page: index + 1, pages: pages.length };
+  return { rows: pages[index]!, page: index + 1, pages: pages.length, sizeUnavailable };
 }
 /** The waiver evidence this pass carries: waiverReview's exact aggregate counts, plus one rotating page of
  * source-linked rows (rule, scope, time, links) whose ids a finding may cite, plus one rotating page of the
  * summary's own reference arrays. Every part is bounded: the review's reference arrays grow with every act,
  * so the complete contribution is held to RETRO_WAIVER_BYTES instead of consuming the whole packet.
- * Nothing is dropped silently — what this page omits is counted in notShown and shown by a later pass. */
+ * Nothing is dropped silently — what this page omits is counted in notShown and shown by a later pass, and an
+ * item too large to fit any page is counted in sizeUnavailable, never promised to a later page. */
 export function waiverPacket(evidence: RetroSiblingEvidence, rotation = 0): { packet: unknown; refs: string[] } | null {
   if (!evidence.waivers) return null;
   const { authorizations, acts } = evidence.waivers;
@@ -156,23 +160,30 @@ export function waiverPacket(evidence: RetroSiblingEvidence, rotation = 0): { pa
   const missingPage = rotatingPage(review.actsWithoutPriorWaiver, eighth, rotation);
   const waiverPage = rotatingPage(allWaiverRows, quarter, rotation, RETRO_WAIVER_ROWS);
   const actPage = rotatingPage(allActRows, quarter, rotation, RETRO_WAIVER_ROWS);
-  let shownWaivers = waiverPage.rows, shownActs = actPage.rows;
+  let shownWaivers = waiverPage.rows, shownActs = actPage.rows, shownUnused = unusedPage.rows, shownMissing = missingPage.rows;
   const build = () => ({
     // Exact aggregates, always whole: only the reference arrays beside them are paged.
     // Exact counts are first-class numbers, never something to recover by adding shown to notShown:
     // an incomplete window must not be able to read as a zero count (part nine, the rule-94 clause).
     summary: { waivers: review.waivers, linkedActs: review.linkedActs,
       counts: { unusedWaivers: review.unusedWaivers.length, actsWithoutPriorWaiver: review.actsWithoutPriorWaiver.length },
-      unusedWaivers: unusedPage.rows, actsWithoutPriorWaiver: missingPage.rows,
-      notShown: { unusedWaivers: review.unusedWaivers.length - unusedPage.rows.length,
-        actsWithoutPriorWaiver: review.actsWithoutPriorWaiver.length - missingPage.rows.length },
+      unusedWaivers: shownUnused, actsWithoutPriorWaiver: shownMissing,
+      notShown: { unusedWaivers: review.unusedWaivers.length - shownUnused.length - unusedPage.sizeUnavailable,
+        actsWithoutPriorWaiver: review.actsWithoutPriorWaiver.length - shownMissing.length - missingPage.sizeUnavailable },
+      sizeUnavailable: { unusedWaivers: unusedPage.sizeUnavailable, actsWithoutPriorWaiver: missingPage.sizeUnavailable },
       pages: { unusedWaivers: unusedPage.pages, actsWithoutPriorWaiver: missingPage.pages } },
     waivers: shownWaivers, acts: shownActs,
-    notShown: { waivers: allWaiverRows.length - shownWaivers.length, acts: allActRows.length - shownActs.length },
+    notShown: { waivers: allWaiverRows.length - shownWaivers.length - waiverPage.sizeUnavailable,
+      acts: allActRows.length - shownActs.length - actPage.sizeUnavailable },
+    sizeUnavailable: { waivers: waiverPage.sizeUnavailable, acts: actPage.sizeUnavailable },
     pages: { waivers: waiverPage.pages, acts: actPage.pages, page: { waivers: waiverPage.page, acts: actPage.page } } });
-  // The bound, enforced on the serialized contribution itself, so no single oversize row can breach it.
-  while (Buffer.byteLength(JSON.stringify(build())) > RETRO_WAIVER_BYTES && (shownWaivers.length || shownActs.length)) {
-    if (shownActs.length >= shownWaivers.length) shownActs = shownActs.slice(0, -1); else shownWaivers = shownWaivers.slice(0, -1);
+  // The bound, enforced on the serialized contribution itself — summary reference arrays and detailed rows alike —
+  // so no supplied reference, however long, can breach it. The per-part budgets leave room, so this is a backstop.
+  const parts = () => [shownActs.length, shownWaivers.length, shownMissing.length, shownUnused.length];
+  while (Buffer.byteLength(JSON.stringify(build())) > RETRO_WAIVER_BYTES && parts().some(count => count > 0)) {
+    const largest = parts().indexOf(Math.max(...parts()));
+    if (largest === 0) shownActs = shownActs.slice(0, -1); else if (largest === 1) shownWaivers = shownWaivers.slice(0, -1);
+    else if (largest === 2) shownMissing = shownMissing.slice(0, -1); else shownUnused = shownUnused.slice(0, -1);
   }
   return { packet: build(), refs: [...shownWaivers.map(row => row.id), ...shownActs.map(row => row.id)] };
 }
@@ -423,7 +434,7 @@ export const RETROSPECTIVE_QUESTION = [
   'recurrence: when a repair or problem repeats an earlier one, open a root-cause finding (recurs lists the earlier finding ids or refs, rootCause names the suspected cause) and decide structuralRemedy: {"remove": what structure that demands care could be removed} or {"none": why no bounded change is warranted now}. A repeated repair is not resolved by repeating it.',
   'removable-attention and workaround: repeated manual work or a hand-made workaround worth turning into a permanent ability; propose the candidate, do not assume every repetition deserves a tool.',
   'waste (efficiency duty): look for wasted calls, repeated questions, redundant replies, held or failed work that cost attempts; always write efficiency.summary, even if nothing was found.',
-  'process-tier and proportionality: from each answer\'s meta (checks, held, state), judge whether the checking it received matched its stakes: too little for a consequential or irreversible answer, or too much for a trivial one. waiver-recurrence: from waiverEvidence, flag waivers that recur for the same rule or acts without a prior waiver; cite only the waiver/act ids shown on this page. summary.waivers, summary.linkedActs and summary.counts are the EXACT totals; the summary\'s id arrays and the waiver/act rows are one rotating page of a larger set, and notShown says how many a later page still holds. Never read a short or empty page as a zero total: the counts are the total, an incomplete window proves nothing.',
+  'process-tier and proportionality: from each answer\'s meta (checks, held, state), judge whether the checking it received matched its stakes: too little for a consequential or irreversible answer, or too much for a trivial one. waiver-recurrence: from waiverEvidence, flag waivers that recur for the same rule or acts without a prior waiver; cite only the waiver/act ids shown on this page. summary.waivers, summary.linkedActs and summary.counts are the EXACT totals; the summary\'s id arrays and the waiver/act rows are one rotating page of a larger set, notShown says how many a later page still holds, and sizeUnavailable counts items too large to show on any page (their detail is unavailable here, not absent). Never read a short or empty page as a zero total: the counts are the total, an incomplete window proves nothing.',
   'outcome: grade EVERY decision (answer:...) and verdict case. conclusion, reason and outcome are separate claims, each with its own evidence refs: conclusion {assessment, evidence}, reason {assessment, evidence} (not-applicable only when no reason was stated), outcome {assessment, reason, evidence}. supported/contradicted need evidence. outcome met/unmet needs evidence refs later than the answer; otherwise pending (say what would settle it) or unverifiable (say why the evidence is unavailable). A failed or uncertain answer is graded too (usually not-applicable). A person\'s or the agent\'s compliance or override goes in observations, never in evidence: it is attributed observation, not proof. If the reason is refuted (reason contradicted), give rederivation {conclusion: stands|changed, reason}. Set promote to a one-line scenario description only for a useful, clearly graded real answer (answer:...) case; a verdict cannot be promoted yet because it cannot be rerun. You may also regrade a priorGrades or gradeIndex case when a later case changes its assessment; cite that later evidence.',
   'refuted-reason: for each verdict case assess the conclusion and the stated reason separately; a refuted (contradicted) reason needs a rederivation even when the conclusion stands.',
   'feedback: every operator message that corrects the agent, reports a failure or states a preference about behavior gets a disposition (a case whose meta has correction MUST get one): improvement-owned or investigating (owner and next: this opens an owned improvement item that stays open until a later pass evaluates it), duplicate-linked (duplicateOf), verified-improvement (improvementOf: the open:... improvement item opened for THIS feedback message, plus evidence refs to actual later records — messages, answers, verdicts or repairs after that item was opened; the open item itself is never its own proof), or declined-with-reason (reason). Messages that are not feedback are simply inspected.',
