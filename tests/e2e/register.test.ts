@@ -134,8 +134,10 @@ describe('compiled register build adapter lifecycle', () => {
       const live = result.register.entries.map(e => e.declaration).filter(d => d.status === 'live');
       const held = new Set(live.flatMap(d => d.holds.map(h => h.rule)));
       const uncovered = live.filter(d => d.kind === 'rules' && !held.has(d.requiredFacts.number as number));
+      // Every uncovered rule is a gap loop; every live deferred hold is its own owned loop.
+      const deferred = live.flatMap(d => d.holds.filter(h => h.class === 'deferred').map(h => `deferred:${d.id}:${h.rule}`));
       expect(result.graph.loops.map(l => l.id).sort()).toEqual(
-        uncovered.map(d => `gap:${d.requiredFacts.number}`).sort());
+        [...uncovered.map(d => `gap:${d.requiredFacts.number}`), ...deferred].sort());
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
       expect(calls).toContain('extract:fixture:mirrored'); expect(calls).toContain('force'); expect(calls).toContain('current');
       await yieldToRunner();
