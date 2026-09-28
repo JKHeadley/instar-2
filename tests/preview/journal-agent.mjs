@@ -827,11 +827,13 @@ async function main() {
           : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched' : endReason ?? 'error (details suppressed)';
         // Rule 68: eligible accepted work left behind is queued for the next launch unless a stop, expiry,
         // allowance or signal pause inhibits it; either way it stays visible, never counted as done.
-        const health = journal ? loopHealth(journal.view, wallNow()) : null;
-        const inhibited = signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
-          || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
-        const end = { pollPressure: { failed: failedPolls, conflicted: conflictedPolls },
-          ...(health ? { unfinished: health.unfinished, revival: health.unfinished === 0 ? 'none' : inhibited ? 'inhibited' : 'queued' } : {}) };
+        let end = { pollPressure: { failed: failedPolls, conflicted: conflictedPolls } };
+        try {
+          const health = journal ? loopHealth(journal.view, wallNow()) : null;
+          const inhibited = signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
+            || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
+          if (health) end = { ...end, unfinished: health.unfinished, revival: health.unfinished === 0 ? 'none' : inhibited ? 'inhibited' : 'queued' };
+        } catch { /* the pressure alone still reaches the next launch */ }
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
