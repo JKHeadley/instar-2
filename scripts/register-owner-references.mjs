@@ -42,6 +42,8 @@ const partTenFixturePaths = {
   'P10-SI-24': ['tests/rungraph/provider-answer-reply.test.ts'],
   'P10-SI-37': ['tests/e2e/fixed-installation-reply.test.ts'],
 };
+const previewFixturePaths = { 'P9-PREVIEW-step-check-graduation': 'tests/preview/step-check.test.ts',
+  'P9-PREVIEW-restore-equality': 'tests/preview/proofs.test.ts' };
 const contracts = {
   'part-five': { decoders: { ...owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit',
     'decodeSessionGrounding']), ...closureOwned,
@@ -72,9 +74,12 @@ const contracts = {
     ...Object.fromEntries(['decodeVerificationRecord', 'decodeVerificationRecordAtOrigin', 'decodeHistoricalVerificationRecord']
       .map(id => [id, { module: 'src/verification/index.ts', artifact: 'src/verification/records.ts' }])),
   },
-    fixture: id => ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id), probe: () => false,
-    test: (id, kind, path) => kind === 'fixture' && ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id)
-      && path === 'tests/verification/provider-response-assessment.test.ts' },
+    fixture: id => ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id) || Object.hasOwn(previewFixturePaths, id),
+    // The live runner's proof plans (tests/preview/proofs.ts), executed in CI through the real launcher.
+    probe: id => /^P9-PREVIEW-[a-z][a-z-]*$/.test(id) && !Object.hasOwn(previewFixturePaths, id),
+    test: (id, kind, path) => kind === 'fixture' ? ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id)
+      && path === 'tests/verification/provider-response-assessment.test.ts' || previewFixturePaths[id] === path
+      : path === 'tests/preview/proofs-launcher.test.ts' },
   'part-ten': { decoders: {
     ...Object.fromEntries(['decodeInstallationSelectionAtOrigin', 'decodeHistoricalInstallationSelection']
       .map(id => [id, { module: 'src/assembly/index.ts', artifact: 'src/assembly/installation-selection.ts' }])),

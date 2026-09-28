@@ -1,5 +1,21 @@
 [
   {
+    "revision": 8,
+    "date": "2026-09-27",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "constitutional build 9 (operator observer note 43): the constitution audit found the register deriving critical and significant from the pre-purpose formulas; an irreversible one-shot notice computed noncritical"
+    },
+    "changes": [
+      {
+        "what": "Critical and significant now both derive from the purpose's single consequential-effect definition: consequence in {identity, security, money, control, external}, or reversibility irreversible, or reach world. Significant no longer includes user-facing on its own; the four-together table names the user-facing, non-consequential cell.",
+        "why": "The purpose defines a consequential effect once and says significant and critical both resolve to it; the older formulas let an irreversible effect compute as noncritical and made visibility alone significant.",
+        "ref": "docs/00-the-purpose.md, the consequential-effect rule; register-source/bootstrap-shape.json derivedFrom"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-09-04",
     "status": "draft",

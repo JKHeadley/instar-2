@@ -2944,6 +2944,10 @@ an answer containing a detected secret, or an oversized answer or evidence, is
 recorded as unavailable without Jev disclosure. A stop prevents a
 new Jev dispatch. Verdicts never change a reply, memory decision, summary,
 hold, send, or future model packet. No extra service or store is involved.
+Since build 9 the start marker names the cleanup boundary as well: each reply's
+cleanup Result (its coherence check, memory state and delivery) is checked the
+same way. A journal started before that gains the boundary from a second start
+marker; earlier steps keep their verdicts.
 
 The live private-chat procedure is in
 [jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark

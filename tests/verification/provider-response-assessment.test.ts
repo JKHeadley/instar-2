@@ -120,7 +120,8 @@ it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fix
     'src/judgment/provider-path.ts', 'src/assembly/index.ts', 'src/assembly/installation-selection.ts',
     'src/assembly/production-signer-reference.ts', 'tests/verification/provider-response-assessment.test.ts',
     'tests/rungraph/provider-answer-reply.test.ts', 'tests/e2e/fixed-installation-reply.test.ts',
-    'tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts'];
+    'tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
+    'tests/preview/proofs.test.ts', 'tests/preview/step-check.test.ts', 'tests/preview/proofs-launcher.test.ts'];
   try {
     for (const path of [...manifests, ...artifacts]) {
       mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -136,19 +137,28 @@ it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fix
       sources: Object.fromEntries(manifests.map(path => [path, JSON.stringify(changed[path] ?? originals[path])])) });
     const loaded = load();
     expect(loaded.catalog.fixtures.map(row => row.id).sort()).toEqual([
-      'P10-SI-06', 'P10-SI-09', 'P10-SI-17', 'P10-SI-24', 'P10-SI-37', 'P9-NF-64', 'P9-NF-65', 'P9-NF-66']);
+      'P10-SI-06', 'P10-SI-09', 'P10-SI-17', 'P10-SI-24', 'P10-SI-37', 'P9-NF-64', 'P9-NF-65', 'P9-NF-66',
+      'P9-PREVIEW-restore-equality', 'P9-PREVIEW-step-check-graduation']);
     expect(loaded.decoders.map(row => row.id).sort()).toEqual([
       'decodeCapturedProviderDecision', 'decodeHistoricalInstallationSelection', 'decodeHistoricalProductionSignerReference',
       'decodeHistoricalProviderAnswerAcceptance', 'decodeHistoricalVerificationRecord', 'decodeInstallationSelectionAtOrigin',
       'decodeProductionSignerReferenceAtOrigin', 'decodeProviderAnswerAcceptanceAtOrigin', 'decodeVerificationRecord',
       'decodeVerificationRecordAtOrigin']);
-    expect(loaded.catalog.probes).toEqual([]);
+    // Build 9: the live runner's proof plans, each CI-executed through the real launcher.
+    expect(loaded.catalog.probes.map(row => row.id)).toEqual(['held-notice-delivered', 'journal-restore', 'reminder-delivered', 'reply-delivered',
+      'reply-drain', 'reply-review-reached', 'requested-summary-delivered', 'spend-cap-refusal', 'startup', 'status-answered',
+      'step-check-reached', 'stop-honored', 'summary-checked', 'telegram-identity', 'provider-outcomes'].sort().map(id => `P9-PREVIEW-${id}`));
+    expect((originals[manifests[0]!] as { probes: { execution: string; cadence: number; artifact: { path: string } }[] }).probes
+      .every(row => row.execution === 'ci' && row.cadence > 0 && row.artifact.path === 'tests/preview/proofs-launcher.test.ts')).toBe(true);
     expect(loaded.documents).toEqual([]);
 
     const artifact = (path: string) => ({ path, hash: ownerHash(readFileSync(join(root, path), 'utf8')) });
     const nineWrong = structuredClone(originals[manifests[0]!] as any);
     nineWrong.fixtures[0].artifact = artifact('tests/rungraph/provider-answer-reply.test.ts');
     expect(() => load({ [manifests[0]!]: nineWrong })).toThrow('wrong-owner inspection artifact');
+    const previewWrong = structuredClone(originals[manifests[0]!] as any);
+    previewWrong.probes[0].artifact = artifact('tests/preview/proofs.test.ts');
+    expect(() => load({ [manifests[0]!]: previewWrong })).toThrow('wrong-owner inspection artifact');
     const tenWrong37 = structuredClone(originals[manifests[2]!] as any);
     tenWrong37.fixtures.find((row: { id: string }) => row.id === 'P10-SI-37').artifact = artifact('tests/rungraph/provider-answer-reply.test.ts');
     expect(() => load({ [manifests[2]!]: tenWrong37 })).toThrow('wrong-owner inspection artifact');

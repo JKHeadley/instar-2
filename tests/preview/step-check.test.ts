@@ -12,8 +12,14 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
   maxCalls: 8, maxReplies: 8, maxTurns: 8, maxBytes: 32768, cursor: 0 };
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
-const jev = (score: number) => ({ model: 'jev-1.13.0', answers: { unsupported_effect: { type: 'noul', noul: score } },
+/** A Jev answer to whichever step question was asked (each business step asks its own). */
+const jev = (score: number) => ({ model: 'jev-1.13.0', answers: Object.fromEntries(['unsupported_effect', 'wrong_admission',
+  'unfaithful_packet', 'not_due', 'unfaithful_reminder'].map(id => [id, { type: 'noul', noul: score }])),
   usage: { input_tokens: 11, output_tokens: 2 } });
+/** The Jev requests for answer steps only; intake and preparation are business steps of their own. */
+const answerStates = (states: readonly string[]) => states.filter(state => state.includes('"step":"answer:'));
+const answerVerdicts = (steps: Map<string, { result?: { verdict: string } }>) =>
+  [...steps].filter(([id]) => /^(answer|summary|summary-failed):/u.test(id)).map(([, item]) => item.result?.verdict);
 
 it('keeps the off path byte-identical at model, send, and plaintext journal boundaries', async () => {
   const run = async (newHooks: boolean) => {
@@ -47,18 +53,19 @@ it('records pass and violation verdicts without changing sends, then replays the
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => 'I recorded a memory change.',
       send: async input => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {},
-      stepCheck: { jev: async state => { states.push(state); return { value: jev(states.length === 1 ? 0.94 : 0.02), latencyMs: 13 }; } } });
+      stepCheck: { jev: async state => { states.push(state);
+        return { value: jev(state.includes('"step":"answer:telegram:12345678:update:1"') ? 0.94 : 0.02), latencyMs: 13 }; } } });
     worker.startStepChecks();
     worker.intake([update(1, 'Remember a detail.')]); await worker.drain(); await worker.checkSteps();
     worker.intake([update(2, 'What happened?')]); await worker.drain(); await worker.checkSteps();
-    expect(states).toHaveLength(2);
-    expect(states[0]).toContain('"memoryChanges":[]');
+    expect(answerStates(states)).toHaveLength(2);
+    expect(answerStates(states)[0]).toContain('"memoryChanges":[]');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('violation');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:2')?.result?.verdict).toBe('pass');
     expect(sends).toEqual(['PREVIEW — I recorded a memory change.', 'PREVIEW — I recorded a memory change.']);
     journal.close();
     const replay = openPreviewJournal(path, key, undefined, undefined, true);
-    expect([...replay.view.stepChecks.values()].map(item => item.result?.verdict)).toEqual(['violation', 'pass']);
+    expect(answerVerdicts(replay.view.stepChecks)).toEqual(['violation', 'pass']);
     replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -99,7 +106,7 @@ it('checks a committed summary and records an unsure Jev score without gating th
     worker.startStepChecks(); worker.intake([update(1, 'What is seven?')]); await worker.drain();
     await worker.summarizeIfNeeded(true); await worker.checkSteps();
     expect(seen.some(state => state.includes('"summaryRecorded":true'))).toBe(true);
-    expect([...journal.view.stepChecks.values()].map(item => item.result?.verdict)).toEqual(['unsure', 'unsure']);
+    expect(answerVerdicts(journal.view.stepChecks)).toEqual(['unsure', 'unsure']);
     expect(journal.view.order[0]?.sent).toBe(5);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -129,14 +136,15 @@ it('redacts a credential from Jev evidence and preserves the existing outbound s
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-secret-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    let jevCalls = 0;
+    const states: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => 'The token is sk-AAAAAAAAAAAAAAAAAAAAAAAA.',
       send: async () => { throw Error('secret sent'); },
       checkOutbound: text => { if (text.includes('sk-AAAAAAAAAAAAAAAAAAAAAAAA')) throw Error('secret'); },
-      stepCheck: { jev: async () => { jevCalls++; throw Error('Jev outage'); } } });
+      stepCheck: { jev: async state => { states.push(state); throw Error('Jev outage'); } } });
     worker.startStepChecks(); worker.intake([update(1, 'What happened?')]); await worker.drain(); await worker.checkSteps();
-    expect(jevCalls).toBe(0);
+    expect(answerStates(states)).toHaveLength(0);
+    expect(states.join('')).not.toContain('sk-AAAAAAAAAAAAAAAAAAAAAAAA');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('unavailable');
     expect(journal.view.order[0]?.held).toBe('outbound secret refused');
     expect(journal.view.order[0]?.sent).toBeUndefined();
@@ -152,14 +160,14 @@ it.each([
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-escaped-secret-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    let jevCalls = 0;
+    const states: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => answer,
       send: async () => { throw Error('secret sent'); },
       checkOutbound: text => { if (redact(text).count) throw Error('secret'); },
-      stepCheck: { jev: async () => { jevCalls++; return { value: jev(0.01), latencyMs: 1 }; } } });
+      stepCheck: { jev: async state => { states.push(state); return { value: jev(0.01), latencyMs: 1 }; } } });
     worker.startStepChecks(); worker.intake([update(1, 'What happened?')]); await worker.drain(); await worker.checkSteps();
-    expect(jevCalls).toBe(0);
+    expect(answerStates(states)).toHaveLength(0);
     expect(journal.view.order[0]?.held).toBe('outbound secret refused');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result).toMatchObject({
       verdict: 'unavailable', reason: 'secret detected in step evidence' });
@@ -177,8 +185,8 @@ it('dispatches clean raw evidence to Jev after the secret check', async () => {
       send: async () => 5, checkOutbound: () => {},
       stepCheck: { jev: async state => { states.push(state); return { value: jev(0.01), latencyMs: 1 }; } } });
     worker.startStepChecks(); worker.intake([update(1, 'What is seven?')]); await worker.drain(); await worker.checkSteps();
-    expect(states).toHaveLength(1);
-    expect(JSON.parse(states[0]!).modelOutput).toBe('Here is the answer:\nSeven.');
+    expect(answerStates(states)).toHaveLength(1);
+    expect(JSON.parse(answerStates(states)[0]!).modelOutput).toBe('Here is the answer:\nSeven.');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('pass');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -214,14 +222,14 @@ it('does not check a fixed failure reply when the model produced no answer', asy
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-no-answer-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    let jevCalls = 0;
+    const states: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => ({ state: 'rejected', failureClass: 'rejected' }),
       send: async () => 5, checkOutbound: () => {},
-      stepCheck: { jev: async () => { jevCalls++; return { value: jev(0.01), latencyMs: 1 }; } } });
+      stepCheck: { jev: async state => { states.push(state); return { value: jev(0.01), latencyMs: 1 }; } } });
     worker.startStepChecks(); worker.intake([update(1, 'What happened?')]); await worker.drain(); await worker.checkSteps();
-    expect(jevCalls).toBe(0);
-    expect(journal.view.stepChecks.size).toBe(0);
+    expect(answerStates(states)).toHaveLength(0);
+    expect([...journal.view.stepChecks.keys()].filter(id => id.startsWith('answer:'))).toEqual([]);
     expect(journal.view.order[0]?.sent).toBe(5);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -239,12 +247,12 @@ it('marks an interrupted reservation unavailable on restart without another Jev 
     first.append({ kind: 'step-check-reserve', step: 'answer:telegram:12345678:update:1', evidence: '{}', at: 1000 });
     first.close();
     const second = openPreviewJournal(path, key);
-    let jevCalls = 0;
+    const states: string[] = [];
     const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
       model: async () => { throw Error('model repeated'); }, send: async () => { throw Error('send repeated'); }, checkOutbound: () => {},
-      stepCheck: { jev: async () => { jevCalls++; return { value: jev(0.01), latencyMs: 1 }; } } });
+      stepCheck: { jev: async state => { states.push(state); return { value: jev(0.01), latencyMs: 1 }; } } });
     await resumed.checkSteps();
-    expect(jevCalls).toBe(0);
+    expect(answerStates(states)).toHaveLength(0);
     expect(second.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('unavailable');
     expect(second.view.order[0]?.sent).toBe(5);
     second.close();
@@ -255,14 +263,16 @@ it('does not dispatch Jev when stop arrives after the evidence reservation', asy
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-stop-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-    let stopped = false, jevCalls = 0;
+    let stopped = false;
+    const states: string[] = [];
     const append = journal.append;
-    journal.append = row => { append(row); if (row.kind === 'step-check-reserve') stopped = true; };
+    journal.append = row => { append(row); if (row.kind === 'step-check-reserve' && row.step.startsWith('answer:')) stopped = true; };
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => stopped,
       model: async () => 'Seven.', send: async () => 5, checkOutbound: () => {},
-      stepCheck: { jev: async () => { jevCalls++; return { value: jev(0.01), latencyMs: 1 }; } } });
+      stepCheck: { jev: async state => { states.push(state); return { value: jev(0.01), latencyMs: 1 }; } } });
+    // The stop lands between the answer step's reservation and its dispatch.
     worker.startStepChecks(); worker.intake([update(1, 'What is seven?')]); await worker.drain(); await worker.checkSteps();
-    expect(jevCalls).toBe(0);
+    expect(answerStates(states)).toHaveLength(0);
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('unavailable');
     expect(journal.view.order[0]?.sent).toBe(5);
     journal.close();
@@ -271,4 +281,32 @@ it('does not dispatch Jev when stop arrives after the evidence reservation', asy
 
 it('refuses a malformed score rather than treating it as a pass', () => {
   expect(() => interpretStepJev(jev(Number.NaN), 1)).toThrow('malformed');
+});
+
+it('reaches each reply cleanup Result too, and a journal started before that gains the boundary and replays (build 9, Rule 38)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'step-cleanup-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis);
+    const states: string[] = [];
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, model: async () => 'Seven.',
+      send: async () => 5, checkOutbound: () => {},
+      stepCheck: { jev: async state => { states.push(state); return { value: jev(0.02), latencyMs: 7 }; } } });
+    // An earlier start record without boundaries: answer steps only, until the cleanup start is appended.
+    journal.append({ kind: 'step-check-start', at: 1000 });
+    worker.intake([update(1, 'What is seven?')]); await worker.drain(); worker.checkCoherence();
+    expect([...journal.view.stepChecks.keys()]).toEqual(['answer:telegram:12345678:update:1']);
+    worker.startStepChecks(); worker.startStepChecks();
+    expect(journal.view.stepCheckCleanup).toBe(true);
+    worker.intake([update(2, 'And eight?')]); await worker.drain(); worker.checkCoherence(); await worker.checkSteps();
+    const id = 'telegram:12345678:update:2';
+    expect(journal.view.stepChecks.get(`cleanup:${id}`)?.result?.verdict).toBe('pass');
+    expect(states.some(state => state.includes(`"step":"cleanup:${id}"`) && state.includes('"coherenceFindings":[]'))).toBe(true);
+    const keys = [...journal.view.stepChecks.keys()];
+    journal.close();
+    const replay = openPreviewJournal(path, key, undefined, undefined, true);
+    expect([...replay.view.stepChecks.keys()]).toEqual(keys);
+    expect(replay.view.stepCheckCleanup).toBe(true);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

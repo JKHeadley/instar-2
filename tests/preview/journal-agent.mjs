@@ -13,7 +13,7 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, reviewUnavailableReleases, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, reviewUnavailableReleases, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate} from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -31,6 +31,10 @@ import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
+import { deriveProfile } from '../../src/index.js';
+import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, probeId, proofPosture, stepCoverage } from './proofs.js';
+import { capabilityRows, previewInventory, proofStatusLines, resolveLiveProof } from './capabilities.js';
+import { appendProof, readProofs } from './proof-log.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -132,6 +136,46 @@ const requireAuthority = (options, activation, activationPath, view, now) => {
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 const delay = ms => new Promise(done => setTimeout(done, ms));
+/** Rules 34/62/76 classify capabilities through the committed register shape: one definition, read, never restated. */
+const shapeTerms = () => ({ owner: 'part-three',
+  derivedFrom: JSON.parse(readFileSync(resolve(process.cwd(), 'register-source/bootstrap-shape.json'), 'utf8')).derivedFrom });
+const classifier = () => { const terms = shapeTerms(); return profile => take(deriveProfile(profile, terms, 'preview:host')); };
+/** The runner's register inputs, read from the same committed file the register's source collector reads. */
+const declarationsOf = name => JSON.parse(readFileSync(resolve(process.cwd(), `tests/preview/${name}.json`), 'utf8'));
+const inventory = () => previewInventory(declarationsOf('preview.declarations'), declarationsOf('preview.pending-declarations'));
+/** A capability's version is the digest of its own source files, so a live proof survives unrelated edits. */
+const capabilityVersions = () => {
+  const files = new Map(), digest = path => {
+    if (!files.has(path)) { let value; try { value = createHash('sha256').update(readFileSync(resolve(process.cwd(), path))).digest('hex'); }
+      catch { value = `missing:${path}`; } files.set(path, value); }
+    return files.get(path);
+  };
+  return Object.fromEntries(inventory().capabilities.map(item => [item.declaration.id,
+    `sha256:${createHash('sha256').update(item.sources.map(digest).join('\n')).digest('hex')}`]));
+};
+const VERSION_PREFIX = 'version:';
+const proofsPathOf = root => join(root, 'proofs.jsonl');
+/** The running launch: its startup proof carries the generation and capability versions it launched with. */
+const runningLaunch = proofs => {
+  const startup = proofs.filter(row => row.plan === 'startup').at(-1);
+  if (!startup) return null;
+  const versions = Object.fromEntries(Object.entries(startup.observed).filter(([name, value]) => name.startsWith(VERSION_PREFIX) && typeof value === 'string')
+    .map(([name, value]) => [name.slice(VERSION_PREFIX.length), value]));
+  return { generation: startup.generation, versions, stepCheck: startup.observed.stepCheck === true, agentState: startup.observed.agentState === true };
+};
+/** Posture and step coverage for one reading; every input is a durable record or the replayed journal. With no
+ * startup record the versions come from disk and every plan reads unknown: nothing from another launch counts. */
+const proofReport = (view, log, launch, now) => {
+  const versions = launch && Object.keys(launch.versions).length ? launch.versions : capabilityVersions();
+  const supervisors = { replyReview: true, summaryReview: true, stepCheck: launch?.stepCheck ?? false };
+  const generation = launch?.generation ?? versions['preview.proofs'];
+  return { generation, versions, supervisors, proofs: proofPosture(PREVIEW_PROOF_PLANS, log.proofs, generation, { supervisors }, now, log.refused ?? []),
+    enabled: { default: true, 'option:step-check': supervisors.stepCheck, 'option:agent-state-dir': launch?.agentState ?? false },
+    stepCoverage: stepCoverage(view, supervisors) };
+};
+/** Capability truth over a reading (Rules 34, 39, 62, 72, 73, 76); `status` is what the metrics must reach. */
+const capabilityReport = (joined, reading, log, status, now) => capabilityRows(joined, { classify: classifier(),
+  versions: reading.versions, enabled: reading.enabled, status, liveProofs: log.liveProofs, proofs: reading.proofs, now });
 /** The exact sources every live turn carries; shared by run and the read-only inspect probe.
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
@@ -245,7 +289,7 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory', 'seal-authority'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
@@ -261,6 +305,7 @@ async function main() {
   const journalPath = join(root, 'journal.encrypted');
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
+  const proofsPath = proofsPathOf(root);
   const shapesPath = join(root, 'model-json-shapes.json');
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
@@ -301,7 +346,7 @@ async function main() {
       const deskPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
       const desk = deskStatusSource(readDeskStatus(deskPath), now, deskPath);
       const lastSent = view.view.order.filter(turn => turn.sentAt !== undefined).at(-1);
-      process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+      const report = { cursor: view.view.cursor, turns: view.view.order.length,
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
@@ -444,9 +489,48 @@ async function main() {
       launches: log.launches.slice(-3), ...(log.readFailed ? { runLog: 'unreadable' } : {}),
       digest: operatorDigest(view.view, log, desk).text,
       self: selfState(view.view, readRuns(runsPath), wallNow(), timeZoneOf(options), undefined,
-        existsSync(stopPath) || view.view.stop !== null) })}\n`);
+        existsSync(stopPath) || view.view.stop !== null) };
+      // Rules 9/39/43/73: proof posture and capability truth from the durable proof log and the replayed journal.
+      const proofLog = readProofs(proofsPathOf(root));
+      try {
+        report.proofLog = { available: proofLog.available, attempts: proofLog.proofs.length, liveProofs: proofLog.liveProofs.length, unreadable: proofLog.unreadable };
+        const launch = runningLaunch(proofLog.proofs), reading = proofReport(view.view, proofLog, launch, now), joined = inventory();
+        report.proofGeneration = launch ? launch.generation : null;
+        report.proofs = reading.proofs;
+        report.stepCoverage = reading.stepCoverage;
+        const rows = report.capabilities = capabilityReport(joined, reading, proofLog, report, now);
+        const posture = plan => reading.proofs.find(row => probeId(row.plan) === plan)?.posture ?? 'unavailable';
+        report.duties = joined.duties.map(item => ({ id: item.id, status: item.status, watcher: item.requiredFacts.watcher,
+          posture: posture(probeId(item.requiredFacts.proof.replace(/^proofs\.jsonl#/u, ''))) }));
+        report.sentinels = joined.sentinels.map(item => ({ id: item.id, status: item.status, freshness: posture(item.requiredFacts.freshnessProbe) }));
+        report.protection = { declared: rows.length, inventoryGaps: joined.gaps, pendingRegistration: joined.pending,
+          ...Object.fromEntries(['confirmed', 'unconfirmed', 'unproven', 'gap', 'dark', 'off-in-this-launch'].map(state =>
+            [state, rows.filter(row => row.protection === state).map(row => row.id)])) };
+      } catch { report.proofs = 'unavailable: the register inputs or proof log could not be read'; }
+      process.stdout.write(`${JSON.stringify(report)}\n`);
     }
     finally { view.close(); }
+    return;
+  }
+  if (command === 'record-live-proof') {
+    // Rule 62: a live-surface proof is the capability's own observed outcome, bound to the launch that executed
+    // it — never an assertion. An unrelated turn, a capability that launch had off, or a missing startup
+    // record all refuse; a capability whose outcome is semantic also needs the desk's recorded observation.
+    const capability = inventory().capabilities.find(item => item.declaration.id === required(options, 'capability'));
+    if (!capability) throw Error('preview: unknown capability');
+    // The journal's own update domain: a requested summary's synthetic update is a real operation identity.
+    const update = Number(required(options, 'update'));
+    if (!isJournalUpdate(update)) throw Error('preview: invalid update');
+    const view = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      const result = resolveLiveProof({ capability, view: view.view, update, deskObservation: options['desk-observation'] ?? null,
+        stopLatch: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : null,
+        launches: readRuns(runsPath).launches, startups: readProofs(proofsPath).proofs, now: wallNow() });
+      // The refusal names only the capability, the update and the missing outcome, never message text.
+      if (!result.ok) { process.stderr.write(`preview: live proof refused: ${result.reason}\n`); process.exitCode = 1; return; }
+      appendProof(proofsPath, result.record);
+      process.stdout.write(`${JSON.stringify(result.record)}\n`);
+    } finally { view.close(); }
     return;
   }
   if (command === 'inspect') {
@@ -578,6 +662,8 @@ async function main() {
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false;
   let handoff = null, reservedAtLaunch = new Set();
+  // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
+  let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
@@ -756,7 +842,16 @@ async function main() {
             shape => recordShape(shapesPath, 'summary-review', 'verdict', 'malformed', shape));
         }
       },
-      ...(stepCheckEnabled ? { stepCheck: { jev: text => callJev('jev-step-check', text, stepQuestions) } } : {}),
+      ...(stepCheckEnabled ? { stepCheck: { jev: (text, questions) => callJev('jev-step-check', text, questions ?? stepQuestions) } } : {}),
+      statusExtra: () => {
+        if (!proofLaunch) return [];
+        const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
+        try {
+          const log = { proofs: proofRecords, liveProofs: readProofs(proofsPath).liveProofs };
+          const reading = proofReport(journal.view, log, proofLaunch, wallNow());
+          return [...unavailable, ...proofStatusLines(reading.proofs, capabilityReport(inventory(), reading, log, {}, wallNow()))];
+        } catch { return [...unavailable, 'Proofs: unavailable (the register inputs or proof log could not be read).']; }
+      },
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       send: async ({ text, expectedText, chat, thread, target, provenance }) => {
@@ -786,6 +881,37 @@ async function main() {
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
     worker.startStepChecks();
+    // Rules 9/26/43: the startup proof records what this launch actually observed — the authenticated bot
+    // identity and the replayed journal — with the generation and capability versions it launched with.
+    const launchVersions = capabilityVersions(), generation = launchVersions['preview.proofs'];
+    proofRecords = readProofs(proofsPath).proofs;
+    const supervisors = { replyReview: true, summaryReview: true, stepCheck: stepCheckEnabled };
+    proofPorts = { now: wallNow, liveView: () => journal.view, boundBot: Number(g.bot), supervisors,
+      durableView: () => { const copy = openJournal(journalPath, key(), undefined, undefined, true); try { return copy.view; } finally { copy.close(); } },
+      botIdentity: () => {
+        try {
+          const answer = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 10000,
+            identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
+          return answer.kind === 'identity' ? { id: answer.identity.id } : null;
+        } catch { return null; }
+      } };
+    const startup = executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'startup'),
+      { ...proofPorts, botIdentity: () => ({ id: identity.identity.id }), launch: { stepCheck: stepCheckEnabled, agentState: Boolean(options['agent-state-dir']),
+        ...Object.fromEntries(Object.entries(launchVersions).map(([id, version]) => [`${VERSION_PREFIX}${id}`, version])) } }, generation, clock.elapsed);
+    // Rules 14/95: the proof log is evidence, not a gate on conversation. An unwritable log is reported and retried
+    // with backoff; the undurable record never counts as proof, and intake and replies continue.
+    const recordProof = record => {
+      try { appendProof(proofsPath, record); proofRecords.push(record); proofStoreFailed = false; }
+      catch { proofStoreFailed = true; proofBackoffUntil = clock.elapsed() + 60000; process.stderr.write('preview: proof log unavailable; retrying with backoff\n'); }
+    };
+    recordProof(startup);
+    proofLaunch = runningLaunch([startup]);
+    /** One due plan per cycle, bounded by its own probe; a failed durable write backs off instead of retrying every cycle. */
+    const runDueProof = () => {
+      if (workerStop.value || existsSync(stopPath) || journal.view.stop || wallNow() >= journal.view.expires || clock.elapsed() < proofBackoffUntil) return;
+      const plan = nextDuePlan(PREVIEW_PROOF_PLANS, proofRecords, generation, proofPorts, wallNow());
+      if (plan) recordProof(executeProof(plan, proofPorts, generation, clock.elapsed));
+    };
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = wallNow();
@@ -865,6 +991,7 @@ async function main() {
       // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick.
       try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
       summarizeLater(); worker.gate();
+      runDueProof();
       if (await stopAtCap()) break;
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {

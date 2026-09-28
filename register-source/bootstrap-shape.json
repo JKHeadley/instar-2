@@ -1133,19 +1133,15 @@
           ]
         },
         {
-          "all": [
-            {
-              "field": "consequence",
-              "in": [
-                "data"
-              ]
-            },
-            {
-              "field": "reversibility",
-              "in": [
-                "irreversible"
-              ]
-            }
+          "field": "reversibility",
+          "in": [
+            "irreversible"
+          ]
+        },
+        {
+          "field": "reach",
+          "in": [
+            "world"
           ]
         }
       ]
@@ -1173,53 +1169,19 @@
     "significant": {
       "any": [
         {
-          "any": [
-            {
-              "field": "consequence",
-              "in": [
-                "identity",
-                "security",
-                "money",
-                "control",
-                "external"
-              ]
-            },
-            {
-              "all": [
-                {
-                  "field": "consequence",
-                  "in": [
-                    "data"
-                  ]
-                },
-                {
-                  "field": "reversibility",
-                  "in": [
-                    "irreversible"
-                  ]
-                }
-              ]
-            }
+          "field": "consequence",
+          "in": [
+            "identity",
+            "security",
+            "money",
+            "control",
+            "external"
           ]
         },
         {
-          "any": [
-            {
-              "field": "reach",
-              "in": [
-                "user",
-                "operator"
-              ]
-            },
-            {
-              "field": "surface",
-              "in": [
-                "chat",
-                "dashboard",
-                "link",
-                "device"
-              ]
-            }
+          "field": "reversibility",
+          "in": [
+            "irreversible"
           ]
         },
         {
