@@ -10,6 +10,7 @@ import { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscri
 import { encoded } from './stage2-provider.js';
 import { renewActivation } from './renew-activation.mjs';
 import { activationMatchesJournal, openPreviewJournal, renewJournalExpiry } from './journal.js';
+import { offlineOperatorMessage, writeOperatorRecords } from './successive-fixture.js';
 
 const PRIOR_EXPIRY = 1790628000000; // 2026-09-28T20:40:00Z, the record being renewed.
 const PRIOR_COMMIT = '89d5ee35'; // live frozen13 build: int10 + thinking off.
@@ -190,18 +191,65 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(PRIOR_EXPIRY)).close();
     const agent = (command: string, activation: string, expiresAt: string) => node(['tests/preview/journal-agent.mjs', command,
       '--root', root, '--activation-record', activation, '--login-profile', profilePath, '--model', model,
-      '--expires-at', expiresAt, '--authority', 'status-quo renewal; preapproval note #30'], env);
+      '--expires-at', expiresAt, '--authority', 'status-quo renewal; preapproval note #30',
+      '--operator-records', join(root, 'operator-records')], env);
     // The launcher suppresses error details by design; each refusal differs from the success below
     // in exactly one input, and none of them moves the journal's expiry.
     const expires = () => JSON.parse(node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env).stdout).expires;
     expect(agent('renew-expiry', currentPath, '2026-09-28T20:40:00Z').status).toBe(1); // old record
     expect(agent('renew-expiry', out, '2026-09-28T20:40:00Z').status).toBe(1); // flag disagrees with record
+    // Rules 94/98/103/104: the renewal is exercised under the recorded standing grant (the earlier
+    // yes to bounded status-quo renewals), never under its reference strings. No record refuses;
+    // a grant that does not cover this subject refuses; the in-scope grant renews with no new yes.
+    // The launcher suppresses details; each reason is proven by activation-authority.test.ts.
+    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1);
+      expect(expires()).toBe(PRIOR_EXPIRY); };
+    refusedWith('activation authority record absent');
+    // The messaging owner's records hold the operator's two authenticated messages (the standing
+    // grant and the waiver); the recorded authority must resolve to them exactly.
+    const GRANT_WORDS = 'You have my pre-approval for whatever we need to do', WAIVER_WORDS = 'trial waiver approved';
+    writeOperatorRecords(join(root, 'operator-records'), [offlineOperatorMessage(52075, 101315, GRANT_WORDS, 1790500000000, 7654321),
+      offlineOperatorMessage(52075, 107907, WAIVER_WORDS, 1790000000000, 7654321)], 7654321);
+    const grant = { id: 'observer-note-30', grantor: '7654321', grantee: 'echo-desk', words: GRANT_WORDS,
+      source: { kind: 'telegram-message', topicId: 52075, messageId: 101315 }, issuedAt: 1790500000000, actions: ['renew-subscription-activation'],
+      scope: { trial: renewed.trial, model, expectedAccount: renewed.expectedAccount, executable: renewed.executable,
+        artifact: renewed.artifact, version: renewed.version, invocationPolicyDigest: renewed.invocationPolicyDigest, profileDigest: renewed.profileDigest },
+      renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: SUBSCRIPTION_PREVIEW_EXPIRY } };
+    const draft = (g = grant) => ({ type: 'PreviewActivationAuthority', schemaVersion: 1, grants: [g],
+      waivers: [{ reference: renewed.waiver, rules: ['rule:38'], grantor: '7654321', recordedAt: 1790000000000,
+        source: { kind: 'telegram-message', topicId: 52075, messageId: 107907 }, words: WAIVER_WORDS }], revocations: [] });
+    // Rule 82: the record resolves only as the desk's disposition, sealed by the desk's recording
+    // step under this trial's storage SecretRef. The seal command never replaces an existing file.
+    const authorityPath = join(root, 'activation-authority.json');
+    const authority = (g = grant) => { rmSync(authorityPath, { force: true });
+      const sealed = node(['tests/preview/journal-agent.mjs', 'seal-authority', '--authority-record', file('authority-draft.json', draft(g)),
+        '--out', authorityPath], env);
+      expect(sealed.status, sealed.stderr).toBe(0); };
+    file('activation-authority.json', draft());                      // the real grant, but unsealed: not the desk's disposition
+    refusedWith('not the desk\'s sealed disposition');
+    expect(node(['tests/preview/journal-agent.mjs', 'seal-authority', '--authority-record', file('authority-draft.json', draft()),
+      '--out', authorityPath], env).status).toBe(1);                 // never overwrites
+    authority();
+    const sealedRecord = JSON.parse(readFileSync(authorityPath, 'utf8'));
+    file('activation-authority.json', { ...sealedRecord, grants: [{ ...sealedRecord.grants[0], scope: { ...grant.scope, profileDigest: 'sha256:other' } }] });
+    refusedWith('not the desk\'s sealed disposition');              // an edited sealed record: the seal breaks
+    file('activation-authority.json', { ...sealedRecord, seal: undefined });
+    refusedWith('not the desk\'s sealed disposition');
+    authority({ ...grant, scope: { ...grant.scope, model: 'claude-other-1' } });
+    refusedWith('does not cover');
+    // Rules 28/82: an invented grant (unresolvable source, prose that is no approval) refuses, and so
+    // does the real grant's shape carrying words the operator never sent.
+    authority({ ...grant, id: 'invented-grant', words: 'This is not an operator approval.', source: 'nonexistent:review-probe' });
+    refusedWith('does not resolve to an authenticated operator message');
+    authority({ ...grant, source: { kind: 'telegram-message', topicId: 52075, messageId: 424242 } });
+    refusedWith('does not resolve to an authenticated operator message');
     expect(expires()).toBe(PRIOR_EXPIRY);
+    authority();
     const ok = agent('renew-expiry', out, '2026-10-05T20:40:00Z');
     expect(ok.status, ok.stderr).toBe(0);
     const status = node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env);
     expect(JSON.parse(status.stdout)).toMatchObject({ expires: SUBSCRIPTION_PREVIEW_EXPIRY,
-      expiryAuthority: 'status-quo renewal; preapproval note #30' });
+      expiryAuthority: expect.stringMatching(/^status-quo renewal; preapproval note #30 \[grant observer-note-30; waiver waiver; record sha256:[a-f0-9]{64}\]$/u) });
     expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1); // one renewal per expiry
     expect(expires()).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
   } finally { rmSync(root, { recursive: true, force: true }); }

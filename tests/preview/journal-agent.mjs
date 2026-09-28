@@ -2,8 +2,8 @@
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
@@ -13,12 +13,14 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { projectionDigest } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate} from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion } from './reply-check.js';
-import { interpretSummaryReview } from './summary-check.js';
+import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
+import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
 import { failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
@@ -28,6 +30,15 @@ import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
+import { classifyTelegramSend } from './telegram-send-outcome.mjs';
+import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
+import { deriveProfile } from '../../src/index.js';
+import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, probeId, proofPosture, stepCoverage } from './proofs.js';
+import { capabilityRows, previewInventory, proofStatusLines, resolveLiveProof } from './capabilities.js';
+import { appendProof, readProofs } from './proof-log.js';
+import { hostname, homedir } from 'node:os';
+import { assessStranded, claimConversation, observeConversationOwner, recordRefusal, refusedLaunches, SUPPORTED_POSTURE } from './conversation-owner.js';
+import { agreementLine, agreementStatus, runDueAgreements } from './store-agreements.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -96,23 +107,79 @@ const typesafeKey = () => {
   if (!value || !value.trim()) throw Error('preview: TypeSafe SecretRef unavailable');
   return value;
 };
-const askJev = async (state, questions, timeoutMs) => {
-  const start = performance.now();
-  const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-    method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs ?? 2000)),
-    headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state, model: JEV_MODEL, questions }) });
-  if (!response.ok) throw Error('preview: Jev unavailable');
-  return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
-};
 const context = { site: 'preview.journal', preserved: 'preview:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
   sites: { 'preview.journal': 'closed', 'types.decode': 'closed' }, keys: {}, allowRedelegation: false,
   conflictStanding: { ordinary: 'delegate', authority: 'operator' } }, captures: {} };
+/** Rules 28/82: the messaging owner's records (its state directory: the sender-authenticated message
+ * log, the provenance ledger and the topic-operator bindings). Absent, unreadable or malformed →
+ * null, which resolves no grant. */
+const operatorRecords = directory => {
+  if (!directory) return null;
+  // Every complete line must parse (a skipped line could hide a second row for the same message);
+  // only a trailing fragment still being appended is left out.
+  const lines = name => readFileSync(join(directory, name), 'utf8').split('\n').slice(0, -1).filter(Boolean).map(line => JSON.parse(line));
+  try { return { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
+    bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) }; } catch { return null; }
+};
+/** Rules 94/98/103/104: the activation is exercised only under a recorded operator authority that
+ * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
+ * The record defaults to `activation-authority.json` beside the activation record. Rule 82: it
+ * resolves only as the desk's disposition sealed under this trial's storage SecretRef
+ * (`seal-authority`); a copy with any field changed resolves nothing. */
+const requireAuthority = (options, activation, activationPath, view, now) => {
+  const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
+  let record = null;
+  try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
+  const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
+    operatorRecords(options['operator-records']), authoritySealKey(key()));
+  if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
+  return resolution;
+};
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 const delay = ms => new Promise(done => setTimeout(done, ms));
+/** Rules 34/62/76 classify capabilities through the committed register shape: one definition, read, never restated. */
+const shapeTerms = () => ({ owner: 'part-three',
+  derivedFrom: JSON.parse(readFileSync(resolve(process.cwd(), 'register-source/bootstrap-shape.json'), 'utf8')).derivedFrom });
+const classifier = () => { const terms = shapeTerms(); return profile => take(deriveProfile(profile, terms, 'preview:host')); };
+/** The runner's register inputs, read from the same committed file the register's source collector reads. */
+const declarationsOf = name => JSON.parse(readFileSync(resolve(process.cwd(), `tests/preview/${name}.json`), 'utf8'));
+const inventory = () => previewInventory(declarationsOf('preview.declarations'), declarationsOf('preview.pending-declarations'));
+/** A capability's version is the digest of its own source files, so a live proof survives unrelated edits. */
+const capabilityVersions = () => {
+  const files = new Map(), digest = path => {
+    if (!files.has(path)) { let value; try { value = createHash('sha256').update(readFileSync(resolve(process.cwd(), path))).digest('hex'); }
+      catch { value = `missing:${path}`; } files.set(path, value); }
+    return files.get(path);
+  };
+  return Object.fromEntries(inventory().capabilities.map(item => [item.declaration.id,
+    `sha256:${createHash('sha256').update(item.sources.map(digest).join('\n')).digest('hex')}`]));
+};
+const VERSION_PREFIX = 'version:';
+const proofsPathOf = root => join(root, 'proofs.jsonl');
+/** The running launch: its startup proof carries the generation and capability versions it launched with. */
+const runningLaunch = proofs => {
+  const startup = proofs.filter(row => row.plan === 'startup').at(-1);
+  if (!startup) return null;
+  const versions = Object.fromEntries(Object.entries(startup.observed).filter(([name, value]) => name.startsWith(VERSION_PREFIX) && typeof value === 'string')
+    .map(([name, value]) => [name.slice(VERSION_PREFIX.length), value]));
+  return { generation: startup.generation, versions, stepCheck: startup.observed.stepCheck === true, agentState: startup.observed.agentState === true };
+};
+/** Posture and step coverage for one reading; every input is a durable record or the replayed journal. With no
+ * startup record the versions come from disk and every plan reads unknown: nothing from another launch counts. */
+const proofReport = (view, log, launch, now) => {
+  const versions = launch && Object.keys(launch.versions).length ? launch.versions : capabilityVersions();
+  const supervisors = { replyReview: true, summaryReview: true, stepCheck: launch?.stepCheck ?? false };
+  const generation = launch?.generation ?? versions['preview.proofs'];
+  return { generation, versions, supervisors, proofs: proofPosture(PREVIEW_PROOF_PLANS, log.proofs, generation, { supervisors }, now, log.refused ?? []),
+    enabled: { default: true, 'option:step-check': supervisors.stepCheck, 'option:agent-state-dir': launch?.agentState ?? false },
+    stepCoverage: stepCoverage(view, supervisors) };
+};
+/** Capability truth over a reading (Rules 34, 39, 62, 72, 73, 76); `status` is what the metrics must reach. */
+const capabilityReport = (joined, reading, log, status, now) => capabilityRows(joined, { classify: classifier(),
+  versions: reading.versions, enabled: reading.enabled, status, liveProofs: log.liveProofs, proofs: reading.proofs, now });
 /** The exact sources every live turn carries; shared by run and the read-only inspect probe.
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
@@ -201,6 +268,10 @@ const recordShape = (path, role, layer, outcome, shape) => {
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
 const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
+/** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
+ * reply's held-class review is a reply review; the revision itself drafts an answer. */
+const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+  : /^summary:/u.test(id) ? 'summary' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 /** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
@@ -209,6 +280,8 @@ const instructionsOf = prompt => {
   return message ? { sha256: `sha256:${createHash('sha256').update(message.content, 'utf8').digest('hex')}`,
     rules: [...message.content.matchAll(/^Rule (\d+) — /gmu)].map(match => Number(match[1])) } : null;
 };
+/** Rule 29: the verified writer the session envelope carried, or null for a legacy prompt. */
+const writerOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).bindings?.writer ?? null;
 const lastReplyReview = view => {
   const turn = view.order.filter(item => item.reviewState !== undefined).at(-1);
   return turn ? { update: turn.update, state: turn.reviewState, diagnostics: turn.reviewDiagnostics ?? null } : null;
@@ -231,7 +304,14 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-fixture', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements'].includes(command)) throw Error('preview: unknown command');
+  if (command === 'seal-authority') {
+    // The desk's recording step: seals the authority record it decided, under the trial's storage
+    // SecretRef, into a new file (never replacing one). Nothing else is read or written.
+    const sealed = sealAuthorityRecord(JSON.parse(readFileSync(required(options, 'authority-record'), 'utf8')), authoritySealKey(key()));
+    writeFileSync(resolve(required(options, 'out')), `${JSON.stringify(sealed, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    return;
+  }
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -240,7 +320,29 @@ async function main() {
   const journalPath = join(root, 'journal.encrypted');
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
+  const proofsPath = proofsPathOf(root);
   const shapesPath = join(root, 'model-json-shapes.json');
+  const agreementsPath = join(root, 'agreements.jsonl');
+  // Rule 63: conversation ownership is claimed in a HOST-scope directory so a second root for the same
+  // conversation is fenced too. Tests point it at a per-file temporary directory.
+  const ownersDirectory = () => {
+    const directory = resolve(options['conversation-owners'] ?? process.env.INSTAR_CONVERSATION_OWNERS
+      ?? join(homedir(), '.instar', 'conversation-owners'));
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    return realpathSync(directory);
+  };
+  const ownerMachine = options['owner-machine'] ?? hostname();
+  // Rule 33: the one input every declared store agreement is checked against (the loop's cadence and the offline check).
+  const agreementInput = (view, now) => ({ view, runs: readRuns(runsPath), root, now,
+    ownership: observeConversationOwner({ directory: ownersDirectory(), bot: view.genesis.bot, chat: view.genesis.chat, machine: ownerMachine,
+      probePid: pid => process.kill(pid, 0), now }),
+    replay: () => { const replayed = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+      try { return projectionDigest(replayed.view); } finally { replayed.close(); } } });
+  // Rule 113: the declared multi-machine posture. Only single-machine has a conversation authority today.
+  const posture = options['machine-posture'] ?? process.env.INSTAR_MACHINE_POSTURE ?? 'single-machine';
+  if (posture !== 'single-machine' && posture !== 'multi-machine') throw Error('preview: machine-posture must be single-machine or multi-machine');
+  const topology = { posture, supported: posture === SUPPORTED_POSTURE, authority: 'host-local conversation lease (this machine only)',
+    ...(posture === SUPPORTED_POSTURE ? {} : { reason: 'no shared conversation authority exists for a multi-machine posture; this runner does not serve it' }) };
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
@@ -256,6 +358,19 @@ async function main() {
       const report = auditJournal(journal.view);
       process.stdout.write(`${JSON.stringify(report)}\n`);
       if (report.findings.length) process.exitCode = 1;
+    } finally { journal.close(); }
+    return;
+  }
+  if (command === 'check-agreements') {
+    // Offline and forced: runs every declared comparison now on this root (a copy), with a read-only journal and no
+    // Telegram call, then reports whether the last exit's frontier still equals the journal so the exit check is measurable.
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      const input = agreementInput(journal.view, wallNow()), frontier = projectionDigest(journal.view);
+      const exited = [...input.runs.launches].reverse().find(run => run.exit !== undefined && run.unfinished !== undefined && !run.nonowner);
+      const records = runDueAgreements(agreementsPath, input, true);
+      process.stdout.write(`${JSON.stringify({ frontier, exitFrontier: exited?.frontier ?? null,
+        frontierMatches: exited?.frontier === frontier, records })}\n`);
     } finally { journal.close(); }
     return;
   }
@@ -280,7 +395,21 @@ async function main() {
       const deskPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
       const desk = deskStatusSource(readDeskStatus(deskPath), now, deskPath);
       const lastSent = view.view.order.filter(turn => turn.sentAt !== undefined).at(-1);
-      process.stdout.write(`${JSON.stringify({ cursor: view.view.cursor, turns: view.view.order.length,
+      const g = view.view.genesis;
+      const ownership = observeConversationOwner({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine,
+        probePid: pid => process.kill(pid, 0), now });
+      // Stranded (signal only): every current ownership record is assessed, with or without waiting input.
+      const waiting = view.view.order.filter(turn => turn.accepted && turn.intent === undefined && turn.sent === undefined).length;
+      const report = { cursor: view.view.cursor, turns: view.view.order.length,
+      ownership: { ...ownership, holder: ownership.holder && { machine: ownership.holder.machine, since: ownership.holder.since,
+        thisRoot: ownership.holder.root === root }, topology },
+      stranded: assessStranded(ownership, waiting),
+      // Startup refusals are counted host-wide for this conversation (every root sees the same number);
+      // retirements of an existing worker that lost the fence, and inhibited launches, are this root's own.
+      duplicateLaunchesRefused: refusedLaunches(ownersDirectory(), g.bot, g.chat),
+      workersRetired: log.launches.filter(run => run.retired).length,
+      inhibitedLaunches: log.launches.filter(run => run.inhibited).length,
+      storeAgreements: agreementStatus(agreementsPath, now),
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
@@ -320,20 +449,26 @@ async function main() {
         change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
       holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null || wallNow() >= view.view.expires),
       tooLong: view.view.order.filter(t => t.noticeClass === 'too-long-input' || t.intent === TOO_LONG_REPLY_NOTICE)
-        .map(t => ({ update: t.update, kind: t.noticeClass === 'too-long-input' ? 'input' : 'reply',
-          delivery: t.sent ? (t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE
-            ? 'holding reply Telegram API accepted' : 'Telegram API accepted')
-            : t.intent ? (t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE
-              ? 'holding reply UNKNOWN' : 'UNKNOWN') : 'pending' })),
+        // Rule 42: delivery reads the one durable send-outcome lookup; a definite refusal stays refused, with its reason.
+        .map(t => { const holding = t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE ? 'holding reply ' : '';
+          const settled = t.intent ? sendOutcomeOf(view.view, replyTarget(t), t.sent) : null;
+          return { update: t.update, kind: t.noticeClass === 'too-long-input' ? 'input' : 'reply',
+            delivery: !settled ? 'pending' : `${holding}${settled.kind === 'accepted' ? 'Telegram API accepted'
+              : settled.kind === 'refused' ? 'refused' : 'UNKNOWN'}`,
+            ...(settled?.kind === 'refused' ? { refusal: settled.reason } : {}) }; }),
       heldNotices: view.view.order.filter(t => t.heldNoticeIntent !== undefined).map(t => ({ update: t.update,
-        state: t.heldNoticeSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
+        ...(() => { const settled = sendOutcomeOf(view.view, `held-notice:${t.id}`, t.heldNoticeSent);
+          return { state: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'refused' : 'UNKNOWN',
+            ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })() })),
       // Rule 15: the minimal responder's own finite reserve and every limited answer it gave.
       minimalReserve: { limits: MINIMAL_RESERVE, turnsUsedThisHour: reserveTurnsUsed(view.view, statusNow),
         repliesUsedThisHour: reserveRepliesUsed(view.view, statusNow),
         reserveTurns: view.view.order.filter(t => t.reserve).length,
         limitedAnswers: view.view.order.filter(t => t.limited?.lead === t.id).map(t => ({ update: t.update, reason: t.limited.reason,
           covers: view.view.order.filter(item => item.limited?.lead === t.id).map(item => item.update),
-          state: t.limitedSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
+          ...(() => { const settled = sendOutcomeOf(view.view, `limited:${t.id}`, t.limitedSent);
+            return { state: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'refused' : 'UNKNOWN',
+              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })() })),
         // An owned outage: the message is preserved and the named required dependency was missing.
         outages: view.view.order.filter(t => t.minimalOutage && t.limited === undefined).map(t => ({ update: t.update,
           missing: t.minimalOutage.missing, since: t.minimalOutage.at })) },
@@ -354,9 +489,15 @@ async function main() {
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
-      unknownSends: view.view.order.reduce((count, t) => count + Number(t.intent !== undefined && t.sent === undefined) + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined)
-        + Number(t.limited?.lead === t.id && t.limitedSent === undefined), 0)
-        + [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
+      unknownSends: sendOutcomeCounts(view.view).unknown,
+      sendOutcomes: sendOutcomeCounts(view.view),
+      modelCalls: view.view.modelCalls,
+      // Rules 28/29/35: who wrote each admitted turn, by verified origin.
+      intakeWriters: { verifiedOperator: view.view.order.filter(t => t.writer?.kind === 'person').length,
+        scheduler: view.view.order.filter(t => t.writer?.kind === 'system').length,
+        legacyExactBinding: view.view.order.filter(t => t.accepted && !t.writer).length,
+        testOrigin: view.view.order.filter(t => t.writer?.adapter?.endsWith(':offline-test-endpoint')).length,
+        refused: view.view.order.filter(t => !t.accepted).length },
       replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
         unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
@@ -368,8 +509,9 @@ async function main() {
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       mentionedDates: view.view.mentionedDates.size,
       reminders: { intents: view.view.reminders.size,
-        accepted: [...view.view.reminders.values()].filter(item => item.sent !== undefined).length,
-        unknown: [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
+        ...(() => { const kinds = [...view.view.reminders.entries()].map(([key, item]) => reminderOutcome(view.view, key, item).kind);
+          return { accepted: kinds.filter(kind => kind === 'accepted').length, refused: kinds.filter(kind => kind === 'refused').length,
+            unknown: kinds.filter(kind => kind === 'unknown').length }; })(),
         grant: view.view.reminderGrant,
         requested: view.view.dated.filter(item => item.remind).length,
         pending: pendingRequestedReminders(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
@@ -430,9 +572,48 @@ async function main() {
       launches: log.launches.slice(-3), ...(log.readFailed ? { runLog: 'unreadable' } : {}),
       digest: operatorDigest(view.view, log, desk).text,
       self: selfState(view.view, readRuns(runsPath), wallNow(), timeZoneOf(options), undefined,
-        existsSync(stopPath) || view.view.stop !== null) })}\n`);
+        existsSync(stopPath) || view.view.stop !== null) };
+      // Rules 9/39/43/73: proof posture and capability truth from the durable proof log and the replayed journal.
+      const proofLog = readProofs(proofsPathOf(root));
+      try {
+        report.proofLog = { available: proofLog.available, attempts: proofLog.proofs.length, liveProofs: proofLog.liveProofs.length, unreadable: proofLog.unreadable };
+        const launch = runningLaunch(proofLog.proofs), reading = proofReport(view.view, proofLog, launch, now), joined = inventory();
+        report.proofGeneration = launch ? launch.generation : null;
+        report.proofs = reading.proofs;
+        report.stepCoverage = reading.stepCoverage;
+        const rows = report.capabilities = capabilityReport(joined, reading, proofLog, report, now);
+        const posture = plan => reading.proofs.find(row => probeId(row.plan) === plan)?.posture ?? 'unavailable';
+        report.duties = joined.duties.map(item => ({ id: item.id, status: item.status, watcher: item.requiredFacts.watcher,
+          posture: posture(probeId(item.requiredFacts.proof.replace(/^proofs\.jsonl#/u, ''))) }));
+        report.sentinels = joined.sentinels.map(item => ({ id: item.id, status: item.status, freshness: posture(item.requiredFacts.freshnessProbe) }));
+        report.protection = { declared: rows.length, inventoryGaps: joined.gaps, pendingRegistration: joined.pending,
+          ...Object.fromEntries(['confirmed', 'unconfirmed', 'unproven', 'gap', 'dark', 'off-in-this-launch'].map(state =>
+            [state, rows.filter(row => row.protection === state).map(row => row.id)])) };
+      } catch { report.proofs = 'unavailable: the register inputs or proof log could not be read'; }
+      process.stdout.write(`${JSON.stringify(report)}\n`);
     }
     finally { view.close(); }
+    return;
+  }
+  if (command === 'record-live-proof') {
+    // Rule 62: a live-surface proof is the capability's own observed outcome, bound to the launch that executed
+    // it — never an assertion. An unrelated turn, a capability that launch had off, or a missing startup
+    // record all refuse; a capability whose outcome is semantic also needs the desk's recorded observation.
+    const capability = inventory().capabilities.find(item => item.declaration.id === required(options, 'capability'));
+    if (!capability) throw Error('preview: unknown capability');
+    // The journal's own update domain: a requested summary's synthetic update is a real operation identity.
+    const update = Number(required(options, 'update'));
+    if (!isJournalUpdate(update)) throw Error('preview: invalid update');
+    const view = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      const result = resolveLiveProof({ capability, view: view.view, update, deskObservation: options['desk-observation'] ?? null,
+        stopLatch: existsSync(stopPath) ? JSON.parse(readFileSync(stopPath, 'utf8')) : null,
+        launches: readRuns(runsPath).launches, startups: readProofs(proofsPath).proofs, now: wallNow() });
+      // The refusal names only the capability, the update and the missing outcome, never message text.
+      if (!result.ok) { process.stderr.write(`preview: live proof refused: ${result.reason}\n`); process.exitCode = 1; return; }
+      appendProof(proofsPath, result.record);
+      process.stdout.write(`${JSON.stringify(result.record)}\n`);
+    } finally { view.close(); }
     return;
   }
   if (command === 'inspect') {
@@ -452,9 +633,12 @@ async function main() {
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
-        instructions: instructionsOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
+        instructions: instructionsOf(last.prompt), writer: writerOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
-          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null,
+          ...(() => { const settled = sendOutcomeOf(view.view, replyTarget(reply), reply.sent);
+            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
+              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })(),
+          grounding: reply.grounding ?? null,
           ...(reply.continuity ? { continuity: reply.continuity } : {}) } : null,
         // Rules 11 and 110: the latest summary frontier and which operator updates the meaning index covers.
         summaryFrontier: view.view.summaries.at(-1)?.through ?? null,
@@ -478,6 +662,13 @@ async function main() {
       if (check.view.genesis.importSource !== importMarker.source || !check.view.imported)
         throw Error('preview: migration incomplete');
     } finally { check.close(); }
+  }
+  // Rule 35: a test composition never takes the writer lease of a production root (or the reverse).
+  if (command === 'run' && existsSync(journalPath)) {
+    const composed = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production';
+    const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try { if ((peek.view.genesis.origin ?? 'production') !== composed) throw Error('preview: composition origin differs from journal'); }
+    finally { peek.close(); }
   }
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
@@ -536,9 +727,11 @@ async function main() {
       const activation = JSON.parse(bytes);
       const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
       validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+      const granted = requireAuthority(options, activation, required(options, 'activation-record'), renewJournal.view, now);
       if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
         throw Error('preview: activation differs from journal');
-      renewJournalExpiry(renewJournal, { expires: activation.expiresAt, authority: required(options, 'authority'), at: now,
+      renewJournalExpiry(renewJournal, { expires: activation.expiresAt, at: now,
+        authority: `${required(options, 'authority')} [grant ${granted.grant}; waiver ${granted.waiver}; record ${granted.digest}]`,
         activation: `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}` });
     } finally { renewJournal?.close(); storage.close(); }
     return;
@@ -558,7 +751,26 @@ async function main() {
     return;
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false;
-  let handoff = null, reservedAtLaunch = new Set();
+  let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null;
+  // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
+  let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
+  // Rule 63: the conversation fence. Losing it stops new work; an effect never dispatches without it.
+  // Rule 33: declared store agreements run through build 9's proof executor (the store-agreements plan): every
+  // comparison at launch, then each on its own cadence; each completed check stays durable in agreements.jsonl.
+  let agreementsForced = false;
+  const storeAgreements = () => {
+    const force = !agreementsForced; agreementsForced = true;
+    runDueAgreements(agreementsPath, agreementInput(journal.view, wallNow()), force);
+    return agreementStatus(agreementsPath, wallNow()).map(row => ({ id: row.id, at: row.lastCheckedAt, agree: row.agree }));
+  };
+  let retiredReason = null;
+  const ownerHeld = () => {
+    if (ownerClaim?.owner && ownerClaim.verify()) return true;
+    if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; retiredReason ??= 'conversation ownership lost'; workerStop.value = true; }
+    return false;
+  };
+  // Service observation (design 18): whether this owner can serve right now, with the typed reason when not.
+  const serviceBeat = (servable, reason) => { try { if (ownerClaim?.owner) ownerClaim.observe(wallNow(), servable, reason); } catch { /* evidence only */ } };
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
@@ -574,12 +786,19 @@ async function main() {
     if (!existsSync(journalPath) && (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
       || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes))
       throw Error('preview: live allowance outside approved bound');
+    // Rule 35: the trusted composition origin. Only the fixed offline test token on a loopback
+    // endpoint is a test composition; it may write only a test-origin store, and a production
+    // store refuses it (and any test-origin identity) at the journal's write boundary.
+    const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
+    if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+      || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
+    const origin = offlineEndpoint ? 'test' : 'production';
     const initial = command !== 'run' ? undefined : {
-      kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'),
+      kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'), ...(origin === 'test' ? { origin } : {}),
       operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
-    journal = openPreviewJournal(journalPath, key(), initial);
+    journal = openPreviewJournal(journalPath, key(), initial, undefined, false, undefined, false, origin);
     const g = journal.view.genesis;
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
@@ -594,14 +813,95 @@ async function main() {
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
+    if (!topology.supported) {
+      // Rule 113 / 63: an unsupported topology is visibly inhibited; the platform keeps the input, nothing is sent.
+      const at = wallNow();
+      appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
+      appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${topology.reason}`, revival: 'inhibited',
+        inhibited: `unsupported topology: ${posture}` });
+      process.stderr.write('preview: the declared multi-machine posture has no shared conversation authority; nothing was polled or sent\n');
+      process.exitCode = 4;
+      return;
+    }
+    ownerClaim = claimConversation({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine, root,
+      key: key(), context, io: productionStorageIO, now: wallNow() });
+    if (!ownerClaim.owner) {
+      const at = wallNow(), holder = ownerClaim.holder;
+      appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
+      if (ownerClaim.disposition === 'inhibited') {
+        // The authority could not be read or written: not evidence that anyone serves. Inhibited, work preserved.
+        appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${ownerClaim.reason}`, revival: 'inhibited',
+          inhibited: ownerClaim.reason });
+        process.stderr.write('preview: conversation ownership could not be established; nothing was polled or sent\n');
+        process.exitCode = 4;
+        return;
+      }
+      // Startup duplicate refusal: a non-owner neither polls (the platform keeps the input for the owner) nor sends.
+      try { recordRefusal({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine, root, at, reason: ownerClaim.reason }); }
+      catch { /* the root's own run log still records the refusal */ }
+      appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `not the conversation owner: ${ownerClaim.reason}`,
+        revival: 'none', nonowner: { machine: holder?.machine ?? null, since: holder?.since ?? null } });
+      process.stderr.write(`preview: this conversation is held by another runner (${ownerClaim.reason}); this launch retired without polling or sending\n`);
+      process.exitCode = 3;
+      return;
+    }
+    serviceBeat(true, 'claimed');
     const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
     const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
+    // model-call-boundary:start
+    // Rules 41, 57 and 75: the ONLY two places this launcher reaches a model. Each call's exact
+    // input, output, actual route, outcome, latency and usage (or its written exception) is
+    // durably journaled before any caller reads the result; an unregistered judgment refuses.
+    const recordModelCall = entry => journal.append(modelCallRecord({ ...entry, at: wallNow() }));
+    const callSubscription = async (judgment, prepared, id, invocation) => {
+      assertLiveJudgment(judgment, 'preview-subscription');
+      const route = modelRoute(id), start = performance.now();
+      const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared ? `reserve:${id}` : undefined;
+      const base = { id, judgment, route: 'preview-subscription', model: required(options, 'model'), input: prepared,
+        ...(inputRef === undefined ? {} : { inputRef }) };
+      let result;
+      try { result = await route.invoke(prepared, invocation); }
+      catch (error) {
+        recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
+        throw error;
+      }
+      recordModelCall({ ...base, output: typeof result.bytes === 'string' ? result.bytes : null,
+        outcome: ['complete', 'rejected', 'uncertain'].includes(result.state) ? result.state : 'failed',
+        latencyMs: performance.now() - start, usage: result.usage ? { inputTokens: result.usage.inputTokens ?? null,
+          outputTokens: result.usage.outputTokens ?? null, charge: null } : null });
+      return result;
+    };
+    const callJev = async (judgment, state, questions, timeoutMs = 2000) => {
+      assertLiveJudgment(judgment, 'typesafe-jev');
+      const start = performance.now(), body = JSON.stringify({ state, model: JEV_MODEL, questions });
+      const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body };
+      let response, text;
+      try {
+        response = await fetch('https://api.typesafe.ai/v1/systemone', {
+          method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs)),
+          headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' }, body });
+        text = await response.text();
+      } catch (error) {
+        recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
+        throw error;
+      }
+      let value = null;
+      try { if (response.ok) value = parseJevResponse(text); } catch { value = null; }
+      const usage = value?.usage && (typeof value.usage.input_tokens === 'number' || typeof value.usage.output_tokens === 'number')
+        ? { inputTokens: typeof value.usage.input_tokens === 'number' ? value.usage.input_tokens : null,
+          outputTokens: typeof value.usage.output_tokens === 'number' ? value.usage.output_tokens : null, charge: null } : null;
+      const latencyMs = Math.round(performance.now() - start);
+      recordModelCall({ ...base, output: text, outcome: !response.ok ? 'rejected' : value === null ? 'failed' : 'complete', latencyMs, usage });
+      if (!response.ok || value === null) throw Error('preview: Jev unavailable');
+      return { value, latencyMs };
+    };
+    // model-call-boundary:end
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt) => {
-      const route = modelRoute(id), policy = subscriptionConversationPolicy(required(options, 'model'));
+      const policy = subscriptionConversationPolicy(required(options, 'model'));
       const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + 180000);
       if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
-      const result = await route.invoke(prepared, { operation: id, deadline,
+      const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 });
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
@@ -613,8 +913,9 @@ async function main() {
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
+      // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
       if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string') {
+        || typeof decision.conclusion.value !== 'string' || !decisionWithinFloor(decision)) {
         recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
         return { state: 'complete', failureClass: 'malformed', usage: result.usage };
       }
@@ -622,16 +923,21 @@ async function main() {
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
-    const invokeJev = async (text, questions) => {
-      const start = performance.now();
-      const response = await fetch('https://api.typesafe.ai/v1/systemone', {
-        method: 'POST', signal: AbortSignal.timeout(2000),
-        headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
-      if (!response.ok) throw Error('preview: Jev unavailable');
-      return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
+    const proofLines = () => {
+      if (!proofLaunch) return [];
+      const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
+      try {
+        const log = { proofs: proofRecords, liveProofs: readProofs(proofsPath).liveProofs };
+        const reading = proofReport(journal.view, log, proofLaunch, wallNow());
+        return [...unavailable, ...proofStatusLines(reading.proofs, capabilityReport(inventory(), reading, log, {}, wallNow()))];
+      } catch { return [...unavailable, 'Proofs: unavailable (the register inputs or proof log could not be read).']; }
     };
-    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
+    const ownerLines = () => {
+      const refused = refusedLaunches(ownersDirectory(), g.bot, g.chat);
+      return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
+        agreementLine(agreementsPath, wallNow())];
+    };
+    worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
@@ -644,10 +950,11 @@ async function main() {
         return { state: 'complete', text: result.value,
           usage: recordedUsage(result.usage) };
       },
-      summaryCheck: async evidence => (await askJev(evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
+      summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: (text, questions = jevQuestions, timeoutMs) => askJev(text, questions, timeoutMs),
+        jev: (text, questions = jevQuestions, timeoutMs) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
+          text, questions, timeoutMs),
         escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, operation) => {
 
           const start = performance.now();
@@ -655,12 +962,14 @@ async function main() {
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
-          const prepared = modelEnvelope({ question,
-            context: replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id)),
-            id: operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review` });
+          const context = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id));
+          const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
+          // Rule 29: the review input is written by the runner, a verified system principal.
+          const writer = envelopeWriter(journal.systemWriter('reply-review', `${operationId}\n${context}`, wallNow()));
+          const prepared = modelEnvelope({ question, context, id: operationId, ...(writer ? { writer } : {}) });
           // A revised candidate's held-class review is its own operation; the worker journals its result row.
-          const result = operation === 'revision' ? await invokeSubscription(prepared, `${id}:revision-review`)
-            : await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
+          const result = operation === 'revision' ? await invokeSubscription(prepared, operationId)
+            : await invokeSubscription(prepared, operationId, id, deadlineAt);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
           // the whole-line pattern admits no surrounding text, so a written rejection
@@ -678,8 +987,11 @@ async function main() {
         },
         // The mind's one revision of an objected draft: same envelope and grounding packet as review.
         revise: async ({ text, id, originalPrompt, ruleIds, reason }) => {
-          const prepared = modelEnvelope({ question: replyRevisionQuestion(ruleIds, reason),
-            context: replyReviewContext(originalPrompt, text, ruleIds), id: `${id}:reply-revision` });
+          const context = replyReviewContext(originalPrompt, text, ruleIds);
+          // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
+          const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
+          const prepared = modelEnvelope({ question: replyRevisionQuestion(ruleIds, reason), context, id: `${id}:reply-revision`,
+            ...(writer ? { writer } : {}) });
           const result = await invokeSubscription(prepared, `${id}:reply-revision`);
           const usage = result.usage ? { usage: recordedUsage(result.usage) } : {};
           if (result.state === 'uncertain') return { state: 'uncertain', ...usage };
@@ -695,14 +1007,19 @@ async function main() {
           const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
           const id = `summary:${through}:review`;
           let prepared;
-          try { prepared = modelEnvelope({ question, context: state, id }); }
+          try {
+            const writer = envelopeWriter(journal.systemWriter('summary-review', `${id}\n${state}`, wallNow()));
+            prepared = modelEnvelope({ question, context: state, id, ...(writer ? { writer } : {}) });
+          }
           catch { return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start) }; }
           const result = await invokeSubscription(prepared, id);
           return interpretSummaryReview(result, Math.round(performance.now() - start),
             shape => recordShape(shapesPath, 'summary-review', 'verdict', 'malformed', shape));
         }
       },
-      ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
+      ...(stepCheckEnabled ? { stepCheck: { jev: (text, questions) => callJev('jev-step-check', text, questions ?? stepQuestions) } } : {}),
+      // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
+      statusExtra: () => [...proofLines(), ...ownerLines()],
       // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
       // actually observes (Rule 26). The register generation, the exclusive lease/fence and the P-08
       // installation policy that settles `replication-peer` for the single-machine shape are not
@@ -718,18 +1035,21 @@ async function main() {
         physical.invoke({ token: secretRef('telegram-bot-token'), method: 'answerCallbackQuery',
           body: { callback_query_id: callbackId, text }, timeoutMs: 10000 }, token());
       },
-      send: async ({ text, expectedText, chat, thread, replyMarkup }) => {
-        if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop) return null;
+      // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
+      // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
+      send: async ({ text, expectedText, chat, thread, replyMarkup, target, provenance }) => {
+        if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
+          return { kind: 'refused', reason: 'outbound provenance unsigned' };
+        if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
+          return { kind: 'refused', reason: 'stopped before dispatch' };
+        // Rule 63: the fence is consumed immediately before dispatch. Without it nothing is sent: a definite
+        // refusal (Rule 42), never repeated.
+        if (!ownerHeld()) return { kind: 'refused', reason: 'conversation ownership lost before dispatch' };
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
           body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
             ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
           timeoutMs: 30000 }, token());
-        if (reply.kind !== 'response' || reply.status !== 200) return null;
-        const payload = JSON.parse(reply.bytes);
-        return payload.ok === true && String(payload.result?.chat?.id) === chat && payload.result?.text === expectedText
-          && (thread === undefined || payload.result?.message_thread_id === thread)
-          && Number.isSafeInteger(payload.result?.message_id)
-          ? payload.result.message_id : null;
+        return classifyTelegramSend(reply, { chat, expectedText, ...(thread === undefined ? {} : { thread }) });
       } });
     if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
@@ -737,11 +1057,9 @@ async function main() {
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
+    requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
-    const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
-    if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-      || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
     }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
@@ -751,6 +1069,37 @@ async function main() {
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
     identityVerified = true;
     worker.startStepChecks();
+    // Rules 9/26/43: the startup proof records what this launch actually observed — the authenticated bot
+    // identity and the replayed journal — with the generation and capability versions it launched with.
+    const launchVersions = capabilityVersions(), generation = launchVersions['preview.proofs'];
+    proofRecords = readProofs(proofsPath).proofs;
+    const supervisors = { replyReview: true, summaryReview: true, stepCheck: stepCheckEnabled };
+    proofPorts = { now: wallNow, liveView: () => journal.view, boundBot: Number(g.bot), supervisors, storeAgreements,
+      durableView: () => { const copy = openJournal(journalPath, key(), undefined, undefined, true); try { return copy.view; } finally { copy.close(); } },
+      botIdentity: () => {
+        try {
+          const answer = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 10000,
+            identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
+          return answer.kind === 'identity' ? { id: answer.identity.id } : null;
+        } catch { return null; }
+      } };
+    const startup = executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'startup'),
+      { ...proofPorts, botIdentity: () => ({ id: identity.identity.id }), launch: { stepCheck: stepCheckEnabled, agentState: Boolean(options['agent-state-dir']),
+        ...Object.fromEntries(Object.entries(launchVersions).map(([id, version]) => [`${VERSION_PREFIX}${id}`, version])) } }, generation, clock.elapsed);
+    // Rules 14/95: the proof log is evidence, not a gate on conversation. An unwritable log is reported and retried
+    // with backoff; the undurable record never counts as proof, and intake and replies continue.
+    const recordProof = record => {
+      try { appendProof(proofsPath, record); proofRecords.push(record); proofStoreFailed = false; }
+      catch { proofStoreFailed = true; proofBackoffUntil = clock.elapsed() + 60000; process.stderr.write('preview: proof log unavailable; retrying with backoff\n'); }
+    };
+    recordProof(startup);
+    proofLaunch = runningLaunch([startup]);
+    /** One due plan per cycle, bounded by its own probe; a failed durable write backs off instead of retrying every cycle. */
+    const runDueProof = () => {
+      if (workerStop.value || existsSync(stopPath) || journal.view.stop || wallNow() >= journal.view.expires || clock.elapsed() < proofBackoffUntil) return;
+      const plan = nextDuePlan(PREVIEW_PROOF_PLANS, proofRecords, generation, proofPorts, wallNow());
+      if (plan) recordProof(executeProof(plan, proofPorts, generation, clock.elapsed));
+    };
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = wallNow();
@@ -760,6 +1109,8 @@ async function main() {
     if (runs.readFailed) { endReason = 'run log unreadable'; pressureUnknown = true; throw Error('preview: run log unreadable'); }
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
+    // The run log and ownership exist now: the launch's store comparisons execute as a recorded proof.
+    recordProof(executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'store-agreements'), proofPorts, generation, clock.elapsed));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
     const pollFailure = async conflict => {
       failedPolls++; routeHealthy = false;
@@ -773,12 +1124,14 @@ async function main() {
         return false;
       }
       const until = clock.elapsed() + Math.min(conflict ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
+      serviceBeat(false, conflict ? 'Telegram reports another poller' : 'polling Telegram is failing');
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
       return true;
     };
     // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
     if (exhaustedPollReason(failedPolls, conflictedPolls)) {
+      serviceBeat(false, 'poll breaker open after sustained failures');
       const until = clock.elapsed() + Math.min(conflictedPolls >= 5 ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls, 7));
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
@@ -824,7 +1177,12 @@ async function main() {
     };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
-      if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop) break;
+      if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
+      // Attempting another poll is not restoration: while a poll-failure episode is open the owner stays
+      // non-servable with its typed reason; only a successful poll (below) restores service.
+      const unrestored = failedPolls > 0 || conflictedPolls > 0;
+      serviceBeat(!journal.view.stop && wallNow() < journal.view.expires && !unrestored, journal.view.stop ? 'stop latched'
+        : unrestored ? (conflictedPolls ? 'Telegram reports another poller' : 'polling Telegram is failing') : 'serving');
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
           importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
@@ -844,6 +1202,7 @@ async function main() {
       });
       worker.gate();
       reportCap();
+      runDueProof();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;
       try { pollLimit = worker.pollLimit(); } catch { break; }
@@ -866,6 +1225,7 @@ async function main() {
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
+      if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');
       failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
       worker.intake(updates.result);
       // An approved phone stop latches in the journal; the loop ends without another effect.
@@ -932,12 +1292,15 @@ async function main() {
           // operator need a live runner as much as due or scheduled work does.
           const remaining = health ? health.ownedWork : 0;
           if (health) end = { unfinished: health.unfinished, revival: remaining === 0 ? 'none' : inhibited ? 'inhibited' : 'queued',
-            ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }) };
+            ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }),
+            // Rule 33: the exact journal frontier this claim describes.
+            frontier: projectionDigest(journal.view) };
         } catch { /* an exit without a disposition is revived by the host watcher as a crash */ }
+        if (retiredReason) end = { ...end, retired: retiredReason };
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
-      journal?.close(); storage.close(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
+      journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }
   }
 }

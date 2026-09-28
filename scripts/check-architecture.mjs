@@ -1,6 +1,9 @@
 // Rules 1, 10, 11, 26, 31, 40, 42, 69, 96. This uses TypeScript's resolved types, not identifier spelling.
+// Rule 26 also reaches the live runner: a declared detector module reads state only through the ports
+// it is handed (NF-26) — no filesystem, process or clock of its own. That confines the reading; whether
+// an observation is genuine is decided by its bound witness, not by this lint.
 import ts from 'typescript';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,7 +23,10 @@ export function createProgram(extra = {}) {
   return ts.createProgram([...config.fileNames, ...virtual.keys()], config.options, host);
 }
 
-export function lintProgram(program, files) {
+export const DETECTOR_MODULES = Object.freeze(['tests/preview/proofs.ts', 'tests/preview/capabilities.ts']);
+const DETECTOR_AMBIENT = ['Date', 'performance', 'fetch', 'process', 'setTimeout', 'setInterval', 'require', 'eval', 'Function',
+  'existsSync', 'statSync', 'lstatSync', 'readFileSync', 'readdirSync', 'execSync', 'execFileSync', 'spawnSync'];
+export function lintProgram(program, files, detectors = DETECTOR_MODULES) {
   const checker = program.getTypeChecker(); const issues = [];
   const targets = new Set(files.map(p => resolve(p)));
   const owner = (file, name, node) => {
@@ -43,6 +49,7 @@ export function lintProgram(program, files) {
     if (!targets.has(resolve(source.fileName))) continue;
     const file = source.fileName;
     const isCore = relative(process.cwd(), file).replaceAll('\\', '/').startsWith('src/');
+    const isDetector = detectors.includes(relative(process.cwd(), file).replaceAll('\\', '/'));
     const inspect = (expression, field, node, type = checker.getTypeAtLocation(expression)) => {
       const tag = tagOf(expression, type);
       const allowed = (path, fns) => fns.some(fn => owner(file, { file: path, function: fn }, node));
@@ -74,10 +81,14 @@ export function lintProgram(program, files) {
         const spec = node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : '';
         if (isCore && spec && !spec.startsWith('.') && spec !== 'node:crypto') add(file, node, 'NF-52', `core external import ${spec}`);
         if (!isCore && /(?:types\/internal|decode\/(?:decode|canonical|schema))/.test(spec)) add(file, node, 'NF-51', 'private package import');
+        if (isDetector && spec && !spec.startsWith('.')) add(file, node, 'NF-26', `detector module external import ${spec}`);
       }
       if (isCore && (node.kind === ts.SyntaxKind.AnyKeyword || (ts.isIdentifier(node) && ['Date', 'performance', 'fetch', 'process', 'XMLHttpRequest', 'setTimeout', 'setInterval', 'require', 'eval', 'Function'].includes(node.text))))
         add(file, node, 'NF-52', 'ambient I/O, time, process, dynamic code, or any');
       if (isCore && ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) add(file, node, 'NF-52', 'dynamic import');
+      if (isDetector && ((ts.isIdentifier(node) && DETECTOR_AMBIENT.includes(node.text))
+        || (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)))
+        add(file, node, 'NF-26', 'a detector reads state only through its observation ports');
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
         const field = ts.isPropertyAccessExpression(node) ? node.name.text : node.argumentExpression && ts.isStringLiteral(node.argumentExpression) ? node.argumentExpression.text : '*';
         inspect(node.expression, field, node);
@@ -179,9 +190,35 @@ export function lintRetrievalSites(sources = Object.fromEntries(Object.keys(RETR
   }
   return issues;
 }
+// Rules 41 and 75: the shipped live runner reaches a model only inside its one recording
+// boundary. Walk the launcher and every local module it imports; a provider fetch or route
+// invocation anywhere else is a bypass. The Telegram bridge (`physical.invoke`) is not a model.
+export function lintShippedLauncher(entry, read = path => readFileSync(path, 'utf8'), exists = existsSync) {
+  const issues = [], seen = new Set(), queue = [resolve(entry)];
+  while (queue.length) {
+    const file = queue.shift(); if (seen.has(file)) continue; seen.add(file);
+    const text = read(file), lines = text.split('\n');
+    let inside = false;
+    lines.forEach((line, index) => {
+      if (line.includes('// model-call-boundary:start')) inside = file === resolve(entry);
+      if (line.includes('// model-call-boundary:end')) inside = false;
+      const reaches = /\bfetch\s*\(|\.invoke\s*\(/.test(line.replace(/physical\.invoke\s*\(/g, ''));
+      if (reaches && !inside) issues.push({ file: relative(process.cwd(), file), line: index + 1, rule: 'R41-R75',
+        detail: 'model call outside the launcher\'s recording boundary' });
+    });
+    for (const match of text.matchAll(/(?:from|import)\s*\(?\s*'(\.{1,2}\/[^']+)'/g)) {
+      const target = resolve(dirname(file), match[1]);
+      if (target.includes('/node_modules/')) continue;
+      const candidates = [target, target.replace(/\.js$/, '.ts'), target.replace(/\.js$/, '.mjs')];
+      const found = candidates.find(candidate => exists(candidate) && !candidate.includes(`${resolve('src')}/`));
+      if (found) queue.push(found);
+    }
+  }
+  return issues;
+}
 function walk(path) { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${path}/${e.name}`) : e.name.endsWith('.ts') ? [`${path}/${e.name}`] : []); }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const program = createProgram(); const issues = [...lintProgram(program, walk('src')), ...lintIntentSites(), ...lintRetrievalSites()];
+  const program = createProgram(); const issues = [...lintProgram(program, [...walk('src'), ...DETECTOR_MODULES]), ...lintIntentSites(), ...lintRetrievalSites(), ...lintShippedLauncher('tests/preview/journal-agent.mjs')];
   if (issues.length) { console.error(JSON.stringify(issues, null, 2)); process.exitCode = 1; }
   else console.log('architecture checks passed');
 }

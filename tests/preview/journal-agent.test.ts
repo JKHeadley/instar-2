@@ -22,7 +22,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
     answers: Object.fromEntries(['raw_path','cli_command','config_key','credential','api_endpoint',
       'quits_on_self','claims_blocked','parks_on_user','defers_work','unrecorded_blocker'].map(rule => [rule,{type:'noul',noul:0.01}])) }));\n`);
   let journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, {
-    kind: 'genesis', bot: world.configuration.botId, chat: world.configuration.chatId,
+    kind: 'genesis', origin: 'test', bot: world.configuration.botId, chat: world.configuration.chatId,
     operator: world.configuration.operatorSenderId, grant: world.state().read().trial.id,
     configurationDigest: world.state().read().trial.configurationDigest,
     expires: world.state().read().trial.expiresAt, maxCalls: 16, maxReplies: 16,
@@ -48,7 +48,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
       '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--login-profile', profile, '--model', world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1'],
       { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
     expect(run.status, run.stderr).toBe(0);
@@ -110,7 +110,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record',activation,'--login-profile',profile,'--model',world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
     child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
@@ -155,6 +155,12 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:1,
           unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:1,total:1},
           replyChecks:{unavailable:1},unknownSends:0,
+          // Rules 41/75: every live model call, including the failed Jev check, is recorded at the one boundary.
+          modelCalls:{total:3,byJudgment:{answer:1,'reply-review':1,'jev-reply-check':1},byOutcome:{complete:2,failed:1},usageUnknown:1},
+          // Rules 42/89: the one reply was accepted and signed as the agent's own speech.
+          sendOutcomes:{accepted:1,refused:0,unknown:0,speakers:{agent:1,infrastructure:0}},
+          // Rules 28/29/35: the one admitted turn was written by the verified operator over the test endpoint.
+          intakeWriters:{verifiedOperator:1,scheduler:0,legacyExactBinding:0,testOrigin:1,refused:0},
           coherence:{checked:1,unchecked:0,failed:0,pendingCorrections:0,findings:[]}});
     const stop = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],
@@ -219,7 +225,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record',activation,'--login-profile',profile,'--model',world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
@@ -299,7 +305,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record',activation,'--login-profile',profile,'--model',world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
@@ -314,3 +320,21 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(readFileSync(join(root, 'model-json-shapes.json'), 'utf8')).not.toMatch(/Noted|rules|Decision/u);
   } finally { endpoint.kill('SIGTERM'); }
 },30000);
+
+it('Rule 35: a test-endpoint composition refuses a production journal before taking its lease or writing a byte', () => {
+  const world = successiveWorld(), root = join(world.directory, 'production-journal');
+  const path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, OFFLINE_STORAGE_KEY, { kind: 'genesis', bot: world.configuration.botId,
+    chat: world.configuration.chatId, operator: world.configuration.operatorSenderId, grant: 'grant:production',
+    configurationDigest: 'sha256:production', expires: 9999999999999, maxCalls: 4, maxReplies: 4, maxTurns: 4, maxBytes: 32768, cursor: 0 });
+  journal.close();
+  const before = readFileSync(path);
+  const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'run', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+      INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9' } });
+  expect(run.status).toBe(1);
+  expect(readFileSync(path).equals(before)).toBe(true);
+  expect(existsSync(join(root, '.writer'))).toBe(false);
+});

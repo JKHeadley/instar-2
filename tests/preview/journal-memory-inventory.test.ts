@@ -139,7 +139,8 @@ it('drains an accepted memory question when the ordinary envelope fits but even 
   try {
     // cbuild-2: the prepared envelope now carries the mind-held instructions and answer protocol, and the
     // packet the always-offered summary decision, moving the window (measured pass 13400-13600, fail 13200 and 13800).
-    const g = { ...genesis, maxBytes: 13500 }; // inside the measured window between the two bounds
+    // Build 5 adds the ordinary envelope's ~70-byte verified writer binding (Rule 29); cint-23 re-measured the window.
+    const g = { ...genesis, maxBytes: 13570 }; // inside the measured window between the two bounds
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
     const full = workerFor(journal).probe(question);

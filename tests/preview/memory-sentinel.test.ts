@@ -215,6 +215,7 @@ it('offers the same source facts to five paraphrases before and after summary re
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+// Two 40-turn fsynced journals: about 5 s unloaded, so the 10 s default is too tight on a loaded runner.
 it('retains a contextual source when incidental direct matches fill the recall slots', () => {
   for (const noisy of [false, true]) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'recall-context-')));
@@ -256,7 +257,7 @@ it('retains a contextual source when incidental direct matches fill the recall s
       expect(Buffer.byteLength(result.context)).toBeLessThanOrEqual(genesis.maxBytes);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }
-});
+}, 30_000);
 
 it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-sentinel-')));

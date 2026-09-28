@@ -751,7 +751,8 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
     process.stdout.write(`journal 60 turns: non-model p95=${p95(samples).toFixed(1)} ms, first-ten=${p95(samples.slice(0,10)).toFixed(1)} ms, final-ten=${p95(samples.slice(50)).toFixed(1)} ms\n`);
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 30_000); // 60 real turns with two restarts measured 9.0 s of the 10 s default in the full affected run
+// on a loaded host; the per-turn p95 and flat-cost assertions above are the real bounds and are unchanged.
 
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();

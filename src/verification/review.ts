@@ -1,4 +1,4 @@
-import type { Authorization, Json } from '../index.js';
+import type { Authorization, Hash, Json, VerifiedPrincipal } from '../index.js';
 import type { FactEnvelope } from '../facts/index.js';
 import { snapshotCurrent } from '../facts/snapshot.js';
 import type { FactSnapshot } from '../facts/snapshot.js';
@@ -180,22 +180,51 @@ export function benchmarkAccounting(record: BenchmarkEvaluation): BenchmarkAccou
     heldOutLeakage: [...leakage].sort(), selected: complete && record.selection ? record.selection : null });
 }
 
-export interface WaiverAct { readonly id: string; readonly rule: string; readonly scope: string; readonly at: number; readonly predecessors: readonly string[] }
+// Rule 94: a waiver covers an act only when it names the act's rule, its scope covers the act,
+// it binds the act's exact bytes and base where the act carries them, it came strictly before
+// the act, and the act names it as a causal predecessor. Valid waivers are counted per rule so
+// the rules review can see which rules keep needing them (amendment evidence).
+export interface WaiverAct {
+  readonly id: string; readonly rule: string; readonly scope: string; readonly at: number; readonly predecessors: readonly string[];
+  readonly artifact?: Hash; readonly base?: string;
+}
 export interface WaiverReview {
   readonly waivers: number; readonly linkedActs: number; readonly unusedWaivers: readonly string[];
   readonly actsWithoutPriorWaiver: readonly string[];
+  readonly validByRule: Readonly<Record<string, number>>; readonly recurringRules: readonly string[];
 }
-export function waiverReview(authorizations: readonly Authorization[], acts: readonly WaiverAct[]): WaiverReview {
+const waiverCovers = (waiver: Authorization, act: WaiverAct) => waiver.kind.kind === 'waiver' && waiver.kind.rule === act.rule
+  && waiver.at.value < act.at && act.predecessors.includes(waiver.id)
+  && (waiver.action.scope.kind === 'organization' || waiver.action.scope.members.includes(act.scope))
+  && (act.artifact === undefined || waiver.artifact === act.artifact) && (act.base === undefined || waiver.base === act.base);
+export function waiverReview(authorizations: readonly Authorization[], acts: readonly WaiverAct[], recurringAt = 2): WaiverReview {
   const waivers = [...new Map(authorizations.filter(a => a.kind.kind === 'waiver').map(a => [a.id, a])).values()];
   const links = new Set<string>(); const missing: string[] = [];
   for (const act of acts) {
-    const matched = waivers.find(waiver => waiver.kind.kind === 'waiver' && waiver.kind.rule === act.rule
-      && waiver.at.value < act.at && act.predecessors.includes(waiver.id));
+    const matched = waivers.find(waiver => waiverCovers(waiver, act));
     if (matched) links.add(matched.id); else missing.push(act.id);
   }
+  const validByRule: Record<string, number> = {};
+  for (const waiver of waivers) if (links.has(waiver.id) && waiver.kind.kind === 'waiver')
+    validByRule[waiver.kind.rule] = (validByRule[waiver.kind.rule] ?? 0) + 1;
   return freeze({ waivers: waivers.length, linkedActs: acts.length - missing.length,
     unusedWaivers: waivers.filter(waiver => !links.has(waiver.id)).map(waiver => waiver.id).sort(),
-    actsWithoutPriorWaiver: missing.sort() });
+    actsWithoutPriorWaiver: missing.sort(), validByRule: freeze(validByRule),
+    recurringRules: Object.keys(validByRule).filter(rule => validByRule[rule]! >= recurringAt).sort() });
+}
+
+// Rule 98: silence is never the operator's consent. A peer agent's silence concurs only past a
+// deadline that was recorded no later than the request; any person's silence is never consent.
+export interface PeerReviewDeadline { readonly reviewer: VerifiedPrincipal; readonly requestedAt: number; readonly declaredAt: number; readonly deadline: number }
+export type SilenceDisposition = Readonly<{ kind: 'concurred-by-deadline'; reviewer: string; deadline: number }>
+  | Readonly<{ kind: 'no-consent'; reason: 'operator-silence' | 'undeclared-deadline' | 'deadline-open' | 'responded' }>;
+export function silenceDisposition(review: PeerReviewDeadline | undefined, responded: boolean, now: number): SilenceDisposition {
+  if (responded) return freeze({ kind: 'no-consent', reason: 'responded' });
+  if (!review || !Number.isSafeInteger(review.declaredAt) || !Number.isSafeInteger(review.deadline)
+    || review.declaredAt > review.requestedAt || review.deadline <= review.requestedAt) return freeze({ kind: 'no-consent', reason: 'undeclared-deadline' });
+  if (review.reviewer.kind !== 'agent') return freeze({ kind: 'no-consent', reason: 'operator-silence' });
+  if (now <= review.deadline) return freeze({ kind: 'no-consent', reason: 'deadline-open' });
+  return freeze({ kind: 'concurred-by-deadline', reviewer: review.reviewer.id, deadline: review.deadline });
 }
 
 export function verificationKindsIgnoredByExistingProjection(record: VerificationRecord): string {

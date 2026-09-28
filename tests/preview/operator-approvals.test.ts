@@ -218,9 +218,14 @@ it('a genuine proof cannot authorize different limits substituted into agent-own
   const { journal, worker, surface } = harness(path);
   const append = journal.append;
   journal.append = row => {
-    if (row.kind === 'limited-intent' && row.approval?.action === 'raise-caps')
-      row = { ...row, reason: 'turns', text: `${limitedAnswerText(journal.view, 'turns', 1)}\n\n${approvalRequestText(journal.view, 'turns')}`,
-        approval: { ...row.approval, limits: proposedLimits(journal.view, 'turns') } };
+    if (row.kind === 'limited-intent' && row.approval?.action === 'raise-caps') {
+      const text = `${limitedAnswerText(journal.view, 'turns', 1)}\n\n${approvalRequestText(journal.view, 'turns')}`;
+      // The agent that writes the journal also holds the outbound signer (Rule 89 proves who spoke, not
+      // what was authorized), so the forged row is re-signed; only the verified proof binding refuses it.
+      row = { ...row, reason: 'turns', text, approval: { ...row.approval, limits: proposedLimits(journal.view, 'turns') },
+        provenance: journal.signOutbound('infrastructure', { target: `limited:${row.id}`, chat: row.chat,
+          ...(row.thread === undefined ? {} : { thread: row.thread }), body: text }) };
+    }
     append(row);
   };
   worker.intake([message(1, 'one'), message(2, 'two')]); await worker.drain();

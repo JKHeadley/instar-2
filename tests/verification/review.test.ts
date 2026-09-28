@@ -5,6 +5,7 @@ import type { FactSchema } from '../../src/facts/index.js';
 import { affectedGrades, benchmarkAccounting, feedbackCoverage, gradeSupport, reviewAccounting,
   semanticCoverage, waiverReview, decodeFeedbackDisposition, decodeVerificationRecord } from '../../src/verification/index.js';
 import type { VerificationRecord, VerificationRecordName } from '../../src/verification/index.js';
+import { silenceDisposition } from '../../src/verification/review.js';
 import { factsFixture, privateKey, value } from '../facts/fixtures.js';
 import { verificationInput } from './fixture.js';
 import { verificationRuntimeFixture } from './runtime-fixture.js';
@@ -136,8 +137,46 @@ it('P9-NF-35 P9-NF-36 waiver review counts distinct causally prior Authorization
   const decoded = f.authInput({ id: 'waiver:1', at: f.clock(100), kind: { kind: 'waiver', rule: 'rule:94' } });
   const waiver = value(decode('Authorization', decoded.input, { ...decoded.context, actAt: f.clock(200) }));
   expect(waiverReview([waiver, waiver], [
-    { id: 'act:linked', rule: 'rule:94', scope: 'scope', at: 150, predecessors: [waiver.id] },
-    { id: 'act:late', rule: 'rule:94', scope: 'scope', at: 90, predecessors: [waiver.id] },
-    { id: 'act:prose', rule: 'rule:94', scope: 'scope', at: 150, predecessors: ['someone-said-waived'] },
-  ])).toEqual({ waivers: 1, linkedActs: 1, unusedWaivers: [], actsWithoutPriorWaiver: ['act:late', 'act:prose'] });
+    { id: 'act:linked', rule: 'rule:94', scope: 'project-a', at: 150, predecessors: [waiver.id] },
+    { id: 'act:late', rule: 'rule:94', scope: 'project-a', at: 90, predecessors: [waiver.id] },
+    { id: 'act:prose', rule: 'rule:94', scope: 'project-a', at: 150, predecessors: ['someone-said-waived'] },
+  ])).toEqual({ waivers: 1, linkedActs: 1, unusedWaivers: [], actsWithoutPriorWaiver: ['act:late', 'act:prose'],
+    validByRule: { 'rule:94': 1 }, recurringRules: [] });
+});
+
+it('Rule 94: a waiver covers only an act inside its scope, bytes and base; valid waivers are counted per rule', () => {
+  const f = factsFixture();
+  const make = (id: string, overrides: Record<string, unknown> = {}) => {
+    const decoded = f.authInput({ id, at: f.clock(100), kind: { kind: 'waiver', rule: 'rule:94' }, ...overrides });
+    return value(decode('Authorization', decoded.input, { ...decoded.context, actAt: f.clock(200) }));
+  };
+  const first = make('waiver:scoped'), second = make('waiver:again');
+  const member = f.scope.kind === 'organization' ? 'anything' : f.scope.members[0]!;
+  const act = (id: string, predecessor: string, overrides: Partial<{ scope: string; artifact: `sha256:${string}`; base: string }> = {}) =>
+    ({ id, rule: 'rule:94', scope: member, at: 150, predecessors: [predecessor], ...overrides });
+  const review = waiverReview([first, second], [
+    act('act:inside', first.id, { artifact: first.artifact, base: first.base }),
+    act('act:outside-scope', first.id, { scope: 'another-project' }),
+    act('act:other-bytes', first.id, { artifact: `sha256:${'f'.repeat(64)}` }),
+    act('act:moved-base', first.id, { base: 'base:moved' }),
+    act('act:second', second.id),
+  ]);
+  expect(review.linkedActs).toBe(2);
+  expect(review.actsWithoutPriorWaiver).toEqual(['act:moved-base', 'act:other-bytes', 'act:outside-scope']);
+  expect(review.validByRule).toEqual({ 'rule:94': 2 });
+  expect(review.recurringRules).toEqual(['rule:94']);
+  expect(waiverReview([first], [act('act:inside', first.id)]).recurringRules).toEqual([]);
+});
+
+it('Rule 98: silence concurs only for a peer agent past a deadline recorded before the request, never for the operator', () => {
+  const f = factsFixture();
+  const peer = f.bob, operator = f.alice;
+  expect(peer.kind).toBe('agent');
+  const review = { reviewer: peer, requestedAt: 100, declaredAt: 100, deadline: 200 };
+  expect(silenceDisposition(review, false, 201)).toEqual({ kind: 'concurred-by-deadline', reviewer: peer.id, deadline: 200 });
+  expect(silenceDisposition(review, false, 200)).toEqual({ kind: 'no-consent', reason: 'deadline-open' });
+  expect(silenceDisposition(review, true, 999)).toEqual({ kind: 'no-consent', reason: 'responded' });
+  expect(silenceDisposition({ ...review, declaredAt: 150 }, false, 999)).toEqual({ kind: 'no-consent', reason: 'undeclared-deadline' });
+  expect(silenceDisposition(undefined, false, 999)).toEqual({ kind: 'no-consent', reason: 'undeclared-deadline' });
+  expect(silenceDisposition({ ...review, reviewer: operator }, false, 10_000)).toEqual({ kind: 'no-consent', reason: 'operator-silence' });
 });

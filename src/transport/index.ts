@@ -8,3 +8,8 @@ export { admitAcceptedProviderReply } from './run-pair.js';
 export { invokeConsumedDispatch } from './dispatch-invocation.js';
 export { createSequentialServingAdmission, isSequentialServingAdmission } from './sequential-serving-admission.js';
 export type { SequentialServingAdmissionPort, ServingBinding, ServingView } from './sequential-serving-admission.js';
+export { createThreadlineReferenceAdapter, sealThreadlineFrame, THREADLINE_PROTOCOL, THREADLINE_SUITE } from './threadline.js';
+export type { ThreadlineAdapter, ThreadlineFrame, ThreadlineRelay, ThreadlineKeys, ThreadlineRejection, ThreadlineRouting,
+  ThreadlineSealedBox, ThreadlinePayload } from './threadline.js';
+export { createThreadlineKeyCustody, threadlineIdentityFromSeeds } from './threadline-custody.js';
+export type { ThreadlineIdentity, ThreadlinePeerKeys } from './threadline-custody.js';

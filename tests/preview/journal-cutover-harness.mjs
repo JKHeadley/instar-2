@@ -20,17 +20,20 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     '--bot-id', world.configuration.botId, '--bot-username', world.configuration.botUsername,
     '--chat-id', world.configuration.chatId, '--operator-sender-id', world.configuration.operatorSenderId,
     '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
-    '--expires-at', String(activation.expiresAt), '--activation-record', activationPath,
+    '--expires-at', String(activation.expiresAt), '--activation-record', activationPath, '--operator-records', join(directory, 'operator-records'),
     '--login-profile', profilePath, '--model', world.model, '--max-cycles', String(cycles),
     '--max-poll-seconds', '1'];
-  const env = role => ({ ...process.env, ...childEnv, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
+  const env = (role, fenced = false) => ({ ...process.env, ...childEnv, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
     INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: token,
     INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: '',
-    INSTAR_PREVIEW_CUTOVER_WORLD: directory, INSTAR_PREVIEW_CUTOVER_ROLE: role });
+    INSTAR_PREVIEW_CUTOVER_WORLD: directory, INSTAR_PREVIEW_CUTOVER_ROLE: role,
+    // The canary is an outside poller (another host's fence), so only Telegram's own conflict separates it.
+    // A fenced canary shares this host's owner directory: a second runner for the same conversation.
+    ...(role === 'canary' && !fenced ? { INSTAR_CONVERSATION_OWNERS: join(directory, 'owners-canary') } : {}) });
   const canaryRoot = join(directory, 'cutover-canary');
   const liveRoot = join(directory, 'cutover-live');
-  const startCanary = () => spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
-    { cwd: process.cwd(), env: env('canary'), stdio: 'ignore' });
+  const startCanary = (fenced = false) => spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
+    { cwd: process.cwd(), env: env('canary', fenced), stdio: 'ignore' });
   const launchLive = cycles => spawnSync(process.execPath, launchArgs(liveRoot, 'live', cycles),
     { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 30000 });
   /** The live runner as a child the test can kill at a chosen moment (a crash with no exit record). */
@@ -50,9 +53,25 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; }
   };
   const releaseOverlap = () => rmSync(marker, { force: true });
+  // Asynchronous twins of launchLive/status: the Vitest worker keeps its event loop (and its RPC to the main
+  // process) alive while the child runs, so a slow machine never turns into an unhandled onTaskUpdate timeout.
+  const collect = (child, timeout) => new Promise(done => {
+    let stdout = '', stderr = '', finished = false;
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+    const timer = setTimeout(() => { if (!finished) child.kill('SIGKILL'); }, timeout);
+    child.once('close', (status, signal) => { finished = true; clearTimeout(timer); done({ status, signal, stdout, stderr }); });
+  });
+  const runLive = (cycles, extraArgs = [], extraEnv = {}) => collect(spawn(process.execPath, [...launchArgs(liveRoot, 'live', cycles), ...extraArgs],
+    { cwd: process.cwd(), env: { ...env('live'), ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] }), 60000);
+  const statusOf = () => collect(spawn(process.execPath, [...args, 'status', '--root', liveRoot],
+    { cwd: process.cwd(), env: env('live'), stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
+  /** Any non-run command against an arbitrary root (e.g. a copy), with the live role's key and no poller. */
+  const commandOn = (root, command, extraArgs = []) => collect(spawn(process.execPath, [...args, command, '--root', root, ...extraArgs],
+    { cwd: process.cwd(), env: env('live'), stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
   const setUpdates = updates => writeFileSync(join(directory, 'updates.json'), JSON.stringify(updates));
   const setConflicts = count => writeFileSync(join(directory, 'conflicts-remaining'), String(count));
   const calls = () => readFileSync(join(directory, 'telegram.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   return { directory, canaryRoot, liveRoot, startCanary, launchLive, startLive, status, waitForOverlap,
-    stopCanary, releaseOverlap, setUpdates, setConflicts, calls };
+    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf, commandOn };
 }

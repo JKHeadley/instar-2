@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { activeSummaryGrants, pendingRequestedReminders, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { activeSummaryGrants, pendingRequestedReminders, replyTarget, sendOutcomeCounts, sendOutcomeOf, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`), and one per poll attempt that
  * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
@@ -15,8 +15,16 @@ export type PollEvent = 'failed' | 'conflicted' | 'restored';
 /** What an exit leaves for the next launch (Rule 68): whether eligible accepted work remains queued for revival or is
  * inhibited by a stop, expiry or allowance, and when the next scheduled work step falls due. */
 export interface RunEnd { unfinished?: number;
-  revival?: 'queued' | 'inhibited' | 'none'; nextWorkAt?: number }
-export interface RunLog { launches: ({ at: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number;
+  revival?: 'queued' | 'inhibited' | 'none'; nextWorkAt?: number;
+  /** Rule 63: this launch found another runner holding the conversation and retired without polling or sending. */
+  nonowner?: { machine: string | null; since: number | null };
+  /** This launch neither polled nor sent because its ownership authority or declared topology could not serve. */
+  inhibited?: string;
+  /** An existing worker that lost the conversation fence and retired. */
+  retired?: string;
+  /** Rule 33: the journal projection digest at this exit, so the exit claim is comparable only at that frontier. */
+  frontier?: string }
+export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number;
   /** The current poll-failure episode, folded in order over every launch; a crash cannot erase an attempt. */
   pollPressure?: { failed: number; conflicted: number };
   /** The log exists but could not be read: its history, poll pressure included, is unknown, never an empty episode. */
@@ -57,7 +65,9 @@ export function readRuns(path: string): RunLog {
     }
     if (row.exit === undefined) {
       if (byLaunch.has(row.launch!)) { log.unreadable++; continue; }
-      const entry = { at: row.launch! }; byLaunch.set(row.launch!, entry); log.launches.push(entry);
+      const entry: RunLog['launches'][number] = { at: row.launch! };
+      if (Number.isSafeInteger(row.pid) && row.pid! > 0) entry.pid = row.pid!;
+      byLaunch.set(row.launch!, entry); log.launches.push(entry);
     } else {
       const entry = byLaunch.get(row.launch!);
       if (!entry || entry.exit !== undefined || !Number.isSafeInteger(row.exit) || typeof row.reason !== 'string') { log.unreadable++; continue; }
@@ -65,6 +75,13 @@ export function readRuns(path: string): RunLog {
       if (Number.isSafeInteger(row.unfinished) && row.unfinished! >= 0) entry.unfinished = row.unfinished!;
       if (row.revival === 'queued' || row.revival === 'inhibited' || row.revival === 'none') entry.revival = row.revival;
       if (Number.isSafeInteger(row.nextWorkAt)) entry.nextWorkAt = row.nextWorkAt!;
+      const extra = row as { inhibited?: unknown; retired?: unknown; frontier?: unknown };
+      if (typeof extra.inhibited === 'string') entry.inhibited = extra.inhibited;
+      if (typeof extra.retired === 'string') entry.retired = extra.retired;
+      if (typeof extra.frontier === 'string' && /^[a-f0-9]{64}$/.test(extra.frontier)) entry.frontier = extra.frontier;
+      const nonowner = (row as { nonowner?: { machine?: unknown; since?: unknown } }).nonowner;
+      if (nonowner && typeof nonowner === 'object') entry.nonowner = { machine: typeof nonowner.machine === 'string' ? nonowner.machine : null,
+        since: Number.isSafeInteger(nonowner.since) ? nonowner.since as number : null };
     }
   }
   return log;
@@ -131,10 +148,8 @@ export function memoryHealthLine(view: JournalView): string {
     && !resolved.has(turn.id)).length;
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
-  const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined)
-    + Number(turn.limited?.lead === turn.id && turn.limitedSent === undefined), 0)
-    + [...view.reminders.values()].filter(item => item.sent === undefined).length;
+  // Rule 42: a definite refusal is counted as a refusal, never as UNKNOWN.
+  const unknownSends = sendOutcomeCounts(view).unknown;
   const sum = (field: 'recallHits' | 'channelRecallHits') => measured.reduce((total, turn) => total + (turn[field] ?? 0), 0);
   return `Memory health: ${String(view.order.filter(turn => turn.held).length)} journal turns currently held; `
     + `${String(view.summaries.length)} summaries, ${String(covered)} accepted operator turns covered by latest summary`
@@ -213,10 +228,8 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaryPending = view.summaryReservations.size;
   const heldNoticeCount = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
-  const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined)
-    + Number(turn.limited?.lead === turn.id && turn.limitedSent === undefined), 0)
-    + [...view.reminders.values()].filter(item => item.sent === undefined).length;
+  // Rule 42: a definite refusal is counted as a refusal, never as UNKNOWN.
+  const unknownSends = sendOutcomeCounts(view).unknown;
 
 
   const refused = view.order.filter(turn => !turn.accepted).length;
@@ -290,7 +303,8 @@ export function restartHandoff(view: JournalView, runs: RunLog, launch: number) 
   const unknownCalls = view.order.filter(turn => turn.accepted && turn.reserved
     && (turn.modelState === 'uncertain' || turn.answer === undefined));
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
-  const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined && turn.sent === undefined);
+  const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined
+    && sendOutcomeOf(view, replyTarget(turn), turn.sent).kind === 'unknown');
   const noticesDue = pending.filter(turn => turn.modelState === 'uncertain' && turn.noticeDueAt !== undefined
     && turn.noticeDueAt <= launch);
   const ids = (turns: readonly Turn[]) => `${String(turns.length)}${turns.length

@@ -289,10 +289,40 @@ once per reviewed expiry and only before it lapses, under the writer lease:
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs renew-expiry \
   --root /ABSOLUTE/ROOT --activation-record /ABSOLUTE/activation-next.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
-  --expires-at 2026-10-05T20:40:00Z --authority "WHO APPROVED, WHERE, WHEN"
+  --expires-at 2026-10-05T20:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
+  --operator-records /ABSOLUTE/AGENT/.instar
 ```
 
 It validates the new record with this build and records its byte digest and the authority.
+Both `renew-expiry` and `run` also resolve the activation against the recorded operator authority
+(`--authority-record`, default `activation-authority.json` beside the activation record; see
+`activation-authority.ts`). That record holds the operator's earlier explicit yes as a standing
+grant (grantor, delegate `echo-desk`, exact words, source, exact subject, and for renewals a
+bounded extension) plus the continuing waiver of the rules the preview departs from. Each grant and
+waiver source is `{"kind":"telegram-message","topicId":N,"messageId":M}`, and it must resolve through
+the messaging owner's records (`--operator-records`, the agent's Instar state directory): exactly
+one sender-authenticated log row from the operator, one `human` provenance row over the same body
+hash, and the topic's operator binding verified by the topic-operator owner's own oracle (the
+`authenticated-inbound` label plus its establishment evidence). The record's words and time must
+equal that message exactly. Without those records, or for an invented source, nothing resolves and
+the command refuses.
+
+An authenticated message proves only what the operator said, not what it approves. Which message is
+the yes to which act, subject and bounds, which is the waiver of which rules, and which grants are
+revoked is the desk's recorded decision. The record resolves only as that decision, sealed by the
+desk under this trial's storage SecretRef:
+
+```bash
+INSTAR_SECRET_PREVIEW_STORAGE_KEY=… node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs \
+  seal-authority --authority-record /ABSOLUTE/authority-draft.json --out /ABSOLUTE/activation-authority.json
+```
+
+The output is created, never replaced. An unsealed record, one sealed for another trial, or a sealed
+record with any field changed (a substituted grant or waiver message, a changed subject, a dropped
+revocation) resolves nothing. To revoke, the desk adds the revocation and seals a new record.
+A status-quo renewal inside the grant needs no new approval; a revoked or expired grant, a changed
+subject, a longer extension, or a waiver of a different rule refuses, and needs a new verified
+approval. The recorded authority is `--authority` plus the resolved grant, waiver and record digest.
 `status` then reports `expires` and `expiryAuthority`. Afterwards the runner accepts only the
 new record. The prior build always refuses the new record; that is the unconditional fail-closed
 protection for a mismatched switch. The prior build also refuses an uncompacted renewed journal
@@ -2994,6 +3024,10 @@ an answer containing a detected secret, or an oversized answer or evidence, is
 recorded as unavailable without Jev disclosure. A stop prevents a
 new Jev dispatch. Verdicts never change a reply, memory decision, summary,
 hold, send, or future model packet. No extra service or store is involved.
+Since build 9 the start marker names the cleanup boundary as well: each reply's
+cleanup Result (its coherence check, memory state and delivery) is checked the
+same way. A journal started before that gains the boundary from a second start
+marker; earlier steps keep their verdicts.
 
 The live private-chat procedure is in
 [jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark

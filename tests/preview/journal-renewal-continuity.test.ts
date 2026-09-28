@@ -41,7 +41,9 @@ function status(root: string) {
   { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
     encoding: 'utf8', timeout: 30000 });
   expect(result.status, result.stderr).toBe(0);
-  return JSON.parse(result.stdout) as Record<string, unknown>;
+  // Ages and observation times are measured against the running clock (seeded from the journal's
+  // floor, advanced by elapsed process time); this test compares replayed state, not measurements.
+  return JSON.parse(result.stdout, (name, value) => /AgeMs$|^observedAt$/u.test(name) ? undefined : value) as Record<string, unknown>;
 }
 
 function evidence(root: string, path: string) {

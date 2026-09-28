@@ -12,7 +12,9 @@ const lines = (root: string, name: string) => {
 };
 const run = (root: string, cut = 'none', probe = '') => spawnSync(process.execPath,
   ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', child, root, cut, probe],
-  { cwd: process.cwd(), encoding: 'utf8', timeout: 10000 });
+  // Rule 37 budget (cint-3 gate): a child runs in about 1.6 s at load 15, but one was still running at the old
+  // 10 s kill timeout under the loaded preview gate (SIGTERM instead of its injected SIGKILL). Assertions unchanged.
+  { cwd: process.cwd(), encoding: 'utf8', timeout: 30000 });
 const rootFor = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-continuity-')));
 
 const baseline = rootFor();
@@ -61,4 +63,4 @@ it.each(boundaries)('restarts after %s without duplicate sends or lost memory', 
         expect(journal.view.order[3]?.sent, cut).toBeDefined();
       } finally { journal.close(); }
     } finally { rmSync(root, { recursive: true, force: true }); }
-}, 20000);
+}, 60000);

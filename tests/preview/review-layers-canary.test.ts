@@ -46,7 +46,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
   const role = question.startsWith('Judge this proposed reply') ? 'reply-review'
     : question.startsWith('Review this rolling summary') ? 'summary-review'
     : question.startsWith('Summarize this preview conversation') ? 'summary' : 'answer';
-  appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ role, question, context: context.packet }) + '\\n');
+  appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ role, question, context: context.packet, writer: binding.writer ?? null }) + '\\n');
   let value = role === 'answer' ? ${JSON.stringify(reply)}
     : role === 'summary' ? JSON.stringify({ summary: ${JSON.stringify(`${operatorText}\n${reply}`)},
         people: [], commitments: [], memory: [{ mode: 'prefer', source: context.packet.memoryRequest.id,
@@ -92,7 +92,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
         '--operator-sender-id', world.configuration.operatorSenderId,
         '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest,
-        '--expires-at', String(trial.expiresAt), '--activation-record', activation,
+        '--expires-at', String(trial.expiresAt), '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),
         '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
@@ -103,6 +103,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       expect(roles).toEqual(mode === 'summary-contradiction'
         ? ['summary', 'summary-review', 'summary', 'summary-review']
         : ['summary', 'summary-review', 'answer', 'reply-review']);
+      // Rule 29: every model input names its verified writer. The operator writes the answer's input;
+      // the runner, a verified system principal, writes the summary and both review envelopes.
+      const runner = { id: `preview-runner:${world.configuration.botId}`, kind: 'system', adapter: 'preview-runner' };
+      for (const row of rows) expect(row.writer, row.role).toEqual(row.role === 'answer'
+        ? { id: world.configuration.operatorSenderId, kind: 'person', adapter: 'telegram-bot-api:offline-test-endpoint' } : runner);
       if (mode !== 'summary-contradiction')
         expect(rows.find(row => row.role === 'reply-review').context).toMatchObject({
           operatorMessage: operatorText, candidateReply: `PREVIEW — ${reply}`,
@@ -135,7 +140,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         evidence.push(JSON.parse((plain[0] === 1 ? brotliDecompressSync(plain.subarray(1)) : plain).toString('utf8')));
         offset += 4 + length;
       }
-      const metered = evidence.filter(row => {
+      // Rules 41/75: each of the four subscription calls is recorded once at the launcher boundary.
+      expect(evidence.filter(row => row.kind === 'model-call' && row.route === 'preview-subscription'
+        && row.usage?.inputTokens === 1 && row.usage?.outputTokens === 1
+        && ['answer', 'reply-review', 'summary', 'summary-review'].includes(row.judgment))).toHaveLength(4);
+      const metered = evidence.filter(row => row.kind !== 'model-call').filter(row => {
         const usage = row.usage ?? row.result?.usage ?? row.faithfulness?.usage;
         return usage?.inputTokens === 1 && usage?.outputTokens === 1;
       });

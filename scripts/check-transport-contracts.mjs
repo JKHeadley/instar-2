@@ -151,7 +151,11 @@ export function inspectTransportCore(sources) {
       if ((ts.isInterfaceDeclaration(n) || ts.isTypeAliasDeclaration(n) || ts.isClassDeclaration(n)) && foreign.has(n.name?.text)) issues.push(`${path}: foreign-owned ${n.name.text}`);
       if (ts.isCallExpression(n) && (n.expression.kind === ts.SyntaxKind.ImportKeyword
         || ts.isIdentifier(n.expression) && ['setTimeout', 'setInterval', 'fetch', 'eval', 'require'].includes(n.expression.text))) issues.push(`${path}: operational side effect/dynamic import outside host`);
-      if (!path.endsWith('/telegram.ts') && ts.isStringLiteral(n) && /api\.telegram\.org|sendMessage|threadline/i.test(n.text)) issues.push(`${path}: protocol branch outside adapter`);
+      // Reference adapters (design 10 §6) may name their own protocol; export wiring of an adapter
+      // module is not a branch. Every other transport-core file stays protocol-free.
+      const adapter = path.endsWith('/telegram.ts') || path.endsWith('/threadline.ts');
+      const specifier = ts.isStringLiteral(n) && (ts.isImportDeclaration(n.parent) || ts.isExportDeclaration(n.parent));
+      if (!adapter && !specifier && ts.isStringLiteral(n) && /api\.telegram\.org|sendMessage|threadline/i.test(n.text)) issues.push(`${path}: protocol branch outside adapter`);
       ts.forEachChild(n, visit);
     }
     visit(ast);
