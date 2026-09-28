@@ -3643,11 +3643,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
           delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
-        // Rules 77/95: a review outage no longer holds a reply. A legacy review hold is released, so
-        // the recorded candidate is sent once with the review recorded unavailable (never re-run).
-        if (turn.held === 'reply check unavailable' || turn.held === 'reply check budget exceeded') {
-          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
-        }
+        // A review hold recorded by an earlier build stays as recorded: its notice already went out,
+        // and releasing a backlog of stale replies at once would itself flood (Rule 52). It stays
+        // visible in status and to the mind as an open question; new turns are never review-held.
         if (turn.held) continue;
         gate();
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStopCommand(turn.text)) {

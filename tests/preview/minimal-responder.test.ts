@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, UNLINKED_EDIT_FLAG,
@@ -144,4 +144,12 @@ it('declares a fail direction for every live gate, with only exact floors failin
     'model call cap', 'minimal reserve bound', 'operator approval request', 'UNKNOWN call or send']);
   expect(PREVIEW_LIVE_GATES.every(gate => gate.preserves && gate.basis)).toBe(true);
   expect(PREVIEW_LIVE_GATES.find(gate => gate.gate.startsWith('pre-send reply review'))?.fails).toBe('open');
+});
+
+it('exposes no conversation-creating method at the one Telegram boundary (Rule 53)', () => {
+  const bridge = readFileSync(join(process.cwd(), 'src/assembly/telegram-bot-api-bridge.mjs'), 'utf8');
+  const line = /const validMethod = ([^;]+);/u.exec(bridge)?.[1] ?? '';
+  expect([...line.matchAll(/request\?\.method === '([A-Za-z]+)'/gu)].map(match => match[1]).sort())
+    .toEqual(['answerCallbackQuery', 'getMe', 'getUpdates', 'sendMessage']);
+  expect(bridge).not.toMatch(/createForumTopic|createChatInviteLink|sendMessage.*chat_id:\s*['"]@/u);
 });
