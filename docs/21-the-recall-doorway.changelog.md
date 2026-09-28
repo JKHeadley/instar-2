@@ -4,6 +4,10 @@ _Generated from `21-the-recall-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-09-28 · approved — Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written.
+
+- **Mark the design approved as written.** — Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction. _(topic-52075-2026-09-28T16:09Z)_
+
 ## Revision 3 · 2026-09-13 · approved — operator review on PR #68; Independent rereview11 of b579d0b928a618e73ce10e1529f45d691400e32e; repair round 11, RD-01 through RD-04
 
 - **Copy the row-100 Seven execution/rerun-admission grant, add it to U30, and label every dependent acceptance positive non-executable until it lands.** — RD-01: row 30 support resolution does not grant benchmark execution or rerun admission; recall must not implement the missing owner operation. _(rereview11 RD-01; SEAM-LEDGER row 100; seam-response-judgment-benchmark-execution.md)_

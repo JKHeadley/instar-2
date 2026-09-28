@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-09-28",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written."
+    },
+    "changes": [
+      {
+        "what": "Mark the design approved as written.",
+        "why": "Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction.",
+        "ref": "topic-52075-2026-09-28T16:09Z"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-09-13",
     "status": "approved",
