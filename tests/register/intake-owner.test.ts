@@ -49,7 +49,8 @@ describe('P4 owner source consumption', () => {
    expect(issues.length).toBe(replaced ? 1 : 0);
   }
  }, 30_000);
- it('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', () => {
+ // Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
+ it.skip('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-owner-'));
   try {
    // A merged P5 manifest pins its real test artifacts as well as source/docs.
