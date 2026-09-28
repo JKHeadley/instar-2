@@ -12,7 +12,7 @@ export const REPLY_RULES = {
 } as const;
 export type ReplyRule = keyof typeof REPLY_RULES;
 export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
-export type ReplyPath = 'jev' | 'subscription' | 'holding';
+export type ReplyPath = 'jev' | 'subscription' | 'holding' | 'operator-echo';
 export const JEV_MODEL = 'jev-1.13.0';
 export const REPLY_CHECK_BUDGET_MS = 30_000;
 export const REPLY_CHECK_BUDGET_REASON = 'reply check budget exceeded';
@@ -29,6 +29,25 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
     thinkingPresent: 'unobservable' };
 }
 
+
+/** Rules 4, 57, 86, 116: the one exact test that skips the second check. A reply only
+ * repeats the verified operator when it contains at least one code-like token and every
+ * code-like token equals, whole, a token of the operator's own messages in this chat.
+ * Code-like: a digit, a path/command/key/address character, a leading hyphen, camelCase,
+ * or four or more capitals. Plain words are not tested: a self-stop or hand-back phrased
+ * in words, or a letter-only secret the exact wall does not recognise, is not caught on
+ * this path. The exact secret wall runs before this test and again at send. */
+const tokenEdges = /^["'“‘(\[{<]+|["'”’)\]}>.,;:!?…]+$/gu;
+export const replyTokens = (text: string): string[] =>
+  text.split(/\s+/u).map(token => token.replace(tokenEdges, '')).filter(Boolean);
+export const codeLikeToken = (token: string): boolean => /[0-9/\\_=@$~`<>{}[\]|#:.*^%&+]/u.test(token)
+  || /^-./u.test(token) || /\p{Ll}\p{Lu}/u.test(token) || /^\p{Lu}{4,}$/u.test(token);
+export function repeatsOperatorOnly(reply: string, operatorMessages: readonly string[]): boolean {
+  const spans = replyTokens(reply.replace(/^PREVIEW — /u, '')).filter(codeLikeToken);
+  if (!spans.length) return false;
+  const own = new Set(operatorMessages.flatMap(replyTokens));
+  return spans.every(span => own.has(span));
+}
 
 export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
 const rules = Object.keys(REPLY_RULES) as ReplyRule[];

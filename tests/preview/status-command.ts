@@ -4,6 +4,10 @@ import { dueState, localParts } from './dated-memory.js';
 import { messageTime } from './self-state.js';
 import type { JournalView } from './journal.js';
 
+/** Content-free count of replies Telegram accepted after the operator-echo path released them. */
+export const operatorEchoSent = (view: JournalView) => view.order.filter(turn => turn.sent !== undefined
+  && turn.replyChecks?.some(check => check.path === 'operator-echo')).length;
+
 export const isStatusCommand = (text: string): boolean => /^(?:status|how are you doing)\s*[?.!]?$/iu.test(text.trim());
 
 export function statusReply(view: JournalView, now: number, zone: string): string {
@@ -35,5 +39,6 @@ export function statusReply(view: JournalView, now: number, zone: string): strin
     `Pending memory decisions: ${pending.length}${pending.length ? ` (updates ${pending.map(turn => turn.update).join(', ')})` : ''}.`,
     `Next dated item: ${nextText}.`,
     `Spend allowance: ${view.calls}/${view.limits.maxCalls} subscription attempts; ${view.jevChecks}/${view.limits.maxReplies} Jev checks. Dollar spend/cap: not recorded in this journal. Replies: ${view.replies}/${view.limits.maxReplies} used.`,
+    `Replies sent as your own words repeated back, without the second check: ${operatorEchoSent(view)}.`,
   ].join('\n');
 }
