@@ -45,7 +45,7 @@ const worker = createJournalWorker(journal, {
     const result = summary
       ? JSON.stringify({ summary: fact,
         people: original ? [{ name: 'Maya', quote: original }] : [],
-        commitments: original ? [{ in: 'message', quote: original }] : [], memory: [] })
+        commitments: original ? [{ in: 'message', quote: original, waitsOn: 'nothing' }] : [], memory: [] })
       : remembering ? 'I will remember that.' : fact;
     point(`${summary ? 'summary' : 'answer'}:call:returning:${input.id}`);
     return result;

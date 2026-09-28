@@ -132,16 +132,16 @@ export interface DirectiveNote { source: string; quote: string; at: number; supe
 /** The governed boundaries a preview refusal may cite (Rule 103). Each names a real preview
  * governance source; a boundary that is none of these is a proposal for the operator. */
 export const GOVERNING_CONSTRAINTS = Object.freeze({
-  'reply-only-grant': 'replies plus operator-requested reminders or summaries; nothing else unprompted',
-  'no-tools': 'no external tools, accounts or scheduler beyond the journal',
-  'operator-authority': 'an approval, credential or policy choice only the verified operator holds',
-  'spend-allowance': 'the recorded call and reply allowances',
-  'operator-stop': 'the operator stop latch and trial expiry',
-  'secret-custody': 'a live secret never leaves custody',
+  'reply-only-grant': 'replies and requested reminders or summaries only',
+  'no-tools': 'no external tools or accounts',
+  'operator-authority': 'an approval, credential or policy only the operator holds',
+  'spend-allowance': 'recorded call and reply allowances',
+  'operator-stop': 'stop latch and trial expiry',
+  'secret-custody': 'live secrets stay in custody',
 } as const);
 export type GoverningConstraint = keyof typeof GOVERNING_CONSTRAINTS;
 /** How the answer model declares the obligations its reply creates or settles (Rules 6, 18, 20-23, 93, 99, 103). */
-export const OBLIGATION_DECISION = 'Only when they apply, add: directives:[{quote:exact clause of this message giving a standing instruction beyond this reply,supersedes?:listed directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}] when this message ends a listed directive; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:exact clause of your reply,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now). Act on what you own. A cannot-do or needs-a-person claim that stands after every lawful avenue adds blocker:{kind:"cannot-do"|"needs-human",claim:exact reply clause,avenues:[{avenue,disposition:"tried"|"outside-standing"|"inapplicable",evidence}],constraint:governingConstraints id,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. A missing tool is no-tools. Never refuse behind a boundary absent from governingConstraints; propose it instead.';
+export const OBLIGATION_DECISION = 'When one applies, add: directives:[{quote:exact clause of this message setting a standing instruction beyond this reply,supersedes?:directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}]; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:exact reply clause,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now); for a cannot-do or needs-a-person claim that survives every lawful avenue, blocker:{kind:"cannot-do"|"needs-human",claim:exact reply clause,avenues:[{avenue,disposition:"tried"|"outside-standing"|"inapplicable",evidence}],constraint:governingConstraints key,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. A missing tool is no-tools. Refuse only behind a governingConstraints key; propose any other boundary.';
 /** Rules 20, 21, 23, 99: a settled cannot-do or needs-a-person claim the agent actually sent,
  * with its finite lawful avenues, the smallest outside action and a future recheck. */
 export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' | 'needs-human';
@@ -1568,8 +1568,10 @@ function project(view: JournalView, row: JournalRecord): void {
     if (row.lastNamedPerson) turn.lastNamedPerson = row.lastNamedPerson;
     applyDirectives(view, turn, row);
     if (row.loops !== undefined) { if (!validLoops(row.loops)) throw Error('preview journal: invalid reply loop'); turn.answerLoops = row.loops; }
-    if (row.blocker !== undefined) { if (!validBlocker(row.blocker, row.at)) throw Error('preview journal: invalid blocker'); turn.answerBlocker = row.blocker; }
-    if (row.blockerRechecks !== undefined) { if (!validRechecks(view, row.blockerRechecks, row.at)) throw Error('preview journal: invalid blocker recheck');
+    // Ranges are judged from the reservation that produced this answer, exactly as the worker judged them.
+    const decidedFrom = turn.reservedAt ?? row.at;
+    if (row.blocker !== undefined) { if (!validBlocker(row.blocker, decidedFrom)) throw Error('preview journal: invalid blocker'); turn.answerBlocker = row.blocker; }
+    if (row.blockerRechecks !== undefined) { if (!validRechecks(view, row.blockerRechecks, decidedFrom)) throw Error('preview journal: invalid blocker recheck');
       turn.answerRechecks = row.blockerRechecks; }
     if (row.state) turn.modelState = row.state;
     if (row.failureClass) turn.failureClass = row.failureClass;
@@ -3389,13 +3391,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutSummary = (() => { const packet = JSON.parse(fullContext) as Record<string, unknown>;
           if (!('memorySummary' in packet)) return undefined;
           delete packet.memorySummary; return JSON.stringify(packet); })();
-        // Under byte pressure the obligation guide yields last, after every other variant (a bounded omission).
+        // Under byte pressure the obligation guide yields first (a bounded omission of guidance, never of evidence).
         const withoutGuide = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('obligationDecision' in packet)) return [];
           delete packet.obligationDecision; delete packet.governingConstraints; return [JSON.stringify(packet)]; };
         const ordinaries = withoutSummary && dropped.some(item => item.kind === 'candidate')
           ? [withoutSummary, fullContext] : [fullContext, ...(withoutSummary ? [withoutSummary] : [])];
-        for (const ordinary of [...ordinaries, ...ordinaries.flatMap(withoutGuide)]) for (const context of periodContexts(ordinary)) {
+        // At each period trim level the guide yields before a period turn does.
+        const variants = ordinaries.flatMap(ordinary => { const guided = periodContexts(ordinary);
+          const plain = withoutGuide(ordinary).flatMap(periodContexts);
+          return guided.flatMap((context, index) => [context, ...(plain[index] === undefined ? [] : [plain[index]!])]); });
+        for (const context of variants) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
@@ -4078,7 +4084,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * only exact quotes, listed ids and complete finite records, so nothing is paraphrased into authority. */
   const obligationsFrom = (parsed: { directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown;
     blockerRechecks?: unknown }, turn: Turn, reply: string, context: string, at: number): AnswerObligations => {
-    const result: AnswerObligations = {}, zone = ports.timeZone ?? 'America/Los_Angeles';
+    const result: AnswerObligations = {}, zone = ports.timeZone ?? 'America/Los_Angeles', decidedFrom = turn.reservedAt ?? at;
     const packet = JSON.parse(context) as { directives?: { id: number }[]; blockers?: { id: number }[] };
     const listed = new Set((packet.directives ?? []).map(item => item.id)), open = new Set(openDirectives(journal.view).map(item => item.id));
     const present = (value: unknown) => value !== undefined && !(Array.isArray(value) && !value.length);
@@ -4086,7 +4092,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const added = (parsed.directives ?? []) as { quote?: unknown; supersedes?: unknown }[];
       const closes = (parsed.closeDirectives ?? []) as { id?: unknown; kind?: unknown }[];
       const known = (id: unknown): id is number => typeof id === 'number' && listed.has(id) && open.has(id);
-      if (!fromOperator(turn) || probeTurn(journal.view, turn) || turn.requestedSummary !== undefined
+      if (!verifiedOperatorTurn(journal.view, turn) || probeTurn(journal.view, turn) || turn.requestedSummary !== undefined
         || !Array.isArray(added) || !Array.isArray(closes) || added.length > 5 || closes.length > 10
         || added.some(item => !item || !boundedText(item.quote, 8, 500) || !turn.text.includes(item.quote)
           || Object.keys(item).some(key => key !== 'quote' && key !== 'supersedes') || item.supersedes !== undefined && !known(item.supersedes))
@@ -4114,7 +4120,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const blocker = { kind: value.kind, claim: value.claim, avenues: Array.isArray(value.avenues)
         ? value.avenues.map(item => ({ avenue: item?.avenue, disposition: item?.disposition, evidence: item?.evidence })) : value.avenues,
         constraint: value.constraint, outsideAction: value.outsideAction, recheckAt: dayEpoch(value.recheck, zone) };
-      if (validBlocker(blocker, at) && reply.includes(blocker.claim)) result.blocker = blocker;
+      if (validBlocker(blocker, decidedFrom) && reply.includes(blocker.claim)) result.blocker = blocker;
     }
     if (Array.isArray(parsed.blockerRechecks) && parsed.blockerRechecks.length) {
       const offered = new Set((packet.blockers ?? []).map(item => item.id));
@@ -4123,7 +4129,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         return value?.outcome === 'cleared' ? { id: value.id, outcome: 'cleared' }
           : { id: value?.id, outcome: value?.outcome, recheckAt: dayEpoch(value?.recheck, zone) };
       });
-      if (rechecks.every(item => offered.has(item.id as number)) && validRechecks(journal.view, rechecks, at)) result.blockerRechecks = rechecks;
+      if (rechecks.every(item => offered.has(item.id as number)) && validRechecks(journal.view, rechecks, decidedFrom)) result.blockerRechecks = rechecks;
     }
     return result;
   };
