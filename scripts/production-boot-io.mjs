@@ -1,11 +1,12 @@
 // The fixed Ten physical host. No worker receives these OS ports.
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
   readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { hostResources } from './resource-owner.mjs';
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
   probePid: pid => { process.kill(pid, 0); }, join, resolve, closeSync, constants, existsSync,
@@ -39,30 +40,9 @@ export const productionProviderIO = Object.freeze({
   },
   realpath: realpathSync,
   executableBytes: path => { if (!lstatSync(path).isFile()) throw Error('provider executable missing'); return readFileSync(path); },
-  execute: input => new Promise(resolve => {
-    if (input.stopped?.()) { resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); return; }
-    const child = spawn(input.executable, input.args, { cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
-      shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
-    let chunks = [], size = 0, limited = false, localLimit = null;
-    const fail = reason => { if (limited) return; limited = true; localLimit = reason; chunks = [];
-      if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* A group may be gone or unavailable. */ }
-      try { child.kill('SIGKILL'); } catch { /* Timer and stop callbacks must never throw. */ }
-    };
-    const timer = setTimeout(() => fail('timeout'), input.timeout);
-    const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null); }, 25) : undefined;
-    child.on('error', () => { clearTimeout(timer); clearInterval(stopTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
-    child.stdin.on('error', () => fail(null));
-    child.stdout.on('data', chunk => {
-      size += chunk.length;
-      if (size > input.maxBytes) fail('size'); else if (!limited) chunks.push(chunk);
-    });
-    child.on('close', code => {
-      clearTimeout(timer); clearInterval(stopTimer);
-      const stdoutBytes = Buffer.concat(chunks);
-      resolve({ code, limited, localLimit, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes) });
-    });
-    child.stdin.end(input.stdin, 'utf8');
-  }),
+  // Every launch passes the host's one resource owner (Rules 60, 61): admission,
+  // OS CPU/handle ceilings and observed descendant memory/process ceilings.
+  execute: (input, work = 'answer') => hostResources.execute(input, work),
 });
 
 /** Unit 3 owns scanning and sealed identity capture. Transfer its private exact
@@ -75,8 +55,10 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs,
       captureDirectory: directory, identityBinding: input.identityBinding,
       ...(testEndpoint === null ? {} : { testEndpoint }) })).toString('base64url');
+    // A synchronous, sequential transport child: its V8 heap is capped here and
+    // its elapsed time and output by the options below.
     const child = spawnSync(process.execPath,
-      [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
+      ['--max-old-space-size=256', fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
       { input: credential, encoding: 'utf8', timeout: input.timeoutMs + 2000, maxBuffer: 2 * 1024 * 1024,
         env: { PATH: '/usr/bin:/bin' }, stdio: ['pipe', 'pipe', 'ignore'] });
     if (child.status !== 0) return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
@@ -133,7 +115,7 @@ export function subscriptionProfileIdentity(bindings) {
 }
 
 /** Preview-only provider host. No secret file or Keychain contents are read here. */
-export function createSubscriptionProviderIO({ repository, stopped }) {
+export function createSubscriptionProviderIO({ repository, stopped, work = 'answer' }) {
   const outside = (path, root) => { const suffix = relative(root, path);
     return suffix.startsWith('../') || suffix === '..' || isAbsolute(suffix); };
   const digest = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
@@ -188,5 +170,5 @@ export function createSubscriptionProviderIO({ repository, stopped }) {
     return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings), managedConfigurationDigest: digest(policy) });
   };
   return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile,
-    execute: input => productionProviderIO.execute({ ...input, stopped }) });
+    execute: input => productionProviderIO.execute({ ...input, stopped }, work) });
 }

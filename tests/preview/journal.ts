@@ -91,7 +91,7 @@ const emptyTokenTotals = (): TokenTotals => Object.fromEntries(tokenKinds.map(ki
   [kind, { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }])) as TokenTotals;
 const subscriptionOutputMaximum = 2048;
 const jevOutputMaximum = JEV_RESPONSE_MAX_BYTES;
-export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | null;
+export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
   isError: boolean | null; outputTokens: number | null; promptBytes: number }
 type SummaryFaithfulness = { path: 'exact' | 'jev'; verdict: 'pass' | 'lost' | 'undecided'; score: number | null; usage?: ModelUsage };
@@ -932,7 +932,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
     || o.exitCode !== null && (!Number.isSafeInteger(o.exitCode) || o.exitCode < 0)
     || o.outputTokens !== null && (!Number.isSafeInteger(o.outputTokens) || o.outputTokens < 0)
-    || ![null, 'timeout', 'size', 'output-cap'].includes(o.localLimit)
+    || ![null, 'timeout', 'size', 'output-cap', 'memory', 'processes', 'cpu', 'aggregate', 'capacity'].includes(o.localLimit)
     || ![null, 'result', 'other'].includes(o.type)
     || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
     || ![null, true, false].includes(o.isError)) throw Error('preview journal: call outcome malformed');
@@ -1737,7 +1737,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       append(initial);
     }
     if (!readOnly && size > Math.max(compactBytes, snapshotBase * 2)) compact();
-    return { get view() { return view!; }, get size() { return size; }, readOnly, append, compact,
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
@@ -1829,6 +1829,8 @@ export interface PreviewPorts {
   summaryCheck?(evidence: string): Promise<unknown>;
 
   stepCheck?: { jev(state: string): Promise<{ value: unknown; latencyMs: number }> };
+  /** Rule 100: vault-first custody of the credentials in a verified operator message, before it is recorded. */
+  secrets?: { custody(input: { text: string; raw: string; source: string }): { text: string; raw: string } };
   boundary?(stage: string): void;
 }
 
@@ -1902,8 +1904,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // create a new turn or reply. The same holds for a foreign edit.
       const accepted = update.edited_message ? parsed.accepted && editOf !== undefined : parsed.accepted;
       const cursor = update.update_id + 1;
-      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? parsed.text : '',
-        raw: JSON.stringify(update), accepted, cursor, at: ports.now(),
+      const custody = accepted && ports.secrets
+        ? ports.secrets.custody({ text: parsed.text, raw: JSON.stringify(update), source: parsed.id }) : null;
+      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? custody?.text ?? parsed.text : '',
+        raw: custody?.raw ?? JSON.stringify(update), accepted, cursor, at: ports.now(),
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
         ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }) });
     }

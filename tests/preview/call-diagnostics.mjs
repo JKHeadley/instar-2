@@ -1,3 +1,7 @@
+/** Physical limits a launch can end at: its elapsed and output bounds, and the
+ * host resource owner's memory/process/CPU/aggregate ceilings and admission. */
+export const RESOURCE_LIMITS = Object.freeze(['timeout', 'size', 'memory', 'processes', 'cpu', 'aggregate', 'capacity']);
+
 /** Content-free physical outcome of one subscription CLI model invocation. */
 export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxTokens, maxOutputBytes) {
   let frame = null;
@@ -10,7 +14,7 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
   const tokens = object?.usage?.output_tokens;
   const outputTokens = Number.isSafeInteger(tokens) && tokens >= 0 ? tokens : null;
   const code = Number.isSafeInteger(result.code) && result.code >= 0 ? result.code : null;
-  const localLimit = result.localLimit === 'timeout' || result.localLimit === 'size' ? result.localLimit
+  const localLimit = RESOURCE_LIMITS.includes(result.localLimit) ? result.localLimit
     : !result.limited && type === 'result' && outputTokens !== null && outputTokens > maxTokens ? 'output-cap'
     : !result.limited && type === 'result' && typeof object.result === 'string'
       && Buffer.byteLength(object.result) > maxOutputBytes ? 'size' : null;

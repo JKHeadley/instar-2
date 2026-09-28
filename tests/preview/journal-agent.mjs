@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, PREVIEW_LIVE_LIMITS, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -26,6 +26,13 @@ import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
+import { hostResources } from '../../scripts/resource-owner.mjs';
+import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
+import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
+import { liveMeasurement, renderMeasured, resourceCompare } from './measured.js';
+import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
+import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
+import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -94,7 +101,23 @@ const typesafeKey = () => {
   if (!value || !value.trim()) throw Error('preview: TypeSafe SecretRef unavailable');
   return value;
 };
-const askJev = async (state, questions, timeoutMs) => {
+/** Rule 56: the run's durable doorway map; set by `run`, observed at every real exchange. */
+let doorwayMapPath = null;
+const observeDoorway = (doorway, model, observation) => {
+  if (!doorwayMapPath || !observation) return;
+  try { const map = readDoorwayMap(doorwayMapPath); if (map) writeDoorwayMap(doorwayMapPath, observeExchange(map, doorway, model, observation, wallNow())); }
+  catch { /* the map is evidence; a failed write never changes a model outcome */ }
+};
+/** Content-free discovery at the Jev exchange: success and the model id it reports. */
+const observedJev = async (call, operation) => {
+  let result;
+  try { result = await call(); }
+  catch (error) { observeDoorway('typesafe-jev', JEV_MODEL, { ok: false, reason: 'exchange failed', evidence: `exchange:${operation}` }); throw error; }
+  const reported = typeof result.value?.model === 'string' ? [result.value.model.slice(0, 128)] : [];
+  observeDoorway('typesafe-jev', JEV_MODEL, { ok: true, reportedModels: reported, evidence: `exchange:${operation}` });
+  return result;
+};
+const askJev = (state, questions, timeoutMs) => observedJev(async () => {
   const start = performance.now();
   const response = await fetch('https://api.typesafe.ai/v1/systemone', {
     method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs ?? 2000)),
@@ -102,7 +125,7 @@ const askJev = async (state, questions, timeoutMs) => {
     body: JSON.stringify({ state, model: JEV_MODEL, questions }) });
   if (!response.ok) throw Error('preview: Jev unavailable');
   return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
-};
+}, 'jev-check');
 const context = { site: 'preview.journal', preserved: 'preview:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
@@ -206,7 +229,18 @@ const packetStatus = view => {
   if (!last) return null;
   return { update: last.update, bytes: last.prompt === undefined ? null : Buffer.byteLength(last.prompt),
     limit: last.packetLimit ?? view.limits.maxBytes,
-    dropped: last.packetDropped ?? 'unavailable in earlier reservation' };
+    dropped: last.packetDropped ?? 'unavailable in earlier reservation',
+    capacity: packetCapacity(last.packetDropped, last.packetLimit ?? view.limits.maxBytes) };
+};
+/** The resource owner's persisted snapshot, with its live quantities rendered as measured claims (Rule 13). */
+const resourceStatus = path => {
+  let state;
+  try { state = JSON.parse(readFileSync(path, 'utf8')); } catch { return { state: 'unobserved' }; }
+  if (state?.version !== 1) return { state: 'unobserved' };
+  const claims = (state.active ?? []).flatMap(launch => [
+    renderMeasured(liveMeasurement('owned-process-memory', `launch:${launch.id}`, launch.memoryBytes, state.at)),
+    renderMeasured(liveMeasurement('owned-process-count', `launch:${launch.id}`, launch.processes, state.at))]);
+  return { ...state, claims };
 };
 
 const stepCheckView = view => ({ total: view.stepChecks.size,
@@ -229,6 +263,9 @@ async function main() {
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
   const shapesPath = join(root, 'model-json-shapes.json');
+  const resourcesPath = join(root, 'resources.json');
+  const launchesPath = join(root, 'owned-launches.json');
+  const doorwaysPath = join(root, 'doorway-map.json');
   timeZoneOf(options);
   const importMarker = existsSync(importPath) ? JSON.parse(readFileSync(importPath, 'utf8')) : null;
   if (importMarker && (importMarker.version !== 1 || typeof importMarker.source !== 'string'))
@@ -295,6 +332,13 @@ async function main() {
           ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
           : null,
       packet: packetStatus(view.view),
+      journalCapacity: journalCapacity(view.compacted, PREVIEW_JOURNAL_COMPACT_BYTES),
+      resources: resourceStatus(resourcesPath),
+      doorways: (() => { const map = readDoorwayMap(doorwaysPath);
+        return map ? { map, ...doorwayFreshness(map, statusNow) } : { map: null, fresh: false, models: [] }; })(),
+      credentials: (() => { try { const records = createSecretCustody(root, key(), wallNow).records();
+        return { records, due: dueCredentialReminders(records, statusNow) }; } catch { return { records: null, due: null, error: 'registry unreadable' }; } })(),
+      reconciliation: usageReconciliation(view.view),
 
       memoryHealth: memoryHealthLine(view.view),
 
@@ -532,6 +576,16 @@ async function main() {
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
     journal = openPreviewJournal(journalPath, key(), initial);
     const g = journal.view.genesis;
+    // Rules 60 and 61: this process's one resource owner, with the constitutional
+    // measurement, priority-brake and incarnation owners as its decision ports.
+    await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow,
+      compare: resourceCompare, priorityGate: shouldRunScheduledPriority,
+      reconcile: (row, current) => current === null ? 'missing' : take(reconcileProcessIncarnation(
+        { processIncarnation: `${row.pid}:${row.start}`, pid: row.pid, startEvidence: row.start, tags: ['provider-launch'] },
+        { processIncarnation: `${row.pid}:${current}`, pid: row.pid, startEvidence: current, tags: ['provider-launch'] },
+        context)) });
+    // Rule 100: credentials handed over in chat are stored before anything consumes them.
+    const custody = createSecretCustody(root, key(), wallNow);
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
       ['max-replies', maxReplies, g.maxReplies, journal.view.limits.maxReplies],
@@ -573,7 +627,7 @@ async function main() {
       if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
     };
-    const invokeJev = async (text, questions) => {
+    const invokeJev = (text, questions) => observedJev(async () => {
       const start = performance.now();
       const response = await fetch('https://api.typesafe.ai/v1/systemone', {
         method: 'POST', signal: AbortSignal.timeout(2000),
@@ -581,12 +635,13 @@ async function main() {
         body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
       if (!response.ok) throw Error('preview: Jev unavailable');
       return { value: parseJevResponse(await response.text()), latencyMs: Math.round(performance.now() - start) };
-    };
+    }, 'step-check');
     worker = createJournalWorker(journal, { now: wallNow, elapsed: clock.elapsed, stopped: () => workerStop.value || existsSync(stopPath), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
+      secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const result = await invokeSubscription(prepared, id);
@@ -656,6 +711,25 @@ async function main() {
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
+    // Rule 56: the installed routes' exact model ids, merged into the durable map.
+    doorwayMapPath = doorwaysPath;
+    writeDoorwayMap(doorwaysPath, installDoorways(readDoorwayMap(doorwaysPath), [
+      { id: 'preview-subscription', billing: 'subscription', model: options.model, priceReason: 'the subscription route reports no billed charge' },
+      { id: 'typesafe-jev', billing: 'metered', model: JEV_MODEL, priceReason: 'the Jev route reports no price' }]));
+    // Rule 100: installed credentials' identity and known fixed expiry. Values stay in their custody.
+    const recordedAt = wallNow();
+    for (const record of [
+      { name: 'telegram-bot-token', kind: 'telegram-bot-token', custody: 'host-environment', identity: `Telegram bot ${g.bot}`,
+        expiresAt: null, expirySource: 'none', smallestHumanAction: 'rotate the bot token with BotFather and rebind the host secret' },
+      { name: 'typesafe-key', kind: 'api-key', custody: 'host-environment', identity: 'TypeSafe Jev route',
+        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'replace the TypeSafe key in host custody' },
+      { name: profile.reference, kind: 'subscription-login', custody: 'cli-custody', identity: profile.expectedAccount,
+        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' },
+      { name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: activation.reference,
+        expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: 'approve a renewed activation record' }])
+      custody.register({ name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
+        expiresAt: record.expiresAt, expirySource: record.expirySource, reminders: reminderSchedule(record.expiresAt, recordedAt),
+        renewal: { standing: 'none', smallestHumanAction: record.smallestHumanAction } });
     const captures = new Map();
     const offlineEndpoint = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT;
     if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
@@ -782,8 +856,14 @@ async function main() {
         sourceEvidence: [activation.reference], terminalEvidence: activation.reference, terminalReasonField: 'subtype',
         successfulFinalReplyReasons: ['success'], strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
-      const physicalIO = createSubscriptionProviderIO({ repository: process.cwd(),
-        stopped: () => workerStop.value || existsSync(stopPath) || !active() });
+      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
+      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(),
+        stopped: () => workerStop.value || existsSync(stopPath) || !active(), work });
+      const physicalIO = { ...launchIO, execute: async input => {
+        const result = await launchIO.execute(input);
+        observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation));
+        return result;
+      } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
         { elapsed: () => performance.now(), at: wallNow });
       return take(createClaudeCodeSubscriptionRoute({ context, credential: secretRef(profile.reference), profile,
