@@ -199,6 +199,17 @@ it('cuts over a stopped predecessor with unchanged counters, cursor, exclusions 
 
 import { chmodSync, existsSync as requireExists } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+/** Async child run: a blocking spawnSync of a long child freezes this vitest worker's event loop,
+ * so its onTaskUpdate RPC to the main process times out (docs/defects/vitest-worker-rpc-timeouts.md). */
+const spawnNode = (args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeout: number }) =>
+  new Promise<{ status: number | null; stdout: string; stderr: string }>(resolve => {
+    const child = spawn(process.execPath, args, { cwd: options.cwd, env: options.env });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+    const timer = setTimeout(() => child.kill('SIGTERM'), options.timeout);
+    child.on('close', status => { clearTimeout(timer); resolve({ status, stdout, stderr }); });
+  });
 import { createHash } from 'node:crypto';
 import { SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { encoded, subscriptionInvocationPolicy } from './stage2-provider.js';
@@ -207,7 +218,7 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 
 const launcherClockSource = (epoch: number) => `const epoch=${epoch}, elapsedStart=performance.now();Date.now=()=>epoch+Math.floor(performance.now()-elapsedStart);`;
 
-for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) it(`actual async launcher ${signal ?? 'accepts one answer'} with a spawned synthetic CLI`, () => {
+for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) it(`actual async launcher ${signal ?? 'accepts one answer'} with a spawned synthetic CLI`, async () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-launch-evidence-'))), root = join(directory, 'root');
   const home = join(directory, 'home'), configDirectory = join(directory, 'config'), workingDirectory = join(directory, 'work');
   for (const path of [root, home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -279,7 +290,7 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
     '--operator-sender-id', configuration.operatorSenderId, '--chat-id', configuration.chatId, '--chat-kind', 'private', '--forum', 'false',
     '--message-thread-id', 'none', '--expires-at', String(expiresAt), '--max-cycles', '3', '--max-poll-seconds', '1', '--max-batch-items', '1',
     '--activation-record', activationPath, '--login-profile', profilePath, '--model', model, '--activation-cutoff', String(cutoff), '--arm', 'true'];
-  const result = spawnSync(process.execPath, args, { cwd: process.cwd(), env, encoding: 'utf8', timeout: 90000 });
+  const result = await spawnNode(args, { cwd: process.cwd(), env, timeout: 90000 });
   expect(result.status, result.stderr + ` retained ${directory}`).toBe(0);
   expect(requireExists(log), result.stderr).toBe(true);
   expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
@@ -319,16 +330,16 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
     const before = retainedFiles(root);
     const statusEnv = { ...env }; delete statusEnv.NODE_OPTIONS;
     const statusArgs = [...args]; statusArgs[statusArgs.indexOf('run')] = 'status';
-    const status = () => spawnSync(process.execPath, statusArgs, { cwd: process.cwd(), env: statusEnv, encoding: 'utf8', timeout: 30000 });
-    const recorded = status();
+    const status = () => spawnNode(statusArgs, { cwd: process.cwd(), env: statusEnv, timeout: 30000 });
+    const recorded = await status();
     expect(recorded.status, recorded.stderr).toBe(0);
     expect(JSON.parse(recorded.stdout).stage2.phase).toBe('api-accepted');
-    const restarted = spawnSync(process.execPath, args, { cwd: process.cwd(), env: statusEnv, encoding: 'utf8', timeout: 30000 });
+    const restarted = await spawnNode(args, { cwd: process.cwd(), env: statusEnv, timeout: 30000 });
     expect(restarted.status, restarted.stderr).toBe(0);
     expect(retainedFiles(root)).toEqual(before);
     const path = join(root, 'preview-stage2-state.json'), original = readFileSync(path, 'utf8');
     writeFileSync(path, JSON.stringify({ ...sidecar, references: {} }));
-    expect(status().status).not.toBe(0); writeFileSync(path, original);
+    expect((await status()).status).not.toBe(0); writeFileSync(path, original);
     expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
     expect(JSON.parse(readFileSync(report, 'utf8')).filter((row: any) => row.method === 'sendMessage')).toHaveLength(1);
   }

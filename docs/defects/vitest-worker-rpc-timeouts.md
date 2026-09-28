@@ -6,6 +6,8 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 
 **Disposition:** not quarantinable per test; runner errors are infrastructure. These runs stay recorded as RED; no gate built on them is reported green. Coverage withheld: none by quarantine. The runs' own results are valid evidence only for the tests they report as passed.
 
+**Cause found and repaired (2026-09-28, cint-1):** `tests/preview/stage2-recovery.test.ts` ran the launcher with blocking `spawnSync` calls (timeouts of 90 s and 30 s). A child running over 60 s under load froze the worker's event loop, so its `onTaskUpdate` RPC timed out. Those calls now use an async `spawnNode` helper. The file alone passes 42/42 with no runner error in 827 s under load. This record stays OPEN until a full run shows zero runner errors, since other blocking calls may exist.
+
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
