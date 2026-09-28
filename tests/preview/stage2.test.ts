@@ -59,7 +59,8 @@ it('composes exact Four input to one signed accepted answer in the bound private
     expect(s.calls.find(row => row.method === 'sendMessage').body.text).toContain('Four. café &lt;世界&gt; &amp; ready');
     expect(c.pollOnce()).toBeNull(); await c.resume(); expect(s.models).toHaveLength(1);
   } finally { c.close(); }
-}, 60000);
+}, 120000); // One composition turn performs ~1,700 real fsyncs (durable facts, captures, transport);
+// profiled at 31-50 s alone and 62.8 s in the full affected run on a loaded host, like the 120 s outbound cases below.
 
 import { encoded, inputMeasurements, requireOutboundBound, subscriptionInvocationPolicy } from './stage2-provider.js';
 import { createProviderJudgmentPort } from '../../src/judgment/index.js';

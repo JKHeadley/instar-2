@@ -18,7 +18,9 @@ export default defineConfig({
     // event-loop turn after every test case so the fork worker's task-update IPC can be
     // answered between synchronous cases — the structural remedy for the runner's fixed
     // 60s RPC deadline, which serialization and priority alone do not cure.
-    setupFiles: ['tests/setup/nice-worker.mjs', 'tests/setup/yield-worker.mjs'],
+    // conversation-owners: each test file's runner children claim conversations in their own
+    // temporary directory, never the real host directory (Rule 63 fence).
+    setupFiles: ['tests/setup/nice-worker.mjs', 'tests/setup/yield-worker.mjs', 'tests/setup/conversation-owners.mjs'],
     pool: 'forks',
     isolate: true,
     fileParallelism: !serialGate,

@@ -619,6 +619,11 @@ function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
 }
 /** The complete durable projection, as the compaction verifier compares it (Rule 26: the state itself, not a count of it). */
 export const durableProjection = (view: JournalView): Snapshot['view'] => snapshotOf(view, []).view;
+/** Canonical digest of the whole conversation projection (what a snapshot would save). Two views agree
+ * exactly when their digests match; Rule 33 uses it as a journal frontier and as the replay comparison. */
+export function projectionDigest(view: JournalView): string {
+  return createHash('sha256').update(JSON.stringify(snapshotOf(view, []).view)).digest('hex');
+}
 function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
   const saved = snapshot?.view;
   if (!saved || JSON.stringify(saved.genesis) !== JSON.stringify(genesis) || !Array.isArray(snapshot.retained)
@@ -2501,7 +2506,7 @@ export interface PreviewPorts {
   summaryCheck?(evidence: string): Promise<unknown>;
 
   stepCheck?: { jev(state: string, questions?: Record<string, { type: string; instructions: string }>): Promise<{ value: unknown; latencyMs: number }> };
-  /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture). */
+  /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture; Rules 63/33: ownership, store checks). */
   statusExtra?(): readonly string[];
   boundary?(stage: string): void;
 }
