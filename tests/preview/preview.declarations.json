@@ -549,6 +549,45 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
+    "id": "preview.durable-intake.store-agreements",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-store-agreements",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "irreversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      33,
+      43
+    ],
+    "holds": [
+      {
+        "rule": 33,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-store-agreements",
+          "stage": "runtime"
+        },
+        "portion": "every declared cross-store comparison runs at launch and on its cadence through the proof executor, and a disagreement with the authoritative store fails the plan",
+        "remainder": "detection on this machine only; comparisons across machines await the replication peer, and an unmeasurable comparison is reported, never counted as agreement"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
     "id": "preview.durable-intake.startup",
     "kind": "critical outcomes",
     "status": "live",

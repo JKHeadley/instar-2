@@ -147,7 +147,7 @@ it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fix
     // Build 9: the live runner's proof plans, each CI-executed through the real launcher.
     expect(loaded.catalog.probes.map(row => row.id)).toEqual(['held-notice-delivered', 'journal-restore', 'reminder-delivered', 'reply-delivered',
       'reply-drain', 'reply-review-reached', 'requested-summary-delivered', 'spend-cap-refusal', 'startup', 'status-answered',
-      'step-check-reached', 'stop-honored', 'summary-checked', 'telegram-identity', 'provider-outcomes'].sort().map(id => `P9-PREVIEW-${id}`));
+      'step-check-reached', 'stop-honored', 'store-agreements', 'summary-checked', 'telegram-identity', 'provider-outcomes'].sort().map(id => `P9-PREVIEW-${id}`));
     expect((originals[manifests[0]!] as { probes: { execution: string; cadence: number; artifact: { path: string } }[] }).probes
       .every(row => row.execution === 'ci' && row.cadence > 0 && row.artifact.path === 'tests/preview/proofs-launcher.test.ts')).toBe(true);
     expect(loaded.documents).toEqual([]);

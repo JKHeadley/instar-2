@@ -36,7 +36,7 @@ async function world(options: { review?: boolean } = {}) {
   };
   const ports = (extra: Partial<ProofPorts> = {}): ProofPorts => ({ now: () => clock.now, liveView: () => journal.view,
     durableView: () => { const copy = openPreviewJournal(path, key, undefined, undefined, true); try { return copy.view; } finally { copy.close(); } },
-    botIdentity: () => ({ id: 12345678 }), boundBot: 12345678, supervisors, ...extra });
+    botIdentity: () => ({ id: 12345678 }), boundBot: 12345678, supervisors, storeAgreements: () => [], ...extra });
   return { root, path, journal, clock, say, ports };
 }
 const delivered = { attempts: 1, accepted: 1, latestAccepted: true, latestReceipt: 7 };
@@ -48,7 +48,8 @@ const SAMPLE: Record<string, Observed> = { startup: { identity: 12345678, boundB
   'status-answered': delivered, 'provider-outcomes': { observedCalls: 1, completed: 1 },
   'reply-review-reached': { sentAnswers: 1, reviewed: 1, unreviewed: 0 },
   'spend-cap-refusal': { calls: 5, maxCalls: 5, replies: 1, maxReplies: 5, refusals: 1 },
-  'summary-checked': { summaries: 1, checked: 1, unchecked: 0, lost: 0 }, 'step-check-reached': { steps: 1, verdicts: 1, pending: 0 } };
+  'summary-checked': { summaries: 1, checked: 1, unchecked: 0, lost: 0 }, 'step-check-reached': { steps: 1, verdicts: 1, pending: 0 },
+  'store-agreements': { declared: 4, agree: 3, disagree: 0, unmeasured: 1, unchecked: 0, disagreeing: null, unmeasurable: 'unfinished-at-exit' } };
 /** A probe run at `at`, observing a source produced at `observedAt`. */
 const run = (id: string, at: number, disposition: 'passed' | 'failed' | 'unknown', observedAt: number | null = at, generation = 'g1',
   observed: Observed = SAMPLE[id]!): ProofRecord =>
@@ -211,6 +212,25 @@ describe('probes observe underlying state', () => {
     expect(plan('telegram-identity').probe(w.ports({ botIdentity: () => ({ id: 999 }) })).disposition).toBe('failed');
     expect(plan('telegram-identity').probe(w.ports({ botIdentity: () => null })).disposition).toBe('unknown');
     w.journal.close();
+  });
+  it("store agreements (Rule 33, build 11's declarations): a disagreement fails; never-checked or nothing measurable is unknown", () => {
+    const agreements = plan('store-agreements'), ports = (rows: { id: string; at: number | null; agree: boolean | null }[]) =>
+      ({ now: () => T0, storeAgreements: () => rows }) as unknown as ProofPorts;
+    const agreeing = [{ id: 'memory-provenance', at: T0 - HOUR, agree: true }, { id: 'serving-runner', at: T0, agree: true },
+      { id: 'snapshot-replay', at: T0, agree: true }, { id: 'unfinished-at-exit', at: T0, agree: null }];
+    const passed = agreements.probe(ports(agreeing));
+    expect(passed).toMatchObject({ disposition: 'passed', observedAt: T0 - HOUR,
+      observed: { declared: 4, agree: 3, disagree: 0, unmeasured: 1, unchecked: 0, disagreeing: null, unmeasurable: 'unfinished-at-exit' } });
+    expect(agreements.confirms(passed.observed)).toBe(true);
+    const disagreeing = agreements.probe(ports([...agreeing.slice(0, 3), { id: 'unfinished-at-exit', at: T0, agree: false }]));
+    expect(disagreeing).toMatchObject({ disposition: 'failed', observed: { disagree: 1, disagreeing: 'unfinished-at-exit' } });
+    expect(agreements.confirms(disagreeing.observed)).toBe(false);
+    expect(agreements.probe(ports([...agreeing.slice(0, 3), { id: 'unfinished-at-exit', at: null, agree: null }])).disposition).toBe('unknown');
+    expect(agreements.probe(ports(agreeing.map(row => ({ ...row, agree: null })))).disposition).toBe('unknown');
+    expect(agreements.probe(ports([])).disposition).toBe('unknown');
+    // A pass retained with a disagreement in it never binds (the witness is resolved from the observation).
+    expect(executeProof({ ...agreements, probe: () => ({ ...disagreeing, disposition: 'passed' as const }) }, ports(agreeing), 'g1', () => 0))
+      .toMatchObject({ disposition: 'unknown' });
   });
   it('reply review reached: over the whole population, one unreviewed answer fails it', async () => {
     const unreviewed = await world();

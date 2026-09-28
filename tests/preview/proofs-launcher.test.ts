@@ -32,7 +32,7 @@ it('runs the startup and due proofs on the live runner and reports them against 
   expect(log).toMatchObject({ available: true, unreadable: 0 });
   const plans = log.proofs.map(row => row.plan);
   expect(plans[0]).toBe('startup');
-  for (const plan of ['telegram-identity', 'journal-restore', 'reply-drain', 'reply-delivered', 'reply-review-reached', 'provider-outcomes'])
+  for (const plan of ['telegram-identity', 'journal-restore', 'store-agreements', 'reply-drain', 'reply-delivered', 'reply-review-reached', 'provider-outcomes'])
     expect(plans).toContain(plan);
   // The optional step observer is off in this launch: it is never run and never counted.
   expect(plans).not.toContain('step-check-reached');
@@ -40,11 +40,15 @@ it('runs the startup and due proofs on the live runner and reports them against 
   expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 8820318295, stepCheck: false } });
   expect(byPlan.get('journal-restore')).toMatchObject({ disposition: 'passed', observed: { restored: true, differing: null } });
   expect(byPlan.get('reply-delivered')).toMatchObject({ disposition: 'passed' });
+  // Rule 33: build 11's declared comparisons ran at launch through this executor, each verdict durable in agreements.jsonl.
+  expect(byPlan.get('store-agreements')).toMatchObject({ disposition: 'passed', observed: { declared: 4, disagree: 0, unchecked: 0 } });
+  expect(plans.indexOf('store-agreements')).toBe(1);
   expect(plans.length).toBe(new Set(plans).size);
 
   const status = JSON.parse(harness.status().stdout);
   const posture = new Map(status.proofs.map(row => [row.plan, row]));
-  for (const plan of ['startup', 'journal-restore', 'telegram-identity', 'reply-delivered']) expect(posture.get(plan).posture, plan).toBe('healthy');
+  for (const plan of ['startup', 'journal-restore', 'store-agreements', 'telegram-identity', 'reply-delivered']) expect(posture.get(plan).posture, plan).toBe('healthy');
+  expect(status.storeAgreements.every(row => row.lastCheckedAt !== null)).toBe(true);
   expect(posture.get('reply-review-reached').last.observed).toMatchObject({ sentAnswers: 1 });
   expect(posture.get('step-check-reached')).toMatchObject({ required: false, posture: 'inactive' });
   expect(status.protection.inventoryGaps).toEqual([]);

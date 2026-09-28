@@ -717,10 +717,13 @@ async function main() {
   // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
   let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
   // Rule 63: the conversation fence. Losing it stops new work; an effect never dispatches without it.
-  // Rule 33: declared store agreements run at launch and then on their cadence; each completed check is durable.
-  const checkAgreements = force => {
-    if (!journal) return;
-    try { runDueAgreements(agreementsPath, agreementInput(journal.view, wallNow()), force); } catch { /* an interrupted maintenance pass stays due; the last completed check remains visible */ }
+  // Rule 33: declared store agreements run through build 9's proof executor (the store-agreements plan): every
+  // comparison at launch, then each on its own cadence; each completed check stays durable in agreements.jsonl.
+  let agreementsForced = false;
+  const storeAgreements = () => {
+    const force = !agreementsForced; agreementsForced = true;
+    runDueAgreements(agreementsPath, agreementInput(journal.view, wallNow()), force);
+    return agreementStatus(agreementsPath, wallNow()).map(row => ({ id: row.id, at: row.lastCheckedAt, agree: row.agree }));
   };
   let retiredReason = null;
   const ownerHeld = () => {
@@ -995,7 +998,7 @@ async function main() {
     const launchVersions = capabilityVersions(), generation = launchVersions['preview.proofs'];
     proofRecords = readProofs(proofsPath).proofs;
     const supervisors = { replyReview: true, summaryReview: true, stepCheck: stepCheckEnabled };
-    proofPorts = { now: wallNow, liveView: () => journal.view, boundBot: Number(g.bot), supervisors,
+    proofPorts = { now: wallNow, liveView: () => journal.view, boundBot: Number(g.bot), supervisors, storeAgreements,
       durableView: () => { const copy = openJournal(journalPath, key(), undefined, undefined, true); try { return copy.view; } finally { copy.close(); } },
       botIdentity: () => {
         try {
@@ -1030,7 +1033,8 @@ async function main() {
     if (runs.readFailed) { endReason = 'run log unreadable'; pressureUnknown = true; throw Error('preview: run log unreadable'); }
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
-    checkAgreements(true);
+    // The run log and ownership exist now: the launch's store comparisons execute as a recorded proof.
+    recordProof(executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'store-agreements'), proofPorts, generation, clock.elapsed));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
     const pollFailure = async conflict => {
       failedPolls++;
@@ -1109,7 +1113,6 @@ async function main() {
       try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
       summarizeLater(); worker.gate();
       runDueProof();
-      checkAgreements(false);
       if (await stopAtCap()) break;
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {

@@ -3,15 +3,16 @@
  * durable records that answer the same question. Each agreement below names the
  * question, its AUTHORITATIVE input and the store or projection that must agree,
  * and runs an existing comparison where one exists. Checks run at every launch
- * and then on a cadence inside the runner's own loop (bounded maintenance); each
- * completed check is appended durably with its verdict. This detects; it never
+ * and then on their cadence, executed by build 9's proof executor (the
+ * `store-agreements` plan in proofs.ts); each completed check is appended durably
+ * with its verdict. This detects; it never
  * repairs, and it never rebuilds the independently authored run log from the
  * conversation journal merely because a view reads both.
  *
- * Seam for build 9 (required-protection executor): `STORE_AGREEMENTS` is the
- * typed declaration list and `runDueAgreements` the single execution entry; an
- * executor that owns due plans may call it instead of the runner loop, keeping
- * the same log so the last actual result, freshness and failures stay visible.
+ * Build 9 (required-protection executor) consumes this seam: `STORE_AGREEMENTS` is
+ * the typed declaration list and `runDueAgreements` the single execution entry,
+ * called through the executor's `storeAgreements` port with the same log, so the
+ * last actual result, freshness and failures stay visible.
  */
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';

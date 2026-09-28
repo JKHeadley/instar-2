@@ -59,12 +59,17 @@ export interface ProofPorts {
   readonly boundBot: number;
   /** Supervisors wired into this launch; an optional port that is off is reported, never counted. */
   readonly supervisors: Readonly<{ replyReview: boolean; summaryReview: boolean; stepCheck: boolean }>;
+  /** Rule 33: runs the declared cross-store comparisons (build 11's STORE_AGREEMENTS) that are due and returns every
+   * declared comparison's last completed verdict with its source time. `agree: null` is unmeasurable, never agreement. */
+  storeAgreements(): readonly AgreementReading[];
   /** At launch only: the options and capability versions this launch runs with, recorded by the startup proof. */
   readonly launch?: Observed;
 }
+/** One declared store comparison's last completed verdict (null `at`: never checked). */
+export interface AgreementReading { id: string; at: number | null; agree: boolean | null }
 export interface ProofOutcome { disposition: ProofDisposition; observed: Observed; detail: string; observedAt: number | null }
 
-export type PlanKind = 'startup' | 'critical-outcome' | 'restore' | 'duty';
+export type PlanKind = 'startup' | 'critical-outcome' | 'restore' | 'agreement' | 'duty';
 export interface ProofPlan {
   id: string; kind: PlanKind; rules: readonly number[]; capability: string;
   /** What underlying state the probe reads (the evidence source, not a symbol of it). */
@@ -150,6 +155,25 @@ const identityConfirmed = (o: Observed) => count(o.identity) && o.identity > 0 &
 const deliveryConfirmed = (o: Observed) => o.latestAccepted === true && count(o.latestReceipt) && o.latestReceipt > 0
   && count(o.accepted) && o.accepted > 0;
 
+/** Rule 33: disagreement fails; a never-checked comparison or nothing measurable is unknown; freshness binds to the
+ * oldest verdict. Unmeasurable comparisons are counted and named, never counted as agreement. */
+function agreementOutcome(readings: readonly AgreementReading[]): ProofOutcome {
+  const ids = (rows: readonly AgreementReading[]) => rows.length ? rows.map(row => row.id).sort().join(',') : null;
+  const disagree = readings.filter(row => row.at !== null && row.agree === false);
+  const unchecked = readings.filter(row => row.at === null), agree = readings.filter(row => row.at !== null && row.agree === true);
+  const unmeasured = readings.filter(row => row.at !== null && row.agree === null);
+  const observed = { declared: readings.length, agree: agree.length, disagree: disagree.length, unmeasured: unmeasured.length,
+    unchecked: unchecked.length, disagreeing: ids(disagree), unmeasurable: ids(unmeasured) };
+  const times = readings.flatMap(row => row.at === null ? [] : [row.at]);
+  const oldest = times.length ? Math.min(...times) : null;
+  if (!readings.length) return outcome('unknown', observed, 'no store comparison is declared', null);
+  if (disagree.length) return outcome('failed', observed, `stores disagree with their authority: ${ids(disagree)}`, oldest);
+  if (unchecked.length) return outcome('unknown', observed, `never checked yet: ${ids(unchecked)}`, oldest);
+  if (!agree.length) return outcome('unknown', observed, 'no declared comparison was measurable', oldest);
+  return outcome('passed', observed, `${agree.length} of ${readings.length} declared store comparisons agree`
+    + (unmeasured.length ? `; ${unmeasured.length} unmeasurable (${ids(unmeasured)})` : ''), oldest);
+}
+
 export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
   { id: 'startup', kind: 'startup', rules: [9, 26, 43], capability: 'preview.durable-intake', witness: 'telegram.bot-api', trigger: 'launch',
     observes: 'the authenticated bot identity answer and the replayed journal at launch', cadenceMs: 30 * DAY, freshnessMs: 30 * DAY,
@@ -173,6 +197,12 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
         : outcome('failed', { ...base, restored: true, differing: differing.join(',') },
           `the durable replay differs from the live projection in ${differing.join(', ')}`, at);
     }),
+  // Rule 33 through this executor: build 11 declares the comparisons and keeps each verdict in agreements.jsonl;
+  // this plan runs the due ones and proves, from their verdicts, that no declared store disagrees with its authority.
+  cadence('store-agreements', 'agreement', 'preview.durable-intake', 'preview.durable-journal', [26, 33, 43],
+    'the declared cross-store comparisons, each authoritative store against its projection', HOUR, 7 * HOUR,
+    o => count(o.declared) && o.declared > 0 && o.unchecked === 0 && o.disagree === 0 && count(o.agree) && o.agree > 0,
+    ports => agreementOutcome(ports.storeAgreements())),
   cadence('reply-drain', 'critical-outcome', 'preview.reply', 'preview.durable-journal', [9, 43],
     'accepted operator messages in the journal and whether each was settled', 15 * MINUTE, HOUR,
     o => count(o.unfinished) && typeof o.backlogOverdue === 'boolean' && !(o.backlogOverdue && o.inhibition === null), ports => {
