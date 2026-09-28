@@ -111,6 +111,39 @@ it('counts an UNKNOWN subscription review separately from a completed answer and
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+it('counts an unresolved revised-text review as UNKNOWN in status and the cap-raise refusal, and a conclusive one not', () => {
+  for (const verdict of [undefined, 'unavailable', 'pass', 'violation'] as const) {
+    const dir = root(), path = join(dir, 'journal.encrypted');
+    try {
+      let journal = openPreviewJournal(path, key, genesis({ maxCalls: 10 }));
+      worker(journal, { calls: 0, sends: 0 }).intake([update(1)]);
+      journal.append({ kind: 'reserve', id: id(1), at: 1000 });
+      journal.append({ kind: 'answer', id: id(1), text: 'answer', at: 1000 });
+      journal.append({ kind: 'reply-revision-reserve', id: id(1), objections: ['raw_path'], at: 1000 });
+      journal.append({ kind: 'reply-revision', id: id(1), state: 'complete', text: 'revised answer', at: 1000 });
+      journal.append({ kind: 'reply-revision-review-reserve', id: id(1), at: 1000 });
+      if (verdict !== undefined) journal.append({ kind: 'reply-revision-review', id: id(1), verdict,
+        ruleIds: verdict === 'violation' ? ['defers_work'] : [], at: 1000 });
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      const unknown = verdict === undefined || verdict === 'unavailable' ? 1 : 0;
+      expect(unknownCallCounts(journal.view), String(verdict)).toEqual({ answers: 0, summaries: 0, reviews: unknown, jev: 0, total: unknown });
+      journal.close();
+      const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+        'tests/preview/journal-agent.mjs', 'status', '--root', dir], { cwd: process.cwd(), encoding: 'utf8',
+        env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 10000 });
+      expect(status.status, status.stderr).toBe(0);
+      expect(JSON.parse(status.stdout)).toMatchObject({ unknownCalls: unknown, unknownCallBreakdown: { reviews: unknown, total: unknown } });
+      journal = openPreviewJournal(path, key);
+      const raise = () => raiseJournalCaps(journal, { maxCalls: 11, maxReplies: 4, maxTurns: 4,
+        authority: 'Justin recorded raise', at: 1001 });
+      if (unknown) { expect(raise).toThrow('UNKNOWN'); expect(journal.view.limits.maxCalls).toBe(10); }
+      else { raise(); expect(journal.view.limits.maxCalls).toBe(11); }
+      journal.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
 it('replays a previously valid cap raise after unavailable Jev and completed subscription review', () => {
   const dir = root(), path = join(dir, 'journal.encrypted'), origin = genesis();
   try {

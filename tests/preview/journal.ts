@@ -1551,7 +1551,10 @@ export function unknownCallCounts(view: JournalView) {
   const answers = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const summaries = view.summaryReservations.size;
   const reviews = view.order.filter(turn => turn.reviewReserved && turn.reviewState !== 'complete' && turn.reviewState !== 'rejected'
-    && !turn.replyChecks?.some(check => check.path === 'subscription' && (check.verdict === 'pass' || check.verdict === 'violation'))).length;
+    && !turn.replyChecks?.some(check => check.path === 'subscription' && (check.verdict === 'pass' || check.verdict === 'violation'))).length
+    // A revised-text review stays UNKNOWN until it records a conclusive verdict.
+    + view.order.filter(turn => turn.revisionReviewReserved && turn.revisionReview?.verdict !== 'pass'
+      && turn.revisionReview?.verdict !== 'violation').length;
   const jev = view.order.filter(turn => turn.jevReserved && !turn.replyChecks?.some(check => check.path === 'jev' && check.verdict !== 'unavailable')).length;
   return { answers, summaries, reviews, jev, total: answers + summaries + reviews + jev };
 }
