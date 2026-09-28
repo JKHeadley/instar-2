@@ -172,4 +172,19 @@ describe('governed documents are discovered by declaration and by reference (Rul
     r.write('notes/full-text.md', '# Full text\n\n**Status: approved. Governed.**\n\nThe first draft said otherwise.\n'); r.commit('marker outside docs');
     expect(r.governed('docs').out).toContain('notes/full-text.md:5: history marker "first draft"');
   }, 120_000);
+
+  it('demands a changelog only for approved versions the checked tree contains', () => {
+    const r = repo();
+    r.write('docs/g.md', '# G\n\n**Status: approved. Governed.**\n\nThe body.\n'); r.commit('first approval');
+    r.git('update-ref', 'refs/remotes/origin/main', 'HEAD'); r.git('checkout', '-q', '-b', 'feature');
+    r.write('src/a.ts', 'export const a = 1;\n'); r.commit('unrelated branch work');
+    r.git('checkout', '-q', 'main'); r.write('docs/g.md', '# G\n\n**Status: approved. Governed.**\n\nThe body, sharpened.\n');
+    r.git('update-ref', 'refs/remotes/origin/main', r.commit('second approval on main')); r.git('checkout', '-q', 'feature');
+    // Main's later approval is not in this tree, so this tree owes no changelog for it.
+    expect(r.governed('docs').status).toBe(0);
+    r.git('merge', '-q', '--no-edit', 'main');
+    const holds = r.governed('docs');
+    expect(holds.status).toBe(1);
+    expect(holds.out).toContain('docs/g.md: governed with more than one approved version but no sibling g.changelog.json');
+  }, 120_000);
 });

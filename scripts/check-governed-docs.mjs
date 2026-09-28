@@ -27,7 +27,10 @@ export const REFERENCE_SOURCES = ["docs/00-the-purpose.md", "docs/00-the-policy-
 // on main that touched the document. One commit = one version = no changelog required yet.
 function approvedVersions(file) {
   try {
-    return Number(execFileSync("git", ["rev-list", "--count", "origin/main", "--", file], { encoding: "utf8" }).trim());
+    // Approved versions this tree contains: main's history up to its merge-base with HEAD. A later
+    // approval on main that this checkout does not hold cannot demand a changelog this tree lacks.
+    const base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
+    return Number(execFileSync("git", ["rev-list", "--count", base, "--", file], { encoding: "utf8" }).trim());
   } catch { return Infinity; } // no git: assume many, so the stricter rule applies
 }
 
