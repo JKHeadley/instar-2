@@ -805,14 +805,17 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     // Work that concluded it waits on someone keeps a bounded reassessment: an operator dependency is reassessed at
     // the verified operator's next message after that result (it may supply what is needed), an outside one on the
     // revisit cadence. The work result stays the one current account of the dependency until a later result replaces it.
-    const resume = work?.outcome === 'waiting' && work.inFlight === undefined ? work.waitsOn === 'operator'
-      ? Math.max(work.lastSlot + 1, view.order.slice(work.turnsSeen ?? view.order.length)
-        .find(turn => verifiedOperatorTurn(view, turn) && !probeTurn(view, turn))?.at ?? Infinity)
+    // An interrupted (uncertain) reassessment keeps that dependency and retries on the revisit cadence, never at once.
+    const resume = work?.waitsOn !== undefined && work.inFlight === undefined ? work.waitsOn === 'operator'
+      ? Math.max(work.lastSlot + 1, work.outcome === 'uncertain' ? work.last + LOOP_REVISIT_MS : 0,
+        view.order.slice(work.turnsSeen ?? view.order.length)
+          .find(turn => verifiedOperatorTurn(view, turn) && !probeTurn(view, turn))?.at ?? Infinity)
       : work.last + LOOP_REVISIT_MS : undefined;
     const first = waits === 'nothing' ? source.at + LOOP_REVISIT_MS
       : waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone) : undefined;
-    if (first === undefined && resume === undefined && !pendingReport(work)) return;
-    items.push({ key, kind: 'commitment', id, slot: resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
+    // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
+    if (work?.inFlight === undefined && first === undefined && resume === undefined && !pendingReport(work)) return;
+    items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
       awaitingDelivery: attachableReport(work), deliveryUnknown: pendingReport(work) && !attachableReport(work) });
   });
   openBlockers(view).forEach(({ id, note }) => {
@@ -864,9 +867,13 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     || row.assessment !== undefined && !validBlockerAssessment(row.assessment)
     || row.recheckAt !== undefined && !recheckInRange(row.recheckAt, row.at)) throw Error('preview journal: obligation result order');
   settleTokens(view, tokenKey, row.usage);
-  // Each result is the current account: a dependency or note from an earlier result never outlives it.
+  // Each result is the current account: a dependency or note from an earlier result never outlives it. An uncertain
+  // result is no account at all, so a waiting dependency (its need and what the operator sent since) is carried over.
   const { inFlight: _done, waitsOn: _waits, note: _note, ...rest } = work;
-  view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome, turnsSeen: view.order.length,
+  const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
+  view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
+    turnsSeen: carried ? work.turnsSeen ?? view.order.length : view.order.length,
+    ...(carried ? { waitsOn: work.waitsOn, ...(work.note === undefined ? {} : { note: work.note }) } : {}),
     ...(row.note === undefined ? {} : { note: row.note }), ...(row.waitsOn === undefined ? {} : { waitsOn: row.waitsOn }),
     ...(row.report === undefined ? {} : { report: { text: row.report, at: row.at } }) };
   if (kind === 'blocker' && (row.outcome === 'still-blocked' || row.outcome === 'cleared')) {
@@ -4412,7 +4419,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const workState = (id: number) => {
     const work = journal.view.obligationWork[`commitment:${id}`];
     if (!work || work.inFlight !== undefined) return {};
-    return work.outcome === 'waiting' ? { waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
+    return work.waitsOn !== undefined ? { waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
       : work.outcome === 'continue' ? { progress: clean(redact(work.note!).text, true) } : {};
   };
   /** Keeps only proposed commitments whose quote occurs exactly in the named side (the message, or
@@ -5129,9 +5136,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           recheckDue: localStamp(note.recheckAt, zone).slice(0, 10) };
       })();
       const context = JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
-        ...(work?.note && work.outcome !== 'waiting' ? { lastProgress: clean(redact(work.note).text, true) } : {}),
+        ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
-        ...(work?.outcome === 'waiting' && work.note ? { waitingFor: { waitsOn: work.waitsOn, need: clean(redact(work.note).text, true),
+        ...(work?.waitsOn !== undefined && work.note ? { waitingFor: { waitsOn: work.waitsOn, need: clean(redact(work.note).text, true),
           since: isoMinute(work.last) }, operatorMessagesSince: journal.view.order.slice(work.turnsSeen ?? journal.view.order.length)
             .filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)).slice(-5)
             .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), 1000) })) } : {}),

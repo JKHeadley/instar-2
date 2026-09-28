@@ -70,7 +70,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // summaries replace the retired morning-reminder grant) and datedDecision's remind:true clause changed.
     // cbuild-4 re-pin: this operator packet now carries the obligation guide (directives, open loops,
     // governed blocker records) and the governing-constraint keys; nothing else in it changed.
-    expect(packetHash).toBe('e82fceffa2122e705e54b2f0a4f4cbc1e7017d2e39bf230f125841241cfba0a1');
+    // cbuild-4 repair 2 re-pin: diffed against repair 1's packet, only two guide sentences changed: the capability
+    // line explains an item's need/progress, and the blocker contract drops "tried" for capability-key evidence.
+    expect(packetHash).toBe('583bf4b6af421b0002fb0706f9203d7e7f87586fcd769983366f74a990539e65');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

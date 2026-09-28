@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork,
+import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE } from './journal-test-worker.js';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
 import { statusReply } from './status-command.js';
@@ -29,8 +29,8 @@ type Answer = string | Record<string, unknown>;
 type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
   verdict?: (context: Record<string, unknown>) => 'pass' | 'violation' };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
-  waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer; review?: Review; stopped?: () => boolean;
-  receipt?: (text: string) => boolean } = {}) {
+  waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer | Promise<Answer>; review?: Review; stopped?: () => boolean;
+  receipt?: (text: string) => boolean; nextUpdate?: number } = {}) {
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(options.maxBytes, options.maxCalls));
   const clock = { now: T0 };
@@ -55,7 +55,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
     model: async input => {
       if (input.id.startsWith('obligation:')) {
         work.push(input.id);
-        const answer = options.work?.(JSON.parse(input.context) as Record<string, unknown>) ?? { outcome: 'continue', note: 'Still working.' };
+        const answer = await options.work?.(JSON.parse(input.context) as Record<string, unknown>) ?? { outcome: 'continue', note: 'Still working.' };
         return typeof answer === 'string' ? answer : JSON.stringify(answer);
       }
       if (input.id.startsWith('summary:')) {
@@ -70,7 +70,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
     },
     send: async input => { if (options.receipt && !options.receipt(input.text)) return null; sent.push(input.text); return sent.length; },
     checkOutbound: () => {} });
-  let next = 1;
+  let next = options.nextUpdate ?? 1;
   /** One operator message dated at the current clock, answered and summarized. */
   const say = async (text: string) => {
     const id = next++;
@@ -371,13 +371,16 @@ it('keeps waiting work owned: the packet shows its current need, the operator\'s
   const root = origin();
   const seen: Record<string, unknown>[] = [];
   try {
-    const w = world(root, { answer: question => question === INVOICE
-      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Thanks.',
-    work: context => { seen.push(context);
+    let hang = false;
+    const answer = (question: string): Answer => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Thanks.';
+    const work = (context: Record<string, unknown>): Answer | Promise<Answer> => { seen.push(context);
+      if (hang) return new Promise<Answer>(() => {});
       const since = (context.operatorMessagesSince as { text: string }[] | undefined) ?? [];
       return since.some(item => item.text.includes('INV-42'))
         ? { outcome: 'report', report: 'Invoice INV-42 is for 120 dollars and is due on Friday.' }
-        : { outcome: 'waiting', waitsOn: 'operator', note: NEED }; } });
+        : { outcome: 'waiting', waitsOn: 'operator', note: NEED }; };
+    const w = world(root, { answer, work });
     await w.say(INVOICE);
     w.clock.now += LOOP_REVISIT_MS + 60_000;
     expect(await w.worker.workObligations()).toBe(true);
@@ -398,18 +401,39 @@ it('keeps waiting work owned: the packet shows its current need, the operator\'s
     // Nothing new from the operator: no reassessment is spent, however long it waits.
     w.clock.now += 3 * DAY;
     expect(await w.worker.workObligations()).toBe(false);
-    // The operator supplies it: the next tick reassesses with that message and finishes the work.
+    // The operator supplies it: the next tick reassesses with that message. That reassessment is interrupted: the
+    // provider never returns and the process ends with the step durably started.
     await w.say('The invoice reference code is INV-42. Please continue.');
     expect(dueObligationWork(w.journal.view, w.clock.now)).toMatchObject([{ key: 'commitment:0' }]);
-    expect(await w.worker.workObligations()).toBe(true);
-    expect(seen.at(-1)).toMatchObject({ waitingFor: { waitsOn: 'operator', need: NEED } });
-    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report' });
-    expect(w.journal.view.obligationWork['commitment:0']!.waitsOn).toBeUndefined();
-    await w.say('Thanks, anything else?');
-    expect(w.sent.at(-1)).toContain('Invoice INV-42 is for 120 dollars');
-    expect(w.journal.view.closed.has(0)).toBe(true);
-    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ open: 0, ownedWork: 0, waitingWork: [] });
+    hang = true;
+    void w.worker.workObligations();
+    while (w.journal.view.obligationWork['commitment:0']!.inFlight === undefined) await new Promise(resolve => setTimeout(resolve, 5));
+    expect(seen).toHaveLength(3);
     w.journal.close();
+    hang = false;
+    // Replayed by a new process, the interrupted step is still owned work: scheduled, counted, never idle.
+    const again = world(root, { answer, work, nextUpdate: 4 });
+    again.clock.now = w.clock.now;
+    expect(obligationSchedule(again.journal.view)).toMatchObject([{ key: 'commitment:0', inFlight: true }]);
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ open: 1, workInFlight: 1, ownedWork: 1, unfinished: 1 });
+    expect(loopHealth(again.journal.view, again.clock.now).state).not.toBe('idle');
+    // Its recovery owner records it UNKNOWN and does not repeat it at once; the need and the operator's supply survive.
+    expect(await again.worker.workObligations()).toBe(false);
+    expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'uncertain', waitsOn: 'operator', note: NEED });
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ open: 1, workInFlight: 0, ownedWork: 1, dueWork: 0 });
+    expect(again.work).toHaveLength(0);
+    // On the revisit cadence a new bounded attempt sees the same need and the supply, and finishes the work.
+    again.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await again.worker.workObligations()).toBe(true);
+    expect(seen.at(-1)).toMatchObject({ waitingFor: { waitsOn: 'operator', need: NEED } });
+    expect(seen.at(-1)!.operatorMessagesSince).toEqual(expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining('INV-42') })]));
+    expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report' });
+    expect(again.journal.view.obligationWork['commitment:0']!.waitsOn).toBeUndefined();
+    await again.say('Thanks, anything else?');
+    expect(again.sent.at(-1)).toContain('Invoice INV-42 is for 120 dollars');
+    expect(again.journal.view.closed.has(0)).toBe(true);
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ open: 0, ownedWork: 0, waitingWork: [] });
+    again.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

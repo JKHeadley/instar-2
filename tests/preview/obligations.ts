@@ -84,9 +84,11 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const future = idle.filter(item => item.slot > now && Number.isFinite(item.slot));
   const awaitingDelivery = schedule.filter(item => item.awaitingDelivery).length;
   const waitingWork = idle.flatMap(item => { const work = view.obligationWork[item.key];
-    return work?.outcome === 'waiting' && item.slot > now ? [{ key: item.key, waitsOn: work.waitsOn ?? 'operator', need: work.note ?? '' }] : []; });
+    return work?.waitsOn !== undefined && item.slot > now ? [{ key: item.key, waitsOn: work.waitsOn, need: work.note ?? '' }] : []; });
   const workInFlight = schedule.filter(item => item.inFlight).length;
-  const waiting = [...turns.map(turn => turn.at), ...due.map(item => item.slot)].sort((a, b) => a - b);
+  // A started step is unfinished until its result lands: an interrupted one stays visible to health and the exit.
+  const waiting = [...turns.map(turn => turn.at), ...due.map(item => item.slot),
+    ...schedule.filter(item => item.inFlight).map(item => item.slot)].sort((a, b) => a - b);
   const oldestAt = waiting[0];
   const worked = Object.values(view.obligationWork).filter(work => work.inFlight === undefined && work.outcome !== undefined
     && work.outcome !== 'uncertain' && work.outcome !== 'failed').map(work => work.last);
@@ -105,7 +107,7 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
     workInFlight, awaitingDelivery, scheduledWork: future.length,
     deliveryUnknown: schedule.filter(item => item.deliveryUnknown).length, waitingWork,
-    ownedWork: waiting.length + future.length + workInFlight + awaitingDelivery
+    ownedWork: waiting.length + future.length + awaitingDelivery
       + waitingWork.filter(item => !Number.isFinite(schedule.find(entry => entry.key === item.key)!.slot)).length,
     nextWorkAt: future.length ? Math.min(...future.map(item => item.slot)) : null, rejectedDeclarations: view.rejectedObligations,
     oldestUnfinishedAt: oldestAt ?? null, oldestUnfinishedAgeMs: oldestAt === undefined ? null : Math.max(0, now - oldestAt),
