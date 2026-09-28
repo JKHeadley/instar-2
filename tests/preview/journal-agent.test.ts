@@ -4,16 +4,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
 import { openPreviewJournal } from './journal.js';
-
-/** The substitute provider module registers the same doorway the launcher selects by default. */
-const FIXTURE_DOORWAY = `import { SUBSCRIPTION_DOORWAYS } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
-export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
-export const subscriptionDoorway = id => {
-  if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error('subscription doorway '+id+' is not registered');
-  return { id, contract: SUBSCRIPTION_DOORWAYS[id].contract, create: input => createClaudeCodeSubscriptionRoute(input) };
-};`;
 
 it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding) => {
   const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');
