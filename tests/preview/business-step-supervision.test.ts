@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { STEP_SUPERVISOR_EXHAUSTED, type JournalRecord } from './journal.js';
 import { stepCoverage } from './proofs.js';
+import { interpretStepJev, stepQuestionFor, stepQuestionsFor } from './step-check.js';
 
 const key = new Uint8Array(32).fill(37);
 const zone = 'America/Los_Angeles';
@@ -200,4 +201,18 @@ it('an exhausted-budget judgment is refused while budget remains, and a requeste
     expect(summary.reserved).toBe(false);
     expect(x.state.models.filter(id => id === summary.id)).toEqual([]);
   } finally { x.close(); }
+});
+
+it('real-Jev-shaped answers to the per-step questions: the requested key decides; an answer under another key is unavailable (live risk)', () => {
+  // Each request names exactly one question (stepQuestionsFor); Jev is told the question in the request, not a system prompt.
+  expect(Object.keys(stepQuestionsFor('reminder-due:reminder-1'))).toEqual(['not_due']);
+  const jev = (answers: Record<string, unknown>) => ({ model: 'jev-1.13.0', answers, usage: { input_tokens: 812, output_tokens: 4 } });
+  const question = stepQuestionFor('reminder-due:reminder-1');
+  expect(interpretStepJev(jev({ not_due: { type: 'noul', noul: 0.04 } }), 310, question)).toMatchObject({ verdict: 'pass', score: 0.04 });
+  // A confident not-due on a genuinely due reminder keeps it unsent (the calibration risk the desk watches on a step-check launch).
+  expect(interpretStepJev(jev({ not_due: { type: 'noul', noul: 0.91 } }), 310, question)).toMatchObject({ verdict: 'violation' });
+  expect(interpretStepJev(jev({ not_due: { type: 'noul', noul: 0.5 } }), 310, question)).toMatchObject({ verdict: 'unsure' });
+  // Answered under the old generic key, or as a word: malformed, recorded as an unavailable check by the runner.
+  expect(() => interpretStepJev(jev({ unsupported_effect: { type: 'noul', noul: 0.04 } }), 310, question)).toThrow('malformed');
+  expect(() => interpretStepJev(jev({ not_due: { type: 'noul', noul: 'no' } }), 310, question)).toThrow('malformed');
 });

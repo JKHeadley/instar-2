@@ -50,6 +50,23 @@ it('a returned Decision may echo the envelope floor but never widen it or choose
   expect(prepared.floor).toEqual(ENVELOPE_FLOOR);
 });
 
+it('real-model-shaped Decisions: the floor the system prompt asks the model to copy passes; realistic miscopies are malformed (live risk)', () => {
+  // SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT tells the model to return floor {allowed: bindings.floor, chosen: <action>} and to
+  // copy floor.allowed exactly. These are the shapes a real model emits, parsed from text as the launcher does.
+  const decision = (floor: string) => JSON.parse(`{"type":"Decision","schemaVersion":1,"id":"answer-1","at":1000,
+    "by":{"judgment":"judgment","model":"claude-test-1","route":"preview-subscription"},
+    "conclusion":{"subject":"preview-stage2-answer","predicate":"answer-text","value":"Juniper.","evidence":["turn:1"]},
+    "reason":{"subject":"answer","predicate":"grounded-in","value":{"source":"history"},"evidence":["turn:1"]}${floor}}`) as { floor?: unknown };
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":{"type":"ActionFloor","schemaVersion":1,"actions":["work"],"default":"work"},"chosen":"work"}'))).toBe(true);
+  expect(decisionWithinFloor(decision(',"floor":{"chosen":"work","allowed":{"default":"work","actions":["work"],"schemaVersion":1,"type":"ActionFloor"}}'))).toBe(true);
+  expect(decisionWithinFloor(decision(''))).toBe(true);
+  // Miscopies a model can plausibly make; each becomes the fixed failure reply instead of an answer.
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":"bindings.floor","chosen":"work"}'))).toBe(false);
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":{"type":"ActionFloor","schemaVersion":1,"actions":["work"],"default":"work"},"chosen":"answer"}'))).toBe(false);
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":{"type":"ActionFloor","schemaVersion":"1","actions":["work"],"default":"work"},"chosen":"work"}'))).toBe(false);
+  expect(decisionWithinFloor(decision(',"floor":null'))).toBe(false);
+});
+
 it('every registered judgment names a route, a closed action space and a default inside it', () => {
   for (const [name, judgment] of Object.entries(LIVE_JUDGMENTS)) {
     expect(['preview-subscription', 'typesafe-jev'], name).toContain(judgment.route);
