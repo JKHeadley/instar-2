@@ -3,7 +3,7 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, sendOutcomeCounts, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, sendOutcomeCounts, sendOutcomeOf, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
@@ -28,7 +28,7 @@ import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
-import { activationNeedsResolvedApproval, resolveActivationApprovals } from './activation-approval.js';
+import { resolveActivationAuthority } from './activation-authority.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -102,13 +102,16 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
   sites: { 'preview.journal': 'closed', 'types.decode': 'closed' }, keys: {}, allowRedelegation: false,
   conflictStanding: { ordinary: 'delegate', authority: 'operator' } }, captures: {} };
-/** Rules 94/98: a successor activation's explicit yes and waiver must resolve to operator-signed
- * records bound to this exact act; their reference strings alone never authorize it. */
-const requireResolvedApproval = (options, activation, operator) => {
-  if (!activationNeedsResolvedApproval(activation)) return;
-  const approvals = JSON.parse(readFileSync(required(options, 'approval-record'), 'utf8'));
-  const resolution = resolveActivationApprovals(activation, Array.isArray(approvals) ? approvals : [approvals], operator);
+/** Rules 94/98/103/104: the activation is exercised only under a recorded operator authority that
+ * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
+ * The record defaults to `activation-authority.json` beside the activation record. */
+const requireAuthority = (options, activation, activationPath, view, now) => {
+  const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
+  let record = null;
+  try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
+  const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now);
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
+  return resolution;
 };
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
@@ -321,7 +324,9 @@ async function main() {
             : t.intent ? (t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE
               ? 'holding reply UNKNOWN' : 'UNKNOWN') : 'pending' })),
       heldNotices: view.view.order.filter(t => t.heldNoticeIntent !== undefined).map(t => ({ update: t.update,
-        state: t.heldNoticeSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
+        ...(() => { const settled = sendOutcomeOf(view.view, `held-notice:${t.id}`, t.heldNoticeSent);
+          return { state: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'refused' : 'UNKNOWN',
+            ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })() })),
       unknownCalls: unknownCallCounts(view.view).total,
       unknownCallBreakdown: unknownCallCounts(view.view),
       capReports: [...view.view.capReports],
@@ -351,8 +356,9 @@ async function main() {
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       mentionedDates: view.view.mentionedDates.size,
       reminders: { intents: view.view.reminders.size,
-        accepted: [...view.view.reminders.values()].filter(item => item.sent !== undefined).length,
-        unknown: [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
+        ...(() => { const kinds = [...view.view.reminders.entries()].map(([key, item]) => reminderOutcome(view.view, key, item).kind);
+          return { accepted: kinds.filter(kind => kind === 'accepted').length, refused: kinds.filter(kind => kind === 'refused').length,
+            unknown: kinds.filter(kind => kind === 'unknown').length }; })(),
         grant: view.view.reminderGrant,
         requested: view.view.dated.filter(item => item.remind).length,
         pending: pendingRequestedReminders(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
@@ -430,7 +436,10 @@ async function main() {
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
         writer: writerOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
-          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
+          ...(() => { const settled = sendOutcomeOf(view.view, replyTarget(reply), reply.sent);
+            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
+              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })(),
+          grounding: reply.grounding ?? null } : null,
         ...(next ? { next } : {}), withheld: withheldView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
@@ -512,10 +521,11 @@ async function main() {
       const activation = JSON.parse(bytes);
       const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
       validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
-      requireResolvedApproval(options, activation, renewJournal.view.genesis.operator);
+      const granted = requireAuthority(options, activation, required(options, 'activation-record'), renewJournal.view, now);
       if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
         throw Error('preview: activation differs from journal');
-      renewJournalExpiry(renewJournal, { expires: activation.expiresAt, authority: required(options, 'authority'), at: now,
+      renewJournalExpiry(renewJournal, { expires: activation.expiresAt, at: now,
+        authority: `${required(options, 'authority')} [grant ${granted.grant}; waiver ${granted.waiver}; record ${granted.digest}]`,
         activation: `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}` });
     } finally { renewJournal?.close(); storage.close(); }
     return;
@@ -676,8 +686,10 @@ async function main() {
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
-          const prepared = modelEnvelope({ question,
-            context: replyReviewContext(originalPrompt, text, reviewRules), id: `${id}:reply-review` });
+          const context = replyReviewContext(originalPrompt, text, reviewRules);
+          // Rule 29: the review input is written by the runner, a verified system principal.
+          const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-review\n${context}`, wallNow()));
+          const prepared = modelEnvelope({ question, context, id: `${id}:reply-review`, ...(writer ? { writer } : {}) });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
@@ -699,7 +711,10 @@ async function main() {
           const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
           const id = `summary:${through}:review`;
           let prepared;
-          try { prepared = modelEnvelope({ question, context: state, id }); }
+          try {
+            const writer = envelopeWriter(journal.systemWriter('summary-review', `${id}\n${state}`, wallNow()));
+            prepared = modelEnvelope({ question, context: state, id, ...(writer ? { writer } : {}) });
+          }
           catch { return { verdict: 'unavailable', retryable: true, latencyMs: Math.round(performance.now() - start) }; }
           const result = await invokeSubscription(prepared, id);
           return interpretSummaryReview(result, Math.round(performance.now() - start),
@@ -725,7 +740,7 @@ async function main() {
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
-    requireResolvedApproval(options, activation, g.operator);
+    requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {

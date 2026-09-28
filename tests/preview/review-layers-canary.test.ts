@@ -46,7 +46,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
   const role = question.startsWith('Judge this proposed reply') ? 'reply-review'
     : question.startsWith('Review this rolling summary') ? 'summary-review'
     : question.startsWith('Summarize this preview conversation') ? 'summary' : 'answer';
-  appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ role, question, context: context.packet }) + '\\n');
+  appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ role, question, context: context.packet, writer: binding.writer ?? null }) + '\\n');
   let value = role === 'answer' ? ${JSON.stringify(reply)}
     : role === 'summary' ? JSON.stringify({ summary: ${JSON.stringify(`${operatorText}\n${reply}`)},
         people: [], commitments: [], memory: [{ mode: 'prefer', source: context.packet.memoryRequest.id,
@@ -103,6 +103,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       expect(roles).toEqual(mode === 'summary-contradiction'
         ? ['summary', 'summary-review', 'summary', 'summary-review']
         : ['summary', 'summary-review', 'answer', 'reply-review']);
+      // Rule 29: every model input names its verified writer. The operator writes the answer's input;
+      // the runner, a verified system principal, writes the summary and both review envelopes.
+      const runner = { id: `preview-runner:${world.configuration.botId}`, kind: 'system', adapter: 'preview-runner' };
+      for (const row of rows) expect(row.writer, row.role).toEqual(row.role === 'answer'
+        ? { id: world.configuration.operatorSenderId, kind: 'person', adapter: 'telegram-bot-api:offline-test-endpoint' } : runner);
       if (mode !== 'summary-contradiction')
         expect(rows.find(row => row.role === 'reply-review').context).toMatchObject({
           operatorMessage: operatorText, candidateReply: `PREVIEW — ${reply}`,

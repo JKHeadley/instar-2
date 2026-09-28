@@ -64,6 +64,19 @@ function writePredecessorCursor(root: string, machine: string, cursor: number) {
   } finally { storage.close(); }
 }
 
+/** The recorded operator authority the offline launchers resolve an activation against: an
+ * activation grant plus a bounded one-week renewal grant, and the waiver of the departed rules. */
+export const offlineActivationAuthority = (activation: Record<string, any>) => ({ type: 'PreviewActivationAuthority', schemaVersion: 1,
+  grants: [{ id: 'offline-standing-grant', grantor: String(OPERATOR), grantee: 'echo-desk', words: 'offline approval stand-in',
+    source: 'offline verified operator record', issuedAt: START, actions: ['activate-subscription-preview', 'renew-subscription-activation'],
+    scope: { trial: activation.trial, model: activation.model, expectedAccount: activation.expectedAccount,
+      executable: activation.executable, artifact: activation.artifact, version: activation.version,
+      invocationPolicyDigest: activation.invocationPolicyDigest, profileDigest: activation.profileDigest },
+    renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: activation.expiresAt } }],
+  waivers: [{ reference: activation.waiver, rules: ['rule:38'], grantor: String(OPERATOR), recordedAt: START,
+    source: 'offline verified operator record', words: 'offline waiver stand-in' }],
+  revocations: [] });
+
 export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-successive-'))),
   options: { predecessorCursor?: number } = {}) {
   const source = join(directory, 'trial-a'), root = join(directory, 'trial-b');
@@ -149,6 +162,8 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
     extraUsageReason: 'Offline account datum unavailable', subscriptionLimit: 'unobservable',
     subscriptionLimitReason: 'Offline limit unavailable', acceptedResiduals: ['unconfined preview', 'UNKNOWN charge/quiescence'],
     expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY });
+  const authorityPath = join(directory, 'activation-authority.json');
+  if (!existsSync(authorityPath)) writeFileSync(authorityPath, JSON.stringify(offlineActivationAuthority(activation(state().read()))));
   const compose = (options: any = {}) => {
     const outerState = state();
     return createSuccessiveComposition({ configuration: { ...base, root }, state: outerState, root,

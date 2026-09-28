@@ -1,6 +1,7 @@
 // Rules 42 and 89: a live send consumes the journal's signed intent and settles as exactly
 // one of accepted, refused or unknown; infrastructure notices never speak as the agent.
 import { expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,12 +19,20 @@ const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-send-outcome
 
 function world(dir: string, send: (input: { target?: string; provenance?: unknown }) => number | null | SendOutcome) {
   const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
-  const seen: { target?: string; provenance?: unknown }[] = [];
+  const seen: { target?: string; provenance?: unknown }[] = [], contexts: string[] = [];
   const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-    model: async () => 'an answer', checkOutbound: () => {},
+    model: async (input: { context: string }) => { contexts.push(input.context); return 'an answer'; }, checkOutbound: () => {},
     send: async input => { seen.push(input); return send(input); } });
-  return { journal, worker, seen };
+  return { journal, worker, seen, contexts };
 }
+/** The real launcher's read-only operator views over the same root. */
+const launcher = (dir: string, command: 'status' | 'inspect') => {
+  const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
+    command, '--root', dir], { cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+  expect(run.status, run.stderr).toBe(0);
+  return JSON.parse(run.stdout);
+};
 
 it('keeps a definite refusal distinct from UNKNOWN and from delivery, through the journal, replay and status', async () => {
   const dir = root();
@@ -42,12 +51,21 @@ it('keeps a definite refusal distinct from UNKNOWN and from delivery, through th
     expect(second.seen).toHaveLength(0);
     expect(sendOutcomeCounts(second.journal.view)).toMatchObject({ refused: 1, unknown: 0 });
     second.journal.close();
+    // Every operator view reads the same recorded refusal: inspect and status through the real launcher.
+    expect(launcher(dir, 'inspect').reply).toMatchObject({ update: 1, outcome: 'send-refused', refusal: 'telegram 403: Forbidden: bot was blocked by the user' });
+    expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 0, sendOutcomes: { refused: 1, unknown: 0 } });
     // The neighbouring case: an unknown dispatch stays UNKNOWN, not refused.
     const unknown = world(dir, () => ({ kind: 'unknown', reason: 'transport timeout' }));
     unknown.worker.intake([update(2)]); await unknown.worker.drain();
     expect(sendOutcomeCounts(unknown.journal.view)).toMatchObject({ accepted: 0, refused: 1, unknown: 1 });
     expect(unknown.journal.view.sendOutcomes.map(item => item.outcome)).toEqual(['refused', 'unknown']);
+    // The next turn's history labels the earlier answer as refused, never as delivery UNKNOWN.
+    const history = JSON.parse(unknown.contexts.at(-1)!).history as { outcome?: string }[];
+    expect(history[0]?.outcome).toBe('refused, not delivered (telegram 403: Forbidden: bot was blocked by the user)');
     unknown.journal.close();
+    expect(launcher(dir, 'inspect').reply).toMatchObject({ update: 2, outcome: 'send-unknown' });
+    expect(launcher(dir, 'inspect').reply.refusal).toBeUndefined();
+    expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 1, sendOutcomes: { refused: 1, unknown: 1 } });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

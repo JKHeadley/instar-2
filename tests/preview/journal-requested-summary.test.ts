@@ -3,7 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, settleSummarySchedule, HELD_NOTICE_AFTER_MS } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, settleSummarySchedule, summarySlotOccurrence, HELD_NOTICE_AFTER_MS } from './journal-test-worker.js';
+import { systemWriters, writerRecord } from './intake-principal.js';
 
 const key = new Uint8Array(32).fill(31);
 const zone = 'America/Los_Angeles';
@@ -102,6 +103,12 @@ it('sends a requested daily summary once per day, stating its reason, through th
     // The runner-authored turn carries no operator authority and appears as such in later packets.
     const synthetic = journal.view.order.at(-1)!;
     expect(synthetic.requestedSummary).toMatchObject({ slot: '2026-09-26', window: { from: '2026-09-26', through: '2026-09-26' } });
+    // Rule 29: its writer is the owner's verified scheduler, signed over this slot, and survives replay.
+    const writer = { id: 'preview-scheduler:12345678', kind: 'system', adapter: 'preview-scheduler', class: 'verified',
+      signature: expect.stringMatching(/^[a-f0-9]{128}$/u) };
+    expect(synthetic.writer).toMatchObject(writer);
+    journal.close(); ({ journal, worker } = open());
+    expect(journal.view.order.at(-1)!.writer).toMatchObject(writer);
     expect(journal.view.summaryGrants).toHaveLength(1);
     expect(journal.view.summaryCancels).toEqual([]);
     expect(journal.view.memory).toEqual([]);
@@ -343,13 +350,22 @@ it('refuses a forged, premature or repeated summary slot frame and accepts the e
     const { journal, worker } = open(true);
     worker.intake([update(1, daily)]); await worker.drain();
     const grant = journal.view.summaryGrants[0]!;
+    const signed = (slot: string) => writerRecord(journal.systemWriter('requested-summary-grant', summarySlotOccurrence(grant, slot), sixPm())!);
     const frame = (at: number, slot = '2026-09-26', extra: object = {}) => ({ kind: 'summary-due' as const,
       id: `requested-summary:${grant.id}:${slot}`, grant: grant.id, slot, update: 1 + 1 / 1024,
-      window: { from: slot, through: slot, zone }, at, ...extra });
+      window: { from: slot, through: slot, zone }, at, writer: signed(slot), ...extra });
     expect(() => journal.append(frame(sixPm() - 60_000))).toThrow('requested summary slot refused');
     expect(() => journal.append(frame(sixPm(), '2026-09-27'))).toThrow('requested summary slot refused');
     expect(() => journal.append(frame(sixPm(), '2026-09-26', { grant: 'summary-forged' }))).toThrow('requested summary slot refused');
     expect(() => journal.append(frame(sixPm(), '2026-09-26', { update: 2 }))).toThrow('requested summary slot refused');
+    // Rule 29: an unsigned slot, a writer label without the owner's signature, a writer signed for another
+    // slot, and a writer signed by another key are all refused; only the owner's signature over this slot admits.
+    const { signature: _signature, ...label } = signed('2026-09-26');
+    expect(() => journal.append(frame(sixPm(), '2026-09-26', { writer: undefined }))).toThrow('requested summary slot refused');
+    expect(() => journal.append(frame(sixPm(), '2026-09-26', { writer: label }))).toThrow('requested summary slot refused');
+    expect(() => journal.append(frame(sixPm(), '2026-09-26', { writer: signed('2026-09-27') }))).toThrow('requested summary slot refused');
+    const foreign = systemWriters(new Uint8Array(32).fill(3), '12345678').mint('requested-summary-grant', summarySlotOccurrence(grant, '2026-09-26'), sixPm())!;
+    expect(() => journal.append(frame(sixPm(), '2026-09-26', { writer: writerRecord(foreign) }))).toThrow('requested summary slot refused');
     journal.append(frame(sixPm()));
     expect(() => journal.append(frame(sixPm() + 60_000))).toThrow('requested summary slot refused');
     expect(state.sent).toHaveLength(1);

@@ -196,12 +196,30 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     const expires = () => JSON.parse(node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env).stdout).expires;
     expect(agent('renew-expiry', currentPath, '2026-09-28T20:40:00Z').status).toBe(1); // old record
     expect(agent('renew-expiry', out, '2026-09-28T20:40:00Z').status).toBe(1); // flag disagrees with record
+    // Rules 94/98/103/104: the renewal is exercised under the recorded standing grant (the earlier
+    // yes to bounded status-quo renewals), never under its reference strings. No record refuses;
+    // a grant that does not cover this subject refuses; the in-scope grant renews with no new yes.
+    // The launcher suppresses details; each reason is proven by activation-authority.test.ts.
+    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1);
+      expect(expires()).toBe(PRIOR_EXPIRY); };
+    refusedWith('activation authority record absent');
+    const grant = { id: 'observer-note-30', grantor: '7654321', grantee: 'echo-desk', words: 'status-quo renewals are preapproved',
+      source: 'verified operator message (observer note #30)', issuedAt: 1790500000000, actions: ['renew-subscription-activation'],
+      scope: { trial: renewed.trial, model, expectedAccount: renewed.expectedAccount, executable: renewed.executable,
+        artifact: renewed.artifact, version: renewed.version, invocationPolicyDigest: renewed.invocationPolicyDigest, profileDigest: renewed.profileDigest },
+      renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: SUBSCRIPTION_PREVIEW_EXPIRY } };
+    const authority = (g = grant) => file('activation-authority.json', { type: 'PreviewActivationAuthority', schemaVersion: 1, grants: [g],
+      waivers: [{ reference: renewed.waiver, rules: ['rule:38'], grantor: '7654321', recordedAt: 1790000000000,
+        source: 'verified operator message', words: 'trial waiver approved' }], revocations: [] });
+    authority({ ...grant, scope: { ...grant.scope, model: 'claude-other-1' } });
+    refusedWith('does not cover');
     expect(expires()).toBe(PRIOR_EXPIRY);
+    authority();
     const ok = agent('renew-expiry', out, '2026-10-05T20:40:00Z');
     expect(ok.status, ok.stderr).toBe(0);
     const status = node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env);
     expect(JSON.parse(status.stdout)).toMatchObject({ expires: SUBSCRIPTION_PREVIEW_EXPIRY,
-      expiryAuthority: 'status-quo renewal; preapproval note #30' });
+      expiryAuthority: expect.stringMatching(/^status-quo renewal; preapproval note #30 \[grant observer-note-30; waiver waiver; record sha256:[a-f0-9]{64}\]$/u) });
     expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1); // one renewal per expiry
     expect(expires()).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
   } finally { rmSync(root, { recursive: true, force: true }); }

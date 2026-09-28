@@ -293,6 +293,14 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs rene
 ```
 
 It validates the new record with this build and records its byte digest and the authority.
+Both `renew-expiry` and `run` also resolve the activation against the recorded operator authority
+(`--authority-record`, default `activation-authority.json` beside the activation record; see
+`activation-authority.ts`). That record holds the operator's earlier explicit yes as a standing
+grant (grantor, delegate `echo-desk`, exact words and verified source, exact subject, and for
+renewals a bounded extension) plus the continuing waiver of the rules the preview departs from.
+A status-quo renewal inside the grant needs no new approval; a revoked or expired grant, a changed
+subject, a longer extension, or a waiver of a different rule refuses, and needs a new verified
+approval. The recorded authority is `--authority` plus the resolved grant, waiver and record digest.
 `status` then reports `expires` and `expiryAuthority`. Afterwards the runner accepts only the
 new record. The prior build always refuses the new record; that is the unconditional fail-closed
 protection for a mismatched switch. The prior build also refuses an uncompacted renewed journal
