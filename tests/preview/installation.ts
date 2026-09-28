@@ -18,8 +18,12 @@ export interface Installation extends InstalledCode {
 }
 export interface InstalledUpdate {
   readonly at: number; readonly from: { revision: string | null; codeDigest: string };
-  readonly to: { revision: string | null; codeDigest: string }; readonly briefingChanged: boolean;
+  readonly to: { revision: string | null; codeDigest: string };
+  /** null when the earlier installation predates recording, so its briefing is unknown. */
+  readonly briefingChanged: boolean | null;
 }
+/** An earlier launch that recorded no installation: code and briefing unknown. */
+export const UNRECORDED = 'unrecorded';
 
 /** Digest over the exact bytes of every file the runner loaded, by repository path. */
 export function codeDigestOf(files: readonly { path: string; bytes: Uint8Array | string }[]): string {
@@ -31,7 +35,7 @@ export function codeDigestOf(files: readonly { path: string; bytes: Uint8Array |
 /** Digest of what the agent is told about itself: its sources, instructions and capability note. */
 export function briefingDigestOf(parts: readonly string[]): string { return sha256(JSON.stringify(parts)); }
 
-/** Launch rows that recorded their installation, in launch order. */
+/** Launch rows in launch order; a launch that recorded no installation (an older build) is UNRECORDED. */
 export function installationRows(runsText: string): (Installation & { launch: number })[] {
   const rows: (Installation & { launch: number })[] = [];
   for (const line of runsText.split('\n')) {
@@ -39,8 +43,10 @@ export function installationRows(runsText: string): (Installation & { launch: nu
     let row: { v?: unknown; launch?: unknown; exit?: unknown; install?: Partial<Installation> };
     try { row = JSON.parse(line) as typeof row; } catch { continue; }
     const install = row?.install;
-    if (row?.v !== 1 || typeof row.launch !== 'number' || row.exit !== undefined || !install
-      || typeof install.codeDigest !== 'string' || typeof install.briefingDigest !== 'string') continue;
+    if (row?.v !== 1 || typeof row.launch !== 'number' || row.exit !== undefined || (row as { poll?: unknown }).poll !== undefined) continue;
+    if (!install) { rows.push({ revision: null, codeDigest: UNRECORDED, files: 0, briefingDigest: UNRECORDED, harness: UNRECORDED,
+      stallClasses: 0, doorway: UNRECORDED, launch: row.launch }); continue; }
+    if (typeof install.codeDigest !== 'string' || typeof install.briefingDigest !== 'string') continue;
     rows.push({ ...(install as Installation), launch: row.launch });
   }
   return rows.sort((a, b) => a.launch - b.launch);
@@ -60,12 +66,13 @@ export function installedUpdateFrom(rows: readonly (Installation & { launch: num
   if (index < 0) return null;
   const previous = earlier[index]!, first = earlier.slice(index + 1).find(row => same(row, current));
   return { at: first?.launch ?? launchedAt, from: { revision: previous.revision, codeDigest: previous.codeDigest },
-    to: { revision: current.revision, codeDigest: current.codeDigest }, briefingChanged: previous.briefingDigest !== current.briefingDigest };
+    to: { revision: current.revision, codeDigest: current.codeDigest },
+    briefingChanged: previous.briefingDigest === UNRECORDED ? null : previous.briefingDigest !== current.briefingDigest };
 }
 
 /** The packet item that tells the agent its own installation changed (quoted data, never an instruction). */
 export function updatePacketItem(update: InstalledUpdate) {
-  return { at: update.at, from: update.from.revision ?? update.from.codeDigest, to: update.to.revision ?? update.to.codeDigest,
+  return { at: update.at, from: update.from.codeDigest === UNRECORDED ? 'an unrecorded earlier build' : update.from.revision ?? update.from.codeDigest, to: update.to.revision ?? update.to.codeDigest,
     briefingChanged: update.briefingChanged,
     note: 'Your installed code changed since your previous run. Your current sources and capability note describe what you can do now; earlier replies in history may describe an older installation. Say so if the operator relies on an older description.' };
 }
@@ -100,7 +107,8 @@ export function installationStatusLines(launched: Installation, launchedAt: numb
       : stale ? `installed files changed to ${short(installedNow.revision, installedNow.codeDigest)} — a restart is needed to run them`
         : 'running code matches the installed files'}.`,
     `Harness: ${launched.harness} via ${launched.doorway}; ${launched.stallClasses} of 9 silent-stop classes covered.`,
-    ...(update ? [`Update: from ${short(update.from.revision, update.from.codeDigest)}; ${update.briefingChanged ? 'briefing changed' : 'briefing unchanged'}; `
+    ...(update ? [`Update: from ${update.from.codeDigest === UNRECORDED ? 'an unrecorded earlier build' : short(update.from.revision, update.from.codeDigest)}; `
+      + `${update.briefingChanged === null ? 'briefing change unknown' : update.briefingChanged ? 'briefing changed' : 'briefing unchanged'}; `
       + `${delivered ? `delivered in my reply to update ${delivered.deliveredInReplyTo}` : 'not yet carried into a sent reply'}.`] : []),
   ];
 }

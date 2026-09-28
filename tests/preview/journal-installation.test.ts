@@ -20,6 +20,11 @@ it('a first recorded installation is not an update; changed code is, and a resta
   expect(update).toMatchObject({ at: 20, from: { revision: 'aaaa1111' }, to: { revision: 'bbbb2222' }, briefingChanged: true });
   expect(installedUpdateFrom(installationRows([row(10, old), row(20, now), row(30, now)].join('\n')), now, 40)?.at).toBe(20);
   expect(installedUpdateFrom(installationRows(row(10, install('sha256:old', 'sha256:brief-b'))), now, 20)?.briefingChanged).toBe(false);
+  // Launches from builds that predate this record make the first recorded launch an update from an unrecorded build.
+  const legacy = [JSON.stringify({ v: 1, launch: 5, pid: 1 }), JSON.stringify({ v: 1, launch: 5, exit: 6, reason: 'x' }),
+    JSON.stringify({ v: 1, launch: 5, poll: 'failed', at: 5 })].join('\n');
+  expect(installedUpdateFrom(installationRows(legacy), now, 20)).toMatchObject({ at: 20, from: { codeDigest: 'unrecorded' }, briefingChanged: null });
+  expect(updatePacketItem(installedUpdateFrom(installationRows(legacy), now, 20)!).from).toBe('an unrecorded earlier build');
   expect(codeDigestOf([{ path: 'a', bytes: 'x' }, { path: 'b', bytes: 'y' }])).toBe(codeDigestOf([{ path: 'b', bytes: 'y' }, { path: 'a', bytes: 'x' }]));
   expect(codeDigestOf([{ path: 'a', bytes: 'x' }])).not.toBe(codeDigestOf([{ path: 'a', bytes: 'z' }]));
 });

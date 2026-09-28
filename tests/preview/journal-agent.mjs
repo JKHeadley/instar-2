@@ -15,7 +15,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
 import { importClosure } from '../../scripts/import-closure.mjs';
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
-import { briefingDigestOf, codeDigestOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
+import { UNRECORDED, briefingDigestOf, codeDigestOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
@@ -334,7 +334,7 @@ async function main() {
           : null,
       packet: packetStatus(view.view),
       installation: (() => {
-        const rows = installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), last = rows.at(-1);
+        const rows = installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), last = rows.filter(row => row.codeDigest !== UNRECORDED).at(-1);
         if (!last) return null;
         let installed = null; try { installed = installedCode(); } catch { installed = null; }
         const update = installedUpdateFrom(rows, last, last.launch + 1);
