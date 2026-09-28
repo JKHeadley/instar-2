@@ -173,30 +173,74 @@ async function waitUnlessStopped(root, milliseconds) {
     await new Promise(resolveDelay => setTimeout(resolveDelay, Math.min(100, end - Date.now())));
 }
 
-/** Rule 68: the consumer of the journal runner's `revival: queued` disposition. A clean exit that leaves queued
- * work is relaunched at once; a crash, refusal or unrecorded end is relaunched with capped exponential backoff and
- * at most `maxRestarts` consecutive times (Rule 55); `inhibited` (stop, expiry, allowance, signal pause) and `none`
- * end supervision, and the stop latch is honoured before every launch and during every wait. The runner itself
- * re-derives all authority, allowances and UNKNOWN fences from its journal on each launch. */
-export async function superviseJournal(config, { launch = spawnJournal, wait = waitUnlessStopped } = {}) {
+/** Journal-runner mode (Rules 15, 55, 68, 88; P-14). This separate process is the consumer of the journal
+ * runner's `revival: queued` disposition and restarts it after a failed exit:
+ * - a clean exit that leaves queued work is relaunched at once; a crash, refusal or unrecorded end is
+ *   relaunched with capped exponential backoff and at most `maxRestarts` consecutive times (Rule 55);
+ * - `inhibited` (stop, expiry, allowance, signal pause) and `none` end supervision, and the stop latch is
+ *   honoured before every launch and during every wait;
+ * - when self-heal is exhausted (`incidentAfter` consecutive failed restarts) it records ONE durable incident
+ *   episode with the failed-attempt evidence, visible on the pull surface (`status`). It never sends: an
+ *   internal-issue notice must travel as Part Eight's admitted `infrastructure-notice` effect through Part
+ *   Ten's confined notice driver, under the alerts grant, and neither exists in this build. The outward
+ *   notice therefore stays inhibited, naming both missing owners (Rules 53, 88, 95; Eight §9; Fourteen §14),
+ *   instead of a host script sending around them. Without a recorded alerts grant it is 'unbound'. An earlier
+ *   episode is preserved as recorded: an uncertain earlier delivery is never repeated.
+ * The runner itself re-derives all authority, allowances and UNKNOWN fences from its journal on each launch. */
+export const JOURNAL_INCIDENT_LIMITS = Object.freeze({ incidentAfter: 3 });
+export const INCIDENT_NOTICE_SEAMS = Object.freeze([
+  'part-eight infrastructure-notice payload (seam-response-effects-payloads.md)',
+  'part-ten confined notice driver (seam-response-assembly-followup.md)']);
+function lastRun(root) {
+  const path = join(root, 'runs.jsonl');
+  if (!existsSync(path)) return null;
+  const rows = readFileSync(path, 'utf8').split('\n').filter(Boolean).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
+  return rows.filter(row => typeof row.reason === 'string').at(-1) ?? null;
+}
+function journalStopped(root) {
+  const reason = lastRun(root)?.reason;
+  return existsSync(join(root, 'preview-stop.json')) || reason === 'operator stop latched' || reason === 'trial expired';
+}
+export async function superviseJournal(config, io = {}) {
   const index = Array.isArray(config?.agent) ? config.agent.indexOf(journalAgent) : -1;
   const rootAt = index < 0 ? -1 : config.agent.indexOf('--root');
   if (typeof config?.root !== 'string' || !isAbsolute(config.root) || resolve(config.root) !== config.root || index < 0
     || config.agent[index + 1] !== 'run' || rootAt < 0 || config.agent[rootAt + 1] !== config.root
     || config.agent.some(value => typeof value !== 'string') || !isAbsolute(config.agent[0]))
     throw Error('host watch: invalid journal launch configuration');
+  if (config.alerts !== undefined && (typeof config.alerts?.grant !== 'string' || !config.alerts.grant.trim()))
+    throw Error('host watch: invalid journal configuration');
   const maxRestarts = config.maxRestarts ?? 10, base = config.backoffMs ?? 1000, maximum = config.maxBackoffMs ?? 300000;
   if (![maxRestarts, base, maximum].every(Number.isSafeInteger) || maxRestarts < 1 || maxRestarts > 100 || base < 1 || maximum < base)
     throw Error('host watch: invalid journal restart bounds');
-  const stopped = () => existsSync(join(config.root, 'preview-stop.json'));
+  const launch = io.launch ?? io.spawnRunner ?? spawnJournal;
+  const now = io.now ?? Date.now, wait = io.wait ?? waitUnlessStopped;
+  const limits = { ...JOURNAL_INCIDENT_LIMITS, ...(config.limits ?? {}) };
+  const path = join(config.root, 'host-watch.json');
+  const read = () => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, mode: 'journal', open: false };
   let failures = 0;
-  while (!stopped()) {
-    const started = Date.now(), outcome = await launch(config);
-    if (stopped()) return 0;
+  while (!journalStopped(config.root)) {
+    const started = now(), outcome = await launch(config);
+    const at = now(), episode = read();
+    if (episode.version !== 1 || episode.mode !== 'journal') throw Error('host watch: corrupt journal episode');
+    const clean = outcome.code === 0 && outcome.signal === null;
+    if (journalStopped(config.root) || clean) { if (episode.open) writeDurable(path, { ...episode, open: false, closedAt: at }); }
+    else {
+      const failedAttempts = (episode.open ? episode.failedAttempts : 0) + 1;
+      let next = { ...episode, open: true, id: episode.open ? episode.id : randomUUID(), openedAt: episode.open ? episode.openedAt : at,
+        phase: episode.open ? episode.phase : 'recovering', failedAttempts,
+        failures: [...(episode.open ? episode.failures : []), { at, code: outcome.code, signal: outcome.signal,
+          runReason: lastRun(config.root)?.reason ?? null }].slice(-10) };
+      if (next.phase === 'recovering' && failedAttempts >= limits.incidentAfter)
+        next = config.alerts ? { ...next, phase: 'inhibited', incidentAt: at, alertsGrant: config.alerts.grant, inhibitedBy: [...INCIDENT_NOTICE_SEAMS] }
+          : { ...next, phase: 'unbound', incidentAt: at };
+      writeDurable(path, next);
+    }
+    if (journalStopped(config.root)) return 0;
     const last = lastJournalRun(config.root);
     if (last?.revival === 'inhibited' || last?.revival === 'none') return 0;
     // A clean exit that ran a while and left queued work is healthy; anything else counts toward the cap.
-    const healthy = last?.revival === 'queued' && outcome.code === 0 && outcome.signal === null && Date.now() - started >= 60000;
+    const healthy = last?.revival === 'queued' && clean && at - started >= 60000;
     failures = healthy ? 0 : failures + 1;
     if (failures > maxRestarts) return 0;
     await wait(config.root, healthy ? base : Math.min(maximum, base * 2 ** Math.min(failures - 1, 16)));
@@ -211,12 +255,11 @@ function spawnJournal(config) {
     child.once('exit', (code, signal) => resolveExit({ code, signal }));
   });
 }
-
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const configPath = process.argv[2];
     if (!configPath || !isAbsolute(configPath)) throw Error('host watch: configuration path required');
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
-    process.exitCode = config?.journal === true ? await superviseJournal(config) : await supervise(config);
+    process.exitCode = config?.journal === true || config?.mode === 'journal' ? await superviseJournal(config) : await supervise(config);
   } catch { process.stderr.write('host watch stopped; details suppressed\n'); process.exitCode = 0; }
 }

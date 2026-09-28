@@ -10,6 +10,9 @@ export const operatorEchoSent = (view: JournalView) => view.order.filter(turn =>
   && turn.replyChecks?.some(check => check.path === 'operator-echo')).length;
 
 export const isStatusCommand = (text: string): boolean => /^(?:status|how are you doing)\s*[?.!]?$/iu.test(text.trim());
+/** The operator's emergency stop from the phone: an exact command (Rule 4), confirmed by button. */
+export const isStopCommand = (text: string): boolean => /^\/stop$/iu.test(text.trim());
+export const STOP_CONFIRM_TEXT = 'Stop this preview permanently? Approving halts every model call and message from me until a new trial is set up. Your saved messages stay saved. Tap Approve or Decline below.';
 
 export function statusReply(view: JournalView, now: number, zone: string): string {
   const local = localParts(now, zone);

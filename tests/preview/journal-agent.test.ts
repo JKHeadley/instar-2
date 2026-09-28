@@ -60,9 +60,12 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
       expect(journal.view.order[0]?.replyChecks?.[0]?.verdict).toBe('pass');
       expect(journal.view.replies).toBe(1);
     } else {
+      // An oversized Jev response is unavailable and the cap refuses the review call; the
+      // no-cost status reply is still sent with the unrun review recorded (Rules 77, 95).
       expect(journal.view.order[0]?.replyChecks?.[0]?.verdict).toBe('unavailable');
-      expect(journal.view.order[0]?.held).toBe('call cap');
-      expect(journal.view.replies).toBe(0);
+      expect(journal.view.order[0]?.held).toBeUndefined();
+      expect(journal.view.order[0]?.release).toMatchObject({ review: 'unavailable', reason: 'review not run: call cap reached' });
+      expect(journal.view.replies).toBe(1);
     }
     journal.close();
   } finally { endpoint.kill('SIGTERM'); }
@@ -246,7 +249,7 @@ it.each([
     { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 1 }],
   ['verdict-second-line', { 'reply-review/verdict/malformed/not-json': 1 },
     { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
-])('the real launcher accepts a whole-response Decision fence, holds on contradicting text at either review layer, and says why (%s)', async (mode, counts, last, failures) => {
+])('the real launcher accepts a whole-response Decision fence, never passes contradicting review text, still answers, and says why (%s)', async (mode, counts, last, failures) => {
   const world = successiveWorld(), root = join(world.directory, 'shape-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -301,7 +304,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
-    expect(sends.some(send => send.text === 'PREVIEW — Noted.')).toBe(mode === 'wrapped' || mode === 'wrapped-crlf');
+    // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
+    expect(sends.some(send => send.text === 'PREVIEW — Noted.')).toBe(mode !== 'answer-two-objects');
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);

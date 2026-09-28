@@ -107,7 +107,9 @@ it('shares one attempt cap, one reply cap and one stop across every conversation
     w.worker.intake([update(1, 'one'), update(2, 'two', 7), update(3, 'three', 9)]); await w.worker.drain();
     expect(w.seen).toHaveLength(2);
     expect(w.journal.view.turns.get('telegram:12345678:update:3')?.held).toBe('call cap');
-    expect(() => w.worker.pollGate()).toThrow('capacity');
+    // Rule 15: the ordinary caps no longer stop reading; the capped message got a limited answer.
+    expect(() => w.worker.pollGate()).not.toThrow();
+    expect(w.journal.view.turns.get('telegram:12345678:update:3')?.limited?.reason).toBe('calls');
     w.worker.stop('operator');
     expect(() => w.worker.intake([update(4, 'four', 7)])).toThrow('preview stopped');
     w.journal.close();
@@ -260,9 +262,10 @@ it.each(['answered', 'rejected', 'empty', 'held'] as const)(
           Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: id === 'raw_path' ? 0.91 : 0.01 }])) }, latencyMs: 170 }),
         escalate: async () => ({ verdict: 'violation' as const, ruleIds: ['raw_path'], confidence: null, latencyMs: 500 }),
       } : undefined;
+      // After Rules 77/86 only the credential-shape floor withholds a reply's text.
       const first = world(root, { model: input => input.question === 'When is the review?'
         ? result === 'rejected' ? { state: 'rejected', failureClass: 'rejected' }
-          : result === 'empty' ? '' : 'The review is tomorrow.'
+          : result === 'empty' ? '' : result === 'held' ? 'The review key is sk-AAAAAAAAAAAAAAAAAAAAAAAA' : 'The review is tomorrow.'
         : 'The permit is ready.', ...(replyCheck ? { replyCheck } : {}) });
       first.worker.intake([update(1, 'When is the review?'), update(2, 'Permit status', 7)]);
       await first.worker.drain();
@@ -277,7 +280,7 @@ it.each(['answered', 'rejected', 'empty', 'held'] as const)(
         expect(main).toMatchObject({ unansweredQuestions: [], heldItems: [] });
         expect(packet.history[0]).toMatchObject({ answer: 'The review is tomorrow.', outcome: 'Telegram API accepted' });
       } else {
-        const status = result === 'held' ? 'holding reply delivered after review violation'
+        const status = result === 'held' ? 'answer withheld: credential-shaped text; notice delivered'
           : `model failure notice delivered (${result === 'empty' ? 'empty' : 'rejected'})`;
         expect(main).toMatchObject({
           unansweredQuestions: [{ question: 'When is the review?', outcome: status }],

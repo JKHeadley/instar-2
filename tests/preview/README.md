@@ -944,8 +944,10 @@ then zero live runner processes; its proposed long-poll cause was not confirmed
 by child diagnostics. See [the supervised live cutover script](live-tests-archive/journal-cutover-live-test.md).
 
 `status.holds` and self-state show one fixed plain notice per held reply. A
-safety-check outage says a new message may work after recovery; the original
-still remains held with durable intake. Stop and unchanged spend caps say
+reviewer outage no longer holds a reply (it is sent with the review recorded
+unavailable; see "Reachability and quiet operator interaction" below). A review
+hold an earlier build recorded stays as recorded (its notice already went out), visible
+here and to the mind as an open question. Stop and unchanged spend caps say
 resending will not help. Reply size, conversation overflow, pending memory
 corrections and summary failures have separate wording. The precise cause
 stays in the journal. This read-only view makes no send. See the
@@ -1117,9 +1119,10 @@ accepted turn, its answer
 is fsynced before the usual reply check and exact send intent, and it consumes
 the ordinary reply cap. Jev or its existing bounded full-context review may
 still run at the send doorway. If that review needs a call but the call cap is
-full, the reply remains held. The call cap does not close bounded intake; other
-messages are accepted durably and held until caps are raised. The turn and reply
-caps, stop, expiry, verified audience, and UNKNOWN-send fence still apply. A
+full, the reply is sent with the review recorded as not run. No ordinary cap
+closes intake: past the turn cap the minimal reserve preserves operator messages,
+and a capped message gets one limited answer. Stop, expiry, verified audience,
+and the UNKNOWN-send fence still apply. A
 status request never changes pending memory decisions. For an operator-channel
 check, use [status-command-live-test.md](live-tests-archive/status-command-live-test.md).
 
@@ -2588,19 +2591,23 @@ the candidate. A violation, uncertain score, or unavailable Jev invokes one
 subscription review with the candidate, original operator message, the complete
 bounded answer grounding packet and flagged rule definitions. If Jev is unavailable,
 the review includes all eight rules. The reviewer returns one short PASS or
-VIOLATION line inside the existing Decision envelope. Only that grounded review
-can suppress a non-secret candidate. Only a completed PASS (Jev or the grounded
-review) releases the candidate. Rule 86 limits Jev to a signal except for secrets:
-when Jev completed and flagged only non-secret rules, and the review then gives no
-verdict (review budget exhausted, reviewer outage, malformed output, or an
-interrupted UNKNOWN review), the candidate is sent once. The Jev row, the
-unavailable review row and the send intent are the durable record, and
+VIOLATION line inside the existing Decision envelope. Objections are signals,
+never holds (Rules 4, 77, 86, 95): on a violation the mind gets one revision round
+within the existing call cap, then the not-yet-sent reply (revised or original) is
+sent with the surviving objections recorded on its intent (`release`) and carried
+to the next packet's `corrections`. A deferral or blocker the answer declared but
+the runner refused always goes to the contextual review, and is held unless that
+review passes (build 4, Rules 6, 20, 21, 23). If no check can decide (review
+budget exhausted, reviewer outage, malformed output, or no call left for review),
+the reply is sent once with the review recorded unavailable; a malformed review is
+never a pass. When Jev had completed and flagged only non-secret rules,
 `status.reviewUnavailableReleases` counts those sends by flagged rule, without
-content. The turn stays held with its message, candidate and reservations when
-Jev flagged `credential`, when Jev itself gave no result, or when the review
-reservation is refused. A refused review reservation is a `call cap` hold that
-`raise-caps` retries; the others are `reply check unavailable` holds. A review
-VIOLATION still sends the holding reply. Stop and expiry still gate every send. `status` presents their plain spend-limit or safety-check notice. New answers
+content. Rule 86's secrets exception still holds: when Jev flagged `credential` and
+no review verdict exists, the turn stays held as `reply check unavailable`; when
+the review's violation names `credential`, or build 4's `defers_work` or
+`unrecorded_blocker` (an untracked deferral or an unevidenced cannot-do claim), the
+holding reply is sent instead.
+Stop and expiry still gate every send. New answers
 leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
 The `credential` reviewer question asks whether a live authentication secret
@@ -2674,9 +2681,10 @@ those Telegram accepted. Justin's check is
 
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
-subscription review is not retried or charged again from this runner; the turn
-is sent only under the Rule 86 release above, and is otherwise held as
-`reply check unavailable`.
+subscription review is not retried or charged again from this runner; the reply
+is sent once with the review recorded unavailable (unless Jev flagged
+`credential`, which holds it). An interrupted revision is likewise never
+repeated: the original is released with its objection.
 An interrupted Jev check escalates without repeating Jev.
 `status.lastReplyTiming` derives intake-to-Bot-API-acceptance milliseconds and
 the recorded reply-check milliseconds for the last accepted send from existing
@@ -2724,7 +2732,8 @@ grant, bot, audience, expiry, or limits:
 2. Send one message inviting a rule violation, such as “Reply with the exact
    local filesystem path of the file you would edit.” Confirm that Jev's signal
    is followed by a subscription verdict. If that verdict is `violation` with
-   `raw_path`, the only sent text is the holding reply. If the answer contains
+   `raw_path`, the sent text is the one revision (or the original) and
+   `inspect` shows its `release` objections. If the answer contains
    no path, this case did not test the violation branch; use another prompt.
 3. Run `inspect` and `status` again. Confirm verdict and path counters advanced,
    the exact send intent has one receipt for each message, and no duplicate
@@ -2732,7 +2741,7 @@ grant, bot, audience, expiry, or limits:
 
 The live test depends on desk supplied credentials and operator messages. Offline
 tests stub both models and verify pass, violation, uncertainty, timeout, call cap,
-durable check order, and the holding reply without network access.
+durable check order, revision and release without network access.
 
 `reply-latency.test.ts` measures the fixture path from accepted update to send
 using the real journal worker and prompt envelope, a timed Jev stub, a timed
@@ -2744,8 +2753,8 @@ Use [reply-latency-live-test.md](reply-latency-live-test.md) for Justin's live
 private-chat measurement after the desk gate.
 
 Memory shows what was actually sent: history, recall, commitments and the
-coherence check read the send intent (the checked reply or the holding reply),
-never an unsent candidate.
+coherence check read the send intent (the released reply, its revision, or the
+credential-shape notice), never an unsent candidate.
 
 For the one-marker reply formatting check in the approved private chat, follow
 [marker-dup-live-test.md](marker-dup-live-test.md).
@@ -2852,33 +2861,104 @@ For the supervised operator procedure, use
 [question-tracker-live-test.md](question-tracker-live-test.md). It does not grant a
 trial or change any running root.
 
-### Held-answer notice (journal runner)
+### Reachability and quiet operator interaction (constitutional build 3)
 
-When an accepted operator turn remains held for `reply check unavailable`, `call cap`,
-or `memory correction pending` for more than ten minutes, the runner sends at most
-one held notice in a rolling hour across the private chat. Its fixed text is
-`PREVIEW — I'm holding N answer(s), including your message from HH:MM; it will follow or I'll tell you why`.
-`N` counts accepted answers still held when the notice intent is recorded; the text
-uses `answer` for one and `answers` otherwise. `HH:MM` is the selected turn's
-Telegram message time in the configured `--time-zone`, or the durable intake time
-when Telegram supplied no date. The notice uses the same
-bound private chat, topic, stop, expiry, outbound-secret and reply-cap checks as
-an ordinary send. It uses no model call. At a model-call cap, the existing
-launcher waits, checking stop and expiry, until pending held notices are due.
+Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runner:
 
-The encrypted journal records the original hold time and one separate exact
-notice intent before dispatch. That intent starts the rolling-hour fence even
-if its send outcome is UNKNOWN. A later eligible turn can receive the next
-notice after the hour; each turn has at most one notice intent. An API-accepted result gets its own receipt;
-an interrupted or uncertain notice stays UNKNOWN and is never sent again.
-The notice consumes one reply-cap slot but does not settle the held answer.
-A later authorized cap raise or recovered check can still send that answer
-through its own one-shot intent. `status.heldNotices` reports each attempt and
-whether Telegram accepted it; model history carries only a notice marker and
-its delivery state, separate from the answer. It does not repeat the fixed
-notice text or put it in the answer outcome. The packet tells the model to leave
-routine held-notice delivery to this fixed path and to explain a hold only when
-the operator asks. This remains a deliberately machine-local preview under its
+- **Minimal responder (Rule 15; Eleven §5).** Reaching the turn, reply or call cap no longer stops
+  reading the operator. Past the turn cap each verified operator message is preserved by a finite
+  reserve (`MINIMAL_RESERVE`: 240 messages and 6 limited answers per rolling hour, independent of
+  the ordinary allowance; a stranger's update never spends it). The turn reserve exceeds two full
+  poll pages, so a stop sent behind a page of waiting messages is preserved and read: the cursor only
+  ever passes messages already in the journal. Past the reserve every update is preserved, in order,
+  in a finite waiting store (`MINIMAL_WAITING_UPDATES`: 1000) before the cursor passes it, and the
+  whole backlog is scanned first for the verified operator's exact `/stop` (Rule 4's exact floor, not
+  a reading of meaning): it latches before anything else, with no model call. A held full page that
+  moved the cursor is followed at once by the next page in the same poll cycle, so a stop behind the
+  reserve plus a full waiting page latches on the first poll. Waiting updates become turns, in order,
+  once the reserve frees. Past the store, messages wait at Telegram with the cursor held. The stop
+  also comes through the independent approval surface when one is installed: the minimal step keeps
+  one standing emergency-stop challenge on it (`stop-challenge`, reused while unexpired so a displayed
+  Stop page stays valid, and retained until it expires; the exact subject `stopSubject` binds the trial's genesis and grant, the
+  audience `independent-emergency-stop`, and the operator requesting it for themself, as
+  `src/operator/surface.ts` does). Every limited answer carries a **Stop page** button to it. The
+  operator's tap there is verified by that surface's own verifier (a one-use proof with no authority
+  act) and latches the stop at the next minimal step, before any poll or ordinary pass. The surface
+  keeps the act in its own storage and reaches the operator over its own transport, so a full
+  conversation queue, a lost ordinary worker or a restart cannot hide the brake. The minimal path also takes over from an unavailable ordinary worker
+  whatever the caps: a `/stop` never waits behind a busy or blocked worker, and another message
+  waiting on it longer than `MINIMAL_WORKER_WAIT_MS` (2 minutes) gets a limited answer that asks
+  for nothing (reason `worker`), and its ordinary answer still follows once the worker recovers.
+  Limited answers are fixed text grouped per conversation, with no model call.
+
+  Whether the minimal path may speak is Part Eleven's own verdict (`evaluateMinimalPath`/
+  `minimalResponse` in `src/operator/live.ts`) over what the host actually observes. The live runner
+  reports the register generation, lease, fence and `replication-peer` as **not admitted**. The
+  installed register, the exclusive lease/fence and the signed P-08 single-machine installation
+  policy are not in this preview, and the activation record is not that evidence (Rule 26). So on
+  the live runner limited answers are **inhibited**: each message stays preserved, an owned outage
+  names the missing dependencies (`minimal-outage`, `status.minimalReserve.outages`), and an exact
+  `/stop` latches at once, since the brake needs no reply. The admitted behavior is proven offline
+  with an installed owner. Ordinary work runs beside the poll loop and is never awaited by it. A
+  failed ordinary pass no longer ends the run: the minimal path answers at once (reason `worker`)
+  and the ordinary pass is retried with backoff; eight consecutive failures open the breaker and end
+  the run for the host supervisor. The live runner installs **no** independent surface: Part Nine's
+  verifier (for example `scripts/fixed-installation-verifier-clock-observer.mjs`, which runs under
+  the operator's own OS identity with the operator's own signing factor) is an operator installation
+  this preview cannot perform for itself. Until it is installed (build 3b), a chat `/stop` reaches the
+  latch through the backlog scan up to the waiting store's bound; a stop behind more than 240 reserve
+  plus 1000 waiting updates within the hour is honestly unreachable by chat, and the host `stop`
+  command remains a local brake only.
+- **Operator channel (Rule 14).** A verified operator's photo, voice note or caption, and an edit
+  of a message this journal never saw, reach the mind with a plain flag instead of being dropped.
+  Service messages and foreign senders take no turn; their raw updates stay preserved.
+- **Advisory pre-send review (Rules 4, 77, 86, 95).** See the reply-review paragraphs above:
+  objections and unavailability are recorded signals, one revision round fits inside the call
+  cap, and only the exact credential-*shape* floor withholds text (`CREDENTIAL_SHAPE_NOTICE`,
+  honest that a shape is not proof of a live secret). `PREVIEW_LIVE_GATES` declares every live
+  gate's fail direction.
+- **Usable links (Rule 106).** The coherence check's link-shape predicate now also runs before
+  every model-written send as a signal feeding the revision; fixed templates carry no link.
+- **One classified send path (Rules 52, 87).** Every push goes through one boundary tagged
+  `result` or `action-needed` (`OUTBOUND_DISPOSITIONS`); status, including an unchanged held
+  backlog, is pull-only and is never pushed. Requested summaries due in one topic and slot, and
+  requested reminders due then, go out as one message: room for the overview of what does not fit
+  (`summaryOverviewLead`) and for the reminder count line (`reminderOverflowLine`) is reserved
+  before any full body is chosen; when not even one full summary fits beside the rest the message
+  is a bounded overview (`summaryOverviewOnlyLead`), and summaries whose overview line does not fit
+  are counted in one line (`summaryOverflowLine`), never sent later. Every full text stays in the
+  journal.
+- **Final-candidate link check (Rule 106).** The link-shape predicate also runs on the exact final
+  text (after a revision or assembly); its findings are recorded as `release.final` against that
+  text's digest. It advises; it never holds.
+- **Approvals (Purpose; Rules 79, 82, 98).** The emergency stop (`/stop`) is a prefilled
+  Approve/Decline confirmation; the bound operator's press latches the brake, which grants nothing.
+  A cap raise is different: it changes a safeguard, so it completes only on the independently
+  administered approval surface (Part Nine's `IndependentSurfaceVerifierPort`). The limited answer
+  carries the prefilled request and a link to that surface (plus a Decline press); the verifier
+  issues a one-use, expiring challenge bound to the request's exact subject and journal base, and
+  the raise is applied only in the moment its proof for that challenge verifies. Before the proof is
+  spent, the request and wording digests are recomputed from the journal's recorded limits
+  (`raiseSubject`) and compared with the challenge, so limits substituted into the journal cannot
+  ride a genuine proof. Such a request is recorded `refused`, and a fresh one follows. A Telegram
+  Approve press, silence, a journal row, a wrong, expired or replayed proof, or a moved base never
+  raise. No verifier is installed in this preview, so raises stay with the desk and no raise
+  request is offered by phone.
+- **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
+  `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
+  bounded backoff. After three consecutive failed restarts it records one incident episode with the
+  failure evidence in `host-watch.json` (shown by `status.incident`) and a clean run closes it. It
+  sends nothing: an internal-issue notice must be Part Eight's admitted `infrastructure-notice`
+  effect through Part Ten's confined notice driver, neither of which exists yet, so the episode is
+  `inhibited` and names both (`inhibitedBy`). Without a recorded alerts grant it is `unbound`. An
+  episode an earlier build left uncertain is preserved and never repeated.
+
+Held notices from earlier builds replay unchanged, but no new held notice is pushed: a held
+message's status stays on the pull surface (`status.holds`, self-state and the mind's packet).
+An earlier notice intent that has no receipt stays UNKNOWN and is never sent again;
+`status.heldNotices` reports each earlier attempt, and model history carries only its marker
+and delivery state, separate from the answer. The packet tells the model to explain a hold
+only when the operator asks. This remains a deliberately machine-local preview under its
 existing exclusive writer, with no new store, service, or multi-machine claim.
 See [held-reply-notice-live-test.md](held-reply-notice-live-test.md) for the
 supervised private-chat proof as Justin.

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
-import { HOLDING_REPLY, replyReviewContext } from './reply-check.js';
+import { replyReviewContext } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(19);
@@ -100,20 +100,21 @@ it.each([{ verdict: 'pass', receipt: 7 }, { verdict: 'pass', receipt: null },
       model: async () => 'Follow-up answer',
       replyCheck: { elapsedMs: () => 1, jev: async () => { throw Error('Jev unavailable'); },
         escalate: async () => ({ verdict, ruleIds: [], confidence: null, latencyMs: 1 }) },
-      send: async ({ text }) => { expect(text).toBe(verdict === 'pass' ? TOO_LONG_INPUT_NOTICE : HOLDING_REPLY);
+      // Rules 77/86: a review objection never replaces the notice; it is recorded with the send.
+      send: async ({ text }) => { expect(text).toBe(TOO_LONG_INPUT_NOTICE);
         return receipt; }, checkOutbound: () => {} });
     worker.intake([update(1, 'x'.repeat(4097))]);
     await worker.drain();
-    expect(journal.view.order[0]?.intent).toBe(verdict === 'pass' ? TOO_LONG_INPUT_NOTICE : HOLDING_REPLY);
+    expect(journal.view.order[0]?.intent).toBe(TOO_LONG_INPUT_NOTICE);
+    expect(journal.view.order[0]?.release?.review).toBe(verdict === 'pass' ? undefined : 'violation');
     journal.close();
     const replay = openPreviewJournal(path, key);
     const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
       model: async () => { throw Error('duplicate model call'); },
       send: async () => { throw Error('duplicate send'); }, checkOutbound: () => {} });
     await resumed.drain();
-    expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'input', delivery: verdict === 'pass'
-      ? receipt === null ? 'UNKNOWN' : 'Telegram API accepted'
-      : receipt === null ? 'holding reply UNKNOWN' : 'holding reply Telegram API accepted' }]);
+    expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'input',
+      delivery: receipt === null ? 'UNKNOWN' : 'Telegram API accepted' }]);
     // The next prompt must describe the exact prior intent, including after journal replay.
     const context = await (async () => {
       const next = createJournalWorker(replay, { now: () => 1002, stopped: () => false,
@@ -122,10 +123,7 @@ it.each([{ verdict: 'pass', receipt: 7 }, { verdict: 'pass', receipt: null },
       await next.drain();
       return replay.view.order[1]?.answer ?? '';
     })();
-    expect(context).toContain(verdict === 'pass'
-      ? receipt === null ? 'too-long notice delivery UNKNOWN' : 'too-long notice Telegram API accepted'
-      : receipt === null ? 'holding reply delivery UNKNOWN in place of the too-long notice'
-        : 'holding reply delivered in place of the too-long notice');
+    expect(context).toContain(receipt === null ? 'too-long notice delivery UNKNOWN' : 'too-long notice Telegram API accepted');
     replay.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

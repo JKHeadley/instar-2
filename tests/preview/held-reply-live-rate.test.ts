@@ -22,8 +22,9 @@ const scores = (uncertain: boolean) => ({ model: 'jev-1.13.0', answers: Object.f
   Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: uncertain && id === 'parks_on_user' ? 0.55 : 0.01 }])) });
 
 for (const fixture of captured.held) {
-  // Rule 86: Jev flagged only parks_on_user, so a failed review sends the truthful notice once instead of holding it.
-  it(`replays held live update ${fixture.update}: one paid review, then its notice is sent once`, async () => {
+  // These live turns were held by a reviewer outage (the observed cause); under Rules 77/95 the
+  // truthful notice now reaches the operator once, with the one paid review never repeated.
+  it(`replays held live update ${fixture.update}: one paid review, then its notice is sent once, never held`, async () => {
     const dir = root(), path = join(dir, 'journal.encrypted');
     try {
       const journal = openPreviewJournal(path, key, genesis());
@@ -44,7 +45,9 @@ for (const fixture of captured.held) {
       await worker.drain();
       const turn = journal.view.order[0]!;
       expect(turn.raw).toContain(fixture.text);
+      expect(fixture.cause).toBe('reply check unavailable');
       expect(turn.held).toBeUndefined();
+      expect(turn.release).toMatchObject({ review: 'unavailable' });
       expect(turn.answer).toBe(fixture.workerShape.startsWith('ended uncertain') ? undefined : MODEL_FAILURE_REPLY);
       expect(turn.noticeClass).toBe(fixture.workerShape.startsWith('ended uncertain') ? 'unknown-answer' : undefined);
       expect(turn.replyChecks?.at(-1)).toMatchObject({ verdict: 'unavailable', path: 'subscription' });

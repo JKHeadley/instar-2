@@ -132,7 +132,8 @@ export function memoryHealthLine(view: JournalView): string {
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0)
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined)
+    + Number(turn.limited?.lead === turn.id && turn.limitedSent === undefined), 0)
     + [...view.reminders.values()].filter(item => item.sent === undefined).length;
   const sum = (field: 'recallHits' | 'channelRecallHits') => measured.reduce((total, turn) => total + (turn[field] ?? 0), 0);
   return `Memory health: ${String(view.order.filter(turn => turn.held).length)} journal turns currently held; `
@@ -213,7 +214,8 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const summaryPending = view.summaryReservations.size;
   const heldNoticeCount = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const unknownSends = view.order.reduce((count, turn) => count + Number(turn.intent !== undefined && turn.sent === undefined)
-    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined), 0)
+    + Number(turn.heldNoticeIntent !== undefined && turn.heldNoticeSent === undefined)
+    + Number(turn.limited?.lead === turn.id && turn.limitedSent === undefined), 0)
     + [...view.reminders.values()].filter(item => item.sent === undefined).length;
 
 

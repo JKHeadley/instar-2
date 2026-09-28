@@ -468,7 +468,7 @@ it('reviews the UNKNOWN notice and distinguishes it from an answer in later hist
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('labels a holding reply that review sent in place of the loss notice truthfully in later history', async () => {
+it('sends the loss notice despite a review objection and labels it truthfully in later history', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
@@ -488,8 +488,9 @@ it('labels a holding reply that review sent in place of the loss notice truthful
     worker.intake([update(2)]); await worker.drain();
     const history = JSON.parse(context).history;
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
-      notice: 'I need to check that answer before I can send it.',
-      outcome: 'holding reply delivered in place of the loss notice; model UNKNOWN' });
+      notice: 'I lost my answer to that message. Please send it again.',
+      outcome: 'loss notice delivered; model UNKNOWN' });
+    expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['parks_on_user'] });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -565,7 +566,9 @@ it('raises finite caps with recorded authority, preserves counters, and resumes 
     worker.intake([update(1), update(2)]); await worker.drain();
     expect(journal.view.calls).toBe(1);
     expect(journal.view.order[1]?.held).toBe('call cap');
-    expect(() => worker.pollGate()).toThrow('capacity');
+    // Rule 15: a reached turn allowance no longer stops reading; the minimal reserve continues.
+    expect(() => worker.pollGate()).not.toThrow();
+    expect(journal.view.order[1]?.limited?.reason).toBe('calls');
     expect(() => journal.append({ kind:'caps', genesisHash:'wrong', maxCalls:3, maxReplies:3,
       maxTurns:4, authority:'Justin topic 52075', at:1001 })).toThrow('authority');
     expect(journal.view.limits.maxCalls).toBe(1);
@@ -650,7 +653,7 @@ it('the cap command requires the exclusive writer lease and reports the recorded
     rmSync(root,{recursive:true,force:true}); }
 }, 70_000);
 
-it('holds a prepared answer when the reply cap is exhausted', async () => {
+it('holds a prepared answer when the reply cap is exhausted and gives it one limited answer from the reserve', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
@@ -660,9 +663,11 @@ it('holds a prepared answer when the reply cap is exhausted', async () => {
       model: async () => 'ok', send: async () => { sends++; return 1; }, checkOutbound: () => {} });
     worker.intake([update(1), update(2)]); await worker.drain();
     expect(journal.view.calls).toBe(2);
-    expect(sends).toBe(1);
+    expect(sends).toBe(2);
+    expect(journal.view.replies).toBe(1);
     expect(journal.view.order[1]?.answer).toBe('ok');
     expect(journal.view.order[1]?.held).toBe('reply cap');
+    expect(journal.view.order[1]?.limited?.reason).toBe('replies');
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }
 });

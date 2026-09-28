@@ -225,7 +225,7 @@ it('after downtime sends at most one late summary with a note, never a backlog',
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('sends the truthful held notice at the call cap, never a made-up summary, and the summary after a raise', async () => {
+it('holds a due summary at the call cap as pull-only status (no pushed notice), never a made-up summary, and sends it after a raise', async () => {
   const root = tmp('cap');
   try {
     const { state, open, summaries } = harness(root, { maxCalls: 1 });
@@ -234,11 +234,12 @@ it('sends the truthful held notice at the call cap, never a made-up summary, and
     state.now = sixPm(); await tick(worker);
     expect(journal.view.order.at(-1)).toMatchObject({ held: 'call cap', requestedSummary: { slot: '2026-09-26' } });
     expect(summaries()).toEqual([]);
+    // Rule 87: the held summary is status; it stays on the pull surface and is never pushed.
     state.now = sixPm() + HELD_NOTICE_AFTER_MS + 1000; await tick(worker);
-    expect(state.sent.at(-1)!.text).toBe("PREVIEW — I'm holding the summary you asked for (due 2026-09-26 18:00); it will follow or I'll tell you why");
+    expect(state.sent).toHaveLength(1);
     journal.close(); ({ journal, worker } = open());
     await tick(worker);
-    expect(state.sent).toHaveLength(2);
+    expect(state.sent).toHaveLength(1);
     // The held slot holds the next day's slot rather than stacking a backlog.
     state.now = sixPm(1); await tick(worker);
     expect(journal.view.order.filter(turn => turn.requestedSummary)).toHaveLength(1);

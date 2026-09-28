@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, importChannelFixture, openPreviewJournal } from './journal-test-worker.js';
-import { reviewUnavailableReleases } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, reviewUnavailableReleases } from './journal.js';
 import { HOLDING_REPLY, REPLY_RULES, repeatsOperatorOnly } from './reply-check.js';
 import { statusReply } from './status-command.js';
 
@@ -168,7 +168,8 @@ describe('operator echo in the journal runner', () => {
       const turn = w.journal.view.order[1]!;
       expect(w.calls.jev.length).toBe(jevBefore);
       expect(turn.replyChecks).toEqual([expect.objectContaining({ verdict: 'violation', ruleIds: ['credential'], path: 'holding' })]);
-      expect(turn.intent).toBe(HOLDING_REPLY);
+      // Build 3: the exact credential-shape wall sends its honest shape notice; the secret never leaves.
+      expect(turn.intent).toBe(CREDENTIAL_SHAPE_NOTICE);
       expect(w.calls.outbound.some(text => text.includes(secret))).toBe(false);
       expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(0);
     } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
@@ -261,7 +262,8 @@ describe('Astra repair witnesses under the Rules 4/10 reading', () => {
       await w.say(1, `My GitHub token is ${token}`);
       const turn = w.journal.view.order[0]!;
       expect(turn.replyChecks).toEqual([expect.objectContaining({ verdict: 'violation', ruleIds: ['credential'], path: 'holding' })]);
-      expect(turn.intent).toBe(HOLDING_REPLY);
+      // Build 3: the exact credential-shape wall sends its honest shape notice; the secret never leaves.
+      expect(turn.intent).toBe(CREDENTIAL_SHAPE_NOTICE);
       expect(w.calls.outbound.some(text => text.includes(token))).toBe(false);
       expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(0);
     } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }

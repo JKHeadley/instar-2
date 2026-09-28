@@ -60,14 +60,16 @@ async function fixture(root: string, build: JournalModule = { createJournalWorke
     update: 4, grant: genesis.grant, at: now });
   // The transport may have accepted this send before its receipt was lost.
   writeFileSync(join(root, 'sends.log'), `${JSON.stringify({ update: 4, text: 'PREVIEW — Silver otter 731' })}\n`, { flag: 'a' });
-  expect(sends(root).map(sent => sent.update)).toEqual([1, 2, 4]);
-  expect(journal.view.order[1]?.heldNoticeSent).toBeDefined();
+  // The live frozen14 build pushed a held notice; this build keeps held status pull-only (Rule 87).
+  const heldPushed = build.createJournalWorker !== createJournalWorker;
+  expect(sends(root).map(sent => sent.update)).toEqual(heldPushed ? [1, 2, 4] : [1, 4]);
+  expect(journal.view.order[1]?.heldNoticeSent !== undefined).toBe(heldPushed);
   const before = worker.probe('What was the code?');
   journal.close();
-  return { clock, before };
+  return { clock, before, heldPushed };
 }
 
-async function assertReopened(root: string, clock: () => number, before: unknown, samePacket = true) {
+async function assertReopened(root: string, clock: () => number, before: unknown, samePacket = true, heldPushed = false) {
   const journal = openPreviewJournal(pathFor(root), key);
   try {
     const worker = workerFor(journal, root, clock);
@@ -77,19 +79,19 @@ async function assertReopened(root: string, clock: () => number, before: unknown
     await worker.drain();
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3, 4]);
     expect(journal.view.cursor).toBe(5);
-    expect(sends(root).map(sent => sent.update)).toEqual([1, 2, 4]);
+    expect(sends(root).map(sent => sent.update)).toEqual(heldPushed ? [1, 2, 4] : [1, 4]);
     expect(new Set(calls(root)).size).toBe(calls(root).length);
     expect(calls(root)).not.toContain(journal.view.order[2]!.id);
     expect(journal.view.order[2]?.answer).toBeUndefined();
     expect(journal.view.order[3]?.intent).toBe('PREVIEW — Silver otter 731');
     expect(journal.view.order[3]?.sent).toBeUndefined();
     expect(journal.view.order[1]?.intent).toBeUndefined();
-    expect(journal.view.order[1]?.heldNoticeSent).toBeDefined();
+    expect(journal.view.order[1]?.heldNoticeSent !== undefined).toBe(heldPushed);
     expect(worker.probe('What was the code?')).toEqual(probe);
   } finally { journal.close(); }
 }
 
-it('graceful close and reopen preserve intake, recall and the one held notice', async () => {
+it('graceful close and reopen preserve intake, recall and the held status', async () => {
   const root = rootFor();
   try { const { clock, before } = await fixture(root); await assertReopened(root, clock, before); }
   finally { rmSync(root, { recursive: true, force: true }); }
@@ -108,7 +110,7 @@ it('operator stop stays latched across reopen without losing recorded memory', a
       expect(reopened.view.stop).toBe('operator');
       expect(worker.probe('What was the code?')).toEqual(before);
       expect(() => worker.gate()).toThrow('preview stopped');
-      expect(sends(root).map(send => send.update)).toEqual([1, 2, 4]);
+      expect(sends(root).map(send => send.update)).toEqual([1, 4]);
     } finally { reopened.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -142,7 +144,7 @@ it.each(['after:reserve:5', 'after:intent:5'])('crash %s keeps uncertain work fe
       expect(reopened.view.order[4]?.sent).toBeUndefined();
       expect(sends(root).filter(sent => sent.update === 5)).toHaveLength(cut.includes('intent') ? 1 : 0);
       expect(calls(root)).not.toContain(id);
-      expect(reopened.view.order[1]?.heldNoticeSent).toBeDefined();
+      expect(reopened.view.order[1]?.held).toBe('reply check unavailable');
       expect(worker.probe('What was the code?')).toEqual(atCut);
       expect(JSON.stringify(before)).toContain('Silver otter 731');
     } finally { reopened.close(); }
@@ -204,8 +206,8 @@ it('a frozen14-written journal reopens under the candidate with recall and effec
     const baselineSource = execFileSync('git', ['show', '7d824d64:tests/preview/journal.ts'], { encoding: 'utf8' });
     writeFileSync(baselineModule, baselineSource);
     const old = await import(pathToFileURL(baselineModule).href) as JournalModule;
-    const { clock, before } = await fixture(root, old);
+    const { clock, before, heldPushed } = await fixture(root, old);
     expect(JSON.stringify(before)).toContain('Silver otter 731');
-    await assertReopened(root, clock, before, false);
+    await assertReopened(root, clock, before, false, heldPushed);
   } finally { rmSync(baselineModule, { force: true }); rmSync(root, { recursive: true, force: true }); }
 });

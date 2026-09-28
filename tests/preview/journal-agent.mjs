@@ -13,11 +13,11 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, reviewUnavailableReleases, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -317,6 +317,24 @@ async function main() {
               ? 'holding reply UNKNOWN' : 'UNKNOWN') : 'pending' })),
       heldNotices: view.view.order.filter(t => t.heldNoticeIntent !== undefined).map(t => ({ update: t.update,
         state: t.heldNoticeSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
+      // Rule 15: the minimal responder's own finite reserve and every limited answer it gave.
+      minimalReserve: { limits: MINIMAL_RESERVE, turnsUsedThisHour: reserveTurnsUsed(view.view, statusNow),
+        repliesUsedThisHour: reserveRepliesUsed(view.view, statusNow),
+        reserveTurns: view.view.order.filter(t => t.reserve).length,
+        limitedAnswers: view.view.order.filter(t => t.limited?.lead === t.id).map(t => ({ update: t.update, reason: t.limited.reason,
+          covers: view.view.order.filter(item => item.limited?.lead === t.id).map(item => item.update),
+          state: t.limitedSent === undefined ? 'UNKNOWN' : 'api-accepted' })),
+        // An owned outage: the message is preserved and the named required dependency was missing.
+        outages: view.view.order.filter(t => t.minimalOutage && t.limited === undefined).map(t => ({ update: t.update,
+          missing: t.minimalOutage.missing, since: t.minimalOutage.at })) },
+      // Operator requests: a stop press decides the brake; a raise completes only on the verified surface.
+      approvals: view.view.order.filter(t => t.approval).map(t => ({ update: t.update, action: t.approval.action,
+        decision: t.approval.decision ?? 'pending', applied: t.approval.applied === true,
+        verified: t.approval.verified?.challenge ?? null, challenge: t.approval.challenge?.id ?? null })),
+      // The supervisor's incident, when one is open: evidence and why no notice was sent.
+      incident: (() => { try { const e = JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8'));
+        return e.open ? { id: e.id, phase: e.phase, failedAttempts: e.failedAttempts, since: e.openedAt,
+          inhibitedBy: e.inhibitedBy ?? [] } : null; } catch { return null; } })(),
       unknownCalls: unknownCallCounts(view.view).total,
       unknownCallBreakdown: unknownCallCounts(view.view),
       capReports: [...view.view.capReports],
@@ -326,7 +344,8 @@ async function main() {
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
-      unknownSends: view.view.order.reduce((count, t) => count + Number(t.intent !== undefined && t.sent === undefined) + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined), 0)
+      unknownSends: view.view.order.reduce((count, t) => count + Number(t.intent !== undefined && t.sent === undefined) + Number(t.heldNoticeIntent !== undefined && t.heldNoticeSent === undefined)
+        + Number(t.limited?.lead === t.id && t.limitedSent === undefined), 0)
         + [...view.view.reminders.values()].filter(item => item.sent === undefined).length,
       replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
         unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
@@ -526,6 +545,7 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
+  let identityVerified = false, routeHealthy = true, active = null;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -636,6 +656,20 @@ async function main() {
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             usage: recordedUsage(result.usage) };
         },
+        // The mind's one revision of an objected draft: same envelope and grounding packet as review.
+        revise: async ({ text, id, originalPrompt, ruleIds, reason }) => {
+          const prepared = modelEnvelope({ question: replyRevisionQuestion(ruleIds, reason),
+            context: replyReviewContext(originalPrompt, text, ruleIds), id: `${id}:reply-revision` });
+          const result = await invokeSubscription(prepared, `${id}:reply-revision`);
+          const usage = result.usage ? { usage: recordedUsage(result.usage) } : {};
+          if (result.state === 'uncertain') return { state: 'uncertain', ...usage };
+          if (result.state !== 'complete' || result.failureClass) return { state: 'rejected', ...usage };
+          let revised = result.value;
+          try { const parsed = JSON.parse(revised);
+            if (typeof parsed?.reply === 'string') revised = parsed.reply;
+            else if (typeof parsed?.reply?.answer === 'string') revised = parsed.reply.answer; } catch { /* plain revised text */ }
+          return { state: 'complete', text: revised, ...usage };
+        },
         summaryReview: async (state, through) => {
           const start = performance.now();
           const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
@@ -649,10 +683,26 @@ async function main() {
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: text => invokeJev(text, stepQuestions) } } : {}),
-      send: async ({ text, expectedText, chat, thread }) => {
+      // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
+      // actually observes (Rule 26). The register generation, the exclusive lease/fence and the P-08
+      // installation policy that settles `replication-peer` for the single-machine shape are not
+      // installed in this preview (N1), and the activation record is not that evidence, so they are
+      // reported missing: the minimal path stays inhibited with preserved input and an owned outage,
+      // and an exact /stop still latches at once. Nothing here is a caller flag.
+      minimal: { context, dependencies: () => ({ 'local-facts': !journal.readOnly && !journal.view.stop, register: false,
+        'identity-keys': identityVerified, clock: Number.isSafeInteger(wallNow()), lease: false, fence: false,
+        'replication-peer': false, 'conversation-binding': Boolean(journal.view.genesis.chat && journal.view.genesis.operator),
+        route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified }) },
+      // The operator's phone: a pressed Approve/Decline button is cleared with a short toast.
+      acknowledge: (callbackId, text) => {
+        physical.invoke({ token: secretRef('telegram-bot-token'), method: 'answerCallbackQuery',
+          body: { callback_query_id: callbackId, text }, timeoutMs: 10000 }, token());
+      },
+      send: async ({ text, expectedText, chat, thread, replyMarkup }) => {
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop) return null;
         const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
-          body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }) },
+          body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
+            ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
           timeoutMs: 30000 }, token());
         if (reply.kind !== 'response' || reply.status !== 200) return null;
         const payload = JSON.parse(reply.bytes);
@@ -665,7 +715,7 @@ async function main() {
     const activationPath = required(options, 'activation-record');
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
-    const active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
+    active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     const captures = new Map();
@@ -679,6 +729,7 @@ async function main() {
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
+    identityVerified = true;
     worker.startStepChecks();
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
@@ -691,7 +742,7 @@ async function main() {
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
     const pollFailure = async conflict => {
-      failedPolls++;
+      failedPolls++; routeHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
       try { appendRun(runsPath, { v: 1, launch: launchedAt, poll: conflict ? 'conflicted' : 'failed', at: wallNow() }); }
       catch { endReason = 'run log unavailable'; process.exitCode = 1; return false; }
@@ -728,26 +779,32 @@ async function main() {
       if (summaryJob) return;
       summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
     };
+    // A reached cap is a local report, never the end of reachability: past it the minimal
+    // reserve keeps reading and answering the operator (Rule 15).
     const reportCap = () => reportJournalCap(journal, wallNow(), line => process.stderr.write(line));
-    const waitHeldNotices = async () => {
-      let due;
-      while ((due = worker.nextHeldNoticeAt()) !== null) {
-        while (!signalled && !workerStop.value && !existsSync(stopPath) && wallNow() < Math.min(due, journal.view.expires))
-          await delay(Math.min(1000, due - wallNow(), journal.view.expires - wallNow()));
-        if (signalled || workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires) break;
-        await worker.drain(); summarizeLater();
-      }
+    // Rule 15: ordinary work (model calls, reviews, requested summaries) runs beside the poll loop and
+    // is never awaited by it, so a blocked model call cannot stop reading, stop or approvals. A failed
+    // ordinary pass no longer ends the process: the minimal path keeps reading and answering (reason
+    // `worker`) while the ordinary pass is retried with backoff; eight consecutive failures open the
+    // breaker and end the run for the host supervisor (Rules 15, 55; Eleven §5's ordinary-worker cut).
+    let drainJob = null, drainError = null, drainFailures = 0, drainRetryAt = 0;
+    const background = run => {
+      if (drainJob || clock.elapsed() < drainRetryAt) return;
+      drainJob = run().then(() => { drainFailures = 0; }, error => {
+        drainFailures++;
+        drainRetryAt = clock.elapsed() + Math.min(300_000, 1000 * 2 ** Math.min(drainFailures - 1, 9));
+        if (drainFailures >= 8) drainError ??= error;
+      }).then(summarizeLater).finally(() => { drainJob = null; });
     };
-    const stopAtCap = async () => {
-      const cap = reportCap();
-      if (!cap || cap === 'model attempt cap reached') return false;
-      endReason = cap;
-      await waitHeldNotices();
-      return true;
+    // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
+    const waitHeld = async () => {
+      const until = clock.elapsed() + 3000;
+      while (!signalled && !workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
+        await delay(Math.min(250, until - clock.elapsed()));
     };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
-      if (signalled || workerStop.value || existsSync(stopPath)) break;
+      if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop) break;
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
           importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
@@ -755,22 +812,27 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      worker.gate(); await worker.drain();
-      // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick.
-      try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-      summarizeLater(); worker.gate();
-      if (await stopAtCap()) break;
+      if (drainError) throw drainError;
+      worker.gate(); await worker.minimal();
+      // A stop given on the independent surface latches here, before any poll or ordinary pass.
+      if (journal.view.stop) break;
+      // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
+      // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
+      background(async () => {
+        await worker.drain();
+        try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
+      });
+      worker.gate();
+      reportCap();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
-      try { worker.pollGate(); } catch {
-        if (!await stopAtCap()) endReason = 'cap reached';
-        break;
-      }
+      let pollLimit;
+      try { pollLimit = worker.pollLimit(); } catch { break; }
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       let result;
       try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
-        body: { offset: journal.view.cursor, limit: journalPollLimit(journal.view),
+        body: { offset: journal.view.cursor, limit: pollLimit,
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
-          allowed_updates: ['message', 'edited_message'] },
+          allowed_updates: ['message', 'edited_message', 'callback_query'] },
         timeoutMs: 12000 }, token()); }
       catch { if (!await pollFailure(false)) break; continue; }
       await new Promise(done => setImmediate(done));
@@ -784,21 +846,29 @@ async function main() {
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
-      failedPolls = 0; conflictedPolls = 0;
-      worker.intake(updates.result); await worker.drain();
-      // Reminders go out only after a successful poll returned nothing new: every
-      // operator message already waiting (a cancellation included) has been read
-      // and settled first. A failed poll, a backlog or a cap leaves them pending.
-      if (updates.result.length === 0) await worker.sendReminders();
-      summarizeLater();
-      if (await stopAtCap()) break;
+      failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
+      worker.intake(updates.result);
+      // An approved phone stop latches in the journal; the loop ends without another effect.
+      if (journal.view.stop) break;
+      // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
+      // behind it latches before any further processing (Rule 4; bounded by the waiting store).
+      if (worker.readAhead() && updates.result.length >= pollLimit) continue;
+      await worker.minimal();
+      if (journal.view.stop) break;
+      // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
+      // running: every operator message already waiting (a cancellation included) has been read and
+      // settled first. A failed poll, a backlog or a cap leaves them pending.
+      background(() => updates.result.length === 0 ? worker.sendReminders() : worker.drain());
+      reportCap();
+      if (worker.intakeHeld()) await waitHeld();
 
     }
+    await drainJob;
+    if (drainError && !signalled) throw drainError;
     await summaryJob;
     await stepJob;
     if (stepCheckEnabled) await worker.checkSteps();
-    const finalCap = reportCap();
-    endReason ??= finalCap;
+    reportCap();
     endReason ??= 'cycle limit reached';
     function modelRoute(operation) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');

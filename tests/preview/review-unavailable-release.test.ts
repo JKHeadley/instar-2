@@ -73,20 +73,26 @@ it('credential among the Jev flags + malformed review: the reply stays held (sec
   });
 });
 
-it('Jev itself unavailable + malformed review: no Jev flags exist, so the reply stays held', async () => {
+// Build 3 (Rules 77, 95): with no Jev result and no review verdict, the reply is released once with
+// the review recorded unavailable; it is not counted as a release on Jev's flags, because there were none.
+it('Jev itself unavailable + malformed review: no check decided, so the reply is released once, recorded unavailable', async () => {
   await withJournal(async path => {
     const sent: string[] = [];
     const journal = openPreviewJournal(path, key, genesis());
     const worker = createJournalWorker(journal, ports(sent, async () => { throw Error('Jev down'); }, malformed));
     worker.intake([update(1, 'Remind me on Friday at 9')]);
-    await worker.drain();
-    expect(sent).toEqual([]);
-    expect(journal.view.order[0]?.held).toBe('reply check unavailable');
+    await worker.drain(); await worker.drain();
+    expect(sent).toEqual([CANDIDATE]);
+    expect(journal.view.order[0]?.held).toBeUndefined();
+    expect(journal.view.order[0]?.release).toMatchObject({ review: 'unavailable', revised: false });
+    expect(reviewUnavailableReleases(journal.view).total).toBe(0);
     journal.close();
   });
 });
 
-it('a real review violation holds the candidate; a review PASS sends it', async () => {
+// Build 3 (Rules 4, 77, 86): an ordinary review objection is a signal released with the reply; only a
+// review naming a credential, an untracked deferral or an unevidenced cannot-do claim holds.
+it('an ordinary review violation is released with its objection; a review naming a holding rule sends the holding reply', async () => {
   await withJournal(async path => {
     const sent: string[] = [];
     const journal = openPreviewJournal(path, key, genesis());
@@ -95,22 +101,40 @@ it('a real review violation holds the candidate; a review PASS sends it', async 
         ? { verdict: 'violation' as const, ruleIds: ['claims_blocked'], reason: 'claims a block untried', confidence: null, latencyMs: 0 }
         : { verdict: 'pass' as const, ruleIds: [], reason: 'fine in context', confidence: null, latencyMs: 0 }));
     worker.intake([update(1, 'Remind me on Friday at 9')]); await worker.drain();
-    expect(sent).toEqual([HOLDING_REPLY]);
+    expect(sent).toEqual([CANDIDATE]);
+    expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['claims_blocked'], revised: false });
     worker.intake([update(2, 'And again on Monday')]); await worker.drain();
-    expect(sent).toEqual([HOLDING_REPLY, CANDIDATE]);
+    expect(sent).toEqual([CANDIDATE, CANDIDATE]);
+    expect(journal.view.order[1]?.release).toBeUndefined();
     expect(reviewUnavailableReleases(journal.view).total).toBe(0);
+    journal.close();
+  });
+  await withJournal(async path => {
+    const sent: string[] = [];
+    const journal = openPreviewJournal(path, key, genesis());
+    const worker = createJournalWorker(journal, ports(sent, jevFlags('defers_work'), async () =>
+      ({ verdict: 'violation' as const, ruleIds: ['defers_work'], reason: 'defers without a record', confidence: null, latencyMs: 0 })));
+    worker.intake([update(1, 'Remind me on Friday at 9')]); await worker.drain();
+    expect(sent).toEqual([HOLDING_REPLY]);
+    expect(journal.view.order[0]?.release).toBeUndefined();
     journal.close();
   });
 });
 
-it('a spend-cap refusal of the review still holds the reply even when Jev flagged only non-secret rules', async () => {
+// The spend floor: with no slot left for a full-context review, no answer or review call is made and
+// the turn holds as `call cap` for `raise-caps`. Build 3's minimal reserve still answers the operator
+// once, without a model call, that the allowance is used up (Rules 15, 77).
+it('at the call cap nothing is spent: the turn holds as call cap and only the limited answer is sent', async () => {
   await withJournal(async path => {
     const sent: string[] = [];
     const journal = openPreviewJournal(path, key, genesis(1));
     const worker = createJournalWorker(journal, ports(sent, jevFlags('parks_on_user'), malformed));
     worker.intake([update(1, 'Remind me on Friday at 9')]); await worker.drain();
-    expect(sent).toEqual([]);
+    expect(journal.view.calls).toBe(0);
     expect(journal.view.order[0]?.held).toBe('call cap');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain('allowance of 1 model calls is used up');
+    expect(reviewUnavailableReleases(journal.view).total).toBe(0);
     journal.close();
   });
 });

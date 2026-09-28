@@ -143,6 +143,7 @@ it('replays live-shaped failure classes and measures first-attempt holds by clas
     'contradicting-prose': { total: 1, held: 0 }, 'jev-unavailable': { total: 1, held: 0 },
     'review-timeout': { total: 2, held: 0 },
   });
+  // Rules 77/95: the live-shaped reviewer failures that held 4 of 12 replies now answer every one.
   expect(held).toBe(0);
   expect(results.filter(row => row.class === 'wrapped-review').every(row =>
     row.modelJsonShapes.counts['reply-review/verdict/tolerated/fenced'] === 1 && row.sends === 1)).toBe(true);
