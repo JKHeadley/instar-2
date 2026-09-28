@@ -70,6 +70,25 @@ it('discovers the subscription outcome from the exchange, ignoring local resourc
   expect(subscriptionExchange({ code: null, limited: true, localLimit: 'capacity', stdout: '' }, 'op')).toBeNull();
 });
 
+// Live risk (real model output format): a real Claude Code result frame lists every model the CLI used,
+// often its background helper first with a dated id, then the requested model. The entry shape below is
+// copied from a genuine 2026-09 subscription result frame in the desk's run logs, with only token counts kept.
+it('reads a real-shaped subscription result frame: the requested model among helper models verifies; a helper alone is a change', () => {
+  const entry = (canonical: string) => ({ inputTokens: 2348, outputTokens: 17, cacheReadInputTokens: 0, cacheCreationInputTokens: 0,
+    webSearchRequests: 0, costUSD: 0.002433, contextWindow: 200000, maxOutputTokens: 32000, thinkingTokens: 0, canonicalModel: canonical,
+    provider: 'firstParty', costBasis: 'list' });
+  const frame = (usage: Record<string, unknown>) => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, num_turns: 1,
+    result: 'PREVIEW — ok', stop_reason: 'end_turn', total_cost_usd: 0.03, modelUsage: usage });
+  const both = subscriptionExchange({ code: 0, limited: false, stdout: frame({
+    'claude-haiku-4-5-20251001': entry('claude-haiku-4-5'), 'claude-opus-4-8': entry('claude-opus-4-8') }) }, 'real');
+  expect(both).toEqual({ ok: true, reportedModels: ['claude-haiku-4-5-20251001', 'claude-opus-4-8'], evidence: 'exchange:real' });
+  const verified = observeExchange(installDoorways(null, installed, 1000), 'preview-subscription', 'claude-opus-4-8', both!, 1000);
+  expect(verified.doorways[0]!.models.find(m => m.id === 'claude-opus-4-8')).toMatchObject({ state: 'verified', strength: 'provider-reported' });
+  const helperOnly = subscriptionExchange({ code: 0, limited: false, stdout: frame({ 'claude-haiku-4-5-20251001': entry('claude-haiku-4-5') }) }, 'real');
+  const changed = observeExchange(installDoorways(null, installed, 1000), 'preview-subscription', 'claude-opus-4-8', helperOnly!, 1000);
+  expect(changed.doorways[0]!.models.find(m => m.id === 'claude-opus-4-8')).toMatchObject({ state: 'changed', observedId: 'claude-haiku-4-5-20251001' });
+});
+
 it('runs a standing check through the register\'s model-map age rule: current, then stale while idle, with no exchange', () => {
   // The register's deadline check and the live map decide with the same function, on both sides of the window.
   expect(modelEntryFresh(1000, DOORWAY_FRESH_MS, 1000 + DOORWAY_FRESH_MS)).toBe(true);
