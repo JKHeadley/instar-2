@@ -1992,6 +1992,8 @@ export function renewJournalExpiry(journal: ReturnType<typeof openPreviewJournal
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Extra lines for the fixed status reply, supplied by the runner (ownership, store checks). */
+  statusLines?(): readonly string[];
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
   elapsed?(): number;
   timeZone?: string;
@@ -3566,7 +3568,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (turn.held) continue;
         gate();
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
-          const answer = statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC');
+          const answer = [statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC'), ...(ports.statusLines?.() ?? [])].join('\n');
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },

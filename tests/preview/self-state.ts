@@ -13,7 +13,7 @@ export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: 
 export interface RunEnd { pollPressure?: { failed: number; conflicted: number }; unfinished?: number; revival?: 'queued' | 'inhibited' | 'none';
   /** Rule 63: this launch found another runner serving the conversation and retired without polling or sending. */
   nonowner?: { machine: string | null; since: number | null } }
-export interface RunLog { launches: ({ at: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number }
+export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number }
 
 /** Appends one line and fsyncs it before returning; the first write also fsyncs the directory. */
 export function appendRun(path: string, record: RunRecord): void {
@@ -40,7 +40,9 @@ export function readRuns(path: string): RunLog {
       || row.v !== 1 || !Number.isSafeInteger(row.launch)) { log.unreadable++; continue; }
     if (row.exit === undefined) {
       if (byLaunch.has(row.launch!)) { log.unreadable++; continue; }
-      const entry = { at: row.launch! }; byLaunch.set(row.launch!, entry); log.launches.push(entry);
+      const entry: RunLog['launches'][number] = { at: row.launch! };
+      if (Number.isSafeInteger(row.pid) && row.pid! > 0) entry.pid = row.pid!;
+      byLaunch.set(row.launch!, entry); log.launches.push(entry);
     } else {
       const entry = byLaunch.get(row.launch!);
       if (!entry || entry.exit !== undefined || !Number.isSafeInteger(row.exit) || typeof row.reason !== 'string') { log.unreadable++; continue; }

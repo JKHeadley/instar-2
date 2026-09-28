@@ -29,6 +29,7 @@ import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { hostname, homedir } from 'node:os';
 import { claimConversation, observeConversationOwner } from './conversation-owner.js';
+import { agreementLine, agreementStatus, runDueAgreements } from './store-agreements.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -237,6 +238,7 @@ async function main() {
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
   const shapesPath = join(root, 'model-json-shapes.json');
+  const agreementsPath = join(root, 'agreements.jsonl');
   // Rule 63: conversation ownership is claimed in a HOST-scope directory so a second root for the same
   // conversation is fenced too. Tests point it at a per-file temporary directory.
   const ownersDirectory = () => {
@@ -296,6 +298,7 @@ async function main() {
         thisRoot: ownership.holder.root === root } },
       stranded: waiting > 0 && ownership.state !== 'serving' ? { waiting, owner: ownership.state } : null,
       duplicateLaunchesRetired: retired,
+      storeAgreements: agreementStatus(agreementsPath, now),
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
@@ -548,6 +551,16 @@ async function main() {
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null;
   // Rule 63: the conversation fence. Losing it stops new work; an effect never dispatches without it.
+  // Rule 33: declared store agreements run at launch and then on their cadence; each completed check is durable.
+  const checkAgreements = force => {
+    if (!journal) return;
+    try {
+      const g = journal.view.genesis;
+      runDueAgreements(agreementsPath, { view: journal.view, runs: readRuns(runsPath), root, now: wallNow(),
+        ownership: observeConversationOwner({ directory: ownersDirectory(), bot: g.bot, chat: g.chat, machine: ownerMachine,
+          probePid: pid => process.kill(pid, 0), now: wallNow() }) }, force);
+    } catch { /* an interrupted maintenance pass stays due; the last completed check remains visible */ }
+  };
   const ownerHeld = () => {
     if (ownerClaim?.owner && ownerClaim.verify()) return true;
     if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; workerStop.value = true; }
@@ -639,6 +652,11 @@ async function main() {
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
+      statusLines: () => {
+        const log = readRuns(runsPath), retired = log.launches.filter(run => run.nonowner).length;
+        return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${retired} duplicate launch(es) retired.`,
+          agreementLine(agreementsPath, wallNow())];
+      },
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
@@ -730,6 +748,7 @@ async function main() {
     runs = readRuns(runsPath);
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
+    checkAgreements(true);
     const carried = runs.launches.at(-2)?.pollPressure;
     if (carried) { failedPolls = carried.failed; conflictedPolls = carried.conflicted; }
     const pollFailure = async conflict => {
@@ -796,6 +815,7 @@ async function main() {
         }
       }
       worker.gate(); await worker.drain(); summarizeLater(); worker.gate();
+      checkAgreements(false);
       if (await stopAtCap()) break;
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       try { worker.pollGate(); } catch {
