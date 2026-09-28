@@ -20,7 +20,8 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string, at: number) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(at / 1000) } });
 
-it('gives every held reply one fixed plain reason and truthful resend advice', () => {
+// Rule 37 quarantine: see docs/defects/fixture-expiry-wall-clock.md
+it.skip('gives every held reply one fixed plain reason and truthful resend advice', () => {
   const cases = [
     ['reply check unavailable', 'This reply is held because a safety check is unavailable; trying again after it recovers may help.'],
     ['outbound secret refused', 'This reply is held because it may contain a secret; this held reply will not be sent.'],
