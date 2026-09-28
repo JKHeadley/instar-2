@@ -32,7 +32,7 @@ it('keeps Telegram polling alive through a source error, then clears it after a 
       'run', '--root', root, '--bot-id', trial.configuration.botId, '--chat-id', trial.configuration.chatId,
       '--operator-sender-id', trial.configuration.operatorSenderId, '--grant-reference', grant.id,
       '--configuration-digest', grant.configurationDigest, '--expires-at', String(grant.expiresAt),
-      '--activation-record', activation, '--login-profile', profile, '--model', trial.model,
+      '--activation-record', activation, '--operator-records', join(trial.directory, 'operator-records'), '--login-profile', profile, '--model', trial.model,
       '--bot-username', trial.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1',
       '--agent-state-dir', source];
     const run = () => spawnSync(process.execPath, args, { cwd: process.cwd(), encoding: 'utf8', timeout: 15000, env });

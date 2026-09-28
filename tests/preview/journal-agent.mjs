@@ -102,6 +102,17 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
   sites: { 'preview.journal': 'closed', 'types.decode': 'closed' }, keys: {}, allowRedelegation: false,
   conflictStanding: { ordinary: 'delegate', authority: 'operator' } }, captures: {} };
+/** Rules 28/82: the messaging owner's records (its state directory: the sender-authenticated message
+ * log, the provenance ledger and the topic-operator bindings). Absent, unreadable or malformed →
+ * null, which resolves no grant. */
+const operatorRecords = directory => {
+  if (!directory) return null;
+  // Every complete line must parse (a skipped line could hide a second row for the same message);
+  // only a trailing fragment still being appended is left out.
+  const lines = name => readFileSync(join(directory, name), 'utf8').split('\n').slice(0, -1).filter(Boolean).map(line => JSON.parse(line));
+  try { return { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
+    bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) }; } catch { return null; }
+};
 /** Rules 94/98/103/104: the activation is exercised only under a recorded operator authority that
  * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
  * The record defaults to `activation-authority.json` beside the activation record. */
@@ -109,7 +120,8 @@ const requireAuthority = (options, activation, activationPath, view, now) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
   let record = null;
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
-  const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now);
+  const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
+    operatorRecords(options['operator-records']));
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };
@@ -318,11 +330,13 @@ async function main() {
         change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
       holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null || wallNow() >= view.view.expires),
       tooLong: view.view.order.filter(t => t.noticeClass === 'too-long-input' || t.intent === TOO_LONG_REPLY_NOTICE)
-        .map(t => ({ update: t.update, kind: t.noticeClass === 'too-long-input' ? 'input' : 'reply',
-          delivery: t.sent ? (t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE
-            ? 'holding reply Telegram API accepted' : 'Telegram API accepted')
-            : t.intent ? (t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE
-              ? 'holding reply UNKNOWN' : 'UNKNOWN') : 'pending' })),
+        // Rule 42: delivery reads the one durable send-outcome lookup; a definite refusal stays refused, with its reason.
+        .map(t => { const holding = t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE ? 'holding reply ' : '';
+          const settled = t.intent ? sendOutcomeOf(view.view, replyTarget(t), t.sent) : null;
+          return { update: t.update, kind: t.noticeClass === 'too-long-input' ? 'input' : 'reply',
+            delivery: !settled ? 'pending' : `${holding}${settled.kind === 'accepted' ? 'Telegram API accepted'
+              : settled.kind === 'refused' ? 'refused' : 'UNKNOWN'}`,
+            ...(settled?.kind === 'refused' ? { refusal: settled.reason } : {}) }; }),
       heldNotices: view.view.order.filter(t => t.heldNoticeIntent !== undefined).map(t => ({ update: t.update,
         ...(() => { const settled = sendOutcomeOf(view.view, `held-notice:${t.id}`, t.heldNoticeSent);
           return { state: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'refused' : 'UNKNOWN',

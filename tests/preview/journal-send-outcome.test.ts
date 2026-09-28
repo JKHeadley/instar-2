@@ -69,6 +69,26 @@ it('keeps a definite refusal distinct from UNKNOWN and from delivery, through th
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 60000);
 
+it('the too-long notice status view keeps a definite refusal, with its reason, beside an UNKNOWN neighbour', async () => {
+  const dir = root();
+  try {
+    const long = 'x'.repeat(genesis.maxBytes + 1);
+    const refused = world(dir, () => ({ kind: 'refused', reason: 'telegram 403: blocked' }));
+    refused.worker.intake([update(1, long)]); await refused.worker.drain();
+    expect(refused.journal.view.order[0]?.noticeClass).toBe('too-long-input');
+    refused.journal.close();
+    const unknown = world(dir, () => ({ kind: 'unknown', reason: 'transport timeout' }));
+    unknown.worker.intake([update(2, long)]); await unknown.worker.drain();
+    expect(unknown.seen).toHaveLength(1); // the refused notice is never re-sent
+    unknown.journal.close();
+    const status = launcher(dir, 'status');
+    expect(status.sendOutcomes).toMatchObject({ accepted: 0, refused: 1, unknown: 1 });
+    expect(status.tooLong).toEqual([{ update: 1, kind: 'input', delivery: 'refused', refusal: 'telegram 403: blocked' },
+      { update: 2, kind: 'input', delivery: 'UNKNOWN' }]);
+    expect(launcher(dir, 'inspect').reply).toMatchObject({ update: 2, outcome: 'send-unknown' });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 60000);
+
 it('signs every outbound intent automatically and the send consumes that exact signed subject', async () => {
   const dir = root();
   try {

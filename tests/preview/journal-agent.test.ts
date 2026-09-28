@@ -48,7 +48,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
       '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--login-profile', profile, '--model', world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1'],
       { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
     expect(run.status, run.stderr).toBe(0);
@@ -107,7 +107,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record',activation,'--login-profile',profile,'--model',world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
     child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
@@ -222,7 +222,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record',activation,'--login-profile',profile,'--model',world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
@@ -302,7 +302,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record',activation,'--login-profile',profile,'--model',world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);

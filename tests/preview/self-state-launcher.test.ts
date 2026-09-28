@@ -60,7 +60,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       const result = agent('run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
         '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
         '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-        '--activation-record', activation, '--login-profile', profile, '--model', world.model,
+        '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles', String(cycles), '--max-poll-seconds', '1',
         '--max-calls', '3', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles',
         ...(stepCheck ? ['--step-check', 'true'] : []));
