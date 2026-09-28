@@ -20,4 +20,4 @@ it('P12-NF-29 P12-NF-34 round26 renders status within the synchronous assessment
       expect(row.trace).toContain('consumeCurrent:consumer');
     }
   }
-});
+}, 60_000); // two full assessment scenarios; ~6s alone, over 10s under full-suite load
