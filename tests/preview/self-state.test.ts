@@ -45,7 +45,8 @@ it('gives every held reply one fixed plain reason and truthful resend advice', (
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-notice-')));
   try {
     const path = join(root, 'journal.encrypted');
-    const journal = openPreviewJournal(path, key, genesis);
+    // The status child reads the real clock, so the trial must not have expired in real time.
+    const journal = openPreviewJournal(path, key, { ...genesis, expires: Date.now() + 86_400_000 });
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
       model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(1, 'one', NOON), update(2, 'two', NOON)]);
