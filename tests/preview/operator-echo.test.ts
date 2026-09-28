@@ -64,6 +64,12 @@ describe('the exact operator-echo test', () => {
     // Contiguity (Astra desk review MUST-FIX 1): scattered words cannot be stitched into a value.
     expect(repeatsOperatorOnly('It is violet orchid.', ['The violet flowers are beside the orchid. What did Sam send?'])).toBe(false);
     expect(repeatsOperatorOnly('It is violet orchid.', ['My recovery phrase is violet orchid.'])).toBe(true);
+    // cint-1 MUST-FIX 1: the agent speaking about itself is never an echo, so a repeated question
+    // cannot become an unrecorded promise or blocker claim; it takes the obligation-aware review.
+    expect(repeatsOperatorOnly('I will look into the invoice question later today.',
+      ['Please tell me whether you will look into the invoice question later today.'])).toBe(false);
+    expect(repeatsOperatorOnly('I cannot book the appointment because this preview has no browser.',
+      ['Is it true that you cannot book the appointment because this preview has no browser?'])).toBe(false);
     // Astra r2 MUST-FIX 1: connectives are never removed from inside the source.
     expect(repeatsOperatorOnly('It is violet orchid.', ['I said violet and you said orchid. What did Sam send?'])).toBe(false);
   });

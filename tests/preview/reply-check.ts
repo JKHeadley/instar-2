@@ -49,7 +49,10 @@ export function replyReviewDiagnostics(usage: { outputTokens: number | null } | 
 const tokenEdges = /^["'“‘(\[{<]+|["'”’)\]}>.,;:!?…]+$/gu;
 export const replyTokens = (text: string): string[] =>
   text.split(/\s+/u).map(token => token.replace(tokenEdges, '')).filter(Boolean);
-const echoConnectives = new Set(['you', 'your', 'yours', 'i', 'me', 'my', 'it', 'its', 'is', 'was', 'are', 'were',
+// The agent's own first-person subject words ("I", "my") are NOT connectives: stripping them let
+// "I will look into X" pass as an echo of the operator's question and skip obligation review
+// (cint-1 review MUST-FIX 1). "me" stays for "You told me …".
+const echoConnectives = new Set(['you', 'your', 'yours', 'me', 'it', 'its', 'is', 'was', 'are', 'were',
   'the', 'a', 'an', 'told', 'said', 'that', 'and', '—', '–', '-']);
 export function repeatsOperatorOnly(reply: string, operatorMessages: readonly string[]): boolean {
   // Only a LEADING run of fixed connectives ("It is", "Your", "You told me the") is ignored; every
