@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETRO_MIN_INTERVAL_MS, RETRO_PENDING_RECHECK_MS, RETRO_STALE_CASE_MS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION,
+import { GRAVITY_WELLS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS, RETRO_PENDING_RECHECK_MS, RETRO_STALE_CASE_MS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION,
   WAIVER_EVIDENCE_UNAVAILABLE, benchmarkReruns, disciplineSource, eligibleCases, feedbackDispositions, feedbackRecordOf, latestGrades,
-  openFindings, passAccounting, pendingGrades, promotedCases, replyContextDigest, retrospectivePlan, retrospectivePopulation,
+  openFindings, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, retrospectivePlan, retrospectivePopulation,
   retrospectiveStatusLine, standingGrantCandidates, validateRetrospective, type RetroCase } from './retrospective.js';
 
 const key = new Uint8Array(32).fill(21);
@@ -432,7 +433,7 @@ describe('MUST-FIX 6: every duty accounted, sibling evidence through a typed sea
       let packet: { waiverEvidence: unknown } | undefined;
       w.answerWith(state => { packet = JSON.parse(state); return answerFor(state); });
       await w.retrospect();
-      expect(packet?.waiverEvidence).toEqual({ waivers: 0, linkedActs: 0, unusedWaivers: [], actsWithoutPriorWaiver: ['act:1'] });
+      expect(packet?.waiverEvidence).toMatchObject({ summary: { waivers: 0, linkedActs: 0, unusedWaivers: [], actsWithoutPriorWaiver: ['act:1'] } });
       expect(w.journal.view.retroPasses[0]!.result!.duties.find(item => item.duty === 'waiver-recurrence')).toMatchObject({ disposition: 'inspected' });
     } finally { w.done(); }
   });
@@ -529,4 +530,257 @@ it('marks a message the journal recorded as a memory correction so the review mu
     expect(marked).toEqual([`turn:${journal.view.memory[0]!.trigger}`]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Repair round 2: each of the reviewer's reproductions, now asserting the repaired behavior, beside its positive neighbor.
+const settled = (cases: Case[]) => body(cases).grades.map(grade => ({ ...grade,
+  outcome: { assessment: 'unverifiable', reason: 'no outcome expected', evidence: [] } }));
+const failedReason = (w: ReturnType<typeof world>, pass: number) => w.journal.view.retroPasses[pass]?.reason;
+
+describe('Repair round 2 R1: an improvement item is never its own proof', () => {
+  it('refuses a closure or verification citing the open item itself, and accepts a later message', async () => {
+    const w = world();
+    try {
+      await w.converse(words.slice(0, 10));
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), feedback: [{ case: `turn:${turnId(1)}`,
+        classification: 'style', disposition: 'improvement-owned', owner: 'agent', next: 'Use two sentences.' }] }));
+      await w.retrospect();
+      w.advance(RETRO_STALE_CASE_MS);
+      w.answerWith(state => answerFor(state, { closures: [{ finding: 'retro:0:feedback:0', outcome: 'improved', evidence: ['open:retro:0:feedback:0'] }] }));
+      await w.retrospect();
+      expect(failedReason(w, 1)).toContain('improvement needs evidence after the work was opened');
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+      w.answerWith(state => answerFor(state, { feedback: [{ case: `turn:${turnId(1)}`, classification: 'style', disposition: 'verified-improvement',
+        improvementOf: 'open:retro:0:feedback:0', evidence: ['open:retro:0:feedback:0'] }] }));
+      await w.retrospect();
+      expect(failedReason(w, 2)).toContain('verified improvement needs evidence after the work was opened');
+      expect(openFindings(w.journal.view)).toHaveLength(1);
+      expect(feedbackDispositions(w.journal.view)[0]).toMatchObject({ disposition: 'improvement-owned' });
+      // Positive neighbor: an actual later message is proof.
+      await w.converse(['Much better now.']);
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)),
+        closures: [{ finding: 'retro:0:feedback:0', outcome: 'improved', evidence: [`turn:${turnId(11)}`] }] }));
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[3]?.state).toBe('complete');
+      expect(openFindings(w.journal.view)).toEqual([]);
+      expect(feedbackDispositions(w.journal.view)[0]).toMatchObject({ disposition: 'verified-improvement', evidence: [`turn:${turnId(11)}`] });
+    } finally { w.done(); }
+  });
+  it('binds a verified improvement to the item opened for that same feedback message', async () => {
+    const w = world();
+    try {
+      await w.converse(words.slice(0, 10));
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), feedback: [
+        { case: `turn:${turnId(1)}`, classification: 'length', disposition: 'improvement-owned', owner: 'agent', next: 'Be brief.' },
+        { case: `turn:${turnId(2)}`, classification: 'tone', disposition: 'improvement-owned', owner: 'agent', next: 'Be warmer.' }] }));
+      await w.retrospect();
+      await w.converse(['Much better now.']);
+      w.advance(RETRO_STALE_CASE_MS);
+      const wrong = { case: `turn:${turnId(1)}`, classification: 'length', disposition: 'verified-improvement',
+        improvementOf: 'open:retro:0:feedback:1', evidence: [`turn:${turnId(11)}`] };
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), feedback: [wrong] }));
+      await w.retrospect();
+      expect(failedReason(w, 1)).toContain('improvement item opened for that feedback');
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), feedback: [{ ...wrong, improvementOf: 'open:retro:0:feedback:0' }] }));
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[2]?.state).toBe('complete');
+      expect(openFindings(w.journal.view).map(item => item.id)).toEqual(['retro:0:feedback:1']);
+    } finally { w.done(); }
+  });
+});
+
+describe('Repair round 2 R2: every settled assessment stays reachable for reassessment', () => {
+  it('reopens an answer settled outside the last twelve on a direct later correction', async () => {
+    const w = world();
+    try {
+      await w.converse(['Which bus should I take?', ...words.slice(1)]);
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
+      await w.retrospect();
+      const old = `answer:${turnId(1)}`;
+      expect(latestGrades(w.journal.view).get(old)?.grade.outcome.assessment).toBe('unverifiable');
+      await w.converse(['The bus you recommended in my first question never came.']);
+      w.advance(RETRO_STALE_CASE_MS);
+      const plan = retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), DIGEST)!;
+      const packet = JSON.parse(plan.state) as { priorGrades: { case: string }[]; gradeIndex: { page: number; pages: number; rows: { case: string; question?: string }[] } };
+      expect(packet.priorGrades.map(row => row.case)).not.toContain(old);
+      expect(packet.gradeIndex).toMatchObject({ page: 1, pages: 1 });
+      expect(packet.gradeIndex.rows.find(row => row.case === old)).toMatchObject({ question: 'Which bus should I take?' });
+      const regrade = { case: old, conclusion: { assessment: 'contradicted', evidence: [`turn:${turnId(21)}`] },
+        reason: { assessment: 'not-applicable', evidence: [] }, outcome: { assessment: 'unmet', reason: 'bus never arrived', evidence: [`turn:${turnId(21)}`] }, observations: [] };
+      w.answerWith(state => answerFor(state, { grades: [...settled(casesOf(state)), regrade] }));
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[1]?.state).toBe('complete');
+      expect(latestGrades(w.journal.view).get(old)?.grade).toMatchObject({ reassessment: true, outcome: { assessment: 'unmet' } });
+    } finally { w.done(); }
+  });
+  it('rotates index pages across passes so every older assessment is eventually shown; an unshown one defers honestly', async () => {
+    const w = world({ calls: 400 });
+    try {
+      const long = Array.from({ length: 76 }, (_, index) => `question ${String(index + 1)} ${'about the weather and the ferry schedule '.repeat(3)}`);
+      for (let at = 0; at < long.length; at += 19) {
+        await w.converse(long.slice(at, at + 19));
+        w.advance(RETRO_STALE_CASE_MS);
+        w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
+        for (let round = 0; round < 3 && retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), DIGEST); round++) {
+          await w.retrospect(); w.advance(RETRO_MIN_INTERVAL_MS);
+        }
+      }
+      expect(pendingGrades(w.journal.view)).toHaveLength(0);
+      const settledIds = [...latestGrades(w.journal.view).keys()];
+      expect(settledIds).toHaveLength(76);
+      const shown = new Set<string>(), pages = new Set<number>();
+      let total = 0;
+      for (let round = 0; round < 4; round++) {
+        await w.converse([`correction ${String(round)}`]);
+        w.advance(RETRO_STALE_CASE_MS);
+        const plan = retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), DIGEST)!;
+        const packet = JSON.parse(plan.state) as { gradeIndex: { page: number; pages: number; rows: { case: string }[] } };
+        total = packet.gradeIndex.pages; pages.add(packet.gradeIndex.page);
+        for (const row of packet.gradeIndex.rows) shown.add(row.case);
+        expect(Buffer.byteLength(plan.state)).toBeLessThanOrEqual(24 * 1024);
+        // The correction's target is not on this page: the message is omitted with its reason and stays owed.
+        w.answerWith(state => answerFor(state, { inspected: [], omitted: casesOf(state).map(item => ({ case: item.id, reason: 'earlier assessment not shown' })), grades: [] }));
+        await w.retrospect();
+        expect(w.journal.view.retroPasses.at(-1)?.state).toBe('complete');
+        expect(owedIds(w.journal.view)).toContain(`turn:${turnId(77 + round)}`);
+      }
+      expect(total).toBeGreaterThan(1);
+      expect(pages.size).toBe(total);
+      expect(settledIds.slice(0, -12).every(id => shown.has(id))).toBe(true);
+    } finally { w.done(); }
+  });
+});
+
+describe('Repair round 2 R3: waiver evidence is source-linked and citable', () => {
+  it('carries rule, scope and time per act and admits exactly the supplied waiver/act ids', async () => {
+    const w = world({ evidence: () => ({ waivers: { authorizations: [], acts: [{ id: 'act:1', rule: '26', scope: 'deploy to production', at: 5, predecessors: [] }] } }) });
+    try {
+      await w.converse(words.slice(0, 10));
+      const finding = (ref: string) => ({ duty: 'waiver-recurrence', refs: [ref], summary: 'Act lacked a prior waiver',
+        disposition: { owner: 'agent', next: 'Review the rule 26 violation.' } });
+      w.answerWith(state => {
+        const packet = JSON.parse(state) as { waiverEvidence: { acts: unknown[]; summary: { actsWithoutPriorWaiver: string[] } } };
+        expect(packet.waiverEvidence.summary.actsWithoutPriorWaiver).toEqual(['act:1']);
+        expect(packet.waiverEvidence.acts).toEqual([{ id: 'act:1', rule: '26', at: 5, scope: 'deploy to production', predecessors: [], withoutPriorWaiver: true }]);
+        return answerFor(state, { grades: settled(casesOf(state)), findings: [finding('act:9')] });
+      });
+      await w.retrospect();
+      expect(failedReason(w, 0)).toContain('finding refs cites an unknown record');
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), findings: [finding('act:1')] }));
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[1]?.state).toBe('complete');
+      expect(openFindings(w.journal.view)[0]).toMatchObject({ duty: 'waiver-recurrence', refs: ['act:1'] });
+    } finally { w.done(); }
+  });
+});
+
+describe('Repair round 2 R4: only reconstructable answers are promoted; the journal always replays', () => {
+  it('refuses a verdict promotion, never writes a rerun reservation the projection would refuse, and still reopens', async () => {
+    const w = world();
+    try {
+      w.worker.intake([update(1, 'Which bus?')]);
+      w.journal.append({ kind: 'reserve', id: turnId(1), at: w.at() });
+      w.journal.append({ kind: 'answer', id: turnId(1), text: 'Take the bus.', state: 'complete', at: w.at() });
+      w.journal.append({ kind: 'reply-check', id: turnId(1), result: { path: 'holding', verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0, reason: 'No violation.' }, at: w.at() });
+      const verdict = `verdict:${turnId(1)}:0`;
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)).map(grade => grade.case === verdict
+        ? { ...grade, outcome: { assessment: 'met', reason: 'observed', evidence: [verdict] }, promote: 'Review judgment scenario' } : grade) }));
+      w.advance(RETRO_STALE_CASE_MS);
+      await w.retrospect();
+      expect(failedReason(w, 0)).toContain('only an answer case can be promoted');
+      expect(promotedCases(w.journal.view)).toEqual([]);
+      // Positive neighbor: the same verdict graded without promotion completes.
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)).map(grade => grade.case === verdict
+        ? { ...grade, outcome: { assessment: 'met', reason: 'observed', evidence: [verdict] } } : grade) }));
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[1]?.state).toBe('complete');
+      // The durable floor itself: a verdict rerun reservation is refused before the write.
+      w.journal.append({ kind: 'retro-reserve', pass: 2, turnsSeen: 1, cases: [], omitted: [], eligible: 0, packetSha256: 'sha256:x', contextDigest: 'sha256:config-b', at: w.at() });
+      expect(() => w.journal.append({ kind: 'retro-rerun-reserve', pass: 2, index: 0, case: verdict, contextDigest: 'sha256:config-b', at: w.at() }))
+        .toThrow('benchmark rerun order or cap');
+      w.journal.close();
+      const replay = openPreviewJournal(w.path, key, undefined, undefined, true);
+      expect(replay.view.retroPasses[2]?.reruns).toBeUndefined();
+      replay.close();
+    } finally { w.done(); }
+  });
+});
+
+describe('Repair round 2 R5: a failed rerun spends its remaining attempt, then is recorded exhausted', () => {
+  const promote = async (w: ReturnType<typeof world>) => {
+    await w.converse(['Which bus?', 'That bus never came.', ...words.slice(2, 10)]);
+    w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)).map(grade => grade.case === `answer:${turnId(1)}`
+      ? { ...grade, outcome: { assessment: 'unmet', reason: 'no bus', evidence: [`turn:${turnId(2)}`] }, promote: 'Bus advice' } : grade) }));
+    await w.retrospect();
+    w.advance(RETRO_MIN_INTERVAL_MS);
+    w.modelAnswer({ state: 'uncertain', failureClass: 'provider-failed' });
+    await w.worker.retrospect('sha256:config-b');
+    expect(benchmarkReruns(w.journal.view).map(row => row.state)).toEqual(['unknown']);
+  };
+  it('retries after the failure backoff with no new conversation and compares a completed retry', async () => {
+    const w = world();
+    try {
+      await promote(w);
+      w.advance(RETRO_MIN_INTERVAL_MS);
+      expect(retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), 'sha256:config-b')).toBeNull();
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+      const plan = retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), 'sha256:config-b');
+      expect(plan?.reruns).toEqual([`answer:${turnId(1)}`]);
+      w.modelAnswer('Take the 10 bus instead.');
+      await w.worker.retrospect('sha256:config-b');
+      expect(benchmarkReruns(w.journal.view).map(row => row.state)).toEqual(['unknown', 'complete']);
+      expect(rerunDispositions(w.journal.view, 'sha256:config-b')[0]).toMatchObject({ disposition: 'rerun' });
+      w.advance(RETRO_STALE_CASE_MS);
+      w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
+      await w.worker.retrospect('sha256:config-b');
+      expect(benchmarkReruns(w.journal.view)[1]?.comparison).toMatchObject({ verdict: 'consistent' });
+    } finally { w.done(); }
+  });
+  it('records the case exhausted (unavailable under this configuration) once both attempts fail, and stops retrying', async () => {
+    const w = world();
+    try {
+      await promote(w);
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+      await w.worker.retrospect('sha256:config-b');
+      expect(benchmarkReruns(w.journal.view).map(row => row.state)).toEqual(['unknown', 'unknown']);
+      expect(rerunDispositions(w.journal.view, 'sha256:config-b')[0]).toMatchObject({ disposition: 'exhausted', attempts: 2,
+        reason: expect.stringContaining('unavailable under this configuration') });
+      expect(retrospectiveStatusLine(w.journal.view, 'sha256:config-b')).toContain('1 rerun(s) exhausted');
+      w.advance(8 * RETRO_STALE_CASE_MS);
+      expect(retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), 'sha256:config-b')?.reruns ?? []).toEqual([]);
+    } finally { w.done(); }
+  });
+});
+
+it('Repair round 2 R6: status exposes duty notes, finding root causes and feedback evidence the live checks read', async () => {
+  const w = world();
+  try {
+    await w.converse(words.slice(0, 10));
+    w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)),
+      duties: RETROSPECTIVE_DUTIES.map(duty => ({ duty, disposition: 'inspected', note: duty === 'workaround' ? 'no repeated manual step' : 'checked' })),
+      findings: [{ duty: 'recurrence', refs: [`turn:${turnId(3)}`], recurs: [`turn:${turnId(1)}`], summary: 'Same slip twice.',
+        rootCause: 'The packet omits the earlier correction.', structuralRemedy: { remove: 'restating corrections' }, disposition: { owner: 'agent', next: 'Carry corrections.' } }],
+      feedback: [{ case: `turn:${turnId(2)}`, classification: 'length', disposition: 'improvement-owned', owner: 'agent', next: 'Be brief.' }] }));
+    await w.retrospect();
+    await w.converse(['Much better now.']);
+    w.advance(RETRO_STALE_CASE_MS);
+    w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), feedback: [{ case: `turn:${turnId(2)}`, classification: 'length',
+      disposition: 'verified-improvement', improvementOf: 'open:retro:0:feedback:0', evidence: [`turn:${turnId(11)}`] }] }));
+    await w.retrospect();
+    expect(w.journal.view.retroPasses[1]?.state).toBe('complete');
+    w.journal.close();
+    const status = spawnSync(process.execPath, ['--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', w.root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8' });
+    expect(status.status, status.stderr).toBe(0);
+    const retro = JSON.parse(status.stdout).retrospective;
+    expect(retro.passes[0].duties.find((row: { duty: string }) => row.duty === 'workaround')).toEqual({ duty: 'workaround', disposition: 'inspected', note: 'no repeated manual step' });
+    expect(retro.passes[0].findings.find((row: { duty: string }) => row.duty === 'recurrence'))
+      .toMatchObject({ rootCause: 'The packet omits the earlier correction.', structuralRemedy: { remove: 'restating corrections' } });
+    expect(retro.feedbackDispositions).toEqual([expect.objectContaining({ case: `turn:${turnId(2)}`, disposition: 'verified-improvement', evidence: [`turn:${turnId(11)}`] })]);
+    expect(retro.rerunDispositions).toEqual([]);
+  } finally { w.done(); }
 });

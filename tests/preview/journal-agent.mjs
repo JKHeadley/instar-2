@@ -56,7 +56,7 @@ import { memoryReport } from './memory-export.js';
 
 import { operatorDigest } from './operator-digest.js';
 import { stepQuestions } from './step-check.js';
-import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunsDue, standingGrantCandidates } from './retrospective.js';
+import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, standingGrantCandidates } from './retrospective.js';
 
 
 
@@ -219,22 +219,23 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
     supplied: pass.cases.length, deferredByBound: pass.omitted.length,
     inspected: pass.result ? pass.result.inspected.length : null, omittedByReview: pass.result ? pass.result.omitted.length : null,
     accounting: passAccounting(pass), efficiency: pass.result?.efficiency.summary ?? null,
-    duties: pass.result?.duties.map(item => ({ duty: item.duty, disposition: item.disposition })) ?? [],
+    duties: pass.result?.duties.map(item => ({ duty: item.duty, disposition: item.disposition, note: item.note })) ?? [],
     gravityWellsObserved: pass.result?.gravityWells.filter(item => item.observed).map(item => item.well) ?? [],
-    findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs, recurs: item.recurs ?? [],
-      structuralRemedy: item.structuralRemedy ?? null,
+    findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs, summary: item.summary, recurs: item.recurs ?? [],
+      rootCause: item.rootCause ?? null, structuralRemedy: item.structuralRemedy ?? null,
       disposition: 'owner' in item.disposition ? `owned by ${item.disposition.owner}` : 'declined with reason' })) ?? [],
     reruns: (pass.reruns ?? []).map(run => ({ index: run.index, case: run.case, state: run.state ?? 'in-flight-or-unknown' })) })),
   grades: grades.map(({ grade, pass }) => ({ case: grade.case, pass, conclusion: grade.conclusion.assessment, reason: grade.reason.assessment,
     outcome: grade.outcome.assessment, outcomeReason: grade.outcome.reason, rederivation: grade.rederivation ?? null, reassessment: grade.reassessment === true })),
   pendingGrades: pendingGrades(view).length,
   openFindings: openFindings(view).map(item => ({ id: item.id, duty: item.duty, next: 'next' in item.disposition ? item.disposition.next : null })),
-  feedbackDispositions: feedbackDispositions(view).map(item => ({ case: item.case, disposition: item.disposition, finding: item.finding ?? null })),
+  feedbackDispositions: feedbackDispositions(view).map(item => ({ case: item.case, disposition: item.disposition, finding: item.finding ?? null,
+    evidence: item.evidence ?? [], reason: item.reason ?? null })),
   standingGrantCandidates: standingGrantCandidates(view).map(item => ({ case: item.case, presentable: item.presentable,
     recurrences: item.recurrences, scope: item.scope })),
   promotedCases: promotedCases(view).map(item => ({ case: item.provenance.case, expected: item.expected, pass: item.provenance.pass,
     contextDigest: item.provenance.contextDigest, pending: item.pending })),
-  benchmarkReruns: benchmarkReruns(view), rerunsDue: rerunsDue(view, digest).length,
+  benchmarkReruns: benchmarkReruns(view), rerunsDue: rerunsDue(view, digest).length, rerunDispositions: rerunDispositions(view, digest),
   owed: (() => { const owed = owedCases(view, retrospectiveCases(view), now);
     return { cases: owed.length, byCategory: Object.fromEntries(['message', 'decision', 'verdict', 'repair', 'authorization', 'open', 'rerun']
       .map(category => [category, owed.filter(row => row.item.category === category).length])),

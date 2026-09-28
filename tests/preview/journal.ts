@@ -935,6 +935,12 @@ function checkChannelSourceCursor(view: JournalView, row: Extract<JournalRecord,
     || c.skipped < prior.skipped || c.file === prior.file && c.offset < prior.offset && row.reset !== true))
     throw Error('preview journal: invalid channel source cursor');
 }
+/** A benchmark rerun reservation: in order, inside the cap, for a reconstructable answer case only. */
+function checkRerunReserve(view: JournalView, row: Extract<JournalRecord, { kind: 'retro-rerun-reserve' }>): void {
+  const pass = view.retroPasses[row.pass];
+  if (!pass || pass.state !== undefined || row.index !== (pass.reruns?.length ?? 0) || !row.case.startsWith('answer:')
+    || view.calls >= view.limits.maxCalls) throw Error('preview journal: benchmark rerun order or cap');
+}
 function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { kind: 'call-outcome' }>): void {
   const summary = /^summary:(\d+(?:\.\d+)?)(:review)?$/.exec(row.id);
   const valid = row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
@@ -1269,9 +1275,8 @@ function project(view: JournalView, row: JournalRecord): void {
     return;
   }
   if (row.kind === 'retro-rerun-reserve') {
-    const pass = view.retroPasses[row.pass];
-    if (!pass || pass.state !== undefined || row.index !== (pass.reruns?.length ?? 0) || !row.case.startsWith('answer:')
-      || view.calls >= view.limits.maxCalls) throw Error('preview journal: benchmark rerun order or cap');
+    checkRerunReserve(view, row);
+    const pass = view.retroPasses[row.pass]!;
     reserveTokens(view, `retrospective:${String(row.pass)}:rerun:${String(row.index)}`, 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
     view.calls++;
     pass.reruns = [...(pass.reruns ?? []), { index: row.index, case: row.case, contextDigest: row.contextDigest, at: row.at }];
@@ -1695,6 +1700,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (row.kind === 'expiry') checkExpiry(view!, row, 'new');
       if (row.kind === 'channel-source-cursor') checkChannelSourceCursor(view!, row);
       if (row.kind === 'call-outcome') validateCallOutcome(view!, row);
+      // Checked before the durable write: a record its own projection would refuse must never reach the file.
+      if (row.kind === 'retro-rerun-reserve') checkRerunReserve(view!, row);
       if (row.kind === 'reply-review-reserve' && row.promptSha256
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
