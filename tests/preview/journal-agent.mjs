@@ -397,7 +397,7 @@ async function main() {
         leftSource: view.view.people[link.left]?.source, right: view.view.people[link.right]?.name,
         rightSource: view.view.people[link.right]?.source, triggerUpdate: view.view.turns.get(link.trigger)?.update })),
 
-      launches: readRuns(runsPath).launches.slice(-3),
+      launches: log.launches.slice(-3), ...(log.readFailed ? { runLog: 'unreadable' } : {}),
       digest: operatorDigest(view.view, log, desk).text,
       self: selfState(view.view, readRuns(runsPath), wallNow(), timeZoneOf(options), undefined,
         existsSync(stopPath) || view.view.stop !== null) })}\n`);
@@ -520,7 +520,7 @@ async function main() {
     } finally { capJournal?.close(); storage.close(); }
     return;
   }
-  let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null;
+  let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false;
   let handoff = null, reservedAtLaunch = new Set();
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
@@ -684,6 +684,8 @@ async function main() {
     launchedAt = wallNow();
     appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid });
     runs = readRuns(runsPath);
+    // Rule 55: unrecoverable poll pressure fails the launcher closed; unavailable history never becomes a fresh episode.
+    if (runs.readFailed) { endReason = 'run log unreadable'; pressureUnknown = true; throw Error('preview: run log unreadable'); }
     handoff = restartHandoff(journal.view, runs, launchedAt);
     reservedAtLaunch = new Set(journal.view.order.filter(turn => turn.reserved).map(turn => turn.id));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
@@ -833,9 +835,11 @@ async function main() {
         let end = {};
         try {
           const health = journal ? loopHealth(journal.view, wallNow()) : null;
-          const inhibited = signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
+          const inhibited = pressureUnknown || signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
             || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
-          const remaining = health ? health.unfinished + health.scheduledWork : 0;
+          // Every still-owned item counts: a result waiting for the next message and a dependency awaiting the
+          // operator need a live runner as much as due or scheduled work does.
+          const remaining = health ? health.ownedWork : 0;
           if (health) end = { unfinished: health.unfinished, revival: remaining === 0 ? 'none' : inhibited ? 'inhibited' : 'queued',
             ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }) };
         } catch { /* an exit without a disposition is revived by the host watcher as a crash */ }

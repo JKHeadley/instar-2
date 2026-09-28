@@ -18,7 +18,9 @@ export interface RunEnd { unfinished?: number;
   revival?: 'queued' | 'inhibited' | 'none'; nextWorkAt?: number }
 export interface RunLog { launches: ({ at: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number;
   /** The current poll-failure episode, folded in order over every launch; a crash cannot erase an attempt. */
-  pollPressure?: { failed: number; conflicted: number } }
+  pollPressure?: { failed: number; conflicted: number };
+  /** The log exists but could not be read: its history, poll pressure included, is unknown, never an empty episode. */
+  readFailed?: true }
 
 /** Appends one line and fsyncs it before returning; the first write also fsyncs the directory. */
 export function appendRun(path: string, record: RunRecord): void {
@@ -31,11 +33,13 @@ export function appendRun(path: string, record: RunRecord): void {
   } finally { closeSync(fd); }
   if (fresh) { const dir = openSync(dirname(path), 'r'); try { fsyncSync(dir); } finally { closeSync(dir); } }
 }
-/** A missing log is an empty history; a torn or malformed line is counted, never guessed at. */
+/** A missing log is an empty history; a log that exists but cannot be read is `readFailed` (never a clean history);
+ * a torn or malformed line is counted, never guessed at. */
 export function readRuns(path: string): RunLog {
   const log: RunLog = { launches: [], unreadable: 0, pollPressure: { failed: 0, conflicted: 0 } };
   let text = '';
-  try { text = readFileSync(path, 'utf8'); } catch { return log; }
+  try { text = readFileSync(path, 'utf8'); }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT' ? log : { ...log, readFailed: true }; }
   const byLaunch = new Map<number, RunLog['launches'][number]>();
   for (const line of text.split('\n')) {
     if (!line) continue;

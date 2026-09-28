@@ -1,6 +1,6 @@
 // Build 4: every accepted obligation stays owned until deliberately settled (Rules 6, 8, 20-23, 46, 55, 64, 68, 83, 93, 99, 103).
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -29,7 +29,8 @@ type Answer = string | Record<string, unknown>;
 type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
   verdict?: (context: Record<string, unknown>) => 'pass' | 'violation' };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
-  waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer; review?: Review; stopped?: () => boolean } = {}) {
+  waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer; review?: Review; stopped?: () => boolean;
+  receipt?: (text: string) => boolean } = {}) {
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(options.maxBytes, options.maxCalls));
   const clock = { now: T0 };
@@ -67,7 +68,8 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
       const answer = options.answer?.(input.question, input.context) ?? 'Noted.';
       return typeof answer === 'string' ? answer : JSON.stringify({ memory: [], ...answer });
     },
-    send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
+    send: async input => { if (options.receipt && !options.receipt(input.text)) return null; sent.push(input.text); return sent.length; },
+    checkOutbound: () => {} });
   let next = 1;
   /** One operator message dated at the current clock, answered and summarized. */
   const say = async (text: string) => {
@@ -191,13 +193,17 @@ it('admits an operator directive, carries it into every later packet with no exp
 
 const CLAIM = 'I can’t book it: this preview has no browser or accounts.';
 const blocker = (overrides: Record<string, unknown> = {}) => ({ kind: 'cannot-do', claim: CLAIM,
-  avenues: [{ avenue: 'booking tool', disposition: 'tried', evidence: 'capability lists no tools' }],
+  avenues: [{ avenue: 'booking tool', disposition: 'outside-standing', evidence: 'externalTools' }],
   constraint: 'no-tools', outsideAction: 'Book it on the clinic site.', recheck: day(T0 + 30 * DAY), ...overrides });
 it('settles a cannot-do claim only with a finite, governed investigation record, and makes its recheck due (Rules 20, 21, 23, 99, 103)', async () => {
   for (const [label, proposal, recorded] of [
     ['complete', blocker(), true],
     ['ungoverned boundary', blocker({ constraint: 'my-own-rule' }), false],
     ['no avenues', blocker({ avenues: [] }), false],
+    ['attempt asserted without a runner-owned record', blocker({ avenues: [{ avenue: 'clinic website', disposition: 'tried', evidence: 'externalTools' }] }), false],
+    ['authored evidence text', blocker({ avenues: [{ avenue: 'clinic website', disposition: 'outside-standing', evidence: 'the site was down' }] }), false],
+    ['constraint its evidence does not support', blocker({ constraint: 'reply-only-grant' }), false],
+    ['runtime inhibition as a wall', blocker({ constraint: 'spend-allowance' }), false],
     ['recheck too far', blocker({ recheck: day(T0 + 120 * DAY) }), false],
     ['claim not said', blocker({ claim: 'I cannot do anything at all here.' }), false],
   ] as const) {
@@ -320,6 +326,93 @@ it('works a due deferral with no further inbound, keeps its result for the next 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('binds a result to the reply that carries it, settles it only on that reply\'s receipt, and keeps an UNKNOWN send unresolved and unrepeated (Rules 8, 68, 97)', async () => {
+  const REPORT = 'The invoice is for 120 dollars and is due on Friday.';
+  const root = origin();
+  try {
+    let receipts = true;
+    const w = world(root, { receipt: () => receipts, answer: question => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'The tomatoes look fine.',
+    work: () => ({ outcome: 'report', report: REPORT }) });
+    await w.say(INVOICE);
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await w.worker.workObligations()).toBe(true);
+    // A finished result waiting for the next message is still owned: a runner exit must revive for it.
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ unfinished: 0, awaitingDelivery: 1, ownedWork: 1 });
+    // The follow-up's send returns no receipt: the intent carried it, but nothing proves it arrived.
+    receipts = false;
+    await w.say('Any news?');
+    const carrier = w.journal.view.order.at(-1)!;
+    expect(carrier.intent).toContain(REPORT);
+    expect(carrier.sent).toBeUndefined();
+    expect(w.journal.view.obligationWork['commitment:0']!.report).toEqual({ text: REPORT, at: expect.any(Number), boundTo: carrier.id });
+    expect(w.journal.view.closed.has(0)).toBe(false);
+    const unknown = loopHealth(w.journal.view, w.clock.now);
+    expect(unknown).toMatchObject({ open: 1, awaitingDelivery: 0, deliveryUnknown: 1, dueWork: 0 });
+    expect(loopStatusLines(w.journal.view, w.clock.now).join('\n')).toContain('Delivery unknown: 1 finished result was sent without a confirmed receipt');
+    // Never attached to another reply and never re-worked, even days later.
+    receipts = true;
+    await w.say('How are the tomatoes?');
+    expect(w.sent.at(-1)).not.toContain(REPORT);
+    w.clock.now += 3 * DAY;
+    expect(await w.worker.workObligations()).toBe(false);
+    w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(reopened.view.closed.has(0)).toBe(false);
+    expect(reopened.view.obligationWork['commitment:0']!.report).toMatchObject({ boundTo: carrier.id });
+    expect(reopened.view.obligationWork['commitment:0']!.report!.delivered).toBeUndefined();
+    expect(loopHealth(reopened.view, w.clock.now)).toMatchObject({ deliveryUnknown: 1, awaitingDelivery: 0 });
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps waiting work owned: the packet shows its current need, the operator\'s supply resumes it, and the result is delivered (Rules 8, 22, 64, 68, 92)', async () => {
+  const NEED = 'Please supply the invoice reference code before I can finish.';
+  const root = origin();
+  const seen: Record<string, unknown>[] = [];
+  try {
+    const w = world(root, { answer: question => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Thanks.',
+    work: context => { seen.push(context);
+      const since = (context.operatorMessagesSince as { text: string }[] | undefined) ?? [];
+      return since.some(item => item.text.includes('INV-42'))
+        ? { outcome: 'report', report: 'Invoice INV-42 is for 120 dollars and is due on Friday.' }
+        : { outcome: 'waiting', waitsOn: 'operator', note: NEED }; } });
+    await w.say(INVOICE);
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await w.worker.workObligations()).toBe(true);
+    // The one current account of the obligation: the packet, the pull surface and the exit all see the need.
+    const probe = w.worker.probe('What do you need from me?');
+    if ('reason' in probe) throw Error(probe.reason);
+    const items = (JSON.parse(probe.context) as { commitments: { items: { waitsOn: string; need?: string }[] }[] }).commitments.flatMap(entry => entry.items);
+    expect(items).toMatchObject([{ waitsOn: 'operator', need: NEED }]);
+    const waiting = loopHealth(w.journal.view, w.clock.now);
+    expect(waiting).toMatchObject({ waitingWork: [{ key: 'commitment:0', waitsOn: 'operator', need: NEED }], ownedWork: 1, dueWork: 0 });
+    expect(loopStatusLines(w.journal.view, w.clock.now).join('\n')).toContain(`Waiting on you: ${NEED}`);
+    // Any later operator message, even one in the same instant as the result, earns exactly one reassessment.
+    await w.say('Sorry, which code do you need?');
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toMatchObject({ operatorMessagesSince: [{ text: 'Sorry, which code do you need?' }] });
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'waiting', waitsOn: 'operator' });
+    // Nothing new from the operator: no reassessment is spent, however long it waits.
+    w.clock.now += 3 * DAY;
+    expect(await w.worker.workObligations()).toBe(false);
+    // The operator supplies it: the next tick reassesses with that message and finishes the work.
+    await w.say('The invoice reference code is INV-42. Please continue.');
+    expect(dueObligationWork(w.journal.view, w.clock.now)).toMatchObject([{ key: 'commitment:0' }]);
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(seen.at(-1)).toMatchObject({ waitingFor: { waitsOn: 'operator', need: NEED } });
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report' });
+    expect(w.journal.view.obligationWork['commitment:0']!.waitsOn).toBeUndefined();
+    await w.say('Thanks, anything else?');
+    expect(w.sent.at(-1)).toContain('Invoice INV-42 is for 120 dollars');
+    expect(w.journal.view.closed.has(0)).toBe(true);
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ open: 0, ownedWork: 0, waitingWork: [] });
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('starts scheduled work only inside the stop, allowance and capacity fences, and never repeats an interrupted start (Rules 55, 68)', async () => {
   const root = origin();
   try {
@@ -357,7 +450,10 @@ it('starts scheduled work only inside the stop, allowance and capacity fences, a
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('rechecks a settled blocker through the scheduled owner when due, and delivers a cleared wall (Rules 20, 99)', async () => {
+const REASSESSMENT = { avenues: [{ avenue: 'booking tool', disposition: 'outside-standing', evidence: 'externalTools' },
+  { avenue: 'email the clinic', disposition: 'outside-standing', evidence: 'sends' }], constraint: 'no-tools',
+reason: 'Rechecked: this runner still has no browser or accounts, and it can only reply to you.' };
+it('rechecks a settled blocker through the scheduled owner when due, renews it only with a retained reassessment, and delivers a cleared wall (Rules 20, 21, 99, 103)', async () => {
   const root = origin();
   let outcome: Answer = { outcome: 'still-blocked', recheck: day(T0 + 61 * DAY) };
   try {
@@ -369,8 +465,24 @@ it('rechecks a settled blocker through the scheduled owner when due, and deliver
     expect(await w.worker.workObligations()).toBe(false);
     w.clock.now += 2 * DAY;
     expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ overdueRechecks: 1, dueWork: 1 });
+    // A new date alone is not a reassessment: the step is a recorded failure and the wall is not renewed.
+    const recheckAt = w.journal.view.blockers[0]!.recheckAt;
     expect(await w.worker.workObligations()).toBe(true);
-    expect(w.journal.view.blockers[0]).toMatchObject({ rechecks: [{ outcome: 'still-blocked' }] });
+    expect(w.journal.view.obligationWork['blocker:0']).toMatchObject({ outcome: 'failed' });
+    expect(w.journal.view.blockers[0]).toMatchObject({ recheckAt, rechecks: [] });
+    expect(loopHealth(w.journal.view, w.clock.now).overdueRechecks).toBe(1);
+    // An asserted attempt in the reassessment is refused the same way.
+    outcome = { outcome: 'still-blocked', recheck: day(T0 + 61 * DAY), ...REASSESSMENT,
+      avenues: [{ avenue: 'clinic website', disposition: 'tried', evidence: 'externalTools' }] };
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.blockers[0]!.rechecks).toEqual([]);
+    // An evidenced reassessment renews it and is retained beside the recheck.
+    outcome = { outcome: 'still-blocked', recheck: day(T0 + 61 * DAY), ...REASSESSMENT };
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.blockers[0]).toMatchObject({ avenues: REASSESSMENT.avenues, constraint: 'no-tools',
+      rechecks: [{ outcome: 'still-blocked', assessment: REASSESSMENT }] });
     expect(w.journal.view.blockers[0]!.recheckAt).toBe(Date.parse(`${day(T0 + 61 * DAY)}T09:00:00Z`));
     expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ overdueRechecks: 0, dueWork: 0 });
     outcome = { outcome: 'cleared', report: 'The clinic now takes bookings by email, which I can draft for you.' };
@@ -381,6 +493,9 @@ it('rechecks a settled blocker through the scheduled owner when due, and deliver
     expect(w.sent.at(-1)).toContain('The clinic now takes bookings by email');
     expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
     w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(reopened.view.blockers[0]!.rechecks).toMatchObject([{ outcome: 'still-blocked', assessment: REASSESSMENT }, { outcome: 'cleared' }]);
+    reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -418,6 +533,7 @@ it('sends a final cannot-do claim only with its admitted investigation, judged b
   for (const [label, proposal, sends] of [
     ['admitted investigation', blocker(), true],
     ['empty avenue set', blocker({ avenues: [] }), false],
+    ['unsupported attempted avenue', blocker({ avenues: [{ avenue: 'clinic website', disposition: 'tried', evidence: 'externalTools' }] }), false],
     ['no investigation declared', undefined, false],
   ] as const) {
     const root = origin();
@@ -474,7 +590,7 @@ it('redacts every declared field before the reviewer context reaches a provider 
   expect(redact(sentinel).count).toBeGreaterThan(0);
   const prompt = JSON.stringify({ messages: [{ role: 'user', content: 'Can you book it?' },
     { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private-chat' }, history: [] } }) }] });
-  const declared = { loops: [], blocker: { ...blocker(), avenues: [{ avenue: 'booking site', disposition: 'tried', evidence: `site said ${sentinel}` }] } };
+  const declared = { loops: [], blocker: { ...blocker(), avenues: [{ avenue: 'booking site', disposition: 'outside-standing', evidence: `site said ${sentinel}` }] } };
   const context = replyReviewContext(prompt, CLAIM, ['claims_blocked'], declared);
   expect(context).not.toContain(sentinel);
   expect(context).toContain('booking site');
@@ -499,6 +615,10 @@ it('folds every recorded poll attempt into one episode, so a launch killed befor
     appendRun(path, { v: 1, launch: 12, poll: 'restored', at: 13 });
     appendRun(path, { v: 1, launch: 12, poll: 'failed', at: 14 });
     expect(readRuns(path).pollPressure).toEqual({ failed: 1, conflicted: 0 });
+    // A log that exists but cannot be read is not an empty history: its pressure is unknown, never zero.
+    expect(readRuns(join(root, 'absent.jsonl'))).toEqual({ launches: [], unreadable: 0, pollPressure: { failed: 0, conflicted: 0 } });
+    chmodSync(path, 0o200);
+    try { expect(readRuns(path)).toMatchObject({ readFailed: true }); } finally { chmodSync(path, 0o600); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -529,6 +649,6 @@ it('revives a queued runner, stops on inhibited or none, and bounds relaunches a
     expect(await supervise()).toBe(0);
     expect(launch).toBe(4);
     expect(waits).toEqual([1, 2, 4]);
-    expect(() => superviseJournal({ ...config, agent: [process.execPath, agent, 'run', '--root', '/elsewhere'] })).rejects.toThrow('invalid journal launch configuration');
+    await expect(() => superviseJournal({ ...config, agent: [process.execPath, agent, 'run', '--root', '/elsewhere'] })).rejects.toThrow('invalid journal launch configuration');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

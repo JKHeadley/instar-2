@@ -57,6 +57,13 @@ export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; re
   unfinished: number; unansweredTurns: number; dueWork: number;
   /** Work steps whose start has no result yet, results waiting for a reply to carry them, and scheduled future steps. */
   workInFlight: number; awaitingDelivery: number; scheduledWork: number; nextWorkAt: number | null;
+  /** Results bound to a reply whose send has no receipt: UNKNOWN, visible, never resent or counted as delivered. */
+  deliveryUnknown: number;
+  /** Work steps whose latest result waits on the operator or an outside party, with what each needs. */
+  waitingWork: { key: string; waitsOn: string; need: string }[];
+  /** Everything the runner still owns and can act on: unfinished, scheduled, in-flight, undelivered and waiting work.
+   * A runner exit revives while this is positive, unless an inhibition holds it (Rule 68). */
+  ownedWork: number;
   rejectedDeclarations: number;
   oldestUnfinishedAt: number | null; oldestUnfinishedAgeMs: number | null; backlogOverdue: boolean;
   lastProgressAt: number | null; progressAgeMs: number | null; state: 'idle' | 'progressing' | 'stalled';
@@ -72,9 +79,13 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   for (const loop of loops) byKind[loop.kind]++;
   const turns = view.order.filter(turn => turn.accepted && !probeTurn(view, turn) && !settled(view, turn));
   const schedule = obligationSchedule(view);
-  const due = schedule.filter(item => !item.inFlight && !item.awaitingDelivery && item.slot <= now);
-  const future = schedule.filter(item => !item.inFlight && !item.awaitingDelivery && item.slot > now && Number.isFinite(item.slot));
+  const idle = schedule.filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown);
+  const due = idle.filter(item => item.slot <= now);
+  const future = idle.filter(item => item.slot > now && Number.isFinite(item.slot));
   const awaitingDelivery = schedule.filter(item => item.awaitingDelivery).length;
+  const waitingWork = idle.flatMap(item => { const work = view.obligationWork[item.key];
+    return work?.outcome === 'waiting' && item.slot > now ? [{ key: item.key, waitsOn: work.waitsOn ?? 'operator', need: work.note ?? '' }] : []; });
+  const workInFlight = schedule.filter(item => item.inFlight).length;
   const waiting = [...turns.map(turn => turn.at), ...due.map(item => item.slot)].sort((a, b) => a - b);
   const oldestAt = waiting[0];
   const worked = Object.values(view.obligationWork).filter(work => work.inFlight === undefined && work.outcome !== undefined
@@ -92,7 +103,10 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     overdueReminders: loops.filter(loop => loop.defect === 'overdue-reminder').length,
     undeclared: loops.filter(loop => loop.defect === 'undeclared-dependency').length, refusedCommitments: view.commitmentRefusals,
     unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
-    workInFlight: schedule.filter(item => item.inFlight).length, awaitingDelivery, scheduledWork: future.length,
+    workInFlight, awaitingDelivery, scheduledWork: future.length,
+    deliveryUnknown: schedule.filter(item => item.deliveryUnknown).length, waitingWork,
+    ownedWork: waiting.length + future.length + workInFlight + awaitingDelivery
+      + waitingWork.filter(item => !Number.isFinite(schedule.find(entry => entry.key === item.key)!.slot)).length,
     nextWorkAt: future.length ? Math.min(...future.map(item => item.slot)) : null, rejectedDeclarations: view.rejectedObligations,
     oldestUnfinishedAt: oldestAt ?? null, oldestUnfinishedAgeMs: oldestAt === undefined ? null : Math.max(0, now - oldestAt),
     backlogOverdue: oldestAt !== undefined && now - oldestAt > BACKLOG_AGE_LIMIT_MS,
@@ -116,6 +130,8 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
       : `Backlog: none${health.inhibition ? `; ${health.inhibition}` : ''}.`,
     `Progress: ${health.state}; last ${health.progressAgeMs === null ? 'none yet' : `${age(health.progressAgeMs)} ago`}.`,
     `Scheduled work: ${health.scheduledWork} waiting for their time${health.workInFlight ? `, ${health.workInFlight} in progress` : ''}${health.deliveryInhibition ? `; ${health.deliveryInhibition}` : ''}.`,
+    ...health.waitingWork.slice(0, 3).map(item => `Waiting on ${item.waitsOn === 'operator' ? 'you' : 'an outside party'}: ${item.need}`),
+    ...(health.deliveryUnknown ? [`Delivery unknown: ${health.deliveryUnknown} finished ${health.deliveryUnknown === 1 ? 'result was' : 'results were'} sent without a confirmed receipt; not resent and not counted as delivered.`] : []),
     `Overdue: ${health.overdueCheckIns} check-ins, ${health.overdueRechecks} blocker rechecks, ${health.overdueReminders} reminders; corrections awaiting your next message: ${health.correctionsWaiting}.`,
     ...(health.undeclared || health.refusedCommitments
       ? [`Commitments without a declared dependency: ${health.undeclared} open (older records), ${health.refusedCommitments} refused at creation.`] : []),

@@ -1,6 +1,6 @@
 // @ts-nocheck -- process-level fixture; physical ports are replaced by its test loader.
 import { expect, it } from 'vitest';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
@@ -141,4 +141,27 @@ it('a process killed mid-episode keeps every failed poll it made: the replacemen
   // It spends only the attempts the episode had left, never a fresh five.
   expect(polls() - made).toBe(5 - made);
   expect(runs().pollPressure).toEqual({ failed: 5, conflicted: 5 });
+}, 60000);
+
+it('an unreadable run log fails the launcher closed instead of starting a fresh poll episode (Rule 55)', () => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([]);
+  harness.setConflicts(100);
+  expect(harness.launchLive(1000).status).toBe(1);
+  const polls = () => harness.calls().filter(call => call.kind === 'poll' && call.role === 'live').length;
+  expect(polls()).toBe(5);
+  const path = join(harness.liveRoot, 'runs.jsonl');
+  // Write-only: appends still succeed, so a successful append proves nothing about recoverable history.
+  chmodSync(path, 0o200);
+  try {
+    expect(readRuns(path)).toMatchObject({ launches: [], readFailed: true });
+    const refused = harness.launchLive(1000);
+    expect(refused.status).toBe(1);
+    expect(polls()).toBe(5);
+  } finally { chmodSync(path, 0o600); }
+  const runs = readRuns(path);
+  expect(runs.readFailed).toBeUndefined();
+  expect(runs.pollPressure).toEqual({ failed: 5, conflicted: 5 });
+  expect(runs.launches.at(-1)).toMatchObject({ reason: 'run log unreadable' });
+  expect(['none', 'inhibited']).toContain(runs.launches.at(-1)!.revival);
 }, 60000);
