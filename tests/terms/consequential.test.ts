@@ -9,7 +9,7 @@ import { shapeInput } from '../register/fixtures.js';
 describe('the committed shape derives the purpose-aligned adjectives', () => {
   const f = fixture();
   const terms = { owner: 'part-three', derivedFrom: shapeInput().derivedFrom } as ProfileTermsReadPort;
-  const derive = (input: object) => value(deriveProfile(value(decode('Profile', f.profileInput(input), f.ctx)), terms, f.ctx.preserved));
+  const derive = (input: Record<string, unknown>) => value(deriveProfile(value(decode('Profile', f.profileInput(input), f.ctx)), terms, f.ctx.preserved));
   it('critical and significant are one expression', () => {
     expect(terms.derivedFrom.significant).toEqual(terms.derivedFrom.critical);
   });
