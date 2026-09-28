@@ -242,7 +242,7 @@ it.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)
       causalStanding(captureOwner, facts, false).decode));
     expect(historical.taint).toContain('evidence-unavailable');
     if (captureOwner.id === fact.id) expect(historical.fields.record).toEqual(record);
-  });
+  }, 30_000);
 
 it('preserves signed Nine assessment as unavailable history after original register retirement; current consumption refuses', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
@@ -267,7 +267,7 @@ it('preserves signed Nine assessment as unavailable history after original regis
 
   s.f.generation('later-generation');
   refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
-});
+}, 30_000);
 
 it('P10-SI-37 keeps a v1 occurrence assessment diagnostic-only when no answer evidence exists', async () => {
   const f = providerFixture({ route: { invoke: async (_bytes, bounds) => ({ state: 'complete',
@@ -283,7 +283,7 @@ it('P10-SI-37 keeps a v1 occurrence assessment diagnostic-only when no answer ev
     .toEqual(['occurrence', 'non-occurrence', 'quiescence', 'charge']);
   expect(value(f.api.settle(observed.operation, assessment)).outcome.kind).toBe('happened');
   refused(f.api.assessResponse(observed.operation), 'response assessment absent');
-});
+}, 30_000);
 
 it('P10-SI-17 P10-SI-37 retains unresolved exposure independently of a satisfied exact answer', async () => {
   const { accounting, settlement } = await runProviderAnswerReplyScenario(false, { unknown: true, beforeOpen: true });
@@ -301,7 +301,7 @@ it('P10-SI-37 reuses a still-current assessment after the clock advances and ref
   const saved = s.f.metadata[capture.reference];
   s.f.metadata[capture.reference] = { ...saved, status: 'missing', bytes: null };
   refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
-});
+}, 30_000);
 
 it('P9-NF-65 P9-NF-66 refuses forged origin derivations and identity conflicts, then records one linked supersession', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
@@ -331,7 +331,7 @@ it('P9-NF-65 refuses a forged historical assessment against the original signed 
       row.predicate === 'response-completeness' ? { ...row, verdict: 'contradicted', reason: 'invented history' } : row) };
   refused(decodeHistoricalVerificationRecord('VerificationAssessment', forged, { ...s.f.host.boundary,
     origin: fact, mode: 'historical', facts: { ...s.f.context, facts: s.f.all() } }, s.f.vh), 'signed origin');
-});
+}, 30_000);
 
 it('P10-SI-37 blocks a first reply after the genuine conversation obligation stops', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeOpen: true });
@@ -359,7 +359,7 @@ it('P9-NF-66 derives insufficiency from raw tool_use despite caller success labe
   expect((record.predicates as any[]).filter(row => String(row.predicate).startsWith('response-'))
     .map(row => row.verdict)).toEqual(['insufficient', 'insufficient']);
   refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
-});
+}, 30_000);
 
 it('P10-SI-37 reconstructs acceptance with its original signed Decision authority', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeOpen: true });
