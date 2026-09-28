@@ -424,7 +424,8 @@ it('holds genuinely changed Telegram display text and never sends again on recov
   c.pollOnce(); await c.resume(); expect(c.sidecar.read().phase).toBe('held'); c.close();
   c = await s.create(); await c.resume(); c.close();
   expect(s.models).toHaveLength(1); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(1);
-}, 60000);
+}, 120000); // Two composition launches, each fsync-bound (~1,700 real fsyncs per turn): about 50 s alone
+// and 63.3 s in the full affected run on a loaded host; the same bound as this file's other multi-launch cases.
 
 it('refuses an existing signed fact in the wrong nonterminal sidecar role before launching', async () => {
   const s = stage2CompositionFixture(); let c = await s.create(); c.pollOnce(); await c.resumeOne(); c.close();
