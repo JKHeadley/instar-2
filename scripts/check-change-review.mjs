@@ -17,24 +17,28 @@
 //   open <record>                   void the frozen round (Review state: open)
 //
 // Evidence (append-only, hash-chained, machine-local ledger in the git common directory, so
-// every worktree of the repository shares it; INSTAR_CHANGE_EVIDENCE overrides the path):
-//   suite <vitest-json> <exit> [--full]   record a suite result for the current tree (test:all does this)
+// every worktree of the repository shares it; INSTAR_CHANGE_EVIDENCE overrides the path).
+// Appends are serialized by an O_EXCL writer lock; each run's result bytes are kept, content-
+// addressed and never overwritten, beside the ledger:
+//   run                                   `npm run test:all`: runs the whole gate (npm run test:gate),
+//                                         bound to the subject captured when it starts
 //   ci <ci-local-result.json>             record a ci-local verdict (ci-local does this)
-//   pass <record> --reviewer R --verdict accepted|repair --artifact PATH
+//   pass <record> (--records DIR | --reviewer R --artifact PATH)
 //        [--independence TEXT] [--inspected all|a,b] [--omitted path=reason,...]
 //        [--residue id=severity=basis]... [--submitted all|id,id]
+//        the decision is read from the artifact's own VERDICT line (YES|NO), never passed in
 //   classify <entry> <class> <note>       classify red evidence (it stays visible)
 //   redo <entry> <evidence>               record that an entry never carried useful signal
-//   landing                               the landing gate for HEAD (desk: run before landing)
-//   history <governed-doc>                the document's versions, generated from git
-import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+//   landing [--records DIR]               the landing gate for HEAD; with the desk's record
+//                                         directory it consumes candidate/review/gate.json
+import { execFileSync, spawnSync } from 'node:child_process';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { RED_CLASSES, RESIDUE_SEVERITIES, addedLineHits, isPromptSourceFile, isTestFile, landingVerdict, parseRecord,
+import { RED_CLASSES, RESIDUE_SEVERITIES, addedLineHits, artifactDecision, isPromptSourceFile, isTestFile, landingVerdict, parseRecord,
   scanPrompts, subjectDigest, suggestTier, validateRecord } from './change-review.mjs';
-import { discoverGoverned, governingDocument } from './check-governed-docs.mjs';
+import { indexedSections, isGoverned } from './check-governed-docs.mjs';
 
 const CHECKER = 'scripts/check-change-review.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
@@ -80,26 +84,41 @@ function promptScan() {
 }
 function json(commit, path) { const t = tryGit('show', `${commit}:${path}`); if (t === null) return null; try { return JSON.parse(t); } catch { return undefined; } }
 
-// Rule 90: a governing edit produces a new version and keeps the old ones; landing metadata
-// it names must be real commits.
-function governedVersionErrors(entry, discovery) {
+// Rules 90/91: a governing edit produces a new version and keeps every earlier one. The governed
+// set is read at BOTH ends of the change, so a document cannot shed its governance or its
+// history to escape the check, and a changelog edited on its own is checked too. Approval
+// (approvedIn) belongs to the version-chain owner (src/facts/version-chain.ts decodeVersion),
+// which needs a part-two provider this repository does not have; nothing here stands in for it.
+function governedAt(commit, path) { const text = tryGit('show', `${commit}:${path}`); return text !== null && isGoverned(text); }
+function governingAt(commit, path) {
+  if (governedAt(commit, path)) return path;
+  const index = `${dirname(path)}.md`; const text = tryGit('show', `${commit}:${index}`);
+  return text !== null && isGoverned(text) && indexedSections(index, text).includes(path) ? index : null;
+}
+function governedVersionErrors(entry) {
   const errors = [];
-  const docs = new Set(entry.subject.map(p => governingDocument(p, discovery)).filter(Boolean));
-  for (const doc of docs) {
+  const touched = new Map(); // governing document -> whether its body (or a section) changed
+  for (const path of entry.subject) {
+    if (path.endsWith('.changelog.json')) { const doc = path.replace(/\.changelog\.json$/, '.md'); if (!touched.has(doc)) touched.set(doc, false); continue; }
+    if (!path.endsWith('.md')) continue;
+    for (const doc of new Set([governingAt(entry.base, path), governingAt(entry.last, path)].filter(Boolean))) touched.set(doc, true);
+  }
+  for (const [doc, bodyChanged] of touched) {
+    const wasGoverned = governedAt(entry.base, doc); const isGovernedNow = governedAt(entry.last, doc);
     const changelog = doc.replace(/\.md$/, '.changelog.json');
     const before = json(entry.base, changelog); const after = json(entry.last, changelog);
-    const existed = tryGit('cat-file', '-e', `${entry.base}:${doc}`) !== null;
-    if (!existed && after === null) continue; // a new governed document starts at one version
-    if (!entry.subject.includes(changelog)) { errors.push(`Rule 90: governed ${doc} changed without a new version in ${changelog}`); continue; }
+    if (wasGoverned && !isGovernedNow) { errors.push(`Rule 91: ${doc} was governed at the change's base and no longer declares governance; a change record cannot remove governance`); continue; }
+    if (Array.isArray(before) && !Array.isArray(after)) { errors.push(`Rule 90: ${changelog} existed at the change's base and is now ${after === null ? 'removed' : 'not a changelog array'}; history is never removed`); continue; }
+    if (!wasGoverned && !isGovernedNow) continue;
+    const changelogChanged = entry.subject.includes(changelog);
+    if (!wasGoverned && after === null) continue; // a newly governed document starts at one version
+    if (bodyChanged && wasGoverned && !changelogChanged) { errors.push(`Rule 90: governed ${doc} changed without a new version in ${changelog}`); continue; }
+    if (!changelogChanged) continue;
     if (!Array.isArray(after)) { errors.push(`Rule 90: ${changelog} is not a changelog array`); continue; }
     const old = Array.isArray(before) ? before : [];
     const tail = after.slice(after.length - old.length);
-    if (after.length <= old.length) errors.push(`Rule 90: ${changelog} gained no new version for this change`);
-    else if (JSON.stringify(tail) !== JSON.stringify(old)) errors.push(`Rule 90: ${changelog} rewrites an earlier version in place; append a new one instead`);
-    for (const version of after.slice(0, after.length - old.length)) {
-      const shas = [version?.approvedIn?.mergeCommit, ...(version?.changes ?? []).flatMap(c => c?.commits ?? [])].filter(s => typeof s === 'string');
-      for (const sha of shas) if (tryGit('cat-file', '-t', sha) !== 'commit') errors.push(`Rule 90: ${changelog} names landing commit ${sha}, which this repository does not have`);
-    }
+    if (after.length < old.length || JSON.stringify(tail) !== JSON.stringify(old)) errors.push(`Rule 90: ${changelog} rewrites or drops an earlier version; append a new one instead`);
+    else if (bodyChanged && wasGoverned && after.length === old.length) errors.push(`Rule 90: ${changelog} gained no new version for this change`);
   }
   return errors;
 }
@@ -118,16 +137,19 @@ function check({ quiet = false } = {}) {
   const invalid = all.filter(r => required.has(r.last) && !r.valid);
   for (const r of invalid) errors.push(`Rule 74: ${r.path}: 'Subject base:' must be a full commit id that is an ancestor of the record`);
   const scan = current.length ? promptScan() : { findings: [], promptSources: [] };
-  const discovery = current.length ? discoverGoverned('.') : null;
   for (const r of current.filter(x => x.valid)) {
     if (!r.subject.length) { errors.push(`Rule 74: ${r.path} reviews an empty subject`); continue; }
     const hits = addedLineHits(addedLines(r.base, r.last));
-    const ctx = { subject: r.subject, digest: digestAt(r.last, r.subject),
+    // Rule 109: a frozen record is compared with the candidate's content, whichever record
+    // covers the later commits; only an explicit reopen of THIS record voids its round.
+    const ctx = { subject: r.subject, digest: digestAt('HEAD', r.subject),
       promptFindings: scan.findings.filter(f => r.subject.includes(f.promptFile) || (f.fixtureFile && r.subject.includes(f.fixtureFile))),
       promptSourcesChanged: r.subject.filter(p => scan.promptSources.includes(p)),
-      deferrals: hits.deferrals, skips: hits.skips, exists: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null };
+      deferrals: hits.deferrals, skips: hits.skips, exists: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null,
+      read: p => tryGit('show', `${r.last}:${p}`),
+      resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()) };
     const v = validateRecord(r.record, ctx);
-    errors.push(...v.errors.map(e => `${r.path}: ${e}`), ...governedVersionErrors(r, discovery).map(e => `${r.path}: ${e}`));
+    errors.push(...v.errors.map(e => `${r.path}: ${e}`), ...governedVersionErrors(r).map(e => `${r.path}: ${e}`));
     notes.push(...v.notes.map(n => `${r.path}: ${n}`));
   }
   if (!quiet) {
@@ -187,11 +209,16 @@ function ledgerPath() {
   const common = git('rev-parse', '--git-common-dir');
   return join(isAbsolute(common) ? common : resolve(common), 'instar-change-evidence.jsonl');
 }
+const runStore = () => `${ledgerPath().replace(/\.jsonl$/, '')}-runs`;
+// A torn final line (a writer that died mid-append) is not part of the chain; the writer lock
+// moves it aside before the next append, so it is kept, never silently dropped.
 function readLedger() {
   const path = ledgerPath();
   if (!existsSync(path)) return [];
+  const text = readFileSync(path, 'utf8');
+  const complete = text.endsWith('\n') ? text : text.slice(0, text.lastIndexOf('\n') + 1);
   const out = []; let prev = 'genesis';
-  for (const line of lines(readFileSync(path, 'utf8'))) {
+  for (const line of lines(complete)) {
     const entry = JSON.parse(line);
     const { id, ...body } = entry;
     if (body.prev !== prev || id !== sha256(JSON.stringify(body)).slice(0, 16)) throw Error(`evidence ledger ${path} is not an unbroken chain at entry ${out.length} (Rule 112)`);
@@ -199,72 +226,170 @@ function readLedger() {
   }
   return out;
 }
+// One writer at a time across every worktree: an O_EXCL lock file naming its holder. A lock whose
+// holder process is gone is reclaimed; a live holder is waited for, then refused.
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
+function withLedgerLock(run, waitMs = 60_000) {
+  const path = ledgerPath(); mkdirSync(dirname(path), { recursive: true });
+  const lock = `${path}.lock`; const end = Date.now() + waitMs; let fd;
+  for (;;) {
+    try { fd = openSync(lock, 'wx', 0o600); writeSync(fd, String(process.pid)); break; }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      let holder = NaN; try { holder = Number(readFileSync(lock, 'utf8')); } catch { /* released meanwhile */ }
+      let alive = true; if (Number.isInteger(holder) && holder > 0) { try { process.kill(holder, 0); } catch (e) { alive = e.code === 'EPERM'; } }
+      if (!alive) { try { unlinkSync(lock); } catch { /* another writer reclaimed it */ } continue; }
+      if (Date.now() >= end) throw Error(`evidence ledger lock ${lock} is held by process ${holder}`);
+      Atomics.wait(sleeper, 0, 0, 20);
+    }
+  }
+  try {
+    if (existsSync(path)) {
+      const text = readFileSync(path, 'utf8');
+      if (text && !text.endsWith('\n')) {
+        const keep = text.lastIndexOf('\n') + 1;
+        writeFileSync(`${path}.torn-${sha256(text.slice(keep)).slice(0, 12)}`, text.slice(keep));
+        truncateSync(path, Buffer.byteLength(text.slice(0, keep)));
+      }
+    }
+    return run();
+  } finally { closeSync(fd); unlinkSync(lock); }
+}
 function append(body) {
-  const entries = readLedger();
-  const full = { ...body, seq: entries.length, prev: entries.at(-1)?.id ?? 'genesis', at: new Date().toISOString() };
-  const entry = { id: sha256(JSON.stringify(full)).slice(0, 16), ...full };
-  appendFileSync(ledgerPath(), JSON.stringify(entry) + '\n');
-  console.log(`evidence ${entry.id} appended (${entry.kind}) -> ${ledgerPath()}`);
-  return entry;
+  return withLedgerLock(() => {
+    const entries = readLedger();
+    const full = { ...body, seq: entries.length, prev: entries.at(-1)?.id ?? 'genesis', at: new Date().toISOString() };
+    const entry = { id: sha256(JSON.stringify(full)).slice(0, 16), ...full };
+    const fd = openSync(ledgerPath(), 'a', 0o600);
+    try { writeSync(fd, JSON.stringify(entry) + '\n'); fsyncSync(fd); } finally { closeSync(fd); }
+    console.log(`evidence ${entry.id} appended (${entry.kind}) -> ${ledgerPath()}`);
+    return entry;
+  });
 }
+// Result bytes are kept under their own sha256 and never overwritten, so a later run replacing
+// the working-tree result file erases nothing.
+function preserve(bytes) {
+  const hash = sha256(bytes); const dir = runStore(); mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${hash}.json`);
+  if (!existsSync(path)) { const tmp = `${path}.${process.pid}.pending`; writeFileSync(tmp, bytes, { flag: 'wx', mode: 0o600 }); renameSync(tmp, path); }
+  return { hash, path };
+}
+// The tested subject: HEAD, its tree, and whether tracked files or untracked sources differ.
 const headTree = () => ({ head: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'),
-  dirty: git('status', '--porcelain', '--untracked-files=no').length > 0 });
+  dirty: git('status', '--porcelain', '--untracked-files=no').length > 0
+    || lines(git('ls-files', '--others', '--exclude-standard', '--', 'src', 'tests', 'scripts', 'bin', 'docs', 'package.json')).length > 0 });
 
-function suite(file, exit, full) {
-  let report = null;
-  try { report = JSON.parse(readFileSync(file, 'utf8')); } catch { /* an interrupted run leaves no report */ }
-  const complete = !!report && report.numTotalTests > 0 && Array.isArray(report.testResults)
-    && report.testResults.every(r => ['passed', 'failed', 'skipped', 'pending'].includes(r.status));
-  return append({ kind: 'suite', ...headTree(), scope: full ? 'full' : 'partial', exit: Number(exit), complete: complete && full,
-    success: !!report?.success, total: report?.numTotalTests ?? null, failed: report?.numFailedTests ?? null,
-    skipped: report?.numPendingTests ?? null, resultsSha256: report ? sha256(readFileSync(file)) : null });
+// The whole gate, bound to the subject captured when it starts. The command is fixed, so a
+// caller cannot label a partial or stale report as the full gate.
+const GATE = ['run', 'test:gate'];
+const RESULTS = '.test-results.json';
+function gateRun() {
+  const runId = randomUUID(); const start = headTree();
+  let recorded = true;
+  try { append({ kind: 'run-start', runId, ...start, scope: 'full', command: `npm ${GATE.join(' ')}` }); }
+  catch (e) { recorded = false; console.error(`change-review: gate run NOT recorded (no green evidence can come from it): ${e.message}`); }
+  try { unlinkSync(RESULTS); } catch { /* no stale report */ }
+  const child = spawnSync('npm', GATE, { stdio: 'inherit' });
+  const exit = child.status ?? 128;
+  if (recorded) {
+    try {
+      let bytes = null; let report = null;
+      try { bytes = readFileSync(RESULTS); report = JSON.parse(bytes.toString('utf8')); } catch { /* the run left no report */ }
+      const complete = !!report && report.numTotalTests > 0 && Array.isArray(report.testResults)
+        && report.testResults.every(r => ['passed', 'failed', 'skipped', 'pending'].includes(r.status));
+      const end = headTree();
+      const stored = bytes ? preserve(bytes) : null;
+      append({ kind: 'suite', runId, ...start, scope: 'full', exit, signal: child.signal ?? null, complete,
+        subjectMoved: end.head !== start.head || end.tree !== start.tree || end.dirty !== start.dirty,
+        success: !!report?.success, total: report?.numTotalTests ?? null, failed: report?.numFailedTests ?? null,
+        skipped: report?.numPendingTests ?? null, resultsSha256: stored?.hash ?? null, results: stored?.path ?? null });
+    } catch (e) { console.error(`change-review: gate result NOT recorded; the run stays an unfinished start (red) in the ledger: ${e.message}`); }
+  }
+  return exit;
 }
+function ci(file) {
+  const bytes = readFileSync(file); const result = JSON.parse(bytes.toString('utf8'));
+  const head = /^[0-9a-f]{40}$/.test(result.head ?? '') ? result.head : git('rev-parse', 'HEAD');
+  const stored = preserve(bytes);
+  return append({ kind: 'ci', head, tree: git('rev-parse', `${head}^{tree}`), dirty: headTree().dirty, exit: result.verdict === 'passed' ? 0 : 1,
+    complete: true, success: result.verdict === 'passed', verdictReason: result.verdictReason, resultSha256: stored.hash, results: stored.path });
+}
+
 function changeHeads(recordPath) {
   const entry = records().find(r => r.path === recordPath);
   if (!entry?.valid) throw Error(`${recordPath} is not a valid committed review record at HEAD`);
   return { entry, heads: [...entry.range] };
 }
+// The desk's exact-candidate records (lanes/<...>/candidate.json, review.json, gate.json).
+function deskRecords(dir) {
+  const read = name => { try { return JSON.parse(readFileSync(join(dir, `${name}.json`), 'utf8')); } catch { throw Error(`desk record ${name}.json is missing or malformed in ${dir}`); } };
+  const candidate = read('candidate'); const review = read('review');
+  const { head, tree } = headTree();
+  if (candidate.candidate !== head || candidate.tree !== tree) throw Error(`desk candidate ${candidate.candidate} / ${candidate.tree} is not HEAD ${head} / ${tree}`);
+  if (review.candidate !== head || review.tree !== tree || review.base !== candidate.base) throw Error('desk review record is not bound to this candidate');
+  if (!review.reviewer || !review.artifact) throw Error('desk review record names no reviewer or artifact');
+  let gate = null; try { gate = JSON.parse(readFileSync(join(dir, 'gate.json'), 'utf8')); } catch { /* the gate runs after review */ }
+  return { candidate, review, gate };
+}
 function pass(recordPath, opts) {
   const { entry, heads } = changeHeads(recordPath);
-  if (!['accepted', 'repair'].includes(opts.verdict)) throw Error('--verdict must be accepted or repair');
-  if (!opts.reviewer || !opts.artifact || !existsSync(opts.artifact)) throw Error('pass needs --reviewer and an existing --artifact');
-  const produced = readLedger().filter(e => heads.includes(e.head) && (e.kind === 'suite' || e.kind === 'ci')).map(e => e.id);
+  if (opts.verdict) throw Error('--verdict is not accepted: the decision is read from the review artifact itself');
+  let reviewer = opts.reviewer; let artifact = opts.artifact; let deskVerdict = null;
+  if (opts.records) { const { review } = deskRecords(opts.records); reviewer = review.reviewer; artifact = review.artifact; deskVerdict = review.verdict; }
+  if (!reviewer || !artifact || !existsSync(artifact)) throw Error('pass needs --records DIR, or --reviewer and an existing --artifact');
+  const text = readFileSync(artifact, 'utf8');
+  const decision = artifactDecision(text);
+  if (!decision) throw Error(`${artifact} states no 'VERDICT: YES|NO' decision`);
+  if (deskVerdict !== null && (deskVerdict === 'YES') !== (decision === 'YES')) throw Error(`the desk review record says ${deskVerdict} but ${artifact} decides ${decision}`);
+  const { head, tree } = headTree();
+  if (!text.includes(head) && !text.includes(tree)) throw Error(`${artifact} names neither HEAD ${head} nor its tree ${tree}; it is not a review of this candidate`);
+  const produced = readLedger().filter(e => heads.includes(e.head) && ['suite', 'ci', 'run-start'].includes(e.kind)).map(e => e.id);
   const submitted = opts.submitted === 'all' ? produced : (opts.submitted ?? '').split(',').filter(Boolean);
   const residue = (opts.residue ?? []).map(r => { const [id, severity, ...basis] = r.split('='); return { id, severity, basis: basis.join('=') }; });
   for (const r of residue) if (!r.id || !RESIDUE_SEVERITIES.includes(r.severity) || !r.basis) throw Error(`--residue ${r.id}: needs id=${RESIDUE_SEVERITIES.join('|')}=basis`);
-  return append({ kind: 'pass', ...headTree(), record: recordPath, reviewer: opts.reviewer, verdict: opts.verdict,
-    artifact: resolve(opts.artifact), artifactSha256: sha256(readFileSync(opts.artifact)), independence: opts.independence ?? null,
+  return append({ kind: 'pass', head, tree, dirty: headTree().dirty, record: recordPath, reviewer, verdict: decision === 'YES' ? 'accepted' : 'repair',
+    artifact: resolve(artifact), artifactSha256: sha256(readFileSync(artifact)), independence: opts.independence ?? null,
     inspected: opts.inspected === 'all' ? entry.subject : (opts.inspected ?? '').split(',').filter(Boolean),
     omitted: (opts.omitted ?? '').split(',').filter(Boolean).map(o => { const [caseId, ...reason] = o.split('='); return { caseId, reason: reason.join('=') }; }),
     residue, submitted, subjectDigest: digestAt(entry.last, entry.subject) });
 }
-async function landing() {
+async function landing(recordsDir) {
   const { errors, current } = check({ quiet: true });
+  let desk;
+  if (recordsDir) {
+    try {
+      const { review, gate } = deskRecords(recordsDir);
+      if (review.verdict !== 'YES') errors.push('Rule 74: the desk review record is not an exact-tree YES');
+      if (!gate?.gateManifest) errors.push('Rule 37: the desk gate record names no gate manifest');
+      const results = gate?.gateManifest ? join(dirname(gate.gateManifest), 'test-results.json') : null;
+      desk = { reviewer: review.reviewer, artifact: resolve(review.artifact),
+        gateResultsSha256: results && existsSync(results) ? sha256(readFileSync(results)) : 'missing' };
+      // The desk flow submits the whole ledger population: the pass is derived from the desk's
+      // own review record, once, and never from a label.
+      const ledgerNow = readLedger();
+      for (const r of current.filter(x => x.valid)) {
+        if (!ledgerNow.some(e => e.kind === 'pass' && e.record === r.path && e.artifact === desk.artifact && e.artifactSha256 === sha256(readFileSync(desk.artifact))))
+          pass(r.path, { records: recordsDir, submitted: 'all' });
+      }
+    } catch (e) { errors.push(`Rule 74: ${e.message}`); }
+  }
   const ledger = readLedger();
   const { head, tree } = headTree();
   const notes = [];
-  const { convergenceEligible } = await import(pathToFileURL(join(here, '..', 'dist', 'verification', 'index.js')).href);
+  const claimed = current.some(r => r.valid && r.record.one('Convergence') === 'claimed');
+  const built = join(here, '..', 'dist', 'verification', 'index.js');
+  const convergenceEligible = claimed && existsSync(built) ? (await import(pathToFileURL(built).href)).convergenceEligible : null;
   const author = r => git('log', '-1', '--format=%an', r.last).toLowerCase();
+  const readArtifact = p => (p && existsSync(p) ? readFileSync(p) : null);
   for (const r of current.filter(x => x.valid)) {
-    const v = landingVerdict(r.record, ledger, { heads: [...r.range, head], head, tree, record: r.path, author: author(r),
-      subject: r.subject, convergenceEligible, artifactHash: p => (p && existsSync(p) ? sha256(readFileSync(p)) : null) });
+    const v = landingVerdict(r.record, ledger, { heads: [...r.range, head], head, tree, record: r.path, author: author(r), desk,
+      subject: r.subject, convergenceEligible, artifactHash: p => { const b = readArtifact(p); return b ? sha256(b) : null; },
+      artifactDecision: p => { const b = readArtifact(p); return b ? artifactDecision(b.toString('utf8')) : null; } });
     errors.push(...v.errors.map(e => `${r.path}: ${e}`)); notes.push(...v.notes.map(n => `${r.path}: ${n}`));
   }
   if (!current.length) errors.push('Rule 74: no current review record binds the change being landed');
   for (const n of notes) console.log(n);
   return errors;
-}
-function history(doc) {
-  const commits = lines(git('log', '--format=%H %cs', '--follow', '--', doc));
-  const landedRef = tryGit('rev-parse', '--verify', '-q', 'origin/main');
-  let next = null; const rows = [];
-  for (const row of commits.reverse()) {
-    const [commit, date] = row.split(' ');
-    const blob = tryGit('rev-parse', `${commit}:${doc}`);
-    rows.push({ version: blob, began: date, commit, supersedes: next, landedOnMain: !!landedRef && isAncestor(commit, landedRef) });
-    next = blob;
-  }
-  console.log(JSON.stringify(rows.reverse(), null, 2));
 }
 
 // ---- main ----------------------------------------------------------------------------------
@@ -282,12 +407,10 @@ async function main(argv) {
     case 'freeze': { const record = parseRecord(readFileSync(rest[0], 'utf8')); const base = record.one('Subject base');
       setFields(rest[0], { 'Review state': 'frozen', 'Reviewed content': workingDigest(workingSubject(base)) }); console.log(`${rest[0]} frozen`); return 0; }
     case 'open': setFields(rest[0], { 'Review state': 'open', 'Reviewed content': 'none' }); console.log(`${rest[0]} open; the frozen round is void`); return 0;
-    case 'suite': suite(rest[0], rest[1] ?? '1', rest.includes('--full')); return 0;
-    case 'ci': { const result = JSON.parse(readFileSync(rest[0], 'utf8'));
-      append({ kind: 'ci', ...headTree(), exit: result.verdict === 'passed' ? 0 : 1, complete: true, success: result.verdict === 'passed',
-        verdictReason: result.verdictReason, resultSha256: sha256(readFileSync(rest[0])) }); return 0; }
-    case 'pass': pass(rest[0], { reviewer: flag('reviewer'), verdict: flag('verdict'), artifact: flag('artifact'), independence: flag('independence'),
-      inspected: flag('inspected'), omitted: flag('omitted'), residue: flags('residue'), submitted: flag('submitted') }); return 0;
+    case 'run': if (rest.length) throw Error('run takes no arguments: it always runs the whole gate'); return gateRun();
+    case 'ci': ci(rest[0]); return 0;
+    case 'pass': pass(rest[0], { reviewer: flag('reviewer'), verdict: flag('verdict'), artifact: flag('artifact'), records: flag('records'),
+      independence: flag('independence'), inspected: flag('inspected'), omitted: flag('omitted'), residue: flags('residue'), submitted: flag('submitted') }); return 0;
     case 'classify': {
       if (!RED_CLASSES.includes(rest[1]) || !rest[2]) throw Error(`classify <entry> <${RED_CLASSES.join('|')}> <note>`);
       if (!readLedger().some(e => e.id === rest[0])) throw Error(`no evidence entry ${rest[0]}`);
@@ -298,14 +421,14 @@ async function main(argv) {
       append({ kind: 'redo', ...headTree(), target: rest[0], evidence: rest.slice(1).join(' ') }); return 0;
     }
     case 'landing': {
-      const errors = await landing();
+      const errors = await landing(flag('records'));
       if (errors.length) { console.error(`change-review landing REFUSED (${errors.length}):\n${errors.map(e => `  - ${e}`).join('\n')}`); return 1; }
       console.log('change-review landing ACCEPTED'); return 0;
     }
-    case 'history': history(rest[0]); return 0;
     default: console.error(`unknown command ${command}`); return 2;
   }
 }
-// The suite recorder must never turn a test run's own outcome into a different one.
-if (process.argv[2] === 'suite' || process.argv[2] === 'ci') { try { await main(process.argv.slice(2)); } catch (e) { console.error(`change-review: suite evidence NOT recorded: ${e.message}`); } }
+// ci-local's own verdict must not change because its recording failed; the failure is loud, and
+// the missing row leaves landing without that evidence.
+if (process.argv[2] === 'ci') { try { await main(process.argv.slice(2)); } catch (e) { console.error(`change-review: ci evidence NOT recorded: ${e.message}`); } }
 else process.exitCode = await main(process.argv.slice(2)).catch(e => { console.error(`change-review: ${e.message}`); return 2; });

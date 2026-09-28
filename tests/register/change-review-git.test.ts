@@ -1,7 +1,7 @@
 // The change review check and landing gate, driven through the real CLI against throwaway git
 // repositories: each refusal is shown next to the neighbour it must accept.
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -22,8 +22,21 @@ function repo() {
   const run = (script: string, ...args: string[]) => { const r = spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8', env }); return { status: r.status, out: `${r.stdout}\n${r.stderr}` }; };
   git('init', '-q', '-b', 'main');
   return { dir, git, write, commit, check: (...a: string[]) => run(CHECKER, ...a), governed: (...a: string[]) => run(GOVERNED, ...a),
-    read: (path: string) => readFileSync(join(dir, path), 'utf8') };
+    read: (path: string) => readFileSync(join(dir, path), 'utf8'),
+    runAsync: (...args: string[]) => new Promise<number>(done => { const c = spawn(process.execPath, [CHECKER, ...args], { cwd: dir, env, stdio: 'ignore' }); c.on('close', code => done(code ?? -1)); }) };
 }
+const ledgerRows = (dir: string) => readFileSync(join(dir, '.git', 'instar-change-evidence.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l) as Record<string, unknown>);
+// A fixture gate: `npm run test:gate` writes the vitest-shaped report the mode file names.
+const GATE_SCRIPT = `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+const mode = existsSync('gate-mode') ? readFileSync('gate-mode', 'utf8').trim() : 'pass';
+if (mode === 'move') writeFileSync('src/a.ts', 'export const a = 99;\\n');
+if (mode !== 'none') writeFileSync('.test-results.json', JSON.stringify({ numTotalTests: 1, success: mode !== 'fail', testResults: [{ status: mode === 'fail' ? 'failed' : 'passed' }] }));
+process.exit(mode === 'fail' ? 1 : 0);
+`;
+const withGate = (r: ReturnType<typeof repo>) => {
+  r.write('package.json', JSON.stringify({ name: 'fixture', private: true, scripts: { 'test:gate': 'node gate.mjs' } }));
+  r.write('gate.mjs', GATE_SCRIPT); r.write('.gitignore', 'gate-mode\n.test-results.json\n');
+};
 const record = (base: string, extra = '') => `# Change review — fixture
 
 Subject base: ${base}
@@ -74,6 +87,18 @@ describe('coverage and the frozen round (Rules 74, 109)', () => {
     expect(r.check('open', 'reviews/change.md').status).toBe(0); r.commit('reopen');
     expect(r.check('check').status).toBe(0);
   }, 120_000);
+  it('refuses movement of a frozen subject even when a second record covers the moving commit', () => {
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base');
+    adopt(r); r.write('src/a.ts', 'export const a = 1;\n'); r.write('reviews/change.md', record(base));
+    expect(r.check('freeze', 'reviews/change.md').status).toBe(0); const frozenAt = r.commit('change, frozen for review');
+    expect(r.check('check').status).toBe(0);
+    r.write('src/a.ts', 'export const a = 2;\n'); r.write('reviews/second.md', record(frozenAt)); r.commit('edit under a second record');
+    const moved = r.check('check'); expect(moved.status).toBe(1);
+    expect(moved.out).toContain('reviews/change.md: Rule 109: the subject changed while the review is frozen');
+    expect(r.check('open', 'reviews/change.md').status).toBe(0); r.commit('reopen the first round');
+    expect(r.check('check').status).toBe(0);
+  }, 120_000);
   it('checks nothing before adoption and refuses a record whose base is not its ancestor', () => {
     const r = repo();
     r.write('README.md', 'fixture\n'); r.commit('base');
@@ -87,7 +112,7 @@ describe('governed documents go through the version chain (Rule 90)', () => {
   const doc = '# G\n\n**Status: approved. Governed.**\n\nThe body.\n';
   const version = (revision: number, what: string, extra: Record<string, unknown> = {}) => ({ revision, date: '2026-09-27', status: 'approved',
     cause: { kind: 'conversation', note: 'fixture' }, changes: [{ what, why: 'fixture', ref: 'fixture' }], ...extra });
-  it('needs a new version, keeps the old ones byte-identical, and names only real landing commits', () => {
+  it('needs a new version and keeps the old ones byte-identical', () => {
     const r = repo();
     r.write('docs/g.md', doc); r.write('docs/g.changelog.json', JSON.stringify([version(1, 'first')], null, 2));
     const base = r.commit('base'); adopt(r);
@@ -97,13 +122,20 @@ describe('governed documents go through the version chain (Rule 90)', () => {
     step(1); r.write('docs/g.changelog.json', JSON.stringify([version(2, 'sharpen'), version(1, 'first')], null, 2)); r.commit('add version');
     const ok = r.check('check'); expect(ok.out).toContain('change-review check OK');
     step(2); r.write('docs/g.changelog.json', JSON.stringify([version(2, 'sharpen'), version(1, 'first, rewritten')], null, 2)); r.commit('rewrite');
-    expect(r.check('check').out).toContain('rewrites an earlier version in place');
-    step(3); r.write('docs/g.changelog.json', JSON.stringify([version(2, 'sharpen', { approvedIn: { pr: 1, mergeCommit: 'd'.repeat(40) } }), version(1, 'first')], null, 2)); r.commit('fake landing');
-    expect(r.check('check').out).toContain(`names landing commit ${'d'.repeat(40)}`);
-    step(4); r.write('docs/g.changelog.json', JSON.stringify([version(2, 'sharpen', { approvedIn: { pr: 1, mergeCommit: base } }), version(1, 'first')], null, 2)); r.commit('real landing');
+    expect(r.check('check').out).toContain('rewrites or drops an earlier version');
+  }, 120_000);
+  it('checks a changelog edited on its own, and refuses shedding governance or history', () => {
+    const r = repo();
+    r.write('docs/g.md', doc); r.write('docs/g.changelog.json', JSON.stringify([version(1, 'first')], null, 2));
+    const base = r.commit('base'); adopt(r);
+    r.write('docs/g.changelog.json', JSON.stringify([version(1, 'first, quietly rewritten')], null, 2)); r.write('reviews/change.md', record(base)); r.commit('rewrite history only');
+    expect(r.check('check').out).toContain('docs/g.changelog.json rewrites or drops an earlier version');
+    r.write('docs/g.changelog.json', JSON.stringify([version(2, 'note'), version(1, 'first')], null, 2)); r.write('reviews/change.md', record(base, '<!-- 1 -->')); r.commit('append instead');
     expect(r.check('check').status).toBe(0);
-    const history = JSON.parse(r.check('history', 'docs/g.md').out.trim()) as { version: string; supersedes: string | null }[];
-    expect(history).toHaveLength(2); expect(history[0]!.supersedes).toBe(history[1]!.version);
+    r.write('docs/g.md', '# G\n\n**Status: approved.**\n\nThe body, changed while undeclared.\n'); r.write('reviews/change.md', record(base, '<!-- 2 -->')); r.commit('drop the declaration');
+    expect(r.check('check').out).toContain('docs/g.md was governed at the change\'s base and no longer declares governance');
+    r.write('docs/g.md', doc); r.git('rm', '-q', 'docs/g.changelog.json'); r.write('reviews/change.md', record(base, '<!-- 3 -->')); r.commit('drop the history');
+    expect(r.check('check').out).toContain('docs/g.changelog.json existed at the change\'s base and is now removed');
   }, 120_000);
 });
 
@@ -123,38 +155,101 @@ describe('prompt findings reach the record (Rules 12, 27)', () => {
 });
 
 describe('landing gate and the append-only evidence ledger (Rules 37, 74, 107, 112)', () => {
-  it('lands only with an exact-tree full suite and an accepted independent pass; red stays visible until classified', () => {
-    expect(existsSync(resolve('dist/verification/index.js'))).toBe(true);
+  const setup = () => {
     const r = repo();
-    r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r);
+    r.write('README.md', 'fixture\n'); withGate(r); const base = r.commit('base'); adopt(r);
     r.write('src/a.ts', 'export const a = 1;\n'); r.write('reviews/change.md', record(base)); r.commit('change');
-    const report = (success: boolean) => { r.write('.results.json', JSON.stringify({ numTotalTests: 1, success, testResults: [{ status: success ? 'passed' : 'failed' }] })); };
-    report(false);
-    expect(r.check('suite', '.results.json', '1', '--full').status).toBe(0);
-    report(true); expect(r.check('suite', '.results.json', '0', '--full').status).toBe(0);
-    const artifact = join(r.dir, '..', `${r.dir.split('/').at(-1)}-astra-review.md`); writeFileSync(artifact, 'VERDICT: accepted\n'); dirs.push(artifact);
+    const artifact = join(r.dir, '..', `${r.dir.split('/').at(-1)}-astra-review.md`); dirs.push(artifact);
+    const review = (decision: string) => writeFileSync(artifact, `Reviewed HEAD ${r.git('rev-parse', 'HEAD')}\n\nVERDICT: ${decision}\n`);
+    return { r, base, artifact, review };
+  };
+  it('lands only with an exact-tree gate run and a review whose own decision is YES; red stays visible until classified', () => {
+    const { r, artifact, review } = setup();
+    r.write('gate-mode', 'fail'); expect(r.check('run').status).toBe(1);
+    r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0);
     expect(r.check('landing').out).toContain('no accepted independent review pass');
-    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--verdict', 'accepted', '--artifact', artifact, '--submitted', 'all').status).toBe(0);
+    // Round one decided NO; a caller cannot relabel it accepted.
+    const roundOne = `${artifact}.round1.md`; dirs.push(roundOne);
+    writeFileSync(roundOne, `Reviewed HEAD ${r.git('rev-parse', 'HEAD')}\n\nVERDICT: NO\n`);
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--verdict', 'accepted', '--artifact', roundOne).out).toContain('--verdict is not accepted');
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', roundOne, '--submitted', 'all').status).toBe(0);
+    const no = r.check('landing'); expect(no.status).toBe(1); expect(no.out).toContain('no accepted independent review pass');
+    review('YES');
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', artifact, '--submitted', 'all').status).toBe(0);
     const red = r.check('landing'); expect(red.status).toBe(1); expect(red.out).toMatch(/red evidence (\w+) \(suite at \w+\) carries no classification/);
     const redId = /red evidence (\w+) \(suite/.exec(red.out)![1]!;
     expect(r.check('classify', redId, 'product-regression-fixed', 'the failing assertion was fixed in the next tree').status).toBe(0);
     const landed = r.check('landing'); expect(landed.out).toContain('change-review landing ACCEPTED'); expect(landed.status).toBe(0);
-    writeFileSync(artifact, 'VERDICT: accepted, edited later\n');
+    writeFileSync(artifact, `Reviewed HEAD ${r.git('rev-parse', 'HEAD')}\n\nVERDICT: YES, edited later\n`);
     expect(r.check('landing').out).toContain('missing or changed since it was recorded');
+    const other = join(r.dir, '..', `${r.dir.split('/').at(-1)}-unbound.md`); dirs.push(other); writeFileSync(other, 'VERDICT: YES\n');
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', other).out).toContain('is not a review of this candidate');
 
     const ledger = join(r.dir, '.git', 'instar-change-evidence.jsonl');
     const rows = readFileSync(ledger, 'utf8').trim().split('\n');
-    expect(rows.length).toBe(4);
-    writeFileSync(ledger, [rows[0], rows[2], rows[3]].join('\n') + '\n');
+    writeFileSync(ledger, [rows[0], ...rows.slice(2)].join('\n') + '\n');
     expect(r.check('landing').out).toContain('not an unbroken chain');
   }, 120_000);
-  it('records an interrupted run as incomplete evidence, never as a pass, and never fails the run it records', () => {
-    const r = repo();
-    r.write('README.md', 'fixture\n'); r.commit('base');
-    const recorded = r.check('suite', 'missing.json', '130', '--full');
-    expect(recorded.status).toBe(0);
-    const row = JSON.parse(readFileSync(join(r.dir, '.git', 'instar-change-evidence.jsonl'), 'utf8').trim()) as { complete: boolean; exit: number };
-    expect(row).toMatchObject({ complete: false, exit: 130 });
+  it('binds each run to the subject at its start: a report cannot be relabelled, a stale one is removed, and a moved subject is red', () => {
+    const { r } = setup();
+    expect(r.check('suite', '.test-results.json', '0', '--full').status).toBe(2);
+    r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0);
+    r.write('gate-mode', 'none'); expect(r.check('run').status).toBe(0);
+    r.write('gate-mode', 'move'); expect(r.check('run').status).toBe(0);
+    const suites = ledgerRows(r.dir).filter(e => e.kind === 'suite');
+    expect(suites.map(e => [e.complete, e.subjectMoved])).toEqual([[true, false], [false, false], [true, true]]);
+    const starts = ledgerRows(r.dir).filter(e => e.kind === 'run-start');
+    expect(starts.map(e => e.runId)).toEqual(suites.map(e => e.runId));
+    // Each run's result bytes are kept under their hash; nothing later overwrites them.
+    for (const e of suites.filter(x => x.results)) expect(existsSync(e.results as string)).toBe(true);
+    expect(r.check('run', 'tests/one.test.ts').out).toContain('run takes no arguments');
+  }, 120_000);
+  it('records an interrupted gate as a red start, so a lost result is never silently absent', () => {
+    const { r } = setup();
+    r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0);
+    const rows = ledgerRows(r.dir);
+    // Drop the finished row, as a run killed after it started would leave the ledger.
+    writeFileSync(join(r.dir, '.git', 'instar-change-evidence.jsonl'), JSON.stringify(rows[0]) + '\n');
+    expect(r.check('landing').out).toMatch(/red evidence \w+ \(run-start at \w+\) carries no classification/);
+  }, 120_000);
+  it('serializes concurrent writers: every append lands on an unbroken chain', async () => {
+    const { r } = setup();
+    r.write('ci.json', JSON.stringify({ head: r.git('rev-parse', 'HEAD'), verdict: 'passed', verdictReason: 'fixture' }));
+    const codes = await Promise.all(Array.from({ length: 24 }, () => r.runAsync('ci', 'ci.json')));
+    expect(codes.every(c => c === 0)).toBe(true);
+    const rows = ledgerRows(r.dir);
+    expect(rows).toHaveLength(24);
+    rows.forEach((row, i) => { expect(row.seq).toBe(i); expect(row.prev).toBe(i === 0 ? 'genesis' : rows[i - 1]!.id); });
+    expect(r.check('landing').out).not.toContain('unbroken chain');
+    // An interrupted append (a torn last line) and a lock left by a dead writer both recover,
+    // and the torn bytes are kept beside the ledger rather than dropped.
+    const ledger = join(r.dir, '.git', 'instar-change-evidence.jsonl');
+    writeFileSync(ledger, readFileSync(ledger, 'utf8') + '{"torn":');
+    writeFileSync(`${ledger}.lock`, '999999');
+    expect(r.check('ci', 'ci.json').status).toBe(0);
+    expect(ledgerRows(r.dir)).toHaveLength(25);
+    expect(readdirSync(join(r.dir, '.git')).some(f => f.startsWith('instar-change-evidence.jsonl.torn-'))).toBe(true);
+  }, 120_000);
+  it("consumes the desk's candidate, review and gate records instead of a second certification step", () => {
+    const { r, base, artifact, review } = setup();
+    r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0);
+    review('YES');
+    const desk = mkdtempSync(join(tmpdir(), 'desk-records-')); dirs.push(desk); mkdirSync(join(desk, 'gate'));
+    const head = r.git('rev-parse', 'HEAD'), tree = r.git('rev-parse', 'HEAD^{tree}');
+    const id = { base, candidate: head, tree };
+    writeFileSync(join(desk, 'candidate.json'), JSON.stringify(id));
+    writeFileSync(join(desk, 'review.json'), JSON.stringify({ ...id, verdict: 'YES', reviewer: 'astra', artifact, acceptance: 'full' }));
+    writeFileSync(join(desk, 'gate', 'manifest.txt'), `head=${head} tree=${tree} mode=parallel\nend=x exit=0\n`);
+    writeFileSync(join(desk, 'gate.json'), JSON.stringify({ ...id, gateManifest: join(desk, 'gate', 'manifest.txt') }));
+    writeFileSync(join(desk, 'gate', 'test-results.json'), 'not the recorded run');
+    const mismatch = r.check('landing', '--records', desk); expect(mismatch.status).toBe(1);
+    expect(mismatch.out).toContain("the desk gate's preserved test results match no green gate run");
+    copyFileSync(join(r.dir, '.test-results.json'), join(desk, 'gate', 'test-results.json'));
+    const landed = r.check('landing', '--records', desk);
+    expect(landed.out).toContain('change-review landing ACCEPTED'); expect(landed.status).toBe(0);
+    expect(ledgerRows(r.dir).filter(e => e.kind === 'pass')).toHaveLength(1);
+    writeFileSync(join(desk, 'review.json'), JSON.stringify({ ...id, verdict: 'YES', reviewer: 'astra', artifact: join(r.dir, 'README.md'), acceptance: 'full' }));
+    expect(r.check('landing', '--records', desk).status).toBe(1);
   }, 120_000);
 });
 
