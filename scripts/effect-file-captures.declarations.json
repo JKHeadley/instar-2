@@ -1,0 +1,23 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "effect-captures.createEffectFileCaptures",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Single-machine supported installation (P-08): the preview trial runs on one machine with no enrolled peer, so no replica exists; cross-machine sharing of this store is not built. The second custody directory is on the same machine and is not independent media."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32
+    ],
+    "holds": []
+  }
+]

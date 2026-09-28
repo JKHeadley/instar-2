@@ -1,9 +1,12 @@
 import ts from 'typescript';
-import { readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCommit } from './register-source.mjs';
 import { loadOwnerReferences, ownerManifestPaths } from './register-owner-references.mjs';
+import { shippedInventory } from './register-inventory.mjs';
+import { checkShipped } from './register-shipped.mjs';
 
 // Public consumer symbols, not P3-owned decoders/schemas. Optional source-only
 // discovery lets a scanner report actual P2/P4 calls without inventing catalog
@@ -22,7 +25,7 @@ function sourceProgram(sources) {
   // import/re-export link must come from the supplied graph, including .d.ts.
   // Neither ambient tsconfig/package metadata nor dist/helpers may finish it.
   const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext, noLib: true, types: [],
+    moduleResolution: ts.ModuleResolutionKind.NodeNext, noLib: true, types: [], allowJs: true,
     paths: Object.fromEntries(['', '/register', '/rungraph', '/intake', '/facts', '/projections'].map(part =>
       ['@instar/constitutional-types' + part, [resolve('src' + part + '/index.ts')]])) };
   const host = ts.createCompilerHost(options);
@@ -274,7 +277,7 @@ export function scanSources(sourceFiles, decoderBindings = []) {
       observed.reads.push(read.record); report.reads.push(read.record);
     }
   const constructs = reports.flatMap(r => r.constructs); const residual = reports.flatMap(r => r.residual);
-  return { reports, constructs, residual };
+  return { reports, constructs, residual, program };
 }
 export function checkWiring(register, sourceFiles, scanned = scanSources(sourceFiles)) {
   const { reports, constructs, residual } = scanned; const issues = [];
@@ -299,20 +302,23 @@ export function checkWiring(register, sourceFiles, scanned = scanSources(sourceF
   return { issues, residual, constructs, reports };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith('.ts') ? [`${dir}/${e.name}`] : []);
   const register = JSON.parse(readFileSync('generated/register.json', 'utf8'));
   const input = readCommit(process.cwd(), register.commit);
   const owner = loadOwnerReferences(process.cwd(), input);
   for (const [path, content] of Object.entries({ ...owner.artifacts,
     ...Object.fromEntries(Object.entries(input.sources).filter(([p]) => ownerManifestPaths.includes(p))) }))
     if (readFileSync(path, 'utf8') !== content) throw new Error('owner reference source pin trails ' + path);
-  const livePaths = walk('src').sort();
+  // The roster is the shipped inventory of the working tree, not a src/ glob.
+  const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).trim().split('\n');
+  const livePaths = shippedInventory(tracked, path => readFileSync(path, 'utf8')).files;
   if (JSON.stringify(livePaths) !== JSON.stringify(Object.keys(input.code).sort()))
     throw new Error('source wiring roster differs from committed graph; commit source changes and regenerate');
   for (const path of livePaths) if (readFileSync(path, 'utf8') !== input.code[path])
     throw new Error('source wiring pin trails ' + path);
-  const sourceFiles = input.code;
-  const result = checkWiring(register, sourceFiles, scanSources(sourceFiles, owner.decoders));
+  const sourceFiles = input.code; const scanned = scanSources(sourceFiles, owner.decoders);
+  const result = checkWiring(register, sourceFiles, scanned);
+  const testsNaming = name => { try { return execFileSync('git', ['grep', '-l', '-F', name, '--', 'tests'], { encoding: 'utf8' }).split('\n').filter(p => p.endsWith('.test.ts')); } catch { return []; } };
+  result.issues.push(...checkShipped(register, input.inventory, scanned.program, owner, input.show, testsNaming));
   if (result.issues.length) { console.error(result.issues.join('\n')); process.exitCode = 1; }
   else console.log(JSON.stringify({ ...result, completeEnumeration: false, boundary: 'static port calls; reflection, computed ids and plugin construction remain residual' }));
 }

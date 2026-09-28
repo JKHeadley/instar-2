@@ -1,0 +1,44 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.model-json.parseModelJson",
+    "kind": "parsers",
+    "status": "live",
+    "requiredFacts": {
+      "fixture": "PREVIEW-CAPTURE-CLAUDE-LIMIT-RESULT",
+      "authenticationClass": [
+        {
+          "stimulusType": "model-output",
+          "class": "channel-attested"
+        }
+      ],
+      "eventIdAuthority": {
+        "mintedBy": "the runner: one provider call per operation id",
+        "uniquenessScope": "one provider call",
+        "replayWindow": 0,
+        "fallbackFingerprint": {
+          "policy": "none",
+          "basis": "output is consumed only by the call that produced it"
+        }
+      },
+      "ackPolicy": "never"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      36,
+      67
+    ],
+    "holds": []
+  }
+]

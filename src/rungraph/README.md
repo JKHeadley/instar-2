@@ -126,3 +126,7 @@ The build map reads actual test results and marks partial rows as partial.
 The scoped fold workload records fact count, pending count, conflict count and
 duration with a 5-second test budget; it is not a provider-latency assertion.
 Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
+
+## Capabilities
+
+- `rungraph-core`: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.
