@@ -307,9 +307,10 @@ const captureId = (record: ProofRecord) => `${recordId(record)}:${record.capture
 const challenge = (record: ProofRecord) => hashOf({ plan: record.plan, planVersion: record.planVersion, generation: record.generation, startedAt: record.startedAt });
 const bindingOf = (record: ProofRecord) => ({ challengeDigest: challenge(record), plan: record.plan, planVersion: record.planVersion,
   arm: 'probe', slot: record.generation, attempt: String(record.startedAt), run: `preview:${record.generation}`, operation: `proof:${record.plan}`,
-  // The comparison carries the retained capture and its source time, so two records of one attempt that retained
-  // different observations are an immutable disagreement in Nine's merge, never a file-order choice.
-  comparison: `Result:${record.disposition}:capture:${record.capture ?? 'none'}:at:${record.observedAt ?? 'none'}` });
+  // The comparison carries the claimed capture, its source time and the digest of the observation actually retained,
+  // so two records of one attempt that retained different observations, even under one claimed capture, are an
+  // immutable disagreement in Nine's merge, never a file-order choice.
+  comparison: `Result:${record.disposition}:capture:${record.capture ?? 'none'}:at:${record.observedAt ?? 'none'}:retained:${hashOf(record.observed)}` });
 function probeInput(record: ProofRecord, plan: ProofPlan) {
   const binding = bindingOf(record);
   return { type: 'ProbeRecord', schemaVersion: 1, id: `probe:${recordId(record)}`, predecessors: [], ...binding, subject: plan.capability,

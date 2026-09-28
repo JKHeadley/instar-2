@@ -123,11 +123,24 @@ describe("posture and due work through Nine's decoders and derivations", () => {
     const other = run('journal-restore', T0, 'passed', T0, 'g1', { restored: true, differing: null, sections: 20, cursor: 10 });
     // An empty observation carrying its own canonical digest, labelled passed.
     const empty = { ...run('journal-restore', T0, 'failed', T0, 'g1', {}), disposition: 'passed' as const };
-    for (const records of [[good, empty], [empty, good], [good, other], [other, good]])
+    // Round 3: the same claimed capture digest over different retained content (no hash collision needed).
+    const sameClaim = { ...good, observed: {} };
+    for (const records of [[good, empty], [empty, good], [good, other], [other, good], [sameClaim, good], [good, sameClaim]])
       expect(at(records, T0 + 10).get('journal-restore')).toMatchObject({ posture: 'unknown', conflicts: 1, sourceUnavailable: true });
     // Positive neighbors: the single confirming observation, and the same record replayed byte-identically.
     for (const records of [[good], [good, { ...good }]])
       expect(at(records, T0 + 10).get('journal-restore')).toMatchObject({ posture: 'healthy', conflicts: 0, sourceUnavailable: false });
+    // Through the durable log, in both orders, and the single-content positive.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-proof-claim-')));
+    for (const [name, records, expected] of [['a', [sameClaim, good], 'unknown'], ['b', [good, sameClaim], 'unknown'], ['c', [good], 'healthy']] as const) {
+      const path = join(root, `${name}.jsonl`);
+      for (const record of [launch(), ...records]) appendProof(path, record);
+      const log = readProofs(path);
+      expect(log).toMatchObject({ unreadable: 0, refused: [] });
+      const posture = proofPosture(PREVIEW_PROOF_PLANS, log.proofs, 'g1', { supervisors }, T0 + 10, log.refused).find(row => row.plan === 'journal-restore')!;
+      expect(posture).toMatchObject(expected === 'healthy' ? { posture: 'healthy', conflicts: 0, sourceUnavailable: false }
+        : { posture: 'unknown', conflicts: 1, sourceUnavailable: true });
+    }
   });
   it('a refused newest attempt is an unavailable source; the earlier pass does not stand in for it (Astra MF1)', () => {
     const earlier = run('journal-restore', T0, 'passed');
