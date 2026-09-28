@@ -12,7 +12,7 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
-import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules } from './briefing.js';
 import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
@@ -117,6 +117,8 @@ const delay = ms => new Promise(done => setTimeout(done, ms));
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
+  // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
+  verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
   const ordinarySources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: view.limits.maxCalls, expiresAt: view.expires }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
@@ -144,11 +146,13 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   openConflicts: packet.openConflicts ?? [],
   inventory: packet.inventory ?? null,
   memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
+  meaningIndexCoverage: packet.meaningIndexCoverage ?? null,
+  continuity: packet.continuity ?? null,
 
   contradictions: packet.contradictions ?? [],
   crossTopicDigest: packet.crossTopicDigest ?? null,
   restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
-  recalled: packet.recalled?.length ?? 0, recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
+  recalled: packet.recalled?.length ?? 0, recalledIds: (packet.recalled ?? []).map(item => item.id ?? null), recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
   replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
     recorded: packet.replyProvenance.recorded !== null,
     history: packet.replyProvenance.recorded?.history?.length ?? 0,
@@ -199,6 +203,12 @@ const recordShape = (path, role, layer, outcome, shape) => {
 const roleOf = id => id.endsWith(':reply-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
+/** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
+const instructionsOf = prompt => {
+  const message = JSON.parse(prompt).messages.find(m => m.role === 'instructions');
+  return message ? { sha256: `sha256:${createHash('sha256').update(message.content, 'utf8').digest('hex')}`,
+    rules: [...message.content.matchAll(/^Rule (\d+) — /gmu)].map(match => Number(match[1])) } : null;
+};
 const lastReplyReview = view => {
   const turn = view.order.filter(item => item.reviewState !== undefined).at(-1);
   return turn ? { update: turn.update, state: turn.reviewState, diagnostics: turn.reviewDiagnostics ?? null } : null;
@@ -442,9 +452,16 @@ async function main() {
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
       process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
-        ...recallView(contextOf(last.prompt)) } : null,
+        instructions: instructionsOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
-          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null } : null,
+          outcome: reply.sent ? 'api-accepted' : 'send-unknown', grounding: reply.grounding ?? null,
+          ...(reply.continuity ? { continuity: reply.continuity } : {}) } : null,
+        // Rules 11 and 110: the latest summary frontier and which operator updates the meaning index covers.
+        summaryFrontier: view.view.summaries.at(-1)?.through ?? null,
+        meaningIndexed: [...new Set(view.view.summaries.flatMap(item => item.concepts ?? [])
+          .map(item => view.view.turns.get(item.source)?.update))].filter(update => update !== undefined).slice(-100),
+        agentPromises: view.view.commitments.flatMap((note, id) => note.agentPromise ? [{ id, quote: note.quote,
+          action: note.agentPromise.action, closed: view.view.closed.has(id) }] : []).slice(-10),
         ...(next ? { next } : {}), withheld: withheldView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),

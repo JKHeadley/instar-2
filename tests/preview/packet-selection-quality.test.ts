@@ -84,9 +84,16 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     expect(result.precision).toBeGreaterThanOrEqual(12 / 61);
     // int12: other pieces add fixed reply instructions, plus conflict/fact-update and exact-unit guidance
     // that ride here because memoryCandidates are offered and recalled facts carry units (measured mean 8598).
+    // cbuild-2: every verified operator packet is offered the summary-scheduling decision and bounded
+    // memory search (Rules 10 and 11, no keyword prerequisite); search uses only leftover room (measured mean 9486).
+    // cbuild-2 repair: a probe from a not-yet-accounted summary frontier carries the Rule 110 continuity note
+    // and the meaning index's disposition (measured mean 9601).
     // cbuild-4: the obligation guide and governing-constraint keys ride operator packets (measured mean 9293).
     // cbuild-4 repair 2: the need/progress sentence and the capability-key blocker evidence (measured mean 9444).
-    expect(result.packetBytesMean).toBeLessThanOrEqual(9550);
+    // cint-2: both builds' fields ride the same operator packets. Compared field by field with both parents,
+    // each field has the size its own build gives it: cbuild-4's 9444 plus cbuild-2's summary decision,
+    // memory search, continuity note, index coverage and capability sentences (measured mean 11034).
+    expect(result.packetBytesMean).toBeLessThanOrEqual(11136);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);

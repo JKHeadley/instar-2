@@ -11,6 +11,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { replyBody } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(71);
 const now = 1_790_000_000_000;
@@ -149,7 +150,7 @@ export async function runCase(fixture: Fixture, reply: { text: string; choice: 0
     const answerId = await say(reply.text);
     const context = packets.get(answerId);
     const answerTurn = journal.view.turns.get(answerId)!;
-    const sent = answerTurn.intent?.replace(/^PREVIEW — /u, '') ?? '';
+    const sent = replyBody(answerTurn)?.replace(/^PREVIEW — /u, '') ?? '';
     const binding: Binding = !context || !sent.startsWith(bound) ? 'dropped'
       : sent === `${bound}${fixture.clarification}` ? 'bound-correct' : 'bound-wrong';
     const pendingVisible = context ? visibleExchanges(context).some(row => row.update === updateOf(pending)) : false;
@@ -162,7 +163,7 @@ export async function runCase(fixture: Fixture, reply: { text: string; choice: 0
       await say(unrelated); await say('Thanks, that helps.', true);
       const again = await say(fixture.question);
       const later = packets.get(again);
-      const answer = journal.view.turns.get(again)?.intent?.replace(/^PREVIEW — /u, '') ?? '';
+      const answer = replyBody(journal.view.turns.get(again) ?? {})?.replace(/^PREVIEW — /u, '') ?? '';
       const shown = later ? visibleExchanges(later) : [];
       const terseShown = shown.some(row => row.update === updateOf(answerId));
       const questionShown = shown.some(row => row.update === updateOf(pending));
@@ -196,7 +197,7 @@ export async function runControl(control: 'later-question' | 'already-answered',
     worker.intake([{ update_id: id, message: { chat: { id: operator, type: 'private' }, from: { id: operator }, text,
       date: Math.floor(now / 1000) - 86_400 + id * 30 } }]); id++;
     await worker.drain(); await worker.summarizeIfNeeded(force);
-    return journal.view.turns.get(turnId(id - 1))!.intent?.replace(/^PREVIEW — /u, '') ?? '';
+    return replyBody(journal.view.turns.get(turnId(id - 1))!)?.replace(/^PREVIEW — /u, '') ?? '';
   };
   try {
     if (long) for (let i = 0; i < 40; i++) await say(`Routine turn ${String(i)}: equipment and scheduling update ${'z'.repeat(80)}.`);

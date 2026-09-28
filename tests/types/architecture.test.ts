@@ -59,3 +59,36 @@ describe('architecture checks reject programs that compile', () => {
     expect(lintProgram(program, ['tests/lint-safe.ts'])).toEqual([]);
   });
 });
+
+describe('NF-10: intent-decision sites never branch on a literal meaning classifier (Rule 10)', () => {
+  it('flags a keyword-gated decision offer, search offer or promise reader, and passes the live runner', async () => {
+    const { lintIntentSites } = await import('../../scripts/check-architecture.mjs');
+    expect(lintIntentSites()).toEqual([]);
+    const flagged = lintIntentSites({
+      'tests/preview/journal.ts': [
+        'const summaryDecision = fromOperator(turn) && /\\b(?:summar|recap)/iu.test(turn.text);',
+        'const search = /\\bremember\\b/iu.test(turn.text) ? searchFor(turn) : undefined;',
+        'const packet = { ...(/\\bundo\\b/iu.test(text) ? { undoDecision: "x" } : {}), ...(ready ? { datedDecision: "y" } : {}) };',
+      ].join('\n'),
+      'tests/preview/agent-commitment.ts': 'export function promiseProposals(value: unknown, reply: string) { return /I will/u.test(reply); }',
+    }).map((issue: { rule: string; detail: string }) => `${issue.rule} ${issue.detail}`);
+    expect(flagged).toEqual(['NF-10 summaryDecision branches on a literal meaning classifier',
+      'NF-10 search branches on a literal meaning classifier', 'NF-10 undoDecision branches on a literal meaning classifier',
+      'NF-10 promiseProposals branches on a literal meaning classifier']);
+  });
+});
+
+describe('NF-11: every memory retrieval entry point selects through the recall owner (Rule 11)', () => {
+  it('flags a word-match-only entry point and an unlisted ranking site, and passes the live runner', async () => {
+    const { lintRetrievalSites } = await import('../../scripts/check-architecture.mjs');
+    expect(lintRetrievalSites()).toEqual([]);
+    const flagged = lintRetrievalSites({ 'tests/preview/journal.ts': [
+      'const ownedRecall = (q: string) => composeRecall({ query: q });',
+      'const recallFor = (turn: Turn) => selectRecall({ message: turn.text });',
+      'const searchFor = (turn: Turn) => ownedRecall(turn.text, selectRecall({ message: turn.text }));',
+      'const newRecall = (turn: Turn) => selectRecall({ message: turn.text });',
+    ].join('\n') }).map((issue: { rule: string; detail: string }) => `${issue.rule} ${issue.detail}`);
+    expect(flagged).toEqual(['NF-11 selectRecall in newRecall is an unlisted retrieval call site',
+      'NF-11 recallFor does not select through ownedRecall']);
+  });
+});

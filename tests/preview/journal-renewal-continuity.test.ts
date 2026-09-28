@@ -54,7 +54,9 @@ function evidence(root: string, path: string) {
     expect('reason' in probe).toBe(false);
     if ('reason' in probe) throw Error(probe.reason);
     const packet = JSON.parse(probe.context);
-    const answer = packet.memorySearch.items.find((item: { quote: string }) => item.quote.includes('cedar lantern'))?.quote;
+    // Complete history carries a short journal verbatim (Rule 96); search is offered by structure, not wording.
+    const answer = [...(packet.memorySearch?.items ?? []).map((item: { quote: string }) => item.quote),
+      ...packet.history.map((item: { user: string }) => item.user)].find((quote: string) => quote.includes('cedar lantern'));
     expect(answer).toContain('731');
     const report = status(root);
     expect(report.expires).toBe(journal.view.expires);

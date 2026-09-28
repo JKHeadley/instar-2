@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, importChannelFixture, openPreviewJournal, PREVIEW_RECALL_LIMIT } from './journal-test-worker.js';
+import { createJournalWorker, importChannelFixture, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { auditPacket } from './journal-audit.mjs';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -391,7 +391,8 @@ const mergeAnswer = (question: string, context: string) => {
 it('links an introductory claim even when its source ends in a question', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
+    // cbuild-2: the always-offered summary decision needs room beside the merge candidates (measured fit 7000; was 6000).
+    const w = world(root, { maxBytes: 7000, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
@@ -451,11 +452,12 @@ it('carries two distinct people into the reply call and sends one short clarific
     const n = await w.fillUntilRecall(3, 'What did Sam do?');
     await w.say(n, 'What did Sam do?');
     const ambiguous = w.journal.view.order.at(-1)!;
-    expect(ambiguous.intent).toBe('PREVIEW — Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
+    // Rule 110: a first reply from a newly compacted context carries the fixed disclosure first.
+    expect(replyBody(ambiguous)).toBe('PREVIEW — Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
     expect(ambiguous.intent?.match(/\?/gu)).toHaveLength(1);
     expect(ambiguous.sent).toBe(1);
     await w.say(n + 1, 'What did Sam Ruiz do?');
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Sam Ruiz lent you a ladder.');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('PREVIEW — Sam Ruiz lent you a ladder.');
     expect(w.journal.view.order.at(-1)?.sent).toBe(1);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

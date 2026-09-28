@@ -159,7 +159,9 @@ it('never pushes a summary the operator did not ask for, including a summary req
     const { journal, worker } = open(true);
     worker.intake([update(1, 'I had lunch with Mia'), update(2, 'summarize today'), update(3, 'remember the ferry leaves at 6 pm')]);
     await tick(worker);
-    expect(JSON.parse(state.contexts[0]!.context).summaryDecision).toBeUndefined();
+    // Rule 10: every verified operator message is offered the decision (no keyword prerequisite);
+    // the model's reading, validated by code, is what schedules, and nothing here asked for later.
+    expect(JSON.parse(state.contexts[0]!.context).summaryDecision).toBeDefined();
     expect(JSON.parse(state.contexts[1]!.context).summaryDecision).toBeDefined();
     expect(state.sent).toHaveLength(3);
     for (const at of [sixPm(), sixPm(1), sixPm(3)]) { state.now = at; await worker.drain(); await worker.sendReminders(); }

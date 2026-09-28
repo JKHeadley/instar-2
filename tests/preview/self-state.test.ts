@@ -510,7 +510,8 @@ it('carries the self-state in every packet after rolling summaries take over the
   try {
     appendRun(runs, { v: 1, launch: NOON, pid: 1 });
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis, maxCalls: 80, maxReplies: 40, maxTurns: 40, maxBytes: 7168 });
+      // cbuild-2: room for the always-offered summary decision (measured fit 7600; was 7168).
+      { ...genesis, maxCalls: 80, maxReplies: 40, maxTurns: 40, maxBytes: 7600 });
     const packets: { id: string; packet: { historyMode: string; sources?: { id: string; text: string }[] } }[] = [];
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
       sources: () => [selfStateSource(selfState(journal.view, readRuns(runs), NOON, 'UTC', NOON))],

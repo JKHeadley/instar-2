@@ -68,11 +68,19 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // compacted answer contract and single compact summary changed the bytes again.
     // int13 re-pin: diffed against int12's packet, only the capability line (requested reminders and
     // summaries replace the retired morning-reminder grant) and datedDecision's remind:true clause changed.
+    // cbuild-2 re-pin: every verified operator packet now carries the summary-scheduling decision and
+    // bounded memory search without keyword prerequisites (Rule 10), and summarized packets report
+    // meaningIndexCoverage (Rule 11); the memory decision notes that undo exists only via undoDecision.
+    // cbuild-2 repair re-pin: removing only `continuity` (Rule 110's note for a not-yet-accounted summary
+    // frontier) and `meaningIndexCoverage.disposition` reproduces the prior pin 24e81794…f9d026 exactly.
     // cbuild-4 re-pin: this operator packet now carries the obligation guide (directives, open loops,
     // governed blocker records) and the governing-constraint keys; nothing else in it changed.
     // cbuild-4 repair 2 re-pin: diffed against repair 1's packet, only two guide sentences changed: the capability
     // line explains an item's need/progress, and the blocker contract drops "tried" for capability-key evidence.
-    expect(packetHash).toBe('583bf4b6af421b0002fb0706f9203d7e7f87586fcd769983366f74a990539e65');
+    // cint-2 re-pin (cbuild-2 merged over cbuild-4): diffed field by field against both parents' packets
+    // (583bf4b6… and 3f4a1662…), every field equals the side that changed it, and the capability line is
+    // exactly the union of both builds' sentences (nothing lost, nothing new).
+    expect(packetHash).toBe('0cc5fb8bb06633ab5390874c613a7a1465d053942b5d4052ac6291155aa0e6e2');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

@@ -3,13 +3,13 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // Fixtures substitute the model and Jev (int11's faithfulness check runs before a summary commits).
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, replyBody } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(41);
 const now = 1790000000000;
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 12, maxReplies: 8, maxTurns: 8, maxBytes: 4750, cursor: 0 }; // midpoint of the measured 4000-5500 window where complete history cannot fit but the recall packet can
+  maxCalls: 12, maxReplies: 8, maxTurns: 8, maxBytes: 6200, cursor: 0 }; // inside the measured window where complete history cannot fit but the recall packet can (cbuild-2 re-measure with the always-offered decisions: 5800-6200; was 4000-5500)
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 
@@ -56,7 +56,12 @@ it('answers from an exact journal quote after a lossy summary and restart, keepi
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.recalled).toEqual(expect.arrayContaining([expect.objectContaining({ user: 'My usual route is 3.25 miles.' })]));
     expect(packet.capability).toContain('Do not round, convert, omit, or invent the unit');
-    expect(sent.at(-1)).toBe('PREVIEW — The route was 3.25 miles.');
+    // cbuild-2 repair: the first reply from this newly compacted context opens with the Rule 110
+    // disclosure for the message before it; the answer itself keeps the exact decimal and unit.
+    const answered = journal.view.order[5]!;
+    expect(sent.at(-1)).toBe(answered.intent);
+    expect(answered.continuity?.prePauseInbound).toBe(journal.view.order[4]!.id);
+    expect(replyBody(answered)).toBe('PREVIEW — The route was 3.25 miles.');
     expect(journal.view.order[5]?.sent).toBe(6);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
