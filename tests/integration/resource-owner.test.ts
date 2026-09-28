@@ -60,13 +60,15 @@ setTimeout(() => process.exit(0), Number(process.argv[4]));`);
   expect(forked.filter(pid => Number.isSafeInteger(pid)).filter(alive)).toEqual([]);
   // Within the ceiling it completes normally.
   writeFileSync(pids, '');
+  // The killed tree's cleanup may itself reclaim a member still exiting under load: count this launch only.
+  const leakedBefore = owner.snapshot().counters.leakedDescendants;
   expect(await owner.execute(input(root, fork, [pids, '1', '600']), 'maintenance'))
     .toMatchObject({ code: 0, limited: false, localLimit: null });
   // ...and the sleeper it left behind (a leaked descendant) is reclaimed as a repair.
   const left = Number(readFileSync(pids, 'utf8').trim());
   await settle(200);
   expect(alive(left)).toBe(false);
-  expect(owner.snapshot().counters.leakedDescendants).toBe(1);
+  expect(owner.snapshot().counters.leakedDescendants - leakedBefore).toBe(1);
   expect(owner.snapshot().outcomes.map((o: { kind: string }) => o.kind)).toContain('leaked-descendants');
 });
 
