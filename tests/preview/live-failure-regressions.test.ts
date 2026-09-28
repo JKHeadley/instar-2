@@ -65,7 +65,8 @@ it('review thinking overflow: a 3617-token review outcome releases the candidate
     let reviews = 0;
     const ports = basePorts(async () => answer('The candidate answer.'), sent);
     ports.replyCheck = { jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
-      .map(id => [id, { type: 'noul', noul: 0.5 }])) }, latencyMs: 0 }),
+      // cint-2: unsure on every non-secret rule; a credential flag would hold under Rule 86's secrets exception.
+      .map(id => [id, { type: 'noul', noul: id === 'credential' ? 0.01 : 0.5 }])) }, latencyMs: 0 }),
     escalate: async (_candidate, id) => {
       reviews++;
       journal.append({ kind: 'call-outcome', id: `${id}:reply-review`, role: 'reply-review', at: now,
@@ -93,7 +94,8 @@ it('wrapped Decision JSON: an unavailable full-context review is recorded, never
     const worker = createJournalWorker(journal, { ...basePorts(async input => input.id.endsWith(':1')
       ? wrapped : answer('The journal remembers this trial.'), sent),
       replyCheck: { jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
-        .map(id => [id, { type: 'noul', noul: 0.5 }])) }, latencyMs: 0 }),
+        // cint-2: unsure on every non-secret rule; a credential flag would hold under Rule 86's secrets exception.
+      .map(id => [id, { type: 'noul', noul: id === 'credential' ? 0.01 : 0.5 }])) }, latencyMs: 0 }),
       escalate: async candidate => {
         if (candidate.includes('```')) throw Error('review unavailable');
         return { verdict: 'pass' as const, ruleIds: [], reason: 'The ordinary answer follows the supplied context.',
@@ -164,7 +166,8 @@ it('memory denial: full-context review objects to a false no-memory claim and th
       return input.question.startsWith('Can you') ? answer('I cannot remember anything; memory is unavailable.')
         : answer('I can use this trial journal to remember earlier turns.'); }, sent);
     ports.replyCheck = { jev: async () => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
-      .map(id => [id, { type: 'noul', noul: 0.5 }])) }, latencyMs: 0 }),
+      // cint-2: unsure on every non-secret rule; a credential flag would hold under Rule 86's secrets exception.
+      .map(id => [id, { type: 'noul', noul: id === 'credential' ? 0.01 : 0.5 }])) }, latencyMs: 0 }),
     escalate: async (candidate, _id, originalPrompt, reviewRules) => {
       expect(originalPrompt).toContain("You have durable memory in this trial's encrypted local journal");
       expect(reviewRules).toContain('claims_blocked');

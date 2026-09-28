@@ -712,7 +712,8 @@ it('falls back to a current summary when the complete prepared prompt overflows,
       send: async()=>1,checkOutbound:()=>{} });
     worker.intake([update(3,'what was first?')]); await worker.drain();
     expect(full).toBeGreaterThan(0);
-    expect(compact).toBeLessThan(10000);
+    // cint-2: cbuild-4's obligation guide and cbuild-2's summary decision and search ride this compact packet together (measured 10514).
+    expect(compact).toBeLessThan(10752);
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);
     journal.append({kind:'hold',id:'telegram:12345678:update:2',reason:'review needed',at:1000});

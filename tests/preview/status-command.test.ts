@@ -139,7 +139,8 @@ it('sends the exact status answer at the call cap with its unrun review recorded
     replyCheck: { elapsedMs: () => 0, jev: async () => {
       jevCalls++;
       return { latencyMs: 1, value: { model: JEV_MODEL,
-        answers: Object.fromEntries(Object.keys(jevQuestions).map(id => [id, { type: 'noul', noul: 0.5 }])) } };
+        // cint-2: unsure on every non-secret rule; a credential flag would hold under Rule 86's secrets exception.
+        answers: Object.fromEntries(Object.keys(jevQuestions).map(id => [id, { type: 'noul', noul: id === 'credential' ? 0.01 : 0.5 }])) } };
     }, escalate: async (text, _id, originalPrompt) => {
       reviews++;
       const context = replyReviewContext(originalPrompt!, text);
