@@ -536,7 +536,7 @@ it('reviews every rule after reopening a pre-upgrade mixed Jev verdict', async (
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('does not repeat an interrupted paid review and holds the candidate instead of sending it unchecked', async () => {
+it('does not repeat an interrupted paid review; Jev\'s non-secret flag alone does not hold the candidate (Rule 86)', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-crash-')));
   const path = join(root, 'journal.encrypted');
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -562,13 +562,12 @@ it('does not repeat an interrupted paid review and holds the candidate instead o
         escalate: async () => { throw Error('review repeated'); } } });
     await recovered.drain();
     await recovered.drain();
-    expect(sent).toBe('');
+    expect(sent).toBe('PREVIEW — candidate');
     expect(second.view.calls).toBe(2);
     expect(second.view.lastReplyCheck?.path).toBe('subscription');
     expect(second.view.lastReplyCheck?.verdict).toBe('unavailable');
-    expect(second.view.order[0]?.intent).toBeUndefined();
-    expect(second.view.order[0]?.answer).toBe('candidate');
-    expect(second.view.order[0]?.held).toBe('reply check unavailable');
+    expect(second.view.order[0]?.intent).toBe('PREVIEW — candidate');
+    expect(second.view.order[0]?.held).toBeUndefined();
     expect(replyTimings(second.view).perReply[0]?.fallbackMs).toBeNull();
     expect(replyTimings(second.view).fallback).toEqual({ count: 0, p50Ms: null, p95Ms: null });
     second.close();
@@ -731,6 +730,21 @@ it('shares one budget across Jev and fallback, releasing only a verdict within i
     expect(result.outcome).toBe(late ? 'unavailable' : 'pass');
     expect(records.at(-1)?.reason).toBe(late ? REPLY_CHECK_BUDGET_REASON : undefined);
   }
+});
+
+it('keeps a reviewer VIOLATION that returns after the deadline (Rule 42), while a late pass stays unavailable', async () => {
+  let now = 1000;
+  const records: ReplyCheckResult[] = [];
+  const result = await checkReply('candidate', 'turn:1', {
+    now: () => now, deadlineAt: now + REPLY_CHECK_BUDGET_MS, elapsedMs: () => now,
+    jev: async () => ({ value: scores({ claims_blocked: 0.91 }), latencyMs: 100 }),
+    reserveEscalation: () => true,
+    escalate: async () => { now += REPLY_CHECK_BUDGET_MS + 1;
+      return { verdict: 'violation', ruleIds: ['claims_blocked'], confidence: null, latencyMs: REPLY_CHECK_BUDGET_MS + 1 }; },
+    record: row => records.push(row),
+  });
+  expect(result.outcome).toBe('violation');
+  expect(records.at(-1)).toMatchObject({ verdict: 'violation', ruleIds: ['claims_blocked'], path: 'subscription' });
 });
 
 it('does not reserve fallback after Jev consumes the entire budget', async () => {

@@ -2577,11 +2577,17 @@ bounded answer grounding packet and flagged rule definitions. If Jev is unavaila
 the review includes all eight rules. The reviewer returns one short PASS or
 VIOLATION line inside the existing Decision envelope. Only that grounded review
 can suppress a non-secret candidate. Only a completed PASS (Jev or the grounded
-review) releases the candidate. If no check can decide (review budget exhausted,
-reviewer outage, malformed output), nothing is sent: the turn stays held with its message,
-candidate and reservations. A refused review reservation is a `call cap` hold
-that `raise-caps` retries; any other failure is a `reply check unavailable`
-hold. `status` presents their plain spend-limit or safety-check notice. New answers
+review) releases the candidate. Rule 86 limits Jev to a signal except for secrets:
+when Jev completed and flagged only non-secret rules, and the review then gives no
+verdict (review budget exhausted, reviewer outage, malformed output, or an
+interrupted UNKNOWN review), the candidate is sent once. The Jev row, the
+unavailable review row and the send intent are the durable record, and
+`status.reviewUnavailableReleases` counts those sends by flagged rule, without
+content. The turn stays held with its message, candidate and reservations when
+Jev flagged `credential`, when Jev itself gave no result, or when the review
+reservation is refused. A refused review reservation is a `call cap` hold that
+`raise-caps` retries; the others are `reply check unavailable` holds. A review
+VIOLATION still sends the holding reply. Stop and expiry still gate every send. `status` presents their plain spend-limit or safety-check notice. New answers
 leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
 The `credential` reviewer question asks whether a live authentication secret
@@ -2656,7 +2662,8 @@ those Telegram accepted. Justin's check is
 The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
 subscription review is not retried or charged again from this runner; the turn
-is held as `reply check unavailable` rather than sent unchecked.
+is sent only under the Rule 86 release above, and is otherwise held as
+`reply check unavailable`.
 An interrupted Jev check escalates without repeating Jev.
 `status.lastReplyTiming` derives intake-to-Bot-API-acceptance milliseconds and
 the recorded reply-check milliseconds for the last accepted send from existing

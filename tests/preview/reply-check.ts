@@ -170,8 +170,8 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
 
 /** Supervision outcome. Only a completed check may release the original candidate:
  * a Jev PASS or a contextual review PASS. When no judgment was obtained (review budget
- * exhausted, reviewer outage, malformed output) the outcome is `unavailable` and the
- * caller must keep the turn pending, never send it unchecked (Rules 38, 67). */
+ * exhausted, reviewer outage, malformed output) the outcome is `unavailable`. The caller
+ * keeps the turn pending unless Jev completed with non-secret flags only (Rules 4, 86). */
 export type ReplyDecision = { outcome: 'pass' | 'violation' | 'unavailable'; path: ReplyPath; capRefused?: boolean };
 
 /** Only a contextual reviewer verdict may suppress a non-secret reply (Rules 4, 86). */
@@ -188,6 +188,11 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   const fallbackStarted = ports.elapsedMs();
   try {
     const result = await ports.escalate(text, id, originalPrompt, ruleIds.length ? ruleIds : rules, ports.deadlineAt);
+    // A returned VIOLATION is a real refusal: keep it even if the deadline passed meanwhile (Rule 42).
+    if (result.verdict === 'violation') {
+      ports.record({ ...result, path: 'subscription' });
+      return { outcome: 'violation', path: 'subscription' };
+    }
     if (expired(ports)) {
       ports.record(budgetResult('subscription', ruleIds, Math.max(0, ports.elapsedMs() - fallbackStarted)));
       return { outcome: 'unavailable', path: 'subscription' };
