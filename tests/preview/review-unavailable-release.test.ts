@@ -44,7 +44,7 @@ it('non-secret Jev flags + malformed review: the reply is sent once and the sign
     worker.intake([update(1, 'Remind me on Friday at 9')]);
     await worker.drain(); await worker.drain();
     expect(sent).toEqual([CANDIDATE]);
-    expect(reviews).toBe(1);
+    expect(reviews).toBe(2); // the malformed verdict and its one format re-ask (Rule 116)
     const turn = journal.view.order[0]!;
     expect(turn.held).toBeUndefined();
     expect(turn.replyChecks?.map(check => [check.path, check.verdict])).toEqual([['jev', 'violation'], ['subscription', 'unavailable']]);

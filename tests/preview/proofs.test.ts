@@ -13,8 +13,10 @@ import { decodeVerificationRecord } from '../../src/verification/index.js';
 
 const key = new Uint8Array(32).fill(29);
 const T0 = 1790000000000, MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
+// cint-L2 merge: 8400, not 8000. A reviewed answer's prompt check (packet + the live repair's 3039-byte system prompt
+// + review headroom) measured just over 8000 bytes on the merged tree (passes from 8050). The live bound is 32768.
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
-  configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 50, maxReplies: 50, maxTurns: 50, maxBytes: 8000, cursor: 0 };
+  configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 50, maxReplies: 50, maxTurns: 50, maxBytes: 8400, cursor: 0 };
 const plan = (id: string) => PREVIEW_PROOF_PLANS.find(p => p.id === id)!;
 const supervisors = { replyReview: true, summaryReview: true, stepCheck: false };
 

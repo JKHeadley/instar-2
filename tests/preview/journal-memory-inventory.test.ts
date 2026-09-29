@@ -142,7 +142,9 @@ it('drains an accepted memory question when the ordinary envelope fits but even 
     // Build 5 adds the ordinary envelope's ~70-byte verified writer binding (Rule 29). cint-23 re-measured the
     // composed window: pass 13470-13850, fail 13460 and 13900. cint-23-occam removed the always-offered summary
     // decision and generalized the capability line; re-measured in 10-byte steps: pass 13080-13490, fail 13070 and 13500.
-    const g = { ...genesis, maxBytes: 13285 }; // midway in the measured window between the two bounds
+    // cint-L2 with the live repair's capabilities key merged: re-measured in 10-byte steps: pass 13810-14220,
+    // fail 13800 and 14230.
+    const g = { ...genesis, maxBytes: 14015 }; // midway in the measured window between the two bounds
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
     const full = workerFor(journal).probe(question);

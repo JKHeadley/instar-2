@@ -102,7 +102,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       const roles = rows.map(row => row.role);
       expect(roles).toEqual(mode === 'summary-contradiction'
         ? ['summary', 'summary-review', 'summary', 'summary-review']
-        : ['summary', 'summary-review', 'answer', 'reply-review']);
+        : mode === 'reply-contradiction'
+          // A contradicting verdict is a format miss: re-asked once (Rule 116), then held as before.
+          ? ['summary', 'summary-review', 'answer', 'reply-review', 'reply-review']
+          : ['summary', 'summary-review', 'answer', 'reply-review']);
       // Rule 29: every model input names its verified writer. The operator writes the answer's input;
       // the runner, a verified system principal, writes the summary and both review envelopes.
       const runner = { id: `preview-runner:${world.configuration.botId}`, kind: 'system', adapter: 'preview-runner' };
@@ -126,7 +129,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
       expect(status.status, status.stderr).toBe(0);
       const view = JSON.parse(status.stdout);
-      expect(view.calls).toBe(4);
+      expect(view.calls).toBe(mode === 'reply-contradiction' ? 5 : 4);
       const sealed = readFileSync(join(root, 'journal.encrypted'));
       const evidence = [];
       for (let offset = 0; offset < sealed.length;) {
@@ -140,10 +143,12 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         evidence.push(JSON.parse((plain[0] === 1 ? brotliDecompressSync(plain.subarray(1)) : plain).toString('utf8')));
         offset += 4 + length;
       }
-      // Rules 41/75: each of the four subscription calls is recorded once at the launcher boundary.
+      // Rules 41/75: each subscription call is recorded once at the launcher boundary, including a review's
+      // format re-ask (Rule 116), which is its own call.
       expect(evidence.filter(row => row.kind === 'model-call' && row.route === 'preview-subscription'
         && row.usage?.inputTokens === 1 && row.usage?.outputTokens === 1
-        && ['answer', 'reply-review', 'summary', 'summary-review'].includes(row.judgment))).toHaveLength(4);
+        && ['answer', 'reply-review', 'summary', 'summary-review'].includes(row.judgment)))
+        .toHaveLength(mode === 'reply-contradiction' ? 5 : 4);
       const metered = evidence.filter(row => row.kind !== 'model-call').filter(row => {
         const usage = row.usage ?? row.result?.usage ?? row.faithfulness?.usage;
         return usage?.inputTokens === 1 && usage?.outputTokens === 1;
@@ -151,10 +156,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       // int11 keeps the returned usage on the review-state record and on the successful
       // reply-check result (settlement is idempotent per reservation), so a passing
       // review carries one extra metered row.
-      expect(metered).toHaveLength(mode === 'wrapped' ? 5 : 4);
+      // A re-asked review (Rule 116) meters its second call too.
+      expect(metered).toHaveLength(mode === 'summary-contradiction' ? 4 : 5);
       if (mode !== 'summary-contradiction') {
         expect(evidence.filter(row => row.kind === 'reply-review-state' && row.usage?.inputTokens === 1
-          && row.usage?.outputTokens === 1)).toHaveLength(1);
+          && row.usage?.outputTokens === 1)).toHaveLength(mode === 'reply-contradiction' ? 2 : 1);
         expect(evidence.filter(row => row.kind === 'reply-check' && row.result.path === 'subscription'
           && row.result.usage)).toHaveLength(mode === 'wrapped' ? 1 : 0);
         expect(evidence.filter(row => row.kind === 'reply-check' && row.result.path === 'subscription')
@@ -163,7 +169,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       expect(view.modelJsonShapes.counts).toMatchObject(mode === 'summary-contradiction'
         ? { 'answer/decision/tolerated/fenced': 2, 'summary-review/decision/tolerated/fenced': 2 }
         : { 'answer/decision/tolerated/fenced': 2,
-          'reply-review/decision/tolerated/fenced': 1,
+          'reply-review/decision/tolerated/fenced': mode === 'reply-contradiction' ? 2 : 1,
           'summary-review/decision/tolerated/fenced': 1 });
       if (mode === 'wrapped') {
         expect(sends.map(send => send.text)).toEqual([`PREVIEW — ${reply}`]);
@@ -179,7 +185,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         expect(view.modelJsonShapes.counts).toMatchObject({
           [mode === 'reply-contradiction' ? 'reply-review/verdict/malformed/not-json'
             : 'summary-review/verdict/malformed/prose-wrapped']:
-            mode === 'summary-contradiction' ? 2 : 1 });
+            mode === 'wrapped' ? 1 : 2 });
         if (mode === 'summary-contradiction') {
           expect(view.summaries).toHaveLength(0);
           expect(view.summaryChecks.violation).toBe(0);

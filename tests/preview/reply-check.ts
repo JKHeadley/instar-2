@@ -91,7 +91,7 @@ export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, 
 }
 
 export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
-  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge only these rules: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach of a selected rule; uncertainty is PASS. Use only listed rule IDs. No other text.${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
+  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge only these rules: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason, with the reason under ${REPLY_REVIEW_REASON_ASK} characters; put any longer reasoning in reason.value. A violation requires an actual breach of a selected rule; uncertainty is PASS. Use only listed rule IDs. No other text.${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
 }
 
 /** Rules 20, 21, 23, 103: a settled cannot-do or needs-a-person claim is judged against the investigation record the
@@ -124,14 +124,24 @@ export function replyReviewContext(originalPrompt: string, candidateReply: strin
     rules: Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])) });
 }
 
+/** The reviewer is asked for a reason under REPLY_REVIEW_REASON_ASK characters; the parser admits up to
+ * REPLY_REVIEW_REASON_MAX. Live (2026-09-28) the real model wrote 170-200 character reasons and the old 160 bound
+ * refused every such verdict as malformed, holding replies as "check unavailable". The bound limits only the length
+ * of the one line: its exact whole-line shape still admits no text before or after the verdict. */
+export const REPLY_REVIEW_REASON_ASK = 300;
+/** The one error that means the reviewer answered but missed the verdict format (the only case re-asked). */
+export const REVIEW_MALFORMED = 'preview: review malformed';
+/** Runner-authored packet guidance for the single format re-ask of a review. */
+export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because conclusion.value was not exactly one line of the form PASS | reason or VIOLATION:rule_id[,rule_id] | reason with a listed rule ID. Return only the Decision object with that one line, no other text; put longer reasoning in reason.value.';
+export const REPLY_REVIEW_REASON_MAX = 600;
 /** The short line lives inside the route's required Decision envelope. */
 export function parseReplyReviewVerdict(value: string): { verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; reason: string } {
-  const match = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,160})$/u.exec(value.trim());
-  if (!match || !match[3]?.trim()) throw Error('preview: review malformed');
+  const match = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,600})$/u.exec(value.trim()); // 600 = REPLY_REVIEW_REASON_MAX
+  if (!match || !match[3]?.trim()) throw Error(REVIEW_MALFORMED);
   const ruleIds = match[2] ? match[2].split(',') as ReplyRule[] : [];
   if ((match[1] === 'PASS' && ruleIds.length) || (match[1] === 'VIOLATION' && !ruleIds.length)
     || new Set(ruleIds).size !== ruleIds.length || ruleIds.some(id => !Object.hasOwn(REPLY_RULES, id)))
-    throw Error('preview: review malformed');
+    throw Error(REVIEW_MALFORMED);
   return { verdict: match[1] === 'PASS' ? 'pass' : 'violation', ruleIds, reason: match[3]! };
 }
 
@@ -163,11 +173,15 @@ export interface ReplyCheckPorts {
   jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
     /** `revision`: the held-class review of a revised candidate, a distinct operation from the first review. */
-    operation?: 'revision'): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
+    operation?: 'revision',
+    /** The single format re-ask of a malformed first-review verdict (Rule 116). */
+    formatRetry?: boolean): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
 
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
   reserveEscalation(text: string, originalPrompt?: string): boolean;
+  /** Reserve the one format re-ask after a malformed verdict under the same call cap; false when capped or stopped. */
+  reserveFormatRetry?(): boolean;
   record(result: ReplyCheckResult): void;
   elapsedMs(): number;
   now?(): number;
@@ -241,7 +255,14 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   }
   const fallbackStarted = ports.elapsedMs();
   try {
-    const result = await ports.escalate(text, id, originalPrompt, ruleIds.length ? ruleIds : rules, ports.deadlineAt);
+    const reviewRules = ruleIds.length ? ruleIds : rules;
+    let result;
+    try { result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt); }
+    catch (error) {
+      // Rule 116: one bounded re-ask when the verdict missed its exact format; a second miss is refused as before.
+      if (!(error instanceof Error) || error.message !== REVIEW_MALFORMED || expired(ports) || !ports.reserveFormatRetry?.()) throw error;
+      result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt, undefined, true);
+    }
     // A returned VIOLATION is a real refusal: keep it even if the deadline passed meanwhile (Rule 42).
     if (result.verdict === 'violation') {
       ports.record({ ...result, path: 'subscription' });

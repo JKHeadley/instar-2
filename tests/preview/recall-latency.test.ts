@@ -84,7 +84,11 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // the packet differs only by the absent crossTopicDigest and the memorySearch items that use its room.
     // cint-23-occam step 2 re-pin: diffed field by field against step 1's packet, only three fields changed: the
     // summaryDecision is gone, and the capability line and datedDecision describe requested actions generally.
-    expect(packetHash).toBe('9bb4bf29ba289f2f22b48b909819b04d456a753f0fa65c9050312f0172e9e787');
+    // cint-1 live repair re-pin: only the obligation guide's wording (reply sentences copied word for word, one
+    // packet.capabilities key as evidence) and the added capabilities key changed.
+    // cint-L2 merge of the live repair: diffed field by field against both parents' packets (9bb4bf29… and
+    // 4895ab42…), obligationDecision and capabilities equal the live repair's and every other field equals cint-L2's.
+    expect(packetHash).toBe('dcb8aa246be69648f8ffc4d7a734371bc1e4739dd535549b421821b65cfda981');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

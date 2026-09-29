@@ -62,7 +62,10 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     worker.intake([update(3, 'And one more color?')]); await worker.drain();
     expect(sent.map(item => item.expectedText)).toEqual(['PREVIEW — The answer is violet.', 'PREVIEW — The answer is amber.',
       'PREVIEW — The answer is scarlet.']);
-    expect(reviewPackets).toHaveLength(2);
+    // The malformed verdict is re-asked once with the same context (Rule 116); both misses release as before.
+    expect(reviewPackets).toHaveLength(3);
+    expect(reviewPackets[2]).toEqual(reviewPackets[1]);
+    expect(journal.view.order[2].reviewRetried).toBe(true);
     expect(reviewPackets[0].originalPrompt).toContain('And the other color?');
     expect(reviewPackets[0].rules).toContain('raw_path');
     expect(journal.view.order[2].answer).toBe('The answer is scarlet.');
@@ -70,7 +73,7 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     expect(journal.view.order[2].intent).toBe('PREVIEW — The answer is scarlet.');
     expect(journal.view.order[2].held).toBeUndefined();
     expect(journal.view.order[2].release).toMatchObject({ review: 'unavailable' });
-    expect(status(root)).toMatchObject({ turns: 3, calls: 5, replies: 3,
+    expect(status(root)).toMatchObject({ turns: 3, calls: 6, replies: 3,
       limits: { maxCalls: 12, maxReplies: 8, maxTurns: 8, maxBytes: 32768 },
       replyChecks: { pass: 2, unavailable: 1 }, reviewUnavailableReleases: { total: 1, byRule: { raw_path: 1 } },
       unknownSends: 0, stop: null });
@@ -140,7 +143,7 @@ it('validates renewal and policy-successor records against the pinned policy, wi
     loginProfileIdentity: 'offline-identity', executable: '/offline/cli', artifact: 'sha256:offline',
     version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: 'sha256:offline' };
   const digest = encoded(subscriptionConversationPolicy(model)).hash;
-  expect(digest).toBe('sha256:efe698761d91114749594313b2bde1e2c21a855901f539c5a3afc4a16998cea7');
+  expect(digest).toBe('sha256:aced65e686a665f11a02d7480501170ad3e2f8664fa5858ec69f42374390374a');
   const base = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
     waiver: 'waiver', p11: 'p11', reviewedHead: 'frozen predecessor', trial: genesis().grant,
     baseConfigurationDigest: genesis().configurationDigest, profileDigest: encoded(profile).hash,

@@ -77,6 +77,10 @@ export const STEP_SUPERVISOR_EXHAUSTED = 'step supervisor budget exhausted';
 /** A small, deterministic overview beside the ordinary cross-conversation history. */
 /** The journal record, rather than model prose, determines a packet item's origin. */
 export type MemorySourceKind = 'operator-stated' | 'channel-import' | 'inferred-by-summary';
+/** Runner-authored packet guidance for the single format re-ask (Rule 116); the operator's message is unchanged. */
+export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one JSON Decision object. Answer again and return only that object, with no text before or after it; put all reasoning inside reason.value.';
+export const withFormatReminder = (context: string, reminder: string): string =>
+  JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
@@ -365,7 +369,7 @@ export const CONSTRAINT_EVIDENCE: Readonly<Partial<Record<GoverningConstraint, r
   'no-tools': ['externalTools', 'accounts'], 'reply-only-grant': ['sends'],
   'operator-authority': ['accounts', 'ownedIdentities'], 'secret-custody': ['secretCustody'] });
 /** How the answer model declares the obligations its reply creates or settles (Rules 6, 18, 20-23, 93, 99, 103). */
-export const OBLIGATION_DECISION = 'When one applies, add: directives:[{quote:exact clause of this message setting a standing instruction beyond this reply,supersedes?:directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}]; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:exact reply clause,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now); for a cannot-do or needs-a-person claim that survives every lawful avenue, blocker:{kind:"cannot-do"|"needs-human",claim:exact reply clause,avenues:[{avenue,disposition:"outside-standing"|"inapplicable",evidence:the capabilities key that shows it}],constraint:governingConstraints key,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. You have attempted nothing outside this reply, so never call an avenue tried. A missing tool is no-tools. Refuse only behind a governingConstraints key that an avenue\'s capabilities evidence supports; propose any other boundary.';
+export const OBLIGATION_DECISION = 'When one applies, return these decision fields: directives:[{quote:exact clause of this message setting a standing instruction beyond this reply,supersedes?:directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}]; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:a sentence of your reply, copied word for word,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now); for a cannot-do or needs-a-person claim that survives every lawful avenue, blocker:{kind:"cannot-do"|"needs-human",claim:a sentence of your reply, copied word for word,avenues:[{avenue,disposition:"outside-standing"|"inapplicable",evidence:one packet.capabilities key such as "externalTools"}],constraint:governingConstraints key,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. You have attempted nothing outside this reply, so never call an avenue tried. A missing tool is no-tools. Refuse only behind a governingConstraints key that an avenue\'s capabilities evidence supports; propose any other boundary.';
 /** Rules 20, 21, 23, 99: a settled cannot-do or needs-a-person claim the agent actually sent,
  * with its finite lawful avenues, the smallest outside action and a future recheck. */
 export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' | 'needs-human';
@@ -519,6 +523,8 @@ export type JournalRecord =
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; usage?: ModelUsage; at: number }
+  /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
+  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass: 'malformed'; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -624,7 +630,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string }; release?: ReplyRelease;
@@ -1745,7 +1751,9 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     && (row.state === 'complete' || row.state === 'rejected' || row.state === 'uncertain'))
     view.providerStates.set(row.state, (view.providerStates.get(row.state) ?? 0) + 1);
 
-  if ('failureClass' in row && row.failureClass)
+  // Model-answer failure classes count every refused answer call (a format re-ask's refused first call included);
+  // a reply review's format miss is a review outcome, not an answer failure.
+  if ('failureClass' in row && row.failureClass && !(row.kind === 'format-retry' && row.role === 'reply-review'))
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
   if (row.kind === 'cap-report') {
@@ -2285,6 +2293,28 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
 
     return;
   }
+  if (row.kind === 'format-retry') {
+    // Rules 42, 75: the refused first call stays visible (its failure class and usage), and the one re-ask is a
+    // counted, token-reserved call under the same cap; it is never repeated and never follows a send.
+    if (row.failureClass !== 'malformed' || view.calls >= view.limits.maxCalls || turn.intent !== undefined)
+      throw Error('preview journal: format retry order or cap');
+    if (row.role === 'answer') {
+      if (row.state !== 'complete' || !turn.reserved || turn.answer !== undefined || turn.modelState !== undefined || turn.answerRetried)
+        throw Error('preview journal: format retry order or cap');
+      settleTokens(view, `answer:${row.id}`, row.usage);
+      reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
+        row.maxOutputTokens ?? subscriptionOutputMaximum);
+      turn.answerRetried = true;
+    } else if (row.role === 'reply-review') {
+      if (row.state !== undefined || replyCandidate === undefined || !turn.reviewReserved || turn.reviewRetried
+        || turn.reviewState !== undefined && turn.reviewState !== 'complete'
+        || turn.replyChecks?.some(item => item.path === 'subscription')) throw Error('preview journal: format retry order or cap');
+      reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+        row.maxOutputTokens ?? subscriptionOutputMaximum);
+      delete turn.reviewState; turn.reviewRetried = true;
+    } else throw Error('preview journal: format retry order or cap');
+    view.calls++; return;
+  }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
@@ -2696,7 +2726,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve'
-          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve') && view.calls >= view.limits.maxCalls)
+          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry')
+          && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
         throw Error('preview journal: capacity reached');
@@ -2963,6 +2994,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
     [through, ports.elapsed ? elapsed() : at]));
   // An orphaned reservation may have completed at the provider. Never repeat it.
+  /** The stop latch and expiry, read without appending: a format re-ask is simply not made once either holds. */
+  const halted = () => journal.view.stop !== null || ports.stopped() || ports.now() >= journal.view.expires;
   const gate = () => {
     if (journal.view.stop || ports.stopped())
       throw Error('preview stopped');
@@ -4455,7 +4488,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(fromOperator(turn) ? { memoryDecision: 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. correct/forget: offered source, exact old quote, replacement for correct, affected reply ids and summary passages; for an earlier answer use in:"reply" with its exact old reply and keep the question. '
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update" with an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
-            obligationDecision: OBLIGATION_DECISION, governingConstraints: GOVERNING_CONSTRAINTS } : {}),
+            obligationDecision: OBLIGATION_DECISION, governingConstraints: GOVERNING_CONSTRAINTS, capabilities: PREVIEW_CAPABILITIES } : {}),
           ...(fromOperator(turn) && offered.length && !('conflictDecision' in (JSON.parse(datedBase) as object)) ? { conflictDecision: CONFLICT_DECISION } : {}),
           // The compact packet's summary already serves as the correction reference; only complete history needs a copy.
           ...(fromOperator(turn) && summaryFor(before(turn.update)) && !('summary' in (JSON.parse(datedBase) as object))
@@ -4470,7 +4503,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Under byte pressure the obligation guide yields first (a bounded omission of guidance, never of evidence).
         const withoutGuide = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('obligationDecision' in packet)) return [];
-          delete packet.obligationDecision; delete packet.governingConstraints; return [JSON.stringify(packet)]; };
+          delete packet.obligationDecision; delete packet.governingConstraints; delete packet.capabilities; return [JSON.stringify(packet)]; };
         const ordinaries = withoutSummary && dropped.some(item => item.kind === 'candidate')
           ? [withoutSummary, fullContext] : [fullContext, ...(withoutSummary ? [withoutSummary] : [])];
         // The guide yields first. Memory search is the lowest-priority evidence (Rule 11): its size
@@ -4732,6 +4765,24 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
           catch { continue; } // reservation remains UNKNOWN
+          // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
+          // once more with a runner-authored format reminder in the packet (never in the operator's message),
+          // reserved against the same call cap and only while not stopped; a second miss is refused as before.
+          if (typeof answer !== 'string' && 'failureClass' in answer && answer.state === 'complete'
+            && answer.failureClass === 'malformed' && !turn.answerRetried) {
+            const retryContext = withFormatReminder(context, ANSWER_FORMAT_REMINDER);
+            let retryPrepared: string | undefined, preparable = true;
+            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
+            catch { preparable = false; }
+            if (preparable && !halted() && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+              journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
+                ...(answer.usage ? { usage: answer.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
+                maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+              try { answer = await ports.model({ question, context: retryContext, id: turn.id,
+                ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
+              catch { continue; } // the retry reservation remains UNKNOWN
+            }
+          }
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
@@ -5062,6 +5113,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                     : { prompt: originalPrompt }),
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,
                   at: ports.now() }); return true; },
+              reserveFormatRetry: () => {
+                if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return false;
+                journal.append({ kind: 'format-retry', id: turn.id, role: 'reply-review', failureClass: 'malformed',
+                  maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+                return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
                 result: { ...result, candidateDigest }, at: ports.now() }) };
 

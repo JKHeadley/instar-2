@@ -247,13 +247,14 @@ it.each([
   ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1 }, null, {}],
   // int11's reply verdict is one line; CRLF fencing applies to the outer Decision.
   ['wrapped-crlf', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1 }, null, {}],
-  ['verdict-contradicted', { 'reply-review/verdict/malformed/not-json': 1 },
+  // Each miss is re-asked once with a format reminder (Rule 116); this fake misses again, so each shape counts twice.
+  ['verdict-contradicted', { 'reply-review/verdict/malformed/not-json': 2 },
     { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
-  ['decision-contradicted', { 'reply-review/decision/malformed/prose-wrapped': 1 },
+  ['decision-contradicted', { 'reply-review/decision/malformed/prose-wrapped': 2 },
     { role: 'reply-review', layer: 'decision', shape: 'prose-wrapped' }, {}],
-  ['answer-two-objects', { 'answer/decision/malformed/multiple-objects': 1 },
-    { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 1 }],
-  ['verdict-second-line', { 'reply-review/verdict/malformed/not-json': 1 },
+  ['answer-two-objects', { 'answer/decision/malformed/multiple-objects': 2 },
+    { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 2 }],
+  ['verdict-second-line', { 'reply-review/verdict/malformed/not-json': 2 },
     { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
 ])('the real launcher accepts a whole-response Decision fence, never passes contradicting review text, still answers, and says why (%s)', async (mode, counts, last, failures) => {
   const world = successiveWorld(), root = join(world.directory, 'shape-journal');

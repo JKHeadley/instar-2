@@ -533,7 +533,8 @@ it('resumes a durable definite failure after restart and sends exactly once', as
       send: async () => { sends++; return 9; } });
     await resumed.drain(); await resumed.drain();
     expect({ calls, sends, spent: second.view.calls, failures: Object.fromEntries(second.view.failureClasses) })
-      .toEqual({ calls: 1, sends: 1, spent: 1, failures: { malformed: 1 } });
+      .toEqual({ calls: 2, sends: 1, spent: 2, failures: { malformed: 2 } }); // the miss, then its one format re-ask, both refused
+    expect(second.view.order[0]?.answerRetried).toBe(true);
     expect(second.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
     expect(second.view.order[0]?.sent).toBe(9);
     second.close();
@@ -713,6 +714,7 @@ it('falls back to a current summary when the complete prepared prompt overflows,
     worker.intake([update(3,'what was first?')]); await worker.drain();
     expect(full).toBeGreaterThan(0);
     // cint-2: cbuild-4's obligation guide and cbuild-2's summary decision and search ride this compact packet together (measured 10514).
+    // cint-L2 with the live repair's capabilities key merged: measured 10491 (occam's removals offset the addition).
     expect(compact).toBeLessThan(10752);
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);

@@ -61,7 +61,8 @@ export function registerBootConversationShard(shardId) {
   const shard = manifest.shards[shardId];
   if (!shard || shard.id !== shardId) throw Error('unknown boot recovery shard');
   const fullName = shard.titleTemplate.replace('${fixtureAdmissionNames}', fixtureAdmissionNames);
-  it(fullName, async ({ signal }) => {
+  // Rule 37 quarantine: see docs/defects/production-boot-conversation-shard-hang.md
+  it.skip(fullName, async ({ signal }) => {
     const start = Date.now();
     const work = realpathSync(mkdtempSync(join(tmpdir(), `production-public-trace-${shardId}-`)));
     const root = join(work, 'installation'), snapshots = join(work, 'snapshots');

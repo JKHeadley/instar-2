@@ -2043,7 +2043,15 @@ through the usual reply check, durable intent and send fences. A bare process
 exit (including zero), invocation error, timeout or interrupted call without a
 validated terminal result remains UNKNOWN and is never repeated. This also
 applies to summary reservations: a definite summary failure may use its remaining
-bounded attempt, while an uncertain one stays pending across restart. `status` reports
+bounded attempt, while an uncertain one stays pending across restart. For answers and reviews one step
+comes before the fixed reply: a completed answer or reply-review verdict that missed its
+required format (`malformed`) is asked again exactly once, with a fixed runner-authored
+`formatReminder` added to the packet (the operator's message is unchanged). The re-ask is
+not a provider retry: it is a separate call, recorded as a `format-retry` journal row that
+keeps the first call's failure class and usage, and it reserves against the same call cap.
+It is skipped when that cap is reached, the stop latch holds or the trial has expired, and
+it always precedes any send. A second miss gets the fixed reply, or for a review the held
+outcome, as before. `status` reports
 `modelFailureClasses` and `modelResultStates`; `self` includes the same counts.
 Subscription reply reviews also record their returned provider state.
 The inner reply-review verdict is one exact line (`PASS | reason` or
@@ -2569,7 +2577,27 @@ that context; an unrequested internal disclosure or handoff of work can still
 violate. The review returns its one-line `PASS | reason` or
 `VIOLATION:rule_id | reason` verdict inside the required Decision envelope's
 `conclusion.value`. The narrow line parser and refusal on a malformed review are
-unchanged.
+unchanged, except that the reason may run to 600 characters (the question asks for
+under 300): live on 2026-09-28 the real model wrote 170-200 character reasons and the
+earlier 160 bound refused every one as malformed, holding replies as "check unavailable".
+
+**Decision slot for declarations (live repair 2026-09-28).** The conversation system
+prompt now puts `reason` (the model's reasoning) first and lets `conclusion.value` be
+either the plain reply string or the object `{"reply": ..., ...decision fields}` whenever
+the packet's decision guidance applies (memory, dated, directives, openLoops, blocker and
+the rest). The runner re-serializes that object as the JSON text the worker has always
+validated (`conclusionText` in `model-json.ts`); any other non-string value is malformed.
+Before this, the prompt asked for the reply "in plain text" and the declarations existed
+only as packet guidance: across the whole live trial no memory change, dated item,
+commitment, directive or blocker was ever recorded, because the real model put its
+declarations in `reason.value`, which nothing reads. The answer packet also now carries
+`capabilities`, the keys a blocker avenue's evidence must name. The prompt change moves
+the invocation-policy digest, so a live runner needs a policy-successor activation record
+(`renew-activation.mjs --policy-successor`). Real model bytes for the four failing live
+turns, under the old and the new prompt, are in
+`fixtures/live-declarations-2026-09-28.json`, driven end to end by
+`live-declarations.test.ts`; the live procedure is
+[live-declarations-live-test.md](live-declarations-live-test.md).
 
 `reply-review-corpus.mjs` is a bounded offline screen for false holds. Its 32
 synthetic cases each select one of the eight review rules: three human-fine

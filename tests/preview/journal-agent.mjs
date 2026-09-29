@@ -14,13 +14,13 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules } from './briefing.js';
 import { projectionDigest } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate} from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder} from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
-import { failureShapeOf, parseModelJson } from './model-json.js';
+import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
 
@@ -887,14 +887,15 @@ async function main() {
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
-      if (decision?.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-        || typeof decision.conclusion.value !== 'string' || !decisionWithinFloor(decision)) {
+      const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
+        && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
+      if (value === null) {
         recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
         return { state: 'complete', failureClass: 'malformed', usage: result.usage };
       }
       if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
-      if (!decision.conclusion.value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      return { state: 'complete', value: decision.conclusion.value, usage: result.usage };
+      if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
+      return { state: 'complete', value, usage: result.usage };
     };
     const proofLines = () => {
       if (!proofLaunch) return [];
@@ -929,14 +930,15 @@ async function main() {
         elapsedMs: () => performance.now(),
         jev: (text, questions = jevQuestions, timeoutMs) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
           text, questions, timeoutMs),
-        escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, operation) => {
+        escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, operation, formatRetry) => {
 
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
-          const context = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id));
+          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id));
+          const context = formatRetry ? withFormatReminder(reviewContext, REVIEW_FORMAT_REMINDER) : reviewContext;
           const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
           // Rule 29: the review input is written by the runner, a verified system principal.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${operationId}\n${context}`, wallNow()));
@@ -944,6 +946,8 @@ async function main() {
           // A revised candidate's held-class review is its own operation; the worker journals its result row.
           const result = operation === 'revision' ? await invokeSubscription(prepared, operationId)
             : await invokeSubscription(prepared, operationId, id, deadlineAt);
+          // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
+          if (result.state === 'complete' && result.failureClass === 'malformed') throw Error(REVIEW_MALFORMED);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
           // the whole-line pattern admits no surrounding text, so a written rejection
@@ -953,7 +957,7 @@ async function main() {
           catch (error) { recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json'); throw error; }
           if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))) {
             recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json');
-            throw Error('preview: review malformed');
+            throw Error(REVIEW_MALFORMED);
           }
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,

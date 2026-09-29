@@ -359,6 +359,10 @@ it('keeps an UNKNOWN model outcome in the handoff after its notice gains an inte
 
 it('status replays distinct replies held on the local day and gives each journal reason', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-held-status-')));
+  // The spawned status reads its own clock: never anchor "today" within 30 s of the UTC day's end, or the child
+  // can land on the next day and see no holds (this failed once at 23:59:5x UTC).
+  const untilMidnight = 86_400_000 - (Date.now() % 86_400_000);
+  if (untilMidnight < 30_000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, untilMidnight + 1_000);
   const now = Date.now(), dayStart = Math.floor(now / 86_400_000) * 86_400_000;
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: now + 86_400_000 });

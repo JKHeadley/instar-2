@@ -93,7 +93,10 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     // cint-2: both builds' fields ride the same operator packets. Compared field by field with both parents,
     // each field has the size its own build gives it: cbuild-4's 9444 plus cbuild-2's summary decision,
     // memory search, continuity note, index coverage and capability sentences (measured mean 11034).
-    expect(result.packetBytesMean).toBeLessThanOrEqual(11136);
+    // cint-1 live repair: operator packets carry the capabilities the blocker evidence names, and the guide asks
+    // for sentences copied from the reply. cint-L2 with the live repair merged: measured mean 11011 (occam's
+    // removals offset the repair's additions).
+    expect(result.packetBytesMean).toBeLessThanOrEqual(11110);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);

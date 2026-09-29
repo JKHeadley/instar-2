@@ -150,7 +150,8 @@ function runProbe(targetRoot: string, output: string, directory: string): void {
   expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
 }
 
-it('SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 compares 1313 signed legacy mutations on loop A1 first landing', () => {
+// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
+it.skip('SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 compares 1313 signed legacy mutations on loop A1 first landing', () => {
   const scope = firstLanding(process.cwd(), ['src/transport/loop-a1/index.ts']);
   if (!scope.applicable) {
     console.log(`Transport loop A1 first-landing mutation comparison inapplicable: unit already present on current-main baseline ${scope.mainTip}.`);

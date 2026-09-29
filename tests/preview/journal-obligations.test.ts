@@ -534,7 +534,8 @@ it('never releases a deferral the runner cannot track on a text-only pass (Rule 
   ] as const) {
     const root = origin();
     try {
-      const w = world(root, { ...untracked('violation'), answer: () => ({ reply: LATER, ...(openLoops ? { openLoops } : {}) }) });
+      // cint-L2 merge: the live repair's longer system prompt plus the review headroom no longer fit 8000 bytes here.
+      const w = world(root, { maxBytes: 8400, ...untracked('violation'), answer: () => ({ reply: LATER, ...(openLoops ? { openLoops } : {}) }) });
       await w.say(INVOICE);
       // The contextual reviewer always judged it, with what the runner admitted and refused.
       expect(w.reviews, label).toHaveLength(1);
@@ -562,7 +563,8 @@ it('sends a final cannot-do claim only with its admitted investigation, judged b
   ] as const) {
     const root = origin();
     try {
-      const w = world(root, { review: reviewer, answer: () => ({ reply: CLAIM, ...(proposal ? { blocker: proposal } : {}) }) });
+      // cint-L2 merge: the live repair's longer system prompt plus the review headroom no longer fit 8000 bytes here.
+      const w = world(root, { maxBytes: 8400, review: reviewer, answer: () => ({ reply: CLAIM, ...(proposal ? { blocker: proposal } : {}) }) });
       await w.say('Can you book the dentist appointment online?');
       expect(w.reviews, label).toHaveLength(1);
       const declared = w.reviews[0]!.declaredObligations as { blocker: unknown; capabilities: { externalTools: string } };
