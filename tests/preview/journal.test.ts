@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
   SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS } from './journal-test-worker.js';
-import { TOO_LONG_INPUT_NOTICE } from './journal.js';
+import { INDEX_BACKLOG_LIMIT, TOO_LONG_INPUT_NOTICE } from './journal.js';
 
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -1395,7 +1395,10 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     expect(view.order[4]?.text).toBe(fact);
     expect(view.summaries.length).toBeGreaterThan(1);
     expect(view.summaries.every(summary => !summary.text.includes('QUASAR'))).toBe(true);
-    expect(view.calls).toBe(200 + view.summaries.length);
+    // Rule 11: this model returns no meaning terms, so summarized messages are also offered to the
+    // index-only call, once each and only in full batches (one call per eight messages).
+    expect(view.indexOffered.length % INDEX_BACKLOG_LIMIT).toBe(0);
+    expect(view.calls).toBe(200 + view.summaries.length + view.indexOffered.length / INDEX_BACKLOG_LIMIT);
     expect(JSON.parse(early!)).toMatchObject({ historyMode: 'complete' });
     expect(JSON.parse(early!).recalled).toBeUndefined();
     expect(early).toContain('QUASAR-7731');
