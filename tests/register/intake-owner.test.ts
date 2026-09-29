@@ -10,9 +10,18 @@ import { installOwnerFixture } from './owner-fixture.js';
 import { installIntakeOwnerFixture, intakeRecords, intakePort } from './intake-owner-fixture.js';
 
 const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith('.ts') ? [`${dir}/${e.name}`] : []);
-const sources = () => ({ ...Object.fromEntries(walk('src').map(p => [p, readFileSync(p, 'utf8')])),
+// The committed tree is read once: every case scans the same source bytes and mutates
+// only its own copy of src/intake/port.ts, so re-walking and re-reading src for each of
+// the twenty-four cases measured only the disk. Each call still returns a fresh object.
+const committed = Object.fromEntries(walk('src').map(p => [p, readFileSync(p, 'utf8')]));
+const sources = () => ({ ...committed,
  'src/intake/index.ts': "export * from './records.js';", 'src/intake/records.ts': intakeRecords, 'src/intake/port.ts': intakePort });
-describe('P4 owner source consumption', () => {
+// Every case in this block builds one or more closed TypeScript programs over the whole
+// committed src tree. That is a fixture execution budget, not an owner or runtime latency
+// requirement: under the six-worker gate a single scan costs seconds, and the inherited
+// ten-second default reported those cases as semantic failures under load (Rule 37,
+// evidence in the unit report). The assertions and the work are unchanged.
+describe('P4 owner source consumption', { timeout: 60_000 }, () => {
  it.each(['dedup', 'admission', 'receiver'])('R1 executable %s helper replacement removes real input flow and source credit', scope => {
   for (const replacementForm of ['unchanged', 'direct', 'array', 'object', 'loop']) {
    const replaced = replacementForm !== 'unchanged';
@@ -48,7 +57,7 @@ describe('P4 owner source consumption', () => {
    const issues = checkWiring({ entries: [{ declaration }] }, input, scanned).issues.filter(i => i.startsWith('P3-NF-26'));
    expect(issues.length).toBe(replaced ? 1 : 0);
   }
- }, 30_000);
+ });
  it('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-owner-'));
   try {
@@ -84,7 +93,7 @@ describe('P4 owner source consumption', () => {
    ]) { const m = structuredClone(original); mutate(m); expect(() => load(m)).toThrow(); }
    expect(() => load(original, { [p5]: JSON.stringify(original) })).toThrow('duplicate owner');
   } finally { rmSync(root, { recursive: true, force: true }); }
- }, 30_000); // Committed artifact verification includes real git subprocesses.
+ }); // Committed artifact verification includes real git subprocesses.
  it('proves the real P2 chain and the registration used by each admission form', () => {
   const input = sources(), report = scanSources(input).reports[Object.keys(input).indexOf('src/intake/port.ts')]!;
   expect(report.scopes.dedup?.invokes).toEqual(['readProjection', 'intakeDedupDefinition']);

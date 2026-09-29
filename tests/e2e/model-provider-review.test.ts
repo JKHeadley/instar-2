@@ -4,12 +4,7 @@ import { cuts, runCut } from '../model-provider/review/cuts.mjs';
 // @ts-expect-error Native assertion execution receipt.
 import { runAssertions } from '../model-provider/review/assertions.mjs';
 for (const cut of cuts as string[]) {
-  const quarantined = cut === 'return-capture';
-  const test = quarantined ? it.skip : it;
-  const reason = quarantined
-    ? ' — SKIPPED: Rule 37 return-capture flake; docs/defects/model-provider-return-capture-flake.md'
-    : '';
-  test(`MODEL-PROVIDER-PATH REVIEW lifecycle SIGKILL ${cut}${reason}`, async () => {
+  it(`MODEL-PROVIDER-PATH REVIEW lifecycle SIGKILL ${cut}`, async () => {
     const result = await runAssertions(`cut-${cut}`, () => runCut(cut));
     expect(result.passed).toBe(true);
     expect(result.signal).toBe('SIGKILL');

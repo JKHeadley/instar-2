@@ -1,6 +1,6 @@
 # Model-provider return-capture lifecycle flake
 
-**Status:** OPEN
+**Status:** REPAIRED, quarantine removed (see Repair below). Kept as the record.
 **Opened:** 2026-09-25
 **Owner:** R5 landing agent until explicitly handed to the model-provider test maintainer.
 **Exact case:** `tests/e2e/model-provider-review.test.ts` — `MODEL-PROVIDER-PATH REVIEW lifecycle SIGKILL return-capture`.
@@ -32,3 +32,30 @@ The owner carries repair in the existing queue. Every provider and landing gate 
 Identify and repair the actual harness failure, then remove the test skip and narrow checker exception together. In the normal six-worker gate, demonstrate the intended successful-return capture boundary, exactly one server request, SIGKILL, durable pending work, and replay refusal using the preserved assertions and a fresh native proof. Record host and overlapping-work conditions, and exercise the diagnosed failure condition enough to show the mechanism changed. A timeout increase or another unchanged green run does not close this defect. If the repair regresses, restore the explicit quarantine and reopen this record.
 
 **Multi-machine posture:** The HTTP fixture is deliberately machine-local. The defect record and quarantine travel with the repository, without a peer dependency.
+
+## Repair (unit U7, branch `unit-u7`)
+
+Two harness defects, both at the source. No timeout was increased: the admitted 100 ms
+transport bound is unchanged, and `the admitted timeout bound cannot be widened by driver
+defaults` still proves a driver default cannot widen it.
+
+1. **The cut marker did not mean what the case asserts.** `cut-worker.mjs` fired
+   `return-capture` on *any* `putReserved`, so a transport failure captured as an uncertain
+   observation fired it too — which is exactly the `0 !== 1` shape recorded above. The marker
+   is now gated on the successful provider return the fixture observed (`afterInvoke`). A
+   transport failure therefore no longer produces a cut marker at all: the worker runs on and
+   fails loudly with the real error instead of reporting a cut it did not reach.
+2. **The admitted bound was paying for the HTTP client's cold start.** In a freshly spawned
+   child the first `fetch` also performs the one-time lazy initialisation of the HTTP client,
+   inside the 100 ms `AbortSignal.timeout` window. `cut-worker.mjs` now warms the client
+   *outside* the bound with an unauthenticated probe; the fixture server refuses an
+   unauthenticated request before recording it, so `http.requests.length` is untouched and the
+   exactly-one-request assertion still means what it says.
+
+`tests/e2e/model-provider-review.test.ts` no longer special-cases `return-capture`; all eleven
+cuts run under one plain `it`. `scripts/model-provider-contracts.mjs` is back to its
+pre-quarantine form: every cut must be `passed`, `cut-return-capture` is required in the
+assertion-proof set again, and the seam status is `executable-local-test-only` with no
+`quarantine` field. The coverage gap named above is closed.
+
+Evidence is recorded in the unit report at `.instar/state/unit-u7.md`.

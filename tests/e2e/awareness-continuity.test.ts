@@ -9,8 +9,12 @@ import { createAwareness, createLabelledFakeRecall, type ConversationMessage, ty
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createAwarenessIO } from '../../scripts/awareness-io.mjs';
 
-const tmux = '/opt/homebrew/bin/tmux';
-const available = spawnSync(tmux, ['-V'], { encoding: 'utf8' }).status === 0;
+// Resolve the real tmux instead of pinning one platform's install prefix: the hardcoded
+// Homebrew path made this case report itself skipped on every non-macOS host, so the
+// continuity proof silently did not run there. Rule 37.
+const tmux = ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux', 'tmux']
+  .find(candidate => spawnSync(candidate, ['-V'], { encoding: 'utf8' }).status === 0);
+const available = tmux !== undefined;
 const hook = resolve('scripts/session-hooks/grounding.mjs');
 const harness = resolve('tests/e2e/awareness-fake-harness.mjs');
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -18,7 +22,7 @@ const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(
 it.skipIf(!available)('a compacted or respawned session comes back with identity, recent conversation and open work, and carries on', () => {
   const root = mkdtempSync(join(tmpdir(), 'instar20-awareness-e2e-'));
   const socket = `instar20-aw-${randomUUID().slice(0, 8)}`;
-  const t = (args: readonly string[]) => spawnSync(tmux, ['-L', socket, ...args], { encoding: 'utf8', timeout: 10_000 });
+  const t = (args: readonly string[]) => spawnSync(tmux!, ['-L', socket, ...args], { encoding: 'utf8', timeout: 10_000 });
   const io = createAwarenessIO({ stateDirectory: join(root, 'state'), inboxDirectory: join(root, 'inbox') });
   const claim = 'telegram:42';
   const now0 = Date.now();

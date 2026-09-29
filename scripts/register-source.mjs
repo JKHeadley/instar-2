@@ -20,6 +20,28 @@ export function bindColocatedDeclarations(sources, constructs) {
     return matches.length === 1 ? { ...source, path, symbol: matches[0].symbol } : source;
   });
 }
+// One `git cat-file --batch` for every pinned blob instead of one `git show` per file.
+// cat-file emits the object's raw bytes, so the commit binding, the exact source bytes
+// and the missing-source refusal are unchanged; only the ~270 subprocess spawns per
+// readCommit (the measured cost of docs/defects/register-e2e-timeout.md) become one.
+// Rule 37.
+function readBlobs(root, commit, paths) {
+  const wanted = [...new Set(paths)];
+  if (!wanted.length) return {};
+  const out = execFileSync('git', ['-C', root, 'cat-file', '--batch'],
+    { input: wanted.map(p => `${commit}:${p}\n`).join(''), maxBuffer: 512 * 1024 * 1024 });
+  const blobs = {}; let at = 0;
+  for (const path of wanted) {
+    const end = out.indexOf(0x0a, at);
+    const header = end < 0 ? '' : out.toString('utf8', at, end);
+    const [, kind, size] = header.split(' ');
+    if (kind !== 'blob' || !/^\d+$/.test(size ?? '')) throw new Error(`P3-NF-23: missing source ${path}`);
+    const start = end + 1, stop = start + Number(size);
+    blobs[path] = out.toString('utf8', start, stop);
+    at = stop + 1;
+  }
+  return blobs;
+}
 export function readCommit(root, commit) {
   const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   if (!/^[a-f0-9]{40}$/.test(commit) || git(['rev-parse', '--verify', `${commit}^{commit}`]).trim() !== commit) throw new Error('source commit is not an exact commit id');
@@ -29,8 +51,10 @@ export function readCommit(root, commit) {
     || p.startsWith('docs/rules/') && p.endsWith('.md') || p.endsWith('.declarations.json') || p.startsWith('register-source/') && p.endsWith('.json'));
   for (const required of ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'register-source/bootstrap-shape.json'])
     if (!selected.includes(required)) throw new Error(`P3-NF-23: missing source ${required}`);
-  const sources = Object.fromEntries(selected.sort().map(p => [p, git(['show', `${commit}:${p}`]).replaceAll('\r\n', '\n')]));
-  const code = Object.fromEntries(files.filter(p => p.startsWith('src/') && p.endsWith('.ts')).map(p => [p, git(['show', `${commit}:${p}`])]));
+  const codePaths = files.filter(p => p.startsWith('src/') && p.endsWith('.ts'));
+  const blobs = readBlobs(root, commit, [...selected.sort(), ...codePaths]);
+  const sources = Object.fromEntries(selected.sort().map(p => [p, blobs[p].replaceAll('\r\n', '\n')]));
+  const code = Object.fromEntries(codePaths.map(p => [p, blobs[p]]));
   return { commit, sources, files, code };
 }
 export function bootstrapDeclarations(documents, shape) {

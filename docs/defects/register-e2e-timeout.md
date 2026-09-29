@@ -1,6 +1,6 @@
 # Defect: register e2e timeout (Rule 37 quarantine)
 
-**Status:** OPEN. This test is quarantined under Rule 37.
+**Status:** REPAIRED, quarantine removed (see Repair below). Kept as the record.
 **Owner:** the register test maintainer carrying `fix/register-e2e-flake`.
 **Opened:** 2026-09-24.
 **Governing ruling:** `.instar/lanes/astra-register-flake-ruling.md`, which follows MUST-FIX 2 of `.instar/lanes/astra-scope-freeze-class-ruling.md`.
@@ -53,3 +53,30 @@ Keep this record after closure, and add the repair revision and its evidence.
 ## Rollback
 
 Only this test stops executing, and no production path changes. If the repair regresses, revert it and restore this explicit quarantine with the defect reopened. Do not reinstate an unexplained red gate.
+
+## Repair (unit U7, branch `unit-u7`)
+
+The measurement asked for above was taken, and it found the cost where this record predicted
+it. `scripts/register-source.mjs:readCommit` launched one `git show` per selected source and
+per `src/**/*.ts` file — 258 subprocesses per invocation on this tree — and the case invokes
+`scripts/build-register.mjs` nineteen times against successive commits, so the case paid for
+roughly 4,900 git subprocesses.
+
+`readCommit` now reads every pinned blob through a single `git cat-file --batch`. `cat-file`
+emits the object's raw bytes, so the exact commit binding, the source bytes, the `\r\n`
+normalization, the roster checks and the `P3-NF-23` missing-source refusal are all unchanged,
+and no ambient working file is read. Measured on the WSL2 host, with the two forms compared in
+the same process against the same commit:
+
+| form | readCommit | output |
+|---|---:|---|
+| one `git show` per file | 3,362 ms / 3,744 ms | — |
+| one batched `git cat-file` | 205 ms / 166 ms | byte-identical to the per-file form |
+
+`node scripts/build-register.mjs --check` still reproduces the committed register generation
+hash, which is an independent check that the source bytes did not move.
+
+The `it.skip` and its reason are removed; the full assertion set, the positive controls, every
+refusal assertion, the cleanup and the 120,000 ms fixture budget are unchanged. The coverage
+residue named above is closed. Evidence is recorded in the unit report at
+`.instar/state/unit-u7.md`.
