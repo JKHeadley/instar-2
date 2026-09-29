@@ -81,3 +81,13 @@ measured bound proposal is in the R5 progress handoff.
 ## Capabilities
 
 - `harness-doorway-parity`: binds each supported harness and model doorway to its certified code and runtime; the rest are marked unproven or unsupported.
+
+## Confined notice driver (`infrastructure-notice-driver.ts`)
+
+`dispatchInfrastructureNotice` is the only path by which an infrastructure notice leaves.
+It decodes the payload, re-resolves the destination against the configured alerts
+destination and grant, refuses the conversation's own route, records the dispatch in the
+host's durable ledger before the send, and returns the recorded outcome for any episode
+already dispatched: an unknown outcome stays `uncertain` and is never sent again. It holds
+no process, file or network API; `scripts/host-watch.mjs` (journal mode) supplies the ledger
+and the fixed Telegram bridge after three failed runner restarts.

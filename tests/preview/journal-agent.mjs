@@ -3,7 +3,7 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -927,7 +927,17 @@ async function main() {
     return false;
   };
   // Service observation (design 18): whether this owner can serve right now, with the typed reason when not.
-  const serviceBeat = (servable, reason) => { try { if (ownerClaim?.owner) ownerClaim.observe(wallNow(), servable, reason); } catch { /* evidence only */ } };
+  // Rule 15 gap (a): the host supervisor's progress beat. Written each loop cycle (with the service beat) so a
+  // runner that is alive but not progressing (stopped, wedged) is seen and relaunched. Liveness evidence only.
+  let hostBeatSeq = 0;
+  const hostBeat = () => {
+    try {
+      const temporary = join(root, `.runner-beat-${process.pid}.pending`);
+      writeFileSync(temporary, JSON.stringify({ v: 1, pid: process.pid, seq: ++hostBeatSeq }), { mode: 0o600 });
+      renameSync(temporary, join(root, 'runner-beat.json'));
+    } catch { /* a lost beat only makes the supervisor's judgement more conservative */ }
+  };
+  const serviceBeat = (servable, reason) => { hostBeat(); try { if (ownerClaim?.owner) ownerClaim.observe(wallNow(), servable, reason); } catch { /* evidence only */ } };
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
@@ -1313,6 +1323,7 @@ async function main() {
       catch { proofStoreFailed = true; proofBackoffUntil = clock.elapsed() + 60000; process.stderr.write('preview: proof log unavailable; retrying with backoff\n'); }
     };
     recordProof(startup);
+    hostBeat();
     proofLaunch = runningLaunch([startup]);
     /** One due plan per cycle, bounded by its own probe; a failed durable write backs off instead of retrying every cycle. */
     const runDueProof = () => {
@@ -1475,12 +1486,16 @@ async function main() {
       if (worker.intakeHeld()) await waitHeld();
 
     }
-    await drainJob;
-    if (drainError && !signalled) throw drainError;
-    await summaryJob;
-    await stepJob;
-    await retroJob;
-    if (stepCheckEnabled) await worker.checkSteps();
+    // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
+    const tailBeat = setInterval(hostBeat, 5000);
+    try {
+      await drainJob;
+      if (drainError && !signalled) throw drainError;
+      await summaryJob;
+      await stepJob;
+      await retroJob;
+      if (stepCheckEnabled) await worker.checkSteps();
+    } finally { clearInterval(tailBeat); }
     reportCap();
     endReason ??= 'cycle limit reached';
     function modelRoute(operation) {
