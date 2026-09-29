@@ -11,14 +11,14 @@ Suggested tier: critical
 Declared tier: ordinary
 Tier rationale: test un-skips, test-title evidence ids with added passed assertions, a line-number correction in a reviewed inventory, and derived pin/register hashes; no src/ behavior changes
 Side effects: none outside test runs, register and wiring checks
-Undo and recovery: revert the five commits; nothing durable changes
+Undo and recovery: revert the seven commits; nothing durable changes
 Multi-machine posture: not applicable, tests and derived hashes only
 Layer below: docs/00-the-purpose.md and docs/01-the-rules.md; the post-test contract checkers in scripts/; the desk repin steps (rehash owner manifests, repin chain, build-register --replay)
 Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Deferral: docs/defects/preview-runtime-probes-without-ci-proof.md:5 | commitment=docs/defects/preview-runtime-probes-without-ci-proof.md
+Deferral: docs/defects/preview-runtime-probes-without-ci-proof.md:7 | commitment=docs/defects/preview-runtime-probes-without-ci-proof.md
 Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
 
 ## Closing block
