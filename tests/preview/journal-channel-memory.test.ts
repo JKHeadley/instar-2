@@ -111,8 +111,6 @@ it('recalls an imported message after Telegram summary, with source sender and d
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-// Four bounded child processes can take over 10 seconds together under parallel test load.
-
 it('refuses an email row, and replays an older journal\'s email item as inert: never recalled', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-channel-email-')));
   try {

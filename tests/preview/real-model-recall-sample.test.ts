@@ -6,6 +6,18 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { RECALL_CASES, runRealModelRecallSample } from './real-model-recall-sample.js';
 
+// Child-process cost, measured on this runner (load about 43), because every budget below is sized from it and
+// not guessed. A preview child starts with `--loader ./scripts/slice-ts-loader.mjs`, which re-transpiles the whole
+// TypeScript graph it imports on EVERY start with no cache (scripts/slice-ts-loader.mjs, 19 lines):
+//   bare node -e 0                                 0.11 s
+//   loader hooks active, nothing TypeScript loaded  1.3-1.6 s
+//   the journal-agent graph, one process at a time  12.5-14.8 s
+//   the same child inside this 5-worker suite       about 50 s (measured: a provider child's first heartbeat
+//                                                   arrived after 48 288 ms, and a 60 s child budget still fired)
+// So roughly 90% of a cold child is uncached transpilation, and that — not this case's subject — is what host load
+// scales. The real repair is a transpile cache in that shared loader, which unit U6 does not own; see
+// docs/defects/full-suite-load-timeouts.md. Until then these budgets are watchdogs sized to the measured cost with
+// headroom, never bounds on the behaviour asserted here, and the observed child cost is printed on every run.
 it('skips the command without both the live flag and preview login profile', () => {
   const command = ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/real-model-recall-sample.mjs'];
@@ -17,7 +29,8 @@ it('skips the command without both the live flag and preview login profile', () 
     '--activation-record', '/missing/activation.json', '--output', '/tmp/new-recall-report.json'], { encoding: 'utf8' });
   expect(refused.status).not.toBe(0);
   expect(refused.stdout).not.toContain('SKIP');
-});
+}, 600000); // Four cold `--loader` children at about 50 s each in this suite (see the measurement above the file's
+// SIGTERM case): the 10 s default was below the cost of starting one. The refusal assertions are unchanged.
 
 it('scores 20 one-shot answers from a replayed 120-turn fixture and records packet evidence for misses', async () => {
   const packets: string[] = [];
@@ -70,7 +83,7 @@ it('credits only the asserted label or explicit unknown, including structured jo
   expect(report.misses[0]?.rawOutput).toContain('not ORIGINAL-14');
 }, 120_000);
 
-it.skip('reaps a physical provider child on SIGTERM and starts no next question — SKIPPED: Rule 37 timing flake; docs/defects/real-model-recall-sigterm-timing-flake.md', async () => {
+it('reaps a physical provider child on SIGTERM and starts no next question', async () => {
   const root = mkdtempSync(join(tmpdir(), 'recall-stop-test-'));
   const heartbeat = join(root, 'heartbeat'), invocations = join(root, 'invocations');
   const script = `import { appendFileSync } from 'node:fs';
@@ -96,11 +109,19 @@ try {
   let stderr = '';
   child.stderr.on('data', chunk => { stderr += String(chunk); });
   try {
+    // Rule 37 repair (docs/defects/real-model-recall-sigterm-timing-flake.md): this wait is child START-UP, not
+    // the behaviour under test, and the old fixed 15 s constant made host load decide the case. Measured in this
+    // suite at load about 42, the provider child's first heartbeat arrived after 48 288 ms (12.4 s in isolation),
+    // so the wait now ends as soon as the child is alive, carries a budget with about 5x headroom over that
+    // measurement, prints what it observed, and stops early if the child dies. Every assertion about the reaping
+    // itself — the 5 s exit race, the frozen heartbeat, the single invocation — keeps its original bound, so a slow
+    // start delays this case instead of failing it.
     const started = Date.now();
-    // Starting the loader-hosted sample takes ~15 s under suite load; the stop bound below is unchanged.
-    while (!existsSync(heartbeat) && child.exitCode === null && Date.now() - started < 40000)
+    while (!existsSync(heartbeat) && child.exitCode === null && Date.now() - started < 240000)
       await new Promise(resolve => setTimeout(resolve, 25));
-    expect(existsSync(heartbeat), stderr).toBe(true);
+    const startup = Date.now() - started;
+    process.stdout.write(`real-model recall SIGTERM: provider child heartbeat after ${startup} ms\n`);
+    expect(existsSync(heartbeat), `${stderr}[no provider heartbeat after ${startup} ms]`).toBe(true);
     child.kill('SIGTERM');
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const exit = await Promise.race([exited,
@@ -112,4 +133,4 @@ try {
     expect(readFileSync(heartbeat, 'utf8')).toBe(before);
     expect(readFileSync(invocations, 'utf8')).toBe('x');
   } finally { if (child.exitCode === null) child.kill('SIGKILL'); rmSync(root, { recursive: true, force: true }); }
-}, 60000);
+}, 600000); // The 240 s start-up budget above, plus the retained 5 s exit race and 150 ms quiescence check.

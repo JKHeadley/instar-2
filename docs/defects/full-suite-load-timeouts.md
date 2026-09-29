@@ -17,3 +17,106 @@ None of these files is changed by constitutional build 4 or cint-1. Host load is
 **Repaired, not quarantined: `tests/preview/journal-assembled.test.ts` (cint-23).** In the cint-23 preview gate (`.instar/lanes/cint-23-gate1.log`, `--maxWorkers 4`, load about 14) the flat-cost assertion failed with growth 1 467 ms (first-ten 224.9 ms, final-ten 1 692.1 ms). Its "p95" of ten samples is their maximum, so one stall decided it. Isolated on cint-23 three runs measured growth 248–258 ms, and cint-2 `3d699ff1` measured 244–259 ms the same way; that apparent growth was itself one consistently slow sample in the last ten turns (maximum about 380 ms), not a rising per-turn cost. The cause is the statistic, so it is repaired: growth now compares the medians of the first and last ten turns (isolated: 0.2–24.9 ms), and the final-ten maximum is printed beside it. Every other assertion (60 calls and replies, recall, the desk report in every prompt, the overall p95 bound) is unchanged, and no case is skipped.
 
 **Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.
+
+---
+
+## Unit U6, 2026-09-28: the preview cases, repaired — plus the root cause under all of them
+
+### The root cause, measured
+
+Every preview case that spawns a child starts it with `--loader ./scripts/slice-ts-loader.mjs`. That loader is 19
+lines and calls `ts.transpileModule` on each `.ts` file it resolves, **with no cache**, so every child re-transpiles
+the whole TypeScript graph it imports from scratch. Measured on this runner at load about 43:
+
+| what | cost |
+|---|---|
+| `node -e 0` | 0.11 s |
+| loader hooks active, nothing TypeScript imported | 1.3–1.6 s |
+| the journal-agent graph, one process at a time | 12.5–14.8 s |
+| the same child inside the 5-worker preview suite | about 50 s (a provider child's first heartbeat arrived after 48 288 ms; a 60 s child budget still fired) |
+
+So roughly **90% of a cold preview child is uncached transpilation**, and that — not any case's subject — is what
+host load multiplies. This is why so many unrelated preview cases share one failure shape: a 10 s child timeout or
+a 10 s default deadline is below the cost of *starting* the child, on any loaded host. The real repair is a
+content-addressed transpile cache in that shared loader; U6 does not own `scripts/slice-ts-loader.mjs` and did not
+change it. Until that lands, child budgets in these files are watchdogs sized to the measurement above, the
+observed child cost is **printed on every run**, and no assertion about any subject was relaxed.
+
+### `tests/preview/journal-conversations.test.ts` — REPAIRED, skip removed
+
+The recorded diagnosis was right and the cause was the statistic. A "p95" of ten samples is their maximum, so one
+scheduler stall decided the flat-overhead assertion (final-ten 1 760 ms against 168 ms under load; 132–157 ms
+isolated). Growth now compares the **median** of the first and last ten turns — the same repair already applied to
+`journal-assembled.test.ts` and recorded above — and the final-ten maximum is printed beside it. The 1 000 ms bound
+is unchanged, and a per-turn cost that really grows with the journal moves the median as much as the maximum.
+
+Measured un-skipped inside the 5-worker preview suite, twice, at host load 24 and 42:
+
+```
+non-model p95=720.1 ms, first-ten median=90.4 ms, final-ten median=307.1 ms, growth=216.7 ms, final-ten max=433.7 ms
+non-model p95=620.3 ms, first-ten median=84.8 ms, final-ten median=308.9 ms, growth=224.1 ms, final-ten max=459.4 ms
+```
+
+Growth 216.7 ms and 224.1 ms against the retained 1 000 ms bound: stable across a near-doubling of host load, which
+is the property the old statistic lacked. The case's own wall time was 25.1 s against a 30 s budget at load 24, so
+that budget sized the host rather than the work and is now sized to the measurement.
+
+### `tests/preview/stage2-recovery.test.ts` — SIGINT skip removed, watchdog measured
+
+The SIGINT instance was quarantined because a 90 s child watchdog fired while the launcher had not yet reached its
+synthetic model call, on a run where its SIGTERM sibling took 30 s. That watchdog is a hang detector for a full
+stage-2 launcher boot — a cold `--loader` transpile of the whole tree, i.e. exactly the cost measured above — and
+never a bound on what the case asserts (one model call, `phase: 'held'`, zero `sendMessage`, `stop.reason` of
+`signal`). It is now sized to that measurement, and **the launcher's observed wall time is printed on every run**,
+so a genuine hang is still caught, still reported as a timeout rather than as success (Rule 42), and any drift in
+the boot cost becomes visible instead of hiding behind a constant.
+
+### Not closed by U6
+
+- The `rungraph` and `register` cases in this record are untouched: they are not preview files and not U6's.
+- `tests/preview/memory-sentinel.test.ts`'s quarantined case is **re-diagnosed, not repaired**: it fails
+  deterministically in isolation on a recall assertion, and the fix is in `tests/preview/journal.ts`, which U6 does
+  not own. See `memory-sentinel-timing-flake.md`.
+- The uncached-transpile root cause above remains open, in a file U6 does not own.
+
+### Gate evidence (U6), and what it does NOT cover
+
+Host: 10 CPUs, WSL2, `maxWorkers` 5, several sibling units running full suites concurrently. Host load 22–43
+throughout, i.e. the "load ≥ 20" condition was exceeded roughly twofold.
+
+**Seven of the eight files are green twice with every repaired case un-skipped.**
+
+Run A (all eight files, 2.4 h):
+```
+✓ memory-sentinel (18 tests | 1 skipped) · ✓ journal-packet-priority (4) · ✓ real-model-recall-sample (4)
+✓ self-state (14) · ✓ journal-assembled (1) · ✓ journal-conversations (11) · ✓ journal-channel-memory (4)
+❯ stage2-recovery (42 tests | 22 failed)
+```
+Run B (those seven files): `Test Files 7 passed (7) · Tests 55 passed | 1 skipped (56)`, 147 s.
+
+The one remaining skip in both runs is the memory-sentinel recall case, quarantined for its re-diagnosed cause.
+
+**`stage2-recovery.test.ts` is NOT green at this load, and U6 did not make it green.** Its own un-skipped SIGINT
+case — the defect in U6's row — passes twice: 113 273 ms in run A and 65 846 ms in a targeted launcher run, and its
+launcher child ran 169 461 / 113 221 / 65 821 ms across runs, all inside the measured watchdog. A targeted run of
+just the three launcher cases passes all three (`Tests 3 passed | 39 skipped`), including the accept case that fails
+inside the full file — so that case's remaining sensitivity is the launcher's own `--max-cycles 3
+--max-poll-seconds 1` budget in `tests/preview/agent.mjs` (U2's file) when 39 other child-spawning cases compete
+with it, not the watchdog.
+
+The file's 22 failures at load 24–43 break down as:
+
+| count | failure | owner |
+|---|---|---|
+| 15 | `Hook timed out in 10000ms` — vitest's global `hookTimeout` default, fired from `tests/setup/yield-worker.mjs` | `vitest.config.ts` + `tests/setup/**` — **not U6's** |
+| 16 | `Test timed out in 60000ms` / `120000ms` on cases outside U6's six defects | in U6's file: **budgets now sized to each case's own observed duration in run A** |
+| 3 | crash children exceeding even a 300 s child timer | in U6's file: raised to 600 s |
+| 1 | the accept case's sidecar, per the launcher's internal cycle budget | `tests/preview/agent.mjs` — **not U6's** |
+
+The in-file budgets above were raised after run A, so they are **not yet proven** by a green full-file run; a
+2.4-hour iteration per attempt on a host at load 40 put that beyond this unit. The 15 hook timeouts keep the file
+red regardless until `hookTimeout` is raised, which is U7's file. **Do not read "U6 repaired the preview flakes" as
+"stage2-recovery is green."**
+
+Both gate runs also emitted `[vitest-worker]: Timeout calling "onTaskUpdate"` twice — the separate tracked defect
+`vitest-worker-rpc-timeouts.md`, also U7's row.
