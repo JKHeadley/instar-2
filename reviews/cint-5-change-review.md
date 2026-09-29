@@ -65,6 +65,7 @@ Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | commitment=docs/de
 Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | commitment=docs/defects/rule-36-genuine-parser-captures.md
 Deferral: docs/defects/rule-36-genuine-parser-captures.md:11 | commitment=docs/defects/rule-36-genuine-parser-captures.md
 Deferral: docs/defects/rule-36-genuine-parser-captures.md:15 | commitment=docs/defects/rule-36-genuine-parser-captures.md
+Skip: tests/e2e/register.test.ts:373 | quarantine=docs/defects/register-e2e-timeout.md
 Skip: tests/preview/journal-assembled.test.ts:15 | quarantine=docs/defects/preview-journal-load-timing-flake.md
 Skip: tests/preview/journal-audit.test.ts:272 | quarantine=docs/defects/preview-journal-load-timing-flake.md
 Skip: tests/preview/journal-dated-memory.test.ts:97 | quarantine=docs/defects/preview-journal-load-timing-flake.md
