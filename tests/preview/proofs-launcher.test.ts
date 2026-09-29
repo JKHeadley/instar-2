@@ -22,7 +22,7 @@ const setup = () => {
   return { world, harness, message, record };
 };
 
-it('runs the startup and due proofs on the live runner and reports them against the declared inventory', () => {
+it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9-PREVIEW-telegram-identity P9-PREVIEW-reply-delivered P9-PREVIEW-reply-drain P9-PREVIEW-reply-review-reached runs the startup and due proofs on the live runner and reports them against the declared inventory', () => {
   const { harness, message } = setup();
   harness.setUpdates([message(1, 'What is the marker? Juniper.')]);
   const launched = harness.launchLive(20);
@@ -40,6 +40,9 @@ it('runs the startup and due proofs on the live runner and reports them against 
   expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 8820318295, stepCheck: false } });
   expect(byPlan.get('journal-restore')).toMatchObject({ disposition: 'passed', observed: { restored: true, differing: null } });
   expect(byPlan.get('reply-delivered')).toMatchObject({ disposition: 'passed' });
+  expect(byPlan.get('reply-drain')).toMatchObject({ disposition: 'passed' });
+  expect(byPlan.get('reply-review-reached')).toMatchObject({ disposition: 'passed' });
+  expect(byPlan.get('telegram-identity')).toMatchObject({ disposition: 'passed' });
   // Rule 33: build 11's declared comparisons ran at launch through this executor, each verdict durable in agreements.jsonl.
   expect(byPlan.get('store-agreements')).toMatchObject({ disposition: 'passed', observed: { declared: 4, disagree: 0, unchecked: 0 } });
   expect(plans.indexOf('store-agreements')).toBe(1);

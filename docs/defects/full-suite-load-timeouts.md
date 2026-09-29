@@ -120,3 +120,11 @@ red regardless until `hookTimeout` is raised, which is U7's file. **Do not read 
 
 Both gate runs also emitted `[vitest-worker]: Timeout calling "onTaskUpdate"` twice — the separate tracked defect
 `vitest-worker-rpc-timeouts.md`, also U7's row.
+
+## Batch cint-L4, 2026-09-29: the rungraph and register cases, skips removed
+
+The root cause measured by U6 — an uncached `ts.transpileModule` on every child start — is repaired on main (#137, the content-addressed slice transpile cache, warmed once per test run). On cint-L4 the four remaining cases in this record are un-skipped with bodies, assertions and declared timeouts unchanged, and pass under `nice -n 10`, `--maxWorkers 1`:
+- `tests/rungraph/provider-answer-reply.test.ts`: all 18 cases passed in 48.2 s, including the five parameterized capture-loss states (about 2 s each) and `P10-SI-37 reuses a still-current assessment…`; the mirrored `tests/e2e/fixed-installation-reply.test.ts` passed 19/19 in 58.4 s.
+- `tests/register/owner-references.test.ts`: 7/7 in 1.4 s; the two cases took 833 ms and 547 ms against their 10 s default.
+
+These isolated passes show headroom, not the original full-suite conditions; the Mama PC pipeline run is the full-suite evidence, and a recurrence reopens this record with the quarantine restored. The `intake-owner` and `journal-conversations` cases are already active, and `stage2-recovery` was closed by U6, so no case in this record remains quarantined. **Status:** CLOSED on cint-L4 (2026-09-29).

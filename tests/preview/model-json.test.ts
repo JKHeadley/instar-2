@@ -6,7 +6,7 @@ import { failureShapeOf, parseModelJson } from './model-json.js';
 const decision = { type: 'Decision', conclusion: { subject: 'preview-stage2-answer', value: 'Noted {not json} "quoted".' } };
 const text = JSON.stringify(decision);
 
-it('parses the genuine redacted provider result capture as one bare object', () => {
+it('PREVIEW-MODEL-JSON-ON-CAPTURE parses the genuine redacted provider result capture as one bare object', () => {
   const captured = readFileSync(join(process.cwd(), 'tests/fixtures/provider-failure/claude-limit-result.json'), 'utf8');
   expect(parseModelJson(captured)).toMatchObject({ ok: true, shape: 'bare', value: { type: 'result' } });
 });
