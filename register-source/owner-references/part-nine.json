@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/proofs.test.ts",
-        "hash": "sha256:c5bdaa13210d737f4f844408ac906359702b0bf1fb6fbc54e5cc3c9dbe81f841"
+        "hash": "sha256:759bf84de31bc407412fca04e4ec2c5866e8ace759fe88195a51a2d1881c159b"
       }
     },
     {
