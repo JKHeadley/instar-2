@@ -150,7 +150,7 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
           if (!input.id.startsWith('summary:index:')) return 'Noted.';
           indexCalls++;
           if (lose && indexCalls === 1) throw Error('lost provider result');
-          return { text: '{"concepts":[]}', usage: { inputTokens: 1, outputTokens: 1, inputComplete: true } };
+          return { text: '{"concepts":[]}', usage: { inputTokens: 1, outputTokens: 1, charge: null, inputComplete: true as const } };
         } });
       const raise = () => raiseJournalCaps(journal, { maxCalls: 401, maxReplies: 200, maxTurns: 200, authority: 'offline operator test', at: at + 100_001 });
 
