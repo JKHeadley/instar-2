@@ -22,8 +22,14 @@ const sources = () => ({ ...committed,
 // ten-second default reported those cases as semantic failures under load (Rule 37,
 // evidence in the unit report). The assertions and the work are unchanged.
 describe('P4 owner source consumption', { timeout: 60_000 }, () => {
- it.each(['dedup', 'admission', 'receiver'])('R1 executable %s helper replacement removes real input flow and source credit', scope => {
+ it.each(['dedup', 'admission', 'receiver'])('R1 executable %s helper replacement removes real input flow and source credit', async scope => {
   for (const replacementForm of ['unchanged', 'direct', 'array', 'object', 'loop']) {
+   // Let the fork worker's task-update IPC be answered between whole-tree scans. The
+   // afterEach yield only runs between cases, so a case that scans five times without
+   // returning to the event loop starves the channel past the runner's fixed 60s RPC
+   // deadline and the run reports `Timeout calling "onTaskUpdate"` as an unhandled
+   // error. Same landed pattern as tests/e2e/register.test.ts. Rule 37.
+   await new Promise<void>(done => setImmediate(done));
    const replaced = replacementForm !== 'unchanged';
    const input = sources();
    const name = scope === 'dedup' ? 'read' : 'context';
@@ -58,7 +64,7 @@ describe('P4 owner source consumption', { timeout: 60_000 }, () => {
    expect(issues.length).toBe(replaced ? 1 : 0);
   }
  });
- it('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', () => {
+ it('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', async () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-owner-'));
   try {
    // A merged P5 manifest pins its real test artifacts as well as source/docs.
@@ -90,7 +96,7 @@ describe('P4 owner source consumption', { timeout: 60_000 }, () => {
     (m: typeof original) => { m.probes[0].execution = 'production'; },
     (m: typeof original) => { m.probes[0].cadence = 0; },
     (m: typeof original) => { m.decoders[2].artifact.hash = 'sha256:wrong'; },
-   ]) { const m = structuredClone(original); mutate(m); expect(() => load(m)).toThrow(); }
+   ]) { const m = structuredClone(original); mutate(m); expect(() => load(m)).toThrow(); await new Promise<void>(done => setImmediate(done)); }
    expect(() => load(original, { [p5]: JSON.stringify(original) })).toThrow('duplicate owner');
   } finally { rmSync(root, { recursive: true, force: true }); }
  }); // Committed artifact verification includes real git subprocesses.
@@ -139,17 +145,18 @@ describe('P4 owner source consumption', { timeout: 60_000 }, () => {
   const scope = scanSources(input).reports[Object.keys(input).indexOf('src/intake/port.ts')]!.scopes.gate;
   expect(scope?.invokes).toEqual([]); expect(scope?.reads).toEqual([]);
  });
- it('checks the guard site and exact declared pair, including multiple legitimate rungs', () => {
+ it('checks the guard site and exact declared pair, including multiple legitimate rungs', async () => {
   const input = sources();
+  const yieldTurn = () => new Promise<void>(done => setImmediate(done));
   const rung = (decoder: string) => ({ decidesAlone: 'governed-state', criticality: 'standing', failDirection: 'closed', preservesInput: 'receipt', enforces: { record: 'intake.contract', decoder } });
   const declaration = { id: 'intake.dedup', kind: 'blocking sites', declaredBy: { path: 'src/intake/port.ts', symbol: 'dedup' }, requiredFacts: rung('readProjection') };
   const register = { entries: [declaration, ...['admission', 'receiver', 'authentication', 'resolution', 'contract'].map(g => ({ id: 'intake.' + g, kind: g === 'contract' ? 'governed documents' : 'other' }))].map(declaration => ({ declaration })) };
   const issues = () => checkWiring(register, input).issues.filter(s => s.startsWith('P3-NF-26'));
-  expect(issues()).toEqual([]);
+  expect(issues()).toEqual([]); await yieldTurn();
   input['src/intake/port.ts'] = intakePort.replace("readEnforcedRecord('intake.dedup'", "readEnforcedRecord('intake.other'");
-  expect(issues().join(' ')).toContain('does not read');
+  expect(issues().join(' ')).toContain('does not read'); await yieldTurn();
   input['src/intake/port.ts'] = intakePort.replace("'intake.contract', 'readProjection'", "'intake.contract', 'authorAndAppend'");
-  expect(issues().join(' ')).toContain('different declared pair');
+  expect(issues().join(' ')).toContain('different declared pair'); await yieldTurn();
   input['src/intake/port.ts'] = intakePort.replace("const definition = intakeDedupDefinition();", "readEnforcedRecord('intake.dedup', 'intake.contract', 'intakeDedupDefinition', register, ctx); const definition = intakeDedupDefinition();");
   Object.assign(declaration, { requiredFacts: { rungs: [rung('readProjection'), rung('intakeDedupDefinition')] } });
   expect(issues()).toEqual([]);
