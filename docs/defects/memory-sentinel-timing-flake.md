@@ -1,7 +1,7 @@
 # Memory sentinel case: re-diagnosed as a recall regression, not a timing flake (Rule 37 quarantine)
 
-**Status:** OPEN, re-diagnosed 2026-09-28 (unit U6). **Owner:** the recall/packet owner of
-`tests/preview/journal.ts` (see "Where the fix lives"). **Opened:** 2026-09-26.
+**Status:** CLOSED 2026-09-29 (cint-L4 pipeline repair, Astra MUST-FIX 2). Repaired at its source, the skip
+removed; see "Closure" at the end. **Owner:** the recall/packet owner of `tests/preview/journal.ts`. **Opened:** 2026-09-26.
 
 ## What this record said before, and why it was wrong
 
@@ -77,3 +77,19 @@ rerun alone cannot close this record.
 
 **Multi-machine posture:** The test fixture is machine-local. This record and the quarantine travel with the
 repository.
+
+## Closure (2026-09-29): the localization above was wrong
+
+Astra's cint-L4 review showed the `ownedRecall` localization was inaccurate: the **lexical** list already omitted
+turn 3, and `ownedRecall` only preserved that list. The cause was the recall scoring input. The preceding-context
+string and each candidate's text used the full sent reply, which includes the generated Rule 110 compaction
+disclosure (with its date and turn numbers). Those generated words distorted the contextual ranking, so turn 3
+lost its slot to filler turns.
+
+**Repair:** in `recallFor` (`tests/preview/journal.ts`), the two reply-text inputs to recall scoring now use the
+existing `replyBody()` normalization (the reply without its Rule 110 disclosure). The sent text and its disclosure
+are unchanged everywhere else. No reranker, model call or classifier was added.
+
+**Evidence:** the case is restored as `it(...)` with every original semantic and timing assertion. It passes
+in isolation (`--maxWorkers 1`), and the 26 other recall/continuity preview test files still pass. The full gate
+re-runs it under parallel conditions after the push.

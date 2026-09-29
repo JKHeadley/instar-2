@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, INDEX_BACKLOG_LIMIT, openPreviewJournal } from './journal.js';
+import { createJournalWorker, INDEX_BACKLOG_LIMIT, openPreviewJournal, raiseJournalCaps, unknownCallCounts } from './journal.js';
 
 const key = new Uint8Array(32).fill(53), at = 1790000000000;
 const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -136,5 +136,55 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
         .toThrow('index reservation refused');
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('keeps a lost index result UNKNOWN across restart, a later completed batch and compaction, and refuses a cap raise', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-backfill-')));
+    const older = 2 * INDEX_BACKLOG_LIMIT, path = join(dir, 'journal.encrypted');
+    let journal = preBuild2(path, older);
+    try {
+      let indexCalls = 0;
+      const worker = (lose: boolean) => createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
+        send: async input => input.update, checkOutbound: () => {},
+        model: async input => {
+          if (!input.id.startsWith('summary:index:')) return 'Noted.';
+          indexCalls++;
+          if (lose && indexCalls === 1) throw Error('lost provider result');
+          return { text: '{"concepts":[]}', usage: { inputTokens: 1, outputTokens: 1, inputComplete: true } };
+        } });
+      const raise = () => raiseJournalCaps(journal, { maxCalls: 401, maxReplies: 200, maxTurns: 200, authority: 'offline operator test', at: at + 100_001 });
+
+      // The first batch's result is lost: its reservation stays charged and its outcome UNKNOWN across a restart.
+      const first = worker(true);
+      first.intake([update(older + 1, 'Short check-in.')]); await first.drain(); await first.summarizeIfNeeded();
+      expect(indexCalls).toBe(1);
+      journal.close(); journal = openPreviewJournal(path, key);
+      expect(unknownCallCounts(journal.view)).toMatchObject({ index: 1, total: 1 });
+
+      // A later batch completes. That conclusive result is not counted, and it does not retire the earlier unknown.
+      await worker(false).summarizeIfNeeded();
+      expect(indexCalls).toBe(2);
+      expect(journal.view.indexOpen).toBeNull();
+      expect(journal.view.indexOffered).toHaveLength(older);
+      expect(unknownCallCounts(journal.view)).toMatchObject({ index: 1, total: 1 });
+
+      // Compaction and reopening preserve it, so the shared cap-raise refusal still applies.
+      journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+      expect(journal.view.indexUnknown).toEqual(['index:0']);
+      expect(unknownCallCounts(journal.view)).toMatchObject({ index: 1, total: 1 });
+      expect(raise).toThrow('UNKNOWN');
+      expect(journal.view.limits.maxCalls).toBe(400);
+      journal.close();
+
+      // Positive neighbor: every index result arrives, so nothing is UNKNOWN and the same raise is accepted.
+      rmSync(path, { force: true });
+      journal = preBuild2(path, older); indexCalls = 0;
+      const clean = worker(false);
+      clean.intake([update(older + 1, 'Short check-in.')]); await clean.drain(); await clean.summarizeIfNeeded();
+      expect(indexCalls).toBe(2);
+      expect(unknownCallCounts(journal.view)).toMatchObject({ index: 0, total: 0 });
+      raise();
+      expect(journal.view.limits.maxCalls).toBe(401);
+    } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 });

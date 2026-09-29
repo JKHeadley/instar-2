@@ -78,7 +78,8 @@ the boot cost becomes visible instead of hiding behind a constant.
 - The `rungraph` and `register` cases in this record are untouched: they are not preview files and not U6's.
 - `tests/preview/memory-sentinel.test.ts`'s quarantined case is **re-diagnosed, not repaired**: it fails
   deterministically in isolation on a recall assertion, and the fix is in `tests/preview/journal.ts`, which U6 does
-  not own. See `memory-sentinel-timing-flake.md`.
+  not own. See `memory-sentinel-timing-flake.md`. (Since closed, 2026-09-29: the recall input was repaired in the cint-L4
+  pipeline repair and the case restored.)
 - The uncached-transpile root cause above remains open, in a file U6 does not own.
 
 ### Gate evidence (U6), and what it does NOT cover

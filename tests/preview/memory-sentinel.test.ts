@@ -259,10 +259,9 @@ it('retains a contextual source when incidental direct matches fill the recall s
   }
 }, 30_000);
 
-// Rule 37 quarantine, re-diagnosed: docs/defects/memory-sentinel-timing-flake.md. NOT a timing flake — the
-// recall assertion below fails deterministically in isolation on unchanged test code. The timing statistics in
-// this body are already repaired and load-independent; the skip is held only by the recall regression.
-it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: recall regression, docs/defects/memory-sentinel-timing-flake.md', async () => {
+// Formerly quarantined (docs/defects/memory-sentinel-timing-flake.md): a deterministic recall miss, repaired at its
+// source — recall now scores each reply without its generated Rule 110 disclosure.
+it('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-sentinel-')));
   const key = new Uint8Array(32).fill(9), samples: number[] = [];
   const initial = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',

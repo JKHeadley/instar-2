@@ -74,13 +74,13 @@ it('counts each UNKNOWN answer, summary, review and Jev check once across restar
       'PREVIEW — calls cap reached; work paused. Check status for held work.\n']);
     journal.close();
     journal = openPreviewJournal(path, key);
-    expect(unknownCallCounts(journal.view)).toEqual({ answers: 1, summaries: 1, reviews: 0, jev: 1, total: 3 });
+    expect(unknownCallCounts(journal.view)).toEqual({ answers: 1, summaries: 1, reviews: 0, jev: 1, index: 0, total: 3 });
     const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       'tests/preview/journal-agent.mjs', 'status', '--root', dir], { cwd: process.cwd(), encoding: 'utf8',
       env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 10000 });
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout)).toMatchObject({ calls: 3, unknownCalls: 3,
-      unknownCallBreakdown: { answers: 1, summaries: 1, reviews: 0, jev: 1, total: 3 },
+      unknownCallBreakdown: { answers: 1, summaries: 1, reviews: 0, jev: 1, index: 0, total: 3 },
       capReports: ['calls:80:3', 'calls:3'] });
     expect(() => raiseJournalCaps(journal, { maxCalls: 4, maxReplies: 4, maxTurns: 4,
       authority: 'Justin recorded raise', at: 1001 })).toThrow('UNKNOWN');
@@ -104,7 +104,7 @@ it('counts an UNKNOWN subscription review separately from a completed answer and
     journal.close();
     journal = openPreviewJournal(path, key);
     expect(journal.view.calls).toBe(2);
-    expect(unknownCallCounts(journal.view)).toEqual({ answers: 0, summaries: 0, reviews: 1, jev: 0, total: 1 });
+    expect(unknownCallCounts(journal.view)).toEqual({ answers: 0, summaries: 0, reviews: 1, jev: 0, index: 0, total: 1 });
     expect(() => raiseJournalCaps(journal, { maxCalls: 3, maxReplies: 4, maxTurns: 4,
       authority: 'Justin recorded raise', at: 1001 })).toThrow('UNKNOWN');
     journal.close();
@@ -127,7 +127,7 @@ it('counts an unresolved revised-text review as UNKNOWN in status and the cap-ra
       journal.close();
       journal = openPreviewJournal(path, key);
       const unknown = verdict === undefined || verdict === 'unavailable' ? 1 : 0;
-      expect(unknownCallCounts(journal.view), String(verdict)).toEqual({ answers: 0, summaries: 0, reviews: unknown, jev: 0, total: unknown });
+      expect(unknownCallCounts(journal.view), String(verdict)).toEqual({ answers: 0, summaries: 0, reviews: unknown, jev: 0, index: 0, total: unknown });
       journal.close();
       const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
         'tests/preview/journal-agent.mjs', 'status', '--root', dir], { cwd: process.cwd(), encoding: 'utf8',
@@ -161,7 +161,7 @@ it('replays a previously valid cap raise after unavailable Jev and completed sub
     journal.append({ kind: 'intent', id: id(1), text: 'PREVIEW — answer', chat: origin.chat,
       update: 1, grant: origin.grant, at: 1000 });
     journal.append({ kind: 'sent', id: id(1), message: 1, at: 1000 });
-    expect(unknownCallCounts(journal.view)).toEqual({ answers: 0, summaries: 0, reviews: 0, jev: 1, total: 1 });
+    expect(unknownCallCounts(journal.view)).toEqual({ answers: 0, summaries: 0, reviews: 0, jev: 1, index: 0, total: 1 });
     expect(() => raiseJournalCaps(journal, { maxCalls: 5, maxReplies: 4, maxTurns: 4,
       authority: 'Justin recorded raise', at: 1001 })).toThrow('UNKNOWN');
     journal.close();
