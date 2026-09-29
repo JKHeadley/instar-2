@@ -82,8 +82,6 @@ export const STEP_SUPERVISOR_EXHAUSTED = 'step supervisor budget exhausted';
 export type MemorySourceKind = 'operator-stated' | 'channel-import' | 'inferred-by-summary';
 /** Runner-authored packet guidance for the single format re-ask (Rule 116); the operator's message is unchanged. */
 export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one JSON Decision object. Answer again and return only that object, with no text before or after it; put all reasoning inside reason.value.';
-/** Rules 57, 93, 116: a plain reply while an operator request is open records no decision on it; the same turn is asked once for one. */
-export const ANSWER_DECISION_REMINDER = 'reminders lists requests the verified operator made earlier that are still open, and your previous response to this same message was plain text, which records no decision about them. Answer again with one JSON Decision object whose conclusion.value is an object {"reply": your reply, "cancelReminders": [the ids this message itself cancels or changes, or [] when it cancels none]}; put all reasoning inside reason.value.';
 export const withFormatReminder = (context: string, reminder: string): string =>
   JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
@@ -545,7 +543,7 @@ export type JournalRecord =
   | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; usage?: ModelUsage; at: number }
   /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
-  /** A re-ask: the first answer was `malformed`, or (`undecided`, answer only) a plain reply while an operator request was open. */
+  /** A re-ask after a `malformed` answer. `undecided` (answer only) is read, never written: build cint-L5 128e8799 re-asked plain replies on canary copies. */
   | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
@@ -1503,14 +1501,6 @@ export const wallEpoch = (day: string, time: string, zone: string) => {
     return Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute) - at; };
   return wall - offset(wall - offset(wall));
 };
-/** Any requested action a later operator turn could still withdraw (Rules 57, 93). */
-/** An answer output carrying a reply decision object (`reply` text, or `reply.answer`); anything else is a plain reply. */
-const decisionShaped = (output: string) => { try {
-  const reply = (JSON.parse(output) as { reply?: unknown } | null)?.reply;
-  return typeof reply === 'string' || !!reply && typeof reply === 'object' && !Array.isArray(reply)
-    && typeof (reply as { answer?: unknown }).answer === 'string';
-} catch { return false; } };
-export const requestedPushesActive = (view: JournalView) => openRequests(view).length > 0;
 /** A runner-authored turn sorts after every earlier turn and before the next Telegram update. */
 const SYNTHETIC_UPDATE_STEP = 1 / 1024;
 /** "Everything before this turn": integer Telegram updates keep their old meaning. */
@@ -5157,25 +5147,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               catch { continue; } // the retry reservation remains UNKNOWN
             }
           }
-          // Rules 57, 93, 116: a plain reply records no decision on an open operator request, so it would be held as an
-          // unresolved decision and never delivered as an answer. Ask the same turn once for the decision instead: the
-          // model, not a keyword, says whether the message cancels anything. A second plain reply keeps the recovery hold.
-          const plainText = typeof answer === 'string' ? answer : 'text' in answer ? answer.text : undefined;
-          if (plainText?.trim() && !decisionShaped(plainText) && !turn.answerRetried && fromOperator(turn)
-            && !turn.requestedAction && !probeTurn(journal.view, turn) && requestedPushesActive(journal.view)) {
-            const retryContext = withFormatReminder(context, ANSWER_DECISION_REMINDER);
-            let retryPrepared: string | undefined, preparable = true;
-            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
-            catch { preparable = false; }
-            if (preparable && !halted() && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
-              journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', undecided: true,
-                ...(typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {}),
-                maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-              try { answer = await ports.model({ question, context: retryContext, id: turn.id,
-                ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
-              catch { continue; } // the retry reservation remains UNKNOWN
-            }
-          }
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
@@ -5308,10 +5279,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   text = memoryList(memory, dated);
               } else if (parsed && (parsed.memory !== undefined || parsed.memoryDisposition !== undefined || parsed.dated !== undefined || parsed.personMerges !== undefined || parsed.undo !== undefined)) invalidMemory = true;
             } catch { /* Legacy plain reply. */ }
-            // A reply without a recorded decision cannot have withdrawn a pending
-            // reminder, nor confirmed it stands. Route it through the existing
-            // unresolved-decision hold so the reminder stays unsent (Rules 57, 93).
-            if (!decided && fromOperator(turn) && requestedPushesActive(journal.view)) invalidMemory = true;
             // A runner-authored due turn carries no operator authority: only its reply text is used.
             if (turn.requestedAction) { const { directives: _admitted, directiveClosures: _closed, invalidDirective: _invalid, ...agentSide } = obligations;
               obligations = agentSide;
@@ -5342,6 +5309,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   : requested[index] ? ` I did not schedule what you asked for: ${reminderRefusal(item) ?? 'it could not be granted'}.`
                   : item.day ? ' I recorded this date; I act on a date only when you ask me to.' : '')).join(' ');
               text = `${text.trim()} ${receipt}`.trim();
+            }
+            // Rules 14, 57, 93: a plain reply records no decision, so every open request stays exactly as it was and still
+            // falls due once. The answer is sent; because it cannot have cancelled or changed anything, the operator is told
+            // so in plain words and asked to say it again if that was meant (never a hold, never the undecided notice).
+            const unchanged = !decided && text.trim() && fromOperator(turn) && !probe && !turn.requestedAction
+              ? openRequests(journal.view) : [];
+            if (unchanged.length) {
+              const listed = unchanged.slice(0, 3).map(item => `"${clip(clean(redact(item.quote).text, true), 160)}"`).join('; ')
+                + (unchanged.length > 3 ? ` and ${unchanged.length - 3} more` : '');
+              text = `${text.trim()}\n\nNo change was recorded to your open request${unchanged.length > 1 ? 's' : ''} ${listed}; `
+                + `${unchanged.length > 1 ? 'they still stand' : 'it still stands'}. If you meant to cancel or change one, please say so again.`;
             }
             if (invalidCancel && !invalidMemory) text = `${text.trim()} I could not tell which request to cancel, so none was cancelled.`.trim();
             else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request: ${reminderCancels.map(key =>

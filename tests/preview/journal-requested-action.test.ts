@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ANSWER_DECISION_REMINDER, createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests, REQUEST_ITEM_LIMIT,
+import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests, REQUEST_ITEM_LIMIT,
   requestOverflowLine } from './journal-test-worker.js';
 import type { openPreviewJournal as OpenJournal } from './journal.js';
 
@@ -41,7 +41,7 @@ const decide = (input: Input) => {
 };
 const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
   const state = { now: start, stopped: false, stopWhenQueued: false, fail: false, uncertain: false, plain: false, crashDue: false,
-    decideOnReask: false,
+    plainCalls: 0,
     plainText: 'Okay, I cancelled the Priya reminder.', summaryCancel: undefined as undefined | 'keep' | 'cancel' | 'omit',
     sent: [] as { text: string; thread?: number }[], dueCalls: 0 };
   let current: ReturnType<typeof OpenJournal> | undefined;
@@ -57,9 +57,8 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
         state.dueCalls++;
         if (state.crashDue) throw Error('crash during the due turn\'s model call');
       }
-      // decideOnReask: plain text first, then the decision the one re-ask asks for (a cancel, or none).
-      if (state.plain && state.decideOnReask && (JSON.parse(input.context) as { formatReminder?: string }).formatReminder === ANSWER_DECISION_REMINDER)
-        return /^cancel the /u.test(input.question) ? decide(input) : JSON.stringify({ reply: state.plainText, cancelReminders: [] });
+      // plain: a model that answers every call (answer, summary or due turn alike) in plain text.
+      if (state.plain) state.plainCalls++;
       return state.uncertain ? { state: 'uncertain' as const } : state.plain ? state.plainText : decide(input); },
     checkOutbound: () => {},
     send: async (value: { expectedText: string; thread?: number }) => {
@@ -435,7 +434,43 @@ it('holds a request while a later operator cancellation is unsettled by a call c
   }
 });
 
-it('holds a request when a later operator message gets a plain-text reply with no recorded decision', async () => {
+const probeText = 'Canary-copy check 6312dd5a: my test marker is probe-9f77778e. What is my test marker? Reply with the marker.';
+const unchangedLine = `No change was recorded to your open request "${priya}"; it still stands. If you meant to cancel or change one, please say so again.`;
+
+it('answers an ordinary question with a plain reply while a request is open, leaving the request to fall due once', async () => {
+  // Live cint-L5 canary copies (2026-09-29 16:13 and 16:29): with a reminder open, the real model answered this exact probe
+  // in plain text, even when asked again, and the memory-undecided notice was sent instead of its marker. Rules 14, 57, 93.
+  const root = tmp('probe');
+  try {
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya)]); await worker.drain();
+    state.plain = true; state.plainText = 'Your test marker is "probe-9f77778e."';
+    worker.intake([update(2, probeText)]); await worker.drain();
+    await worker.summarizeIfNeeded(); // the launcher's per-cycle recovery call finds nothing to settle
+    const probe = journal.view.order[1]!;
+    expect(state.plainCalls).toBe(1); // one call: no re-ask
+    expect(probe).toMatchObject({ answer: `Your test marker is "probe-9f77778e."\n\n${unchangedLine}` });
+    expect(probe.memoryPending).toBeUndefined();
+    expect(probe.held).toBeUndefined();
+    expect(state.sent.at(-1)!.text).toBe(`PREVIEW — Your test marker is "probe-9f77778e."\n\n${unchangedLine}`);
+    expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
+    expect(journal.view.reminderCancels).toEqual([]);
+    // No decision was recorded, so nothing changed: the request still falls due, once, even with a plain-text model.
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9; state.plainText = `Doing what you asked: ${priya}.`;
+    await worker.drain(); await worker.sendRequested();
+    expect(pushes()).toEqual([`${priyaHeader}\nDoing what you asked: ${priya}.`]);
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9 + 3600_000;
+    await worker.drain(); await worker.sendRequested(); await worker.drain();
+    expect(pushes()).toHaveLength(1);
+    expect(state.sent.filter(item => item.text.includes('probe-9f77778e'))).toHaveLength(1); // the answer is never re-sent
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('never treats a plain-text reply to a cancellation as a decision: the request stays open and the operator is told plainly', async () => {
   const root = tmp('plain');
   try {
     const { state, open, pushes } = harness(root);
@@ -443,34 +478,10 @@ it('holds a request when a later operator message gets a plain-text reply with n
     worker.intake([update(1, priya)]); await worker.drain();
     state.plain = true;
     worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
-    expect(journal.view.order[1]?.memoryPending).toBe(true);
+    await worker.summarizeIfNeeded();
+    expect(journal.view.order[1]?.memoryPending).toBeUndefined();
     expect(journal.view.reminderCancels).toEqual([]);
-    expect(state.sent.some(item => item.text.includes('I cancelled'))).toBe(false); // no unfounded cancel claim.
-    journal.close(); ({ journal, worker } = open());
-    state.now = friday9 + 3600_000;
-    await worker.drain(); await worker.sendRequested();
-    expect(pushes()).toEqual([]);
-    journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it('answers an ordinary question that first gets a plain reply while a request is open, asking once for the decision', async () => {
-  // Live cint-L5 canary copy (2026-09-29 16:13): with "Remind me today at 2:45 pm" open, this exact probe got a plain reply
-  // and was sent the memory-undecided notice instead of its marker. Rules 14, 57, 93, 116.
-  const root = tmp('probe');
-  try {
-    const { state, open, pushes } = harness(root);
-    let { journal, worker } = open(true);
-    worker.intake([update(1, priya)]); await worker.drain();
-    state.plain = true; state.decideOnReask = true; state.plainText = 'Your test marker is "probe-9f77778e."';
-    worker.intake([update(2, 'Canary-copy check 6312dd5a: my test marker is probe-9f77778e. What is my test marker? Reply with the marker.')]);
-    await worker.drain();
-    const probe = journal.view.order[1]!;
-    expect(probe).toMatchObject({ answerRetried: true, answer: 'Your test marker is "probe-9f77778e."' });
-    expect(probe.memoryPending).toBeUndefined();
-    expect(state.sent.at(-1)!.text).toContain('probe-9f77778e');
-    expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
-    // The decision recorded that the probe cancels nothing: the request still falls due, once.
+    expect(state.sent.at(-1)!.text).toBe(`PREVIEW — Okay, I cancelled the Priya reminder.\n\n${unchangedLine}`);
     journal.close(); ({ journal, worker } = open());
     state.now = friday9; state.plain = false;
     await worker.drain(); await worker.sendRequested();
@@ -479,66 +490,22 @@ it('answers an ordinary question that first gets a plain reply while a request i
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps a plain-text cancellation cancelled when the one re-ask records it', async () => {
-  const root = tmp('reask-cancel');
-  try {
-    const { state, open, pushes } = harness(root);
-    let { journal, worker } = open(true);
-    worker.intake([update(1, priya)]); await worker.drain();
-    state.plain = true; state.decideOnReask = true;
-    worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
-    expect(journal.view.order[1]).toMatchObject({ answerRetried: true });
-    expect(journal.view.reminderCancels).toHaveLength(1);
-    journal.close(); ({ journal, worker } = open());
-    state.now = friday9 + 3600_000; state.plain = false;
-    await worker.drain(); await worker.sendRequested();
-    expect(pushes()).toEqual([]);
-    journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it('releases a request held by a plain reply once recovery records that the turn cancels nothing, answering it exactly once', async () => {
-  const root = tmp('recovered');
-  try {
-    const { state, open, pushes } = harness(root);
-    let { journal, worker } = open(true);
-    worker.intake([update(1, priya)]); await worker.drain();
-    state.plain = true; state.plainText = 'You are welcome.'; state.summaryCancel = 'keep';
-    worker.intake([update(2, 'Thanks, that is helpful.')]); await worker.drain();
-    await worker.summarizeIfNeeded(); // the launcher's per-cycle recovery call
-    const thanks = journal.view.order[1]!;
-    expect(thanks.memoryPending).toBe(true); // still rendered safely
-    expect(journal.view.summaries.some(item => item.memoryFor?.includes(thanks.id) && item.reminderCancels?.length === 0)).toBe(true);
-    state.plain = false;
-    worker.intake([update(3, 'Please keep the Priya reminder as requested.')]); await worker.drain();
-    journal.close(); ({ journal, worker } = open());
-    state.now = friday9;
-    await worker.drain(); await worker.sendRequested();
-    expect(pushes()).toEqual([`${priyaHeader}\nDoing what you asked: ${priya}.`]);
-    journal.close(); ({ journal, worker } = open());
-    state.now = friday9 + 3600_000;
-    await worker.drain(); await worker.sendRequested();
-    expect(pushes()).toHaveLength(1);
-    journal.close();
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it('keeps a plain-text cancellation: recovery that cancels, or records no decision, never releases the request', async () => {
-  for (const summaryCancel of ['cancel', 'omit'] as const) {
-    const root = tmp(`recovered-${summaryCancel}`);
+it('cancels only by a recorded decision, and an ambiguous one leaves the request open with a plain-words question', async () => {
+  for (const which of ['decided', 'ambiguous'] as const) {
+    const root = tmp(`decision-${which}`);
     try {
       const { state, open, pushes } = harness(root);
       let { journal, worker } = open(true);
       worker.intake([update(1, priya)]); await worker.drain();
-      state.plain = true; state.summaryCancel = summaryCancel;
-      worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
-      await worker.summarizeIfNeeded(); // the launcher's per-cycle recovery call
-      expect(journal.view.reminderCancels).toHaveLength(summaryCancel === 'cancel' ? 1 : 0);
-      expect(journal.view.summaries.some(item => item.memoryFor?.includes(journal.view.order[1]!.id))).toBe(summaryCancel === 'cancel');
+      // 'ambiguous' names a request id that is not offered: no request can be chosen, so none is cancelled.
+      worker.intake([update(2, which === 'decided' ? 'cancel the Priya reminder' : 'cancel the dentist reminder')]); await worker.drain();
+      expect(journal.view.reminderCancels).toHaveLength(which === 'decided' ? 1 : 0);
+      if (which === 'ambiguous') expect(state.sent.at(-1)!.text).toBe('PREVIEW — Okay. I could not tell which request to cancel, so none was cancelled.');
+      expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
       journal.close(); ({ journal, worker } = open());
       state.now = friday9 + 3600_000;
       await worker.drain(); await worker.sendRequested();
-      expect(pushes()).toEqual([]);
+      expect(pushes()).toHaveLength(which === 'decided' ? 0 : 1);
       journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
