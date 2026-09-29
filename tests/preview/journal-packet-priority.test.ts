@@ -27,9 +27,20 @@ const summarize = (journal: ReturnType<typeof openPreviewJournal>, through: numb
     people: [{ name: 'Sam', source: 'telegram:12345678:update:3', quote: 'Sam reviewed the studio plan.' }], at: now });
 };
 const p95 = (values: number[]) => values.sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
+// Rule 37 repair (docs/defects/preview-packet-priority-timing-flake.md): the byte-limit sweep below was the whole
+// wall cost of that case, so host load decided it. The step is the work, not a bound, and the record's own
+// suggested repair is "a coarser step that still crosses every priority boundary". Measured on a loaded runner
+// (load about 43), sweeping 10000 down to 950 and checking the asserted drop kinds and boundary crossings:
+//   step   50 -> 129 probes, 58.9 s, full coverage   (58.9 s against a 60 s deadline: no margin at all)
+//   step  200 ->  33 probes, 16.2 s, full coverage
+//   step  400 ->  17 probes,  7.6 s, full coverage   <- chosen
+//   step  700 ->  10 probes,  4.5 s, full coverage
+//   step 1000 ->   7 probes,  3.9 s, LOSES person-before-correction
+// 400 keeps every drop kind and every boundary crossing the case asserts, sits two measured steps clear of the
+// coverage cliff at 1000, and leaves about 8x time headroom. Coverage is not loosened; only the probe count is.
+const PRIORITY_SWEEP_STEP = 400;
 
-// Rule 37 quarantine: docs/defects/preview-packet-priority-timing-flake.md.
-it.skip('retains higher-priority memory at the byte boundary and records every lower-priority drop — SKIPPED: Rule 37 timeout flake; docs/defects/preview-packet-priority-timing-flake.md', () => {
+it('retains higher-priority memory at the byte boundary and records every lower-priority drop', () => {
   const path = root();
   try {
     const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, genesis(20));
@@ -51,7 +62,8 @@ it.skip('retains higher-priority memory at the byte boundary and records every l
     expect((JSON.parse(specific.context) as { recalled?: { id: string }[] }).recalled
       ?.some(item => item.id === 'telegram:12345678:update:2') ?? false).toBe(false);
     const seen = new Set<string>(), boundary = new Set<string>();
-    for (let limit = 10000; limit >= 950; limit -= 50) { // int12: reply instructions grew the packet
+    const sweepStart = performance.now();
+    for (let limit = 10000; limit >= 950; limit -= PRIORITY_SWEEP_STEP) {
       journal.view.limits.maxBytes = limit;
       const probe = worker.probe('What should I know about Sam and the studio?');
       if ('reason' in probe) continue;
@@ -75,9 +87,12 @@ it.skip('retains higher-priority memory at the byte boundary and records every l
     expect(boundary).toContain('dated-before-commitment');
     expect(boundary).toContain('person-before-correction');
     expect(boundary).toContain('correction-before-dated');
+    process.stdout.write(`packet priority sweep: ${String(Math.ceil((10000 - 950) / PRIORITY_SWEEP_STEP) + 1)} probes in ${(performance.now() - sweepStart).toFixed(0)} ms\n`);
     journal.close();
   } finally { rmSync(path, { recursive: true, force: true }); }
-}, 60000); // int12: larger packets make each sweep probe slower
+}, 300000); // Measured: 17 packet-building probes cost 7.6 s one process at a time and 38.3 s inside this
+// 5-worker suite at load 42. The probe count is the work and is already cut from 129 to 17 above; this budget is
+// sized to that measurement with about 8x headroom, so the sweep's coverage assertions decide the case, not the host.
 
 it('keeps a nearby dated open item inside the ten-commitment window ahead of older undated items', () => {
   const path = root();
@@ -132,8 +147,24 @@ it('measures packet bytes and non-model p95 at 200, 1000 and 2000 accepted turns
     }
     journal.close();
   } finally { rmSync(path, { recursive: true, force: true }); }
-}, 120000);
+  // This case asserts only packet BYTES (<= 8192); the p95 it prints is a recorded measurement, not an assertion,
+  // so the deadline is purely a budget for 2 000 turn appends plus 210 real packet probes. Measured: the 200-turn
+  // probe p95 was 262.95 ms in one suite run and 366.44 ms in another at load 42, about 4x its unloaded cost, and
+  // the whole case overran a 120 s budget. Sized to that measurement (Rule 37: the work, not the bound).
+}, 600000);
 
+// Child-process cost, measured on this runner (load about 43), because every budget below is sized from it and
+// not guessed. A preview child starts with `--loader ./scripts/slice-ts-loader.mjs`, which re-transpiles the whole
+// TypeScript graph it imports on EVERY start with no cache (scripts/slice-ts-loader.mjs, 19 lines):
+//   bare node -e 0                                 0.11 s
+//   loader hooks active, nothing TypeScript loaded  1.3-1.6 s
+//   the journal-agent graph, one process at a time  12.5-14.8 s
+//   the same child inside this 5-worker suite       about 50 s (measured: a provider child's first heartbeat
+//                                                   arrived after 48 288 ms, and a 60 s child budget still fired)
+// So roughly 90% of a cold child is uncached transpilation, and that — not this case's subject — is what host load
+// scales. The real repair is a transpile cache in that shared loader, which unit U6 does not own; see
+// docs/defects/full-suite-load-timeouts.md. Until then these budgets are watchdogs sized to the measured cost with
+// headroom, never bounds on the behaviour asserted here, and the observed child cost is printed on every run.
 it('replays packet omissions into status without exposing the omitted text', async () => {
   const path = root();
   try {
@@ -166,11 +197,11 @@ it('replays packet omissions into status without exposing the omitted text', asy
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', path],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+        encoding: 'utf8', timeout: 240000 });
     expect(status.status).toBe(0);
     const packet = JSON.parse(status.stdout).packet;
     expect(packet.dropped).toEqual(dropped);
     expect(packet.bytes).toBeLessThanOrEqual(packet.limit);
     expect(JSON.stringify(packet)).not.toContain('studio commitment open');
   } finally { rmSync(path, { recursive: true, force: true }); }
-});
+}, 600000); // One cold `--loader` status child at 240 s, plus this case's journal work.

@@ -115,8 +115,7 @@ it('shares one attempt cap, one reply cap and one stop across every conversation
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-// Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
-it.skip('recalls a topic fact beyond the envelope into the main chat after summaries, with flat overhead across restarts', async () => {
+it('recalls a topic fact beyond the envelope into the main chat after summaries, with flat overhead across restarts', async () => {
   const root = origin(), samples: number[] = [];
   const fact = 'The spare house key is under the blue heron statue.';
   let asked: string | undefined;
@@ -147,13 +146,20 @@ it.skip('recalls a topic fact beyond the envelope into the main chat after summa
       answer: 'noted', outcome: 'Telegram API accepted' }));
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
-    const first = p95(samples.slice(0, 10)), last = p95(samples.slice(80));
-    process.stdout.write(`journal conversations 90 turns / 3 conversations: non-model p95=${p95(samples).toFixed(1)} ms, first-ten=${first.toFixed(1)} ms, final-ten=${last.toFixed(1)} ms\n`);
+    // Rule 37 repair (docs/defects/full-suite-load-timeouts.md): growth compares the median of the first and last
+    // ten turns. A "p95" of ten samples is their maximum, so one scheduler stall under parallel load decided it —
+    // the recorded diagnosis here (final-ten 1 760 ms against 168 ms, isolated 132-157 ms). A per-turn cost that
+    // really grows with the journal moves the median as much as the maximum, so the 1 000 ms bound still binds.
+    const median = (values: number[]) => { const sorted = values.slice().sort((a, b) => a - b); return (sorted[4]! + sorted[5]!) / 2; };
+    const first = median(samples.slice(0, 10)), last = median(samples.slice(80));
+    process.stdout.write(`journal conversations 90 turns / 3 conversations: non-model p95=${p95(samples).toFixed(1)} ms, first-ten median=${first.toFixed(1)} ms, `
+      + `final-ten median=${last.toFixed(1)} ms, growth=${(last - first).toFixed(1)} ms, final-ten max=${Math.max(...samples.slice(80)).toFixed(1)} ms\n`);
     expect(p95(samples)).toBeLessThanOrEqual(5000);
     expect(last - first).toBeLessThanOrEqual(1000);
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 30_000);
+}, 180_000); // Measured: 90 turns of real journal work took 25.1 s of the old 30 s budget at load 24 — the budget
+// sized the host, not the work. The per-turn bounds asserted above are what hold the cost down.
 
 it('gives the summarizer every turn\'s conversation and date, including the main chat, so the summary can keep where and when', async () => {
   const root = origin();

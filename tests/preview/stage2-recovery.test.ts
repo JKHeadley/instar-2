@@ -1,3 +1,18 @@
+/** Case budgets in this file are sized to durations OBSERVED in a full preview run on this host at load 24-43,
+ * not guessed. Every case here spawns cold `--loader` children, and about 90% of such a child is uncached
+ * TypeScript transpilation by `scripts/slice-ts-loader.mjs` (19 lines, no cache) — the shared cause recorded in
+ * docs/defects/full-suite-load-timeouts.md, whose repair is a transpile cache in that loader. Observed in that run:
+ * a cold child about 50 s; a full stage-2 launcher boot 108-345 s; `reconstructs each durable response/reply phase`
+ * 158.7 s against a 120 s budget; the four `holds ... during pending provider work` cases 77.5-87.6 s against 60 s;
+ * `inspects and archives synthetic v1 predecessor history` 283.9 s, `finishes an interrupted pre-binding
+ * preparation` 222.8 s, `refuses successor ... corruption` 209.6 s and `performs only one successor cutover`
+ * 198.3 s, all against 120 s; three `fresh process crash at ...` children exceeded even a 300 s child timer.
+ * The 60 s budgets became 300 s and the 120 s budgets 900 s — roughly 3x the worst observed cost of each group.
+ * These are hang detectors for child start-up, never bounds on the durability behaviour asserted below, and Rule 42
+ * is preserved: a watchdog kill still reports `status: null` with a `[timed out after N ms]` marker, never success.
+ *
+ * NOT fixed here: this file's remaining failures at that load are `Hook timed out in 10000ms` from vitest's global
+ * `hookTimeout` default, which lives in `vitest.config.ts` and is not this unit's file. */
 import { expect, it } from 'vitest';
 import { stage2CompositionFixture } from './stage2-fixture.js';
 
@@ -16,7 +31,7 @@ it('reconstructs each durable response/reply phase without repeating either phys
     expect(s.models).toHaveLength(1);
     expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(1);
   } finally { c.close(); }
-}, 120000);
+}, 900000);
 
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -81,7 +96,10 @@ const c=await f.create();try{if(!c.sidecar.read().selectedTurn)c.pollOnce();awai
     const child = spawn(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', worker, root, cut, log],
       { cwd: process.cwd(), env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = ''; child.stderr.on('data', data => { stderr += data; });
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(Error(`offline worker timeout; retained at ${directory}`)); }, 90000);
+    // A cold `--loader` child is dominated by uncached transpilation (see the launcher measurements below and
+    // docs/defects/full-suite-load-timeouts.md): about 50 s inside this suite at load 42, against 12.5-14.8 s one
+    // process at a time. This is a hang detector for that start, not a bound on the crash behaviour asserted below.
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(Error(`offline worker timeout; retained at ${directory}`)); }, 600000);
     let sent = false;
     const interval = signal ? setInterval(() => { if (!sent && events().includes('pending')) { sent = true; child.kill(signal); } }, 25) : undefined;
     child.on('error', reject); child.on('exit', code => {
@@ -113,14 +131,14 @@ for (const cut of ['provider-prepared', 'provider-dispatch-unknown', 'provider-c
     expect(worker.events().filter(e => e === 'model').length).toBeLessThanOrEqual(1);
     expect(worker.events().filter(e => e === 'send').length).toBeLessThanOrEqual(1);
     // Deliberately retain all roots, failed cuts and logs as crash evidence.
-  }, 120000);
+  }, 1800000); // Three cold `--loader` children at the measured cost above; the 120 s budget could not hold them.
 }
 for (const signal of ['SIGINT', 'SIGTERM'] as const) it(`handles ${signal} while the model is pending and suppresses reply`, async () => {
   const worker = crashWorker(); expect(await worker.run('pending-signal', signal)).toBe(0);
   expect(worker.sidecar()).toMatchObject({ phase: 'held', modelAttemptUsed: 1 });
   expect(worker.events().filter(e => e === 'model')).toHaveLength(1);
   expect(worker.events().filter(e => e === 'send')).toHaveLength(0);
-}, 120000);
+}, 900000);
 
 import { renameSync } from 'node:fs';
 import { cutoverPreviewRoot, openPreviewState, openStage2State } from './state.js';
@@ -137,7 +155,7 @@ it('holds ambiguous burned slot forever and refuses missing/corrupt sidecar or c
   writeFileSync(file, readFileSync(file + '.retained'));
   s.activation.invocationPolicyDigest = `sha256:${'0'.repeat(64)}`;
   await expect(s.create()).rejects.toThrow();
-}, 60000);
+}, 300000);
 
 it('refuses a competing root owner and stage1 after stage2 arm', async () => {
   const s = stage2CompositionFixture(); const c = await s.create();
@@ -161,7 +179,7 @@ for (const event of ['stop', 'expiry', 'deadline', 'revoked'] as const) it(`hold
     expect(c.sidecar.read().modelAttemptUsed).toBe(1); await c.resume();
     expect(s.models).toHaveLength(1); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
   } finally { c.close(); }
-}, 60000);
+}, 300000);
 
 it('cuts over a stopped predecessor with unchanged counters, cursor, exclusions and expiry', () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-cutover-evidence-')));
@@ -221,8 +239,7 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 
 const launcherClockSource = (epoch: number) => `const epoch=${epoch}, elapsedStart=performance.now();Date.now=()=>epoch+Math.floor(performance.now()-elapsedStart);`;
 
-// Rule 37 quarantine of the SIGINT instance only: see docs/defects/full-suite-load-timeouts.md.
-for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) (signal === 'SIGINT' ? it.skip : it)(`actual async launcher ${signal ?? 'accepts one answer'} with a spawned synthetic CLI`, async () => {
+for (const signal of [null, 'SIGINT', 'SIGTERM'] as const) it(`actual async launcher ${signal ?? 'accepts one answer'} with a spawned synthetic CLI`, async () => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'preview-s2-launch-evidence-'))), root = join(directory, 'root');
   const home = join(directory, 'home'), configDirectory = join(directory, 'config'), workingDirectory = join(directory, 'work');
   for (const path of [root, home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -294,7 +311,18 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
     '--operator-sender-id', configuration.operatorSenderId, '--chat-id', configuration.chatId, '--chat-kind', 'private', '--forum', 'false',
     '--message-thread-id', 'none', '--expires-at', String(expiresAt), '--max-cycles', '3', '--max-poll-seconds', '1', '--max-batch-items', '1',
     '--activation-record', activationPath, '--login-profile', profilePath, '--model', model, '--activation-cutoff', String(cutoff), '--arm', 'true'];
-  const result = await spawnNode(args, { cwd: process.cwd(), env, timeout: 90000 });
+  // Rule 37 repair (docs/defects/full-suite-load-timeouts.md): this watchdog is a hang detector for a full
+  // stage-2 launcher boot, not a bound on the behaviour asserted below. About 90% of that boot is uncached
+  // TypeScript transpilation by `scripts/slice-ts-loader.mjs` (19 lines, no cache), which is what host load scales;
+  // see that record for the measurements. At a 90 s constant the SIGINT instance failed under parallel load on a
+  // run where its SIGTERM sibling took 30 s, so the host decided the case. Measured inside the 5-worker preview
+  // suite at load 40, this child ran 344 904 ms (accept), 169 461 ms (SIGINT) and 192 039 ms (SIGTERM) — a 300 s
+  // watchdog still fired on the accept instance. The budget is sized to that measurement, the child's observed
+  // wall time is PRINTED every run so the cost cannot hide behind a constant, and a genuine hang is still caught
+  // and still reported as a timeout rather than as success (Rule 42).
+  const launchStart = performance.now();
+  const result = await spawnNode(args, { cwd: process.cwd(), env, timeout: 900000 });
+  process.stdout.write(`stage2 launcher ${signal ?? 'accept'}: child ran ${(performance.now() - launchStart).toFixed(0)} ms\n`);
   expect(result.status, result.stderr + ` retained ${directory}`).toBe(0);
   expect(requireExists(log), result.stderr).toBe(true);
   expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
@@ -334,11 +362,11 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
     const before = retainedFiles(root);
     const statusEnv = { ...env }; delete statusEnv.NODE_OPTIONS;
     const statusArgs = [...args]; statusArgs[statusArgs.indexOf('run')] = 'status';
-    const status = () => spawnNode(statusArgs, { cwd: process.cwd(), env: statusEnv, timeout: 30000 });
+    const status = () => spawnNode(statusArgs, { cwd: process.cwd(), env: statusEnv, timeout: 240000 });
     const recorded = await status();
     expect(recorded.status, recorded.stderr).toBe(0);
     expect(JSON.parse(recorded.stdout).stage2.phase).toBe('api-accepted');
-    const restarted = await spawnNode(args, { cwd: process.cwd(), env: statusEnv, timeout: 30000 });
+    const restarted = await spawnNode(args, { cwd: process.cwd(), env: statusEnv, timeout: 240000 });
     expect(restarted.status, restarted.stderr).toBe(0);
     expect(retainedFiles(root)).toEqual(before);
     const path = join(root, 'preview-stage2-state.json'), original = readFileSync(path, 'utf8');
@@ -347,7 +375,7 @@ process.on('exit',()=>writeFileSync(${JSON.stringify(report)},JSON.stringify(cal
     expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
     expect(JSON.parse(readFileSync(report, 'utf8')).filter((row: any) => row.method === 'sendMessage')).toHaveLength(1);
   }
-}, 120000);
+}, 1800000); // The 900 s launcher watchdog above plus the accepted case's three further bounded child runs.
 
 it('holds a sidecar that names an absent signed owner fact before model launch', async () => {
   const s = stage2CompositionFixture(); let c = await s.create();
@@ -358,7 +386,7 @@ it('holds a sidecar that names an absent signed owner fact before model launch',
   try { await c.resume(); expect(c.sidecar.read().phase).toBe('held');
     expect(s.models).toHaveLength(0); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
   } finally { c.close(); }
-}, 60000);
+}, 300000);
 
 import { stage2HistoricalStatus } from './stage2-owners.js';
 import { readdirSync, statSync } from 'node:fs';
@@ -431,14 +459,14 @@ it('historically validates terminal Unicode HTML and literal entities after expi
   c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('api-accepted'); c.close();
   expect(retainedFiles(join(s.root, '.preview-stage2'))).toEqual(ownerFiles);
   expect(s.calls).toHaveLength(calls); expect(s.models).toHaveLength(1);
-}, 120000);
+}, 900000);
 
 it('holds genuinely changed Telegram display text and never sends again on recovery', async () => {
   const s = stage2CompositionFixture({ answer: '世界 <>& &lt;', displayText: 'changed display text' }); let c = await s.create();
   c.pollOnce(); await c.resume(); expect(c.sidecar.read().phase).toBe('held'); c.close();
   c = await s.create(); await c.resume(); c.close();
   expect(s.models).toHaveLength(1); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(1);
-}, 120000); // Two composition launches, each fsync-bound (~1,700 real fsyncs per turn): about 50 s alone
+}, 900000); // Two composition launches, each fsync-bound (~1,700 real fsyncs per turn): about 50 s alone
 // and 63.3 s in the full affected run on a loaded host; the same bound as this file's other multi-launch cases.
 
 it('refuses an existing signed fact in the wrong nonterminal sidecar role before launching', async () => {
@@ -447,7 +475,7 @@ it('refuses an existing signed fact in the wrong nonterminal sidecar role before
   d.references.preparedFact = d.references.requestFact; writeFileSync(path, JSON.stringify(d));
   c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('held'); c.close();
   expect(s.models).toHaveLength(0); expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
-}, 60000); // Two composition launches took 4-8 s; the 10 s default fails under suite load, like its siblings here.
+}, 300000); // Two composition launches took 4-8 s; the 10 s default fails under suite load, like its siblings here.
 
 
 it('replays the synthetic launcher preload clock independently of the runner calendar with real elapsed timers', () => {
@@ -500,7 +528,7 @@ it('replays exact first-live refusal bytes through genuine route/owners and reta
   expect(f.s.models).toHaveLength(1); expect(f.s.calls.filter(r => r.method === 'sendMessage')).toHaveLength(0);
   const before = retainedFiles(f.source), c = await f.s.create(); await c.resume(); c.close();
   expect(retainedFiles(f.source)).toEqual(before); expect(f.s.models).toHaveLength(1);
-}, 60000);
+}, 300000);
 
 it('performs only one successor cutover, inherits all history and bounds, and pairs only one fresh post-cutoff turn', async () => {
   const f = await refusedSuccessorFixture(), before = retainedFiles(f.source), old = f.s.state.read();
@@ -555,7 +583,7 @@ it('performs only one successor cutover, inherits all history and bounds, and pa
   s.state.latchStop('operator');
   await expect(cutoverRefusedStage2Root({ ...f.input, predecessorRoot: f.target, predecessorConfiguration: s.configuration,
     root: other, configuration: { ...s.configuration, root: other } })).rejects.toThrow();
-}, 120000);
+}, 900000);
 
 it('refuses successor stop/window/config/activation/lease/lineage/capture corruption without reserving or launching', async () => {
   const f = await refusedSuccessorFixture(), original = retainedFiles(f.source);
@@ -597,7 +625,7 @@ it('refuses successor stop/window/config/activation/lease/lineage/capture corrup
   rmSync(join(f.source, 'preview-predecessor.json'));
   // Byte restoration, not mtime restoration, after intentional corruption.
   expect(Object.keys(retainedFiles(f.source) as object)).toEqual(Object.keys(original as object));
-}, 120000);
+}, 900000);
 
 it('refuses valid JSON failure and any accepted/reply outcome as successor predecessors', async () => {
   for (const options of [{ terminal: JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '{}',
@@ -610,7 +638,7 @@ it('refuses valid JSON failure and any accepted/reply outcome as successor prede
     }
     await expect(cutoverRefusedStage2Root(f.input)).rejects.toThrow(); expect(requireExists(f.marker)).toBe(false);
   }
-}, 120000);
+}, 900000);
 
 it('holds partial/corrupt lineage markers and copy crashes without another cutover or startup', async () => {
   const f = await refusedSuccessorFixture();
@@ -631,7 +659,7 @@ it('holds partial/corrupt lineage markers and copy crashes without another cutov
   await expect(cutoverRefusedStage2Root(f.input)).rejects.toThrow();
   expect(requireExists(join(f.target, '.preview-stage2'))).toBe(false);
   expect(f.s.models).toHaveLength(1);
-}, 60000);
+}, 300000);
 
 import { signEnvelope } from '../../src/facts/envelope.js';
 import { privateKey as fixtureSigningKey, factsFixture, value as factValue } from '../facts/fixtures.js';
@@ -694,7 +722,7 @@ it('rejects missing, altered, duplicate and wrongly joined signed invocation bin
   writeFileSync(capture, '{}'); const before = readFileSync(path);
   await expect(s.create()).rejects.toThrow(); expect(readFileSync(path)).toEqual(before); expect(s.models).toHaveLength(1);
   writeFileSync(capture, captured);
-}, 120000);
+}, 900000);
 
 it('finishes an interrupted pre-binding preparation only before dispatch and never duplicates a repeated preparation', async () => {
   const s = stage2CompositionFixture(); let c = await s.create(); c.pollOnce(); await c.resumeOne(); c.close();
@@ -708,7 +736,7 @@ it('finishes an interrupted pre-binding preparation only before dispatch and nev
   c = await s.create(); await c.resume(); expect(c.sidecar.read().phase).toBe('api-accepted'); c.close();
   expect(JSON.parse(readFileSync(path, 'utf8')).filter((f: any) => f.body.evidence?.claim.predicate === 'preview-invocation-binding')).toHaveLength(1);
   expect(s.models).toHaveLength(1);
-}, 120000);
+}, 900000);
 
 // Produce synthetic legacy history from a genuine refused owner chain. Only this
 // fixture re-signs; historical production readers cannot author or retrofit facts.
@@ -783,4 +811,4 @@ it('inspects and archives synthetic v1 predecessor history without retrofitting 
   writeFileSync(sidePath, JSON.stringify({ ...d, policyDigest: legacyPolicy }));
   const children = s.children.length;
   await expect(s.create()).rejects.toThrow(); expect(s.children).toHaveLength(children); expect(s.models).toHaveLength(0);
-}, 120000);
+}, 900000);

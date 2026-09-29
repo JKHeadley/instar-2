@@ -259,7 +259,10 @@ it('retains a contextual source when incidental direct matches fill the recall s
   }
 }, 30_000);
 
-it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: Rule 37 timing flake; docs/defects/memory-sentinel-timing-flake.md', async () => {
+// Rule 37 quarantine, re-diagnosed: docs/defects/memory-sentinel-timing-flake.md. NOT a timing flake — the
+// recall assertion below fails deterministically in isolation on unchanged test code. The timing statistics in
+// this body are already repaired and load-independent; the skip is held only by the recall regression.
+it.skip('grounds a later pronoun question in an early summarized turn across a restart, with bounded overhead — SKIPPED: recall regression, docs/defects/memory-sentinel-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-sentinel-')));
   const key = new Uint8Array(32).fill(9), samples: number[] = [];
   const initial = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -299,17 +302,28 @@ it.skip('grounds a later pronoun question in an early summarized turn across a r
     expect(packet.capability).toContain('memory sentinel');
     // The step on its own, at ten times this run's history.
     const big = Array.from({ length: 2000 }, (_, i) => ({ text: `ordinary turn ${i}: weather, errands and plans ${'x'.repeat(60)} noted`, at: now - i * 60000 }));
-    const step: number[] = [];
+    // Rule 37 repair (docs/defects/memory-sentinel-timing-flake.md): the sentinel step is pure in-process work
+    // with no I/O, so its sample is this process's own consumed CPU time. Wall clock on a loaded host also counts
+    // scheduling contention that is not the sentinel's cost. CPU time never exceeds wall time, so the retained
+    // 250 ms threshold is not loosened; the wall p95 is printed beside it so a real wall regression stays visible.
+    const step: number[] = [], stepWall: number[] = [];
     for (let i = 0; i < 20; i++) {
-      const t = performance.now();
+      const cpu = process.cpuUsage(), t = performance.now();
       selectRecall({ message: "Any idea what she'd actually want?", previous: "Maya's birthday gift", summary: 'Ordinary chat.', candidates: big, now, limit: 5 });
-      step.push(performance.now() - t);
+      const used = process.cpuUsage(cpu);
+      step.push((used.user + used.system) / 1000); stepWall.push(performance.now() - t);
     }
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
-    process.stdout.write(`memory sentinel: 200-turn non-model p95=${p95(samples).toFixed(1)} ms, first-ten=${p95(samples.slice(0, 10)).toFixed(1)} ms, `
-      + `final-ten=${p95(samples.slice(190)).toFixed(1)} ms; sentinel step over 2000 turns p95=${p95(step).toFixed(1)} ms\n`);
+    // Growth compares the median of the first and last ten turns. A "p95" of ten samples is their maximum, so one
+    // scheduler stall under parallel load decided it; a per-turn cost that really grows with the journal moves the
+    // median as much as the maximum (the same repair as tests/preview/journal-assembled.test.ts).
+    const median = (values: number[]) => { const sorted = values.slice().sort((a, b) => a - b); return (sorted[4]! + sorted[5]!) / 2; };
+    const first = median(samples.slice(0, 10)), final = median(samples.slice(190));
+    process.stdout.write(`memory sentinel: 200-turn non-model wall p95=${p95(samples).toFixed(1)} ms, first-ten median=${first.toFixed(1)} ms, `
+      + `final-ten median=${final.toFixed(1)} ms, growth=${(final - first).toFixed(1)} ms, final-ten max=${Math.max(...samples.slice(190)).toFixed(1)} ms; `
+      + `sentinel step over 2000 turns cpu p95=${p95(step).toFixed(1)} ms, wall p95=${p95(stepWall).toFixed(1)} ms\n`);
     expect(p95(samples)).toBeLessThanOrEqual(5000);
-    expect(p95(samples.slice(190)) - p95(samples.slice(0, 10))).toBeLessThanOrEqual(1000);
+    expect(final - first).toBeLessThanOrEqual(1000);
     expect(p95(step)).toBeLessThanOrEqual(250);
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
