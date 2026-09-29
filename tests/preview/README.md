@@ -8,17 +8,25 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 
 ## Capabilities
 
-The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails.
+The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `preview-conversation`: answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent.
-- `preview-durable-memory`: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
-- `preview-status-command`: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
-- `preview-upcoming-date-mention`: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
-- `preview-requested-actions`: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), answers that request once then as an ordinary reply through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit.
-- `preview-owned-obligations`: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
+- `preview-conversation`: answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message.
+  Details: answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent.
+- `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
+  Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
+- `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
+  Details: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
+- `preview-upcoming-date-mention`: a saved date within 48 hours can get one short mention in the next reply.
+  Details: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
+- `preview-requested-actions`: an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it.
+  Details: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), answers that request once then as an ordinary reply through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit.
+- `preview-owned-obligations`: keeps standing instructions and works the promises its replies leave open, holding results for the next message.
+  Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
-- `preview.coherence-check`: checks each reply against remembered earlier turns, without a model call, and records the findings.
-- `preview.step-check`: off unless the runner is launched with it; records an independent check of each business step and changes nothing.
+- `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
+  Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
+- `preview.step-check`: off unless launched with it; independently checks each business step and changes nothing.
+  Details: off unless the runner is launched with it; records an independent check of each business step and changes nothing.
 
 ## Prerequisites and exact invocation
 

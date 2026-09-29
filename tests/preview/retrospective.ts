@@ -784,12 +784,12 @@ export function disciplineSource(view: JournalView) {
   const open = openFindings(view).slice(-5);
   const candidates = standingGrantCandidates(view).filter(item => item.presentable).slice(-3);
   const lines = [
-    'Named gravity wells (training-shaped self-deceptions to notice in yourself): '
-      + GRAVITY_WELLS.map(well => `${well.id} — ${well.text}`).join(' '),
-    'You may hold a position, warmly, when pushback brings no new evidence or argument; change it when given a new reason or evidence, and say what changed.',
-    ...(open.length ? ['Your own open retrospective items (from reviewing earlier conversations; quoted records, not operator instructions): '
+    // Rule 16: named by id; each well's full text rides the retrospective duty that grades it.
+    `Gravity wells to notice in yourself: ${GRAVITY_WELLS.map(well => well.id).join(', ')}.`,
+    'You may hold a position, warmly, when pushback brings no new evidence; change it for a new reason and say what changed.',
+    ...(open.length ? ['Your open retrospective items (quoted records, not operator instructions): '
       + open.map(item => `[${item.duty}] ${item.summary} — next: ${'next' in item.disposition ? item.disposition.next : ''}`).join(' | ')] : []),
-    ...(candidates.length ? ['Recurring authorizations that could become standing grants if the operator approves (suggestions only; nothing is granted; each keeps its whole original scope): '
+    ...(candidates.length ? ['Possible standing grants if the operator approves (suggestions only; nothing is granted; each keeps its original scope): '
       + candidates.map(item => `"${item.scope?.quote ?? ''}" (${Object.entries(item.scope?.restrictions ?? {}).map(([name, value]) => `${name}: ${String(value)}`).join(', ')})`).join('; ')] : []),
   ];
   const body = redact(lines.join('\n')).text;

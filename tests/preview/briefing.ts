@@ -44,7 +44,8 @@ export function capabilityBriefing(readSource: (path: string) => string,
   const off = features.filter(f => f.availability === 'switched-off');
   return { generation, commit, text: [
     'This is a private Instar 2.0 PREVIEW trial in the operator\'s direct Telegram chat and its topics. '
-      + 'Its capabilities below are generated from the register of declared features for this installation.',
+      + 'Its capabilities below are one-line summaries generated from the register of declared features for this installation; '
+      + 'full descriptions are in each module\'s documentation, and the status reply shows their current state.',
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item),
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`Present in the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],

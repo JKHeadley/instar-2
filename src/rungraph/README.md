@@ -154,4 +154,5 @@ Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
 
 ## Capabilities
 
-- `rungraph-core`: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.
+- `rungraph-core`: records each run as signed facts and refuses a step outside its budget or grant.
+  Details: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.
