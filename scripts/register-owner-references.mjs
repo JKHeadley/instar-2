@@ -98,7 +98,7 @@ const contracts = {
       || id === 'P12-NF-28' && path === 'tests/conversation/slack-reply-hold.test.ts') },
   // The shipped preview runner: its own gate/inspection tests and its reader captures.
   preview: { decoders: {},
-    capture: (id, path) => /^PREVIEW-CAPTURE-[A-Z0-9-]+$/.test(id) && /^tests\/(?:preview\/fixtures|fixtures\/provider-failure)\/[^/]+$/.test(path),
+    capture: (id, path) => /^PREVIEW-CAPTURE-[A-Z0-9-]+$/.test(id) && /^tests\/(?:preview\/fixtures|fixtures\/provider-failure|fixtures\/captures)\/[^/]+$/.test(path),
     fixture: id => /^PREVIEW-[A-Z0-9-]+$/.test(id) && !id.startsWith('PREVIEW-CAPTURE-'), probe: () => false,
     test: (id, kind, path) => kind === 'fixture' && (/^tests\/preview\/[a-z0-9-]+\.test\.ts$/.test(path)
       // The provider-result parser's test on the preview's genuine Claude capture.
