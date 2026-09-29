@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:75a33ae3e80427084f69c87671b87c7f286870f99cf872366ffee04e7fa5593c
-Source commit: aaeef1c8a1bdc902478e9d2d2da53bc808dfc2c2
+Register generation: sha256:45dc691638e214c51a7f56eeafe2c423f288dde86f06f246916883d29fb52e95
+Source commit: 0fcbc4f02aa7f4be886d5b92f6c1d17abf86fcff
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -9,9 +9,9 @@ Authority: shape-only; entering-force verification required at consumption.
 |---|---:|
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
-| declared | 2 |
+| declared | 3 |
 | partial | 22 |
-| deferred | 2 |
+| deferred | 1 |
 | gap | 110 |
 
 {
@@ -14434,15 +14434,6 @@ Authority: shape-only; entering-force verification required at consumption.
     }
   ],
   "loops": [
-    {
-      "id": "deferred:preview.reply-check.parseJevResponse:36",
-      "rule": 36,
-      "holder": "preview.reply-check.parseJevResponse",
-      "dueBy": 1793404800000,
-      "part": 7,
-      "owner": "echo (agent)",
-      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
-    },
     {
       "id": "deferred:slack-intake-v1:36",
       "rule": 36,
