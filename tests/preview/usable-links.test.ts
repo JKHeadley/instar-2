@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, CREDENTIAL_SHAPE_NOTICE, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE,
   UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY, limitedAnswerText, requestOverflowLine } from './journal-test-worker.js';
-import { JEV_MODEL, LINK_SHAPE_REASON, REPLY_RULES, linkShapeRules } from './reply-check.js';
+import { BARE_TOPIC_OBJECTION, JEV_MODEL, LINK_SHAPE_REASON, REPLY_RULES, bareTopicReferences, linkShapeRules, topicNameReason } from './reply-check.js';
+import { topicNames } from './journal.js';
 import { machineLink } from './coherence-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -85,4 +86,87 @@ it('builds every fixed outbound template without a link the operator cannot open
   for (const text of [CREDENTIAL_SHAPE_NOTICE, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY,
     limitedAnswerText(journal.view, 'turns', 1), limitedAnswerText(journal.view, 'calls', 3), limitedAnswerText(journal.view, 'replies', 2),
     requestOverflowLine(4)]) expect(machineLink.test(text), text).toBe(false);
+}));
+
+// Rule 106, "never a bare id where a name exists": topic names come from the service updates the
+// journal already preserves, so a rename is known at once and after a reopen.
+const chat = { id: 7654321, type: 'private' }, operator = { id: 7654321 };
+const topicEvent = (id: number, thread: number, event: 'forum_topic_created' | 'forum_topic_edited', body: Record<string, unknown>, on = chat) =>
+  ({ update_id: id, message: { message_id: id, chat: on, from: operator, message_thread_id: thread, [event]: body } });
+const said = (id: number, text: string, thread?: number) => ({ update_id: id, message: { message_id: id, chat, from: operator, text,
+  ...(thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true }) } });
+const renamed = [topicEvent(1, 12, 'forum_topic_created', { name: 'Trip', icon_color: 7322096 }),
+  said(2, 'The passports are in the blue folder.', 12), topicEvent(3, 12, 'forum_topic_edited', { name: 'Travel  plans\u0007' })];
+
+it('names a renamed topic in another conversation\'s packet, never "topic 12", and keeps the name after a reopen', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-topic-names-')));
+  const path = join(root, 'journal.encrypted'), wide = { ...genesis, maxCalls: 20, maxReplies: 20, maxTurns: 20 };
+  try {
+    const contexts: string[] = [];
+    const run = (journal: ReturnType<typeof openPreviewJournal>) => createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      checkOutbound: () => {}, model: async input => { contexts.push(input.context); return 'noted'; },
+      send: async () => 1 });
+    const first = openPreviewJournal(path, key, wide);
+    const worker = run(first);
+    worker.intake(renamed); await worker.drain();
+    expect(topicNames(first.view)).toEqual(new Map([[12, 'Travel plans']]));
+    worker.intake([said(4, 'Where are the passports?')]); await worker.drain();
+    const packet = JSON.parse(contexts.at(-1)!);
+    expect(packet.history).toContainEqual(expect.objectContaining({ conversation: 'the "Travel plans" topic', user: 'The passports are in the blue folder.' }));
+    expect(contexts.at(-1)).not.toMatch(/topic 12\b/u);
+    first.close();
+    const reopened = openPreviewJournal(path, key, wide);
+    expect(topicNames(reopened.view)).toEqual(new Map([[12, 'Travel plans']]));
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('takes a name only from the bound chat, keeps it on an icon-only edit, and leaves an unnamed topic its number', () => withJournal(async journal => {
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async () => 'noted', send: async () => 1 });
+  worker.intake([topicEvent(1, 5, 'forum_topic_created', { name: 'Garden' }),
+    topicEvent(2, 5, 'forum_topic_edited', { icon_custom_emoji_id: '123' }),
+    topicEvent(3, 9, 'forum_topic_created', { name: 'Not mine' }, { id: 111, type: 'private' }),
+    topicEvent(4, 6, 'forum_topic_created', { name: '   ' })]);
+  expect(topicNames(journal.view)).toEqual(new Map([[5, 'Garden']]));
+  expect(journal.view.order.every(turn => !turn.accepted)).toBe(true);
+}));
+
+it('finds a named topic called only by its number, and nothing else', () => {
+  const names = new Map([[12, 'Travel plans']]);
+  expect(bareTopicReferences('It is in topic 12, see Topic #12.', names)).toEqual([12]);
+  expect(bareTopicReferences('It is in topic 13 and in the "Travel plans" topic.', names)).toEqual([]);
+  expect(bareTopicReferences('It is in topic 120.', names)).toEqual([]);
+  expect(topicNameReason([12], new Map([[12, 'x'.repeat(100)]])).length).toBeLessThanOrEqual(160);
+  expect(topicNameReason([12], names)).toContain('"Travel plans"');
+});
+
+it('turns a bare topic number into a revision signal naming the topic, then sends the revision', () => withJournal(async journal => {
+  const sent: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', 1000),
+    model: async input => input.id.endsWith(':4') ? 'They are in topic 12.' : 'noted',
+    replyCheck: { elapsedMs: () => 0, jev: async () => ({ value: pass, latencyMs: 1 }),
+      escalate: async (_text, _id, _prompt, _rules, _deadline, operation) => {
+        if (operation !== 'revision') throw Error('no review needed');
+        return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 }; },
+      revise: async input => { expect(input.ruleIds).toEqual([BARE_TOPIC_OBJECTION]);
+        expect(input.reason).toBe(topicNameReason([12], new Map([[12, 'Travel plans']])));
+        return { state: 'complete', text: 'They are in the blue folder, as you said in the "Travel plans" topic.' }; } },
+    send: async input => { sent.push(input.expectedText); return sent.length; } });
+  worker.intake([...renamed, said(4, 'Where are the passports?')]); await worker.drain();
+  expect(sent.at(-1)).toBe('PREVIEW — They are in the blue folder, as you said in the "Travel plans" topic.');
+  expect(journal.view.turns.get('telegram:12345678:update:4')?.release).toMatchObject({ objections: [BARE_TOPIC_OBJECTION], revised: true });
+}));
+
+it('never blocks on the topic signal: an unnamed number passes, a named one is sent with the signal recorded', () => withJournal(async journal => {
+  const sent: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async input => input.id.endsWith(':4') ? 'They are in topic 12.' : 'It is in topic 30.',
+    send: async input => { sent.push(input.expectedText); return sent.length; } });
+  worker.intake([...renamed, said(4, 'Where are the passports?'), said(5, 'And the tickets?')]); await worker.drain();
+  expect(sent.slice(-2)).toEqual(['PREVIEW — They are in topic 12.', 'PREVIEW — It is in topic 30.']);
+  expect(journal.view.turns.get('telegram:12345678:update:4')?.release).toMatchObject({ review: 'violation',
+    objections: [BARE_TOPIC_OBJECTION], revised: false, final: { links: [BARE_TOPIC_OBJECTION] } });
+  expect(journal.view.turns.get('telegram:12345678:update:5')?.release).toBeUndefined();
 }));

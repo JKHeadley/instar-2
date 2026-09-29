@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, LINK_SHAPE_REASON, linkShapeRules } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION } from './reply-check.js';
 import { parseDatedItem, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { fulfillmentProposals, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -3003,8 +3003,35 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: Telegram
 }
 /** Flag carried by an operator edit whose original message is not in this journal (Rule 14). */
 export const UNLINKED_EDIT_FLAG = '[Edited message; I do not have the original in my history.]';
-/** The name a conversation is shown by in another conversation's packet. */
-export const conversationName = (thread: number | undefined) => thread === undefined ? 'main chat' : `topic ${String(thread)}`;
+/** Telegram's topic-name bound; a longer or control-bearing name is shortened and cleaned. */
+export const TOPIC_NAME_MAX = 128;
+/** Rule 106: the name each topic of the bound private chat was last given, read from the
+ * `forum_topic_created`/`forum_topic_edited` service updates the journal already preserves with the
+ * cursor. Nothing new is written, so a journal from before this reader gains its names on replay.
+ * Only the bound chat names a topic; an icon-only edit keeps the earlier name. */
+const topicNameMemo = new WeakMap<JournalView, { order: Turn[]; length: number; names: Map<number, string> }>();
+export function topicNames(view: JournalView): ReadonlyMap<number, string> {
+  // The order only grows by appends; a replaced or shorter order is read again from its start.
+  const prior = topicNameMemo.get(view), memo = prior && prior.order === view.order && prior.length <= view.order.length ? prior : undefined;
+  if (memo && memo.length === view.order.length) return memo.names;
+  const names = new Map(memo?.names ?? []);
+  for (const turn of view.order.slice(memo?.length ?? 0)) {
+    if (!turn.raw.includes('"forum_topic_')) continue;
+    let message: (TelegramMessage & { forum_topic_created?: { name?: unknown }; forum_topic_edited?: { name?: unknown } }) | undefined;
+    try { const update = JSON.parse(turn.raw) as TelegramUpdate; message = update.message ?? update.edited_message; } catch { continue; }
+    const thread = message?.message_thread_id, raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
+    if (message?.chat?.type !== 'private' || String(message.chat.id) !== view.genesis.chat
+      || !Number.isSafeInteger(thread) || thread! <= 0 || typeof raw !== 'string') continue;
+    const name = Array.from(raw.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/gu, ' ').trim()).slice(0, TOPIC_NAME_MAX).join('');
+    if (name) names.set(thread!, name);
+  }
+  topicNameMemo.set(view, { order: view.order, length: view.order.length, names });
+  return names;
+}
+/** The name a conversation is shown by in another conversation's packet: its topic name where one
+ * exists, never a bare id in its place (Rule 106). An unnamed topic keeps its number. */
+export const conversationName = (thread: number | undefined, names?: ReadonlyMap<number, string>) =>
+  thread === undefined ? 'main chat' : names?.has(thread) ? `the "${names.get(thread)!}" topic` : `topic ${String(thread)}`;
 
 export function raiseJournalCaps(journal: ReturnType<typeof openPreviewJournal>, input: {
   maxCalls: number; maxReplies: number; maxTurns: number; maxBytes?: number; authority: string; at: number }) {
@@ -3462,14 +3489,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const sentText = (turn: Turn) => turn.intent?.replace(/^PREVIEW — /u, '');
   const dated = (turn: Turn) => { const at = sentAt(turn); return at === null ? 'date unknown' : isoMinute(at); };
   const turnLabel = (turn: Turn) =>
-    `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${conversationName(turn.thread)}/${dated(turn)}/#${turn.update}`;
+    `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${conversationName(turn.thread, topicNames(journal.view))}/${dated(turn)}/#${turn.update}`;
   const channelLabel = (item: ChannelItem) =>
     `import:${item.source}/${cleanMetadata(item.conversation ?? 'unknown conversation', item).replace(/\s+/gu, ' ').slice(0, 40)}/${isoMinute(item.at)}/${createHash('sha256').update(channelKey(item)).digest('hex').slice(0, 12)}`;
   const summaryLabel = (summary: Extract<JournalRecord, {kind:'summary'}>) =>
     `summary:all conversations/${isoMinute(summary.at)}/through #${summary.through}`;
   const memoryLabel = (change: MemoryChange) => {
     const trigger = journal.view.turns.get(change.trigger)!;
-    return `correction:operator/${conversationName(trigger.thread)}/${dated(trigger)}/#${trigger.update}`;
+    return `correction:operator/${conversationName(trigger.thread, topicNames(journal.view))}/${dated(trigger)}/#${trigger.update}`;
   };
   const age = (turn: Turn) => {
     const at = sentAt(turn), elapsed = at === null ? -1 : ports.now() - at;
@@ -3974,7 +4001,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (packet && !includeRecorded) return { update: target.update, reply: replyFor(target), recorded: null,
       missing: 'The recorded packet did not fit this bounded reply context.' };
     return { guidance: 'This is one candidate reply. Judge whether it matches the question. This redacted view of its recorded packet shows inputs available to the model, not which ones it actually relied on. If the target or packet is missing, say so; do not infer a reason from current history.',
-      update: target.update, conversation: conversationName(target.thread), reply: replyFor(target),
+      update: target.update, conversation: conversationName(target.thread, topicNames(journal.view)), reply: replyFor(target),
       delivery: outcome(target), ...(target.replyChecks?.length ? { replyCheck: target.replyChecks.at(-1) } : {}),
       ...(packet && includeRecorded && !superseded ? { recorded: safeProvenance(Object.fromEntries(
         ['now', 'sources', 'historyMode', 'summary', 'memory', 'history', 'recalled', 'people', 'commitments', 'channelMemory', 'corrections']
@@ -4159,7 +4186,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && (!memoryTriggers.has(item.id) || journal.view.memory.some(change => change.source === item.id
           || change.trigger === item.id && change.historical)))
         .map(item => ({ id: item.id, text: item.text, at: sentAt(item) ?? 0, source: `turn ${item.update}`,
-          date: dated(item), conversation: conversationName(item.thread) })),
+          date: dated(item), conversation: conversationName(item.thread, topicNames(journal.view)) })),
       ...[...journal.view.channelItems.values()].filter(item => item.at < turn.at)
         .map(item => ({ id: channelMemoryId(item), text: item.text, at: item.at,
           source: `${item.source} ${publicMemoryId(channelMemoryId(item))} (export)`, date: isoMinute(item.at),
@@ -4232,7 +4259,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(item => ({ previous: clean(redact(journal.view.turns.get(item.replaces!)!.text).text, true, item.replaces),
         current: clean(redact(item.text).text, true, item.id),
         state: 'edit judgment unresolved; do not treat the prior claim as settled' }));
-    const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: conversationName(item.thread), date: dated(item) };
+    const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)), date: dated(item) };
     const history = earlier.map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), ...elsewhere(item), ...(item.editOf ? { editedTurn: item.editOf } : {}), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
         : clean(redact(item.text).text, true, item.id),
@@ -4256,7 +4283,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(turn ? { source: turn.id } : { source: item!.source }),
       from: turn ? speakerOf(turn) : `${cleanMetadata(item!.from, item)} (export sender metadata, unverified)`,
       date: turn ? dated(turn) : isoMinute(item!.at),
-      ...(turn ? (turn.thread === current ? {} : { conversation: conversationName(turn.thread) })
+      ...(turn ? (turn.thread === current ? {} : { conversation: conversationName(turn.thread, topicNames(journal.view)) })
         : { account: cleanMetadata(item!.account, item),
           ...(item!.conversation === undefined ? {} : { conversation: cleanMetadata(item!.conversation, item) }) }),
       message: turn ? clean(redact(turn.text).text, true, turn.id)
@@ -4291,7 +4318,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     const commitments = [...promised.values()].sort((a, b) => a.turn.update - b.turn.update || (a.side === 'message' ? -1 : 1))
       .map(({ turn, side, items }) => ({ source: turn.id, sourceKind: side === 'message' ? sourceKindOf(turn) : 'inferred-by-summary' as MemorySourceKind, sourceLabel: turnLabel(turn), from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn), age: age(turn),
-        ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread) }),
+        ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread, topicNames(journal.view)) }),
         ...(side === 'message' ? { message: clean(redact(turn.text).text, true, turn.id) }
           : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true, turn.id), delivery: outcome(turn) }),
         items: items.map(item => {
@@ -4309,7 +4336,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ...(note.sources?.length ? { sources: note.sources.map(source => {
             const original = journal.view.turns.get(source.source)!;
             return { sourceLabel: turnLabel(original), from: note.in === 'message' ? speakerOf(original) : 'you, in your own earlier reply',
-              date: dated(original), ...(original.thread === current ? {} : { conversation: conversationName(original.thread) }),
+              date: dated(original), ...(original.thread === current ? {} : { conversation: conversationName(original.thread, topicNames(journal.view)) }),
               ...(note.in === 'message' ? { message: clean(redact(original.text).text, true, original.id) }
                 : { reply: replyFor(original), delivery: outcome(original) }), quote: clean(source.quote, true, original.id) };
           }) } : {}) };
@@ -4318,7 +4345,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       [entry.turn.id, ...entry.items.flatMap(item => journal.view.commitments[item.id]?.sources?.map(source => source.source) ?? [])])]);
     const recall = summary || saidRange ? recalled.filter(item => (saidRange || !cited.has(item.id)) && !superseded.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), date: dated(item),
 
-      ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
+      ...(item.thread === current ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)) }),
       ...(item.editOf ? { editedTurn: item.editOf } : {}),
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts]'
@@ -4331,7 +4358,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const corrections = flagged.filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' &&
       (change.source === item.id || change.replies?.includes(item.id)))).map(item => ({ source: item.id, sourceLabel: turnLabel(item), update: item.update, date: dated(item),
 
-      ...(item.thread === current ? {} : { conversation: conversationName(item.thread) }),
+      ...(item.thread === current ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)) }),
       findings: correctionNote(item.checked ?? []).map(finding => ({ ...finding,
         possibleProblem: clean(finding.possibleProblem, true, item.id), inYourReply: clean(finding.inYourReply, true, item.id) })) }));
     const channelMemory = channels.map(item => ({ sourceLabel: channelLabel(item), sourceKind: 'channel-import' as MemorySourceKind, source: item.source, account: cleanMetadata(item.account, item),
@@ -4343,7 +4370,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(item.conversation === undefined ? {} : { conversation: cleanMetadata(item.conversation, item) }),
       quote: clean(redact(item.text).text, true) }));
     const openQuestions = questions.map(note => { const source = journal.view.turns.get(note.source)!;
-      return { id: note.source, date: dated(source), ...(source.thread === current ? {} : { conversation: conversationName(source.thread) }),
+      return { id: note.source, date: dated(source), ...(source.thread === current ? {} : { conversation: conversationName(source.thread, topicNames(journal.view)) }),
         from: speakerOf(source), question: clean(redact(note.quote).text, true), reason: note.reason }; });
     const crossed = [...earlier, ...(summary ? recalled : [])].some(item => item.thread !== current);
     const activeDated = journal.view.dated.filter(item => !journal.view.memory.some(change =>
@@ -4364,7 +4391,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const lastNamedPerson = selectedName && previousMessage?.includes(selectedName)
       && clean(redact(selectedName).text, true, previous.id) === selectedName
       ? { name: selectedName, from: speakerOf(previous), date: dated(previous),
-        ...(previous.thread === current ? {} : { conversation: conversationName(previous.thread) }),
+        ...(previous.thread === current ? {} : { conversation: conversationName(previous.thread, topicNames(journal.view)) }),
         message: previousMessage } : undefined;
     const preferences = preferenceState();
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
@@ -4428,7 +4455,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })) } : {}),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
-        operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current) }) },
+        operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
@@ -5279,8 +5306,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
         let mentionedKeys = mentioned.map(datedKey), heldBack = false;
         let release: ReplyRelease | undefined;
-        // Rule 106 before the send: the link-shape predicate over the model-written text is a signal.
-        const linkRules = turn.answer !== undefined ? linkShapeRules(reply) : [];
+        // Rule 106 before the send: the link-shape predicate over the model-written text, and a named
+        // topic called only by its number, are signals.
+        const usableRefs = (text: string) => {
+          const topics = turn.answer !== undefined ? bareTopicReferences(text, topicNames(journal.view)) : [];
+          const rules: string[] = [...(turn.answer !== undefined ? linkShapeRules(text) : []), ...(topics.length ? [BARE_TOPIC_OBJECTION] : [])];
+          const reason = !topics.length ? LINK_SHAPE_REASON : rules.length > 1
+            ? `${topicNameReason(topics, topicNames(journal.view))}; ${LINK_SHAPE_REASON}` : topicNameReason(topics, topicNames(journal.view));
+          return { rules, reason };
+        };
+        const { rules: linkRules, reason: linkReason } = usableRefs(reply);
 
         if (ports.replyCheck) {
           const reviewed = turn.replyChecks?.at(-1);
@@ -5390,7 +5425,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const checkRow = linkOnly ? undefined : turn.replyChecks?.filter(item => item.candidateDigest === undefined
               || item.candidateDigest === candidateDigest).at(-1);
             const objections = [...new Set([...(credentialShape ? ['credential'] : []), ...(checkRow?.ruleIds ?? []), ...linkRules])];
-            const reason = linkOnly ? LINK_SHAPE_REASON : checkRow?.reason ?? (decision === 'violation' ? undefined
+            const reason = linkOnly ? linkReason : checkRow?.reason ?? (decision === 'violation' ? undefined
               : capRefused ? 'review not run: call cap reached' : 'review unavailable');
             // One bounded revision round inside the existing call allowance; the mind decides
             // what to change. An UNKNOWN revision is never repeated: the original is released.
@@ -5454,7 +5489,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             release = { review: decision, objections, ...(reason === undefined ? {} : { reason }), revised: revised !== undefined };
           }
-        } else if (linkRules.length) release = { review: 'violation', objections: linkRules, reason: LINK_SHAPE_REASON, revised: false };
+        } else if (linkRules.length) release = { review: 'violation', objections: linkRules, reason: linkReason, revised: false };
         gate();
         // Rules 57, 93: a due turn is rechecked just before its send intent: never sent once withdrawn, and
         // held back while a later operator turn that may withdraw one of its requests is unsettled.
@@ -5463,10 +5498,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Rule 106 on the final candidate: a revision or assembly can introduce a link the first check
         // never saw. The findings are recorded against this exact text; they advise, never hold.
         if (turn.answer !== undefined) {
-          const links = linkShapeRules(reply);
+          const { rules: links, reason: finalReason } = usableRefs(reply);
           if (links.length) {
             const prior = release?.objections ?? [];
-            release = { ...(release ?? { review: 'violation' as const, reason: LINK_SHAPE_REASON, revised: false }),
+            release = { ...(release ?? { review: 'violation' as const, reason: finalReason, revised: false }),
               objections: [...new Set([...prior, ...links])],
               final: { digest: createHash('sha256').update(reply).digest('hex'), links } };
           }

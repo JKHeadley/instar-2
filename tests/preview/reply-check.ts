@@ -234,6 +234,27 @@ export function linkShapeRules(text: string): ReplyRule[] {
 }
 export const LINK_SHAPE_REASON = 'link-shape check: a localhost link or machine-only path the operator cannot open (Rule 106)';
 
+/** Rule 106's "never a bare id where a name exists": the named topics a reply refers to only by
+ * number ("topic 12", "topic #12"). Exact and deterministic; the mind decides the wording (Rule 86). */
+export const BARE_TOPIC_OBJECTION = 'bare_topic_id';
+export function bareTopicReferences(text: string, names: ReadonlyMap<number, string>): number[] {
+  const found = new Set<number>();
+  for (const match of text.matchAll(/\btopics?\s*(?:#|no\.?\s*|number\s+)?(\d{1,15})\b/giu)) {
+    const thread = Number(match[1]);
+    if (names.has(thread)) found.add(thread);
+  }
+  return [...found];
+}
+/** The revision note for bare topic numbers: each named with the name the operator gave it. It stays
+ * inside the revision note's 160-character slice by shortening long names. */
+export function topicNameReason(threads: readonly number[], names: ReadonlyMap<number, string>): string {
+  const shown = threads.slice(0, 2).map(thread => {
+    const name = names.get(thread) ?? '';
+    return `topic ${String(thread)} is "${Array.from(name).length > 40 ? `${Array.from(name).slice(0, 39).join('')}…` : name}"`;
+  });
+  return `topic-name check: call a topic by its name, not its number (Rule 106): ${shown.join('; ')}`;
+}
+
 /** Most revise rounds per reply: one, inside the existing call allowance. */
 export const REPLY_REVISION_ROUNDS = 1;
 /** The mind's one revision of its own draft. Objections are advisory; the answer stays. */
