@@ -7,6 +7,16 @@ import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
 import { openPreviewJournal } from './journal.js';
 
+// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
+// failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
+// and nothing else may be appended.
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+; send "status" for detail\.)$/u;
+const answerOf = (text: string) => {
+  const [answer, ...notices] = text.split('\n\n');
+  for (const notice of notices) expect(notice).toMatch(NOTICE_LINE);
+  return answer;
+};
+
 it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding) => {
   const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
@@ -234,8 +244,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const sends = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
     expect(sends).toHaveLength(2);
     expect(sends[0].message_thread_id).toBeUndefined();
-    expect(sends[1]).toMatchObject({chat_id:world.configuration.chatId,message_thread_id:7,
-      text:'PREVIEW — Your sister is Wren; you told me in the main chat.'});
+    expect(sends[1]).toMatchObject({chat_id:world.configuration.chatId,message_thread_id:7});
+    expect(answerOf(sends[1].text)).toBe('PREVIEW — Your sister is Wren; you told me in the main chat.');
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:2,unknownCallBreakdown:{ jev:2,total:2 },unknownSends:unknown,
@@ -315,7 +325,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(run.status,run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
     // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
-    expect(sends.some(send => send.text === 'PREVIEW — Noted.')).toBe(mode !== 'answer-two-objects');
+    expect(sends.some(send => answerOf(send.text) === 'PREVIEW — Noted.')).toBe(mode !== 'answer-two-objects');
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);
