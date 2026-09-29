@@ -2993,9 +2993,26 @@ marker; earlier steps keep their verdicts.
 
 The live private-chat procedure is in
 [jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark
-observation's evaluation target is 2026-09-30: the desk can decide whether to
-keep it on after Justin's script produces a recorded trace. While off, it is
+observation's first evaluation target, 2026-09-30, passed without a recorded
+trace, so its graduation deadline is now 2026-10-15, recorded with its reason,
+owner and rollback in the promotion record below. The desk can decide whether
+to keep it on after Justin's script produces a recorded trace. While off, it is
 not a live safety guard.
+
+### Promotion record
+
+`promotion-record.ts` is the durable, reviewed record of how each gated
+capability graduates: test agent, then development agent, then fleet (Rule 72).
+Each entry is one decision. A stage is reached only after the stages before it,
+and names the durable evidence a reader can open. A new deadline must fall after
+the moment it is recorded, and names its reason, the owner of the next step and
+the rollback. A capability's declared `gate.deadline` must equal the latest
+deadline in the record; the capability tests fail on any difference, and on a
+deadline past the real clock. `status` adds a `Graduation:` line that shows each
+stage as `recorded`, `observed` or `missing`. `observed` means this runtime
+passed the capability's proof but no record entry exists yet. The line also
+shows the deadline and when it was recorded. A dark capability stays `dark` in
+the capability count whatever the record says: the record moves no protection.
 
 ### Bounded encrypted journal compaction
 

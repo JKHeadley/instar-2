@@ -14,6 +14,8 @@
 import { PREVIEW_PROOF_PLANS, probeId, replyTurn, requestedActionTurn, statusTurn } from './proofs.js';
 import type { LiveProofRecord, PlanPosture, ProofRecord } from './proofs.js';
 import { isJournalUpdate } from './journal.js';
+import { PROMOTION_RECORD, STAGES, promotionOf, promotionRecordFindings, utcDay } from './promotion-record.js';
+import type { PromotionEntry, Stage } from './promotion-record.js';
 import type { JournalView, Turn } from './journal.js';
 
 export type Adjectives = Readonly<Record<'critical' | 'significant' | 'userFacing' | 'irreversible', boolean>>;
@@ -49,8 +51,6 @@ export interface CapabilityMeta {
 export interface PreviewCapability extends CapabilityMeta { declaration: FeatureDeclaration }
 
 const RUNNER = ['tests/preview/journal-agent.mjs', 'tests/preview/journal.ts'];
-/** The dark step observer's recorded evaluation target (README, Dark Jev step check): 2026-09-30 00:00 UTC. */
-export const STEP_CHECK_GRADUATION_DEADLINE = 1790726400000;
 const outcome = (kind: OutcomeKind, tier: Acceptance['tier'] = 'journal-outcome'): Acceptance => ({ outcome: kind, tier });
 
 export const PREVIEW_CAPABILITY_META: Readonly<Record<string, CapabilityMeta>> = Object.freeze({
@@ -164,9 +164,18 @@ export function previewInventory(declarations: readonly PreviewDeclaration[], pe
 /** The critical outcomes a capability must still produce. */
 export const outcomesOf = (inventory: PreviewInventory, id: string) => inventory.outcomes.filter(item => item.id.startsWith(`${id}.`));
 
-/** The register's feature invariants plus Rules 34, 43 and 76, over the joined inventory. Every finding names its rule. */
-export function capabilityFindings(inventory: PreviewInventory, classify: (p: FeatureProfile) => Adjectives, now: number): string[] {
-  const findings = [...inventory.gaps];
+/** The register's feature invariants plus Rules 34, 43 and 76, over the joined inventory. Every finding names its rule.
+ * Rule 72 also reads the promotion record: a moved deadline must be the one the register declares. */
+export function capabilityFindings(inventory: PreviewInventory, classify: (p: FeatureProfile) => Adjectives, now: number,
+  record: readonly PromotionEntry[] = PROMOTION_RECORD): string[] {
+  const findings = [...inventory.gaps, ...promotionRecordFindings(record)];
+  for (const id of new Set(record.map(entry => entry.capability))) {
+    const gated = inventory.capabilities.find(item => item.declaration.id === id)?.declaration.requiredFacts.gate;
+    if (!gated) findings.push(`${id}: Rule 72 — the promotion record names a capability with no declared graduation gate`);
+    const recorded = promotionOf(record, id).deadline;
+    if (gated && recorded && recorded.deadline !== gated.deadline)
+      findings.push(`${id}: Rule 72 — the declared graduation deadline differs from the promotion record's latest (${utcDay(recorded.deadline)})`);
+  }
   for (const capability of inventory.capabilities) {
     const d = capability.declaration, facts = d.requiredFacts, adjectives = classify(d.profile);
     if (!facts.metrics.length) findings.push(`${d.id}: Rule 39 — metrics cannot be empty`);
@@ -216,10 +225,11 @@ export interface CapabilityRow {
   outcomes: OutcomeRow[];
   metrics: { declared: number; unreached: string[] };
   liveProof: { state: 'recorded' | 'stale-version' | 'missing' | 'not-required'; recordedAt: number | null; update: number | null };
-  /** Rule 72: the stages this runtime can observe. The preview is the development-agent stage; the other stages
-   * and the promotion decision are not observable here and stay unavailable (owner: the desk's promotion record). */
-  graduation: { deadline: number; overdue: boolean; stages: Record<'test-agent' | 'development-agent' | 'fleet', 'observed' | 'missing' | 'unavailable'>;
-    promotion: 'unavailable' } | null;
+  /** Rule 72: each stage from the durable promotion record (`recorded`, with its evidence there); the preview is the
+   * development-agent stage, so a passed proof here without a record entry reads `observed`. `deadlineRecorded` is the
+   * record's decision that moved the declared deadline, or null when it was never moved. */
+  graduation: { deadline: number; overdue: boolean; stages: Record<Stage, 'recorded' | 'observed' | 'missing'>;
+    deadlineRecorded: { recordedAt: number; reason: string; owner: string } | null } | null;
 }
 export interface CapabilityInputs {
   classify(p: FeatureProfile): Adjectives;
@@ -229,6 +239,8 @@ export interface CapabilityInputs {
   liveProofs: readonly LiveProofRecord[];
   proofs: readonly PlanPosture[];
   now: number;
+  /** The promotion record; the committed one unless a test supplies another. */
+  promotions?: readonly PromotionEntry[];
 }
 /** Runtime truth per capability: enabled, outcomes currently proven, reached metrics, live proof at the current version. */
 export function capabilityRows(inventory: PreviewInventory, input: CapabilityInputs): CapabilityRow[] {
@@ -248,14 +260,18 @@ export function capabilityRows(inventory: PreviewInventory, input: CapabilityInp
       : adjectives.critical && !outcomes.length ? 'gap' : !outcomes.length ? 'unproven'
         : outcomes.every(row => row.confirmed) ? 'confirmed' : 'unconfirmed';
     const developed = input.proofs.some(row => row.capability === d.id && row.lastSuccessAt !== null);
+    const promotion = promotionOf(input.promotions ?? PROMOTION_RECORD, d.id);
+    const stages = Object.fromEntries(STAGES.map(stage => [stage, promotion.stages[stage] ? 'recorded'
+      : stage === 'development-agent' && developed ? 'observed' : 'missing'])) as Record<Stage, 'recorded' | 'observed' | 'missing'>;
     return { id: d.id, status: d.status, change: capability.change, enabled, version, registered: !inventory.pending.includes(d.id),
       critical: adjectives.critical, significant: adjectives.significant, userFacing: adjectives.userFacing, protection, outcomes,
       metrics: { declared: d.requiredFacts.metrics.length, unreached: enabled ? d.requiredFacts.metrics.filter(path => !metricReached(input.status, path)) : [] },
       liveProof: !d.requiredFacts.liveProof ? { state: 'not-required', recordedAt: null, update: null }
         : current ? { state: 'recorded', recordedAt: current.recordedAt, update: current.update }
           : stale ? { state: 'stale-version', recordedAt: stale.recordedAt, update: stale.update } : { state: 'missing', recordedAt: null, update: null },
-      graduation: d.requiredFacts.gate ? { deadline: d.requiredFacts.gate.deadline, overdue: input.now >= d.requiredFacts.gate.deadline,
-        stages: { 'test-agent': 'unavailable', 'development-agent': developed ? 'observed' : 'missing', fleet: 'unavailable' }, promotion: 'unavailable' } : null };
+      graduation: d.requiredFacts.gate ? { deadline: d.requiredFacts.gate.deadline, overdue: input.now >= d.requiredFacts.gate.deadline, stages,
+        deadlineRecorded: promotion.deadline && promotion.deadline.deadline === d.requiredFacts.gate.deadline
+          ? { recordedAt: promotion.deadline.recordedAt, reason: promotion.deadline.reason, owner: promotion.deadline.owner } : null } : null };
   });
 }
 
@@ -269,9 +285,13 @@ export function proofStatusLines(proofs: readonly PlanPosture[], rows: readonly 
   const overdue = rows.filter(row => row.graduation?.overdue).map(row => row.id);
   const dark = rows.filter(row => row.protection === 'dark').map(row => row.id);
   const gaps = rows.filter(row => row.protection === 'gap').map(row => row.id);
+  // Rule 72: where each gated capability stands on the promotion record, and the deadline it must meet.
+  const graduation = rows.flatMap(row => row.graduation && row.status !== 'live' ? [`${row.id} — ${STAGES.map(stage => `${stage} ${row.graduation!.stages[stage]}`).join(', ')}; `
+    + `deadline ${utcDay(row.graduation.deadline)}${row.graduation.deadlineRecorded ? ` (recorded ${utcDay(row.graduation.deadlineRecorded.recordedAt)})` : ''}${row.graduation.overdue ? ', overdue' : ''}`] : []);
   return [
     `Proofs: ${healthy.length}/${required.length} healthy${problems.length ? `; ${problems.join(', ')}` : ''}${unobserved ? `; ${unobserved} not currently observed` : ''}.`,
     `Capabilities: ${count('confirmed')} confirmed, ${count('unconfirmed')} unconfirmed, ${dark.length} dark${dark.length ? ` (${dark.join(', ')})` : ''}${gaps.length ? `, gaps: ${gaps.join(', ')}` : ''}; ${liveMissing} without a live proof at their current version${overdue.length ? `; graduation overdue: ${overdue.join(', ')}` : ''}.`,
+    ...graduation.length ? [`Graduation: ${graduation.join('; ')}.`] : [],
   ];
 }
 
