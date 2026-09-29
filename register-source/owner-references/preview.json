@@ -39,7 +39,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-requested-action.test.ts",
-        "hash": "sha256:d304f3da0e02e7b791a87d4029a54051b741da95750cd9429c308a1f4b4fe95a"
+        "hash": "sha256:9e47e72781d2ae340403f0a309f440b2b34fbfd4bd02360befc4b91e61a737eb"
       }
     },
     {
@@ -55,7 +55,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-spend-cap.test.ts",
-        "hash": "sha256:63c6a76f4030271b7175acdaa5da5b282acd6330af4982f1f0f3679c944978b5"
+        "hash": "sha256:e9d8bfe5aa2801d3c48719f8576b45225e4b69dd22ef869ba6656de7562db683"
       }
     },
     {
