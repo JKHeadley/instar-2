@@ -39,7 +39,7 @@ it('replays a failed usage frame through the real child process IO', async () =>
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('classifies the captured weekly-limit result and its stream result with the captured reset instant', async () => {
+it('PREVIEW-PROVIDER-FAILURE-ON-CAPTURE classifies the captured weekly-limit result and its stream result with the captured reset instant', async () => {
   const captured = fixture('claude-limit-result.json');
   const stream = fixture('claude-limit-result.stream.jsonl').trim().split('\n').map(line => JSON.parse(line));
   const rate = stream.find(row => row.type === 'rate_limit_event');
