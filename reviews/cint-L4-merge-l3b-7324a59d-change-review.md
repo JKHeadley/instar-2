@@ -17,6 +17,8 @@ Layer below: the cint-L3b review records merged here (reviews/cint-L3b-*); docs/
 Bug class: none
 Bug evidence: none
 Hook bypass: none
+Deferral: scripts/check-register-contract-map.mjs:16 | not-a-deferral=merged from cint-L3b; the design assigns runtime-stage evidence to the runtime holder and live proof (P3-NF-25)
+Deferral: docs/defects/preview-runtime-probes-without-ci-proof.md:7 | not-a-deferral=merged from cint-L3b; the record is closed by that same P3-NF-25 ruling, and the probes are exercised by the live-proof step after deploy
 Convergence: none
 
 ## Closing block
