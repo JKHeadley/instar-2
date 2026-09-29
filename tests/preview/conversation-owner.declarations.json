@@ -1,0 +1,47 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.conversation-owner.claimConversation",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113: the conversation lease is host-local, an authority for this machine only; its holder and service-observation files are replaced atomically and the observations are bounded to the latest window."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      63,
+      113
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.conversation-owner.recordRefusal",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113: it appends one line per duplicate launch this machine refused for the conversation; it describes only this host's launches."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      63
+    ],
+    "holds": []
+  }
+]

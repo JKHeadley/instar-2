@@ -1,5 +1,5 @@
 /** The live journal runner's inventory, joined from its register inputs (Rules 9, 34, 39, 43, 62,
- * 72, 73, 76). The declarations live in `preview.declarations.json`, which the register's source
+ * 72, 73, 76). The declarations live in `capabilities.declarations.json`, which the register's source
  * collector reads like every other `*.declarations.json`: the critical outcomes, sentinels,
  * stores and the features whose references the register resolves today. Declarations that name
  * a RECORD reference — a live user-facing feature's `liveProof`, a duty's `proof` — sit in

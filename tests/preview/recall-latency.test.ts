@@ -88,7 +88,10 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // packet.capabilities key as evidence) and the added capabilities key changed.
     // cint-L2 merge of the live repair: diffed field by field against both parents' packets (9bb4bf29… and
     // 4895ab42…), obligationDecision and capabilities equal the live repair's and every other field equals cint-L2's.
-    expect(packetHash).toBe('dcb8aa246be69648f8ffc4d7a734371bc1e4739dd535549b421821b65cfda981');
+    // cint-L3 re-pin (cint-4 and cint-5 merged onto cint-L2): diffed field by field against cint-L2's packet (dcb8aa24…,
+    // reproduced on 9f890018), only the capability field changed, 4021 → 3550 bytes: build 1 moved its hand-written
+    // capability list to the generated capability-note source (Rules 78, 84). Every other field equals cint-L2's.
+    expect(packetHash).toBe('cb0fa8dd3356f36e36d09075d4065eef4b9853e5bb3504bbe58d5bd9364baef8');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

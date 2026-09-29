@@ -267,13 +267,13 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
-    "id": "preview.journal.pollGate",
+    "id": "preview.journal.pollLimit",
     "kind": "blocking sites",
     "status": "live",
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
-      "criticality": "Resource ceilings recorded in the journal: once the trial's turn, reply or journal-byte bound is reached, new polling stops. The model-call cap does not stop polling (status stays reachable); it refuses new model calls elsewhere.",
+      "criticality": "The operator's stop and the trial expiry the operator granted in advance end polling. A resource ceiling never stops reading: past the turn bound, updates wait in the finite waiting store or at Telegram, so stop and approval presses stay reachable (Rules 14, 15).",
       "failDirection": "closed",
       "preservesInput": "Telegram retains unpolled updates; the journal keeps every admitted turn",
       "inspectedBy": "PREVIEW-TRIAL-GATES"

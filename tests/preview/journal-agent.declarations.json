@@ -1,0 +1,23 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal-agent.writeSealedAuthority",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "The desk's recording step writes one sealed authority record to a new file on this machine and never replaces one."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32
+    ],
+    "holds": []
+  }
+]

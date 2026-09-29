@@ -1,4 +1,4 @@
-// Build 9: the preview's register inputs (preview.declarations.json) generate through the register, join to the
+// Build 9: the preview's register inputs (capabilities.declarations.json) generate through the register, join to the
 // runner's plans with every gap kept, and bind live proofs to actual outcomes (Rules 34, 39, 43, 62, 72, 73, 76).
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { PREVIEW_PROOF_PLANS, probeId } from './proofs.js';
 import type { PlanPosture, ProofRecord } from './proofs.js';
 import type { JournalView, Turn } from './journal.js';
 
-const REGISTERED = JSON.parse(readFileSync('tests/preview/preview.declarations.json', 'utf8')) as PreviewDeclaration[];
+const REGISTERED = JSON.parse(readFileSync('tests/preview/capabilities.declarations.json', 'utf8')) as PreviewDeclaration[];
 const PENDING = JSON.parse(readFileSync('tests/preview/preview.pending-declarations.json', 'utf8')) as PreviewDeclaration[];
 const DECLARATIONS = [...REGISTERED, ...PENDING];
 const s = setup();

@@ -6017,12 +6017,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // the 32 KiB packet allowance. Start rolling before the history alone
       // consumes that headroom; the existing summary path remains bounded.
       if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) return;
-      const candidates: { turn: Turn; bases: string[] }[] = [];
+      const candidates: { turn: Turn; bases: string[]; fallback: ReadonlySet<string> }[] = [];
       for (const turn of pending.slice(0, SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
-        const bases = datedVariants(candidate).filter(base => Buffer.byteLength(base) <= Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES));
+        // Last resort, after every variant that carries them: the turn briefing sources (purpose excerpts,
+        // capability note, self-state, desk report) describe the agent, not the conversation being
+        // summarized. Dropping them only when nothing else fits keeps a long operator message summarizable
+        // instead of holding the trial at its byte cap (Rules 2, 14); a summary that fits is unchanged.
+        const dated = datedVariants(candidate);
+        const withoutSources = (base: string) => { const { sources: _sources, ...rest } = JSON.parse(base) as { sources?: unknown }; return JSON.stringify(rest); };
+        const fallback = dated.filter(base => 'sources' in (JSON.parse(base) as object)).map(withoutSources);
+        const bases = [...dated, ...fallback].filter(base => Buffer.byteLength(base) <= Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES));
         if (!bases.length) break;
-        candidates.push({ turn, bases });
+        candidates.push({ turn, bases, fallback: new Set(fallback) });
       }
       if (!candidates.length) {
         const oversized = pending[0];
@@ -6041,7 +6048,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       let oversizedPrompt = false;
       // Try the largest oldest prefix first, then smaller prefixes if the provider's
       // prepared envelope needs more room than the packet itself.
-      for (const { turn, bases } of candidates.reverse()) {
+      for (const { turn, bases, fallback } of candidates.reverse()) {
         const through = turn.update;
         // Recovery may only dispatch a frontier later than every UNKNOWN charge,
         // including when prompt overflow sends selection to a smaller prefix.
@@ -6070,7 +6077,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
         const unanswered = unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
-        for (const base of bases) for (let kept = closable.length; kept >= 0; kept--) {
+        // A briefing-free fallback is reached only when no packet that carries the sources was chosen.
+        for (const base of bases) if (!(chosen && fallback.has(base))) for (let kept = closable.length; kept >= 0; kept--) {
           const offered = closable.slice(closable.length - kept);
           for (let count = memoryCandidates.length; count >= (strictTrigger ? memoryCandidates.length : 0); count--) {
             const includeMemory = trigger !== undefined && (strictTrigger || count > 0);

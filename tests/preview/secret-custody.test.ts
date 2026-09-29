@@ -145,6 +145,9 @@ it.each([['with custody', true], ['without custody', false]])('intake %s: the mo
         arrival: `sha256:${createHash('sha256').update(original).digest('hex')}` });
       expect(custody.resolve(secretRef((turn.custody as { capture: string }).capture))).toBe(original);
       expect(custody.missing([(turn.custody as { capture: string }).capture, ref.name])).toEqual([]);
+      // cint-L3 (Rules 28/29 with 100): the redacted row still carries its verified writer, bound to the
+      // capture of the bytes that arrived (the recorded arrival hash), so the append was admitted.
+      expect(turn.writer).toMatchObject({ kind: 'person', id: '7654321' });
     } else {
       expect(turn.text).toContain(TOKEN);
       expect(custody.records()).toEqual([]);

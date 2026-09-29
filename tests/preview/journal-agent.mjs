@@ -187,7 +187,7 @@ const shapeTerms = () => ({ owner: 'part-three',
 const classifier = () => { const terms = shapeTerms(); return profile => take(deriveProfile(profile, terms, 'preview:host')); };
 /** The runner's register inputs, read from the same committed file the register's source collector reads. */
 const declarationsOf = name => JSON.parse(readFileSync(resolve(process.cwd(), `tests/preview/${name}.json`), 'utf8'));
-const inventory = () => previewInventory(declarationsOf('preview.declarations'), declarationsOf('preview.pending-declarations'));
+const inventory = () => previewInventory(declarationsOf('capabilities.declarations'), declarationsOf('preview.pending-declarations'));
 /** A capability's version is the digest of its own source files, so a live proof survives unrelated edits. */
 const capabilityVersions = () => {
   const files = new Map(), digest = path => {
@@ -242,6 +242,8 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
 const repoRead = path => { try { return readFileSync(resolve(process.cwd(), path), 'utf8'); } catch { return null; } };
 const repoFile = path => { try { return lstatSync(resolve(process.cwd(), path)).isFile(); } catch { return false; } };
 /** Rule 59: the harness's silent-stop table is admitted, with every captured case resolved, before a launch. */
+/** The desk's sealed authority record: written to a new file, never replacing one (Rules 7, 32: declared store). */
+const writeSealedAuthority = (path, sealed) => writeFileSync(path, `${JSON.stringify(sealed, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
 const admitHarness = () => admitPreviewHarness(repoRead);
 /** Rules 26, 44: the exact code this process executes (import closure, loader, spawned children) and the checkout revision. */
 const installedCode = () => {
@@ -457,7 +459,7 @@ async function main() {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
     const sealed = sealAuthorityRecord(JSON.parse(readFileSync(required(options, 'authority-record'), 'utf8')), authoritySealKey(key()));
-    writeFileSync(resolve(required(options, 'out')), `${JSON.stringify(sealed, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    writeSealedAuthority(resolve(required(options, 'out')), sealed);
     return;
   }
   // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.

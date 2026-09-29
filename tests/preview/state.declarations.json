@@ -2,7 +2,7 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
-    "id": "preview.state.durablePreviewWrite",
+    "id": "preview.state.openPreviewState",
     "kind": "stores",
     "status": "live",
     "requiredFacts": {

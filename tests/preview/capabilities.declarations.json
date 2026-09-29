@@ -535,7 +535,7 @@
     ],
     "holds": [
       {
-        "rule": 33,
+        "rule": 43,
         "class": "partial",
         "evidence": {
           "kind": "probe",
@@ -705,53 +705,5 @@
         "remainder": "dark: off by default; it validates completed answer, cleanup and summary steps only after they happen"
       }
     ]
-  },
-  {
-    "type": "Declaration",
-    "schemaVersion": 1,
-    "id": "preview.store.journal",
-    "kind": "stores",
-    "status": "live",
-    "requiredFacts": {
-      "growth": "compacts",
-      "holdsAgentMemory": "yes",
-      "machineScope": {
-        "kind": "machine-local",
-        "reason": "the preview's encrypted journal lives on the one machine that runs it"
-      },
-      "agreesWith": []
-    },
-    "standards": [
-      2,
-      7
-    ],
-    "holds": []
-  },
-  {
-    "type": "Declaration",
-    "schemaVersion": 1,
-    "id": "preview.store.proofs",
-    "kind": "stores",
-    "status": "live",
-    "requiredFacts": {
-      "growth": "unbounded",
-      "holdsAgentMemory": "no",
-      "machineScope": {
-        "kind": "machine-local",
-        "reason": "proof attempts observe this machine's runner; cross-machine agreement is build 11's side"
-      },
-      "agreesWith": [
-        {
-          "store": "preview.store.journal",
-          "invariant": "a passing restore proof is a fresh durable replay equal to the live projection at the same journal frontier",
-          "check": "P9-PREVIEW-restore-equality"
-        }
-      ]
-    },
-    "standards": [
-      9,
-      43
-    ],
-    "holds": []
   }
 ]
