@@ -52,9 +52,12 @@ export function artifactHash(bytes) {
 /**
  * A per-checkout artifact directory, so two worktrees never share (or clobber) one
  * another's cache. Keyed on the working directory, which is the repo root for both the
- * pre-step and the vitest workers.
+ * pre-step and the vitest workers. Inside Vitest, TMPDIR points at a per-run RAM directory
+ * (tests/setup/test-tmp.ts), so the root is the pre-redirect temp directory that setup
+ * publishes: the pre-step and the workers must resolve the SAME directory, or every pair
+ * silently falls back to a live execution inside the loaded workers.
  */
-export function killScheduleRunDir(cwd = process.cwd()) {
+export function killScheduleRunDir(cwd = process.cwd(), root = process.env.INSTAR_TEST_OUTER_TMPDIR || tmpdir()) {
   const tag = createHash('sha256').update(cwd).digest('hex').slice(0, 16);
-  return join(tmpdir(), `p11-kill-schedule-${tag}`);
+  return join(root, `p11-kill-schedule-${tag}`);
 }
