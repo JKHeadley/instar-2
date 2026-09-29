@@ -120,3 +120,35 @@ red regardless until `hookTimeout` is raised, which is U7's file. **Do not read 
 
 Both gate runs also emitted `[vitest-worker]: Timeout calling "onTaskUpdate"` twice — the separate tracked defect
 `vitest-worker-rpc-timeouts.md`, also U7's row.
+
+### Rule attribution, stated exactly (U6)
+
+For the record, because the rules are the design in this repository and U6's budget changes should not hide behind a
+misquote:
+
+- **Rule 37 is "Zero-Failure"** (`docs/01-the-rules.md`): the suite is green on main and **at merge**; red-then-green
+  on a branch is fine; "pre-existing failure" is not a category, and neither is being held hostage by a flake — a
+  test that flips without a code change is **quarantined, a defect is filed, and the work it interrupted proceeds**;
+  a passing re-run is never exoneration. Every quarantine, defect record and re-diagnosis in this work is that rule.
+- **"Never loosen a bound without measurement" is the operator's directive for unit U6, not Rule 37's text.** It is
+  the standard the child-watchdog changes were held to, and each one carries its measurement, but it should not be
+  read as a quotation of the rule.
+- **Rule 42 is "A Refusal Stays a Refusal"**: a rejection, veto or drop stays recognizable through every layer; no
+  layer may turn it into "ok". `spawnNode`'s timeout handling is that rule — a watchdog kill reports `status: null`
+  with a `[timed out after N ms]` marker and can never read as success.
+
+### Consequence for merging U6 (Rule 37's actual bar)
+
+Rule 37 permits a red branch and requires green **at merge**. So U6's branch state is admissible, but **U6 must not
+be merged while `stage2-recovery.test.ts` is red**, and 15 of its 22 failures need vitest's global `hookTimeout`
+raised in `vitest.config.ts` — **U7's file**. U6 and U7 therefore have to land together, or U7 first. Nothing U6 can
+do inside its own row closes that gap.
+
+### The one high-leverage fix nobody owns
+
+The uncached transpile in `scripts/slice-ts-loader.mjs` is not a U6-local nuisance — it is the shared cause of this
+whole record. Every cold child in every unit pays 12.5-50 s of pure transpilation, which is also the shape of the
+`register` and `rungraph` timeouts recorded above and, plausibly, of other units' load failures. A
+content-addressed transpile cache there (keyed on file content + compiler options) would likely retire most of the
+budgets in this record outright, including the ones U6 was reduced to sizing rather than eliminating. Recommended as
+its own unit, with a measured before/after on the numbers in this record.

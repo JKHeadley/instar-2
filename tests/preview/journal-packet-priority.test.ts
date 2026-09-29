@@ -150,7 +150,7 @@ it('measures packet bytes and non-model p95 at 200, 1000 and 2000 accepted turns
   // This case asserts only packet BYTES (<= 8192); the p95 it prints is a recorded measurement, not an assertion,
   // so the deadline is purely a budget for 2 000 turn appends plus 210 real packet probes. Measured: the 200-turn
   // probe p95 was 262.95 ms in one suite run and 366.44 ms in another at load 42, about 4x its unloaded cost, and
-  // the whole case overran a 120 s budget. Sized to that measurement (Rule 37: the work, not the bound).
+  // the whole case overran a 120 s budget, so it is sized to that measurement: the budget follows the work.
 }, 600000);
 
 // Child-process cost, measured on this runner (load about 43), because every budget below is sized from it and
