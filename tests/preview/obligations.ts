@@ -87,6 +87,8 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const waitingWork = idle.flatMap(item => { const work = view.obligationWork[item.key];
     return work?.waitsOn !== undefined && item.slot > now ? [{ key: item.key, waitsOn: work.waitsOn, need: work.note ?? '' }] : []; });
   const workInFlight = schedule.filter(item => item.inFlight).length;
+  const requestsAt = loops.filter(loop => loop.kind === 'request').map(loop => loop.nextAt!);
+  const wakeAt = [...future.map(item => item.slot), ...requestsAt.filter(at => at > now)];
   // A started step is unfinished until its result lands: an interrupted one stays visible to health and the exit.
   const waiting = [...turns.map(turn => turn.at), ...due.map(item => item.slot),
     ...schedule.filter(item => item.inFlight).map(item => item.slot)].sort((a, b) => a - b);
@@ -108,9 +110,10 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
     workInFlight, awaitingDelivery, scheduledWork: future.length,
     deliveryUnknown: schedule.filter(item => item.deliveryUnknown).length, waitingWork,
-    ownedWork: waiting.length + future.length + awaitingDelivery
+    // An open requested action is owned work until its answer is dispatched: its due time wakes the runner (Rule 68).
+    ownedWork: waiting.length + future.length + awaitingDelivery + requestsAt.length
       + waitingWork.filter(item => !Number.isFinite(schedule.find(entry => entry.key === item.key)!.slot)).length,
-    nextWorkAt: future.length ? Math.min(...future.map(item => item.slot)) : null, rejectedDeclarations: view.rejectedObligations,
+    nextWorkAt: wakeAt.length ? Math.min(...wakeAt) : null, rejectedDeclarations: view.rejectedObligations,
     oldestUnfinishedAt: oldestAt ?? null, oldestUnfinishedAgeMs: oldestAt === undefined ? null : Math.max(0, now - oldestAt),
     backlogOverdue: oldestAt !== undefined && now - oldestAt > BACKLOG_AGE_LIMIT_MS,
     lastProgressAt, progressAgeMs: lastProgressAt === null ? null : Math.max(0, now - lastProgressAt),
