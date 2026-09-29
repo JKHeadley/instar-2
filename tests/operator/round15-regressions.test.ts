@@ -114,8 +114,7 @@ function checkV79Scope(root = process.cwd()) {
   return scope;
 }
 
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
-it.skip('V79 checks the operator unit first-landing source scope', () => {
+it('V79 checks the operator unit first-landing source scope', () => {
   expect(checkV79Scope()).toMatchObject({ applicable: false });
 });
 

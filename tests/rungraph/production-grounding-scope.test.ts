@@ -39,8 +39,7 @@ function checkGroundingScope(root = process.cwd()) {
   return scope;
 }
 
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
-it.skip('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner source directories', () => {
+it('PRODUCTION-GROUNDING-SCOPE ledger 45 confines this unit to its two owner source directories', () => {
   expect(checkGroundingScope()).toMatchObject({ applicable: false });
 });
 

@@ -47,8 +47,7 @@ it('P16 first-landing fixture permits additions, rejects inherited edits, then k
   }
 });
 
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
-it.skip('P16-NF-01 [behavior:contract-inventory] P16-NF-52 [behavior:non-executable-exclusion] P16-NF-53 [behavior:legacy-additivity] contract inventory retains all labels and structural exclusions', () => {
+it('P16-NF-01 [behavior:contract-inventory] P16-NF-52 [behavior:non-executable-exclusion] P16-NF-53 [behavior:legacy-additivity] contract inventory retains all labels and structural exclusions', () => {
   const rows = contractMap.p16Dispositions() as { id: string; status: string; dependencies: string[] }[];
   expect(rows).toHaveLength(53);
   expect(rows.filter(row => row.status === 'NON-EXECUTABLE-UNTIL-slice-A2').map(row => row.id)).toEqual([

@@ -43,8 +43,7 @@ function outcome(result: unknown): Outcome {
   });
 }
 
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
-it.skip('R10 rereview8 V95 compares 20 ordinary receive/recover/expire outcomes on P11 first landing', async () => {
+it('R10 rereview8 V95 compares 20 ordinary receive/recover/expire outcomes on P11 first landing', async () => {
   const scope = firstLanding(process.cwd(), ['src/operator/seams.ts']);
   if (!scope.applicable) {
     console.log(`P11 intake round10 first-landing comparison inapplicable: operator seams unit already present on current-main baseline ${scope.mainTip}.`);
