@@ -140,8 +140,7 @@ it('P4-NF-06 R7 actual source chain proves each enforced decoder, not a caller-a
 // matching the owner-reference fixtures, not an intake runtime latency bound.
 }, 30_000);
 
-// Rule 37 quarantine: see docs/defects/owner-reference-pin-drift.md
-it.skip('P4-NF-06 R7 owner manifest pins the actual public implementations, contract and inspection assertions', () => {
+it('P4-NF-06 R7 owner manifest pins the actual public implementations, contract and inspection assertions', () => {
   const manifest = JSON.parse(readFileSync('register-source/owner-references/part-four.json', 'utf8')) as {
     owner: string; fixtures: { id: string; artifact: { path: string; hash: string } }[];
     documents: { artifact: { path: string; hash: string } }[]; decoders: DecoderBinding[];
