@@ -437,3 +437,47 @@ it('audits a recorded preference beside an imported source after replay', async 
     expect(JSON.parse(cli.stdout).findings).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// Live shape (2026-09-29, update 969389612): a longer operator turn whose answer was lost set a reply style.
+// The active preference is offered back as a memory candidate carrying only its exact clause and no reply;
+// that clause is traceable to the source turn, so the audit (and the memory-provenance store check) agree.
+it('traces a preference candidate clause to its source turn even when that turn lost its answer', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-preference-clause-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const g = { ...genesis, maxBytes: 32768 };
+    const clause = 'Please keep your replies brief.';
+    const first = `${clause} I am testing whether the preview still answers after a restart this morning.`;
+    const rawPackets: { memoryCandidates?: { id: string; message: string; reply: string }[] }[] = [];
+    const ports = { now: () => 1790000000000, stopped: () => false,
+      prepareModel: (input: { question: string; context: string; id: string }) =>
+        prepareJournalEnvelope(input, 'claude-opus-5-5', g.grant, 1790000000000, g.maxBytes),
+      model: async (input: { id: string; question: string; context: string }) => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'The operator prefers brief replies.', people: [],
+          memory: [{ mode: 'prefer', source: JSON.parse(input.context).memoryRequest.id, quote: clause }] })
+        : input.question === first ? { state: 'uncertain' as const }
+          : (rawPackets.push(JSON.parse(input.context)), 'The preview is answering.'),
+      send: async () => 1, checkOutbound: () => {} };
+    let journal = openPreviewJournal(path, key, g);
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, first)]); await worker.drain();
+    expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain' });
+    expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote: clause }]);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    worker.intake([update(2, 'Is the preview answering now?')]); await worker.drain();
+    const source = journal.view.order[0]!.id;
+    const candidate = rawPackets.at(-1)?.memoryCandidates?.find(item => item.id === source && item.message === clause);
+    expect(candidate).toMatchObject({ message: clause, reply: '' });
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    const turn = journal.view.order.at(-1)!;
+    expect(auditPacket(journal.view, turn, rawPackets.at(-1)).findings).toEqual([]);
+    // The other side: a clause the source turn never held is still untraced.
+    const invented = structuredClone(rawPackets.at(-1)!);
+    invented.memoryCandidates!.find(item => item.id === source && item.message === clause)!.message = 'Always reply in French.';
+    expect(auditPacket(journal.view, turn, invented).findings.map((item: { code: string }) => item.code))
+      .toContain('candidate-text-source');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

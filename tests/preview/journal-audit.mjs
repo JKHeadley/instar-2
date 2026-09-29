@@ -198,6 +198,15 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       add('channel-import', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(rawId) }]);
     }
   }
+  // Active reply-style preferences at the reservation; each is also offered as a memory
+  // candidate carrying only its exact clause (its source turn holds that clause) and no reply.
+  const activePreferences = new Map();
+  for (const change of activeChanges) {
+    const key = JSON.stringify([change.source, change.quote]);
+    if (change.mode === 'prefer') activePreferences.set(key, { source: change.source, quote: change.quote });
+    else if (activePreferences.delete(key) && change.mode === 'correct') activePreferences.set(
+      JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement });
+  }
   for (const [n, item] of list(packet.memoryCandidates, 'memoryCandidates').entries()) {
     const at = `memoryCandidates[${n}]`;
     if ((item?.id?.startsWith?.('channel:') || item?.id?.startsWith?.('channel-ref:'))) {
@@ -209,10 +218,11 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       if (found) add('memory-candidate', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(item.id) }]);
     } else {
       const found = source(item?.id, at);
-      if (found && item.message !== clean(found.text).slice(0, 1000) && item.message !== clean(found.text))
+      const preference = found && [...activePreferences.values()].some(active => active.source === found.id
+        && (active.quote === item.message || redact(active.quote).text.slice(0, 1000) === item.message)
+        && (found.text.includes(active.quote) || redact(found.text).text.includes(active.quote)));
+      if (found && item.message !== clean(found.text).slice(0, 1000) && item.message !== clean(found.text) && !preference)
         fault('candidate-text-source', at);
-      const preference = found && activeChanges.some(change => change.mode === 'prefer'
-        && change.source === found.id && change.quote === item.message);
       if (found && item.reply !== replyFor(found).slice(0, 1000)
         && item.reply !== replyFor(found) && !(preference && item.reply === ''))
         fault('candidate-reply-source', at);
@@ -250,13 +260,6 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   for (const [n, item] of list(packet.corrections, 'corrections').entries()) {
     const at = `corrections[${n}]`, found = source(item?.source, at);
     if (found) add('reply-check-note', at, [{ kind: 'source-turn', id: found.id, update: found.update }]);
-  }
-  const activePreferences = new Map();
-  for (const change of activeChanges) {
-    const key = JSON.stringify([change.source, change.quote]);
-    if (change.mode === 'prefer') activePreferences.set(key, { source: change.source, quote: change.quote });
-    else if (activePreferences.delete(key) && change.mode === 'correct') activePreferences.set(
-      JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement });
   }
   const expectedPreferences = [...activePreferences.values()].map(item => ({ text: clean(item.quote), source: item.source }));
   const preferences = list(packet.preferences, 'preferences');
