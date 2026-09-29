@@ -52,7 +52,7 @@ const message = (id: number, text: string) => ({ update_id: id,
 // limited answer stays inhibited (build 3). The approval page must still carry the request.
 const liveDependencies = () => ({ ...admittedDependencies(), register: false, lease: false, fence: false, 'replication-peer': false });
 
-function setup() {
+function setup(publicBase = ORIGIN, mount = '') {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'approval-surface-')));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const store = join(root, 'store'), outbox = join(root, 'outbox');
@@ -62,12 +62,12 @@ function setup() {
   // In a real installation the surface runs as a separate operator OS user; one test process can only
   // declare the agent's identity as different (as the fixed-installation host tests do).
   const config = { operator: 'telegram:7654321', operatorUid: uid, agentUid: uid + 1, ingressGrant: 'desk:ingress-test',
-    publicBase: ORIGIN, store, outbox };
+    publicBase, store, outbox };
   const surface = createApprovalSurface(config, () => clock);
   const client = createApprovalSurfaceClient({ store, outbox, operatorUid: uid, agentUid: uid + 1, now: () => clock });
   const token = surface.surface.token as string;
   const call = (method: string, path: string, body?: unknown) =>
-    handle(surface, { method, path: `/${token}${path}`, body: body === undefined ? undefined : JSON.stringify(body) }) as
+    handle(surface, { method, path: `${mount}/${token}${path}`, body: body === undefined ? undefined : JSON.stringify(body) }) as
       { status: number; headers: Record<string, string>; body: string };
   const phone = authenticator();
   const enrol = (device = phone) => {
@@ -246,7 +246,8 @@ it('the surface refuses to run as the agent, without a recorded ingress grant, o
   const uid = process.getuid!();
   for (const [change, error] of [[{ agentUid: uid }, 'outside the agent OS identity'], [{ ingressGrant: '  ' }, 'ingress grant'],
     [{ publicBase: 'http://approve.example.org' }, 'public https origin'], [{ publicBase: 'https://localhost' }, 'public https origin'],
-    [{ publicBase: 'https://approve.example.org/sub' }, 'public https origin']] as const)
+    [{ publicBase: 'https://approve.example.org/a/b' }, 'public https origin'], [{ publicBase: 'https://approve.example.org/Sub' }, 'public https origin'],
+    [{ publicBase: 'https://approve.example.org/sub/' }, 'public https origin'], [{ publicBase: 'https://approve.example.org/?x=1' }, 'public https origin']] as const)
     expect(() => createApprovalSurface({ ...t.config, ...change })).toThrow(error);
   expect(t.call('GET', '/').status).toBe(200);
   expect(handle(t.surface, { method: 'GET', path: '/wrong-token/', body: undefined }).status).toBe(404);
@@ -286,4 +287,69 @@ it('serves the page over its own loopback transport; the page script compiles an
   expect((await fetch(`http://127.0.0.1:${port}/`)).status).toBe(404);
   const act = await fetch(`http://127.0.0.1:${port}/${token}/act`, { method: 'POST', body: '{}' });
   expect(act.status).toBe(400);
+});
+
+// Step 6a: the same page published through the existing dashboard's tunnel origin under one path prefix.
+// The dashboard proxies `/approve/...` unchanged; the passkey site is the dashboard's host name.
+it('serves the page under the dashboard mount: a yes applies exactly one subject; decline, replay, wrong operator, altered wording refuse', async () => {
+  const DASH = 'https://dash.example.org';
+  const t = setup(`${DASH}/approve`, '/approve');
+  const dash = authenticator({ origin: DASH, rpId: 'dash.example.org' });
+  expect(t.enrol(dash).status).toBe(200);
+  expect(JSON.parse(t.enrol(authenticator()).body).error).toMatch(/names another site|differs from the exact challenge or origin/u);
+  const token = t.surface.surface.token as string;
+  expect(t.surface.enrol()).toMatch(new RegExp(`^${DASH}/approve/${token}/enrol#[a-f0-9]{48}$`, 'u'));
+  expect(t.client.status()).toMatchObject({ ready: true, passkeys: 1, page: `${DASH}/approve/${token}/` });
+  // Outside the mount nothing answers, even with the right token.
+  expect(handle(t.surface, { method: 'GET', path: `/${token}/`, body: undefined }).status).toBe(404);
+  expect(handle(t.surface, { method: 'GET', path: `/approvex/${token}/`, body: undefined }).status).toBe(404);
+  t.worker.intake([message(1, 'one'), message(2, 'two')]); await t.worker.drain(); await t.worker.minimal();
+  const challenge = t.journal.view.order[1]!.approval!.challenge!, name = nameOf(challenge.id);
+  expect(t.client.link(challenge)).toBe(`${DASH}/approve/${token}/c/${name}`);
+  const page = t.call('GET', `/c/${name}`).body;
+  expect(page).toContain(`data-base="/approve/${token}"`);
+  expect(page).toContain(`src="/approve/${token}/app.js"`);
+  expect(page).toContain(`href="/approve/${token}/"`);
+  // Altered wording and a substituted operator are refused before anything is rendered.
+  const file = join(t.outbox, `${name}.request.json`), original = readFileSync(file, 'utf8'), record = JSON.parse(original);
+  writeFileSync(file, JSON.stringify({ ...record, text: 'Approve raising the model call allowance from 1 to 99? That adds 98 model calls I may spend in this trial.' }));
+  expect(JSON.parse(t.call('GET', `/c/${name}`).body).error).toContain('request wording differs from the challenge');
+  writeFileSync(file, JSON.stringify({ ...record, challenge: { ...record.challenge, operator: 'telegram:1' } }));
+  expect(JSON.parse(t.decide(name, 'approve', dash).body).error).toContain('operator differs');
+  writeFileSync(file, original);
+  // A passkey confirmation over other bytes is refused; nothing is recorded.
+  expect(JSON.parse(t.decide(name, 'approve', dash, () => b64u(randomBytes(32))).body).error).toContain('client data differs');
+  await t.worker.minimal();
+  expect(t.journal.view.limits.maxCalls).toBe(1);
+  // The genuine yes: exactly this one raise is applied, once.
+  expect(t.decide(name, 'approve', dash).status).toBe(200);
+  await t.worker.minimal();
+  expect(t.journal.view.limits.maxCalls).toBe(2);
+  expect(t.journal.view.capAuthority).toBe(`verified-approval:${t.journal.view.order[1]!.approval!.id}:${challenge.id}`);
+  expect(readdirSync(join(t.store, 'acts'))).toEqual([`${name}.json`]);
+  // Replay: the page refuses a second decision; the runner refuses to consume the same act again.
+  expect(JSON.parse(t.decide(name, 'approve', dash).body).error).toMatch(/unknown request|already decided/u);
+  expect(t.client.verifier.verify(challenge, readFileSync(join(t.store, 'acts', `${name}.json`), 'utf8'), 'approve')).toMatchObject({ kind: 'Refused' });
+  // A runner configured for another operator reads the same act and refuses it.
+  const other = createApprovalSurfaceClient({ store: t.store, outbox: t.outbox, operatorUid: process.getuid!(), agentUid: process.getuid!() + 1, now: t.now });
+  expect(other.verifier.verify({ ...challenge, operator: 'telegram:1' }, readFileSync(join(t.store, 'acts', `${name}.json`), 'utf8'), 'approve'))
+    .toMatchObject({ kind: 'Refused' });
+  await t.worker.minimal();
+  expect(t.journal.view.limits.maxCalls).toBe(2);
+  // A decline on the next raise records nothing that grants.
+  t.worker.intake([message(3, 'three')]); await t.worker.drain(); await t.worker.minimal();
+  const next = t.journal.view.order.filter(turn => turn.approval?.action === 'raise-caps').at(-1)!.approval!.challenge!;
+  expect(next.id).not.toBe(challenge.id);
+  expect(t.decide(nameOf(next.id), 'decline', dash).status).toBe(200);
+  await t.worker.minimal();
+  expect(t.journal.view.limits.maxCalls).toBe(2);
+  // The real loopback transport answers the mounted path the dashboard proxies to, and nothing else.
+  const server = serve(t.surface, 0) as Server;
+  cleanup.push(() => server.close());
+  await new Promise(done => server.once('listening', done));
+  const { port } = server.address() as AddressInfo;
+  expect((await fetch(`http://127.0.0.1:${port}/approve/${token}/`)).status).toBe(200);
+  const app = await (await fetch(`http://127.0.0.1:${port}/approve/${token}/app.js`)).text();
+  expect(() => new Script(app)).not.toThrow();
+  expect((await fetch(`http://127.0.0.1:${port}/${token}/`)).status).toBe(404);
 });

@@ -2958,6 +2958,16 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   --approval-outbox /ABS/RUNNER_OUTBOX --approval-operator-uid UID_OF_THAT_USER`; `status
   .approvalSurface` then reads `{ installed: true, ready: true, page, passkeys }`. A store owned by
   the runner's own identity is refused (`installed: false`).
+
+  Through the existing dashboard (step 6a): `publicBase` may carry one lowercase path segment, the
+  mount under the dashboard's own stable tunnel host, for example
+  `https://AGENT-DASHBOARD.HOST/approve`. The dashboard forwards `/approve/...` unchanged to
+  `127.0.0.1:PORT` behind its PIN; the page, its script and its links all live under that prefix, the
+  passkey is bound to the dashboard's host name, and every other path is refused. The PIN only keeps
+  strangers out; it is readable by the agent and approves nothing. The passkey signature over the
+  exact challenge remains the only yes, and the separate operator identity above is still required:
+  a same-identity store stays `installed: false`. The dashboard shares its origin with this page,
+  so the page is only as independent as the dashboard's ingress custodian.
 - **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
   `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
   bounded backoff. After three consecutive failed restarts it records one incident episode with the

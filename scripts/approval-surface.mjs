@@ -39,10 +39,12 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
   'the approval surface must run as the operator, outside the agent OS identity');
   // Nothing outward by default: the public page exists only under the operator's recorded ingress grant.
   check(typeof config.ingressGrant === 'string' && config.ingressGrant.trim().length > 0, 'recorded ingress grant required');
-  const base = new URL(config.publicBase);
-  check(base.protocol === 'https:' && base.pathname === '/' && !base.search && !base.hash && !base.username && !base.password
-    && !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname), 'public https origin required (no path)');
-  const origin = base.origin, rpId = base.hostname, publicBase = origin;
+  // The base may carry ONE path segment: the mount under the existing dashboard's tunnel origin (for
+  // example https://agent.example.org/approve), which proxies that prefix here unchanged.
+  const base = new URL(config.publicBase), mount = base.pathname === '/' ? '' : base.pathname;
+  check(base.protocol === 'https:' && /^(\/[a-z0-9-]{1,32})?$/u.test(mount) && !base.search && !base.hash && !base.username && !base.password
+    && !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname), 'public https origin required (at most one lowercase path segment)');
+  const origin = base.origin, rpId = base.hostname, publicBase = `${origin}${mount}`;
   const store = resolve(config.store), outbox = resolve(config.outbox), secret = join(store, 'private'), actsDir = join(store, 'acts');
   const storeStat = lstatSync(store);
   check(realpathSync(store) === store && storeStat.isDirectory() && storeStat.uid === config.operatorUid
@@ -56,7 +58,7 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
   // agent lacks: the path token only keeps the page out of reach of people without the link.
   const described = existsSync(join(store, 'surface.json')) ? JSON.parse(readFileSync(join(store, 'surface.json'), 'utf8')) : null;
   const token = typeof described?.token === 'string' && /^[a-f0-9]{32}$/u.test(described.token) ? described.token : randomBytes(16).toString('hex');
-  const surface = { type: 'PreviewApprovalSurface', schemaVersion: 1, publicBase, origin, rpId, operator: config.operator,
+  const surface = { type: 'PreviewApprovalSurface', schemaVersion: 1, publicBase, origin, mount, rpId, operator: config.operator,
     token, ingressGrant: config.ingressGrant };
   if (canonical(described) !== canonical(surface)) replace(store, 'surface.json', canonical(surface), 0o644);
   if (!existsSync(join(store, 'keys.json'))) replace(store, 'keys.json', canonical([]), 0o644);
@@ -145,30 +147,31 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
 }
 
 const escape = text => String(text).replace(/[&<>"']/gu, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const page = (title, body, token) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
+const page = (title, body, base) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title>
 <style>body{font:18px/1.45 -apple-system,system-ui,sans-serif;margin:0 auto;max-width:36rem;padding:1.25rem}
 h1{font-size:1.35rem}button{display:block;width:100%;font-size:1.15rem;padding:1rem;margin:.6rem 0;border-radius:.6rem;border:0}
 .primary{background:#0b57d0;color:#fff}.secondary{background:#e8eaed;color:#111}p.note{color:#444}
 a.row{display:block;padding:.9rem 0;border-bottom:1px solid #ddd;color:#0b57d0;text-decoration:none}#result{font-weight:600}</style>
-</head><body>${body}<script src="/${token}/app.js"></script></body></html>`;
-/** One request: its effect in plain words, the primary action first, no field the operator authors. */
-export function renderRequestPage(item, token) {
+</head><body data-base="${escape(base)}">${body}<script src="${escape(base)}/app.js"></script></body></html>`;
+/** One request: its effect in plain words, the primary action first, no field the operator authors.
+ * `base` is the page's path prefix: the dashboard mount (if any) and the path token. */
+export function renderRequestPage(item, base) {
   const actions = item.decided ? '<p id="result">Already decided.</p>' : `<button class="primary" data-name="${item.name}" data-decision="approve">${escape(item.view.approve)}</button>${
     item.view.decline === null ? '' : `<button class="secondary" data-name="${item.name}" data-decision="decline">${escape(item.view.decline)}</button>`}<p id="result" role="status"></p>`;
   return page(item.view.title, `<h1>${escape(item.view.title)}</h1><p>${escape(item.view.effect)}</p>${actions}
 <p class="note">Your phone's passkey confirms it is you. Valid until ${escape(new Date(item.challenge.expiresAt).toUTCString())}.</p>
-<p class="note"><a href="/${token}/">All requests</a></p>`, token);
+<p class="note"><a href="${escape(base)}/">All requests</a></p>`, base);
 }
-export function renderIndexPage(items, token) {
-  const rows = items.map(item => `<a class="row" href="/${token}/c/${item.name}">${escape(item.view.title)}</a>`).join('');
-  return page('Approvals', `<h1>Approvals</h1>${rows || '<p>Nothing is waiting for you.</p>'}`, token);
+export function renderIndexPage(items, base) {
+  const rows = items.map(item => `<a class="row" href="${escape(base)}/c/${item.name}">${escape(item.view.title)}</a>`).join('');
+  return page('Approvals', `<h1>Approvals</h1>${rows || '<p>Nothing is waiting for you.</p>'}`, base);
 }
-const enrolPage = token => page('Add your passkey', '<h1>Add your passkey</h1><p>This lets your phone approve requests on this page. Your phone keeps the key; this page never sees it.</p><button class="primary" id="enrol">Add passkey</button><p id="result" role="status"></p>', token);
+const enrolPage = base => page('Add your passkey', '<h1>Add your passkey</h1><p>This lets your phone approve requests on this page. Your phone keeps the key; this page never sees it.</p><button class="primary" id="enrol">Add passkey</button><p id="result" role="status"></p>', base);
 const APP = `(() => {
 const b = s => Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
 const u = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
-const base = location.pathname.split('/').slice(0, 2).join('/');
+const base = document.body.dataset.base;
 const post = async (path, body) => { const r = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json(); if (!r.ok) throw Error(j.error || 'refused'); return j; };
 const out = t => { document.getElementById('result').textContent = t; };
@@ -196,16 +199,18 @@ const HEADERS = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer',
 
 /** The surface's HTTP handling, transport-free so it is testable: every route lives under the path token. */
 export function handle(surface, { method, path, body }) {
-  const token = surface.surface.token, json = (status, value) => ({ status, headers: { ...HEADERS, 'content-type': 'application/json' }, body: JSON.stringify(value) });
+  const { token, mount } = surface.surface, prefix = `${mount}/${token}`, json = (status, value) => ({ status, headers: { ...HEADERS, 'content-type': 'application/json' }, body: JSON.stringify(value) });
   const html = text => ({ status: 200, headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' }, body: text });
-  const parts = String(path).split('?')[0].split('/').filter(Boolean);
+  const raw = String(path).split('?')[0];
+  if (!raw.startsWith(`${mount}/`)) return json(404, { error: 'not found' });
+  const parts = raw.slice(mount.length).split('/').filter(Boolean);
   if (parts[0] !== token) return json(404, { error: 'not found' });
   const route = `${method} /${parts.slice(1).join('/')}`;
   try {
-    if (route === 'GET /') return html(renderIndexPage(surface.pending(), token));
+    if (route === 'GET /') return html(renderIndexPage(surface.pending(), prefix));
     if (route === 'GET /app.js') return { status: 200, headers: { ...HEADERS, 'content-type': 'text/javascript' }, body: APP };
-    if (method === 'GET' && parts[1] === 'c' && parts.length === 3) return html(renderRequestPage(surface.request(parts[2]), token));
-    if (route === 'GET /enrol') return html(enrolPage(token));
+    if (method === 'GET' && parts[1] === 'c' && parts.length === 3) return html(renderRequestPage(surface.request(parts[2]), prefix));
+    if (route === 'GET /enrol') return html(enrolPage(prefix));
     const input = JSON.parse(typeof body === 'string' && body.length <= SURFACE_LIMITS.maxBody ? body : 'null');
     check(input !== null && typeof input === 'object', 'request body required');
     if (route === 'POST /begin') return json(200, surface.begin(input));

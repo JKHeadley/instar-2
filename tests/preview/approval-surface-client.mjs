@@ -30,8 +30,9 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
     const described = JSON.parse(read(join(storeDir, 'surface.json'))), keys = JSON.parse(read(join(storeDir, 'keys.json')));
     check(described?.type === 'PreviewApprovalSurface' && typeof described.origin === 'string' && described.origin.startsWith('https://')
       && typeof described.rpId === 'string' && /^[a-f0-9]{32}$/u.test(described.token ?? '') && typeof described.operator === 'string'
-      && Array.isArray(keys), 'approval surface description invalid');
-    return { ...described, keys };
+      && /^(\/[a-z0-9-]{1,32})?$/u.test(described.mount ?? '') && Array.isArray(keys), 'approval surface description invalid');
+    // The page's own path: under the dashboard mount when the surface is published through the dashboard.
+    return { ...described, keys, path: `${described.origin}${described.mount ?? ''}/${described.token}` };
   };
   const wordings = new Map();
   const guard = (run, owner) => { try { return run(); } catch (error) {
@@ -78,7 +79,7 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
   return Object.freeze({ verifier,
     /** The exact wording a raise will show, handed over before its challenge is issued. */
     wording: (renderingDigest, text) => { wordings.clear(); wordings.set(renderingDigest, text); },
-    link: challenge => { const page = surface(); return `${page.origin}/${page.token}/c/${nameFor(challenge.id)}`; },
+    link: challenge => `${surface().path}/c/${nameFor(challenge.id)}`,
     /** Acts the operator recorded on the surface and this runner has not consumed yet (bounded). */
     acts: () => {
       if (!existsSync(actsDir)) return [];
@@ -92,7 +93,7 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
       }).sort((a, b) => b.at - a.at).slice(0, 256).map(item => item.act);
     },
     /** Pull-only status: whether the page is installed and can approve right now. */
-    status: () => { try { const page = surface(); return { installed: true, page: `${page.origin}/${page.token}/`,
+    status: () => { try { const page = surface(); return { installed: true, page: `${page.path}/`,
       passkeys: page.keys.length, ready: page.keys.length > 0 }; }
     catch (error) { return { installed: true, ready: false, reason: error instanceof Error ? error.message : 'unreadable' }; } },
   });
