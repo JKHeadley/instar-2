@@ -150,7 +150,8 @@ function check({ quiet = false } = {}) {
       promptSourcesChanged: r.subject.filter(p => scan.promptSources.includes(p)),
       deferrals: hits.deferrals, skips: hits.skips, exists: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null,
       read: p => tryGit('show', `${r.last}:${p}`),
-      resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()) };
+      resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()),
+      readEvidence: p => (isAbsolute(p) ? (existsSync(p) && statSync(p).isFile() ? readFileSync(p, 'utf8') : null) : tryGit('show', `${r.last}:${p}`)) };
     const v = validateRecord(r.record, ctx);
     errors.push(...v.errors.map(e => `${r.path}: ${e}`), ...governedVersionErrors(r).map(e => `${r.path}: ${e}`));
     notes.push(...v.notes.map(n => `${r.path}: ${n}`));
@@ -197,7 +198,8 @@ function draft(base, title) {
     'Outcome: ', 'Affected rules: ', 'Affected floors: secrets — ; spend cap — ; stop — ; no duplicate sends — ; durable intake — ',
     'Operator questions: none', `Suggested tier: ${suggestTier(subject)}`, 'Declared tier: ', 'Tier rationale: ', 'Side effects: ',
     'Undo and recovery: ', 'Multi-machine posture: ', 'Layer below: ', 'Bug class: none', 'Bug evidence: none', 'Hook bypass: none',
-    'Convergence: none', ...(subject.some(p => scan.promptSources.includes(p)) ? ['Prompt review: '] : []),
+    'Convergence: none', '<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->',
+    ...(subject.some(p => scan.promptSources.includes(p)) ? ['Prompt review: '] : []),
     ...findings.map(f => `Prompt finding: ${f.id} | <quoted-evidence|protocol-literal|question-with-hypothesis> | <reason> — ${f.kind} ${f.promptFile}${f.fixtureFile ? ` <- ${f.fixtureFile}` : ''}: "${f.phrase.slice(0, 80)}"`),
     ...hits.deferrals.map(h => `Deferral: ${h} | commitment=<ref> or not-a-deferral=<reason>`),
     ...hits.skips.map(h => `Skip: ${h} | quarantine=<docs/defects/...> or scope=<reason>`),

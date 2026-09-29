@@ -19,7 +19,7 @@ const complete = (overrides: Record<string, string | null> = {}, extra = ''): st
   return `# Change review\n\n${body}\n${extra}\n## Closing block\n\nsimplestRobustRoute: Extend the existing review record and its existing gate.\n80/20: Fields and gate done.\nVERDICT: submitted`;
 };
 const ctx = (overrides: Partial<RecordContext> = {}): RecordContext => ({ subject: ['scripts/x.mjs'], digest: null, promptFindings: [],
-  promptSourcesChanged: [], deferrals: [], skips: [], exists: () => true, read: () => null, resolvesEvidence: () => true, ...overrides });
+  promptSourcesChanged: [], deferrals: [], skips: [], exists: () => true, read: () => null, resolvesEvidence: () => true, readEvidence: () => null, ...overrides });
 const errorsOf = (text: string, c: Partial<RecordContext> = {}) => validateRecord(parseRecord(text), ctx(c)).errors;
 
 describe('record fields (Rules 1, 48, 49, 74, 101, 111, 113, 116)', () => {
@@ -111,6 +111,30 @@ describe('deferrals and quarantines (Rules 71, 37)', () => {
     expect(errorsOf(withRef('docs/defects/missing.md'), c).join('\n')).toContain('docs/defects/missing.md does not exist');
     expect(errorsOf(withRef('docs/defects/closed.md'), c).join('\n')).toContain('is not an open record with an owner');
     expect(errorsOf(withRef('docs/defects/d.md'), { ...c, subject: ['src/a.ts'] }).join('\n')).toContain('is not created or updated in this change');
+  });
+});
+
+describe('mid-run decisions are recorded and reported (Rule 102)', () => {
+  const report = '# Progress\n\nD-route: chose the existing record over a new journal.\n';
+  const readEvidence = (locator: string) => (locator === '/lanes/unit-PROGRESS.md' ? report : null);
+  const withDecision = (row: string) => complete({}, `Decision: ${row}\n`);
+  it('accepts a decision whose report exists and names it, and refuses an unreported one', () => {
+    const ok = withDecision('D-route | extend the existing review record instead of adding a journal, because it is already gated | reported=/lanes/unit-PROGRESS.md');
+    expect(errorsOf(ok, { readEvidence })).toEqual([]);
+    expect(errorsOf(complete(), { readEvidence })).toEqual([]);
+    const none = withDecision('D-route | extend the existing review record instead of adding a journal, because it is already gated');
+    expect(errorsOf(none, { readEvidence }).join('\n')).toContain('Rule 102: decision D-route is unreported');
+    const missing = withDecision('D-route | extend the existing review record instead of adding a journal, because it is already gated | reported=/lanes/other.md');
+    expect(errorsOf(missing, { readEvidence }).join('\n')).toContain('its report /lanes/other.md does not exist');
+    // The report must name this decision: a longer id that merely starts with it does not count.
+    const other = withDecision('D-rout | a different decision recorded with a report that never names it | reported=/lanes/unit-PROGRESS.md');
+    expect(errorsOf(other, { readEvidence }).join('\n')).toContain('does not name it');
+  });
+  it('refuses a malformed or repeated decision row', () => {
+    expect(errorsOf(withDecision('D-route | TBD | reported=/lanes/unit-PROGRESS.md'), { readEvidence }).join('\n')).toContain("needs 'Decision: <id>");
+    expect(errorsOf(withDecision('x | extend the existing record because it is gated | reported=/lanes/unit-PROGRESS.md'), { readEvidence }).join('\n')).toContain("needs 'Decision: <id>");
+    const row = 'D-route | extend the existing review record instead of adding a journal | reported=/lanes/unit-PROGRESS.md';
+    expect(errorsOf(complete({}, `Decision: ${row}\nDecision: ${row}\n`), { readEvidence }).join('\n')).toContain('D-route is recorded twice');
   });
 });
 

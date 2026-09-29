@@ -10,7 +10,8 @@
 //   111 (layer below), 112 (append-only evidence, redo only when no signal existed),
 //   113 (multi-machine posture), 116 (simplestRobustRoute), 12/27 (prompt and dispatch scan
 //   dispositions), 37 (exact-tree completed suite; quarantine names its defect), 6/71 (deferral
-//   carries a same-change commitment).
+//   carries a same-change commitment), 102 (each mid-run engineering decision is recorded as a
+//   'Decision:' row and reported: the report it names exists and names the decision).
 // The scans only raise findings. What a finding means is decided by the independent reviewer
 // through the disposition lines in the record (Rules 4 and 86: a brittle filter only signals).
 import { createHash } from 'node:crypto';
@@ -44,7 +45,7 @@ export const RED_CLASSES = ['product-regression-fixed', 'environment', 'flake-qu
 const SINGLE = ['Subject base', 'Review state', 'Reviewed content', 'Outcome', 'Affected rules', 'Affected floors',
   'Operator questions', 'Suggested tier', 'Declared tier', 'Tier rationale', 'Side effects', 'Undo and recovery',
   'Multi-machine posture', 'Layer below', 'Bug class', 'Bug evidence', 'Hook bypass', 'Convergence', 'Prompt review'];
-const REPEATED = ['Residue', 'Deferral', 'Prompt finding', 'Skip'];
+const REPEATED = ['Residue', 'Deferral', 'Prompt finding', 'Skip', 'Decision'];
 const CLOSING = ['simplestRobustRoute:', '80/20:', 'VERDICT:'];
 const PLACEHOLDER = /^(|tbd|todo|n\/a|na|-|\.\.\.|<.*>)$/i;
 
@@ -173,7 +174,7 @@ export function subjectDigest(entries) {
 
 // ctx: { subject: string[], digest, promptFindings: finding[], promptSourcesChanged: string[],
 //        deferrals: string[], skips: string[], exists(path): boolean, read(path): string|null,
-//        resolvesEvidence(locator): boolean }
+//        resolvesEvidence(locator): boolean, readEvidence(locator): string|null }
 export function validateRecord(record, ctx) {
   const errors = []; const notes = [];
   const need = (label, rule) => {
@@ -261,6 +262,22 @@ export function validateRecord(record, ctx) {
     if (problem) errors.push(`Rule 71: ${problem}`);
   }
   lineDispositions('Skip', ctx.skips, '37', d => (d.quarantine ? ctx.exists(d.quarantine) : !!d.scope));
+  // Rule 102: a decision made mid-run is recorded here and reported, never left for a stop-and-ask.
+  // 'Decision: <id> | <what was decided, and why> | reported=<locator>'; the locator is a
+  // repository file or an existing absolute path, and the report it names carries the id.
+  const decisionIds = new Set();
+  for (const row of record.all('Decision')) {
+    const [id, text, ...rest] = pipe(row); const reported = keyed(rest.join(';')).reported;
+    if (!id || !/^[A-Za-z][\w.-]{2,}$/.test(id) || !text || PLACEHOLDER.test(text) || wordCount(text) < 5) {
+      errors.push(`Rule 102: decision '${row}' needs 'Decision: <id> | <what was decided, and why> | reported=<report that names the id>'`); continue;
+    }
+    if (decisionIds.has(id)) errors.push(`Rule 102: decision ${id} is recorded twice`);
+    decisionIds.add(id);
+    const report = reported && !PLACEHOLDER.test(reported) ? ctx.readEvidence(reported) : null;
+    if (!reported || PLACEHOLDER.test(reported)) errors.push(`Rule 102: decision ${id} is unreported; add 'reported=<report that names ${id}>'`);
+    else if (report === null) errors.push(`Rule 102: decision ${id} is unreported: its report ${reported} does not exist`);
+    else if (!new RegExp(`(^|[^\\w.-])${id.replace(/[.-]/g, '\\$&')}($|[^\\w-])`).test(report)) errors.push(`Rule 102: decision ${id} is unreported: its report ${reported} does not name it`);
+  }
   for (const [label, rule] of [['simplestRobustRoute', 116], ['80/20', 116], ['VERDICT', 116]]) {
     const value = record.closing[label];
     if (!value || PLACEHOLDER.test(value)) errors.push(`Rule ${rule}: the closing block needs '${label}:' as one of its last three lines`);

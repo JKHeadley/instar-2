@@ -204,6 +204,22 @@ describe('landing gate and the append-only evidence ledger (Rules 37, 74, 107, 1
     writeFileSync(ledger, [rows[0], ...rows.slice(2)].join('\n') + '\n');
     expect(r.check('landing').out).toContain('not an unbroken chain');
   }, 120_000);
+  it('refuses a landing whose record carries an unreported mid-run decision, and lands once the report names it (Rule 102)', () => {
+    const { r, base, artifact, review } = setup();
+    const progress = join(r.dir, '..', `${r.dir.split('/').at(-1)}-PROGRESS.md`); dirs.push(progress);
+    writeFileSync(progress, '# Progress\n\nNo decisions reported yet.\n');
+    r.write('reviews/change.md', record(base, `Decision: D-store | keep the fixture value in src/a.ts rather than a new config file | reported=${progress}\n`));
+    r.commit('record a mid-run decision');
+    const land = () => {
+      r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0); review('YES');
+      expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', artifact, '--submitted', 'all').status).toBe(0);
+      return r.check('landing');
+    };
+    const refused = land();
+    expect(refused.status).toBe(1); expect(refused.out).toContain(`Rule 102: decision D-store is unreported: its report ${progress} does not name it`);
+    writeFileSync(progress, '# Progress\n\nD-store: the fixture value stays in src/a.ts; no new config file.\n');
+    const landed = land(); expect(landed.out).toContain('change-review landing ACCEPTED'); expect(landed.status).toBe(0);
+  }, 120_000);
   it('binds each run to the subject at its start: a report cannot be relabelled, a stale one is removed, and a moved subject is red', () => {
     const { r } = setup();
     expect(r.check('suite', '.test-results.json', '0', '--full').status).toBe(2);
