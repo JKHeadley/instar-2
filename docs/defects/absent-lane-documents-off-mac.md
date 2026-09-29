@@ -1,6 +1,6 @@
 # P15 map-strict checks refuse when the lane design documents are absent from the machine (no quarantine)
 
-**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
+**Status:** REPAIRED at source, 2026-09-28 (closure pending the Mama PC run, see below). **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
 
 On the WSL2 machine (Mama PC), these three cases fail deterministically, on cint-L2 and on every branch taken from it:
 - `tests/scheduled/review-round14.test.ts` — `P15 round-fourteen map-strict reviewer cases refuse stale REQUESTED records after their grants`.
@@ -20,3 +20,7 @@ The consequence must be stated plainly rather than softened: **while this holds,
 **Repair and closure:** either the lane documents are made present on every machine that runs the gate (they are lane inputs the checks treat as authoritative, so the honest fix is to make them available rather than to relax the check), or the check states its dependency and refuses in a way that distinguishes "the ledger says no" from "this machine has no ledger". Until then, the P15 map-strict reviewer, deferral-evidence and identity checks are proved only on a machine that holds the lane documents (the Mac). Closure requires the three cases passing on this machine.
 
 **Multi-machine posture:** this is exactly a multi-machine gap — the checks pass where the lane documents live and fail where they do not. The record travels with the repository.
+
+**Repair (2026-09-28, branch unit-u9):** the first option above. The lane documents the check reads are now committed at `tests/scheduled/lane-evidence/`, and `scripts/check-p15-contract-map.mjs` reads them from there. Nothing in the check was relaxed: it still requires the ledger, still refuses a missing or ungranted file, and still checks every ledger row, request status and grant addendum. It reads them from the repository instead of from whichever agent home sits two levels above the checkout. The `seam-response-*.md` and `design-19-*.md` files are byte-for-byte copies. `SEAM-LEDGER.md` holds only the ledger's numbered table rows, the only part the check reads. The ledger's operational journal, which carries account and machine details, is not copied. The directory README gives the refresh command for when a named grant changes. Because the evidence is pinned to the commit, it is the same on every machine and in every checkout layout. That also removes the two-levels-up layout assumption.
+
+**Verified on the Mac:** the three cases pass in the unit-u9 worktree. They also pass in a detached checkout of the repaired commit placed under `/tmp`, where no `.instar/lanes` exists anywhere above the checkout. That reproduces the Mama PC condition. **Closure** still requires the three cases passing in the Mama PC full run of this branch. That run is the gate; this record does not claim it.
