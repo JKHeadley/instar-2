@@ -124,3 +124,14 @@ claimed complete: their inherited skips remain visible in the full suite.
 - No owned database besides P2 facts. In-memory sets/weak maps only narrow
   invocation/settlement use; their loss never licenses replay. Historical index
   values are informational and cannot bypass `consumeEffectSettlement`.
+
+## Infrastructure notice payload (`infrastructure-notice.ts`)
+
+The typed `infrastructure-notice` variant granted in the effect-payloads seam. A closed
+decoder (`decodeInfrastructureNotice`) admits only an `action-needed` record that speaks
+as `infrastructure:*` (never the agent or operator), names its causal episode, cites the
+failed self-heal attempts that make it eligible (Rule 88) and addresses only the `alerts`
+destination with its recorded grant (Rule 53). `renderInfrastructureNotice` is a fixed
+template over that evidence; `infrastructureNoticeDigest` is the notice's immutable
+identity. It is not an `OutboundMessage` and is never sent by the ordinary-reply adapter;
+the only sender is Part Ten's confined notice driver.

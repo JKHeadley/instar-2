@@ -1,11 +1,11 @@
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { afterEach, expect, it } from 'vitest';
 import { HOST_OUTAGE_TEXT, openPreviewState } from '../preview/state.js';
 // @ts-expect-error Physical launchd watcher is JavaScript.
-import { watchOnce, supervise } from '../../scripts/host-watch.mjs';
+import { watchOnce, supervise, superviseJournal } from '../../scripts/host-watch.mjs';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -128,3 +128,63 @@ it('a missing executable latches the existing breaker without a launchd retry', 
   expect(JSON.parse(readFileSync(join(root, 'preview-stop.json'), 'utf8')).reason).toBe('breaker');
   expect(JSON.parse(readFileSync(join(root, 'preview-state.json'), 'utf8')).totalErrors).toBe(1);
 });
+
+// Rule 15 gap (a), the desk's live test run offline: the REAL journal runner under host-watch is stopped with
+// SIGSTOP (alive, not exiting); host-watch sees its progress beat stop, relaunches it, and a message sent
+// afterwards is answered.
+it('relaunches a SIGSTOPped real journal runner, and a message sent afterwards is answered', async () => {
+  const { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } = await import('../preview/successive-fixture.js');
+  const world = successiveWorld(), root = join(world.directory, 'watched-journal'), dir = world.directory;
+  const activation = join(dir, 'activation.json'), profile = join(dir, 'profile.json');
+  const log = join(dir, 'poll.log'), updates = join(dir, 'updates.json'), preload = join(dir, 'jev.mjs');
+  writeFileSync(activation, JSON.stringify(world.activation()));
+  writeFileSync(profile, JSON.stringify(offlineProfile));
+  writeFileSync(updates, '[]');
+  writeFileSync(preload, `globalThis.fetch = async () => new Response(JSON.stringify({ model: 'jev-1.13.0',
+    answers: Object.fromEntries(['raw_path','cli_command','config_key','credential','api_endpoint',
+      'quits_on_self','claims_blocked','parks_on_user','defers_work','unrecorded_blocker'].map(rule => [rule,{type:'noul',noul:0.01}])) }));\n`);
+  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const saved = { ...process.env };
+  try {
+    const port = await new Promise<number>((done, fail) => { endpoint.stdout!.once('data', data => done(Number(String(data).trim()))); endpoint.once('error', fail); });
+    Object.assign(process.env, { INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+      INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
+      INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` });
+    const trial = world.state().read().trial;
+    const agent = [process.execPath, '--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', '--import', preload,
+      join(process.cwd(), 'tests/preview/journal-agent.mjs'), 'run', '--root', root,
+      '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+      '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
+      '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
+      '--activation-record', activation, '--operator-records', join(dir, 'operator-records'), '--login-profile', profile, '--model', world.model,
+      '--bot-username', world.configuration.botUsername, '--max-cycles', '100000', '--max-poll-seconds', '1'];
+    const supervised = superviseJournal({ mode: 'journal', root, cwd: process.cwd(), agent, hangAfterMs: 20000, backoffMs: 50, maxBackoffMs: 100 });
+    const polls = () => existsSync(log) ? readFileSync(log, 'utf8').split('getUpdates').length - 1 : 0;
+    const until = async (test: () => boolean, ms: number) => {
+      const end = Date.now() + ms; while (!test() && Date.now() < end) await new Promise(done => setTimeout(done, 25)); return test(); };
+    expect(await until(() => polls() >= 2 && existsSync(join(root, 'runner-beat.json')), 30000)).toBe(true);
+    const first = JSON.parse(readFileSync(join(root, 'runner-beat.json'), 'utf8')).pid;
+    process.kill(first, 'SIGSTOP');
+    const stoppedAt = polls();
+    // host-watch kills the stopped runner and a fresh one resumes polling.
+    expect(await until(() => { try { return JSON.parse(readFileSync(join(root, 'runner-beat.json'), 'utf8')).pid !== first && polls() > stoppedAt; }
+      catch { return false; } }, 40000)).toBe(true);
+    expect(() => process.kill(first, 0)).toThrow();
+    expect(JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8'))).toMatchObject({ phase: 'recovering',
+      failures: [{ signal: 'SIGKILL', hung: true }] });
+    // The operator's next message reaches the relaunched runner and is answered.
+    writeFileSync(updates, JSON.stringify([{ update_id: 1, message: { chat: { id: Number(world.configuration.chatId), type: 'private' },
+      from: { id: Number(world.configuration.operatorSenderId) }, text: 'status' } }]));
+    const answered = () => existsSync(`${log}.sends`) && readFileSync(`${log}.sends`, 'utf8').split('\n').filter(Boolean)
+      .some(line => String(JSON.parse(line).chat_id) === world.configuration.chatId);
+    expect(await until(answered, 40000)).toBe(true);
+    writeFileSync(join(root, 'preview-stop.json'), JSON.stringify({ reason: 'operator' }));
+    expect(await supervised).toBe(0);
+    expect(JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8')).open).toBe(false);
+  } finally {
+    endpoint.kill('SIGKILL');
+    for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+    Object.assign(process.env, saved);
+  }
+}, 150000);
