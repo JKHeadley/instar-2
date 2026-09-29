@@ -5278,7 +5278,7 @@
     "src/effects/boundary.ts": "08e9298f470c97354d4a4a586ebcbd3dd7152029efc6a6b07702f91ed084e2e9",
     "src/effects/contracts.ts": "5d5bece08265d038035d44213006d77d189987fad1b01e023ecc940d7e842415",
     "src/effects/doorway.ts": "d6566748dea1b5e70e379b8527fb8fdd6716522cc9e3b3028d0335eab08428f7",
-    "src/effects/index.ts": "91d76aba8b2a8161f7d63decef710f7e657d0f149f8e99ba603dd2096bc04e9e",
+    "src/effects/index.ts": "bead0947d778fb6d96316c44610d52ca5988126a839122581a78cc0f82b361e1",
     "src/effects/provider-api.ts": "455efa504aa895fc26eff718aa62a082f4d5143b4be4ba8324197444061e8ca9",
     "src/effects/provider-authority.ts": "7265de8ae76c304b77144a0b979f670079b6309560ffcda66163fe18608c78ed",
     "src/effects/provider-path.ts": "4611835d9e66541e7454eb24e446f9d563b45a1c7299f22bd415f68faf54ccaf",

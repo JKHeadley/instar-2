@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:bcd75669bfc86ba8e35133d72267e218c5e68fb211c55e7a7a7a0a6077318198"
+        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
       }
     },
     {
@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:bcd75669bfc86ba8e35133d72267e218c5e68fb211c55e7a7a7a0a6077318198"
+        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
       }
     },
     {
@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:bcd75669bfc86ba8e35133d72267e218c5e68fb211c55e7a7a7a0a6077318198"
+        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
       }
     },
     {
