@@ -1,11 +1,14 @@
 #!/bin/bash
-# Fixed M4-L worker provisioning (M5). Five modes: inspect, accounts-only,
-# install, verify, uninstall; plus accounts-rollback for the inert stage.
+# Fixed M4-L worker provisioning (M5). Modes: inspect, accounts-only,
+# accounts-rollback (the inert stage); stage (build a content-addressed monitor
+# release, unprivileged, never installs); install, uninstall, verify.
 #
 # Every mutating mode is a DRY RUN unless --apply is given. --apply requires
-# root, a live host (never a synthetic inventory), explicit reviewed IDs and the
-# exact plan digest printed by the reviewed dry run. The script never acquires
-# privilege, downloads anything, or takes over an existing account or path.
+# root, a live host (never a synthetic inventory), explicit reviewed inputs and
+# the exact plan digest printed by the reviewed dry run. The plan embeds the exact
+# bytes it writes, so the reviewed digest binds content, not just file names.
+# The script never acquires privilege, downloads anything, or takes over an
+# existing account or path.
 set -euo pipefail
 set -f
 umask 077
@@ -25,6 +28,12 @@ readonly STATE=/private/var/db/instar2-worker
 readonly RUNDIR=/private/var/run/instar2-worker
 readonly PLIST=/Library/LaunchDaemons/ai.instar.worker-monitor.plist
 readonly LEDGER=/Library/Instar2/.accounts-ledger
+readonly CONF=/Library/Instar2/m4-launch/installation.conf
+readonly SERVICE=/Library/Instar2/m4-launch/service.json
+readonly KEY=/Library/Instar2/m4-launch/keys/receipt.key
+readonly PUB=/Library/Instar2/m4-launch/keys/receipt.pub
+readonly JOURNAL=/private/var/db/instar2-worker/journal
+readonly LABEL=ai.instar.worker-monitor
 readonly ID_LOW=450
 readonly ID_HIGH=499
 # Directories created by accounts-only, parents first. Mode and owner are fixed.
@@ -34,9 +43,10 @@ die() { echo "REFUSED: $*" >&2; exit 2; }
 note() { echo "$*"; }
 
 MODE=${1:-}
-[ -n "$MODE" ] || die "usage: $0 inspect|accounts-only|accounts-rollback|install|verify|uninstall [options]"
+[ -n "$MODE" ] || die "usage: $0 inspect|accounts-only|accounts-rollback|stage|install|verify|uninstall [options]"
 shift
 APPLY=0 INVENTORY= UID_ARG= GID_ARG= DIGEST_ARG= AGENT_USER=${SUDO_USER:-${USER:-}}
+OUT= RUNTIME= RELEASE= INSTALLATION= MACHINE= CPU= MEMORY= NOFILE= LIFETIME= MAX_LIFETIME=
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
@@ -45,6 +55,16 @@ while [ $# -gt 0 ]; do
     --gid) [ $# -ge 2 ] || die "--gid needs a number"; GID_ARG=$2; shift ;;
     --plan-digest) [ $# -ge 2 ] || die "--plan-digest needs a value"; DIGEST_ARG=$2; shift ;;
     --agent-user) [ $# -ge 2 ] || die "--agent-user needs a name"; AGENT_USER=$2; shift ;;
+    --out) [ $# -ge 2 ] || die "--out needs a directory"; OUT=$2; shift ;;
+    --runtime) [ $# -ge 2 ] || die "--runtime needs a file"; RUNTIME=$2; shift ;;
+    --release) [ $# -ge 2 ] || die "--release needs a staged release directory"; RELEASE=$2; shift ;;
+    --installation) [ $# -ge 2 ] || die "--installation needs an id"; INSTALLATION=$2; shift ;;
+    --machine) [ $# -ge 2 ] || die "--machine needs an id"; MACHINE=$2; shift ;;
+    --cpu-seconds) [ $# -ge 2 ] || die "--cpu-seconds needs a number"; CPU=$2; shift ;;
+    --memory-mib) [ $# -ge 2 ] || die "--memory-mib needs a number"; MEMORY=$2; shift ;;
+    --nofile) [ $# -ge 2 ] || die "--nofile needs a number"; NOFILE=$2; shift ;;
+    --lifetime-ms) [ $# -ge 2 ] || die "--lifetime-ms needs a number"; LIFETIME=$2; shift ;;
+    --max-lifetime-ms) [ $# -ge 2 ] || die "--max-lifetime-ms needs a number"; MAX_LIFETIME=$2; shift ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -55,7 +75,7 @@ isnum() { case "$1" in ''|*[!0-9]*) return 1 ;; *) [ ${#1} -le 5 ] ;; esac; }
 case "$AGENT_USER" in ''|*[!A-Za-z0-9_.-]*) die "agent user must be a plain account name" ;; esac
 
 # ---- inventory: live host or a synthetic key=value file (dry run only) ----
-OS_NAME= OS_VERSION= OS_BUILD= ARCH= USER_LIST= GROUP_LIST= AGENT_GROUPS= WORKER_PROCS=0
+OS_NAME= OS_VERSION= OS_BUILD= ARCH= USER_LIST= GROUP_LIST= AGENT_GROUPS= WORKER_PROCS=0 INSTALLED_RELEASE=
 WORKER_ATTRS= PATHS= USER_NAMED=no GROUP_NAMED=no
 if [ -n "$INVENTORY" ]; then
   [ "$APPLY" = 0 ] || die "--apply never accepts a synthetic inventory"
@@ -67,6 +87,7 @@ if [ -n "$INVENTORY" ]; then
       arch) ARCH=$value ;; users) USER_LIST=$value ;; groups) GROUP_LIST=$value ;;
       agent_groups) AGENT_GROUPS=$value ;; worker_procs) WORKER_PROCS=$value ;;
       worker_attrs) WORKER_ATTRS=$value ;;
+      installed_release) INSTALLED_RELEASE=$value ;;
       path) PATHS="$PATHS$value
 " ;;
       ''|'#'*) ;;
@@ -97,7 +118,7 @@ else
       "$(id -Gn "$WORKER" 2>/dev/null | tr ' ' '+')")
     WORKER_PROCS=$( { pgrep -U "$WORKER" 2>/dev/null || [ "$?" -eq 1 ]; } | wc -l | tr -d ' ')
   fi
-  for spec in $DIRS "$RUNDIR:-" "$PLIST:-" "$LEDGER:-"; do
+  for spec in $DIRS "$RUNDIR:-" "$PLIST:-" "$LEDGER:-" "$CONF:-" "$SERVICE:-" "$KEY:-" "$PUB:-" "$JOURNAL:-"; do
     p=${spec%%:*}
     if [ -L "$p" ]; then PATHS="$PATHS$p|symlink|-|-|-
 "
@@ -105,6 +126,7 @@ else
 "
     fi
   done
+  if [ -f "$CONF" ] && [ ! -L "$CONF" ]; then INSTALLED_RELEASE=$(awk -F= '$1=="release_dir"{print $2; exit}' "$CONF"); fi
   SOURCE=live
 fi
 
@@ -217,6 +239,20 @@ run_line() {
     ledger) printf 'uid=%s\ngid=%s\n' "${2#uid=}" "${3#gid=}" > "$LEDGER" && /bin/chmod 0600 "$LEDGER" ;;
     rmdir) /bin/rmdir "$2" ;;
     rm-ledger) /bin/rm -f "$LEDGER" ;;
+    copy-release)
+      [ ! -e "$3" ] && /bin/mkdir -m 0755 "$3" && /usr/bin/ditto --noextattr --noqtn "$2" "$3" \
+        && /usr/sbin/chown -R root:wheel "$3" && /bin/chmod -R u=rwX,go=rX "$3" \
+        && (check_release "$3") ;;   # the copied bytes, not the reviewed source path, must match the name
+    write-file)
+      [ ! -e "$2" ] && printf '%s' "$4" | /usr/bin/xxd -r -p > "$2.new" && /usr/sbin/chown root:wheel "$2.new" \
+        && /bin/chmod "$3" "$2.new" && /bin/mv -n "$2.new" "$2" && [ ! -e "$2.new" ] ;;
+    keygen) "$2/runtime/node" "$2/scripts/fixed-native-worker-monitor.mjs" keygen "$3" "$4" ;;
+    journal-init) "$2/runtime/node" "$2/scripts/fixed-native-worker-monitor.mjs" journal-init "$3" "$4" "$5" "$6" \
+      "$2/bin/instar-worker-enforcer" ;;
+    launchctl-bootstrap) /bin/launchctl bootstrap system "$2" ;;
+    launchctl-bootout) /bin/launchctl bootout "system/$LABEL" ;;
+    rm-file) [ -f "$2" ] && [ ! -L "$2" ] && /bin/rm -f "$2" ;;
+    rm-release) case "$2" in "$RELEASES"/[0-9a-f]*) [ -d "$2" ] && [ ! -L "$2" ] && /bin/rm -R "$2" ;; *) false ;; esac ;;
     *) die "plan contains an unknown verb: $1" ;;
   esac
 }
@@ -300,10 +336,142 @@ verify_accounts() {
     p=${spec%%:*} m=${spec#*:}
     check "dir:$p" "$(pathrow "$p")" "$p|Directory|root|wheel|${m#0}"
   done
-  check monitor "$([ -z "$(pathrow "$PLIST")" ] && echo absent || echo present)" absent
-  note "verify.monitor-stage=pending (package not reviewed; install refuses)"
+  if [ -z "$(pathrow "$PLIST")" ]; then
+    note "verify.monitor-stage=pending (monitor not installed)"
+  else
+    verify_monitor || bad=1
+  fi
   [ "$bad" = 0 ] && note "verify.accounts=ok" && return 0
   note "verify.accounts=FAIL"; return 1
+}
+
+# ---- stage: build one content-addressed monitor release (unprivileged) ----
+# The release holds the enforcer (built with the recorded command), the pinned
+# runtime, the monitor module and the compiled owner code it imports, the profile
+# and plist templates, and the accepted per-slot limits. Its name is the SHA-256
+# of its MANIFEST, which lists the SHA-256 of every file.
+limit_ok() { isnum "$2" && [ "$2" -ge "$3" ] && [ "$2" -le "$4" ] || die "$1 must be a number in $3-$4"; }
+stage_release() {
+  [ "$APPLY" = 0 ] || die "stage never installs anything; it has no --apply"
+  [ -n "$OUT" ] && [ -d "$OUT" ] && [ ! -L "$OUT" ] || die "stage needs --out <existing directory>"
+  limit_ok --cpu-seconds "${CPU:-}" 1 86400
+  limit_ok --memory-mib "${MEMORY:-}" 16 1048576
+  limit_ok --nofile "${NOFILE:-}" 8 4096
+  case "${MAX_LIFETIME:-}" in ''|*[!0-9]*) die "--max-lifetime-ms must be a number" ;; esac
+  case "${LIFETIME:-}" in ''|*[!0-9]*) die "--lifetime-ms must be a number" ;; esac
+  [ "$MAX_LIFETIME" -ge 1000 ] && [ "$MAX_LIFETIME" -le 86400000 ] || die "--max-lifetime-ms must be in 1000-86400000"
+  [ "$LIFETIME" -ge 1 ] && [ "$LIFETIME" -le "$MAX_LIFETIME" ] || die "--lifetime-ms must be in 1-max-lifetime-ms"
+  repo=$(cd "$(dirname "$0")/.." && pwd -P)
+  [ -f "$repo/dist/assembly/production-launch-boundary.js" ] || die "build the reviewed checkout first (dist missing)"
+  [ -n "$RUNTIME" ] || RUNTIME=$(command -v node || true)
+  [ -n "$RUNTIME" ] && [ -f "$RUNTIME" ] || die "--runtime must name the pinned runtime file"
+  tmp="$OUT/.staging.$$"
+  /bin/mkdir -m 0700 "$tmp" "$tmp/bin" "$tmp/runtime" "$tmp/scripts" "$tmp/templates"
+  trap '/bin/rm -rf "$tmp" "$OUT/.manifest.$$"' EXIT
+  /usr/bin/clang -std=c11 -O2 -Wall -Wextra -Werror -o "$tmp/bin/instar-worker-enforcer" \
+    "$repo/scripts/fixed-native-worker-enforcer.c" || die "enforcer build failed"
+  /bin/cp "$RUNTIME" "$tmp/runtime/node"
+  /bin/chmod 0755 "$tmp/runtime/node" "$tmp/bin/instar-worker-enforcer"
+  /bin/cp "$repo/scripts/fixed-native-worker-monitor.mjs" "$tmp/scripts/"
+  /bin/cp -R "$repo/dist" "$tmp/dist"
+  /bin/cp "$repo/deploy/macos/fixed-worker/worker.sb" "$repo/deploy/macos/fixed-worker/ai.instar.worker-monitor.plist" "$tmp/templates/"
+  printf 'cpu_seconds=%s\nmemory_mib=%s\nnofile=%s\nlifetime_ms=%s\nmax_lifetime_ms=%s\n' \
+    "$CPU" "$MEMORY" "$NOFILE" "$LIFETIME" "$MAX_LIFETIME" > "$tmp/limits.conf"
+  (cd "$tmp" && /usr/bin/find . -type f | LC_ALL=C /usr/bin/sort | while IFS= read -r f; do
+    /usr/bin/shasum -a 256 "${f#./}"; done) > "$OUT/.manifest.$$"
+  /bin/mv "$OUT/.manifest.$$" "$tmp/MANIFEST"
+  digest=$(/usr/bin/shasum -a 256 < "$tmp/MANIFEST" | awk '{print $1}')
+  if [ -e "$OUT/$digest" ]; then note "stage.result=already-staged (identical content)"
+  else /bin/mv "$tmp" "$OUT/$digest"; note "stage.result=staged"; fi
+  note "stage.release=$digest"
+  note "stage.path=$OUT/$digest"
+  note "stage.files=$(/usr/bin/wc -l < "$OUT/$digest/MANIFEST" | tr -d ' ')"
+}
+
+# ---- the installed files, derived only from reviewed inputs ----
+hexof() { /usr/bin/xxd -p | tr -d '\n'; }
+sha() { /usr/bin/shasum -a 256 | awk '{print "sha256:" $1}'; }
+token() { case "$2" in ''|*[!A-Za-z0-9:._@+=-]*) die "$1 must be a plain identifier" ;; esac; [ ${#2} -le 200 ] || die "$1 too long"; }
+manifest_sha() { awk -v f="$2" '$2==f{print "sha256:" $1; exit}' "$1/MANIFEST"; }
+check_release() { # check_release <dir>: content matches its name and its manifest, nothing extra
+  r=$1
+  [ -d "$r" ] && [ ! -L "$r" ] && [ -f "$r/MANIFEST" ] || die "release is not a staged directory: $r"
+  name=$(basename "$r")
+  case "$name" in *[!0-9a-f]*|'') die "release name is not a content digest: $name" ;; esac
+  [ "$(/usr/bin/shasum -a 256 < "$r/MANIFEST" | awk '{print $1}')" = "$name" ] || die "release MANIFEST does not match its name"
+  (cd "$r" && /usr/bin/shasum -a 256 -s -c MANIFEST) || die "release content does not match its MANIFEST"
+  listed=$(awk '{print $2}' "$r/MANIFEST" | LC_ALL=C sort)
+  present=$(cd "$r" && /usr/bin/find . -type f ! -name MANIFEST ! -name worker.sb -o -type f -path ./templates/worker.sb | sed 's#^\./##' | LC_ALL=C sort)
+  [ "$listed" = "$present" ] || die "release holds files its MANIFEST does not list"
+}
+limit_of() { awk -F= -v k="$2" '$1==k{print $2; exit}' "$1/limits.conf"; }
+materialize_profile() { sed -e "s#@RELEASE_DIR@#$2#g" -e "s#@SLOT_DIR@#$SLOT#g" "$1/templates/worker.sb"; }
+materialize_plist() { sed -e "s#@RELEASE_DIR@#$2#g" "$1/templates/ai.instar.worker-monitor.plist"; }
+
+install_plan() {
+  [ -n "$WORKER_UID" ] && [ -n "$WORKER_GID" ] && [ -n "$(pathrow "$LEDGER")" ] || die "install: the accounts stage is not provisioned; run accounts-only and verify first"
+  [ "$WORKER_UID" -ge $ID_LOW ] && [ "$WORKER_UID" -le $ID_HIGH ] || die "install: worker uid outside the hidden range"
+  for p in $PLIST $CONF $SERVICE; do [ -z "$(pathrow "$p")" ] || die "install: already present: $p (uninstall first)"; done
+  [ -n "$RELEASE" ] || die "install needs --release <staged release directory>"
+  token --installation "$INSTALLATION"; token --machine "$MACHINE"
+  check_release "$RELEASE"
+  digest=$(basename "$RELEASE") rel="$RELEASES/$digest"
+  agent_uid=$(lookup "$USER_LIST" "$AGENT_USER")
+  [ -n "$agent_uid" ] || die "install: agent account $AGENT_USER not found"
+  cpu=$(limit_of "$RELEASE" cpu_seconds) mem=$(limit_of "$RELEASE" memory_mib) nofile=$(limit_of "$RELEASE" nofile)
+  life=$(limit_of "$RELEASE" lifetime_ms) maxlife=$(limit_of "$RELEASE" max_lifetime_ms)
+  for n in "$cpu" "$mem" "$nofile" "$life" "$maxlife"; do
+    case "$n" in ''|*[!0-9]*) die "install: release limits unreadable" ;; esac
+  done
+  conf=$(printf 'agent_uid=%s\nworker_uid=%s\nworker_gid=%s\nrelease_dir=%s\ncpu_seconds=%s\nmemory_mib=%s\nnofile=%s\nmax_lifetime_ms=%s\n' \
+    "$agent_uid" "$WORKER_UID" "$WORKER_GID" "$rel" "$cpu" "$mem" "$nofile" "$maxlife")
+  profile=$(materialize_profile "$RELEASE" "$rel")
+  service=$(printf '{"clockReference":"clock:wall:%s","digests":{"artifactDigest":"%s","handlePolicyDigest":"%s","limitsDigest":"%s","profileDigest":"%s","releaseDigest":"sha256:%s"},"installation":"%s","journal":"%s","journalGenesis":{"installation":"%s","journal":"journal:%s","machine":"%s"},"keyId":"key:%s","lifetimeMs":%s,"machine":"%s","privateKeyPath":"%s"}' \
+    "$MACHINE" "$(manifest_sha "$RELEASE" bin/instar-worker-enforcer)" \
+    "$(manifest_sha "$RELEASE" dist/assembly/production-native-context.js)" \
+    "$(printf '%s\n' "$conf" | sha)" "$(printf '%s\n' "$profile" | sha)" "$digest" \
+    "$INSTALLATION" "$JOURNAL" "$INSTALLATION" "$INSTALLATION" "$MACHINE" "$INSTALLATION" "$life" "$MACHINE" "$KEY")
+  echo "copy-release $RELEASE $rel"
+  echo "write-file $rel/worker.sb 0644 $(printf '%s\n' "$profile" | hexof)"
+  echo "write-file $CONF 0644 $(printf '%s\n' "$conf" | hexof)"
+  if [ -z "$(pathrow "$KEY")" ]; then echo "keygen $rel $KEY $PUB"; fi
+  echo "write-file $SERVICE 0644 $(printf '%s' "$service" | hexof)"
+  if [ -z "$(pathrow "$JOURNAL")" ]; then echo "journal-init $rel $JOURNAL $INSTALLATION $MACHINE journal:$INSTALLATION"; fi
+  echo "write-file $PLIST 0644 $(materialize_plist "$RELEASE" "$rel" | hexof)"
+  echo "launchctl-bootstrap $PLIST"
+}
+
+# Keys and the journal are history: uninstall never removes them.
+uninstall_plan() {
+  [ -n "$(pathrow "$PLIST")" ] || die "uninstall: the monitor is not installed"
+  case "$INSTALLED_RELEASE" in "$RELEASES"/[0-9a-f]*) ;; *) die "uninstall: installed release unreadable from $CONF" ;; esac
+  echo "launchctl-bootout"
+  echo "rm-file $PLIST"
+  echo "rm-file $SERVICE"
+  echo "rm-file $CONF"
+  echo "rm-release $INSTALLED_RELEASE"
+}
+
+verify_monitor() {
+  mbad=0
+  mcheck() { if [ "$2" = "$3" ]; then note "verify.monitor.$1=ok"; else note "verify.monitor.$1=FAIL (have '$2', want '$3')"; mbad=1; fi; }
+  mcheck plist "$(pathrow "$PLIST")" "$PLIST|Regular File|root|wheel|644"
+  mcheck conf "$(pathrow "$CONF")" "$CONF|Regular File|root|wheel|644"
+  mcheck service "$(pathrow "$SERVICE")" "$SERVICE|Regular File|root|wheel|644"
+  mcheck key "$(pathrow "$KEY")" "$KEY|Regular File|root|wheel|600"
+  mcheck journal "$(pathrow "$JOURNAL")" "$JOURNAL|Regular File|root|wheel|600"
+  if [ "$SOURCE" = live ]; then
+    rel=$INSTALLED_RELEASE
+    if (cd "$rel" 2>/dev/null && /usr/bin/shasum -a 256 -s -c MANIFEST); then note "verify.monitor.release=ok"
+    else note "verify.monitor.release=FAIL (content differs from MANIFEST)"; mbad=1; fi
+    mcheck profile "$(materialize_profile "$rel" "$rel" | sha)" "$(sha < "$rel/worker.sb")"
+    mcheck service-state "$(/bin/launchctl print "system/$LABEL" 2>/dev/null | awk '$1=="state"{print $3; exit}')" running
+    mcheck control-socket "$([ -S "$RUNDIR/control.sock" ] && stat -f '%Su' "$RUNDIR/control.sock")" root
+    note "verify.monitor.native-feasibility=operator step: sudo $rel/bin/instar-worker-enforcer feasibility all $rel/worker.sb <empty scratch dir> $rel/runtime/node $WORKER_UID $WORKER_GID (every case must PASS; memory is verifiable only here)"
+  fi
+  note "verify.monitor.production-launch=refusing until the installed owner reader inputs exist (lane A capacity, R6 allocation, R4/R6 store and watermark)"
+  [ "$mbad" = 0 ] && note "verify.monitor=ok" && return 0
+  note "verify.monitor=FAIL"; return 1
 }
 
 case "$MODE" in
@@ -311,7 +479,8 @@ case "$MODE" in
   accounts-only) print_inventory; plan=$(accounts_plan); execute_plan "$plan" ;;
   accounts-rollback) print_inventory; plan=$(rollback_plan); execute_plan "$plan" ;;
   verify) print_inventory; verify_accounts ;;
-  install|uninstall)
-    die "$MODE: the monitor release manifest is not reviewed; this stage stays refusing (accounts stage only)" ;;
+  stage) stage_release ;;
+  install) print_inventory; plan=$(install_plan); execute_plan "$plan" ;;
+  uninstall) print_inventory; plan=$(uninstall_plan); execute_plan "$plan" ;;
   *) die "unknown mode: $MODE" ;;
 esac
