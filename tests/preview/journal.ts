@@ -5782,23 +5782,35 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const editInstruction = ' A Telegram edit is a revision of editedTurn, not a new request or reply opportunity. Compare its memoryRequest.message with the exact prior revision in memoryCandidates. If a stated fact changed, return a correct memory action with the exact old clause, the exact replacement clause, and affected replies and summary passages. If a prior claim was withdrawn or deleted without a replacement fact, use forget with its exact old clause. Return memory:[] only when no stated fact changed. The latest revision controls the summary.';
     // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
     // bound one pass; the next worker cycle can continue from the last summary.
+    let backlogPassed = false;
     for (let attempt = 0; attempt < 8; attempt++) {
       const previous = summaryFor(last.update)?.through ?? -1;
       if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;
       const pending = journal.view.order.filter(turn => turn.accepted && turn.update > previous && turn.update <= last.update);
+      const indexed = meaningIndex();
+      const backlog = journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
+        && item.update <= previous && !indexed.has(item.id)).slice(0, INDEX_BACKLOG_LIMIT);
       const full = packetFor(last.update, true, [], [], [], last.thread, true);
       // The answer envelope, source briefing and next operator message also use
       // the 32 KiB packet allowance. Start rolling before the history alone
       // consumes that headroom; the existing summary path remains bounded.
-      if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) return;
+      const due = force || unreviewedQuestions(last.update).length > 0
+        || Buffer.byteLength(full) >= Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES);
+      // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
+      // otherwise wait for history to grow. One pass per call carries the backlog, advancing
+      // the frontier by only the oldest pending turn so the newest stays verbatim.
+      const backlogOnly: boolean = !due && !backlogPassed && backlog.length > 0 && pending.length > 1;
+      if (!due && !backlogOnly) return;
+      backlogPassed ||= backlogOnly;
       const candidates: { turn: Turn; bases: string[] }[] = [];
-      for (const turn of pending.slice(0, SUMMARY_MAX_TURNS)) {
+      for (const turn of pending.slice(0, backlogOnly ? 1 : SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
         const bases = datedVariants(candidate).filter(base => Buffer.byteLength(base) <= Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES));
         if (!bases.length) break;
         candidates.push({ turn, bases });
       }
       if (!candidates.length) {
+        if (backlogOnly) return;
         const oversized = pending[0];
         if (oversized && oversized.held !== 'summary oversized turn')
           journal.append({ kind: 'hold', id: oversized.id, reason: 'summary oversized turn', at: ports.now() });
@@ -5806,9 +5818,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       const blocked = `${last.update}:${previous}:${journal.view.limits.maxBytes}`;
       if (summaryPreflightBlocked.has(blocked)) return;
-      const indexed = meaningIndex();
-      const backlog = journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
-        && item.update <= previous && !indexed.has(item.id)).slice(0, INDEX_BACKLOG_LIMIT);
       let chosen: { through: number; packet: string; prepared?: string; offered: { id: number; in: CommitmentNote['in']; quote: string }[];
         memorySources: string[]; questionSources: Turn[]; trigger?: Turn; strictMemory: boolean; reminderOffer: DatedItem[];
         indexBacklog: string[] } | undefined;
@@ -5860,7 +5869,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rule 11: messages summarized before their meaning terms existed are offered again,
             // oldest first and bounded, so the derived index converges instead of staying partial.
             for (const packet of backlog.length ? [JSON.stringify({ ...JSON.parse(plain) as object,
-              indexBacklog: backlog.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) }), plain] : [plain]) {
+              indexBacklog: backlog.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) }),
+              ...(backlogOnly ? [] : [plain])] : [plain]) {
               if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
               try {
                 // Rule 29: the rolling summary's input is written by the runner, a verified system principal.
@@ -5886,6 +5896,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       if (!chosen) {
         summaryPreflightBlocked.add(blocked);
+        // A backlog-only pass was not otherwise due: nothing the operator sent is held for it.
+        if (backlogOnly) return;
         const oversized = pending[0];
         const reason = oversizedPrompt ? 'summary oversized turn' : 'summary preflight unavailable';
         if (oversized && oversized.held !== reason)

@@ -1,0 +1,103 @@
+/** Unit U4, Rule 11 (Part 21 §4, §6): operator messages summarized before build 2 wrote meaning
+ * terms are indexed by the existing summary pass even when no new summary is otherwise due, so a
+ * paraphrase with none of the original words reaches the fact. The model and Telegram are stubs. */
+import { describe, expect, it } from 'vitest';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createJournalWorker, INDEX_BACKLOG_LIMIT, openPreviewJournal } from './journal.js';
+
+const key = new Uint8Array(32).fill(53), at = 1790000000000;
+const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
+  grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+  maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 1024 * 1024, cursor: 0 });
+const update = (id: number, text: string) => ({ update_id: id,
+  message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
+const target = 'My bicycle lock code is 4471.';
+const targetId = 'telegram:12345678:update:1';
+const cues = ['bike', 'combination', 'padlock', 'lock combination'];
+type Coverage = { summarizedMessages: number; meaningIndexed: number; disposition: string };
+type Packet = { meaningIndexCoverage?: Coverage; recalled?: { user?: string }[] };
+
+/** A journal as build 1 left it: answered operator turns and a rolling summary without meaning terms. */
+function preBuild2(path: string, older: number) {
+  const journal = openPreviewJournal(path, key, genesis());
+  // Long enough that complete history no longer fits, so answers ground in the summary plus recall.
+  const texts = [target, ...Array.from({ length: older - 1 }, (_, i) => `Bike ride notes ${i}: hills and flats. ${'Long climb, steady pace. '.repeat(260)}`)];
+  texts.forEach((text, index) => {
+    const turn = index + 1, id = `telegram:12345678:update:${turn}`;
+    journal.append({ kind: 'intake', id, update: turn, text, raw: JSON.stringify(update(turn, text)), accepted: true, cursor: turn + 1, at: at + turn });
+    journal.append({ kind: 'reserve', id, at: at + turn });
+    journal.append({ kind: 'answer', id, text: 'Noted.', state: 'complete', at: at + turn });
+    journal.append({ kind: 'intent', id, text: 'PREVIEW — Noted.', chat: '7654321', update: turn, grant: 'grant:preview', at: at + turn });
+    journal.append({ kind: 'sent', id, message: turn, at: at + turn });
+  });
+  journal.append({ kind: 'summary-reserve', through: older, at: at + older });
+  journal.append({ kind: 'summary', through: older, text: 'The operator rides often and keeps ride notes.', at: at + older });
+  return journal;
+}
+
+describe('Rule 11: the meaning index backfills summaries written before build 2', () => {
+  it('each later turn carries the backlog once, keeps the newest turn verbatim, and converges', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-backfill-')));
+    const older = 12, path = join(dir, 'journal.encrypted');
+    try {
+      const journal = preBuild2(path, older);
+      const summaryContexts: string[] = [];
+      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, send: async () => 1, checkOutbound: () => {},
+        summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0 } } }),
+        model: async input => {
+          if (!input.id.startsWith('summary:')) return 'Noted.';
+          summaryContexts.push(input.context);
+          const packet = JSON.parse(input.context) as { indexBacklog?: { id: string }[]; history?: { id: string; from?: string }[] };
+          const sources = [...packet.indexBacklog ?? [], ...(packet.history ?? []).filter(item => item.from === undefined)].map(item => item.id);
+          return JSON.stringify({ summary: 'The operator rides often and keeps ride notes.', people: [], questions: [], memory: [],
+            concepts: sources.map(source => ({ source, terms: source === targetId ? cues : ['cycling'] })) });
+        } });
+      const probe = () => {
+        const result = worker.probe('What is the combination for my bike?');
+        if (!('context' in result)) throw Error('probe held');
+        return JSON.parse(result.context) as Packet;
+      };
+      const reached = (packet: Packet) => (packet.recalled ?? []).some(item => item.user?.includes('4471'));
+
+      // Before: every summarized message lacks terms, and the paraphrase shares no word with the fact.
+      const before = probe();
+      expect(before.meaningIndexCoverage).toEqual({ summarizedMessages: older, meaningIndexed: 0, disposition: 'degraded' });
+      expect(reached(before)).toBe(false);
+
+      const turn = async (id: number) => {
+        worker.intake([update(id, `Short check-in ${id}.`)]); await worker.drain(); await worker.summarizeIfNeeded();
+      };
+      // One unsummarized turn: it is the newest, so no pass may summarize it away.
+      await turn(older + 1);
+      expect(summaryContexts).toHaveLength(0);
+      // Each later turn allows one pass that advances the frontier by exactly the oldest pending turn.
+      const passes = Math.ceil(older / INDEX_BACKLOG_LIMIT);
+      for (let i = 0; i < passes; i++) {
+        await turn(older + 2 + i);
+        expect(summaryContexts).toHaveLength(i + 1);
+        expect(summaryContexts[i]).toContain('"indexBacklog"');
+        expect(journal.view.summaries.at(-1)!.through).toBe(older + 1 + i);
+      }
+      expect(journal.view.order.some(item => item.held)).toBe(false);
+
+      const after = probe();
+      const coverage = after.meaningIndexCoverage!;
+      expect(coverage.disposition).toBe('complete');
+      expect(coverage.meaningIndexed).toBe(coverage.summarizedMessages);
+      expect(coverage.summarizedMessages).toBe(older + passes);
+      expect(reached(after)).toBe(true);
+
+      // An empty backlog adds no pass when no summary is otherwise due.
+      await turn(older + 2 + passes);
+      await turn(older + 3 + passes);
+      expect(summaryContexts).toHaveLength(passes);
+      journal.close();
+
+      const reopened = openPreviewJournal(path, key);
+      expect(reopened.view.summaries.some(item => item.concepts?.some(concept => concept.source === targetId))).toBe(true);
+      reopened.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
