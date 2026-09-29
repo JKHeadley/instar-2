@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:0b150ef1beae7210c733b293af059ef2050895cb053c680e584c33a1fff91e8b",
-  "commit": "c570aacaa2967e6945e73045771e0cd580482e75",
+  "generation": "sha256:39722b89088f1124cfc3482faefbac80d866ac5a3d1cc8b94f70a176ea728544",
+  "commit": "5f8faf09b2c09363146b1c55359e65a1e48a52ac",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
+        "text": "keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message."
       },
       {
         "id": "preview-requested-reminders",
@@ -139,7 +139,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
+        "text": "keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message."
       },
       {
         "id": "preview-requested-reminders",
@@ -245,7 +245,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
+        "text": "keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message."
       },
       {
         "id": "preview-requested-reminders",
@@ -351,7 +351,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days."
+        "text": "keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message."
       },
       {
         "id": "preview-requested-reminders",
