@@ -15,7 +15,7 @@ Undo and recovery: revert these commits; nothing durable changes format
 Multi-machine posture: machine-local tests; the records travel with the repository
 Layer below: docs/00-the-purpose.md and docs/01-the-rules.md; scripts/check-register-contract-map.mjs (the held-test check); scripts/register-owner-references.mjs (the preview probe artifact rule); docs/07-the-declarations.md P3-NF-25/P3-NF-28
 Bug class: integration
-Bug evidence: reproducer=scripts/check-register-contract-map.mjs
+Bug evidence: reproducer=tests/intake/governance.test.ts
 Hook bypass: none
 Convergence: none
 Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
