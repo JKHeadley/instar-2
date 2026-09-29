@@ -1,6 +1,7 @@
-/** Unit U4, Rule 11 (Part 21 §4, §6): operator messages summarized before build 2 wrote meaning
- * terms are indexed by the existing summary pass even when no new summary is otherwise due, so a
- * paraphrase with none of the original words reaches the fact. The model and Telegram are stubs. */
+/** Unit U4, Rule 11 (Part 21 §6): operator messages summarized before build 2 wrote meaning terms
+ * are indexed on the write side even when no new summary is due, so a paraphrase with none of the
+ * original words reaches the fact. Indexing never moves the summary frontier, so it is not a
+ * compaction and no reply carries a Rule 110 disclosure for it. The model and Telegram are stubs. */
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,15 +44,16 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
     const older = 12, path = join(dir, 'journal.encrypted');
     try {
       const journal = preBuild2(path, older);
-      const summaryContexts: string[] = [];
-      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, send: async () => 1, checkOutbound: () => {},
+      const summaryContexts: string[] = [], indexContexts: string[] = [], sent: string[] = [];
+      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
+        send: async input => { sent.push(input.expectedText); return input.update; }, checkOutbound: () => {},
         summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0 } } }),
         model: async input => {
           if (!input.id.startsWith('summary:')) return 'Noted.';
-          summaryContexts.push(input.context);
+          (input.id.startsWith('summary:index:') ? indexContexts : summaryContexts).push(input.context);
           const packet = JSON.parse(input.context) as { indexBacklog?: { id: string }[]; history?: { id: string; from?: string }[] };
           const sources = [...packet.indexBacklog ?? [], ...(packet.history ?? []).filter(item => item.from === undefined)].map(item => item.id);
-          return JSON.stringify({ summary: 'The operator rides often and keeps ride notes.', people: [], questions: [], memory: [],
+          return JSON.stringify({ ...(input.id.startsWith('summary:index:') ? {} : { summary: 'The operator rides often and keeps ride notes.', people: [], questions: [], memory: [] }),
             concepts: sources.map(source => ({ source, terms: source === targetId ? cues : ['cycling'] })) });
         } });
       const probe = () => {
@@ -69,35 +71,70 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
       const turn = async (id: number) => {
         worker.intake([update(id, `Short check-in ${id}.`)]); await worker.drain(); await worker.summarizeIfNeeded();
       };
-      // One unsummarized turn: it is the newest, so no pass may summarize it away.
+      // The first later turn indexes the whole backlog in bounded batches, with no new summary.
+      const frontier = journal.view.summaries.at(-1)!.through;
       await turn(older + 1);
-      expect(summaryContexts).toHaveLength(0);
-      // Each later turn allows one pass that advances the frontier by exactly the oldest pending turn.
       const passes = Math.ceil(older / INDEX_BACKLOG_LIMIT);
-      for (let i = 0; i < passes; i++) {
-        await turn(older + 2 + i);
-        expect(summaryContexts).toHaveLength(i + 1);
-        expect(summaryContexts[i]).toContain('"indexBacklog"');
-        expect(journal.view.summaries.at(-1)!.through).toBe(older + 1 + i);
+      expect(summaryContexts).toHaveLength(0);
+      expect(indexContexts).toHaveLength(passes);
+      for (const context of indexContexts) {
+        const offered = (JSON.parse(context) as { indexBacklog: { id: string }[] }).indexBacklog;
+        expect(offered.length).toBeLessThanOrEqual(INDEX_BACKLOG_LIMIT);
+        expect(context).not.toContain('"history"');
       }
+      expect(journal.view.summaries.at(-1)!.through).toBe(frontier);
       expect(journal.view.order.some(item => item.held)).toBe(false);
 
       const after = probe();
       const coverage = after.meaningIndexCoverage!;
-      expect(coverage.disposition).toBe('complete');
-      expect(coverage.meaningIndexed).toBe(coverage.summarizedMessages);
-      expect(coverage.summarizedMessages).toBe(older + passes);
+      expect(coverage).toEqual({ summarizedMessages: older, meaningIndexed: older, disposition: 'complete' });
       expect(reached(after)).toBe(true);
 
+      // Rule 110: only the pre-existing frontier (#12, never yet accounted) is disclosed, once, on the
+      // first reply. Indexing compacted nothing, so no later reply opens with a disclosure.
+      await turn(older + 2);
+      await turn(older + 3);
+      expect(sent).toHaveLength(3);
+      expect(sent[0]).toContain(`Earlier conversation up to #${older} is now summarized for me`);
+      expect(sent.slice(1).some(text => text.includes('is now summarized for me'))).toBe(false);
       // An empty backlog adds no pass when no summary is otherwise due.
-      await turn(older + 2 + passes);
-      await turn(older + 3 + passes);
-      expect(summaryContexts).toHaveLength(passes);
+      expect(indexContexts).toHaveLength(passes);
+      expect(summaryContexts).toHaveLength(0);
       journal.close();
 
       const reopened = openPreviewJournal(path, key);
-      expect(reopened.view.summaries.some(item => item.concepts?.some(concept => concept.source === targetId))).toBe(true);
+      expect(reopened.view.indexConcepts.some(concept => concept.source === targetId)).toBe(true);
+      expect(reopened.view.indexOffered).toHaveLength(older);
+      expect(reopened.view.indexOpen).toBeNull();
       reopened.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('offers each backlog source once when the model returns no terms, and refuses out-of-order index records', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-backfill-')));
+    const older = 12, path = join(dir, 'journal.encrypted');
+    try {
+      const journal = preBuild2(path, older);
+      let indexCalls = 0;
+      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, send: async input => input.update, checkOutbound: () => {},
+        model: async input => {
+          if (input.id.startsWith('summary:index:')) { indexCalls++; return 'no terms here'; }
+          return input.id.startsWith('summary:') ? JSON.stringify({ summary: 'The operator rides often.', people: [], questions: [], memory: [] }) : 'Noted.';
+        } });
+      const calls = journal.view.calls;
+      for (let id = older + 1; id <= older + 4; id++) {
+        worker.intake([update(id, `Short check-in ${id}.`)]); await worker.drain(); await worker.summarizeIfNeeded();
+      }
+      const passes = Math.ceil(older / INDEX_BACKLOG_LIMIT);
+      expect(indexCalls).toBe(passes);
+      expect(journal.view.calls - calls).toBe(passes + 4);
+      expect(journal.view.indexConcepts).toEqual([]);
+      expect(journal.view.indexOffered).toHaveLength(older);
+
+      expect(() => journal.append({ kind: 'meaning-index', concepts: [], at: at + 200_000 })).toThrow('unsupported meaning terms');
+      expect(() => journal.append({ kind: 'index-reserve', sources: [targetId], maxInputTokens: 10, maxOutputTokens: 10, at: at + 200_000 }))
+        .toThrow('index reservation refused');
+      journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

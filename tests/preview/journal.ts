@@ -602,6 +602,11 @@ export type JournalRecord =
 
 
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
+  /** Rule 11 write-side indexing (Part 21 §6): one bounded meaning-terms call over already-summarized
+   * operator messages. It never moves the summary frontier, so it is not a compaction (Rule 110). Each
+   * source is offered here at most once; an unanswered reservation stays charged and is never repeated. */
+  | { kind: 'index-reserve'; sources: string[]; maxInputTokens: number; maxOutputTokens: number; at: number }
+  | { kind: 'meaning-index'; concepts: SummaryConcept[]; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed'; at: number }
   | { kind: 'summary'; through: number; text: string; memoryItems?: SummaryMemoryItem[];
     /** Meaning terms for summarized operator messages (Rule 11): a retrieval index, never shown as fact. */
@@ -684,6 +689,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** Effective trial end: genesis.expires until an `expiry` renewal frame extends it. */
   expires: number; expiryAuthority: string | null;
   capReports: Set<string>;
+  /** Rule 11 index-only work: sources ever offered, terms admitted, and the reservation awaiting its result. */
+  indexOffered: string[]; indexConcepts: SummaryConcept[]; indexOpen: { key: string; sources: string[] } | null;
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Map<number, number>; // frontier -> durable reservation time
   summaryRequired: Set<number>; summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   callOutcomes: Extract<JournalRecord, {kind:'call-outcome'}>[]; callOutcomeCounts: Map<string, number>;
@@ -963,7 +970,8 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryFaithfulness: new Map(saved.summaryFaithfulness ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
     callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []), mentionedDates: new Set(saved.mentionedDates ?? []), reminders: new Map(saved.reminders ?? []), reminderGrant: saved.reminderGrant ?? null, reminderCancels: saved.reminderCancels ?? [],
     summaryGrants: (saved.summaryGrants ?? []).map(grant => ({ id: grant.id, source: grant.source })), stopChallenges: saved.stopChallenges ?? [], waiting: saved.waiting ?? [],
-    sendOutcomes: saved.sendOutcomes ?? [], speakers: saved.speakers ?? { agent: 0, infrastructure: 0 }, modelCalls: saved.modelCalls ?? emptyModelCalls() };
+    sendOutcomes: saved.sendOutcomes ?? [], speakers: saved.speakers ?? { agent: 0, infrastructure: 0 }, modelCalls: saved.modelCalls ?? emptyModelCalls(),
+    indexOffered: saved.indexOffered ?? [], indexConcepts: saved.indexConcepts ?? [], indexOpen: saved.indexOpen ?? null };
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -2036,6 +2044,24 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (!view.summaryReservations.has(row.through)) throw Error('preview journal: uncertain summary without reservation');
     return;
   }
+  if (row.kind === 'index-reserve') {
+    if (!Array.isArray(row.sources) || !row.sources.length || row.sources.length > INDEX_BACKLOG_LIMIT
+      || new Set(row.sources).size !== row.sources.length
+      || row.sources.some(id => !view.turns.get(id)?.accepted || view.indexOffered.includes(id)))
+      throw Error('preview journal: index reservation refused');
+    const key = `index:${String(view.indexOffered.length)}`;
+    reserveTokens(view, key, 'summary', row.maxInputTokens, row.maxOutputTokens);
+    view.calls++; view.indexOffered.push(...row.sources); view.indexOpen = { key, sources: row.sources }; return;
+  }
+  if (row.kind === 'meaning-index') {
+    const open = view.indexOpen;
+    if (!open || !Array.isArray(row.concepts) || new Set(row.concepts.map(item => item.source)).size !== row.concepts.length
+      || row.concepts.some(item => !open.sources.includes(item.source) || !Array.isArray(item.terms)
+        || conceptTerms(item.terms)?.length !== item.terms.length))
+      throw Error('preview journal: unsupported meaning terms');
+    settleTokens(view, open.key, row.usage);
+    view.indexConcepts.push(...row.concepts); view.indexOpen = null; return;
+  }
   if (row.kind === 'summary') {
     if (!view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
@@ -2639,7 +2665,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -2725,7 +2751,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
           && !(row.kind === 'intake' && row.reserve === true && (!row.accepted || reserveTurnsUsed(view, row.at) < MINIMAL_RESERVE.turns)))
         || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
-        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve'
+        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
           || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry')
           && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
@@ -2739,7 +2765,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
       } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -3212,6 +3238,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const meaningIndex = () => {
     const index = new Map<string, string[]>();
     for (const summary of journal.view.summaries) for (const item of summary.concepts ?? []) index.set(item.source, item.terms);
+    for (const item of journal.view.indexConcepts) if (!index.has(item.source)) index.set(item.source, item.terms);
     return index;
   };
   /** Honest coverage of the meaning index over summarized operator messages; degraded while any lack terms. */
@@ -5780,9 +5807,45 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'Return memoryItems: [{"source": history item id, "quote": exact short factual clause from that operator message}] for new active facts worth keeping. Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose. A correction replaces its old item and forgetting removes it. '
       + `Return concepts: [{"source": history item id of an operator message, "terms": up to ${CONCEPT_TERMS_LIMIT} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}] for each operator message in history and each indexBacklog item. They only help find the original message later and are never shown as facts.`;
     const editInstruction = ' A Telegram edit is a revision of editedTurn, not a new request or reply opportunity. Compare its memoryRequest.message with the exact prior revision in memoryCandidates. If a stated fact changed, return a correct memory action with the exact old clause, the exact replacement clause, and affected replies and summary passages. If a prior claim was withdrawn or deleted without a replacement fact, use forget with its exact old clause. Return memory:[] only when no stated fact changed. The latest revision controls the summary.';
+    const indexQuestion = `Return one JSON object {"concepts": [{"source": indexBacklog item id, "terms": up to ${CONCEPT_TERMS_LIMIT} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}]} with one entry for each indexBacklog item. The terms only help find the original message later and are never shown as facts.`;
+    /** Rule 11 write-side indexing (Part 21 §6): meaning terms for messages summarized before terms
+     * existed, recorded beside the summaries. The summary frontier does not move, so nothing is
+     * compacted and no Rule 110 disclosure is owed. Each source is offered here once; false stops the pass. */
+    const indexOnly = async (items: Turn[]): Promise<boolean> => {
+      const packet = JSON.stringify({ indexBacklog: items.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) });
+      const id = `summary:index:${String(journal.view.indexOffered.length)}`;
+      if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) return false;
+      let prepared: string | undefined;
+      try {
+        // Rule 29: the index input is written by the runner, a verified system principal.
+        const writer = envelopeWriter(journal.systemWriter('rolling-summary', `${id}\n${packet}`, ports.now()));
+        prepared = ports.prepareModel?.({ question: indexQuestion, context: packet, id, ...(writer ? { writer } : {}) });
+      } catch { return false; }
+      if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > SUMMARY_MAX_PROMPT_BYTES) return false;
+      gate();
+      journal.append({ kind: 'index-reserve', sources: items.map(item => item.id), maxInputTokens: journal.view.limits.maxBytes,
+        maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+      let result: Awaited<ReturnType<PreviewPorts['model']>>;
+      try { result = await ports.model({ question: indexQuestion, context: packet, id, ...(prepared === undefined ? {} : { prepared }) }); }
+      catch { return false; } // outcome UNKNOWN: the reservation stays charged and these sources are not offered here again
+      const usage = typeof result === 'string' ? undefined : result.usage;
+      const concepts: SummaryConcept[] = [];
+      try {
+        const answered = typeof result === 'string' ? result : 'text' in result ? result.text : '';
+        const proposed = (JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { concepts?: unknown })?.concepts;
+        for (const item of Array.isArray(proposed) ? proposed.slice(0, items.length) : []) {
+          const { source, terms } = (item ?? {}) as { source?: unknown; terms?: unknown };
+          const words = conceptTerms(terms);
+          if (typeof source !== 'string' || !items.some(turn => turn.id === source) || !words?.length
+            || concepts.some(saved => saved.source === source)) continue;
+          concepts.push({ source, terms: words });
+        }
+      } catch { /* no terms: the sources stay unindexed and remain offered to later summaries */ }
+      journal.append({ kind: 'meaning-index', concepts, ...(usage ? { usage } : {}), at: ports.now() });
+      return true;
+    };
     // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
     // bound one pass; the next worker cycle can continue from the last summary.
-    let backlogPassed = false;
     for (let attempt = 0; attempt < 8; attempt++) {
       const previous = summaryFor(last.update)?.through ?? -1;
       if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;
@@ -5794,23 +5857,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // The answer envelope, source briefing and next operator message also use
       // the 32 KiB packet allowance. Start rolling before the history alone
       // consumes that headroom; the existing summary path remains bounded.
-      const due = force || unreviewedQuestions(last.update).length > 0
-        || Buffer.byteLength(full) >= Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES);
-      // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
-      // otherwise wait for history to grow. One pass per call carries the backlog, advancing
-      // the frontier by only the oldest pending turn so the newest stays verbatim.
-      const backlogOnly: boolean = !due && !backlogPassed && backlog.length > 0 && pending.length > 1;
-      if (!due && !backlogOnly) return;
-      backlogPassed ||= backlogOnly;
+      if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) {
+        // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
+        // otherwise wait for history to grow; index them without summarizing anything new.
+        const unoffered = journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
+          && item.update <= previous && !indexed.has(item.id) && !journal.view.indexOffered.includes(item.id)).slice(0, INDEX_BACKLOG_LIMIT);
+        if (unoffered.length && await indexOnly(unoffered)) continue;
+        return;
+      }
       const candidates: { turn: Turn; bases: string[] }[] = [];
-      for (const turn of pending.slice(0, backlogOnly ? 1 : SUMMARY_MAX_TURNS)) {
+      for (const turn of pending.slice(0, SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
         const bases = datedVariants(candidate).filter(base => Buffer.byteLength(base) <= Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES));
         if (!bases.length) break;
         candidates.push({ turn, bases });
       }
       if (!candidates.length) {
-        if (backlogOnly) return;
         const oversized = pending[0];
         if (oversized && oversized.held !== 'summary oversized turn')
           journal.append({ kind: 'hold', id: oversized.id, reason: 'summary oversized turn', at: ports.now() });
@@ -5869,8 +5931,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rule 11: messages summarized before their meaning terms existed are offered again,
             // oldest first and bounded, so the derived index converges instead of staying partial.
             for (const packet of backlog.length ? [JSON.stringify({ ...JSON.parse(plain) as object,
-              indexBacklog: backlog.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) }),
-              ...(backlogOnly ? [] : [plain])] : [plain]) {
+              indexBacklog: backlog.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) }), plain] : [plain]) {
               if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
               try {
                 // Rule 29: the rolling summary's input is written by the runner, a verified system principal.
@@ -5896,8 +5957,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       if (!chosen) {
         summaryPreflightBlocked.add(blocked);
-        // A backlog-only pass was not otherwise due: nothing the operator sent is held for it.
-        if (backlogOnly) return;
         const oversized = pending[0];
         const reason = oversizedPrompt ? 'summary oversized turn' : 'summary preflight unavailable';
         if (oversized && oversized.held !== reason)
