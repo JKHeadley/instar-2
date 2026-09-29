@@ -55,6 +55,8 @@ export const DEVELOPMENT_TOOLS: readonly DevelopmentTool[] = freeze([
     packageScripts: ['test:affected'], grants: [], feature: 'self-hosting' },
   { id: 'kill-schedule', phase: 'test', run: { kind: 'process', argv: ['node', 'scripts/run-kill-schedule.mjs'] }, params: null,
     packageScripts: [], grants: [], feature: 'self-hosting' },
+  { id: 'transpile-cache-warm', phase: 'test', run: { kind: 'process', argv: ['node', 'scripts/warm-slice-ts-cache.mjs'] }, params: null,
+    packageScripts: [], grants: [], feature: 'self-hosting' },
   { id: 'ci-local', phase: 'test', run: { kind: 'process', argv: ['node', 'scripts/ci-local.mjs'] }, params: null,
     packageScripts: ['ci:local'], grants: [], feature: 'self-hosting' },
   { id: 'architecture-check', phase: 'review', run: { kind: 'process', argv: ['node', 'scripts/check-architecture.mjs'] }, params: null,
@@ -82,7 +84,11 @@ export const DEVELOPMENT_TOOLS: readonly DevelopmentTool[] = freeze([
 /** package.json scripts that only chain inventoried tools. */
 export const COMPOSITE_SCRIPTS: Readonly<Record<string, readonly string[]>> = freeze({
   lint: ['architecture-check', 'repository-check'],
-  'test:all': ['typecheck', 'build', 'kill-schedule', 'unit-test', 'architecture-check', 'repository-check', 'register-check'],
+  // `test:all` is the change-review check running `test:gate` and recording its evidence.
+  'test:all': ['repository-check'],
+  'test:gate': ['typecheck', 'build', 'kill-schedule', 'transpile-cache-warm', 'unit-test', 'repository-check', 'architecture-check',
+    'register-check'],
+  'test:durability': ['unit-test'],
 });
 
 export interface ToolProposal {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { consumeResult } from '../../src/types/internal.js';
 import { decodeInfrastructureNotice, infrastructureNoticeDigest, renderInfrastructureNotice } from '../../src/effects/infrastructure-notice.js';
-import { dispatchInfrastructureNotice } from '../../src/assembly/infrastructure-notice-driver.js';
-import type { NoticeDispatch, NoticeLedgerEntry, NoticeSendObservation } from '../../src/assembly/infrastructure-notice-driver.js';
+import { dispatchInfrastructureNotice } from '../../src/effects/infrastructure-notice-driver.js';
+import type { NoticeDispatch, NoticeLedgerEntry, NoticeSendObservation } from '../../src/effects/infrastructure-notice-driver.js';
 import type { InfrastructureNotice } from '../../src/effects/infrastructure-notice.js';
 
 // Rules 52, 53, 88, 89: the Part Eight notice payload and the Part Ten confined driver, both sides of each decision.

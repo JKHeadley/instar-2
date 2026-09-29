@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
@@ -40,6 +40,7 @@ process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result: J
 `);
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', value: { invoke: async prepared => {
   const r = await config.io.execute({ executable: process.execPath, args: [${JSON.stringify(cli)}, ${JSON.stringify(prompts)}, config.model],
     cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: prepared, timeout: 20000, maxBytes: 1048576 });
@@ -67,7 +68,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--login-profile', profile, '--model', world.model,
+      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '3', '--max-poll-seconds', '1'],
     { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
     expect(run.status, run.stderr).toBe(0);

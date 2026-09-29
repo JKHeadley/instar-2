@@ -254,7 +254,7 @@ async function runNotice(encoded) {
   if (!request.conversation) return { kind: 'refused', detail: 'conversation route unknown' };
   const credential = process.env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN;
   if (!credential) return { kind: 'refused', detail: 'bot credential unavailable' };
-  const { dispatchInfrastructureNotice } = await import('../src/assembly/infrastructure-notice-driver.js');
+  const { dispatchInfrastructureNotice } = await import('../src/effects/index.js');
   const { createProductionTelegramIO } = await import('./production-boot-io.mjs');
   const captures = new Map();
   const physical = createProductionTelegramIO(join(root, '.host-watch-notice'), { preserve(ref, bytes) {

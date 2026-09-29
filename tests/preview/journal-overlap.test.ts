@@ -93,14 +93,16 @@ it('a real second runner appears in the live packet with its overlap, and after 
     return JSON.parse(result.stdout).last;
   };
   harness.setUpdates([message(world, 1, 'What is the marker? Juniper.')]);
-  // A genuine second runner of the same bot and chat, in its own root beside the live one.
+  // A genuine second runner of the same bot and chat, in its own root beside the live one. Like the unfenced
+  // canary, it answers to its own conversation-ownership authority, so the live runner's fence does not retire either.
   const second = spawn(process.execPath, [...loaderArgs, 'run', '--root', secondRoot,
     '--bot-id', world.configuration.botId, '--bot-username', world.configuration.botUsername,
     '--chat-id', world.configuration.chatId, '--operator-sender-id', world.configuration.operatorSenderId,
     '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
     '--expires-at', String(activation.expiresAt), '--activation-record', join(directory, 'cutover-activation.json'),
-    '--login-profile', join(directory, 'cutover-profile.json'), '--model', world.model, '--max-cycles', '100000',
-    '--max-poll-seconds', '1'], { cwd: process.cwd(), env, stdio: 'ignore' });
+    '--operator-records', join(directory, 'operator-records'), '--login-profile', join(directory, 'cutover-profile.json'), '--model', world.model, '--max-cycles', '100000',
+    '--max-poll-seconds', '1'], { cwd: process.cwd(), env: { ...env, INSTAR_CONVERSATION_OWNERS: join(directory, 'owners-second') },
+    stdio: 'ignore' });
   try {
     for (let i = 0; i < 200 && !existsSync(join(secondRoot, 'runs.jsonl')); i++) await pause(100);
     expect(existsSync(join(secondRoot, 'runs.jsonl'))).toBe(true);

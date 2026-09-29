@@ -1,4 +1,6 @@
-// Part Ten confined notice driver (seam-response-assembly-followup.md ledger #9, notice class).
+// Part Ten confined notice driver (seam-response-assembly-followup.md ledger #9, notice class). It lives
+// beside its payload so it mints its Results through the effects module's own constructors; the
+// host (scripts/host-watch.mjs) reaches it only through the public effects entry point.
 // Rules 42, 52, 53, 55, 88, 89 and 95; D18 §6/§8, D12 §6/§9. The driver is the only path by which an
 // infrastructure notice leaves. It owns no process, file or network API: the host hands it a durable
 // ledger and the Telegram send port. At the leaving point it re-resolves the route against the
@@ -7,8 +9,8 @@
 // unknown (a lost answer stays uncertain; a new process is not evidence the first send did not happen).
 import { consumeResult, refusal, success } from '../types/internal.js';
 import type { Result } from '../index.js';
-import { decodeInfrastructureNotice, infrastructureNoticeDigest, renderInfrastructureNotice } from '../effects/infrastructure-notice.js';
-import type { InfrastructureNotice } from '../effects/infrastructure-notice.js';
+import { decodeInfrastructureNotice, infrastructureNoticeDigest, renderInfrastructureNotice } from './infrastructure-notice.js';
+import type { InfrastructureNotice } from './infrastructure-notice.js';
 
 export type NoticeState = 'dispatching' | 'delivered' | 'refused' | 'uncertain';
 export type NoticeLedgerEntry = Readonly<{ episode: string; digest: string; state: NoticeState; at: number;
