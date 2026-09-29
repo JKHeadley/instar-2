@@ -17,4 +17,6 @@ These cases fail deterministically on `cint-1` and on a pristine built `2988aa95
 
 **Re-check on the cint-L2 merge (2026-09-28):** with the skips removed on the merged tree, `P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fixture/decoder pairs` passed (cint-L2 already carries the part-ten re-pin), so that case is active again and no longer covered here. The P4-NF-06 R7 governance case still fails (`src/facts/store.ts` hash), and the five `tests/e2e/register.test.ts` cases still fail, now stopping at `reference artifact hash differs: src/rungraph/index.ts` (`.instar/lanes/cint-L2-merge-quar2.log`); those six stay quarantined.
 
+**Re-check on cint-L3b pipeline repair 6 (2026-09-29):** after the desk repin, the `P4-NF-06 R7 owner manifest pins …` governance case passes with its skip removed (16/16 in `tests/intake/governance.test.ts`). It had to be restored: `intake.dedup` holds P4-NF-06 as fixture evidence, and `scripts/check-register-contract-map.mjs` refuses a held test that does not pass in the run. That case is active again and no longer covered here. The five `tests/e2e/register.test.ts` cases stay quarantined.
+
 **Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.
