@@ -38,6 +38,7 @@ import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, veri
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type Speaker } from './outbound-provenance.js';
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
+import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 
 
 
@@ -519,6 +520,8 @@ export type JournalRecord =
     rejected?: RejectedObligations;
     /** Completed obligation work whose result this answer carries to the operator (Rules 8, 92). */
     reports?: string[];
+    /** Rules 8, 56, 100: the one fixed reminder line (credential expiry stage or failing doorway check) this answer carries. */
+    notices?: ReplyNotice[];
     /** Model-proposed promises and fulfillments, validated as exact quotes of this answer (Rule 10). */
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
     at: number }
@@ -692,7 +695,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reservedAt?: number;
   /** Obligations the answer proposed; the intent of a reply that says them makes them durable. */
   answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[];
-  answerRejected?: RejectedObligations; answerReports?: string[];
+  answerRejected?: RejectedObligations; answerReports?: string[]; answerNotices?: ReplyNotice[];
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
   /** Rule 110: the continuity account the send intent recorded for this reply. */
@@ -2594,6 +2597,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
         throw Error('preview journal: invalid obligation report');
       turn.answerReports = row.reports;
     }
+    if (row.notices !== undefined) {
+      if (!validAnswerNotices(row.notices, row.text)) throw Error('preview journal: invalid reply notice');
+      turn.answerNotices = row.notices;
+    }
     if (row.state) turn.modelState = row.state;
     if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
@@ -3207,6 +3214,8 @@ export interface PreviewPorts {
   statusLines?(): readonly string[];
   /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
   installedUpdate?(): object | null;
+  /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
+  replyNotices?(): readonly ReplyNotice[];
   /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
   concurrentWork?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
@@ -5316,6 +5325,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) > 3500) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
               }
+            // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
+            const notices: ReplyNotice[] = [];
+            if (text.trim() && fromOperator(turn) && !probe && !turn.requestedAction) {
+              const next = openReplyNotices(journal.view.order, ports.replyNotices?.() ?? [], turn.id)[0];
+              if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
+                text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
+              }
+            }
             journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
@@ -5330,6 +5347,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(obligations.blocker ? { blocker: obligations.blocker } : {}),
               ...(obligations.blockerRechecks?.length ? { blockerRechecks: obligations.blockerRechecks } : {}),
               ...(obligations.rejected ? { rejected: obligations.rejected } : {}), ...(reports.length ? { reports } : {}),
+              ...(notices.length ? { notices } : {}),
               ...(promises.length && text.trim() ? { promises: promises.filter(item => text.includes(item.quote)) } : {}),
               ...(fulfills.length && text.trim() ? { fulfills: fulfills.filter(item => text.includes(item.quote)) } : {}),
               ...(fromOperator(turn) && !probe && dated === undefined ? { datedPending: true as const } : {}),

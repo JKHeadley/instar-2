@@ -50,6 +50,7 @@ import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
 import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
+import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -613,7 +614,7 @@ async function main() {
         try { const vault = createSecretCustody(root, key(), wallNow), records = vault.records();
           custody.missing = vault.missing([...turns.flatMap(t => t.custody.state === 'stored' ? [t.custody.capture, ...t.custody.secrets] : []),
             ...records.filter(r => r.custody === 'preview-vault').map(r => r.name)]);
-          return { records, due: dueCredentialReminders(records, statusNow), custody,
+          return { records, due: dueWithDelivery(dueCredentialReminders(records, statusNow), view.view.order), custody,
             intact: custody.failed.length === 0 && custody.missing.length === 0,
             referencedIn: view.view.order.filter(turn => turn.text.includes('[credential stored before use: SecretRef ')).map(turn => turn.update) };
         } catch { return { records: null, due: null, custody, intact: false, error: 'registry unreadable' }; } })(),
@@ -1147,6 +1148,14 @@ async function main() {
       prepareModel: modelEnvelope,
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
+      // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
+      // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
+      replyNotices: () => {
+        const now = wallNow(), notices = [];
+        try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
+        try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
+        return notices;
+      },
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
       concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
