@@ -126,8 +126,8 @@ describe('shipped inventory and register (Rules 5, 7, 32, 36, 66, 69, 78, 84)', 
     const availability = (launcher: string) => Object.fromEntries(launchers[launcher].filter(f => f.id.startsWith('preview-')).map(f => [f.id, f.availability]));
     expect(inventory.launchers['tests/preview/agent.mjs']).not.toContain('tests/preview/journal.ts');
     expect(inventory.launchers['tests/preview/journal-agent.mjs']).toContain('tests/preview/journal.ts');
-    expect(Object.values(availability('tests/preview/agent.mjs'))).toEqual(Array(6).fill('not-loaded'));
-    expect(Object.values(availability('tests/preview/journal-agent.mjs'))).toEqual(Array(6).fill('available'));
+    expect(Object.values(availability('tests/preview/agent.mjs'))).toEqual(Array(7).fill('not-loaded'));
+    expect(Object.values(availability('tests/preview/journal-agent.mjs'))).toEqual(Array(7).fill('available'));
     // Available in the preview is not graduation: the register status stays dark beside it.
     expect(launchers['tests/preview/journal-agent.mjs'].find(f => f.id === 'preview-durable-memory')).toMatchObject({ availability: 'available', status: 'dark' });
   }, 60_000);
