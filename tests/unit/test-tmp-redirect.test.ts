@@ -10,12 +10,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import setup, {
   chooseTestTmpRoot, isRamBacked, LINUX_RAM_ROOT, MAC_RAM_ROOT, parseHdiutilRamMounts, REAL_DISK_ROOT, sweepDeadRuns,
 } from '../setup/test-tmp.js';
+// @ts-expect-error the fingerprint helper is JavaScript, outside pure core compilation.
+import { killScheduleRunDir } from '../../scripts/kill-schedule-fingerprint.mjs';
 
 const under = (path: string, root: string) => realpathSync(path).startsWith(realpathSync(root) + '/');
 const platformRamRoot = process.platform === 'darwin' ? MAC_RAM_ROOT : process.platform === 'linux' ? LINUX_RAM_ROOT : null;
 const verifiedRamRoot = platformRamRoot !== null && existsSync(platformRamRoot) && isRamBacked(platformRamRoot)
   ? platformRamRoot : null;
-const ENV_KEYS = ['TMPDIR', 'INSTAR_TEST_TMP', 'INSTAR_TEST_TMP_ROOT', 'INSTAR_TEST_TMP_KIND', 'INSTAR_TEST_REAL_DISK'] as const;
+const ENV_KEYS = ['TMPDIR', 'INSTAR_TEST_TMP', 'INSTAR_TEST_TMP_ROOT', 'INSTAR_TEST_TMP_KIND', 'INSTAR_TEST_REAL_DISK',
+  'INSTAR_TEST_OUTER_TMPDIR'] as const;
 
 function withEnv(values: Partial<Record<(typeof ENV_KEYS)[number], string>>, body: () => void): void {
   const saved = ENV_KEYS.map(k => [k, process.env[k]] as const);
@@ -105,6 +108,23 @@ describe('test temp redirect', () => {
         expect(existsSync(runDir)).toBe(false);
         expect(process.env.TMPDIR).toBe('/before');
         expect(process.env.INSTAR_TEST_TMP_KIND).toBeUndefined();
+      });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('a worker resolves the kill-schedule artifact directory the pre-step wrote, not one under the redirected TMPDIR', () => {
+    const root = mkdtempSync(join(tmpdir(), 'redirect-root-'));
+    try {
+      withEnv({ INSTAR_TEST_TMP: root, TMPDIR: '/before' }, () => {
+        const preStep = killScheduleRunDir();
+        expect(preStep.startsWith('/before/')).toBe(true);
+        const teardown = setup();
+        try {
+          expect(tmpdir().startsWith(`${root}/`)).toBe(true);
+          expect(killScheduleRunDir()).toBe(preStep);
+        } finally { teardown(); }
+        expect(process.env.INSTAR_TEST_OUTER_TMPDIR).toBeUndefined();
+        expect(killScheduleRunDir()).toBe(preStep);
       });
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

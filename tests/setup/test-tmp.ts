@@ -5,8 +5,10 @@
 // directories land on RAM-backed storage instead of the real disk. Vitest captures
 // process.env for the forks after globalSetup runs, which is why this lives here and not in
 // a setupFile. It covers Vitest only: gate steps that run before Vitest (for example
-// scripts/run-kill-schedule.mjs) keep their own temp placement. Product durability code is
-// untouched; only where test temp files live changes.
+// scripts/run-kill-schedule.mjs) keep their own temp placement, and the pre-redirect temp
+// root is published as INSTAR_TEST_OUTER_TMPDIR so a worker still finds what such a step
+// wrote (without it every kill-schedule pair re-ran live inside the loaded workers).
+// Product durability code is untouched; only where test temp files live changes.
 //
 // Root choice:
 // - INSTAR_TEST_REAL_DISK=1 (`npm run test:durability`): an explicit real-disk scratch root,
@@ -22,6 +24,7 @@
 // image listed by `hdiutil info`; on Linux its filesystem is tmpfs. Nothing else counts.
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, statfsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 export const MAC_RAM_ROOT = '/Volumes/instar-test-ram';
@@ -126,6 +129,7 @@ export default function setup(): () => void {
   }
   sweepDeadRuns(choice.root);
   const previous = process.env.TMPDIR;
+  process.env.INSTAR_TEST_OUTER_TMPDIR = tmpdir();
   const runDir = mkdtempSync(join(choice.root, `${RUN_PREFIX}${process.pid}-`));
   process.env.TMPDIR = runDir;
   process.env.INSTAR_TEST_TMP_ROOT = choice.root;
@@ -135,5 +139,6 @@ export default function setup(): () => void {
     if (previous === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = previous;
     delete process.env.INSTAR_TEST_TMP_ROOT;
     delete process.env.INSTAR_TEST_TMP_KIND;
+    delete process.env.INSTAR_TEST_OUTER_TMPDIR;
   };
 }
