@@ -56,8 +56,7 @@ describe('compiled register build adapter lifecycle', () => {
   // consecutive passing tests can otherwise starve Vitest's 60s reporting RPC.
   // The long multi-case test also yields between cases; no assertion is relaxed.
   afterEach(() => new Promise<void>(done => setImmediate(done)));
-  // Rule 37 quarantine: see docs/defects/owner-reference-pin-drift.md
-  it.skip('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', async () => {
+  it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', async () => {
     // Yield only between completed fixture/build phases; owner calls remain synchronous.
     const yieldToRunner = () => new Promise<void>(done => yieldImmediate(done));
     const root = mkdtempSync(join(tmpdir(), 'instar-register-normal-e2e-'));
@@ -299,8 +298,7 @@ describe('compiled register build adapter lifecycle', () => {
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 120_000);
-  // Rule 37 quarantine: see docs/defects/owner-reference-pin-drift.md
-  it.skip('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', async () => {
+  it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -334,8 +332,7 @@ describe('compiled register build adapter lifecycle', () => {
       const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60_000);
-  // Rule 37 quarantine: see docs/defects/owner-reference-pin-drift.md
-  it.skip('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', async () => {
+  it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -388,8 +385,7 @@ describe('compiled register build adapter lifecycle', () => {
       const ambient = await run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 120_000);
-  // Rule 37 quarantine: see docs/defects/owner-reference-pin-drift.md and docs/defects/register-e2e-timeout.md
-  it.skip('P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge', async () => {
+  it('P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
     const root = join(directory, 'working'); const clean = join(directory, 'clean'); const committed = join(directory, 'committed');
     try {
@@ -435,8 +431,7 @@ describe('compiled register build adapter lifecycle', () => {
       const untracked = wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 60_000);
-  // Rule 37 quarantine: see docs/defects/owner-reference-pin-drift.md
-  it.skip('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
+  it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {
       const run = async (...args: string[]) => {
