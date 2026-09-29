@@ -1,6 +1,6 @@
 # Owner-reference manifests pin stale hashes for two changed files (Rule 37 quarantine)
 
-**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
+**Status:** CLOSED (2026-09-29, cint-L3b post-check repair 2). **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
 
 These cases fail deterministically on `cint-1` and on a pristine built `2988aa95` (runs retained as `/private/tmp/claude-501/cint1-livefix/full2.log`, `re1.log`, `base-re1.log`, and the pre-quarantine re-run `rr2-failfiles.log`):
 - `tests/intake/governance.test.ts` — `P4-NF-06 R7 owner manifest pins the actual public implementations, contract and inspection assertions`: `src/facts/store.ts: expected 'sha256:5953d792…' to be 'sha256:82e29c69…'`.
@@ -18,5 +18,7 @@ These cases fail deterministically on `cint-1` and on a pristine built `2988aa95
 **Re-check on the cint-L2 merge (2026-09-28):** with the skips removed on the merged tree, `P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fixture/decoder pairs` passed (cint-L2 already carries the part-ten re-pin), so that case is active again and no longer covered here. The P4-NF-06 R7 governance case still fails (`src/facts/store.ts` hash), and the five `tests/e2e/register.test.ts` cases still fail, now stopping at `reference artifact hash differs: src/rungraph/index.ts` (`.instar/lanes/cint-L2-merge-quar2.log`); those six stay quarantined.
 
 **Re-check on cint-L3b pipeline repair 6 (2026-09-29):** after the desk repin, the `P4-NF-06 R7 owner manifest pins …` governance case passes with its skip removed (16/16 in `tests/intake/governance.test.ts`). It had to be restored: `intake.dedup` holds P4-NF-06 as fixture evidence, and `scripts/check-register-contract-map.mjs` refuses a held test that does not pass in the run. That case is active again and no longer covered here. The five `tests/e2e/register.test.ts` cases stay quarantined.
+
+**Closure on cint-L3b post-check repair 2 (2026-09-29):** with the owner-reference manifests re-pinned by the desk rehash, the four `tests/e2e/register.test.ts` cases quarantined only for this record pass with their skips removed (`nice -n 10 npx vitest run tests/e2e/register.test.ts --maxWorkers 1`: 4 passed, 2 skipped): `P3-NF-21 … R1 normal extract and completion workflows …` (41 s), `P3-P4-P5 shipped CLI resolves both owners …` (21 s), `P3-P5 shipped CLI defaults resolve committed owner bindings …` (28 s) and `P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output` (11 s). They were needed because `scripts/check-register-contract-map.mjs` refuses a P3 contract that neither passed nor was skipped with a stated reason. `P3-P5 R2 same pinned commit refuses …` stays quarantined, now only under `docs/defects/register-e2e-timeout.md`, which also covers it. No case remains quarantined under this record.
 
 **Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.
