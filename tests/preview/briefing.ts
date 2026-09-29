@@ -24,8 +24,8 @@ export const CAPABILITY_LAUNCHER = 'tests/preview/journal-agent.mjs';
 type BriefedFeature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number }, launcher = CAPABILITY_LAUNCHER) {
-  const trial = `This trial allows at most ${limits.providerAttempts} model attempts, including any summaries, and ends at epoch millisecond ${limits.expiresAt}. `
-    + 'Ordinary answers use a subscription model. Every reply is prefixed PREVIEW. Outcomes the system could not confirm (a model call or a delivery) are marked unknown, '
+  const trial = `This trial allows at most ${limits.providerAttempts} model attempts (summaries included) and ends at epoch millisecond ${limits.expiresAt}. `
+    + 'Answers use a subscription model; every reply is prefixed PREVIEW. An unconfirmed model call or delivery is marked unknown, '
     + 'and model charges are recorded as unknown, never settled. Production safeguards are incomplete.';
   let generation = 'unavailable', commit = 'unavailable', features: BriefedFeature[] | undefined;
   try {
@@ -44,13 +44,12 @@ export function capabilityBriefing(readSource: (path: string) => string,
   const off = features.filter(f => f.availability === 'switched-off');
   return { generation, commit, text: [
     'This is a private Instar 2.0 PREVIEW trial in the operator\'s direct Telegram chat and its topics. '
-      + 'Its capabilities below are one-line summaries generated from the register of declared features for this installation; '
-      + 'full descriptions are in each module\'s documentation, and the status reply shows their current state.',
+      + 'Capabilities below are one-line summaries generated from this installation\'s register; '
+      + 'full descriptions are in each module\'s documentation, current state in the status reply.',
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item),
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`Present in the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
-    'Anything not listed as available is not available: you have no tools, cannot browse, run code or act outside this chat, '
-      + 'and cannot schedule other work, send nudges or any other unprompted message.',
+    'Nothing unlisted is available: no tools, browsing, running code or acting outside this chat, and no scheduled work, nudges or other unprompted messages.',
     trial].join('\n') };
 }
 /** Reads each excerpt exactly from the repository, verifying the pinned digest. */
