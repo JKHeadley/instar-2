@@ -176,7 +176,7 @@
       "id": "authorAndAppend",
       "module": {
         "path": "src/facts/index.ts",
-        "hash": "sha256:e46369aed58e5e930499652a8c9ff519c8c3db705b9bfcceb4bf6a42b857ee08"
+        "hash": "sha256:bc93e63f622f789537d5e455392e8888237ee97df3e1bd31974efb427c33aa05"
       },
       "artifact": {
         "path": "src/facts/store.ts",
