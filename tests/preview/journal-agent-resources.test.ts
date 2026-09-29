@@ -45,6 +45,11 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
   const r = await config.io.execute({ executable: process.execPath, args: [${JSON.stringify(cli)}, ${JSON.stringify(prompts)}, config.model],
     cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: prepared, timeout: 20000, maxBytes: 1048576 });
   if (r.code !== 0 || r.limited) return { state: 'uncertain' };
+  // A command with no prompt on stdin (like the real route's version and auth preflights) prints no
+  // result frame; it is not the doorway exchange. It runs last so observing it would be the final reading.
+  const check = await config.io.execute({ executable: process.execPath, args: ['--version'],
+    cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout: 20000, maxBytes: 1024 });
+  if (check.code !== 0 || check.limited) return { state: 'uncertain' };
   return { state: 'complete', bytes: JSON.parse(r.stdout).result, usage: { inputTokens: 1, outputTokens: 1 } };
 } } });
 `);
@@ -86,7 +91,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     // Rules 60/61: every launch was admitted by the one owner and none is left running.
     expect(status.resources).toMatchObject({ version: 1, active: [], waiting: [],
       inherited: { state: 'observed', effectivePerLaunch: { handleCount: expect.any(Number) } },
-      counters: { admitted: status.calls, refusedCapacity: 0 } });
+      counters: { admitted: status.calls * 2, refusedCapacity: 0 } }); // each call launches its model command and its no-prompt check
     expect(status.resources.counters.admitted).toBeGreaterThanOrEqual(2);
     // Each launch's bounds are declared by what the host holds, and its facts are durable in the journal.
     expect(status.resources.enforcement).toEqual({ cpuPerProcess: 'hard', handlesPerProcess: 'hard', memory: 'sampled', treeCpu: 'sampled',
@@ -106,7 +111,8 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(status.resources.durable).toMatchObject({ 'cleanup-unresolved': 0, capacity: 0 });
     expect(status.resources.orphans).toEqual([]);
     expect(JSON.parse(readFileSync(join(root, 'owned-launches.json'), 'utf8')).launches).toEqual({});
-    // Rule 56: the answered exchanges verified the exact provider-reported id; the unreachable Jev route is an unavailable reading.
+    // Rule 56: the answered exchanges verified the exact provider-reported id (the preflight, with no prompt, is not
+    // observed: had it been, its missing result frame would read unavailable); the unreachable Jev route is an unavailable reading.
     expect(status.doorways.models).toEqual([
       expect.objectContaining({ doorway: 'preview-subscription', model: world.model, state: 'verified', fresh: true,
         age: expect.stringMatching(/ ms of doorway-verification-age \(preview-subscription\//u) }),
