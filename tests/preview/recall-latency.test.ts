@@ -91,7 +91,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // cint-L3 re-pin (cint-4 and cint-5 merged onto cint-L2): diffed field by field against cint-L2's packet (dcb8aa24…,
     // reproduced on 9f890018), only the capability field changed, 4021 → 3550 bytes: build 1 moved its hand-written
     // capability list to the generated capability-note source (Rules 78, 84). Every other field equals cint-L2's.
-    expect(packetHash).toBe('cb0fa8dd3356f36e36d09075d4065eef4b9853e5bb3504bbe58d5bd9364baef8');
+    // cint-L4 group B re-pin (Rule 29): only datedDecision's `when` clause changed (the date phrase copied word for
+    // word, never converted); reverting just that string reproduces cb0fa8dd…4baef8 exactly.
+    expect(packetHash).toBe('84c8b0fb750b077a6b28fe7397d5b3ae9f9067a9d31310245fae212673ddfea7');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

@@ -13,7 +13,10 @@ const source = (update: number) => `telegram:12345678:update:${update}`;
 const GUIDANCE = 300; // cint-23-occam re-measure (every packet lost the summary decision): the whole test passes for offsets 180-410 in 10-byte steps; was 550 (two-item window 4592-4799)
 // cint-L3: build 1 moved the hand-written capability list to the generated capability-note source; against
 // cint-L2's (occam) capability text that removes 471 bytes from every packet, so the offset window moves by -471.
-const GUIDANCE_L3 = GUIDANCE - 471;
+// cint-L4 group B repair (Rule 29): datedDecision now asks for the operator's date phrase word for word and
+// never converted, which adds exactly 149 JSON bytes to every dated packet; reverting only that string
+// restores the prior outcomes, so the window moves by +149.
+const GUIDANCE_L3 = GUIDANCE - 471 + 149;
 
 it('measures which memories survive a capped packet after 5,000 turns', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-packet-pressure-')));

@@ -257,7 +257,10 @@ setTimeout(() => { const started = kids.filter(c => c.pid).length; kids.forEach(
   process.stdout.write(JSON.stringify({ started, refused })); }, 300);`);
   const bounded = createResourceOwner({ ...ceilings({ launch: { processCount: 4 } }), sampleMs: 60000 });
   await bounded.attach({});
-  const held = await bounded.execute(input(root, burst), 'answer');
+  // The limit is the user ID's census plus four, so under a parallel suite other processes of the same user can
+  // use that room before the burst itself starts (it then prints nothing). Retry, bounded, until the burst ran.
+  let held = await bounded.execute(input(root, burst), 'answer');
+  for (let attempt = 1; attempt < 5 && held.stdout === ''; attempt++) held = await bounded.execute(input(root, burst), 'answer');
   const heldCounts = JSON.parse(held.stdout);
   // The kernel limit held is the user ID's (its subject is named), never claimed as the tree's.
   expect(held.resources.enforcement).toMatchObject({ processGrowth: 'sampled', treeHandles: 'unsupported', memory: 'sampled' });

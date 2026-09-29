@@ -44,7 +44,9 @@
 ; Explicit denials kept visible for review (deny default already covers them).
 (deny process-fork)
 (deny network*)
-(deny mach-lookup)
+; mach-lookup stays denied but unreported: libSystem's startup lookup of notifyd otherwise waits on
+; violation reporting and intermittently hung the runtime in launchd before its first instruction (measured).
+(deny mach-lookup (with no-report))
 (deny file-write*)
 (deny process-info* (with no-report))
 (deny signal)
