@@ -81,6 +81,14 @@
         "path": "tests/assembly/provider-failure.test.ts",
         "hash": "sha256:fcc4af811460a34a12653e6f9571a3ca3258c2395563008410aa036b41608d2b"
       }
+    },
+    {
+      "id": "PREVIEW-JEV-RESPONSE-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/jev-response-capture.test.ts",
+        "hash": "sha256:01ef911be7c84ca2d5c00897c52680215197183492f844f422dbf84d35454e41"
+      }
     }
   ],
   "probes": [],
@@ -98,11 +106,11 @@
     },
     {
       "id": "PREVIEW-CAPTURE-JEV-RESPONSE",
-      "origin": "synthetic",
-      "source": "Hand-written TypeSafe Jev response shape used by the offline tests; no genuine response bytes are committed yet.",
+      "origin": "captured",
+      "source": "Genuine TypeSafe System One (jev-1.13.0) response captured 2026-09-29 for one reply-check request; committed unchanged, with nothing to redact (tests/fixtures/captures/README.md).",
       "artifact": {
-        "path": "tests/preview/fixtures/jev-response-synthetic.json",
-        "hash": "sha256:2c04c6ad7b0766bf9c7137bfcbec35973101919f4ebde1555d62cb3a9e1c25af"
+        "path": "tests/fixtures/captures/jev-response.json",
+        "hash": "sha256:3881a4c0405a2af5e169347698e092dbbebc27282e4ee5d9cbd326cf9b4c3ecb"
       }
     }
   ]
