@@ -20,6 +20,27 @@ export function localParts(at: number, zone: string) {
   return { year: part('year'), month: part('month'), day: part('day'), hour: part('hour'), minute: part('minute') };
 }
 
+/** Date phrases parseDatedItem reads. */
+const DATE_PHRASE = /\b(?:today|tomorrow|(?:(?:this|next|every)\s+)?(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)|(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|\d{4}-\d{1,2}-\d{1,2})(?:\s+at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?\b/giu;
+/** A model may restate the operator's date phrase as an absolute date ("2026-09-29 09:03
+ * America/Los_Angeles") instead of copying it. The runner then reads the operator's own phrase,
+ * only when the quote holds exactly one, and only when it resolves to exactly the restated day
+ * (and time, when given) in this zone. Any disagreement stays unverified. */
+export function restatedDatePhrase(quote: string, when: string, at: number, zone: string): string | undefined {
+  const found = [...quote.matchAll(DATE_PHRASE)].map(match => match[0]);
+  const restated = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}):(\d{2})(?:\s*(am|pm))?)?(?:\s+([A-Za-z_]+\/[A-Za-z_]+))?$/iu.exec(when.trim());
+  if (found.length !== 1 || !restated || restated[5] !== undefined && restated[5] !== zone) return undefined;
+  const item = parseDatedItem('restated', quote, found[0]!, at, zone);
+  if (item.ambiguity !== undefined || item.day !== restated[1]) return undefined;
+  if (restated[2] !== undefined) {
+    const hour = Number(restated[2]), meridiem = restated[4]?.toLowerCase();
+    if (meridiem && (hour < 1 || hour > 12)) return undefined;
+    const clock = `${String(meridiem ? hour % 12 + (meridiem === 'pm' ? 12 : 0) : hour).padStart(2, '0')}:${restated[3]}`;
+    if (item.time !== clock) return undefined;
+  }
+  return found[0];
+}
+
 export function parseDatedItem(source: string, quote: string, when: string, at: number, zone: string): DatedItem {
   // Validation and interpretation happen once, before the encrypted answer frame is appended.
   const today = localParts(at, zone), localToday = dayKey(today.year, today.month, today.day);

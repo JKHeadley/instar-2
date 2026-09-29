@@ -60,6 +60,13 @@ it('real-model-shaped Decisions: the floor the system prompt asks the model to c
   expect(decisionWithinFloor(decision(',"floor":{"allowed":{"type":"ActionFloor","schemaVersion":1,"actions":["work"],"default":"work"},"chosen":"work"}'))).toBe(true);
   expect(decisionWithinFloor(decision(',"floor":{"chosen":"work","allowed":{"default":"work","actions":["work"],"schemaVersion":1,"type":"ActionFloor"}}'))).toBe(true);
   expect(decisionWithinFloor(decision(''))).toBe(true);
+  // The recorded live shape (every bare-wrong-fields answer and review in the 2026-09-29 journal): the exact
+  // local action list echoed alone. It widens nothing, so it is read as the local floor.
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":["work"],"chosen":"work"}'))).toBe(true);
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":["work","send-anything"],"chosen":"work"}'))).toBe(false);
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":["send-anything"],"chosen":"send-anything"}'))).toBe(false);
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":["work"],"chosen":"send-anything"}'))).toBe(false);
+  expect(decisionWithinFloor(decision(',"floor":{"allowed":[],"chosen":"work"}'))).toBe(false);
   // Miscopies a model can plausibly make; each becomes the fixed failure reply instead of an answer.
   expect(decisionWithinFloor(decision(',"floor":{"allowed":"bindings.floor","chosen":"work"}'))).toBe(false);
   expect(decisionWithinFloor(decision(',"floor":{"allowed":{"type":"ActionFloor","schemaVersion":1,"actions":["work"],"default":"work"},"chosen":"answer"}'))).toBe(false);
@@ -68,6 +75,10 @@ it('real-model-shaped Decisions: the floor the system prompt asks the model to c
 });
 
 it('every registered judgment names a route, a closed action space and a default inside it', () => {
+  // Rule 57's enumeration, mirrored by the live-proof B7 criterion: the retrospective pass is registered.
+  expect(Object.keys(LIVE_JUDGMENTS)).toEqual(['answer', 'reply-review', 'summary', 'summary-review', 'jev-reply-check',
+    'jev-summary-integrity', 'jev-summary-faithfulness', 'retrospective', 'jev-step-check']);
+  expect(() => assertLiveJudgment('retrospective', 'preview-subscription')).not.toThrow();
   for (const [name, judgment] of Object.entries(LIVE_JUDGMENTS)) {
     expect(['preview-subscription', 'typesafe-jev'], name).toContain(judgment.route);
     expect(judgment.actions as readonly string[], name).toContain(judgment.default);

@@ -39,14 +39,18 @@ export type LiveJudgment = keyof typeof LIVE_JUDGMENTS;
  * semantic action space above is enforced by its consumer's parser. */
 export const ENVELOPE_FLOOR = Object.freeze({ type: 'ActionFloor', schemaVersion: 1, actions: Object.freeze(['work']), default: 'work' });
 
-/** True when a returned Decision's floor, if any, is exactly the local one and its choice lies inside it. */
+/** True when a returned Decision's floor, if any, is exactly the local one and its choice lies inside it.
+ * The live model sometimes echoes only the floor's action list (`allowed: ["work"]`, copied from
+ * bindings.floor.actions); that exact list is still the local floor and widens nothing, so it is read
+ * the same. Any other list, type, version or default stays malformed. */
 export function decisionWithinFloor(decision: { floor?: unknown }): boolean {
   if (decision.floor === undefined) return true;
-  const floor = decision.floor as { allowed?: { type?: unknown; schemaVersion?: unknown; actions?: unknown; default?: unknown }; chosen?: unknown } | null;
+  const floor = decision.floor as { allowed?: { type?: unknown; schemaVersion?: unknown; actions?: unknown; default?: unknown } | unknown[]; chosen?: unknown } | null;
   const allowed = floor?.allowed;
-  return !!allowed && allowed.type === ENVELOPE_FLOOR.type && allowed.schemaVersion === ENVELOPE_FLOOR.schemaVersion
-    && Array.isArray(allowed.actions) && JSON.stringify(allowed.actions) === JSON.stringify(ENVELOPE_FLOOR.actions)
-    && allowed.default === ENVELOPE_FLOOR.default
+  const exact = (actions: unknown) => Array.isArray(actions) && JSON.stringify(actions) === JSON.stringify(ENVELOPE_FLOOR.actions);
+  return !!allowed && (Array.isArray(allowed) ? exact(allowed)
+    : allowed.type === ENVELOPE_FLOOR.type && allowed.schemaVersion === ENVELOPE_FLOOR.schemaVersion
+      && exact(allowed.actions) && allowed.default === ENVELOPE_FLOOR.default)
     && typeof floor?.chosen === 'string' && ENVELOPE_FLOOR.actions.includes(floor.chosen);
 }
 

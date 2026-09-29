@@ -90,6 +90,62 @@ it('counts each UNKNOWN answer, summary, review and Jev check once across restar
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+it('lets an authorized raise write off exactly the pending UNKNOWN calls as fully spent, which stay UNKNOWN and count', () => {
+  // docs/09 "a reservation survives uncertain execution": release needs settlement evidence or a conservative
+  // write-off counting the maximum as spent; neither enlarges the cap (docs/12: nor proves non-occurrence).
+  const dir = root(), path = join(dir, 'journal.encrypted');
+  const agent = (...extra: string[]) => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', ...extra, '--root', dir], { cwd: process.cwd(), encoding: 'utf8',
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 10000 });
+  try {
+    let journal = openPreviewJournal(path, key, genesis({ maxCalls: 3 }));
+    worker(journal, { calls: 0, sends: 0 }).intake([update(1), update(2), update(3)]);
+    journal.append({ kind: 'reserve', id: id(1), at: 1000 });
+    journal.append({ kind: 'summary-reserve', through: 2, at: 1000 });
+    journal.append({ kind: 'reserve', id: id(3), at: 1000 });
+    journal.append({ kind: 'answer', id: id(3), text: 'answer', at: 1000 });
+    const pending = [`answer:${id(1)}`, 'summary:2'];
+    const raise = (writeOff?: string[], maxCalls = 5) => raiseJournalCaps(journal, { maxCalls, maxReplies: 5, maxTurns: 5,
+      authority: 'Justin recorded raise', at: 1001, ...(writeOff ? { writeOff } : {}) });
+    expect(() => raise()).toThrow('UNKNOWN call prevents cap raise');
+    expect(() => raise([pending[0]!])).toThrow('exactly the pending UNKNOWN calls');
+    expect(() => raise([...pending, 'jev:unseen'])).toThrow('exactly the pending UNKNOWN calls');
+    expect(() => raise([pending[0]!, pending[0]!, pending[1]!])).toThrow('exactly the pending UNKNOWN calls');
+    // A write-off alone is not a raise: the cap never grows by it.
+    expect(() => raiseJournalCaps(journal, { maxCalls: 3, maxReplies: 4, maxTurns: 4, authority: 'write-off only', at: 1001,
+      writeOff: pending })).toThrow('monotonic');
+    // A raise without the explicit flag is still refused by the operator command.
+    journal.close();
+    expect(agent('raise-caps', '--max-calls', '5', '--authority', 'Justin recorded raise').status).not.toBe(0);
+    const raised = agent('raise-caps', '--max-calls', '5', '--write-off-unknown', 'true', '--authority', 'Justin recorded raise');
+    expect(raised.status, raised.stderr).toBe(0);
+    journal = openPreviewJournal(path, key);
+    expect(journal.view.limits.maxCalls).toBe(5);
+    expect(journal.view.writtenOff).toEqual(pending);
+    // Still UNKNOWN and still counted at the full reservation: no replay, no released charge.
+    expect(journal.view.calls).toBe(3);
+    expect(unknownCallCounts(journal.view)).toMatchObject({ answers: 1, summaries: 1, total: 2 });
+    expect(journal.view.turns.get(id(1))!.answer).toBeUndefined();
+    const status = agent('status');
+    expect(JSON.parse(status.stdout)).toMatchObject({ calls: 3, unknownCalls: 2, unknownWrittenOff: 2 });
+    // Nothing is pending now: the flag has nothing to write off, and a plain raise is admitted.
+    journal.close();
+    expect(agent('raise-caps', '--max-calls', '6', '--write-off-unknown', 'true', '--authority', 'second').status).not.toBe(0);
+    journal = openPreviewJournal(path, key);
+    raiseJournalCaps(journal, { maxCalls: 6, maxReplies: 5, maxTurns: 5, authority: 'second', at: 1002 });
+    // A later UNKNOWN call needs its own write-off.
+    journal.append({ kind: 'reserve', id: id(2), at: 1003 });
+    expect(() => raise(undefined, 7)).toThrow('UNKNOWN call prevents cap raise');
+    expect(() => raise([...pending, `answer:${id(2)}`], 7)).toThrow('exactly the pending UNKNOWN calls');
+    raise([`answer:${id(2)}`], 7);
+    journal.close();
+    journal = openPreviewJournal(path, key);
+    expect(journal.view.writtenOff).toEqual([...pending, `answer:${id(2)}`]);
+    expect(journal.view.limits.maxCalls).toBe(7);
+    journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 it('counts an UNKNOWN subscription review separately from a completed answer and Jev check', () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {

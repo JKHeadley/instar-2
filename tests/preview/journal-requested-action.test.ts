@@ -114,6 +114,36 @@ it('answers a requested action once at its due time as an ordinary turn, stating
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('schedules a same-day clock time when the model restates it as an absolute date, and refuses a restatement that disagrees', async () => {
+  // Live B3 (2026-09-29): the model returned when "2026-09-29 09:03 America/Los_Angeles" for "today at 9:03 am".
+  const walk = 'Remind me today at 11:03 am to take a short walk';
+  const recorded = (when: string) => JSON.stringify({ reply: 'Okay.', dated: [{ quote: walk, when, remind: true }] });
+  for (const [when, schedules] of [['2026-09-26 11:03 America/Los_Angeles', true], ['2026-09-26 11:03 am', true],
+    ['today at 11:03 am', true], ['2026-09-26 11:30 America/Los_Angeles', false], ['2026-09-27 11:03 America/Los_Angeles', false],
+    ['2026-09-26 11:03 Europe/London', false]] as const) {
+    const root = tmp('same-day');
+    try {
+      const { state, open, pushes } = harness(root);
+      const { journal, worker } = open(true);
+      state.plain = true; state.plainText = recorded(when);
+      worker.intake([update(1, walk)]); await worker.drain();
+      state.plain = false;
+      if (!schedules) {
+        expect(journal.view.dated, when).toEqual([]);
+        expect(state.sent[0]!.text, when).toContain('I could not verify the date you gave.');
+        journal.close(); continue;
+      }
+      expect(journal.view.dated, when).toMatchObject([{ day: '2026-09-26', time: '11:03', when: 'today at 11:03 am', remind: true }]);
+      expect(state.sent[0]!.text).toContain('I will act on this once at 2026-09-26 11:03 (America/Los_Angeles)');
+      state.now = Date.UTC(2026, 8, 26, 18, 3);
+      await worker.sendRequested();
+      expect(pushes()).toHaveLength(1);
+      expect(pushes()[0]).toContain(walk);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
 it('survives a restart between creating the due turn and answering it, and never repeats an UNKNOWN model call or send', async () => {
   const root = tmp('restarts');
   try {

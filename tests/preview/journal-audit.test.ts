@@ -57,7 +57,7 @@ it('keeps a desk canary out of expected packet history while an ordinary omissio
       [3, 'What does Sam like?']] as const) { worker.intake([update(id, text)]); await worker.drain(); }
     const view = journal.view;
     expect(probeTurn(view, view.order[1]!)).toBe(true);
-    const packet = JSON.parse(JSON.parse(view.lastPrompt!.prompt).messages
+    const packet = JSON.parse(JSON.parse(view.lastPrompt!.prompt!).messages
       .find((m: { role: string }) => m.role === 'context').content).packet;
     expect(packet.history.map((item: { id: string }) => item.id)).toEqual([view.order[0]!.id]);
     expect(auditJournal(view).findings).toEqual([]);
