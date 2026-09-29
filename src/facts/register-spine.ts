@@ -100,7 +100,8 @@ function extractionAt(spine: GoverningSpine, context: FactContext, count: number
     // A replay recorded by a second fact is the same version: one history row, never zero.
     if (!versions.some(v => v.id === version.id)) versions.push(version);
   }
-  const walked = walkVersions(versions);
+  // Every recorded version reaches the walker, so a changed same-id version is refused, not dropped.
+  const walked = walkVersions(recorded.map(r => r.version));
   const resolve = (id: string) => walked.collapsed[id] ?? id;
   const retainedList = versions.filter(v => !Object.hasOwn(walked.collapsed, v.id));
   const retained = new Map(retainedList.map(v => [v.id, v]));

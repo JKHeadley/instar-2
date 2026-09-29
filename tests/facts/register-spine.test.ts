@@ -113,6 +113,13 @@ it('P2-NF-71 an exact same-id replay recorded by a second fact keeps its one his
   expect(rowsOf(extraction.extract).map(r => [r.version, r.status])).toEqual([['v1', 'live']]);
   expect(extraction.conflicts).toEqual([]);
 });
+it('Rule 90 a changed version recorded under an existing id is refused, never silently dropped', () => {
+  const s = spineFixture();
+  // Independently decoded and recorded, it reuses v1's id with different content and approval.
+  const changed = s.version('v1', { id: 'store', body: 'two' }, [], {}, { id: 'approval:v1-independent' });
+  expect(changed.version.id).toBe(s.first.version.id);
+  refused(extractGovernedChain(s.spine([s.first, changed]), s.ctx), 'in-place version mutation');
+});
 it('Rules 26/90 a recorded fact id is not proof of a payload that fact never recorded', () => {
   const s = spineFixture();
   // Control: the same spine with every association recorded by its own fact is accepted.
