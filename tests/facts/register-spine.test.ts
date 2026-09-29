@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import type { Authorization, Json } from '../../src/index.js';
-import { createRegisterSpine, decodeVersion, extractGovernedChain, positionVector } from '../../src/facts/index.js';
+import { createRegisterSpine, decodeVersion, extractGovernedChain, governingRecordBody, governingRecordKind, positionVector } from '../../src/facts/index.js';
+import type { GoverningRecordRole } from '../../src/facts/index.js';
 import type { GovernedVersion, RecordedVersion } from '../../src/facts/index.js';
 import { factsFixture, value, refused } from './fixtures.js';
 
@@ -13,36 +14,39 @@ const vectorOf = (extract: Json) => (extract as unknown as { vector: { id: strin
 function spineFixture() {
   const f = factsFixture();
   const chain = [f.fact()];
-  const append = () => { const next = f.next(chain[chain.length - 1]!); chain.push(next); return next; };
-  const ctx = { ...f.ctx, facts: chain, grants: [{ factId: chain[0]!.id, grant: f.g }] };
+  const ctx = { ...f.ctx, schemas: [...f.ctx.schemas, f.governingSchema], facts: chain, grants: [{ factId: chain[0]!.id, grant: f.g }] };
+  const append = () => { const next = f.next(chain[chain.length - 1]!, {}, ctx); chain.push(next); return next; };
+  const record = (role: GoverningRecordRole, payload: unknown) => {
+    const next = f.next(chain[chain.length - 1]!, { kind: governingRecordKind, body: governingRecordBody(role, payload) }, ctx);
+    chain.push(next); return next;
+  };
   const landing = { owner: 'part-ten' as const, merges: [{ commit: 'merge-1', onMain: true, parentCount: 2, reviewedBase: 'base:1' }] };
   // One governing version: its content is the authored entry, approved by a verified explicit
-  // yes, landed on a real merge. Each of those three things is a recorded fact of its own.
+  // yes, landed on a real merge. Each of those things is a recorded fact whose body records it.
   function version(id: string, content: Json, supersedes: readonly GovernedVersion[] = [],
     overrides: Record<string, unknown> = {}, approvalOverrides: Record<string, unknown> = {}): RecordedVersion {
     const encoded = value(canonical(content)); f.capture(encoded.bytes, encoded.hash);
-    const since = append(), approvalFact = append(), versionFact = append();
+    const since = append();
     const approval = f.authorize({ id: `approval:${id}`, artifact: encoded.hash, action: { kind: 'merge', scope: f.scope }, ...approvalOverrides });
-    approvals.push({ factId: approvalFact.id, authorizationId: approval.id });
+    approvals.push({ factId: record('approval', approval).id, authorizationId: approval.id });
     const decoded = value(decodeVersion({ id, subject: 'store', content, contentHash: encoded.hash, since: since.id,
       supersedes: supersedes.map(v => v.id), approvedIn: approval.id, base: 'base:1', landedIn: 'merge-1', ...overrides },
     ctx, f.scope, supersedes, landing));
-    return { factId: versionFact.id, version: decoded };
+    return { factId: record('version', decoded).id, version: decoded };
   }
   const approvals: { factId: string; authorizationId: string }[] = [];
   const first = version('v1', { id: 'store', body: 'one' });
   const generations: { factId: string; record: Json }[] = [];
   function anchorGeneration(vector: string, at: number, id = `sha256:${'a'.repeat(64)}`) {
-    const fact = append();
-    const record = { type: 'GenerationRecord', schemaVersion: 1, at: f.clockRaw(at),
+    const generationRecord = { type: 'GenerationRecord', schemaVersion: 1, at: f.clockRaw(at),
       generation: { type: 'RegisterGeneration', schemaVersion: 1, id, commit: 'commit:1',
         vector: { owner: 'part-two', name: 'FactPositionVector', id: vector } } } as unknown as Json;
-    generations.push({ factId: fact.id, record });
-    return record;
+    generations.push({ factId: record('generation', generationRecord).id, record: generationRecord });
+    return generationRecord;
   }
   const spine = (versions: readonly RecordedVersion[] = [first], bound = 1000) =>
     ({ anchor: chain[0]!.id, versions, approvals, generations, stalenessBoundMs: bound });
-  return { f, ctx, chain, landing, version, first, approvals, generations, anchorGeneration, spine, append };
+  return { f, ctx, chain, landing, version, first, approvals, generations, anchorGeneration, spine, append, record };
 }
 
 it('extraction derives approved history from the verified spine, not from git ancestry or a merge', () => {
@@ -70,14 +74,16 @@ it('P2-NF-38 extraction refuses a version whose explicit yes is unrecorded or is
   const authorization = s.first.version.approvedIn;
   const asMerge = { ...authorization, explicitYes: { ...authorization.explicitYes,
     authenticated: { ...authorization.explicitYes.authenticated, recordType: 'merge' } } } as Authorization;
-  const forged = { ...s.first, version: { ...s.first.version, approvedIn: asMerge } };
-  refused(extractGovernedChain({ ...s.spine([forged]) }, s.ctx), 'never a merge event');
+  // Each forged version is recorded by its own fact, so the refusal is the approval's, not the binding's.
+  const recorded = (version: GovernedVersion): RecordedVersion => ({ factId: s.record('version', version).id, version });
+  refused(extractGovernedChain({ ...s.spine([recorded({ ...s.first.version, approvedIn: asMerge })]) }, s.ctx), 'never a merge event');
   const attested = { ...authorization, explicitYes: { ...authorization.explicitYes, class: 'channel-attested' } } as Authorization;
-  refused(extractGovernedChain({ ...s.spine([{ ...s.first, version: { ...s.first.version, approvedIn: attested } }]) }, s.ctx), 'verified explicit yes');
+  refused(extractGovernedChain({ ...s.spine([recorded({ ...s.first.version, approvedIn: attested })]) }, s.ctx), 'verified explicit yes');
 });
 it('P2-NF-39 a register row needs a repository landing, and every anchor must be a recorded fact', () => {
   const s = spineFixture();
-  const runtime = { ...s.first, version: { ...s.first.version, landedIn: null } };
+  const landless = { ...s.first.version, landedIn: null };
+  const runtime = { factId: s.record('version', landless).id, version: landless };
   refused(extractGovernedChain(s.spine([runtime]), s.ctx), 'repository landing');
   refused(extractGovernedChain(s.spine([{ ...s.first, factId: 'fact:never-appended' }]), s.ctx), 'version fact not recorded');
   refused(extractGovernedChain({ ...s.spine(), approvals: [{ factId: 'fact:never-appended', authorizationId: s.first.version.approvedIn.id }] },
@@ -94,10 +100,45 @@ it('P2-NF-44 a governing fork extracts the incumbent and reports the conflict in
 });
 it('P2-NF-71 an identical-content identical-approval replay collapses to one extracted row', () => {
   const s = spineFixture();
-  const replay = { factId: s.append().id, version: { ...s.first.version, id: 'v1-replay' } };
+  const replayed = { ...s.first.version, id: 'v1-replay' };
+  const replay = { factId: s.record('version', replayed).id, version: replayed };
   const extraction = value(extractGovernedChain(s.spine([s.first, replay]), s.ctx));
   expect(rowsOf(extraction.extract).map(r => r.version)).toEqual(['v1']);
   expect(extraction.conflicts).toEqual([]);
+});
+it('P2-NF-71 an exact same-id replay recorded by a second fact keeps its one history row', () => {
+  const s = spineFixture();
+  const replay = { factId: s.record('version', s.first.version).id, version: s.first.version };
+  const extraction = value(extractGovernedChain(s.spine([s.first, replay]), s.ctx));
+  expect(rowsOf(extraction.extract).map(r => [r.version, r.status])).toEqual([['v1', 'live']]);
+  expect(extraction.conflicts).toEqual([]);
+});
+it('Rules 26/90 a recorded fact id is not proof of a payload that fact never recorded', () => {
+  const s = spineFixture();
+  // Control: the same spine with every association recorded by its own fact is accepted.
+  value(extractGovernedChain(s.spine(), s.ctx));
+  const note = s.append();
+  refused(extractGovernedChain(s.spine([{ ...s.first, factId: note.id }]), s.ctx), 'does not record this version');
+  refused(extractGovernedChain({ ...s.spine(), approvals: [{ factId: note.id, authorizationId: s.first.version.approvedIn.id }] },
+    s.ctx), 'does not record this approval');
+  // A governing record of a different payload is no better than an unrelated note.
+  const other = s.version('other', { id: 'store', body: 'other' });
+  refused(extractGovernedChain(s.spine([{ ...s.first, factId: other.factId }]), s.ctx), 'does not record this version');
+  const extraction = value(extractGovernedChain(s.spine(), s.ctx));
+  const record = s.anchorGeneration(extraction.vector, 100);
+  s.generations[0] = { factId: note.id, record };
+  const port = createRegisterSpine(s.spine(), s.ctx, r => s.f.success(r));
+  refused(port.enteringForce((record as unknown as { generation: Json }).generation), 'does not record this generation');
+  refused(port.isCurrent({ owner: 'part-two', name: 'FactPositionVector', id: extraction.vector }, s.f.clock(100)), 'does not record this generation');
+});
+it('the empty position rests on the recorded genesis fact, never an invented or later anchor', () => {
+  const s = spineFixture();
+  for (const anchor of ['fact:never-recorded', s.first.factId]) {
+    refused(extractGovernedChain({ ...s.spine(), anchor }, s.ctx, 0), 'not a recorded genesis fact');
+    const genesis = value(extractGovernedChain(s.spine(), s.ctx, 0));
+    const port = createRegisterSpine({ ...s.spine(), anchor }, s.ctx, r => s.f.success(r));
+    refused(port.verifyExtract(genesis.extract), 'not a recorded genesis fact');
+  }
 });
 it('a superseding version marks its parent superseded and a retired head stays retired', () => {
   const s = spineFixture();

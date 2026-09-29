@@ -5,6 +5,8 @@ import { generateRegister, generationOf, decodeGenerationRecord, loadRegister, r
 import type { FactReference, RegisterContext, SpineReadPort } from '../../src/register/index.js';
 import { setup, json, value, detail, hash } from '../register/fixtures.js';
 import { partTwoSpine } from '../register/part-two-spine.js';
+import { createRegisterSpine } from '../../src/facts/index.js';
+import type { GoverningSpine } from '../../src/facts/index.js';
 
 function reply<T>(payload: T, context: RegisterContext): Result<T> {
   return value(defineDecoder<T, RegisterContext>({ name: 'SpineFixtureReply', owner: 'test-only', currentVersion: 1,
@@ -150,5 +152,16 @@ describe('register integration with constitutional types and explicit spine port
     two.anchor(doctoredGeneration);
     expect(detail(loadRegister(doctored, doctoredGeneration, s.context, two.port(decodeRecord), s.f.now)))
       .toContain('differs from the verified chain');
+    // Recorded fact ids are not proof of payloads those facts never recorded: an unrelated signed
+    // note standing in for the approval or the generation record refuses, as does an anchor that
+    // is not the recorded genesis fact (Rules 26/90).
+    const note = two.append();
+    const load = (spine: GoverningSpine) => detail(loadRegister(candidate, generation, s.context,
+      createRegisterSpine(spine, two.ctx, decodeRecord), s.f.now));
+    expect(load({ ...two.spine, approvals: two.spine.approvals.map(a => ({ ...a, factId: note.id })) }))
+      .toContain('does not record this approval');
+    expect(load({ ...two.spine, generations: two.spine.generations.map(g => ({ ...g, factId: note.id })) }))
+      .toContain('does not record this generation');
+    expect(load({ ...two.spine, anchor: 'fact:never-recorded' })).toContain('not a recorded genesis fact');
   });
 });

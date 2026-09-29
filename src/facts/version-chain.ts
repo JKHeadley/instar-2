@@ -50,6 +50,8 @@ export function walkVersions(versions: readonly GovernedVersion[]): { current: r
   for (const version of [...versions].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     requireFact(encoding(version.content).hash === version.contentHash && version.approvedIn.artifact === version.contentHash, 'governing version content/approval mismatch');
     const existingId = unique.get(version.id); requireFact(!existingId || encoding(existingId).bytes === encoding(version).bytes, 'in-place version mutation');
+    // An identical same-id replay is the version itself, not an alias: nothing to collapse.
+    if (existingId) continue;
     const duplicate = [...unique.values()].find(v => v.subject === version.subject && v.contentHash === version.contentHash && v.approvedIn.id === version.approvedIn.id && encoding(v.supersedes).bytes === encoding(version.supersedes).bytes);
     if (duplicate) { duplicateIds.set(version.id, duplicate.id); continue; }
     unique.set(version.id, version);

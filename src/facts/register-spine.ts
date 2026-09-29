@@ -1,10 +1,11 @@
 // Rules 7/26/31/33/82/90; P2-NF-38..45, P2-NF-71. The verified spine read part three's
 // register consumes: the canonical chain extraction, the entering-force lookup, and vector
 // currency. Approval is the authority and is verified here as a recorded explicit yes;
-// landing is only a locator. Nothing here appends, approves, or mints a position.
+// landing is only a locator. Every association is bound to the signed envelope that recorded
+// its payload. Nothing here appends, approves, or mints a position.
 import type { Clock, FactEnvelopeReference, Json, Result } from '../index.js';
 import { boundary, encoding, integer, object, requireFact, string, take } from './boundary.js';
-import type { ConflictClass, FactContext } from './contracts.js';
+import type { ConflictClass, FactContext, FactEnvelope } from './contracts.js';
 import { contextBoundary } from './contracts.js';
 import { walkVersions } from './version-chain.js';
 import type { GovernedVersion } from './version-chain.js';
@@ -43,6 +44,30 @@ export interface RegisterSpinePort<R> {
   readonly isCurrent: (vector: unknown, now: Clock) => Result<boolean>;
 }
 
+/**
+ * What a spine record's fact must carry: a `governing-record` envelope whose signed body
+ * commits to the exact payload it recorded. A fact id alone proves nothing about a payload.
+ */
+export const governingRecordKind = 'governing-record';
+export type GoverningRecordRole = 'approval' | 'version' | 'generation';
+export function governingRecordBody(role: GoverningRecordRole, payload: unknown): Json {
+  return { role, hash: encoding(payload as Json).hash };
+}
+function recordedBy(byId: ReadonlyMap<string, FactEnvelope>, factId: unknown, role: GoverningRecordRole,
+  payload: unknown, missing: string, code: 'integrity' | 'standing' = 'integrity'): void {
+  const fact = typeof factId === 'string' ? byId.get(factId) : undefined;
+  requireFact(fact, missing, code);
+  requireFact(fact.kind === governingRecordKind
+    && encoding(fact.body).bytes === encoding(governingRecordBody(role, payload)).bytes,
+  `fact ${fact.id} does not record this ${role}`, 'integrity');
+}
+/** The empty position rests on this installation's genesis: the first fact of its segment. */
+function genesisAnchor(spine: GoverningSpine, context: FactContext): string {
+  const anchor = context.facts.find(f => f.id === string(spine.anchor, 'anchor'));
+  requireFact(anchor && anchor.predecessors.inSegment === null && anchor.prevInSegment === context.genesis.hash,
+    `spine anchor is not a recorded genesis fact: ${spine.anchor}`, 'integrity');
+  return anchor.id;
+}
 /** A position names the exact facts it includes, so a vector cannot be asserted by a caller. */
 export function positionVector(factIds: readonly string[]): string {
   return `vector:${encoding({ name: 'FactPositionVector', schemaVersion: 1, facts: factIds }).hash.slice(7)}`;
@@ -51,28 +76,29 @@ function retired(content: Json): boolean {
   return content !== null && typeof content === 'object' && !Array.isArray(content)
     && (content as Record<string, Json>).status === 'retired';
 }
-function positionOf(spine: GoverningSpine, count: number): string {
-  return count === 0 ? string(spine.anchor, 'anchor') : string(spine.versions[count - 1]!.factId, 'version.factId');
+function positionOf(spine: GoverningSpine, context: FactContext, count: number): string {
+  const anchor = genesisAnchor(spine, context);
+  return count === 0 ? anchor : string(spine.versions[count - 1]!.factId, 'version.factId');
 }
 function extractionAt(spine: GoverningSpine, context: FactContext, count: number): ChainExtraction {
   requireFact(Number.isSafeInteger(count) && count >= 0 && count <= spine.versions.length, 'position outside the recorded spine');
   requireFact(integer(spine.stalenessBoundMs, 'stalenessBoundMs') >= 0, 'declared staleness bound required');
   const recorded = spine.versions.slice(0, count);
-  const facts = new Set(context.facts.map(f => f.id));
+  const byId = new Map(context.facts.map(f => [f.id, f]));
   const approvals = new Map(spine.approvals.map(a => [a.authorizationId, a.factId]));
   const versions: GovernedVersion[] = [];
   for (const { factId, version } of recorded) {
-    requireFact(facts.has(string(factId, 'version.factId')), `version fact not recorded: ${factId}`, 'integrity');
-    requireFact(facts.has(version.since), `entering-force fact not recorded: ${version.since}`, 'integrity');
+    recordedBy(byId, factId, 'version', version, `version fact not recorded: ${factId}`);
+    requireFact(byId.has(version.since), `entering-force fact not recorded: ${version.since}`, 'integrity');
     // Verify the state, not the symbol: a merge event and a channel-attested record are not a yes.
     const yes = version.approvedIn.explicitYes;
     requireFact(yes.class === 'verified' && yes.authenticated.recordType !== 'merge',
       `approvedIn must be a verified explicit yes, never a merge event: ${version.id}`, 'standing');
-    const approvalFact = approvals.get(version.approvedIn.id);
-    requireFact(approvalFact !== undefined && facts.has(approvalFact),
+    recordedBy(byId, approvals.get(version.approvedIn.id), 'approval', version.approvedIn,
       `explicit-yes record not recorded for approval ${version.approvedIn.id}`, 'standing');
     requireFact(version.landedIn !== null, `register history needs a repository landing: ${version.id}`);
-    versions.push(version);
+    // A replay recorded by a second fact is the same version: one history row, never zero.
+    if (!versions.some(v => v.id === version.id)) versions.push(version);
   }
   const walked = walkVersions(versions);
   const resolve = (id: string) => walked.collapsed[id] ?? id;
@@ -107,7 +133,7 @@ function extractionAt(spine: GoverningSpine, context: FactContext, count: number
       landedIn: v.landedIn!, base: v.base, contentHash: v.contentHash };
   }).sort((a, b) => a.version < b.version ? -1 : a.version > b.version ? 1 : 0);
   const vector = positionVector(recorded.map(r => r.factId));
-  return { vector, position: positionOf(spine, count), conflicts: walked.conflicts,
+  return { vector, position: positionOf(spine, context, count), conflicts: walked.conflicts,
     extract: { type: 'ChainExtract', schemaVersion: 1,
       vector: { owner: 'part-two', name: 'FactPositionVector', id: vector }, rows } as unknown as Json };
 }
@@ -134,16 +160,15 @@ function anchorOf(record: Json) {
  */
 export function createRegisterSpine<R>(spine: GoverningSpine, context: FactContext,
   decodeRecord: (record: Json) => Result<R>): RegisterSpinePort<R> {
-  const facts = new Set(context.facts.map(f => f.id));
+  const byId = new Map(context.facts.map(f => [f.id, f]));
+  const recordedGeneration = (g: RecordedGeneration) =>
+    recordedBy(byId, g.factId, 'generation', g.record, `generation fact not recorded: ${g.factId}`);
   const positions = () => {
     const found = new Map<string, number>();
     for (let n = spine.versions.length; n >= 0; n--) found.set(positionVector(spine.versions.slice(0, n).map(r => r.factId)), n);
     return found;
   };
-  const anchors = () => spine.generations.map(g => {
-    requireFact(facts.has(string(g.factId, 'generation.factId')), `generation fact not recorded: ${g.factId}`, 'integrity');
-    return anchorOf(g.record);
-  });
+  const anchors = () => spine.generations.map(g => { recordedGeneration(g); return anchorOf(g.record); });
   return {
     owner: 'part-two',
     verifyExtract: extract => boundary('ExtractVerification', null, contextBoundary(context), () => {
@@ -163,7 +188,7 @@ export function createRegisterSpine<R>(spine: GoverningSpine, context: FactConte
       requireFact(new Set(matched.map(g => encoding(g.record).bytes)).size === 1,
         'conflicting entering-force records for one generation', 'integrity');
       const found = matched[0]!;
-      requireFact(facts.has(string(found.factId, 'generation.factId')), `generation fact not recorded: ${found.factId}`, 'integrity');
+      recordedGeneration(found);
       return take(decodeRecord(found.record));
     }),
     isCurrent: (vector, now) => boundary('ExtractCurrency', null, contextBoundary(context), () => {
