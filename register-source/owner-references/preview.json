@@ -87,7 +87,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/jev-response-capture.test.ts",
-        "hash": "sha256:01ef911be7c84ca2d5c00897c52680215197183492f844f422dbf84d35454e41"
+        "hash": "sha256:6b57bd6b6ad64b88751fc49b226ded86dcbc257bd794d9338cc1febb002f39ad"
       }
     }
   ],
@@ -110,7 +110,7 @@
       "source": "Genuine TypeSafe System One (jev-1.13.0) response captured 2026-09-29 for one reply-check request; committed unchanged, with nothing to redact (tests/fixtures/captures/README.md).",
       "artifact": {
         "path": "tests/fixtures/captures/jev-response.json",
-        "hash": "sha256:3881a4c0405a2af5e169347698e092dbbebc27282e4ee5d9cbd326cf9b4c3ecb"
+        "hash": "sha256:7947a8a5797e9536bc795399f330cc0445591684d375e65db6aefa2655f5db59"
       }
     }
   ]
