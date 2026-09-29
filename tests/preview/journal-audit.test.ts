@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
-import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -42,6 +42,29 @@ it('checks every ordinary accepted turn with and without a latest packet', async
     const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(auditJournal(replay.view).findings).toEqual([]);
     replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a desk canary out of expected packet history while an ordinary omission still fails', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-canary-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    for (const [id, text] of [[1, 'Sam likes tea.'], [2, 'Canary check a7e328aa: confirm this build.'],
+      [3, 'What does Sam like?']] as const) { worker.intake([update(id, text)]); await worker.drain(); }
+    const view = journal.view;
+    expect(probeTurn(view, view.order[1]!)).toBe(true);
+    const packet = JSON.parse(JSON.parse(view.lastPrompt!.prompt).messages
+      .find((m: { role: string }) => m.role === 'context').content).packet;
+    expect(packet.history.map((item: { id: string }) => item.id)).toEqual([view.order[0]!.id]);
+    expect(auditJournal(view).findings).toEqual([]);
+    const erased = structuredClone(packet); erased.history = [];
+    expect(auditPacket(view, view.order.at(-1)!, erased).findings.map((item: { code: string }) => item.code))
+      .toContain('history-coverage');
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
