@@ -6107,6 +6107,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     };
     // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
     // bound one pass; the next worker cycle can continue from the last summary.
+    let summarized = false;
     for (let attempt = 0; attempt < 8; attempt++) {
       const previous = summaryFor(last.update)?.through ?? -1;
       if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;
@@ -6120,7 +6121,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // consumes that headroom; the existing summary path remains bounded.
       if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
-        // otherwise wait for history to grow; index them without summarizing anything new.
+        // otherwise wait for history to grow; index them without summarizing anything new. A summary
+        // that just ran was already asked for these terms, so indexing waits for a later call.
+        if (summarized) return;
         const unoffered = journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
           && item.update <= previous && !indexed.has(item.id) && !journal.view.indexOffered.includes(item.id)).slice(0, INDEX_BACKLOG_LIMIT);
         if (unoffered.length && await indexOnly(unoffered)) continue;
@@ -6234,6 +6237,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer, indexBacklog } = chosen;
       gate();
+      summarized = true;
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
         ...(ports.replyCheck ? { supervised: true as const } : {}),
         maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at:ports.now()});
