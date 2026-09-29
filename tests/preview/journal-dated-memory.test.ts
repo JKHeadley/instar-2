@@ -587,8 +587,8 @@ it('delivers upcoming-date behavior in the prepared packet and source briefing',
       { providerAttempts: 30, expiresAt: genesis.expires });
     const note = sources.sources.find(source => source.id === 'capability-note')?.text;
     expect(note).toContain('unprompted message');
-    expect(note).toContain('- preview-upcoming-date-mention: when a saved date is within 48 hours');
-    expect(note).toContain('remembered across restarts');
+    // The briefing carries the one-line feature text; the full description (including restart memory) is the README Details line.
+    expect(note).toContain('- preview-upcoming-date-mention: a saved date within 48 hours can get one short mention in the next reply.');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

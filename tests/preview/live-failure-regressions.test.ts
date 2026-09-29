@@ -170,7 +170,7 @@ it('memory denial: full-context review objects to a false no-memory claim and th
       // cint-2: unsure on every non-secret rule; a credential flag would hold under Rule 86's secrets exception.
       .map(id => [id, { type: 'noul', noul: id === 'credential' ? 0.01 : 0.5 }])) }, latencyMs: 0 }),
     escalate: async (candidate, _id, originalPrompt, reviewRules, _deadline, operation) => {
-      expect(originalPrompt).toContain('keeps accepted messages, summaries and validated memory changes in one encrypted local journal');
+      expect(originalPrompt).toContain('an encrypted local journal of messages, summaries and memory that survives restarts');
       // The revised candidate's own review asks only the held classes (Rules 6, 8).
       expect(reviewRules).toContain(operation === 'revision' ? 'defers_work' : 'claims_blocked');
       return candidate.includes('memory is unavailable')
@@ -189,7 +189,7 @@ it('memory denial: full-context review objects to a false no-memory claim and th
     // the packet field points at it rather than repeating a hand-written copy.
     expect(JSON.parse(packets[0]!).capability).toContain('capability-note source');
     expect(JSON.parse(packets[0]!).sources.find((s: { id: string }) => s.id === 'capability-note').text)
-      .toContain('keeps accepted messages, summaries and validated memory changes in one encrypted local journal');
+      .toContain('an encrypted local journal of messages, summaries and memory that survives restarts');
     expect(sent).toEqual(['PREVIEW — Yes: this trial keeps a durable journal of what you tell me.',
       'PREVIEW — I can use this trial journal to remember earlier turns.']);
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['claims_blocked'], revised: true });
