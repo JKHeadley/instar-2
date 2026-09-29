@@ -14,8 +14,8 @@ Side effects: runtime-stage probes are no longer a CI gate item; they remain dec
 Undo and recovery: revert the commit; the gate returns to requiring CI proof for runtime probes
 Multi-machine posture: not applicable, a repository check
 Layer below: docs/07-the-declarations.md (P3-NF-25, the holds field), docs/06-the-fact-envelope.md (stage definitions), scripts/check-register-contract-map.mjs, the defect record
-Bug class: integration
-Bug evidence: reproducer=node scripts/check-register-contract-map.mjs against the gate results of 0fcb14da (held test P9-PREVIEW-held-notice-delivered must pass in the current run)
+Bug class: none
+Bug evidence: none
 Hook bypass: none
 Deferral: scripts/check-register-contract-map.mjs:16 | not-a-deferral=the design assigns runtime-stage evidence to the runtime holder and live proof (P3-NF-25); the build keeps checking the declarations, and the live-proof step exercises these probes after deploy
 Convergence: none
