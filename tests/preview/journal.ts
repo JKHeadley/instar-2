@@ -3845,11 +3845,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
       || summary.memoryFor === undefined && !turn.memoryPending && summary.through >= turn.update));
-  // An undecided request releases ordinary replies, but it has not settled what
-  // may be sent proactively. Only a recorded decision for that request clears it.
-  const unresolvedReminderMemory = () => pendingMemory() !== undefined || journal.view.order.some(turn =>
-    turn.accepted && fromOperator(turn) && turn.memoryUndecided
-    && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)));
+  // A correction still being decided holds every proactive send until its judgment lands.
+  const unresolvedReminderMemory = () => pendingMemory() !== undefined;
   // A later verified-operator turn may withdraw a reminder. Until its meaning is
   // settled by a recorded decision, a cap, an UNKNOWN or failed call, or a
   // content-free notice keeps that reminder unsent (Rules 57, 93).
@@ -3858,6 +3855,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return source === undefined || journal.view.order.some(turn => turn.update > source.update
       && turn.accepted && fromOperator(turn) && (turn.answer === undefined || turn.failureClass !== undefined
         || turn.modelState === 'uncertain' || turn.modelState === 'rejected'
+        // An undecided correction releases ordinary replies, but it has not settled whether it withdrew an
+        // earlier request; only a recorded decision clears it. It can withdraw only a request made before it,
+        // so it never holds a later one (live B3, 2026-09-29: three old undecided corrections held every reminder).
+        || turn.memoryUndecided === true && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id))
         // A held reply keeps memoryPending for safe rendering; recovery that recorded
         // this turn's reminder decision (cancel or keep) settles it.
         || turn.memoryPending === true && !journal.view.summaries.some(summary =>

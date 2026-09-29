@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { loopHealth } from './obligations.js';
 
 // The proof-room sequence of 2026-09-29 (updates 715672485-715672489): an exhausted rolling-summary prefix,
 // a same-day reminder, "Actually, cancel the bird feeder one." (a cued memory correction), then ordinary
@@ -19,9 +20,12 @@ const feeder = 'Remind me today at 12:30 pm to refill the bird feeder';
 const cancel = 'Actually, cancel the bird feeder one.';
 type Input = { id: string; question: string; context: string };
 
-const world = (root: string, summaryAnswers: boolean) => {
+const walk = 'Remind me today at 12:45 pm to take a short walk';
+const locker = 'Actually my gym locker code is 4412, not 3310.';
+
+const world = (root: string, summaryAnswers: boolean, clock = { now: start + 20 * 60_000 }, first = true) => {
   const calls: Input[] = [], sent: string[] = [];
-  const ports = { now: () => start + 20 * 60_000, stopped: () => false, timeZone: 'America/Los_Angeles',
+  const ports = { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
     model: async (input: Input) => {
       calls.push(input);
       if (input.id.startsWith('summary:')) {
@@ -30,6 +34,8 @@ const world = (root: string, summaryAnswers: boolean) => {
         return JSON.stringify({ summary: 'The operator asked for a reminder and then cancelled it.', people: [], memory: [],
           commitments: [], questions: [], cancelReminders: (packet.reminders ?? []).filter(item => item.quote.includes('bird feeder')).map(item => item.id) });
       }
+      if (input.question === walk)
+        return JSON.stringify({ reply: 'Okay, 12:45 pm today.', memory: [], dated: [{ quote: walk, when: 'today at 12:45 pm', remind: true }] });
       if (input.question === feeder)
         return JSON.stringify({ reply: 'Okay, 12:30 pm today.', memory: [], dated: [{ quote: feeder, when: 'today at 12:30 pm', remind: true }] });
       if (input.question === cancel) {
@@ -41,7 +47,7 @@ const world = (root: string, summaryAnswers: boolean) => {
     },
     checkOutbound: () => {},
     send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } };
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const journal = first ? openPreviewJournal(join(root, 'journal.encrypted'), key, genesis) : openPreviewJournal(join(root, 'journal.encrypted'), key);
   return { journal, worker: createJournalWorker(journal, ports), calls, sent };
 };
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-correction-wedge-${name}-`)));
@@ -115,3 +121,73 @@ it('still decides a cued correction before later turns while its summary judgmen
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 20000);
+
+// Live group B on cint-L4 422570a0 (2026-09-29 14:42): "Remind me today at 2:45 pm to take a short walk" was saved
+// after three earlier corrections had settled as undecided, and it never fired: any undecided correction anywhere in
+// the journal held every requested action forever. An undecided correction can withdraw only a request made before
+// it, so it holds that one and never a later one (Rules 29, 57, 93; the no-duplicate-sends floor).
+const exhaustedPrefix = async (w: ReturnType<typeof world>) => {
+  for (const [id, text] of [[1, 'Hello.'], [2, 'What is a good bird seed?'], [3, 'How tall do sunflowers grow?'], [4, 'Thanks.']] as const) {
+    w.worker.intake([update(id, text)]); await w.worker.drain();
+  }
+  await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
+};
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+
+it('fires a request made after an undecided correction once at its due minute through the scheduler writer, and never again after a restart', async () => {
+  const root = tmp('due-after-undecided');
+  try {
+    const clock = { now: start + 20 * 60_000 };
+    let w = world(root, false, clock);
+    await exhaustedPrefix(w);
+    w.worker.intake([update(5, feeder)]); await w.worker.drain();
+    w.worker.intake([update(6, cancel)]); await w.worker.drain();
+    w.worker.intake([update(7, locker)]); await w.worker.drain();
+    expect(w.journal.view.order.filter(turn => turn.memoryUndecided).length).toBeGreaterThan(0);
+    w.worker.intake([update(8, walk)]); await w.worker.drain();
+    expect(w.journal.view.dated.find(item => item.quote === walk)).toMatchObject({ day: '2026-09-29', time: '12:45', remind: true });
+    clock.now = Date.UTC(2026, 8, 29, 19, 44); // 12:44: not yet due.
+    await w.worker.sendRequested();
+    expect(pushes(w.sent)).toEqual([]);
+    // The open request is owned work whose due minute wakes the runner (live: nextWorkAt ignored it).
+    const waiting = loopHealth(w.journal.view, clock.now);
+    expect(waiting.nextWorkAt).toBe(Date.UTC(2026, 8, 29, 19, 45));
+    expect(waiting.ownedWork).toBeGreaterThanOrEqual(1);
+    clock.now = Date.UTC(2026, 8, 29, 19, 45); // 12:45: due.
+    await w.worker.sendRequested();
+    const due = w.journal.view.order.filter(turn => turn.requestedAction);
+    expect(due).toHaveLength(1);
+    expect(due[0]!.writer).toMatchObject({ kind: 'system', id: 'preview-scheduler:12345678' });
+    expect(due[0]!.requestedAction!.items.map(item => item.quote)).toEqual([walk]);
+    expect(pushes(w.sent)).toHaveLength(1);
+    expect(pushes(w.sent)[0]).toContain(walk);
+    await w.worker.sendRequested();
+    w.journal.close();
+    clock.now = Date.UTC(2026, 8, 29, 20, 10); // restart well past the due minute.
+    w = world(root, false, clock, false);
+    await w.worker.drain(); await w.worker.sendRequested(); await w.worker.sendRequested();
+    expect(w.sent).toEqual([]);
+    expect(w.journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(1);
+    const done = loopHealth(w.journal.view, clock.now);
+    expect(done.nextWorkAt).toBeNull();
+    expect(done.byKind.request).toBe(0);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 30000);
+
+it('still holds a request an undecided correction made after it may have withdrawn', async () => {
+  const root = tmp('undecided-after-due');
+  try {
+    const clock = { now: start + 20 * 60_000 };
+    const w = world(root, false, clock);
+    await exhaustedPrefix(w);
+    w.worker.intake([update(5, walk)]); await w.worker.drain();
+    w.worker.intake([update(6, locker)]); await w.worker.drain();
+    expect(w.journal.view.order[5]!.memoryUndecided).toBe(true);
+    clock.now = Date.UTC(2026, 8, 29, 19, 50);
+    await w.worker.sendRequested();
+    expect(w.journal.view.order.filter(turn => turn.requestedAction)).toEqual([]);
+    expect(pushes(w.sent)).toEqual([]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 30000);
