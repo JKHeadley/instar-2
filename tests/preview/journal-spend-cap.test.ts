@@ -146,6 +146,41 @@ it('lets an authorized raise write off exactly the pending UNKNOWN calls as full
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+it('keeps an index write-off matched to its reservation after a later batch supersedes it', () => {
+  // The write-off names the reservation's own key, so a later successful batch, compaction and restart never
+  // resurrect it as pending (a false cap-raise refusal and a double write-off); a new unresolved batch needs its own.
+  const dir = root(), path = join(dir, 'journal.encrypted');
+  try {
+    let journal = openPreviewJournal(path, key, genesis());
+    worker(journal, { calls: 0, sends: 0 }).intake([update(1), update(2), update(3)]);
+    const reserve = (n: number, at: number) => journal.append({ kind: 'index-reserve', sources: [id(n)], maxInputTokens: 100, maxOutputTokens: 100, at });
+    const raise = (maxCalls: number, at: number, writeOff?: string[]) => raiseJournalCaps(journal, { maxCalls, maxReplies: 4, maxTurns: 4,
+      authority: 'Justin recorded raise', at, ...(writeOff ? { writeOff } : {}) });
+    reserve(1, 1001);
+    expect(() => raise(5, 1002)).toThrow('UNKNOWN call prevents cap raise');
+    raise(5, 1002, ['index:0']);
+    journal.close(); journal = openPreviewJournal(path, key);
+    reserve(2, 1003);
+    journal.append({ kind: 'meaning-index', concepts: [], usage: { inputTokens: 1, outputTokens: 1, charge: null, inputComplete: true }, at: 1004 });
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.indexUnknown).toEqual(['index:0']);
+    // Still UNKNOWN and fully charged, but already written off: a plain raise is admitted, and a repeat write-off is refused.
+    expect(unknownCallCounts(journal.view)).toMatchObject({ index: 1, total: 1 });
+    expect(journal.view.calls).toBe(2);
+    expect(() => raise(6, 1005, ['index:0'])).toThrow('exactly the pending UNKNOWN calls');
+    raise(6, 1005);
+    // Negative neighbor: a genuinely new unresolved batch still blocks until it is written off by its own key.
+    reserve(3, 1006);
+    expect(() => raise(7, 1007)).toThrow('UNKNOWN call prevents cap raise');
+    expect(() => raise(7, 1007, ['index:0', 'index:2'])).toThrow('exactly the pending UNKNOWN calls');
+    raise(7, 1007, ['index:2']);
+    journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.writtenOff).toEqual(['index:0', 'index:2']);
+    expect(unknownCallCounts(journal.view)).toMatchObject({ index: 2, total: 2 });
+    journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 it('counts an UNKNOWN subscription review separately from a completed answer and Jev check', () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {

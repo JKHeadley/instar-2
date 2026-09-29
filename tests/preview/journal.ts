@@ -1588,9 +1588,9 @@ export function unknownCallKeys(view: JournalView) {
       && turn.revisionReview?.verdict !== 'violation').map(turn => `revision-review:${turn.id}`)];
   const jev = view.order.filter(turn => turn.jevReserved && !turn.replyChecks?.some(check => check.path === 'jev' && check.verdict !== 'unavailable'))
     .map(turn => `jev:${turn.id}`);
-  // Index-only calls: every superseded reservation plus the one still awaiting its result.
-  const index = [...view.indexUnknown.map((key, at) => `index:${String(at)}:${key}`),
-    ...(view.indexOpen === null ? [] : [`index-open:${view.indexOpen.key}`])];
+  // Index-only calls: every superseded reservation plus the one still awaiting its result. Each is named by its
+  // own unique reservation key, so a write-off still matches after a later batch supersedes it.
+  const index = [...view.indexUnknown, ...(view.indexOpen === null ? [] : [view.indexOpen.key])];
   return { answers, summaries, reviews, jev, index };
 }
 export function unknownCallCounts(view: JournalView) {
