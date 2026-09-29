@@ -1,6 +1,6 @@
 # Owner-reference manifests pin stale hashes for two changed files (Rule 37 quarantine)
 
-**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
+**Status:** CLOSED on cint-L4 (2026-09-29); kept as the record. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
 
 These cases fail deterministically on `cint-1` and on a pristine built `2988aa95` (runs retained as `/private/tmp/claude-501/cint1-livefix/full2.log`, `re1.log`, `base-re1.log`, and the pre-quarantine re-run `rr2-failfiles.log`):
 - `tests/intake/governance.test.ts` — `P4-NF-06 R7 owner manifest pins the actual public implementations, contract and inspection assertions`: `src/facts/store.ts: expected 'sha256:5953d792…' to be 'sha256:82e29c69…'`.
@@ -18,3 +18,5 @@ These cases fail deterministically on `cint-1` and on a pristine built `2988aa95
 **Re-check on the cint-L2 merge (2026-09-28):** with the skips removed on the merged tree, `P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fixture/decoder pairs` passed (cint-L2 already carries the part-ten re-pin), so that case is active again and no longer covered here. The P4-NF-06 R7 governance case still fails (`src/facts/store.ts` hash), and the five `tests/e2e/register.test.ts` cases still fail, now stopping at `reference artifact hash differs: src/rungraph/index.ts` (`.instar/lanes/cint-L2-merge-quar2.log`); those six stay quarantined.
 
 **Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.
+
+**Closure on cint-L4 (2026-09-29):** the gate run of cint-L4 at `77558d3c` failed `scripts/check-register-contract-map.mjs` with `held test P4-NF-06 must pass in the current run`, because the held P4-NF-06 fixture case was still skipped here. The `src/facts/store.ts` drift was already re-pinned on this tree, so the only stale Part Four pins were the three for `tests/intake/governance.test.ts` itself (changed by this quarantine). The six retained cases (the P4-NF-06 R7 governance case and the five `tests/e2e/register.test.ts` cases) are un-skipped with bodies and budgets unchanged; the desk repin refreshed the Part Four owner-reference pins and the grounding inventory chain, and `generated/` was replayed. Each retained case was run on the combined tree (`nice -n 10`, `--maxWorkers 1`); results: `tests/intake/governance.test.ts` 16/16 passed (7.5 s); `tests/e2e/register.test.ts` 6/6 passed (174 s file; the six cases took 40.2, 57.4, 22.0, 28.9, 14.6 and 11.2 s, each inside its unchanged budget).
