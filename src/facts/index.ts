@@ -7,6 +7,9 @@ export type { SegmentStoragePort, FactStorePort, AppendReceipt, AuthorInput } fr
 export { RefusalStore, PendingSet } from './stores.js';
 export { decodeVersion, walkVersions } from './version-chain.js';
 export type { GovernedVersion, LandingReadPort } from './version-chain.js';
+export { createRegisterSpine, extractGovernedChain, positionVector } from './register-spine.js';
+export type { ChainExtraction, GoverningSpine, RecordedApproval, RecordedGeneration, RecordedVersion,
+  RegisterSpinePort } from './register-spine.js';
 export { redactCapture, redactionReasons } from './captures.js';
 export type { ProtectedCaptureReference } from './captures.js';
 export { verifyHistory, compromisedKeyConflicts } from './verification.js';

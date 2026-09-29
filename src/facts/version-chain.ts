@@ -44,7 +44,8 @@ export function decodeVersion(input: unknown, context: FactContext, scope: Scope
     return { id, subject, content: v.content!, contentHash, since, supersedes, approvedIn: authorization, base, landedIn };
   });
 }
-export function walkVersions(versions: readonly GovernedVersion[]): { current: readonly GovernedVersion[]; conflicts: readonly ConflictClass[]; duplicates: readonly string[] } {
+export function walkVersions(versions: readonly GovernedVersion[]): { current: readonly GovernedVersion[]; conflicts: readonly ConflictClass[];
+  duplicates: readonly string[]; collapsed: Readonly<Record<string, string>> } {
   const unique = new Map<string, GovernedVersion>(), duplicateIds = new Map<string, string>();
   for (const version of [...versions].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     requireFact(encoding(version.content).hash === version.contentHash && version.approvedIn.artifact === version.contentHash, 'governing version content/approval mismatch');
@@ -74,5 +75,9 @@ export function walkVersions(versions: readonly GovernedVersion[]): { current: r
     requireFact(incumbent.length === 1, 'fork has no unique reviewed incumbent'); current.push(incumbent[0]!);
     const ids = heads.map(v => v.id).sort(); conflicts.push({ key: `version:${subject}:${ids.join(':')}`, kind: 'version-fork', facts: heads.map(v => v.since).sort(), detail: 'concurrent governing versions; incumbent remains in force' });
   }
-  return { current: current.sort((a, b) => a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0), conflicts, duplicates: [...duplicateIds.keys()].sort() };
+  // `collapsed` publishes the replay collapse (P2-NF-71) so a reader can resolve a
+  // superseded reference to the retained version instead of re-deriving the rule.
+  return { current: current.sort((a, b) => a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0), conflicts,
+    duplicates: [...duplicateIds.keys()].sort(),
+    collapsed: Object.fromEntries([...duplicateIds.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)) };
 }
