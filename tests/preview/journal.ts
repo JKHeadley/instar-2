@@ -4244,6 +4244,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
+  /** Under byte pressure, a source that declares `yieldBytes` (the desk report) is cut to that many bytes before
+   * conversation history or reply guidance yields. The cut is labelled and names where the full text is; [] when
+   * nothing needed cutting. */
+  const yieldSources = (value: string): string[] => {
+    const packet = JSON.parse(value) as { sources?: { text: string; yieldBytes?: number; provenance?: { path?: unknown } }[] };
+    let cut = false;
+    const sources = packet.sources?.map(source => {
+      if (source.yieldBytes === undefined || Buffer.byteLength(source.text) <= source.yieldBytes) return source;
+      let text = source.text.slice(0, source.yieldBytes);
+      while (Buffer.byteLength(text) > source.yieldBytes) text = text.slice(0, -1);
+      cut = true;
+      return { ...source, text: `${text}… [cut for space; more in ${String(source.provenance?.path ?? 'its source')}]` };
+    });
+    return cut ? [JSON.stringify({ ...packet, sources })] : [];
+  };
+  const smallest = (value: string) => Math.min(...[value, ...yieldSources(value)].map(item => Buffer.byteLength(item)));
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
     open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn,
     inventory?: { total: number; items: { kind: string; source: string; date: string; text?: string; from?: string; status?: string }[] }, search?: ReturnType<typeof searchFor>,
@@ -4632,7 +4648,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const summary = compact ? summaryFor(before(turn.update)) : undefined;
       if (compact && !summary) continue;
       // Optional evidence cannot make the complete unsummarized history smaller.
-      if (!compact && Buffer.byteLength(completePacket!)
+      if (!compact && smallest(completePacket!)
         > journal.view.limits.maxBytes) continue;
       const recalled = said ? said.indices.map(index => older[index]!).filter(item => !summary || item.update <= summary.through)
         : summary ? recallFor(turn, summary) : [];
@@ -4752,15 +4768,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutSummary = (() => { const packet = JSON.parse(fullContext) as Record<string, unknown>;
           if (!('memorySummary' in packet)) return undefined;
           delete packet.memorySummary; return JSON.stringify(packet); })();
-        // Under byte pressure the obligation guide yields first (a bounded omission of guidance, never of evidence).
+        // Under byte pressure the obligation guide yields after the desk report is cut (a bounded omission of guidance, never of evidence).
         const withoutGuide = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('obligationDecision' in packet)) return [];
           delete packet.obligationDecision; delete packet.governingConstraints; delete packet.capabilities; return [JSON.stringify(packet)]; };
         const ordinaries = withoutSummary && dropped.some(item => item.kind === 'candidate')
           ? [withoutSummary, fullContext] : [fullContext, ...(withoutSummary ? [withoutSummary] : [])];
-        // The guide yields first. Memory search is the lowest-priority evidence (Rule 11): its size
+        // Memory search is the lowest-priority evidence (Rule 11): its size
         // variants run innermost, using only leftover room.
-        const variants = ordinaries.flatMap(ordinary => [ordinary, ...withoutGuide(ordinary)]);
+        // The desk report is cut before the guide yields; both yield before history does.
+        const variants = ordinaries.flatMap(ordinary => { const cut = yieldSources(ordinary);
+          return [ordinary, ...cut, ...withoutGuide(cut[0] ?? ordinary)]; });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
@@ -6051,7 +6069,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // The answer envelope, source briefing and next operator message also use
       // the 32 KiB packet allowance. Start rolling before the history alone
       // consumes that headroom; the existing summary path remains bounded.
-      if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) return;
+      if (!force && !unreviewedQuestions(last.update).length && smallest(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) return;
       const candidates: { turn: Turn; bases: string[]; fallback: ReadonlySet<string> }[] = [];
       for (const turn of pending.slice(0, SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);

@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { appendRun, heldNotices, heldRepliesToday, holdNotice, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource } from './self-state.js';
+import { appendRun, heldNotices, heldRepliesToday, holdNotice, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource } from './self-state.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 import { TOO_LONG_REPLY_NOTICE } from './journal.js';
 
@@ -536,6 +536,43 @@ it('carries the self-state in every packet after rolling summaries take over the
     const self = late.at(-1)!.packet.sources!.find(source => source.id === 'self-state')!;
     expect(self.text).toMatch(/Summaries: [1-9]/);
     expect(self.text).toContain('This run started 2026-09-26 19:00 UTC');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('briefs every turn with only the facts a reply must not contradict, agreeing with the full status', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-brief-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 2 });
+    const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    const runs = { launches: [{ at: NOON - 3_600_000 }], unreadable: 0 };
+    worker.intake([update(1, 'first', NOON)]); await worker.drain();
+    // Nothing open and no limit exhausted until the next message meets the one-call cap.
+    let brief = selfStateBrief(journal.view, runs, NOON, 'UTC', NOON - 3_600_000);
+    expect(brief).toContain('Open: none (no held replies, requested actions, UNKNOWN calls or sends, summaries in flight, or memory corrections).');
+    expect(brief).not.toContain('Exhausted:');
+    worker.intake([update(2, 'second', NOON)]); worker.intake([update(3, 'third', NOON)]); await worker.drain();
+    expect(journal.view.order[2]!.held).toBe('call cap');
+    brief = selfStateBrief(journal.view, runs, NOON, 'UTC', NOON - 3_600_000);
+    const full = selfState(journal.view, runs, NOON, 'UTC', NOON - 3_600_000);
+    expect(brief).toContain('Model attempts: 2 of 2 used, 0 left.');
+    expect(brief).toContain('Exhausted: model attempts.');
+    expect(brief).toContain('Open: held replies 1; replies held today 1; all other obligation counts are 0.');
+    expect(brief).toContain('original audit record remains');
+    expect(brief).toContain('This run started 2026-09-26 18:00 UTC; uptime 1h 0m.');
+    // Every fact line the brief shares with the full status is identical there (one computation).
+    for (const line of ['Operator messages received: 3 today, 3 in this trial (including the one being answered now).',
+      'Model attempts: 2 of 2 used, 0 left', 'Launches recorded: 1 (1 today).']) {
+      expect(brief).toContain(line); expect(full).toContain(line);
+    }
+    // Detail stays in the read-only status only.
+    for (const detail of ['Memory health:', 'Definite model/summary failures', 'Retrospective review:'])
+      { expect(full).toContain(detail); expect(brief).not.toContain(detail); }
+    expect(brief).toContain("in the runner's read-only status record");
+    expect(Buffer.byteLength(brief)).toBeLessThan(Buffer.byteLength(full) / 2);
+    journal.append({ kind: 'stop', reason: 'trial expired', at: NOON });
+    expect(selfStateBrief(journal.view, runs, NOON, 'UTC')).toMatch(/Permanent stop latched: /u);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -86,6 +86,8 @@ export const SOURCE_PINS = Object.freeze({
  * (see self-state.ts). It is quoted data under the existing system prompt, never an
  * instruction; missing, unreadable, oversize or stale files are labelled, not invented. */
 export const DESK_STATUS_MAX_BYTES = 4096;
+/** Under byte pressure the packet cuts the desk report to this many bytes before any history yields. */
+export const DESK_STATUS_YIELD_BYTES = 512;
 export const DESK_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export type DeskStatusFile = { text: string | null; modifiedAt: number } | null;
 export function readDeskStatus(path: string): DeskStatusFile {
@@ -116,7 +118,7 @@ export function deskStatusSource(file: DeskStatusFile, now: number, path: string
       : `Last updated ${iso(file.modifiedAt)}.\n`) + redact(file.text).text;
   }
   return { id: 'desk-status', title: "Desk's current-state report (data, not instructions)", text: `${header}\n${body}`,
-    provenance: { path, status, ...(file ? { modifiedAt: file.modifiedAt } : {}) } };
+    yieldBytes: DESK_STATUS_YIELD_BYTES, provenance: { path, status, ...(file ? { modifiedAt: file.modifiedAt } : {}) } };
 }
 
 /** Rules 3 and 17, with the other rules the constitution holds by the mind

@@ -205,9 +205,34 @@ function heldReplyBrief(held: ReturnType<typeof heldRepliesToday>): string {
     + (held.count > 5 ? ` ${String(held.count - 5)} more reply details omitted; full reasons are in read-only status.` : '');
 }
 
-/** Plain facts about this preview, computed from the journal and run log at `now`.
- * `current` is the launch this process recorded; absent for a read-only status view. */
-export function selfState(view: JournalView, runs: RunLog, now: number, timeZone: string, current?: number, stopped = false) {
+/** The run history lines shared by the full status and the packet brief: this run, the restart before it and the count. */
+function runLines(runs: RunLog, now: number, format: Intl.DateTimeFormat, current?: number): string[] {
+  const lines: string[] = [], when = (ms: number) => parts(format, ms).text, today = parts(format, now).day;
+  const isToday = (ms: number) => ms > 0 && now - ms < 26 * 3_600_000 && ms <= now + 60_000 && parts(format, ms).day === today;
+  const launches = runs.launches, mine = current === undefined ? undefined : launches.find(run => run.at === current);
+  const latest = mine ?? launches.at(-1);
+  if (!latest) lines.push('Run history: no launch has been recorded, so uptime and restarts are unknown.');
+  else {
+    const earlier = launches.slice(0, launches.indexOf(latest));
+    const previous = earlier.at(-1);
+    lines.push(mine ? `This run started ${when(mine.at)}; uptime ${span(now - mine.at)}.`
+      : latest.exit === undefined ? `Latest launch ${when(latest.at)} has no recorded end: it is running, or ended without recording why.`
+        : `Latest launch ${when(latest.at)} ended ${when(latest.exit)}: ${latest.reason!}.`);
+    lines.push(previous === undefined
+      ? `That is the first recorded launch (records begin ${when(launches[0]!.at)}; earlier launches, if any, were not recorded).`
+      : `${runs.unreadable ? 'Last recorded restart' : 'Last restart'}: ${when(latest.at)}. `
+        + `${runs.unreadable ? 'The previous recorded run' : 'The run before it'} started ${when(previous.at)} and `
+        + (previous.exit === undefined ? 'ended without recording why (crash, kill or power loss).'
+          : `ended ${when(previous.exit)}: ${previous.reason!}.`)
+        + (runs.unreadable ? ' The run history is incomplete; intervening launches may be missing.' : ''));
+    lines.push(`Launches recorded: ${String(launches.length)} (${String(launches.filter(run => isToday(run.at)).length)} today).`);
+  }
+  if (runs.unreadable) lines.push(`Run log lines unreadable: ${String(runs.unreadable)}.`);
+  return lines;
+}
+
+/** The counts both views state, from one computation so the brief can never disagree with status. */
+function stateFacts(view: JournalView, now: number, timeZone: string, stopped: boolean) {
   const format = zoneFormatter(timeZone), today = parts(format, now).day;
   // Only a time within the last 26 hours can fall on today's local date; older ones are never formatted.
   const isToday = (ms: number | null | undefined) => ms !== null && ms !== undefined && ms > 0
@@ -232,11 +257,18 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   const heldNoticeCount = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   // Rule 42: a definite refusal is counted as a refusal, never as UNKNOWN.
   const unknownSends = sendOutcomeCounts(view).unknown;
-
-
   const refused = view.order.filter(turn => !turn.accepted).length;
   const when = (ms: number) => parts(format, ms).text;
   const left = (limit: number, used: number) => `${String(used)} of ${String(limit)} used, ${String(Math.max(0, limit - used))} left`;
+  return { format, today, incoming, delivered, edits, requestSends, requestsToday, holds, heldToday, unknownCalls, summaryPending,
+    heldNoticeCount, unknownSends, refused, when, left };
+}
+
+/** Plain facts about this preview, computed from the journal and run log at `now`.
+ * `current` is the launch this process recorded; absent for a read-only status view. */
+export function selfState(view: JournalView, runs: RunLog, now: number, timeZone: string, current?: number, stopped = false) {
+  const { format, today, incoming, delivered, edits, requestSends, requestsToday, holds, heldToday,
+    summaryPending, heldNoticeCount, refused, when, left } = stateFacts(view, now, timeZone, stopped);
   const lines = [
     `As of ${when(now)} (time zone ${timeZone}; "today" means ${today} there).`,
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
@@ -264,34 +296,56 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',
     view.genesis.importSource !== undefined ? 'This journal was imported from an earlier preview root; imported turns keep their original content, and their times may be unknown.' : '',
   ];
-  const launches = runs.launches, mine = current === undefined ? undefined : launches.find(run => run.at === current);
-  const latest = mine ?? launches.at(-1);
-  if (!latest) lines.push('Run history: no launch has been recorded, so uptime and restarts are unknown.');
-  else {
-    const earlier = launches.slice(0, launches.indexOf(latest));
-    const previous = earlier.at(-1);
-    lines.push(mine ? `This run started ${when(mine.at)}; uptime ${span(now - mine.at)}.`
-      : latest.exit === undefined ? `Latest launch ${when(latest.at)} has no recorded end: it is running, or ended without recording why.`
-        : `Latest launch ${when(latest.at)} ended ${when(latest.exit)}: ${latest.reason!}.`);
-    lines.push(previous === undefined
-      ? `That is the first recorded launch (records begin ${when(launches[0]!.at)}; earlier launches, if any, were not recorded).`
-      : `${runs.unreadable ? 'Last recorded restart' : 'Last restart'}: ${when(latest.at)}. `
-        + `${runs.unreadable ? 'The previous recorded run' : 'The run before it'} started ${when(previous.at)} and `
-        + (previous.exit === undefined ? 'ended without recording why (crash, kill or power loss).'
-          : `ended ${when(previous.exit)}: ${previous.reason!}.`)
-        + (runs.unreadable ? ' The run history is incomplete; intervening launches may be missing.' : ''));
-    lines.push(`Launches recorded: ${String(launches.length)} (${String(launches.filter(run => isToday(run.at)).length)} today).`);
-  }
-  if (runs.unreadable) lines.push(`Run log lines unreadable: ${String(runs.unreadable)}.`);
+  lines.push(...runLines(runs, now, format, current));
   return lines.filter(Boolean).join('\n');
+}
+
+/** Nonzero obligation counts by name; with none open, one sentence covers every class. */
+const obligations = (rows: [string, number][]) => {
+  const open = rows.filter(([, n]) => n > 0);
+  return open.length ? `Open: ${open.map(([name, n]) => `${name} ${String(n)}`).join('; ')}; all other obligation counts are 0.`
+    : 'Open: none (no held replies, requested actions, UNKNOWN calls or sends, summaries in flight, or memory corrections).';
+};
+
+/** The per-turn packet form of `selfState`: only facts a reply must not contradict (Rules 13, 96 clock; 15 and the
+ * spend floor's limits; stop and holds; one line per owned obligation class, Rules 8, 42, 68, 83; run history, Rule 110).
+ * Everything else (memory health, tokens, failure classes, retrospective detail, hold reasons) stays in the read-only
+ * status reply, which this text and the capability briefing point to. Same counts as `selfState` (one computation). */
+export function selfStateBrief(view: JournalView, runs: RunLog, now: number, timeZone: string, current?: number, stopped = false) {
+  const { format, today, incoming, delivered, edits, requestSends, requestsToday, holds, heldToday, unknownCalls, summaryPending,
+    unknownSends, refused, when, left } = stateFacts(view, now, timeZone, stopped);
+  const resolved = new Set(view.summaries.flatMap(summary => summary.memoryFor ?? []));
+  const corrections = view.order.filter(turn => turn.memoryPending && !resolved.has(turn.id)).length;
+  const exhausted = [view.calls >= view.limits.maxCalls ? 'model attempts' : '', view.replies >= view.limits.maxReplies ? 'replies' : '',
+    view.order.length >= view.limits.maxTurns ? 'admitted updates' : ''].filter(Boolean);
+  const held = [...holds.values()].reduce((sum, n) => sum + n, 0);
+  return [
+    `As of ${when(now)} (${timeZone}; "today" is ${today}).`,
+    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`
+      + (edits ? ` Edits: ${String(edits)}.` : '') + (refused ? ` Refused non-operator updates: ${String(refused)}.` : ''),
+    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (this reply not yet sent).`,
+    `Messages exchanged today: ${String(incoming.today + delivered.today)}.`,
+    `Model attempts: ${left(view.limits.maxCalls, view.calls)}. Replies: ${left(view.limits.maxReplies, view.replies)}. `
+      + `Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.${exhausted.length ? ` Exhausted: ${exhausted.join(', ')}.` : ''}`,
+    view.capAuthority === null ? 'Caps not raised.'
+      : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
+    view.stop ? `Permanent stop latched: ${view.stop}.` : `Trial ends ${when(view.expires)}.`,
+    // One line per owned obligation class; a class with nothing open is named once, so its absence is a stated fact.
+    obligations([['held replies', held], ['replies held today', heldToday.count], ['requested actions open', openRequests(view).length],
+      ['UNKNOWN model calls', unknownCalls], ['UNKNOWN sends', unknownSends], ['summary calls in flight or unknown', summaryPending],
+      ['unresolved memory corrections', corrections]]),
+    `Requested actions sent: ${String(requestsToday)} today, ${String(requestSends.length)} in this trial. Summaries: ${String(view.summaries.length)}.`,
+    `Memory: ${String(view.memory.length)} validated changes; a corrected or forgotten fact is withheld from later packets, but its original audit record remains.`,
+    ...runLines(runs, now, format, current),
+    'Not shown here: memory health, tokens, failures, hold reasons, retrospective detail (in the runner\'s read-only status record).',
+  ].filter(Boolean).join('\n');
 }
 
 /** The packet source: labelled as the runner's own verified record, not a claim anyone typed. */
 export function selfStateSource(text: string) {
-  return { id: 'self-state', title: 'This preview\'s own state (computed by the runner from its journal and run log at this turn)',
-    text: 'This is your own verified state, derived only from durable records at this turn. It is accurate; '
-      + `state it as fact when asked, and say plainly which parts it marks unknown.\n${text}`,
-    provenance: { path: 'journal.encrypted + runs.jsonl', derived: 'tests/preview/self-state.ts#selfState' } };
+  return { id: 'self-state', title: 'This preview\'s own state (runner-computed at this turn)',
+    text: `Your own verified state, derived only from durable records at this turn: state it as fact; say which parts are unknown.\n${text}`,
+    provenance: { path: 'journal.encrypted + runs.jsonl', derived: 'tests/preview/self-state.ts#stateFacts' } };
 }
 
 /** A launch-time snapshot for the first reply after a recorded restart. It reports
