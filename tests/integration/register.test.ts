@@ -4,6 +4,9 @@ import type { Result } from '../../src/index.js';
 import { generateRegister, generationOf, decodeGenerationRecord, loadRegister, readRegisterEntry, readEnforcedRecord, checkGovernedState, buildRuleGraph, resolveTerms, renderRegister, planLandingCompletion } from '../../src/register/index.js';
 import type { FactReference, RegisterContext, SpineReadPort } from '../../src/register/index.js';
 import { setup, json, value, detail, hash } from '../register/fixtures.js';
+import { partTwoSpine } from '../register/part-two-spine.js';
+import { createRegisterSpine } from '../../src/facts/index.js';
+import type { GoverningSpine } from '../../src/facts/index.js';
 
 function reply<T>(payload: T, context: RegisterContext): Result<T> {
   return value(defineDecoder<T, RegisterContext>({ name: 'SpineFixtureReply', owner: 'test-only', currentVersion: 1,
@@ -69,6 +72,31 @@ describe('register integration with constitutional types and explicit spine port
       } else expect(detail(checkGovernedState(observations, loaded, context))).toContain('lacks approved history');
     }
   });
+  it('P3-NF-22 landing completion settles pending approval history from the verified part-two chain', () => {
+    const s = setup(); const declaration = s.declaration();
+    const two = partTwoSpine([{ id: 'store', content: declaration }]);
+    const machine = s.f.principal('landing', 'system');
+    const actions = ['append:version-chain', 'append:generation-record', 'append:check-run-record'];
+    Object.assign(s.f.ctx.register.actions, Object.fromEntries(actions.map(action => [action, { protected: false, repository: false }])));
+    s.f.grant({ id: 'genesis:landing', grantee: machine, standing: 'delegate', actions, expiresAt: 1000 });
+    const standing = { principal: machine, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now };
+    const decodeRecord = (record: Parameters<typeof decodeGenerationRecord>[0]) => decodeGenerationRecord(record, s.context);
+    // Reviewed inside the pull request: landing-dependent facts declared pending by design.
+    const pending = value(generateRegister(s.input([declaration], { extract: two.extractionAt(0).extract }), s.context));
+    expect(pending.entries[0]!.approvedIn).toEqual({ state: 'pending-landing' });
+    const planned = value(planLandingCompletion(pending, two.extraction.extract, standing, two.port(decodeRecord), s.context));
+    expect(planned.authority).toBe('requires-part-two-append');
+    expect(planned.register.entries[0]!.approvedIn).toEqual({ owner: 'part-two', name: 'FactEnvelope', id: two.approvalFactFor('store') });
+    expect(planned.register.entries[0]!.landedIn).toBe('merge-1');
+    expect(planned.register.entries[0]!.since).toBe(two.spine.versions[0]!.version.since);
+    // Level-triggered and idempotent: a second pass finds nothing left to complete.
+    const again = value(planLandingCompletion(planned.register, two.extraction.extract, standing, two.port(decodeRecord), s.context));
+    expect(hash(again.register)).toBe(hash(planned.register));
+    // A completion whose extract the spine never recorded is refused at the provider.
+    const invented = { ...(two.extraction.extract as unknown as object),
+      vector: { owner: 'part-two', name: 'FactPositionVector', id: 'vector:invented' } };
+    expect(detail(planLandingCompletion(pending, invented, standing, two.port(decodeRecord), s.context))).toContain('no recorded spine position');
+  });
   it('P4 pair-aware runtime guard preserves the verified authority boundary before calling a real decoder', () => {
     const s = setup(), context = s.context;
     const contract = s.declaration('intake.contract', 'governed documents', { location: 'docs/08-the-intake.md', changelog: 'git-history:docs/08-the-intake.md' });
@@ -97,5 +125,43 @@ describe('register integration with constitutional types and explicit spine port
       else { expect(() => consume('holder', 'intake.contract', 'decode:Profile')).toThrow('approved history'); expect(calls).toBe(0); }
     }
   });
-  it.skip('P3-NF-21 P3-NF-23 SKIPPED: production spine admission, signed vector verification and replica initialization require the part-two adapter, absent on this lane base', () => {});
+  it('P3-NF-21 P3-NF-23 the part-two spine adapter supplies approved history, entering force and vector currency', () => {
+    const s = setup(); const declaration = s.declaration();
+    const two = partTwoSpine([{ id: 'store', content: declaration }]);
+    // The extract is mirrored from the verified chain, not authored beside the register.
+    const candidate = value(generateRegister(s.input([declaration], { extract: two.extraction.extract }), s.context));
+    const generation = value(generationOf(candidate, s.context));
+    const decodeRecord = (record: Parameters<typeof decodeGenerationRecord>[0]) => decodeGenerationRecord(record, s.context);
+    // A minted generation hash that no entering-force fact anchors refuses (P3-NF-21).
+    expect(detail(loadRegister(candidate, generation, s.context, two.port(decodeRecord), s.f.now))).toContain('no entering-force record');
+    two.anchor(generation);
+    const loaded = value(loadRegister(candidate, generation, s.context, two.port(decodeRecord), s.f.now));
+    const entry = value(readRegisterEntry('store', loaded, s.context));
+    expect(entry.approvedIn).toEqual({ owner: 'part-two', name: 'FactEnvelope', id: two.approvalFactFor('store') });
+    expect(entry.landedIn).toBe('merge-1');
+    expect(entry.since).toBe(two.spine.versions[0]!.version.since);
+    expect(value(renderRegister(loaded, generation, value(resolveTerms(loaded, s.context)),
+      value(buildRuleGraph(loaded, 'branch', [], { fixtures: [], probes: [], sentinels: [], semanticReviews: [] }, s.context)),
+      s.context)).register).not.toContain('pending-landing');
+    // An extract row the spine never recorded cannot enter through the real provider.
+    const invented = { ...(two.extraction.extract as unknown as object), rows: [{ id: 'store', version: 'store:invented',
+      status: 'live', since: 'commit:1', supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fact:invented' },
+      landedIn: 'merge-invented', base: 'base:1', contentHash: hash(declaration) }] };
+    const doctored = value(generateRegister(s.input([declaration], { extract: invented }), s.context));
+    const doctoredGeneration = value(generationOf(doctored, s.context));
+    two.anchor(doctoredGeneration);
+    expect(detail(loadRegister(doctored, doctoredGeneration, s.context, two.port(decodeRecord), s.f.now)))
+      .toContain('differs from the verified chain');
+    // Recorded fact ids are not proof of payloads those facts never recorded: an unrelated signed
+    // note standing in for the approval or the generation record refuses, as does an anchor that
+    // is not the recorded genesis fact (Rules 26/90).
+    const note = two.append();
+    const load = (spine: GoverningSpine) => detail(loadRegister(candidate, generation, s.context,
+      createRegisterSpine(spine, two.ctx, decodeRecord), s.f.now));
+    expect(load({ ...two.spine, approvals: two.spine.approvals.map(a => ({ ...a, factId: note.id })) }))
+      .toContain('does not record this approval');
+    expect(load({ ...two.spine, generations: two.spine.generations.map(g => ({ ...g, factId: note.id })) }))
+      .toContain('does not record this generation');
+    expect(load({ ...two.spine, anchor: 'fact:never-recorded' })).toContain('not a recorded genesis fact');
+  });
 });

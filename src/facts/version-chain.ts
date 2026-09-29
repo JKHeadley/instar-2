@@ -44,11 +44,17 @@ export function decodeVersion(input: unknown, context: FactContext, scope: Scope
     return { id, subject, content: v.content!, contentHash, since, supersedes, approvedIn: authorization, base, landedIn };
   });
 }
-export function walkVersions(versions: readonly GovernedVersion[]): { current: readonly GovernedVersion[]; conflicts: readonly ConflictClass[]; duplicates: readonly string[] } {
-  const unique = new Map<string, GovernedVersion>(), duplicateIds = new Map<string, string>();
+export function walkVersions(versions: readonly GovernedVersion[]): { current: readonly GovernedVersion[]; conflicts: readonly ConflictClass[];
+  duplicates: readonly string[]; collapsed: Readonly<Record<string, string>> } {
+  // `seen` keeps the first payload of EVERY input id, collapsed aliases included, so a
+  // changed version reusing an alias id is refused as a mutation rather than dropped.
+  const unique = new Map<string, GovernedVersion>(), seen = new Map<string, GovernedVersion>(), duplicateIds = new Map<string, string>();
   for (const version of [...versions].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     requireFact(encoding(version.content).hash === version.contentHash && version.approvedIn.artifact === version.contentHash, 'governing version content/approval mismatch');
-    const existingId = unique.get(version.id); requireFact(!existingId || encoding(existingId).bytes === encoding(version).bytes, 'in-place version mutation');
+    const existingId = seen.get(version.id); requireFact(!existingId || encoding(existingId).bytes === encoding(version).bytes, 'in-place version mutation');
+    // An identical same-id replay is the version itself, not an alias: nothing to collapse.
+    if (existingId) continue;
+    seen.set(version.id, version);
     const duplicate = [...unique.values()].find(v => v.subject === version.subject && v.contentHash === version.contentHash && v.approvedIn.id === version.approvedIn.id && encoding(v.supersedes).bytes === encoding(version.supersedes).bytes);
     if (duplicate) { duplicateIds.set(version.id, duplicate.id); continue; }
     unique.set(version.id, version);
@@ -74,5 +80,9 @@ export function walkVersions(versions: readonly GovernedVersion[]): { current: r
     requireFact(incumbent.length === 1, 'fork has no unique reviewed incumbent'); current.push(incumbent[0]!);
     const ids = heads.map(v => v.id).sort(); conflicts.push({ key: `version:${subject}:${ids.join(':')}`, kind: 'version-fork', facts: heads.map(v => v.since).sort(), detail: 'concurrent governing versions; incumbent remains in force' });
   }
-  return { current: current.sort((a, b) => a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0), conflicts, duplicates: [...duplicateIds.keys()].sort() };
+  // `collapsed` publishes the replay collapse (P2-NF-71) so a reader can resolve a
+  // superseded reference to the retained version instead of re-deriving the rule.
+  return { current: current.sort((a, b) => a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0), conflicts,
+    duplicates: [...duplicateIds.keys()].sort(),
+    collapsed: Object.fromEntries([...duplicateIds.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)) };
 }
