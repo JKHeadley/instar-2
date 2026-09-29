@@ -22,6 +22,7 @@ const setup = () => {
   return { world, harness, message, record };
 };
 
+// Held probe evidence (register-contract-map): each probe named here executes on the real launcher and passes.
 it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9-PREVIEW-telegram-identity P9-PREVIEW-reply-delivered P9-PREVIEW-reply-drain P9-PREVIEW-reply-review-reached runs the startup and due proofs on the live runner and reports them against the declared inventory', () => {
   const { harness, message } = setup();
   harness.setUpdates([message(1, 'What is the marker? Juniper.')]);
@@ -40,9 +41,7 @@ it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9
   expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 8820318295, stepCheck: false } });
   expect(byPlan.get('journal-restore')).toMatchObject({ disposition: 'passed', observed: { restored: true, differing: null } });
   expect(byPlan.get('reply-delivered')).toMatchObject({ disposition: 'passed' });
-  expect(byPlan.get('reply-drain')).toMatchObject({ disposition: 'passed' });
-  expect(byPlan.get('reply-review-reached')).toMatchObject({ disposition: 'passed' });
-  expect(byPlan.get('telegram-identity')).toMatchObject({ disposition: 'passed' });
+  for (const plan of ['telegram-identity', 'reply-drain', 'reply-review-reached']) expect(byPlan.get(plan).disposition, plan).toBe('passed');
   // Rule 33: build 11's declared comparisons ran at launch through this executor, each verdict durable in agreements.jsonl.
   expect(byPlan.get('store-agreements')).toMatchObject({ disposition: 'passed', observed: { declared: 4, disagree: 0, unchecked: 0 } });
   expect(plans.indexOf('store-agreements')).toBe(1);
@@ -75,10 +74,12 @@ it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9
   expect(JSON.parse(harness.status().stdout).proofLog.unreadable).toBe(1);
 }, 60000);
 
-it('records a live proof only for the capability’s own outcome, never an unrelated turn or a disabled capability', () => {
+it('P9-PREVIEW-status-answered records a live proof only for the capability’s own outcome, never an unrelated turn or a disabled capability', () => {
   const { harness, message, record } = setup();
   harness.setUpdates([message(1, 'What is the marker? Juniper.'), message(2, 'status')]);
   expect(harness.launchLive(12).status).toBe(0);
+  // The status pull in this launch is answered and the status-answered probe proves Telegram accepted it.
+  expect(readProofs(join(harness.liveRoot, 'proofs.jsonl')).proofs.find(row => row.plan === 'status-answered')).toMatchObject({ disposition: 'passed' });
   // Astra's counterexamples: each of these was accepted before.
   expect(record('preview.reminders', 1).status).toBe(1);
   expect(record('preview.channel-memory', 1, '--desk-observation', 'arrived').stderr).toMatch(/had preview\.channel-memory off/u);

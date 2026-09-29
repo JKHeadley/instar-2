@@ -13,7 +13,9 @@ if (!report.success) throw new Error('test run failed');
 const register = JSON.parse(readFileSync('generated/register.json', 'utf8'));
 checkProtectedTests(register, [...map.values()].flatMap(rows => rows.map(r => r.file)));
 const heldTests = new Set(register.entries.flatMap(entry => entry.declaration.holds ?? [])
-  .filter(hold => hold.class !== 'deferred' && ['fixture', 'probe'].includes(hold.evidence.kind))
+  .filter(hold => hold.class !== 'deferred' && ['fixture', 'probe'].includes(hold.evidence.kind)
+    // P3-NF-25: the build checks declarations; the runtime holder checks runtime evidence live.
+    && hold.evidence.stage !== 'runtime')
   .map(hold => `${hold.evidence.kind}:${hold.evidence.id}`));
 const catalog = new Map();
 for (const path of ownerManifestPaths) {
