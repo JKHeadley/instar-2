@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "approval-surface-core.writeOnce",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "The independent approval page and the runner's outbox live on the one machine that serves the conversation, under two OS users; each record is written once and never reopened, and the page's own request and act limits refuse beyond their caps."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60
+    ],
+    "holds": []
+  }
+]

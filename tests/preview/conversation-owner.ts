@@ -38,7 +38,7 @@ import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext } from '../../src/index.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import type { ProductionStorage, ProductionStorageIO } from '../../src/assembly/production-storage.js';
-import { durablePreviewWrite } from './state.js';
+import { durablePreviewWrite } from './durable-write.js';
 
 export type MachinePosture = 'single-machine' | 'multi-machine';
 export const SUPPORTED_POSTURE: MachinePosture = 'single-machine';

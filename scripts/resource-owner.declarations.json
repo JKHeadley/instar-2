@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "resource-owner.durableWrite",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "It records the launches this host's resource owner holds open and their measured resource outcomes; both describe only this machine's own processes, and a closed launch's row is removed by an atomic replace."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60
+    ],
+    "holds": []
+  }
+]

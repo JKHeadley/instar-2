@@ -2,6 +2,7 @@
   "name": "@instar/constitutional-types",
   "version": "0.1.0",
   "private": true,
+  "instar": { "launchers": ["bin/instar-production.mjs", "scripts/host-watch.mjs", "tests/preview/agent.mjs", "tests/preview/journal-agent.mjs"] },
   "type": "module",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
@@ -25,7 +26,8 @@
     "test:durability": "INSTAR_TEST_REAL_DISK=1 vitest run tests/assembly/production-boot-storage.test.ts tests/assembly/production-boot-storage-crash.test.ts tests/assembly/telegram-bot-api-round6.test.ts tests/e2e/session-restart-delivery.test.ts tests/unit/test-tmp-redirect.test.ts && INSTAR_TEST_REAL_DISK=1 vitest run tests/assembly/fixed-installation-live.test.ts -t 'native journal-sync flushes|native durable journal releases once'",
     "pretest": "npm run build",
     "ci:local": "node scripts/ci-local.mjs",
-    "test:all": "npm run typecheck && npm run build && node scripts/run-kill-schedule.mjs && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run test:durability && npm run lint && node scripts/check-contract-map.mjs && node scripts/check-p2-contract-map.mjs && node scripts/check-register-contract-map.mjs && node scripts/check-p4-contract-map.mjs && node scripts/check-transport-contracts.mjs && node scripts/check-effect-contracts.mjs && node scripts/check-p5-contract-map.mjs && node scripts/check-judgment-contracts.mjs && node scripts/check-verification-contracts.mjs && node scripts/check-assembly-contracts.mjs && node scripts/check-p11-contract-map.mjs && npm run register:check",
+    "test:all": "node scripts/check-change-review.mjs run",
+    "test:gate": "npm run typecheck && npm run build && node scripts/run-kill-schedule.mjs && node scripts/warm-slice-ts-cache.mjs && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run test:durability && node scripts/check-change-review.mjs check && npm run lint && node scripts/check-contract-map.mjs && node scripts/check-p2-contract-map.mjs && node scripts/check-register-contract-map.mjs && node scripts/check-p4-contract-map.mjs && node scripts/check-transport-contracts.mjs && node scripts/check-effect-contracts.mjs && node scripts/check-p5-contract-map.mjs && node scripts/check-judgment-contracts.mjs && node scripts/check-verification-contracts.mjs && node scripts/check-assembly-contracts.mjs && node scripts/check-p11-contract-map.mjs && npm run register:check",
     "lint": "node scripts/check-architecture.mjs && node scripts/check-register-wiring.mjs",
     "register:generate": "npm run build && node scripts/build-register.mjs",
     "register:check": "node scripts/build-register.mjs --check"

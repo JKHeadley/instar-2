@@ -1,0 +1,49 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "harness-doorway-parity",
+    "kind": "features",
+    "status": "live",
+    "requiredFacts": {
+      "metrics": [
+        "harness.preview-journal-native.claude-code-subscription.darwin.conversation.unproven",
+        "harness.preview-journal-native.claude-code-subscription.darwin.conversation.reason=the journal runner is not a HarnessAdapterPort composition: its captured case (tests/preview/native-harness-contract.test.ts, the journal runner converses through doorway claude-code-subscription) is provider and conversation-restart evidence, not the shared full-port contract, so this tuple is not certified",
+        "harness.preview-journal-native.claude-code-subscription.darwin.ordinary-exhaustion-recovery.unproven",
+        "harness.preview-journal-native.claude-code-subscription.darwin.ordinary-exhaustion-recovery.reason=each turn re-grounds from the journal (tests/preview/journal-boundaries.test.ts), but that is exercised with a substitute model; no captured test runs it through this doorway frames",
+        "harness.preview-journal-native.claude-code-subscription.darwin.preventive-compaction.unsupported",
+        "harness.preview-journal-native.claude-code-subscription.darwin.preventive-compaction.reason=no typed context-pressure observation exists for an exact live incarnation (D17 section 6); preventive compaction stays dark",
+        "harness.session-harness:claude-code.claude-code-subscription.darwin.conversation.unproven",
+        "harness.session-harness:claude-code.claude-code-subscription.darwin.conversation.reason=the tmux session adapter has holder lifecycle tests but no live conversation path; its Rule 59 table is not yet captured from real sessions",
+        "harness.session-harness:codex-cli.none.darwin.conversation.unsupported",
+        "harness.session-harness:codex-cli.none.darwin.conversation.reason=no Codex model doorway is registered; the session driver can launch Codex but no admitted route or captured frames exist",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.supported",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.artifact=createSelfHostHarness@tests/preview/self-host-harness.mjs",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.route=claude-code-subscription@src/assembly/production-provider.ts",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.entries=tests/preview/self-host.mjs,scripts/slice-ts-loader.mjs,deploy/macos/fixed-worker/worker.sb",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.runtime=node-24.14.1@sha256:91d3afb67a7dc211f642f2328f822505ff1c1ad381e98ffdd21b003970deeeda",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.conformance=sha256:adcbccb8436c2a272e77fa1909f3dda930e917d2e60a1efe4adc65a70966942d",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.evidence=tests/preview/native-harness-contract.test.ts#native composition honours the harness contract through doorway claude-code-subscription"
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      30,
+      39,
+      59,
+      105,
+      115
+    ],
+    "holds": []
+  }
+]

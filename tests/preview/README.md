@@ -6,6 +6,20 @@ This is a machine-local, supervised test driver, not the production entry or pro
 
 The prefix is present before HTML rendering, digesting, and Eight preparation. There is no provider SecretRef, route, model call, tool call, or model spend. `stage2GuardedProviderPath` is selected only by explicit Stage 2 activation; the Stage 1 path remains closed to model work.
 
+## Capabilities
+
+The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails.
+
+- `preview-conversation`: answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent.
+- `preview-durable-memory`: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
+- `preview-status-command`: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
+- `preview-upcoming-date-mention`: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
+- `preview-requested-actions`: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), answers that request once then as an ordinary reply through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit.
+- `preview-owned-obligations`: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
+- `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
+- `preview.coherence-check`: checks each reply against remembered earlier turns, without a model call, and records the findings.
+- `preview.step-check`: off unless the runner is launched with it; records an independent check of each business step and changes nothing.
+
 ## Prerequisites and exact invocation
 
 A fresh checkout needs a matching `dist/` build first (`npm run build`); test fixtures imported by this driver resolve ignored build artifacts. Use a fresh absolute root on one machine, a preview-only bot, synthetic/non-sensitive messages, an already authorized trial, and these host-resolved SecretRefs:
@@ -2993,9 +3007,26 @@ marker; earlier steps keep their verdicts.
 
 The live private-chat procedure is in
 [jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark
-observation's evaluation target is 2026-09-30: the desk can decide whether to
-keep it on after Justin's script produces a recorded trace. While off, it is
+observation's first evaluation target, 2026-09-30, passed without a recorded
+trace, so its graduation deadline is now 2026-10-15, recorded with its reason,
+owner and rollback in the promotion record below. The desk can decide whether
+to keep it on after Justin's script produces a recorded trace. While off, it is
 not a live safety guard.
+
+### Promotion record
+
+`promotion-record.ts` is the durable, reviewed record of how each gated
+capability graduates: test agent, then development agent, then fleet (Rule 72).
+Each entry is one decision. A stage is reached only after the stages before it,
+and names the durable evidence a reader can open. A new deadline must fall after
+the moment it is recorded, and names its reason, the owner of the next step and
+the rollback. A capability's declared `gate.deadline` must equal the latest
+deadline in the record; the capability tests fail on any difference, and on a
+deadline past the real clock. `status` adds a `Graduation:` line that shows each
+stage as `recorded`, `observed` or `missing`. `observed` means this runtime
+passed the capability's proof but no record entry exists yet. The line also
+shows the deadline and when it was recorded. A dark capability stays `dark` in
+the capability count whatever the record says: the record moves no protection.
 
 ### Bounded encrypted journal compaction
 

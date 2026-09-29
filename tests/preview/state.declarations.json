@@ -1,0 +1,23 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.state.openPreviewState",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Single-machine supported installation (P-08): the preview trial runs on one machine with no enrolled peer, so no replica exists; cross-machine sharing of this store is not built. It holds machine-local control records (trial identity, counters, cursor); an atomic replace discards the previous values."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32
+    ],
+    "holds": []
+  }
+]

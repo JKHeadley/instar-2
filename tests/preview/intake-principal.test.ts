@@ -1,6 +1,7 @@
 // Rules 28, 29 and 35: one verified principal minted at intake carries through admission,
 // authority checks and the session envelope; a production store refuses test-origin writers.
 import { expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -64,6 +65,25 @@ it('replay refuses an intake writer that names other bytes than its row', () => 
     expect(() => journal.append(row('forged text', authenticateTelegramSender(update(1, 'hi'), 'production', 1000)!)))
       .toThrow('intake writer refused');
     journal.append(row('hi'));
+    journal.close();
+    expect(openPreviewJournal(join(dir, 'journal.encrypted'), key).view.order[0]!.writer).toMatchObject({ id: '7654321' });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('a custodied (redacted) intake row binds its writer to the recorded arrival hash, never to other bytes', () => {
+  const dir = root();
+  try {
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
+    const arrived = update(1, 'my token is a-sealed-placeholder-value'), bytes = JSON.stringify(arrived);
+    const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+    const principal = authenticateTelegramSender(arrived, 'production', 1000)!;
+    const redacted = JSON.stringify(update(1, 'my token is [credential stored before use: SecretRef preview/github-token-1]'));
+    const row = (arrival: string) => ({ kind: 'intake' as const, id: 'telegram:12345678:update:1', update: 1, text: 'my token is [stored]',
+      raw: redacted, accepted: true, cursor: 2, at: 1000, writer: writerRecord(principal),
+      custody: { state: 'stored' as const, arrival, capture: 'capture-1', secrets: ['github-token-1'] } });
+    // The arrival hash of other bytes (here the redacted row itself) is not the capture the writer names.
+    expect(() => journal.append(row(hash(redacted)))).toThrow('intake writer refused');
+    journal.append(row(hash(bytes)));
     journal.close();
     expect(openPreviewJournal(join(dir, 'journal.encrypted'), key).view.order[0]!.writer).toMatchObject({ id: '7654321' });
   } finally { rmSync(dir, { recursive: true, force: true }); }

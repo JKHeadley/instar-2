@@ -1,9 +1,10 @@
 // Build adapter: git/files/clock stay outside the pure core. Rules 26/69/78/84/90.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { canonical, consumeResult, decode } from '../dist/index.js';
 import { decodeShape } from '../dist/register/index.js';
+import { shippedInventory } from './register-inventory.mjs';
 
 export const value = result => consumeResult(result, { Success: value => value, Refused: refusal => { throw new Error(refusal.detail); } });
 export const bytes = input => value(canonical(input)).bytes;
@@ -11,8 +12,8 @@ export const bytes = input => value(canonical(input)).bytes;
 // literal core construct through the same symbol-aware sweep used by the gates.
 export function bindColocatedDeclarations(sources, constructs) {
   return sources.map(source => {
-    if (!source.path.endsWith('.declarations.json')) return source;
-    const path = source.path.replace(/\.declarations\.json$/, '.ts');
+    if (!isDeclarationSource(source.path)) return source;
+    const path = source.path.replace(/\.(?:declarations|parser)\.json$/, '.ts');
     const matches = constructs.filter(c => c.path === path && c.id === source.declaration.id && c.kind === source.declaration.kind);
     if (matches.length > 1) throw new Error(`P3-NF-19: ambiguous colocated construct ${source.declaration.id}`);
     // Keep a phantom's actual JSON provenance: downstream load-bearing pairing
@@ -20,18 +21,74 @@ export function bindColocatedDeclarations(sources, constructs) {
     return matches.length === 1 ? { ...source, path, symbol: matches[0].symbol } : source;
   });
 }
+// One git process reads every candidate blob at the pinned commit (the inventory walk
+// would otherwise spawn one `git show` per shipped file).
+function readBlobs(root, commit, paths) {
+  const out = execFileSync('git', ['-C', root, 'cat-file', '--batch'], { input: paths.map(p => `${commit}:${p}`).join('\n') + '\n', maxBuffer: 512 * 1024 * 1024 });
+  const blobs = new Map(); let at = 0;
+  for (const path of paths) {
+    const eol = out.indexOf(10, at); const header = out.toString('utf8', at, eol).split(' ');
+    if (header[1] !== 'blob') throw new Error(`P3-NF-23: ${path} is not a blob at ${commit}`);
+    const size = Number(header[2]); blobs.set(path, out.toString('utf8', eol + 1, eol + 1 + size)); at = eol + 2 + size;
+  }
+  return blobs;
+}
+// Declarations live in code-adjacent sidecars; parser declarations use their own suffix.
+export const isDeclarationSource = path => path.endsWith('.declarations.json') || path.endsWith('.parser.json');
+// A boundary's finite action metadata lives beside its owner; the build's action
+// registry is exactly the union of these committed files, never the actions a floor requests.
+export const isActionSource = path => path.endsWith('.actions.json');
+export function actionRegistry(files) {
+  const actions = {};
+  for (const [path, content] of Object.entries(files).filter(([p]) => isActionSource(p)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+    const input = JSON.parse(content);
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join() !== 'actions,owner,schemaVersion'
+      || input.schemaVersion !== 1 || typeof input.owner !== 'string' || !input.owner
+      || !input.actions || typeof input.actions !== 'object' || Array.isArray(input.actions) || !Object.keys(input.actions).length)
+      throw new Error(`${path}: malformed action metadata`);
+    for (const [name, meta] of Object.entries(input.actions)) {
+      if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(name)) throw new Error(`${path}: malformed action name ${name}`);
+      if (Object.hasOwn(actions, name)) throw new Error(`${path}: duplicate action ${name}`);
+      if (!meta || typeof meta !== 'object' || Object.keys(meta).sort().join() !== 'protected,repository'
+        || typeof meta.protected !== 'boolean' || typeof meta.repository !== 'boolean')
+        throw new Error(`${path}: malformed metadata for action ${name}`);
+      actions[name] = { protected: meta.protected, repository: meta.repository };
+    }
+  }
+  return actions;
+}
 export function readCommit(root, commit) {
   const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   if (!/^[a-f0-9]{40}$/.test(commit) || git(['rev-parse', '--verify', `${commit}^{commit}`]).trim() !== commit) throw new Error('source commit is not an exact commit id');
   if (git(['rev-parse', '--is-shallow-repository']).trim() !== 'false') throw new Error('P3-NF-23: shallow checkout refuses');
   const files = git(['ls-tree', '-r', '--name-only', commit]).trim().split('\n');
   const selected = files.filter(p => ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'docs/07-the-declarations.md', 'register-source/bootstrap-shape.json'].includes(p)
-    || p.startsWith('docs/rules/') && p.endsWith('.md') || p.endsWith('.declarations.json') || p.startsWith('register-source/') && p.endsWith('.json'));
+    || p.startsWith('docs/rules/') && p.endsWith('.md') || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json'));
   for (const required of ['docs/01-the-rules.md', 'docs/02-the-register.md', 'docs/03-the-glossary.md', 'register-source/bootstrap-shape.json'])
     if (!selected.includes(required)) throw new Error(`P3-NF-23: missing source ${required}`);
-  const sources = Object.fromEntries(selected.sort().map(p => [p, git(['show', `${commit}:${p}`]).replaceAll('\r\n', '\n')]));
-  const code = Object.fromEntries(files.filter(p => p.startsWith('src/') && p.endsWith('.ts')).map(p => [p, git(['show', `${commit}:${p}`])]));
-  return { commit, sources, files, code };
+  const cache = readBlobs(root, commit, files.filter(p => /\.(?:ts|mts|mjs|js|json|md)$/.test(p)));
+  // Every committed input the build reads is recorded (null when absent at the commit),
+  // so a pin check covers the documentation, build and package inputs it consumed too.
+  const consumed = new Map();
+  const show = p => {
+    if (!cache.has(p)) try { cache.set(p, git(['show', `${commit}:${p}`])); } catch (error) { consumed.set(p, null); throw error; }
+    consumed.set(p, cache.get(p)); return cache.get(p);
+  };
+  const sources = Object.fromEntries(selected.sort().map(p => [p, show(p).replaceAll('\r\n', '\n')]));
+  // The wiring scan covers what ships: built src plus every launcher's runtime closure.
+  const inventory = shippedInventory(files, show);
+  // A shipped module's documentation entry is consumed even when it is missing.
+  for (const [dir, m] of Object.entries(inventory.modules)) if (!m.readme) consumed.set(`${dir === '.' ? '' : dir + '/'}README.md`, null);
+  const code = Object.fromEntries(inventory.files.map(p => [p, show(p)]));
+  return { commit, sources, files, code, inventory, show, consumed };
+}
+// Working-tree paths whose bytes (or absence) differ from what the build consumed at its commit.
+export function trailingInputs(root, consumed) {
+  const norm = text => text === null ? null : text.replaceAll('\r\n', '\n');
+  return [...consumed].filter(([path, content]) => {
+    const file = resolve(root, path);
+    return norm(existsSync(file) ? readFileSync(file, 'utf8') : null) !== norm(content);
+  }).map(([path]) => path).sort();
 }
 export function bootstrapDeclarations(documents, shape) {
   const sources = []; const glossary = documents['docs/03-the-glossary.md'];
@@ -74,16 +131,16 @@ export function bootstrapDeclarations(documents, shape) {
   }
   const numbers = sources.filter(s => s.declaration.kind === 'rules').map(s => s.declaration.requiredFacts.number);
   if (!numbers.length || new Set(numbers).size !== numbers.length) throw new Error('empty or duplicate rule inventory');
-  for (const [path, content] of Object.entries(documents)) if (path.endsWith('.declarations.json')) {
+  for (const [path, content] of Object.entries(documents)) if (isDeclarationSource(path)) {
     const declared = JSON.parse(content); if (!Array.isArray(declared)) throw new Error('declaration source must be an array');
     for (const d of declared) sources.push({ path, symbol: d.id, declaration: d });
   }
   return sources;
 }
-export function buildContext(shapeInput, sources, commit, instant = Date.now()) {
+export function buildContext(shapeInput, sources, commit, instant = Date.now(), actions = {}) {
   const entries = [...new Set(['types.decode', 'register.decode', 'register.generator', 'local-build', 'build-machine', ...sources.map(s => s.declaration.id)])];
   const register = { generation: { owner: 'part-three', name: 'RegisterGeneration', id: `bootstrap:${commit}` }, entries,
-    producers: ['register.generator'], methods: ['local-build'], actions: {}, subjects: { clock: ['unix-ms'] },
+    producers: ['register.generator'], methods: ['local-build'], actions, subjects: { clock: ['unix-ms'] },
     sites: { 'types.decode': 'closed', 'register.decode': 'closed' }, keys: {}, allowRedelegation: false, conflictStanding: { ordinary: 'delegate', authority: 'operator' } };
   const captures = {}; const types = { register, preserved: `git:${commit}`, captures };
   const now = value(decode('Measurement', { type: 'Measurement', schemaVersion: 1, subject: { kind: 'clock', instance: 'build-machine' }, value: instant, unit: 'unix-ms', at: instant, by: 'register.generator' }, types));

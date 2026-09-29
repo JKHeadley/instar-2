@@ -1,0 +1,44 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "production-boot-io.productionStorageIO",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Single-machine supported installation (P-08): the preview trial runs on one machine with no enrolled peer, so no replica exists; cross-machine sharing of this store is not built. It is the physical file port under the production fact storage and its captures."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "production-boot-io.createProductionTelegramIO",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Single-machine supported installation (P-08): the preview trial runs on one machine with no enrolled peer, so no replica exists; cross-machine sharing of this store is not built. It keeps the Telegram custodian's transient cursor and in-flight files; a consumed file is removed."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32
+    ],
+    "holds": []
+  }
+]

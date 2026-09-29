@@ -44,6 +44,15 @@
       46,
       89
     ],
-    "holds": []
+    "holds": [
+      {
+        "rule": 36,
+        "class": "deferred",
+        "part": 4,
+        "ceiling": 1793404800000,
+        "owner": "echo (agent)",
+        "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+      }
+    ]
   }
 ]

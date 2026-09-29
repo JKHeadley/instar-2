@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
+        "hash": "sha256:bcd75669bfc86ba8e35133d72267e218c5e68fb211c55e7a7a7a0a6077318198"
       }
     },
     {
@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
+        "hash": "sha256:bcd75669bfc86ba8e35133d72267e218c5e68fb211c55e7a7a7a0a6077318198"
       }
     },
     {
@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/intake/governance.test.ts",
-        "hash": "sha256:4b059300fe73d27424a222bbd555662a6db447917fec60b4fa1ad8d5d1e89c68"
+        "hash": "sha256:bcd75669bfc86ba8e35133d72267e218c5e68fb211c55e7a7a7a0a6077318198"
       }
     },
     {
@@ -180,14 +180,14 @@
       },
       "artifact": {
         "path": "src/facts/store.ts",
-        "hash": "sha256:82e29c69fdddace66ec0655c1dd5d46db729570823f60786b41e8cf2015f829a"
+        "hash": "sha256:5953d79226ac943ce7b7aa0d6b803e12e683228cb747175a35341fd523bec4b1"
       }
     },
     {
       "id": "decode:Provenance",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:80c9ab76c37b253a3b56623688d3fded95cc749339dc1869c1f44c7abcc57bec"
+        "hash": "sha256:53bbf5411f45b30f170fb5de919d5424893da3e9d689364da2d1e91cd63aa2e8"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
@@ -198,7 +198,7 @@
       "id": "decode:VerifiedPrincipal",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:80c9ab76c37b253a3b56623688d3fded95cc749339dc1869c1f44c7abcc57bec"
+        "hash": "sha256:53bbf5411f45b30f170fb5de919d5424893da3e9d689364da2d1e91cd63aa2e8"
       },
       "artifact": {
         "path": "src/decode/decode.ts",

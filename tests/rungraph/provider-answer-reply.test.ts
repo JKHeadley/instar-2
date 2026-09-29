@@ -1,4 +1,6 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+// Each scenario is ~8-12s of synchronous owner work on a loaded host (existing pattern: model-provider-refusals).
+vi.setConfig({ testTimeout: 60_000 });
 // Yield between heavy fixtures so the runner's task-update IPC can flush (landed pattern,
 // tests/e2e/slice.test.ts): these scenarios are synchronous owner work for the whole file,
 // which otherwise starves the fork worker's channel past its fixed 60s RPC deadline.

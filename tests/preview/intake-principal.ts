@@ -57,8 +57,12 @@ function mint(adapter: string, method: string, id: string, kind: PrincipalKind, 
 export const principalBoundToUpdate = (principal: VerifiedPrincipal, update: unknown) =>
   principal.provenance.record.reference === captureReference(principal.provenance.adapter, JSON.stringify(update))
   && principal.provenance.record.hash === sha(telegramRecord(principal.id, principal.kind));
-/** Replay form of the same binding: a recorded Telegram writer names the capture of this row's raw bytes. */
-export const writerBoundToRaw = (writer: WriterRecord, raw: string) => writer.reference === captureReference(writer.adapter, raw)
+/** Replay form of the same binding: a recorded Telegram writer names the capture of this row's raw bytes.
+ * When the row is the redacted artifact of a custodied message, `arrival` is the recorded SHA-256 of the
+ * bytes that actually arrived, and the writer must name the capture of exactly those bytes. */
+export const writerBoundToRaw = (writer: WriterRecord, raw: string, arrival?: string) => writer.reference
+  === (arrival === undefined ? captureReference(writer.adapter, raw)
+    : /^sha256:[a-f0-9]{64}$/u.test(arrival) ? `capture:${writer.adapter}:${arrival.slice(7)}` : null)
   && writer.hash === sha(telegramRecord(writer.id, writer.kind));
 
 const ED25519_PKCS8_SEED_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');

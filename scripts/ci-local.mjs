@@ -35,6 +35,12 @@ function skip(id, workflow, title, reason) {
 }
 const git = (a) => spawnSync('git', a, { encoding: 'utf8' }).stdout.trim();
 const head = git(['rev-parse', 'HEAD']);
+// Rule 112: the run's start is recorded in the shared evidence ledger before any step runs, so
+// a result that later fails to record stays visible as an unfinished (red) run. No start, no run.
+const started = spawnSync(process.execPath, ['scripts/check-change-review.mjs', 'ci-start'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+const runId = /^ci-run (\S+)$/m.exec(started.stdout ?? '')?.[1];
+process.stdout.write(started.stdout ?? '');
+if (started.status !== 0 || !runId) { process.stderr.write('ci-local: its start could not be recorded in the evidence ledger; refusing to run\n'); process.exit(2); }
 const nodeVersion = process.version;
 
 // document-checks.yml
@@ -46,6 +52,8 @@ run('doc-3', 'document-checks', 'no history markers in a governed body (rule 91)
   'node scripts/check-governed-docs.mjs docs');
 run('doc-4', 'document-checks', 'no whitespace errors',
   'git diff --check origin/main...HEAD || git diff --check HEAD~1');
+run('doc-5', 'document-checks', 'every change is bound to its review record (rules 74, 109, 90)',
+  'node scripts/check-change-review.mjs check');
 
 // types-checks.yml — contract job (this machine's architecture)
 run('types-0', 'constitutional-types', 'npm ci (contract job)', 'npm ci');
@@ -76,5 +84,10 @@ const result = {
   steps,
 };
 writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n');
+// Rule 112: the file above is only the latest pointer; the durable record completes the start
+// above, hash-chained in the shared evidence ledger and never overwritten. The verdict below
+// stays ci-local's own; a failed recording is reported, never shown as recorded.
+const recorded = spawnSync(process.execPath, ['scripts/check-change-review.mjs', 'ci', outPath, '--run', runId], { stdio: 'inherit' });
+if (recorded.status !== 0) process.stderr.write(`ci-local: its result was NOT recorded; start ${runId} stays an unfinished (red) run in the evidence ledger\n`);
 process.stdout.write(`\n=== ci-local ${result.verdict.toUpperCase()} (${verdictReason}) at ${head.slice(0, 8)} (${process.arch}, node ${nodeVersion}); ${passedRequired.length} passed, ${failed.length} failed, ${steps.filter((s) => s.status === 'not-reproducible-locally').length} not reproducible locally -> ${outPath}\n`);
 process.exit(verdict === 'failed' ? 1 : 0);

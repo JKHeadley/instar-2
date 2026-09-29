@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
 
 it('the real launcher puts its journal-derived self-state in every prompt, correct across a restart and a raised cap, matching status', async () => {
   const world = successiveWorld(), root = join(world.directory, 'self-journal');
@@ -27,6 +27,7 @@ globalThis.fetch = async (url, init) => {
 };
 export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   appendFileSync(${JSON.stringify(prompts)}, JSON.stringify(prepared) + '\\n');
   const binding=JSON.parse(JSON.parse(prepared).messages[1].content).bindings;

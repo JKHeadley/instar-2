@@ -107,22 +107,8 @@ function validate(document: PreviewStateDocument): PreviewStateDocument {
   return document;
 }
 
-export function durablePreviewWrite(path: string, document: unknown): void {
-  const directory = dirname(path);
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const temporary = join(directory, `.preview-state-${randomUUID()}.pending`);
-  const descriptor = openSync(temporary, 'wx', 0o600);
-  try { writeFileSync(descriptor, JSON.stringify(document), 'utf8'); fsyncSync(descriptor); }
-  finally { closeSync(descriptor); }
-  renameSync(temporary, path);
-  const directoryDescriptor = openSync(directory, 'r');
-  try { fsyncSync(directoryDescriptor); } finally { closeSync(directoryDescriptor); }
-}
-
-export function previewTurnId(botId: string, updateId: number): string {
-  assertInteger(updateId, 'update id');
-  return `telegram:${botId}:update:${String(updateId)}`;
-}
+import { durablePreviewWrite, previewTurnId } from './durable-write.js';
+export { durablePreviewWrite, previewTurnId };
 
 const pendingPhase = (phase: PreviewTurnPhase) => phase === 'intake-preserved' || phase === 'grounded';
 

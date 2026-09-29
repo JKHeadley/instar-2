@@ -29,6 +29,7 @@ export const LIVE_JUDGMENTS = Object.freeze({
   'jev-reply-check': { route: 'typesafe-jev', actions: ['release', 'escalate', 'hold'], default: 'escalate', invalid: 'Jev unavailable: escalates to the reply review, never releases' },
   'jev-summary-integrity': { route: 'typesafe-jev', actions: ['accept', 'escalate', 'reject'], default: 'escalate', invalid: 'unavailable: escalates to the summary review' },
   'jev-summary-faithfulness': { route: 'typesafe-jev', actions: ['accept', 'reject'], default: 'reject', invalid: 'undecided: the summary is not recorded' },
+  retrospective: { route: 'preview-subscription', actions: ['record-review', 'discard'], default: 'discard', invalid: 'pass failed: no grade, finding or candidate is recorded and every case stays owed' },
   'jev-step-check': { route: 'typesafe-jev', actions: ['record-verdict'], default: 'record-verdict', invalid: 'unavailable verdict recorded; observation only, no effect' },
 } as const);
 export type LiveJudgment = keyof typeof LIVE_JUDGMENTS;

@@ -82,7 +82,11 @@ it('exports an old stopped root once, preserves its bytes, imports transcript an
     expect(journal.view.cursor).toBeGreaterThan(100);
     expect(journal.view.order[0]?.text).toBe('Remember the old first turn.');
     expect(journal.view.order[0]?.answer).toBe('I remember the old first turn.');
-    expect(journal.view.calls).toBe(1);
+    // The imported message is a day-old owed review case, so the first launch may run one retrospective
+    // pass (never a send: dispatches above are getMe/getUpdates only). It is the only other attempt.
+    const reviewAttempts = journal.view.retroPasses.length + journal.view.retroPasses.flatMap(pass => pass.reruns ?? []).length;
+    expect(reviewAttempts).toBeLessThanOrEqual(1);
+    expect(journal.view.calls - reviewAttempts).toBe(1);
     expect(journal.view.replies).toBe(1);
     expect(journal.view.sourceStop).toBe('operator');
   } finally { journal.close(); }

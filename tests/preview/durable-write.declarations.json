@@ -1,0 +1,23 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.durable-write.durablePreviewWrite",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Single-machine supported installation (P-08): each file it writes is one machine-local control document (the runner's stop latch, the conversation holder, the doorway map, the credential registry), and an atomic replace discards the previous value."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32
+    ],
+    "holds": []
+  }
+]

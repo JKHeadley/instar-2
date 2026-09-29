@@ -14,5 +14,5 @@ export type { Renderings } from './render.js';
 export { planLandingCompletion } from './landing.js';
 export { resolveTerms, verifyDerivedColumns } from '../terms/resolver.js';
 export type { TermResolution } from '../terms/resolver.js';
-export { decodeCheckRun, buildRuleGraph, checkGraphLoops, checkDeadlines, semanticReviewSubject } from '../rulegraph/graph.js';
+export { decodeCheckRun, buildRuleGraph, checkGraphLoops, checkDeadlines, modelEntryFresh, semanticReviewSubject } from '../rulegraph/graph.js';
 export type { RuleGraph, CheckCatalog } from '../rulegraph/graph.js';

@@ -144,7 +144,9 @@ it('drains an accepted memory question when the ordinary envelope fits but even 
     // decision and generalized the capability line; re-measured in 10-byte steps: pass 13080-13490, fail 13070 and 13500.
     // cint-L2 with the live repair's capabilities key merged: re-measured in 10-byte steps: pass 13810-14220,
     // fail 13800 and 14230.
-    const g = { ...genesis, maxBytes: 14015 }; // midway in the measured window between the two bounds
+    // cint-L3: build 1's generated capability source removes 471 bytes from the capability field against
+    // cint-L2's text; the window moves to pass 13339-13749 (cint-5 alone measured the same shift, 452 bytes, as 8650 → 8200).
+    const g = { ...genesis, maxBytes: 13544 }; // midway in the shifted window between the two bounds
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
     const full = workerFor(journal).probe(question);

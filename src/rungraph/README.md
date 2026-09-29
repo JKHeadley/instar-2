@@ -118,13 +118,19 @@ and no live surface delegates. P5-NF-14/19/21/30/31/33–37/40/41 therefore stay
 in the skipped residuals until a bounded delegation completes through the real
 Run owner.
 
-Designed, not yet built: exhaustion runs; awaiting-authorization; dispatch-review
-records; foreign-grant resolution through part four's intake; bounded transport
-queue backpressure; peer concurrence; summary/compaction continuity accounting;
+Built additively beside the legacy graph: `createRunClosureGraph`
+(`closure-service.ts`) admits signed `ExhaustionRecord` and unreachable
+`RunExit` records (`closure-records.ts`), and `readExit` reads completed,
+unreachable and cancelled exits. No live runner yet calls the closure API for
+cannot-do claims or escalation; that join is separate work.
+
+Designed, not yet built: awaiting-authorization; dispatch-review records;
+foreign-grant resolution through part four's intake; bounded transport queue
+backpressure; peer concurrence; summary/compaction continuity accounting;
 judgment attempt mapping; production real-surface assembly and production
-monitoring/supervision. Unreachable exits and boundary-review loops are also not
-exposed. The live preview conversation path advertises no tools and so cannot
-delegate yet. Zero resource capacity remains zero.
+monitoring/supervision. Boundary-review loops are also not exposed. The live
+preview conversation path advertises no tools and so cannot delegate yet. Zero
+resource capacity remains zero.
 
 Tests exercise P1/P2/P3 public consumers, a real fsynced disk spine, a killed
 compiled-package worker, and controlled six/eight/nine/ten contract fixtures.
@@ -145,3 +151,7 @@ The build map reads actual test results and marks partial rows as partial.
 The scoped fold workload records fact count, pending count, conflict count and
 duration with a 5-second test budget; it is not a provider-latency assertion.
 Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
+
+## Capabilities
+
+- `rungraph-core`: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.

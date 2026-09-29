@@ -1,5 +1,5 @@
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
-import { encoded } from './stage2-provider.js';
+import { encoded } from './canonical.js';
 import { ANSWER_INSTRUCTIONS } from './briefing.js';
 import { ENVELOPE_FLOOR } from './model-call-boundary.js';
 

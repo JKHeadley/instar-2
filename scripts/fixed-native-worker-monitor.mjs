@@ -1,11 +1,15 @@
 // Fixed monitor wire and journal primitives. The installed service must refuse
 // launch until the genuine cross-process owner reader and native guard are bound.
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, fstatSync, fsyncSync, openSync, readFileSync, readSync, unlinkSync, writeSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readSync, realpathSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createPrivateKey, generateKeyPairSync } from 'node:crypto';
 import { isAbsolute } from 'node:path';
-import { canonicalText } from '../dist/decode/canonical.js';
+import { canonical } from '../dist/index.js';
+
+// Rule 115: shipped clients use the public core ports only; the canonical text comes from `canonical`.
+const canonicalText = value => { const result = canonical(value); return result.kind === 'Success' ? result.value.bytes : null; };
 
 // The strict v1 wire codec is S8's (src/assembly/production-launch-boundary.ts);
 // this service imports the built bytes instead of keeping a second copy.
@@ -360,8 +364,221 @@ export function runLoadingWorker({ fd = 3, handle, delivery }) {
   }
 }
 
-// Fixed package entry mode (not a remote selector): `loading-worker <handle> <delivery>`.
-if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === 'loading-worker') {
+// ---- installed service wiring (supervise <-> owner decision service) ---------
+
+/**
+ * The owner service's one link to the native supervisor (fd 3): '\n'-terminated
+ * ASCII lines, every read bounded. The supervisor relays one client frame as
+ * `REQ <hex>`, answers `START`/`OBSERVE` calls, and takes `REPLY <hex>`.
+ */
+export function createSupervisorLink(fd = 3, timeoutMs = 5_000) {
+  assert(Number.isSafeInteger(fd) && fd >= 0, 'supervisor link descriptor required');
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  let pending = Buffer.alloc(0);
+  const limit = 2 * (MAX_FRAME + 4) + 64;
+  return Object.freeze({
+    readLine() {
+      const end = Date.now() + timeoutMs;
+      for (;;) {
+        const newline = pending.indexOf(10);
+        if (newline >= 0) {
+          const line = pending.subarray(0, newline).toString('latin1');
+          pending = pending.subarray(newline + 1);
+          return line;
+        }
+        assert(pending.length <= limit, 'supervisor line too long');
+        const chunk = Buffer.alloc(65_536);
+        let n;
+        try { n = readSync(fd, chunk, 0, chunk.length, null); }
+        catch (error) {
+          if (error.code !== 'EAGAIN' && error.code !== 'EWOULDBLOCK') throw error;
+          assert(Date.now() < end, 'supervisor link timed out');
+          Atomics.wait(sleeper, 0, 0, 2); continue;
+        }
+        assert(n > 0, 'supervisor link closed');
+        pending = Buffer.concat([pending, chunk.subarray(0, n)]);
+      }
+    },
+    writeLine(line) {
+      assert(!line.includes('\n') && line.length < limit, 'invalid supervisor line');
+      const bytes = Buffer.from(`${line}\n`, 'latin1');
+      let offset = 0;
+      while (offset < bytes.length) offset += writeSync(fd, bytes, offset, bytes.length - offset);
+    },
+  });
+}
+
+const TOKEN = /^[A-Za-z0-9:._/@+=-]{1,512}$/;
+const unsignedText = value => /^[0-9]{1,20}$/.test(value);
+
+/**
+ * M2's release leaf for createMonitorService, over the supervisor link. The
+ * supervisor starts the worker under a guard with the INSTALLED per-slot limits;
+ * this leaf supplies only the launch identity, the worker's fixed handle and
+ * delivery reference, and the installed lifetime, which the supervisor clamps to
+ * its own maximum. A refusal or malformed answer throws: the service then answers
+ * `unknown`, never a second release.
+ */
+export function createNativeRelease({ link, bootId, lifetimeMs, clockReference, now,
+  delivery = closure => `native-context:${closure.operation}` }) {
+  assert(link && id(bootId) && Number.isSafeInteger(lifetimeMs) && lifetimeMs > 0 && id(clockReference)
+    && typeof now === 'function' && typeof delivery === 'function', 'native release configuration incomplete');
+  return Object.freeze({
+    start(closure, identity) {
+      const reference = delivery(closure);
+      assert(TOKEN.test(identity) && TOKEN.test(reference), 'launch identity or delivery is not transportable');
+      const validUntil = now() + lifetimeMs;
+      link.writeLine(`START ${identity} ${identity} ${reference} ${lifetimeMs}`);
+      const answer = link.readLine().split(' ');
+      assert(answer[0] === 'STARTED' && answer.length === 8 && answer.slice(1).every(unsignedText),
+        `native release refused: ${answer.slice(1).join(' ') || 'no answer'}`);
+      const [, pid, uid, uniqueId, startTicks, continuousTicks, numer, denom] = answer;
+      return { uid: Number(uid), pid: Number(pid),
+        processStartIdentity: { bootId, uniqueId, startTicks },
+        originalDeadline: { ownerClockReference: clockReference, ownerValidUntil: validUntil, bootId,
+          continuousTicks, timebaseNumer: numer, timebaseDenom: denom },
+        evidenceReferences: [`native-guard:${identity}`] };
+    },
+    observe(identity) {
+      assert(TOKEN.test(identity), 'launch identity is not transportable');
+      link.writeLine(`OBSERVE ${identity}`);
+      const [verb, state, code, status] = link.readLine().split(' ');
+      assert(verb === 'STATE', 'native observation refused');
+      if (state === 'running') return { state: 'running', reason: 'ok' };
+      if (state !== 'ended') return null;                       // not this launch: no claim either way
+      const reason = { 0: ['exited', 'worker-exit'], 30: ['expired', 'deadline'], 31: ['stopped', 'guard-lost'],
+        32: ['stopped', 'guard-lost'], 33: ['stopped', 'capacity'], 34: ['stopped', 'capacity'],
+        35: ['stopped', 'unsupported'] }[Number(code)] ?? ['unknown', 'guard-lost'];
+      return { state: reason[0], reason: reason[1],
+        evidenceReferences: [`native-guard:${identity}`, `native-guard-terminal:${code}:${status}`] };
+    },
+  });
+}
+
+/** Serve the supervisor: one `REQ` in, one `REPLY` out, until the link closes.
+ * An invalid frame answers nothing and ends the service (the supervisor then
+ * fails closed and launchd restarts it). */
+export function serveMonitor({ link, service }) {
+  for (;;) {
+    let line;
+    try { line = link.readLine(); } catch (error) { if (/closed/.test(error.message)) return; throw error; }
+    const [verb, hex] = line.split(' ');
+    assert(verb === 'REQ' && /^([0-9a-f]{2})+$/.test(hex ?? ''), 'unexpected supervisor line');
+    link.writeLine(`REPLY ${Buffer.from(service.handle(Buffer.from(hex, 'hex'))).toString('hex')}`);
+  }
+}
+
+/** A file only the service's own account can change (never through a symlink). */
+function ownedFile(path) {
+  assert(isAbsolute(path), 'installed path must be absolute');
+  const stat = lstatSync(path);
+  assert(stat.isFile() && stat.uid === process.getuid() && (stat.mode & 0o022) === 0,
+    `installed binding is not owned by the service account: ${path}`);
+  return readFileSync(path);
+}
+
+/**
+ * The installed owner decision service (the release runtime running this module
+ * as `service <service.json> <bootId> <enforcer>`, fd 3 linked to `supervise`).
+ * It reads only installed bindings: the service configuration, its signing key,
+ * the established journal and its genesis. The owner context is the fixed
+ * installed reader (createProductionMonitorContext); its inputs (lane A's
+ * capacity authority, R6's worker allocation, the R4/R6 store composition and
+ * owner watermark) are not installed on this base, so `context` stays null and
+ * every launch refuses `authority` before any dispatch decision exists.
+ */
+export function runMonitorServiceProcess({ serviceConf, bootId, enforcer, fd = 3 }) {
+  const config = JSON.parse(ownedFile(serviceConf).toString('utf8'));
+  const keys = ['clockReference', 'digests', 'installation', 'journal', 'journalGenesis', 'keyId', 'lifetimeMs',
+    'machine', 'privateKeyPath'];
+  assert(config && Object.keys(config).sort().join(',') === keys.join(','), 'service configuration shape');
+  const privateKey = createPrivateKey(ownedFile(config.privateKeyPath));
+  assert(privateKey.asymmetricKeyType === 'ed25519' && (lstatSync(config.privateKeyPath).mode & 0o077) === 0,
+    'service signing key must be a private ed25519 key readable only by the service');
+  const link = createSupervisorLink(fd);
+  const now = () => Date.now();
+  const journal = new OfflineJournal(config.journal, 16 * 1024 * 1024,
+    { sync: createNativeJournalSync(enforcer), established: true });
+  const service = createMonitorService({ installation: config.installation, machine: config.machine, bootId,
+    digests: config.digests, clockReference: config.clockReference, now, keyId: config.keyId, privateKey,
+    journal, journalGenesis: config.journalGenesis, context: null,
+    release: createNativeRelease({ link, bootId, lifetimeMs: config.lifetimeMs,
+      clockReference: config.clockReference, now }) });
+  link.writeLine('READY');
+  serveMonitor({ link, service });
+}
+
+// ---- agent side of an installed worker channel -------------------------------
+
+/**
+ * The owner's end of one launched worker's channel: the pinned enforcer's
+ * `channel <identity>` role attaches once (the supervisor admits one attach per
+ * launch, from the configured agent account only). `io` is the non-blocking
+ * WorkerChannelIO that createInstalledChannelNativeContextIO consumes; pass
+ * `progress` as its `progress` hook, so the native guard's heartbeat follows the
+ * owner's successful authority checks once attached.
+ */
+export function createAttachedWorkerChannel(enforcerPath, identity) {
+  assert(typeof enforcerPath === 'string' && isAbsolute(enforcerPath), 'absolute pinned enforcer path required');
+  assert(TOKEN.test(identity), 'launch identity required');
+  const child = spawn(enforcerPath, ['channel', identity], { stdio: ['pipe', 'pipe', 'ignore', 'pipe'], env: {}, shell: false });
+  // The adapter is synchronous; it reads and writes the helper's pipe descriptors
+  // directly (libuv already made them non-blocking) and never reconnects.
+  const input = child.stdin._handle.fd, output = child.stdout._handle.fd, beat = child.stdio[3]._handle.fd;
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  let open = true;
+  const close = () => { if (open) { open = false; child.stdin.destroy(); child.stdout.destroy(); child.stdio[3].destroy(); child.kill(); } };
+  const io = Object.freeze({
+    read(max) {
+      if (!open) return new Uint8Array(0);
+      const buffer = Buffer.alloc(max);
+      try { const n = readSync(output, buffer, 0, max, null); return buffer.subarray(0, n); }
+      catch (error) { if (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK') return null; throw error; }
+    },
+    write(bytes) {
+      if (!open) throw Error('channel closed');
+      try { return writeSync(input, bytes, 0, bytes.length); }
+      catch (error) { if (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK') return null; throw error; }
+    },
+    close,
+    now: () => Number(process.hrtime.bigint() / 1_000_000n),
+    wait: ms => Atomics.wait(sleeper, 0, 0, ms),
+  });
+  const progress = () => { if (open) { try { writeSync(beat, Buffer.from('P')); } catch { /* helper gone: the heartbeat stops */ } } };
+  return Object.freeze({ io, progress, close, exited: () => child.exitCode !== null || child.signalCode !== null });
+}
+
+/** Installation step (administrator path, once): the receipt signing key, owner-only,
+ * and its public half for the owner's trust reference. Never over an existing key. */
+export function generateReceiptKey(keyPath, publicPath) {
+  assert(isAbsolute(keyPath) && isAbsolute(publicPath), 'absolute key paths required');
+  const keys = generateKeyPairSync('ed25519');
+  writeFileSync(keyPath, keys.privateKey.export({ type: 'pkcs8', format: 'pem' }), { flag: 'wx', mode: 0o600 });
+  chmodSync(keyPath, 0o600);
+  writeFileSync(publicPath, keys.publicKey.export({ type: 'spki', format: 'pem' }), { flag: 'wx', mode: 0o644 });
+  chmodSync(publicPath, 0o644);
+}
+
+// Fixed package entry modes (not remote selectors):
+//   `loading-worker <handle> <delivery>`   the confined worker
+//   `service <service.json> <bootId> <enforcer>`   the installed owner decision service
+//   `keygen <key> <public>`, `journal-init <path> <installation> <machine> <journal> <enforcer>`
+//                                           installation steps run once by the administrator path
+const entry = (() => { try { return realpathSync(process.argv[1] ?? '') === fileURLToPath(import.meta.url); } catch { return false; } })();
+if (entry && process.argv[2] === 'loading-worker') {
   try { process.exitCode = runLoadingWorker({ handle: process.argv[3], delivery: process.argv[4] }); }
   catch { process.exitCode = 3; }
+}
+if (entry && process.argv[2] === 'keygen' && process.argv.length === 5) {
+  try { generateReceiptKey(process.argv[3], process.argv[4]); } catch { process.exitCode = 2; }
+}
+if (entry && process.argv[2] === 'journal-init' && process.argv.length === 8) {
+  try {
+    initializeJournal(process.argv[3], { installation: process.argv[4], machine: process.argv[5], journal: process.argv[6] },
+      { sync: createNativeJournalSync(process.argv[7]) });
+  } catch { process.exitCode = 2; }
+}
+if (entry && process.argv[2] === 'service' && process.argv.length === 6) {
+  try { runMonitorServiceProcess({ serviceConf: process.argv[3], bootId: process.argv[4], enforcer: process.argv[5] }); }
+  catch { process.exitCode = 78; }
 }

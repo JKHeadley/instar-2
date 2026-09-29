@@ -1,0 +1,55 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "provider-failure-result-v1",
+    "kind": "parsers",
+    "status": "live",
+    "requiredFacts": {
+      "fixture": "PREVIEW-CAPTURE-CLAUDE-LIMIT-RESULT",
+      "authenticationClass": [
+        {
+          "stimulusType": "provider-result",
+          "class": "channel-attested"
+        }
+      ],
+      "eventIdAuthority": {
+        "mintedBy": "the provider invocation that produced the output",
+        "uniquenessScope": "one provider invocation",
+        "replayWindow": 0,
+        "fallbackFingerprint": {
+          "policy": "none",
+          "basis": "output is classified only for the invocation that produced it"
+        }
+      },
+      "ackPolicy": "never"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      36,
+      67
+    ],
+    "holds": [
+      {
+        "rule": 36,
+        "class": "held",
+        "evidence": {
+          "kind": "fixture",
+          "id": "PREVIEW-PROVIDER-FAILURE-ON-CAPTURE",
+          "stage": "build"
+        },
+        "semanticallyReviewed": "never"
+      }
+    ]
+  }
+]

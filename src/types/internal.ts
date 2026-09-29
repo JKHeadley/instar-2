@@ -37,6 +37,11 @@ export function refusal(detail: string, preserved: string, reason: RefusalReason
 export function consumeResult<T, R>(result: Result<T>, handlers: { Success: (value: T, capacity: Capacity) => R; Refused: (refused: Refused) => R }): R {
   return result.kind === 'Success' ? handlers.Success(result.value, result.capacity) : handlers.Refused(result);
 }
+/** Rule 40: a bounded store or selection that trimmed exactly as designed is a
+ * success carrying the applied bound, never an error. No bound, no capacity. */
+export function capacityApplied<T>(value: T, bound: string, action: string): Success<T> {
+  return bound.trim() && action.trim() ? success(value, { kind: 'applied', bound, action }) : success(value);
+}
 export function consumeCapacity<R>(capacity: Capacity, handlers: { none: () => R; applied: (bound: string, action: string) => R }): R {
   return capacity.kind === 'none' ? handlers.none() : handlers.applied(capacity.bound, capacity.action);
 }

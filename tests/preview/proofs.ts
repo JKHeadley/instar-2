@@ -89,7 +89,7 @@ export interface ProofPlan {
 export const WITNESSES = ['telegram.bot-api', 'preview.durable-journal', 'model.provider', 'preview.reply-reviewer',
   'preview.summary-reviewer', 'jev.step-supervisor'] as const;
 export type Witness = typeof WITNESSES[number];
-/** The register id of a plan's probe (the `probe`/`freshnessProbe` reference in preview.declarations.json). */
+/** The register id of a plan's probe (the `probe`/`freshnessProbe` reference in capabilities.declarations.json). */
 export const probeId = (plan: string) => `P9-PREVIEW-${plan}`;
 
 const outcome = (disposition: ProofDisposition, observed: Observed, detail: string, observedAt: number | null): ProofOutcome =>

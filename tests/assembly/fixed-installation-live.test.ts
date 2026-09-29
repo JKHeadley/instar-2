@@ -333,10 +333,11 @@ it('installer refuses collisions, synthetic apply, out-of-range IDs and every un
   expect(provision(cleanHost, 'accounts-only', '--apply').err).toContain('never accepts a synthetic inventory');
   expect(provision(['os_name=Linux', ...cleanHost.slice(1)], 'accounts-only').err).toContain('unsupported OS');
   expect(provision([...cleanHost, 'mystery=1'], 'inspect').err).toContain('unknown inventory key');
-  for (const mode of ['install', 'uninstall']) {
+  // The monitor stage needs the verified accounts stage (install) or an installed monitor (uninstall).
+  for (const [mode, message] of [['install', 'accounts stage is not provisioned'], ['uninstall', 'monitor is not installed']]) {
     const refused = provision(cleanHost, mode);
     expect(refused.status).toBe(2);
-    expect(refused.err).toContain('not reviewed; this stage stays refusing');
+    expect(refused.err).toContain(message);
   }
 });
 
@@ -463,13 +464,13 @@ it.runIf(darwin)('native feasibility reports a verdict for every mandatory case 
     const run = spawnSync(enforcer, ['feasibility', 'memory', profile, join(dir, 'scratch')],
       { encoding: 'utf8', cwd: join(dir, 'slot'), timeout: 60_000 });
     const memory = run.stdout.split('\n').find(line => line.startsWith('feasibility.memory='));
-    // A limit the kernel will not install must stop the launch before release
-    // (outcome 2), never run the worker unbounded.
-    expect(memory).toMatch(/outcome=(2|3) /);
+    // A limit the guard cannot install must stop the launch before release
+    // (guard 35), never run the worker unbounded. Unprivileged it is UNVERIFIED, never PASS.
+    expect(memory).toMatch(process.getuid!() === 0 ? /=PASS / : /=UNVERIFIED requires-root: .*guard=35 started=0/);
     expect(run.stdout).toMatch(/feasibility\.limit-raise=PASS/);
     const task = spawnSync(enforcer, ['feasibility', 'task', profile, join(dir, 'scratch')],
       { encoding: 'utf8', cwd: join(dir, 'slot'), timeout: 30_000 });
-    expect(task.stdout).toMatch(/feasibility\.task=(PASS|FAIL) task right acquired pre-gate: binding pre-exec=valid/);
+    expect(task.stdout).toMatch(/feasibility\.task=PASS after bootstrap->sandbox-exec->.*guard=30 signal=9/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 90_000);
 

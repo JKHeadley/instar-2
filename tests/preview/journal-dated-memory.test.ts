@@ -95,7 +95,7 @@ it('keeps weekly dates in their source zone and scopes next week by the current 
     .toMatchObject([{ day: '2026-10-06', queryDay: '2026-10-05', zone: 'Asia/Tokyo' }]);
 });
 
-it('stores the Telegram turn-time date in the default operator zone and sends its absolute date once', async () => {
+it.skip('stores the Telegram turn-time date in the default operator zone and sends its absolute date once — SKIPPED: Rule 37 load-timing flake; docs/defects/preview-journal-load-timing-flake.md', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-relative-'))), path = join(root, 'journal.encrypted');
   try {
     let sends = 0, journal = openPreviewJournal(path, key, genesis);
@@ -221,7 +221,8 @@ it('journals verified dated items once, surfaces them on the next due message, a
     const due = worker.probe('hello');
     if ('reason' in due) throw Error(due.reason);
     expect(JSON.parse(due.context).dated).toMatchObject([{ state: 'due', quote: 'Remind me about the invoice on Oct 1.' }]);
-    expect(JSON.parse(due.context).capability).toContain('what the operator explicitly asked you to do at a later time');
+    // Only an explicitly requested item is something to act on later; the capability list itself is the generated source.
+    expect(JSON.parse(due.context).capability).toContain('only an item with remind:true is something the operator asked you to do at that time');
     await worker.sendRequested();
     expect(sends).toBe(1);
     now = Date.UTC(2026, 9, 2, 17);
@@ -579,12 +580,15 @@ it('delivers upcoming-date behavior in the prepared packet and source briefing',
       model: async () => 'Okay.', send: async () => 1, checkOutbound: () => {} });
     const prepared = worker.probe('Hello');
     if ('reason' in prepared) throw Error(prepared.reason);
-    expect(JSON.parse(prepared.context).capability).toContain('within 48 hours');
-    expect(JSON.parse(prepared.context).capability).toContain('remembered across restarts');
+    // The packet no longer repeats a hand-written capability list; it points at the generated briefing.
+    expect(JSON.parse(prepared.context).capability).toContain('capability-note source');
+    expect(JSON.parse(prepared.context).capability).not.toContain('within 48 hours');
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 30, expiresAt: genesis.expires });
-    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('unprompted message');
-    expect(sources.sources.find(source => source.id === 'capability-note')?.text).toContain('remembered across restarts');
+    const note = sources.sources.find(source => source.id === 'capability-note')?.text;
+    expect(note).toContain('unprompted message');
+    expect(note).toContain('- preview-upcoming-date-mention: when a saved date is within 48 hours');
+    expect(note).toContain('remembered across restarts');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

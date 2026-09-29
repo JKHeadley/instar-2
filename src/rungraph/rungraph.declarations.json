@@ -10,7 +10,7 @@
       "type": "Profile", "schemaVersion": 1, "consequence": "control", "reversibility": "costly",
       "reach": "user", "surface": "chat", "repeats": { "kind": "bounded", "by": "rungraph.bound" }
     },
-    "standards": [26, 31, 33, 34, 63, 68, 69, 96],
+    "standards": [26, 31, 33, 34, 39, 63, 68, 69, 96],
     "holds": []
   },
   {

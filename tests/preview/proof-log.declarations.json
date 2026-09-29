@@ -1,0 +1,29 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.proof-log.appendProof",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "proof attempts observe this machine's runner; cross-machine agreement is build 11's side"
+      },
+      "agreesWith": [
+        {
+          "store": "preview.journal.openPreviewJournal",
+          "invariant": "a passing restore proof is a fresh durable replay equal to the live projection at the same journal frontier",
+          "check": "P9-PREVIEW-restore-equality"
+        }
+      ]
+    },
+    "standards": [
+      9,
+      43
+    ],
+    "holds": []
+  }
+]

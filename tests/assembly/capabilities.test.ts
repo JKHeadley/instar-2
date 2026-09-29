@@ -5,12 +5,13 @@ import { createCustodiedPersistenceAdapter, createNativeHarnessAdapter, deriveGr
 import type { EncryptedChunk } from '../../src/assembly/index.js';
 import { factsFixture, refused, value } from '../facts/fixtures.js';
 import { assemblyInput } from './fixture.js';
+import { stallCoverageFixture } from './stall-coverage-fixture.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 
 it('P10-NF-17 P10-NF-18 P10-NF-20 P10-NF-21 Native receives only the eight-owned process driver and distinguishes accepted from consumed', () => {
   const f = assemblyRuntimeFixture(); let phase: 'input-accepted' | 'context-consumed' = 'input-accepted'; let invokes = 0;
   value(f.runtime.record('HarnessObservation', { ...assemblyInput('HarnessObservation'), id: 'model-context:capture:1' }));
-  const adapter = createNativeHarnessAdapter({ id: 'native', artifact: assemblyInput('HarnessLaunchSpec').artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
+  const adapter = createNativeHarnessAdapter({ id: 'native', artifact: assemblyInput('HarnessLaunchSpec').artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1', stallCoverage: stallCoverageFixture('native'),
     context: f.c, clock: () => 20, generation: () => 'generation:fixture', driver: { owner: 'part-eight',
       launch: () => { invokes++; return f.success('pid:42:start:1'); }, deliver: () => f.success('stdin:accepted'),
       observe: () => f.success({ phase, evidence: phase === 'context-consumed' ? 'model-context:capture:1' : 'stdin:accepted', detail: 'instrumented' }) } });
@@ -38,7 +39,7 @@ it('P10-NF-28 P10-NF-29 P10-NF-32 P10-NF-33 P10-NF-35 P10-NF-36 encrypted persis
 it('repair1 V210-V211 context-consumption resolves the exact signed run, input, and incarnation', () => {
   const f = assemblyRuntimeFixture();
   value(f.runtime.record('HarnessObservation', { ...assemblyInput('HarnessObservation'), id: 'model-context:other', run: 'run:other' }));
-  const adapter = createNativeHarnessAdapter({ id: 'native', artifact: assemblyInput('HarnessLaunchSpec').artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
+  const adapter = createNativeHarnessAdapter({ id: 'native', artifact: assemblyInput('HarnessLaunchSpec').artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1', stallCoverage: stallCoverageFixture('native'),
     context: f.c, clock: () => 20, generation: () => 'generation:fixture', driver: { owner: 'part-eight', launch: () => f.success('pid:42:start:1'),
       deliver: () => f.success('accepted'), observe: () => f.success({ phase: 'context-consumed', evidence: 'model-context:other', detail: 'wrong run' }) } });
   const spec = assemblyInput('HarnessLaunchSpec'); value(adapter.launch(spec, 'operation:launch', 'claim:launch'));
