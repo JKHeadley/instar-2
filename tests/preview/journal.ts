@@ -1534,6 +1534,13 @@ const operatorTurn = (view: JournalView, turn: Turn) => operatorWriter(view, tur
  * search, open questions, digests, preferences and dated items all skip it. */
 export const PROBE_TAG = /^(?:Build|Renewal|Canary) check [0-9a-f]{7,40}: /u;
 export const probeTurn = (view: JournalView, turn: Turn) => PROBE_TAG.test(turn.text) && operatorTurn(view, turn);
+/** The turns a packet grounds on in order, through `through`: every accepted turn except a desk probe and an edited
+ * message's replaced original, after the rolling summary when there is one (Rule 96). The packet and its audit both read this. */
+export const groundingHistory = (view: JournalView, through: number, summaryThrough?: number) => {
+  const superseded = new Set(view.order.filter(item => item.accepted && item.editOf && item.update <= through).map(item => item.replaces!));
+  return view.order.filter(item => item.accepted && !probeTurn(view, item) && item.update <= through
+    && !superseded.has(item.id) && (summaryThrough === undefined || item.update > summaryThrough));
+};
 /** The retrospective review's population: the operator's own messages (never probes, edits or runner-authored due turns) and their consequences. */
 export const retrospectiveCases = (view: JournalView) => retrospectivePopulation(view, turn => turn.accepted && !turn.editOf
   && turn.requestedAction === undefined && operatorTurn(view, turn) && !probeTurn(view, turn));
@@ -4303,8 +4310,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const summary = compact ? summaryFor(through) : undefined;
     const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
       .map(item => item.replaces!));
-    const earlier = journal.view.order.filter(item => remembered(item) && item.update <= through
-      && !superseded.has(item.id) && (!summary || item.update > summary.through));
+    const earlier = groundingHistory(journal.view, through, summary?.through);
     const undecidedEdits = journal.view.order.filter(item => item.editOf && item.memoryUndecided && item.update <= through)
       .map(item => ({ previous: clean(redact(journal.view.turns.get(item.replaces!)!.text).text, true, item.replaces),
         current: clean(redact(item.text).text, true, item.id),

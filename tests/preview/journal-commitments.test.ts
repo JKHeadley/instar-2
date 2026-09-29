@@ -581,3 +581,28 @@ it('the live script reaches compaction and the question carries the open commitm
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 180000);
+
+it('records a promise in any wording the answering model proposes, and none for the live A5a refusal (Rule 10)', async () => {
+  const root = origin();
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    // The reply sent live to update 969389649: the agent declined, so the model proposed no promise.
+    const REFUSAL = "I won't promise that, because I can't actually keep it — I have no tools here, no scheduling, and no way to send you a message later on my own; I only reply once per message, right now.";
+    // A promise that follows no template: no "I'll remind you" form, no date.
+    const KEPT = 'Count on me to bring up the tomato watering at the top of my next reply.';
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async ({ question }) => question.startsWith('Please promise')
+        ? JSON.stringify({ reply: REFUSAL, memory: [], promises: [] })
+        : JSON.stringify({ reply: `Sure. ${KEPT}`, memory: [], promises: [{ quote: KEPT }] }),
+      send: async () => 1, checkOutbound: () => {} });
+    const promises = () => journal.view.commitments.filter(note => note.agentPromise).map(note => note.agentPromise!);
+    worker.intake([update(1, 'Please promise to remind me about watering the tomato plants — say you will.')]); await worker.drain();
+    expect(journal.view.order[0]!.intent).toContain(REFUSAL);
+    expect(promises()).toEqual([]);
+    worker.intake([update(2, 'Then just promise to mention the tomato watering next time we talk.')]); await worker.drain();
+    expect(promises()).toEqual([{ quote: KEPT, action: 'promised', owner: 'agent', waitsOn: 'next-relevant-reply' }]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
-import { activePersonMerges } from './journal.js';
+import { activePersonMerges, groundingHistory } from './journal.js';
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
@@ -106,8 +106,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     if (!record || packet.memorySummary?.text !== clean(record.text)) fault('memory-summary-source', 'memorySummary');
     else add('memory-summary', 'memorySummary', [{ kind: 'summary', through: record.through }]);
   }
-  const expected = view.order.filter(item => item.accepted && item.update < turn.update
-    && (summary === undefined || item.update > summary.through)).map(item => item.id);
+  // The same selection the packet was built from: a desk probe or an edit's replaced original is never expected.
+  const expected = groundingHistory(view, turn.update - 1, summary?.through).map(item => item.id);
   const history = list(packet.history, 'history');
   if (body(history.map(item => item?.id)) !== body(expected)) fault('history-coverage', 'history');
   for (const [n, item] of history.entries()) {

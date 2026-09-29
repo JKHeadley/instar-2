@@ -481,3 +481,35 @@ it('traces a preference candidate clause to its source turn even when that turn 
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('expects the same history the packet grounds on: a desk probe turn is kept out of both (Rule 96, live A3b shape)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-probe-history-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
+    // The live trial's shape: an ordinary turn, the build switch's desk probe, then ordinary turns.
+    worker.intake([update(1, 'Test marker Birch: my dentist appointment is on October 3 at 2 pm.')]); await worker.drain();
+    worker.intake([update(2, 'Build check 91cefaa0: reply with the word ok')]); await worker.drain();
+    worker.intake([update(3, 'When your stored memory or code says one thing and your own judgment says another, which wins?')]); await worker.drain();
+    worker.intake([update(4, 'What commitments do I have?')]); await worker.drain();
+    const envelope = JSON.parse(journal.view.lastPrompt!.prompt!) as { messages: { role: string; content: string }[] };
+    const context = envelope.messages.find(message => message.role === 'context')!;
+    const packet = JSON.parse(context.content).packet as { historyMode: string; history: { id: string }[] };
+    expect(packet.historyMode).toBe('complete');
+    // Three earlier turns were accepted; the probe is audit evidence, not operator memory, so two ground the answer.
+    expect(journal.view.order.filter(turn => turn.update < 4)).toHaveLength(3);
+    expect(packet.history.map(item => item.id)).toEqual([journal.view.order[0]!.id, journal.view.order[2]!.id]);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    // Both sides of the boundary: a packet that drops an ordinary turn, or that carries the probe, is refused.
+    for (const history of [[packet.history[1]], [packet.history[0], { id: journal.view.order[1]!.id }, packet.history[1]]]) {
+      const forged = structuredClone(journal.view);
+      context.content = JSON.stringify({ packet: { ...packet, history } });
+      forged.lastPrompt = { ...forged.lastPrompt!, prompt: JSON.stringify(envelope) };
+      expect(auditJournal(forged).findings.map((item: { code: string }) => item.code)).toContain('history-coverage');
+    }
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
