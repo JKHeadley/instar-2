@@ -71,7 +71,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/model-json.test.ts",
-        "hash": "sha256:9b18ab68a89a46e5db31e6b8be4cd6b11500ed55ff2b3ea2558dd9bef9eac83f"
+        "hash": "sha256:82fa887801b714f6e6d7a6f7a4634009549d319a7c0b84b7748fac1136cf85aa"
       }
     },
     {
@@ -79,7 +79,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/assembly/provider-failure.test.ts",
-        "hash": "sha256:bb47a74bb7ab784a4f73f6fb5c520d8b6c08c4d7563229313fcbcd9d993fa77d"
+        "hash": "sha256:fcc4af811460a34a12653e6f9571a3ca3258c2395563008410aa036b41608d2b"
       }
     }
   ],

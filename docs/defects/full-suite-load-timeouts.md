@@ -1,6 +1,6 @@
 # Full-suite load timeouts in rungraph and register tests (Rule 37 quarantine)
 
-**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
+**Status:** CLOSED on cint-L4 (2026-09-29; see the last section); kept as the record. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
 
 During the full repository run retained as `cbuild-4-rr1-full-5ecf9519.log` (load about 27, `--maxWorkers 4`, eight parallel builders on the same host), four cases timed out:
 - `tests/rungraph/provider-answer-reply.test.ts` — the parameterized case at the `it.skip.each(['submitted', …])` line, and `P10-SI-37 reuses a still-current assessment after the clock advances and refuses withdrawn captures`. Each declares 30 000 ms but was reported as timed out at 10 s.
