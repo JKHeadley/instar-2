@@ -1518,8 +1518,9 @@ async function main() {
         stopped: () => workerStop.value || existsSync(stopPath) || !active(), work });
       const physicalIO = { ...launchIO, execute: async input => {
         const result = await launchIO.execute(input);
-        // Only the model command is the exchange; the version and auth preflights print no result frame.
-        if (JSON.stringify(input.args) === JSON.stringify(policy.args))
+        // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
+        // version and auth preflights send none and print no result frame.
+        if (typeof input.stdin === 'string' && input.stdin.length > 0)
           observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation));
         return result;
       } };
