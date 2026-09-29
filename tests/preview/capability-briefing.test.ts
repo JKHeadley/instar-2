@@ -21,6 +21,12 @@ it('delivers every available generated feature, names switched-off ones, and omi
     'preview-conversation', 'preview-durable-memory', 'preview-requested-actions']));
 });
 
+// Rule 84 asks that every feature be described, not described at length: the briefing rides every live turn
+// inside the approved context bound, so each text is one short line and its README Details line keeps the rest.
+it('every briefed feature text is one short line', () => {
+  for (const f of briefed.filter(f => f.text)) expect(f.text!.length, f.id).toBeLessThanOrEqual(130);
+});
+
 it('the generated briefing is current with every declared feature in the committed sidecars', () => {
   const sidecars = execFileSync('git', ['ls-files', '*.declarations.json', '*.parser.json'], { encoding: 'utf8' }).trim().split('\n');
   const declared = sidecars.flatMap(path => (JSON.parse(readFileSync(path, 'utf8')) as { id: string; kind: string; status: string }[])
