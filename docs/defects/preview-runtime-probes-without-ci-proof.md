@@ -1,6 +1,8 @@
 # Seven held preview probes have no passing CI test (register-contract-map red)
 
-**Status:** OPEN, gate-blocking. Not quarantined: there is no test to skip. **Owner:** constitutional-build integration desk (Echo), as owner of the preview runner. **Opened:** 2026-09-29.
+**Status:** OPEN, gate-blocking. Not quarantined: there is no test to skip.
+**Owner:** constitutional-build integration desk (Echo), as owner of the preview runner.
+**Opened:** 2026-09-29.
 
 `scripts/check-register-contract-map.mjs` requires every non-deferred held fixture or probe in the register to have a test in its owner-catalog artifact whose title names the id, and every such test to pass. The owner-reference contract (`scripts/register-owner-references.mjs`, part nine) fixes every `P9-PREVIEW-*` probe's artifact to `tests/preview/proofs-launcher.test.ts`: the runner's proof plans, executed in CI through the real launcher.
 
