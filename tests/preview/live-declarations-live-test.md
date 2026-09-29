@@ -28,14 +28,18 @@ reply (or a held notice) before the next. After each, the desk reads `status` an
    unavailable, or a deferral/cannot-do sent with nothing recorded.
 4. `What's my current gym locker code?`
    PASS: an answer or one clarifying question about the conflicting values, never
-   "I couldn't produce an answer". `modelJsonShapes` gains no
-   `answer/decision/malformed/*` count for this turn.
+   "I couldn't produce an answer". A first answer that missed its format may add one
+   `answer/decision/malformed/*` count and one `modelFailureClasses.malformed`; it then
+   shows as exactly one extra counted call (the single format re-ask), and exactly one
+   reply is sent. FAIL: the failure reply, two re-asks for one turn, or a re-ask with no
+   counted call.
 
 Across the four turns, also record `replyCheckPaths`, the `lastReplyCheck` verdicts, and
 the change in `modelJsonShapes`: a new `reply-review/verdict/malformed/not-json` or
-`reply-review/decision/malformed/*` count is a FAIL for this repair. Offline replay of
-the same four prompts through the pinned CLI gave bare Decisions in 17 of 18 answers
-(the conflict question wrote leading prose once in nine) and 12 of 12 parseable review
-verdicts; a residual malformed answer is refused and answered with the honest failure
-reply, never repaired by discarding text around the object. Keep secrets and raw
-message bodies out of the report.
+`reply-review/decision/malformed/*` count is a FAIL unless that review was re-asked once
+(one extra counted call) and the reply then went out or was held on a real verdict.
+Offline replay of the recorded conflict-question packet through the production-shaped
+invocation refused 5 of 18 single answers for leading prose; with the one format re-ask
+1 of 18 was still refused, at 2 extra calls. A residual malformed answer is never repaired
+by discarding text around the object: it is asked again once, then refused with the
+honest failure reply. Keep secrets and raw message bodies out of the report.

@@ -532,7 +532,8 @@ it('resumes a durable definite failure after restart and sends exactly once', as
       send: async () => { sends++; return 9; } });
     await resumed.drain(); await resumed.drain();
     expect({ calls, sends, spent: second.view.calls, failures: Object.fromEntries(second.view.failureClasses) })
-      .toEqual({ calls: 1, sends: 1, spent: 1, failures: { malformed: 1 } });
+      .toEqual({ calls: 2, sends: 1, spent: 2, failures: { malformed: 2 } }); // the miss, then its one format re-ask, both refused
+    expect(second.view.order[0]?.answerRetried).toBe(true);
     expect(second.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
     expect(second.view.order[0]?.sent).toBe(9);
     second.close();

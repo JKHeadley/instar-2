@@ -120,7 +120,7 @@ describe('operator echo in the journal runner', () => {
       // and with no review verdict and no Jev flag Rule 86 has nothing to release, so it stays held.
       expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(0);
       expect(w.calls.jev.length).toBe(jevBefore);
-      expect(w.calls.reviews).toBe(1);
+      expect(w.calls.reviews).toBe(2); // the malformed verdict and its one format re-ask (Rule 116)
       expect(turn.sent).toBeUndefined();
       expect(turn.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['subscription', 'unavailable']]);
       expect(reviewUnavailableReleases(w.journal.view).total).toBe(0);
@@ -135,7 +135,7 @@ describe('operator echo in the journal runner', () => {
       await w.say(3, question);
       const turn = w.journal.view.order[2]!;
       expect(w.calls.jev.at(-1)).toContain('9911');
-      expect(w.calls.reviews).toBe(1);
+      expect(w.calls.reviews).toBe(2); // the malformed verdict and its one format re-ask (Rule 116)
       // Not an echo: Jev and the full-context review both ran. The review gave no verdict and
       // Jev's flags name no secret, so under Rule 86 they only signal and the reply is sent.
       expect(turn.intent).toBe('PREVIEW — The gym locker code is 5823 now. The spare locker code is 9911.');

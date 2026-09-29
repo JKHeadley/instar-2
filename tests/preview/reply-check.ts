@@ -128,15 +128,19 @@ export function replyReviewContext(originalPrompt: string, candidateReply: strin
  * refused every such verdict as malformed, holding replies as "check unavailable". The bound limits only the length
  * of the one line: its exact whole-line shape still admits no text before or after the verdict. */
 export const REPLY_REVIEW_REASON_ASK = 300;
+/** The one error that means the reviewer answered but missed the verdict format (the only case re-asked). */
+export const REVIEW_MALFORMED = 'preview: review malformed';
+/** Runner-authored packet guidance for the single format re-ask of a review. */
+export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because conclusion.value was not exactly one line of the form PASS | reason or VIOLATION:rule_id[,rule_id] | reason with a listed rule ID. Return only the Decision object with that one line, no other text; put longer reasoning in reason.value.';
 export const REPLY_REVIEW_REASON_MAX = 600;
 /** The short line lives inside the route's required Decision envelope. */
 export function parseReplyReviewVerdict(value: string): { verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; reason: string } {
   const match = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,600})$/u.exec(value.trim()); // 600 = REPLY_REVIEW_REASON_MAX
-  if (!match || !match[3]?.trim()) throw Error('preview: review malformed');
+  if (!match || !match[3]?.trim()) throw Error(REVIEW_MALFORMED);
   const ruleIds = match[2] ? match[2].split(',') as ReplyRule[] : [];
   if ((match[1] === 'PASS' && ruleIds.length) || (match[1] === 'VIOLATION' && !ruleIds.length)
     || new Set(ruleIds).size !== ruleIds.length || ruleIds.some(id => !Object.hasOwn(REPLY_RULES, id)))
-    throw Error('preview: review malformed');
+    throw Error(REVIEW_MALFORMED);
   return { verdict: match[1] === 'PASS' ? 'pass' : 'violation', ruleIds, reason: match[3]! };
 }
 
@@ -166,11 +170,13 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 
 export interface ReplyCheckPorts {
   jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number): Promise<{ value: unknown; latencyMs: number }>;
-  escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
+  escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number, formatRetry?: boolean): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
 
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
   reserveEscalation(text: string, originalPrompt?: string): boolean;
+  /** Reserve the one format re-ask after a malformed verdict under the same call cap; false when capped or stopped. */
+  reserveFormatRetry?(): boolean;
   record(result: ReplyCheckResult): void;
   elapsedMs(): number;
   now?(): number;
@@ -220,7 +226,14 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   }
   const fallbackStarted = ports.elapsedMs();
   try {
-    const result = await ports.escalate(text, id, originalPrompt, ruleIds.length ? ruleIds : rules, ports.deadlineAt);
+    const reviewRules = ruleIds.length ? ruleIds : rules;
+    let result;
+    try { result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt); }
+    catch (error) {
+      // Rule 116: one bounded re-ask when the verdict missed its exact format; a second miss is refused as before.
+      if (!(error instanceof Error) || error.message !== REVIEW_MALFORMED || expired(ports) || !ports.reserveFormatRetry?.()) throw error;
+      result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt, true);
+    }
     // A returned VIOLATION is a real refusal: keep it even if the deadline passed meanwhile (Rule 42).
     if (result.verdict === 'violation') {
       ports.record({ ...result, path: 'subscription' });

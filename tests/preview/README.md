@@ -2057,7 +2057,15 @@ through the usual reply check, durable intent and send fences. A bare process
 exit (including zero), invocation error, timeout or interrupted call without a
 validated terminal result remains UNKNOWN and is never repeated. This also
 applies to summary reservations: a definite summary failure may use its remaining
-bounded attempt, while an uncertain one stays pending across restart. `status` reports
+bounded attempt, while an uncertain one stays pending across restart. For answers and reviews one step
+comes before the fixed reply: a completed answer or reply-review verdict that missed its
+required format (`malformed`) is asked again exactly once, with a fixed runner-authored
+`formatReminder` added to the packet (the operator's message is unchanged). The re-ask is
+not a provider retry: it is a separate call, recorded as a `format-retry` journal row that
+keeps the first call's failure class and usage, and it reserves against the same call cap.
+It is skipped when that cap is reached, the stop latch holds or the trial has expired, and
+it always precedes any send. A second miss gets the fixed reply, or for a review the held
+outcome, as before. `status` reports
 `modelFailureClasses` and `modelResultStates`; `self` includes the same counts.
 Subscription reply reviews also record their returned provider state.
 The inner reply-review verdict is one exact line (`PASS | reason` or

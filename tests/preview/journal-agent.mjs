@@ -13,11 +13,11 @@ import { durablePreviewWrite } from './state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus } from './briefing.js';
-import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, reviewUnavailableReleases, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, importChannelFixture, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, journalPollLimit, replyTimings, reviewUnavailableReleases, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE, withFormatReminder } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { awayDigest, awayDigestSource } from './away-digest.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -612,16 +612,19 @@ async function main() {
       replyCheck: {
         elapsedMs: () => performance.now(),
         jev: (text, questions = jevQuestions, timeoutMs) => askJev(text, questions, timeoutMs),
-        escalate: async (text, id, originalPrompt, reviewRules, deadlineAt) => {
+        escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, formatRetry) => {
 
           const start = performance.now();
           if (typeof originalPrompt !== 'string') throw Error('preview: full reply-review context absent');
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
+          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id));
           const prepared = modelEnvelope({ question,
-            context: replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id)), id: `${id}:reply-review` });
+            context: formatRetry ? withFormatReminder(reviewContext, REVIEW_FORMAT_REMINDER) : reviewContext, id: `${id}:reply-review` });
           const result = await invokeSubscription(prepared, `${id}:reply-review`, id, deadlineAt);
+          // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
+          if (result.state === 'complete' && result.failureClass === 'malformed') throw Error(REVIEW_MALFORMED);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
           // the whole-line pattern admits no surrounding text, so a written rejection
@@ -631,7 +634,7 @@ async function main() {
           catch (error) { recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json'); throw error; }
           if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))) {
             recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json');
-            throw Error('preview: review malformed');
+            throw Error(REVIEW_MALFORMED);
           }
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,

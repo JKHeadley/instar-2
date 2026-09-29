@@ -68,6 +68,10 @@ export const PREVIEW_INVENTORY_LIMIT = 20;
 export const PREVIEW_DIGEST_LIMIT = 8;
 /** The journal record, rather than model prose, determines a packet item's origin. */
 export type MemorySourceKind = 'operator-stated' | 'channel-import' | 'inferred-by-summary';
+/** Runner-authored packet guidance for the single format re-ask (Rule 116); the operator's message is unchanged. */
+export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one JSON Decision object. Answer again and return only that object, with no text before or after it; put all reasoning inside reason.value.';
+export const withFormatReminder = (context: string, reminder: string): string =>
+  JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
@@ -257,6 +261,8 @@ export type JournalRecord =
   | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; promptSha256?: string; mentionedDates?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
+  /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
+  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass: 'malformed'; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -328,7 +334,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   /** Set only on a runner-authored turn created from a due slot of a requested summary. */
@@ -1370,7 +1376,9 @@ function project(view: JournalView, row: JournalRecord): void {
     && (row.state === 'complete' || row.state === 'rejected' || row.state === 'uncertain'))
     view.providerStates.set(row.state, (view.providerStates.get(row.state) ?? 0) + 1);
 
-  if ('failureClass' in row && row.failureClass)
+  // Model-answer failure classes count every refused answer call (a format re-ask's refused first call included);
+  // a reply review's format miss is a review outcome, not an answer failure.
+  if ('failureClass' in row && row.failureClass && !(row.kind === 'format-retry' && row.role === 'reply-review'))
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
   if (row.kind === 'cap-report') {
@@ -1739,6 +1747,28 @@ function project(view: JournalView, row: JournalRecord): void {
 
     return;
   }
+  if (row.kind === 'format-retry') {
+    // Rules 42, 75: the refused first call stays visible (its failure class and usage), and the one re-ask is a
+    // counted, token-reserved call under the same cap; it is never repeated and never follows a send.
+    if (row.failureClass !== 'malformed' || view.calls >= view.limits.maxCalls || turn.intent !== undefined)
+      throw Error('preview journal: format retry order or cap');
+    if (row.role === 'answer') {
+      if (row.state !== 'complete' || !turn.reserved || turn.answer !== undefined || turn.modelState !== undefined || turn.answerRetried)
+        throw Error('preview journal: format retry order or cap');
+      settleTokens(view, `answer:${row.id}`, row.usage);
+      reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
+        row.maxOutputTokens ?? subscriptionOutputMaximum);
+      turn.answerRetried = true;
+    } else if (row.role === 'reply-review') {
+      if (row.state !== undefined || replyCandidate === undefined || !turn.reviewReserved || turn.reviewRetried
+        || turn.reviewState !== undefined && turn.reviewState !== 'complete'
+        || turn.replyChecks?.some(item => item.path === 'subscription')) throw Error('preview journal: format retry order or cap');
+      reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+        row.maxOutputTokens ?? subscriptionOutputMaximum);
+      delete turn.reviewState; turn.reviewRetried = true;
+    } else throw Error('preview journal: format retry order or cap');
+    view.calls++; return;
+  }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
@@ -2093,8 +2123,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
       if (view && (((row.kind === 'intake' || row.kind === 'summary-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns)
-        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve')
-          && view.calls >= view.limits.maxCalls)
+        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve'
+          || row.kind === 'format-retry') && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
         throw Error('preview journal: capacity reached');
@@ -2300,6 +2330,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
     [through, ports.elapsed ? elapsed() : at]));
   // An orphaned reservation may have completed at the provider. Never repeat it.
+  /** The stop latch and expiry, read without appending: a format re-ask is simply not made once either holds. */
+  const halted = () => journal.view.stop !== null || ports.stopped() || ports.now() >= journal.view.expires;
   const gate = () => {
     if (journal.view.stop || ports.stopped())
       throw Error('preview stopped');
@@ -3885,6 +3917,24 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
           catch { continue; } // reservation remains UNKNOWN
+          // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
+          // once more with a runner-authored format reminder in the packet (never in the operator's message),
+          // reserved against the same call cap and only while not stopped; a second miss is refused as before.
+          if (typeof answer !== 'string' && 'failureClass' in answer && answer.state === 'complete'
+            && answer.failureClass === 'malformed' && !turn.answerRetried) {
+            const retryContext = withFormatReminder(context, ANSWER_FORMAT_REMINDER);
+            let retryPrepared: string | undefined, preparable = true;
+            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
+            catch { preparable = false; }
+            if (preparable && !halted() && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+              journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
+                ...(answer.usage ? { usage: answer.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
+                maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+              try { answer = await ports.model({ question, context: retryContext, id: turn.id,
+                ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
+              catch { continue; } // the retry reservation remains UNKNOWN
+            }
+          }
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
@@ -4216,6 +4266,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                     : { prompt: originalPrompt }),
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,
                   at: ports.now() }); return true; },
+              reserveFormatRetry: () => {
+                if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return false;
+                journal.append({ kind: 'format-retry', id: turn.id, role: 'reply-review', failureClass: 'malformed',
+                  maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+                return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
                 result: { ...result, candidateDigest }, at: ports.now() }) };
 
