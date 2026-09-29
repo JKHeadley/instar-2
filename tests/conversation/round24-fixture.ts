@@ -1,3 +1,4 @@
+import { setImmediate as yieldImmediate } from 'node:timers';
 import { assessTelegramReplyResponse, renderTelegramDeliveryStatus } from '../../src/conversation/index.js';
 import type { TelegramProviderAcceptance } from '../../src/conversation/index.js';
 import type { Result } from '../../src/index.js';
@@ -28,7 +29,7 @@ const definitionMutations = [
 ] as const;
 
 /** Permanent import of rereview22's independent-validation.ts 21-case matrix. */
-export function round24IndependentValidationMatrix(): readonly Round24Result[] {
+export async function round24IndependentValidationMatrix(): Promise<readonly Round24Result[]> {
   const rows: Round24Result[] = [];
   for (const reuse of [false, true]) for (const [name, patch] of definitionMutations) {
     const fixture = telegramResponseAssessmentFixture();
@@ -48,6 +49,9 @@ export function round24IndependentValidationMatrix(): readonly Round24Result[] {
       appended: fixture.verification.rows.length - before,
       providerCalls: fixture.telegram.calls.send.length,
     });
+    // An awaited real event-loop turn per case: the whole matrix otherwise runs ~28s
+    // synchronously under load and starves the fork worker's task-update RPC.
+    await new Promise<void>(resolve => yieldImmediate(resolve));
   }
 
   const fixture = telegramResponseAssessmentFixture();

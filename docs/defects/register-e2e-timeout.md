@@ -27,6 +27,22 @@ All runs are six-worker parallel desk gates on unchanged test code. The logs are
 
 The table includes both red and green evidence. These results establish unreliable test execution. They do not establish a register semantic defect, and they do not prove that CPU contention is the root cause.
 
+## Second quarantined case (cint-5, 2026-09-28)
+
+- **Case:** `P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge`, same file and describe block.
+- **Affected contract IDs:** P3-P5 R2 (the committed-source pin refuses an ambient bridge in both a dirty and a clean clone, and resolves a committed one; the wiring command scans the pin).
+- **Budget:** `60_000` ms, unchanged. The body, both refusal assertions, the committed positive control, the output equality and the wiring checks are retained behind the same literal `it.skip` title form.
+- **Evidence (integration tree `cint-5`, same commit):**
+
+| Run | Case result | Case duration | Notes |
+|---|---|---|---|
+| Preview gate, `nice -n 10`, `--maxWorkers 4`, load average 10–12 (`/tmp/cint5-gate3.log`) | timed out | 87,221 ms | the run also recorded one `[vitest-worker]: Timeout calling "onTaskUpdate"` runner error |
+| Same file alone, `nice -n 10`, load average about 10 | passed | 13,229 ms | the other four active cases passed in 10–39 s |
+
+- **Why it starves the worker:** the whole case is synchronous (`cpSync` of the repository, `execFileSync` git calls, four `spawnSync` register builds and two wiring runs, with no `await`). Under contention it held its fork worker's event loop for 87 s, longer than both its own 60 s budget and vitest's 60 s worker RPC timeout, which is the same mechanism `docs/defects/vitest-worker-rpc-timeouts.md` records for the earlier stage2-recovery cause.
+- **Coverage residue:** while skipped, the shipped CLI's ambient-bridge refusal and committed-bridge resolution are not executed end to end. `tests/register/shipped.test.ts` still covers the committed-inventory refusal of an uncommitted import in process, and the P3-NF-01/07/09 case still runs the actual CLI against committed outputs.
+- **Repair:** the same repair commitment above applies, plus running the case's children asynchronously so a slow host fails the budget cleanly instead of freezing the worker. Closure follows the same four steps.
+
 ## Coverage residue
 
 While the case is quarantined, this shipped-CLI combination of the five P3 IDs is not executed. Other tests for the same P3 IDs remain active. Their passes do not prove that the skipped assertions ran. Report gate results as "green with one Rule 37 quarantine", never as "all P3 cases passed". The contract map keeps all five rows, with the actual skipped status.

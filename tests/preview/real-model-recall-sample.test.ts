@@ -97,7 +97,8 @@ try {
   child.stderr.on('data', chunk => { stderr += String(chunk); });
   try {
     const started = Date.now();
-    while (!existsSync(heartbeat) && child.exitCode === null && Date.now() - started < 15000)
+    // Starting the loader-hosted sample takes ~15 s under suite load; the stop bound below is unchanged.
+    while (!existsSync(heartbeat) && child.exitCode === null && Date.now() - started < 40000)
       await new Promise(resolve => setTimeout(resolve, 25));
     expect(existsSync(heartbeat), stderr).toBe(true);
     child.kill('SIGTERM');
@@ -111,4 +112,4 @@ try {
     expect(readFileSync(heartbeat, 'utf8')).toBe(before);
     expect(readFileSync(invocations, 'utf8')).toBe('x');
   } finally { if (child.exitCode === null) child.kill('SIGKILL'); rmSync(root, { recursive: true, force: true }); }
-}, 30000);
+}, 60000);

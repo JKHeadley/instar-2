@@ -308,9 +308,23 @@ const emptyTokenTotals = (): TokenTotals => Object.fromEntries(tokenKinds.map(ki
   [kind, { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }])) as TokenTotals;
 const subscriptionOutputMaximum = 2048;
 const jevOutputMaximum = JEV_RESPONSE_MAX_BYTES;
-export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | null;
+export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
-  isError: boolean | null; outputTokens: number | null; promptBytes: number }
+  isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
+/** Rules 60/61: content-free resource facts of the owned launch behind a call (optional; older rows carry none). */
+export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handlesPerProcess' | 'processGrowth' | 'treeHandles' | 'memory' | 'treeCpu', 'hard' | 'sampled' | 'unavailable' | 'unsupported'>;
+  /** The kernel process limit actually held, with its subject (a user ID, never the launched tree). */
+  uidProcesses?: { state: 'hard'; subject: string; limit: number } | { state: 'unavailable'; subject: null; limit: null };
+  /** This launch's own admission: its work class, the owned launches running with it, and its wait. */
+  admission?: { work: 'answer' | 'review' | 'maintenance'; concurrent: number; waitedMs: number };
+  peakMemoryBytes: number; peakProcesses: number; treeCpuMilliseconds: number; census: 'none' | 'complete' | 'partial' | 'failed';
+  /** `verified`: a complete census found no live member by recorded incarnation, group, ancestry or private
+   * working area; `unconfined`: no private working area, so only recorded incarnations were verified. */
+  leakedDescendants: number; cleanup: 'verified' | 'unconfined' | 'unresolved';
+  /** How membership was joined (optional; older rows carry none). */
+  membership?: 'working-area-joined' | 'unconfined';
+  /** The launch's Six allocation set (SEAM-LEDGER row 36): returned citing its verification, or still reserved. */
+  allocation?: { set: string; state: 'returned' | 'reserved' } }
 type SummaryFaithfulness = { path: 'exact' | 'jev'; verdict: 'pass' | 'lost' | 'undecided'; score: number | null; usage?: ModelUsage };
 
 
@@ -466,7 +480,7 @@ export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rule 35: set only by a trusted test composition; absent means a production store. */
     origin?: 'test' }
-  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string;
+  | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody;
     /** Rules 28/29: the verified principal minted at intake; absent only on legacy or unaccepted rows. */
     writer?: WriterRecord;
     /** Admitted past the ordinary turn allowance by the minimal reserve (Rule 15). */
@@ -632,7 +646,13 @@ export type JournalRecord =
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
 export interface PacketDrop { kind: string; source: string; reason: string }
-export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; answer?: string;
+/** Rule 100 / docs/08 intake step 2: the durable custody disposition of a message whose credential
+ * spans were routed to the secret store. `stored`: the original bytes are sealed in custody under
+ * `capture`, and this row is the redacted artifact carrying the true bytes' `arrival` hash.
+ * `failed`: custody did not complete; the original stays in the encrypted journal, redacted for
+ * every consumer, and no SecretRef exists to spend. Optional: older rows carry none. */
+export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
+export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
   reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true; askConflict?: string; lastNamedPerson?: string;
@@ -1667,10 +1687,27 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
     || o.exitCode !== null && (!Number.isSafeInteger(o.exitCode) || o.exitCode < 0)
     || o.outputTokens !== null && (!Number.isSafeInteger(o.outputTokens) || o.outputTokens < 0)
-    || ![null, 'timeout', 'size', 'output-cap'].includes(o.localLimit)
+    || ![null, 'timeout', 'size', 'output-cap', 'memory', 'processes', 'cpu', 'aggregate', 'capacity'].includes(o.localLimit)
     || ![null, 'result', 'other'].includes(o.type)
     || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
-    || ![null, true, false].includes(o.isError)) throw Error('preview journal: call outcome malformed');
+    || ![null, true, false].includes(o.isError)
+    || o.resources !== undefined && !validLaunchResources(o.resources)) throw Error('preview journal: call outcome malformed');
+}
+function validLaunchResources(r: LaunchResources): boolean {
+  const holds = ['cpuPerProcess', 'handlesPerProcess', 'processGrowth', 'treeHandles', 'memory', 'treeCpu'];
+  return !!r && typeof r === 'object' && !!r.enforcement && Object.keys(r.enforcement).length === holds.length
+    && holds.every(key => ['hard', 'sampled', 'unavailable', 'unsupported'].includes((r.enforcement as Record<string, string>)[key]!))
+    && [r.peakMemoryBytes, r.peakProcesses, r.treeCpuMilliseconds, r.leakedDescendants].every(n => Number.isSafeInteger(n) && n >= 0)
+    && ['none', 'complete', 'partial', 'failed'].includes(r.census) && ['verified', 'unconfined', 'unresolved'].includes(r.cleanup)
+    && (r.uidProcesses === undefined || r.uidProcesses.state === 'hard' && /^uid:\d+$/u.test(r.uidProcesses.subject)
+      && Number.isSafeInteger(r.uidProcesses.limit) && r.uidProcesses.limit > 0
+      || r.uidProcesses.state === 'unavailable' && r.uidProcesses.subject === null && r.uidProcesses.limit === null)
+    && (r.admission === undefined || ['answer', 'review', 'maintenance'].includes(r.admission.work)
+      && Number.isSafeInteger(r.admission.concurrent) && r.admission.concurrent >= 1
+      && Number.isSafeInteger(r.admission.waitedMs) && r.admission.waitedMs >= 0)
+    && (r.membership === undefined || ['working-area-joined', 'unconfined'].includes(r.membership))
+    && (r.allocation === undefined || typeof r.allocation.set === 'string' && /^allocation:sha256:[a-f0-9]{64}$/u.test(r.allocation.set)
+      && ['returned', 'reserved'].includes(r.allocation.state));
 }
 
 /** The one outbound intent a send outcome settles, with its receipt if any. */
@@ -1728,7 +1765,10 @@ export interface ModelCallCounts { total: number; byJudgment: Record<string, num
 const emptyModelCalls = (): ModelCallCounts => ({ total: 0, byJudgment: {}, byOutcome: {}, usageUnknown: 0, last: [] });
 function checkIntakeWriter(view: JournalView, row: Extract<JournalRecord, { kind: 'intake' }>): void {
   if (row.writer !== undefined && (!row.accepted || row.writer.kind !== 'person' || row.writer.id !== view.genesis.operator
-    || !Object.values(TELEGRAM_ADAPTER).includes(row.writer.adapter) || !writerBoundToRaw(row.writer, row.raw)))
+    || !Object.values(TELEGRAM_ADAPTER).includes(row.writer.adapter)
+    // Rule 100 with Rules 28/29: a custodied row carries redacted bytes; its writer is bound to the
+    // capture of the bytes that actually arrived, whose hash the row records as `arrival`.
+    || !writerBoundToRaw(row.writer, row.raw, row.custody?.state === 'stored' ? row.custody.arrival : undefined)))
     throw Error('preview journal: intake writer refused');
 }
 function checkSendOutcome(view: JournalView, row: Extract<JournalRecord, { kind: 'send-outcome' }>): void {
@@ -1839,6 +1879,9 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     // turn: a stranger can never spend the operator's reserve (Rules 14, 15).
     if (row.reserve && !row.accepted) { view.cursor = Math.max(view.cursor, row.cursor); return; }
     if (row.thread !== undefined && !(Number.isSafeInteger(row.thread) && row.thread > 0)) throw Error('preview journal: invalid thread');
+    if (row.custody !== undefined && !(row.custody.state === 'failed' || row.custody.state === 'stored'
+      && /^sha256:[0-9a-f]{64}$/u.test(row.custody.arrival) && typeof row.custody.capture === 'string' && Array.isArray(row.custody.secrets)
+      && row.custody.secrets.every(name => typeof name === 'string'))) throw Error('preview journal: intake custody malformed');
     if (row.editOf !== undefined && (!row.accepted || !row.replaces || !view.turns.get(row.editOf)?.accepted
       || !view.turns.get(row.replaces)?.accepted || row.update <= view.turns.get(row.replaces)!.update))
       throw Error('preview journal: edit lineage refused');
@@ -1846,6 +1889,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
       ...(row.writer === undefined ? {} : { writer: row.writer }),
       ...(row.thread === undefined ? {} : { thread: row.thread }),
+      ...(row.custody === undefined ? {} : { custody: row.custody }),
       ...(row.editOf === undefined ? {} : { editOf: row.editOf, replaces: row.replaces }),
       ...(row.reserve ? { reserve: true as const } : {}) };
     view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor);
@@ -1949,6 +1993,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     view.callOutcomeCounts.set('total', (view.callOutcomeCounts.get('total') ?? 0) + 1);
     view.callOutcomeCounts.set(`role:${row.role}`, (view.callOutcomeCounts.get(`role:${row.role}`) ?? 0) + 1);
     view.callOutcomeCounts.set(category, (view.callOutcomeCounts.get(category) ?? 0) + 1);
+    // Durable repair facts: leaked descendants reclaimed, and launches whose cleanup stayed unresolved.
+    if (o.resources?.leakedDescendants) view.callOutcomeCounts.set('leaked-descendants',
+      (view.callOutcomeCounts.get('leaked-descendants') ?? 0) + o.resources.leakedDescendants);
+    if (o.resources?.cleanup === 'unresolved') view.callOutcomeCounts.set('cleanup-unresolved',
+      (view.callOutcomeCounts.get('cleanup-unresolved') ?? 0) + 1);
     view.callOutcomes.push(row); if (view.callOutcomes.length > 10) view.callOutcomes.shift();
     return;
   }
@@ -2885,7 +2934,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       append(initial);
     }
     if (!readOnly && size > Math.max(compactBytes, snapshotBase * 2)) compact();
-    return { get view() { return view!; }, get size() { return size; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter,
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
@@ -3118,6 +3167,8 @@ export interface PreviewPorts {
     | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
   retrospectiveEvidence?(): RetroSiblingEvidence;
+  /** Rule 100: vault-first custody of the credentials in a verified operator message, before it is recorded. */
+  secrets?: { custody(input: { text: string; raw: string; source: string }): { text: string; raw: string; custody?: IntakeCustody } };
   boundary?(stage: string): void;
   /** Optional semantic stage of the recall owner (`composeRecall`). Ordinary conversation reserves
    * no helper spend (Part 21 §7), so a charging port is refused as over budget; none is bound live. */
@@ -3241,8 +3292,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const accepted = parsed.accepted;
       if (update.edited_message && accepted && editOf === undefined) parsed.text = `${UNLINKED_EDIT_FLAG}\n${parsed.text}`;
       const cursor = update.update_id + 1;
-      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? parsed.text : '',
-        raw: JSON.stringify(update), accepted, cursor, at: ports.now(),
+      const custody = accepted && ports.secrets
+        ? ports.secrets.custody({ text: parsed.text, raw: JSON.stringify(update), source: parsed.id }) : null;
+      journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? custody?.text ?? parsed.text : '',
+        raw: custody?.raw ?? JSON.stringify(update), accepted, cursor, at: ports.now(),
+        ...(custody?.custody ? { custody: custody.custody } : {}),
         ...(accepted && principal ? { writer: writerRecord(principal) } : {}),
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
         ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }),
@@ -4336,7 +4390,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
         guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
-      capability: `Private preview: answers, plus what the operator explicitly asked you to do at a later time, answered then as a reply; nothing else unprompted; no tools. You have durable memory in this trial's encrypted local journal: accepted turns, summaries and validated memory changes survive runner restarts and span its topics. The verified operator can directly ask you to correct or forget a recorded fact; later packets withhold the old claim, and the original audit record remains. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown. A saved date within 48 hours may get one short clause in the next ordinary reply, remembered across restarts.`
+      // What you can do is the generated capability-note source; this field carries only how to use the packet.
+      capability: `Your capabilities are listed in the capability-note source, generated from the register; nothing else is available. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
         // Hold guidance rides only while a held item is visible (history, recall, or today's status); exact-unit guidance only with a number carrying a unit or currency.
         + (shownTurns.some(item => item.wasHeld || item.heldNoticeIntent !== undefined) || journal.view.heldTurns.size > 0
           || journal.view.awayEvents.some(event => event.kind === 'hold' && now - event.at < 26 * 3_600_000) ? ' History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it.' : '')

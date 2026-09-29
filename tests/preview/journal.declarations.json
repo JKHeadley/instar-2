@@ -1,0 +1,396 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-conversation",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.turns.accepted",
+        "preview.replies.sent",
+        "preview.replies.unknown"
+      ],
+      "gate": {
+        "test": "PREVIEW-CONVERSATION",
+        "deadline": 1793404800000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      14,
+      39,
+      77,
+      84,
+      89
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-durable-memory",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.memory.changes",
+        "preview.memory.withheld",
+        "preview.summaries"
+      ],
+      "gate": {
+        "test": "PREVIEW-DURABLE-MEMORY",
+        "deadline": 1793404800000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      7,
+      39,
+      84,
+      85
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-status-command",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.status.requests"
+      ],
+      "gate": {
+        "test": "PREVIEW-STATUS-COMMAND",
+        "deadline": 1793404800000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      39,
+      84
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-upcoming-date-mention",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.dated.mentions"
+      ],
+      "gate": {
+        "test": "PREVIEW-UPCOMING-DATE",
+        "deadline": 1793404800000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      39,
+      84
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-requested-actions",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.requested-actions.requested",
+        "preview.requested-actions.sent"
+      ],
+      "gate": {
+        "test": "PREVIEW-REQUESTED-ACTIONS",
+        "deadline": 1793404800000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      8,
+      39,
+      83,
+      84,
+      87
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-owned-obligations",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.obligations.open",
+        "preview.obligations.oldest-unfinished",
+        "preview.blockers.recheck-due"
+      ],
+      "gate": {
+        "test": "PREVIEW-OWNED-OBLIGATIONS",
+        "deadline": 1793404800000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      8,
+      39,
+      83,
+      84,
+      93,
+      99
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.openPreviewJournal",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "compacts",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Single-machine supported installation (P-08): the preview trial runs on one machine with no enrolled peer, so no replica exists; cross-machine sharing of this store is not built. Compaction writes a verified replacement that retains every original record."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      33
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.gate",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "criticality": "The operator's stop, and the trial expiry the operator granted in advance, end all model calls and sends; nothing is dispatched after either.",
+      "failDirection": "closed",
+      "preservesInput": "encrypted preview journal: admitted turns stay recorded and pending",
+      "inspectedBy": "PREVIEW-TRIAL-GATES"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      66,
+      95
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.pollGate",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "criticality": "Resource ceilings recorded in the journal: once the trial's turn, reply or journal-byte bound is reached, new polling stops. The model-call cap does not stop polling (status stays reachable); it refuses new model calls elsewhere.",
+      "failDirection": "closed",
+      "preservesInput": "Telegram retains unpolled updates; the journal keeps every admitted turn",
+      "inspectedBy": "PREVIEW-TRIAL-GATES"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      60,
+      66,
+      95
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.renewJournalExpiry",
+    "kind": "operator actions",
+    "status": "live",
+    "requiredFacts": {
+      "surface": "Host command line on the trial machine only (journal-agent.mjs). No phone surface and no pre-filled approval request exist yet (Rules 79, 82): owned residue for constitutional build 5.",
+      "request": {
+        "action": "renew-expiry",
+        "subject": "the preview trial's end time, recorded in the encrypted journal",
+        "parameters": [
+          {
+            "name": "activation-record",
+            "value": "a reviewed subscription activation naming this trial, configuration and new expiry"
+          },
+          {
+            "name": "expires-at",
+            "value": "the new expiry, which must equal the activation's"
+          },
+          {
+            "name": "authority",
+            "value": "who authorized the renewal, recorded with it"
+          }
+        ]
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "operator",
+      "surface": "device",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      79,
+      82
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.raiseJournalCaps",
+    "kind": "operator actions",
+    "status": "live",
+    "requiredFacts": {
+      "surface": "Host command line on the trial machine only (journal-agent.mjs). No phone surface and no pre-filled approval request exist yet (Rules 79, 82): owned residue for constitutional build 5.",
+      "request": {
+        "action": "raise-caps",
+        "subject": "the preview trial's model-call, reply, turn and journal-byte limits, recorded in the encrypted journal",
+        "parameters": [
+          {
+            "name": "max-calls",
+            "value": "model-call limit (unchanged if omitted)"
+          },
+          {
+            "name": "max-replies",
+            "value": "reply limit (unchanged if omitted)"
+          },
+          {
+            "name": "max-turns",
+            "value": "turn limit (unchanged if omitted)"
+          },
+          {
+            "name": "max-context-bytes",
+            "value": "journal-byte limit (unchanged if omitted)"
+          },
+          {
+            "name": "authority",
+            "value": "who authorized the change, recorded with it"
+          }
+        ]
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "money",
+      "reversibility": "reversible",
+      "reach": "operator",
+      "surface": "device",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      79,
+      82
+    ],
+    "holds": []
+  }
+]

@@ -17,7 +17,8 @@ export interface ProductionProviderIO {
   executableBytes(path: string): Uint8Array;
   execute(input: Readonly<{ executable: string; args: readonly string[]; cwd: string;
     env: Readonly<Record<string, string>>; stdin: string; timeout: number; maxBytes: number }>):
-    Promise<Readonly<{ code: number | null; limited: boolean; localLimit?: 'timeout' | 'size' | null;
+    Promise<Readonly<{ code: number | null; limited: boolean;
+      localLimit?: 'timeout' | 'size' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
       stdout: string; stdoutBytes: Uint8Array }>>;
 }
 

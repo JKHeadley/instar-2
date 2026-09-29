@@ -68,10 +68,24 @@ export function buildRuleGraph(register: GeneratedRegister, branch: string, runs
     }
     const edges: { rule: number; holder: string; class: RuleGraph['edges'][number]['class']; portion?: string; remainder?: string }[] = [];
     const loops: { id: string; rule: number; holder: string | null; dueBy: number; part: number | null; owner: string; overdueAction: string }[] = [];
+    // Rule 69: an inactive entry's governing references still resolve, against every
+    // rule version the register retains (retired rules stay as history).
+    const known = new Set(register.entries.filter(e => e.declaration.kind === 'rules').map(e => number(e.declaration.requiredFacts.number, 'rule.number')));
     for (const { declaration: d } of register.entries) {
       // History stays in the register. Retired holders have no current power.
       // Dark/soaking holders likewise cannot establish live enforcement.
-      if (d.status !== 'live') continue;
+      if (d.status !== 'live') {
+        for (const n of [...d.standards, ...d.holds.map(h => h.rule)]) requireThat(known.has(n), `P3-NF-13: ${d.status} ${d.id} names missing rule ${n}`);
+        // A dark or soaking entry's declared debt stays owned and deadline-checked: its deferred
+        // hold becomes a loop, never an edge (it holds nothing while inactive). Retired history does not.
+        if (d.status !== 'retired') for (const h of d.holds) if (h.class === 'deferred') {
+          const shape = register.shape.kinds.find(k => k.name === d.kind);
+          requireThat(shape?.holder && shape.enforceable.includes(h.rule), `P3-NF-18: ${d.kind} may not enforce ${h.rule}`);
+          requireThat(register.shape.parts.includes(h.part), `P3-NF-24: unknown deferred part ${h.part}`);
+          loops.push({ id: `deferred:${d.id}:${h.rule}`, rule: h.rule, holder: d.id, dueBy: h.ceiling, part: h.part, owner: h.owner, overdueAction: h.overdueAction });
+        }
+        continue;
+      }
       for (const standard of d.standards) requireThat(byNumber.has(standard), `P3-NF-13: standard ${standard} missing for ${d.id}`);
       for (const h of d.holds) {
         requireThat(byNumber.has(h.rule), `P3-NF-13: holder ${d.id} names missing rule ${h.rule}`);
@@ -133,6 +147,12 @@ export function checkGraphLoops(graph: RuleGraph, context: RegisterContext) {
     return true;
   });
 }
+/** Rule 56's registered model-map age check: an entry verified at `verifiedAt` stays current for
+ * `freshFor` from then, never from the future; older than its window, or a non-positive window, fails.
+ * The register's deadline check and every live doorway-map reader decide freshness here. */
+export function modelEntryFresh(verifiedAt: number, freshFor: number, now: number): boolean {
+  return freshFor > 0 && verifiedAt <= now && now - verifiedAt <= freshFor;
+}
 export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, landedParts: readonly number[], now: Clock, context: RegisterContext) {
   return checked('DeadlineCheck', { graph, register, landedParts, now }, context, () => {
     const clock = take(decodeMeasurement('clock', now, context.types));
@@ -147,7 +167,7 @@ export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, la
       }
       if (d.kind === 'model doorways') for (const raw of list(d.requiredFacts.models, 'models')) {
         const model = object(raw); const at = number(model.verifiedAt, 'model verifiedAt'); const window = number(model.freshFor, 'model freshness');
-        requireThat(window > 0 && at <= now.value && now.value - at <= window, `model map stale for ${d.id}`);
+        requireThat(modelEntryFresh(at, window, now.value), `model map stale for ${d.id}`);
       }
       if (d.kind === 'model doorways' && d.status === 'live') {
         const subsidy = object(d.requiredFacts.subsidy!); const at = number(subsidy.updatedAt, 'subsidy.updatedAt');

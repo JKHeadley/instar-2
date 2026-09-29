@@ -1,0 +1,159 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.reviewReply",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "rungs": [
+        {
+          "decidesAlone": "no",
+          "criticality": "A reply the operator reads cannot be unsent; a contextual reviewer judges it before release. When the review gives no verdict and Jev flagged a credential, Jev itself gave no completed verdict, or the spend cap refused the review, the reply is not sent.",
+          "failDirection": "closed",
+          "preservesInput": "encrypted preview journal: the turn and its candidate reply stay held and pending",
+          "model": "preview-subscription-claude"
+        },
+        {
+          "decidesAlone": "no",
+          "criticality": "Rule 86: Jev is a low-context filter and may hold a reply alone only for a secret. When Jev completed with non-credential flags only and the contextual review was attempted but gave no verdict, those flags only signal and the reply is sent once (reachability to the operator fails open, Rule 95).",
+          "failDirection": "open",
+          "preservesInput": "encrypted preview journal: the Jev row, the unavailable review row and the reply intent stay recorded; the release is counted on status (reviewUnavailableReleases)",
+          "model": "preview-subscription-claude"
+        }
+      ],
+      "inspectedBy": "PREVIEW-REPLY-CHECK"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      14,
+      66,
+      86,
+      95
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.parseReplyReviewVerdict",
+    "kind": "judgment points",
+    "status": "live",
+    "requiredFacts": {
+      "floor": {
+        "type": "ActionFloor",
+        "schemaVersion": 1,
+        "actions": [
+          "preview.reply.hold",
+          "preview.reply.release"
+        ],
+        "default": "preview.reply.hold"
+      },
+      "benchmark": "unmeasured"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      57
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.parseJevResponse",
+    "kind": "parsers",
+    "status": "live",
+    "requiredFacts": {
+      "fixture": "PREVIEW-CAPTURE-JEV-RESPONSE",
+      "authenticationClass": [
+        {
+          "stimulusType": "jev-verdict",
+          "class": "channel-attested"
+        }
+      ],
+      "eventIdAuthority": {
+        "mintedBy": "the runner: one request per reply check",
+        "uniquenessScope": "one reply-check attempt",
+        "replayWindow": 0,
+        "fallbackFingerprint": {
+          "policy": "none",
+          "basis": "the response is consumed only by the request that fetched it"
+        }
+      },
+      "ackPolicy": "never"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      36
+    ],
+    "holds": [
+      {
+        "rule": 36,
+        "class": "deferred",
+        "part": 7,
+        "ceiling": 1793404800000,
+        "owner": "echo (agent)",
+        "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-subscription-claude",
+    "kind": "model doorways",
+    "status": "live",
+    "requiredFacts": {
+      "models": [
+        {
+          "id": "claude-sonnet-5",
+          "verifiedAt": 1790519680619,
+          "freshFor": 2885119381
+        }
+      ],
+      "billing": "subscription",
+      "subsidy": {
+        "ratio": 1,
+        "basis": "estimated",
+        "updatedAt": 1790519680619,
+        "freshFor": 2885119381
+      }
+    },
+    "standards": [
+      56
+    ],
+    "holds": []
+  }
+]

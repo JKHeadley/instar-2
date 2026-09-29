@@ -8,7 +8,7 @@
       "sourceSha256": "b86b75fa00975c005502d2382c8cf4062863c54c3a9224a8acff7ecf4177f4c1",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+      "reviewedSourceSha256": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-round3.test.ts",
@@ -37,7 +37,7 @@
       "sourceSha256": "b86b75fa00975c005502d2382c8cf4062863c54c3a9224a8acff7ecf4177f4c1",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+      "reviewedSourceSha256": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-round3.test.ts",
@@ -66,7 +66,7 @@
       "sourceSha256": "b86b75fa00975c005502d2382c8cf4062863c54c3a9224a8acff7ecf4177f4c1",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+      "reviewedSourceSha256": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-round3.test.ts",
@@ -88,7 +88,7 @@
       "sourceSha256": "b86b75fa00975c005502d2382c8cf4062863c54c3a9224a8acff7ecf4177f4c1",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+      "reviewedSourceSha256": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-round3.test.ts",
@@ -124,7 +124,7 @@
       "sourceSha256": "b86b75fa00975c005502d2382c8cf4062863c54c3a9224a8acff7ecf4177f4c1",
       "minimumExecutedAssertions": 6,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+      "reviewedSourceSha256": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-round3.test.ts",
@@ -171,7 +171,7 @@
       "sourceSha256": "b86b75fa00975c005502d2382c8cf4062863c54c3a9224a8acff7ecf4177f4c1",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+      "reviewedSourceSha256": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-round3.test.ts",
@@ -200,7 +200,7 @@
       "sourceSha256": "b86b75fa00975c005502d2382c8cf4062863c54c3a9224a8acff7ecf4177f4c1",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+      "reviewedSourceSha256": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-round3.test.ts",
@@ -643,7 +643,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -668,7 +668,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -704,7 +704,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -740,7 +740,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -767,7 +767,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -800,7 +800,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -835,7 +835,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -870,7 +870,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -897,7 +897,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -924,7 +924,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -959,7 +959,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -992,7 +992,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1027,7 +1027,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1062,7 +1062,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1097,7 +1097,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1124,7 +1124,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1151,7 +1151,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1178,7 +1178,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1205,7 +1205,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1247,7 +1247,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1280,7 +1280,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1311,7 +1311,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1347,7 +1347,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 3,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1390,7 +1390,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1425,7 +1425,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1460,7 +1460,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1495,7 +1495,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1530,7 +1530,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1565,7 +1565,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1600,7 +1600,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1637,7 +1637,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1677,7 +1677,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1699,7 +1699,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1721,7 +1721,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1756,7 +1756,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1791,7 +1791,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1826,7 +1826,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1861,7 +1861,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 1,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1888,7 +1888,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1922,7 +1922,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1956,7 +1956,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -1988,7 +1988,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -2030,7 +2030,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 4,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -2072,7 +2072,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -2103,7 +2103,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 2,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -2145,7 +2145,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 129,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -2186,7 +2186,7 @@
       "sourceSha256": "540e340418f19337649d4b44a16ad61c538b9399e7154347f2f3109d65eb5406",
       "minimumExecutedAssertions": 34,
       "requiredObligations": "f9-requirements.md; original decision assertions and reached-cut/owner checks remain binding",
-      "reviewedSourceSha256": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
+      "reviewedSourceSha256": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
       "assertionSites": [
         {
           "file": "tests/rungraph/production-grounding-review.test.ts",
@@ -5242,7 +5242,7 @@
     "scripts/effect-file-captures.mjs": "45af01b2d645b362d6c7cd8e1cc2f625e765c894b6a467a8720965d43323b69c",
     "scripts/effect-replica-storage.mjs": "1312f8fd1e1508144473691687aab732ebe15fb722a593ddaeb16b60cdf6c6d0",
     "scripts/judgment-captures.mjs": "38cdf18a6ece53f4ad5a980f26655b325017a63dc2c8a1bf270722ac75860971",
-    "scripts/slice-assembly.mjs": "a1d27d9e1c9e485b1d630824e40f553a843f7b43b25b0e6fb97173247359cf89",
+    "scripts/slice-assembly.mjs": "11cab55dc4e6efbe8f9c4f98076d56f378ed690ae6b6e1d758975cf3408f31af",
     "scripts/slice-execution.mjs": "f40af84a920f46d0f1673576c8789a12ace9c13423e2642555d115ce8396e54d",
     "scripts/slice-schedule-record.mjs": "6a8a4315e3aa7bb71239cdd5159e247d1fc088527768dbd81d79634eb98c2de6",
     "scripts/slice-service.mjs": "62f29144d16b106ce046c595d7bc5045fed76066a991dd32137c52f048564387",
@@ -5255,13 +5255,13 @@
     "src/assembly/custody.ts": "f9933ae70d2738b84c39ffcf339395c2f6f7689be5337564dd98fb0f5250c77f",
     "src/assembly/grounding-capability.ts": "1d26b5d45c8ecdeced295109f5373ec63fa6c60621ba7994e6e6aaba3b12db18",
     "src/assembly/growth.ts": "44dfad8e203734992a185b013ec8811362a6ff75438b70ee4fc312992cf77838",
-    "src/assembly/harness.ts": "d9d4d808deb557683f370b54949dc03a14539d8e49c6c385f1c58c027e763c73",
+    "src/assembly/harness.ts": "0d420c90be35586852e51a0bba488ff3178a0adf81d61602375f3adaf3c6304e",
     "src/assembly/history.ts": "27be341923822c3e27cbf7395db8704d2a844e16e6382096e6941bca10b273e9",
-    "src/assembly/index.ts": "39559d85ecdc2fb1d3225d27d8d8d0ce17e5a7b548c2f202a6be5a13758e0149",
+    "src/assembly/index.ts": "f7749e7fde133163911d2674ad3ba1fd243e402fd4d4b4c1068a1565ac310c9c",
     "src/assembly/package.ts": "446effba83b5e4ce7367e3f789c02b661057eaee942de8de2cd25f23f5ac7c11",
     "src/assembly/persistence.ts": "0099bd62f7eb959d64940ab9915bf5d00c2d763f4917a49b81c58a4c59fab476",
     "src/assembly/production.ts": "7759045a6806b9ca868d20b8e494fe52d6730ef954c393fd50aa93dabdf3fc66",
-    "src/assembly/provider-invocation.ts": "41ac0f4d214829e96611239f302502bf4e6bf63f8e74fe76401abfa35c4b5d5a",
+    "src/assembly/provider-invocation.ts": "0ad1bcce7ce53e5f867e1de995a9f352c8eea865a3d0bcdaf0dee620c8184503",
     "src/assembly/records.ts": "759ffc816ee9f86bdf61c30b4aea353e874431baf3bbe87c545659f26ad794b2",
     "src/assembly/service.ts": "e557e2b047fb8f3b3d7ccbd6935baf19a3583bf1628e387b5d2616232e311a63",
     "src/assembly/storage.ts": "427a349c82602173919d76877faa4feec8daf2f91e644aa21325bafe5839db11",
@@ -5291,17 +5291,17 @@
     "src/facts/conflicts.ts": "a6eae4e40f43c17aac584505d3228c0ea4a05cde35835da3414653be06ca0609",
     "src/facts/contracts.ts": "876379bbb118668bf6e922adcbc804007113dab13d1805e80a68c78b69c54768",
     "src/facts/envelope.ts": "401de17d8176a3fdb723f522f60f41fb60f4c29b36f34a4cd9a2f5defd9e1c84",
-    "src/facts/historical.ts": "13d18b5d83299799f04fe92d35442735b9e67272556a797115625374421d3fb4",
+    "src/facts/historical.ts": "1b12503d005b2ff396fb031af3a96561f461c07755d5a0aa97f27b9bf3508ec9",
     "src/facts/index.ts": "95cde43c76ed09d1f6420d64a5f5e1577f5599058ccb7c2ca8a768467768dd16",
     "src/facts/owned.ts": "cf3b812f0beee88ef4288cf87aa23c2f30aaca37d1020a14852587c19869e159",
     "src/facts/prefix.ts": "7a8e38103948efe52ee9cba40fc0f3858beb154ee7c9d60c40efd21a5f5fbda4",
     "src/facts/replication.ts": "a2f23bfda7f9ee1424213f960305ebc08bd1e85eaa8889ab353f27d6396956ea",
     "src/facts/snapshot.ts": "705b9070345cde07b0b55ce1d89fc8e7032ea40e4c76139a5e842332bf90ce70",
-    "src/facts/store.ts": "16dbf9129d8727f2f41864978108d9b5ab02feb4630c72eecaef260a5ee03a40",
+    "src/facts/store.ts": "9ef536ddd6a6e96d15bdb389bef016616bc1e69ad0156ea5b3852558a6f34ac5",
     "src/facts/stores.ts": "7925a27add05d99e53713db2b175af1a16caab03262bcf9af5d37fe5e22c9a26",
     "src/facts/verification.ts": "4032ed045bd344bf5d862c70e999b12a5391d85147acc8713998592814e339f1",
     "src/facts/version-chain.ts": "62bee2ac936a6b0c86336a9eb122b6cc3eea1b184fea09abd6ecc28104b834d3",
-    "src/index.ts": "ed4350b8826f3913193d7e3b48b750dd6da8f46a491ea0d7577126b31810fe33",
+    "src/index.ts": "0b4e2035ca2abbc04d69b45113fd99665e24a524b006915a573337201dae86c3",
     "src/intake/boundary.ts": "3d3f2325e3ca3edc3f131e5e382104e5cd1b223661ace2cc8bd6d6a21e03b480",
     "src/intake/contracts.ts": "3e51cf3a2774e6ae9cbf01b40d6bc37b821468a428e6e66125c5ed10b5217b77",
     "src/intake/index.ts": "39238003978a713325282651956aabd67f9f6dc56e9defe46f5a8f654cdfb20b",
@@ -5309,10 +5309,10 @@
     "src/intake/records.ts": "ab2d1967601f60627b7cc73bbd5e865f0fa5eb41e2384aee97b7b3ac1e76cadf",
     "src/judgment/benchmark.ts": "accddec277cf533fcd9723cd1969a123cbc3e5f3a5f7e87b0f201e32d8442f10",
     "src/judgment/boundary.ts": "bc6a6dbb5cb49907f82ea000c6b478e587d56637ede06b0afe5e36b0d9ae1dfe",
-    "src/judgment/contracts.ts": "d9d4b58804d3719c57cedfe14f82eb0820984b92180ca271bbfa993cc7674ccc",
+    "src/judgment/contracts.ts": "f15ccc5ac9e03fe43258d3d2b2516d912beb98237e41a5cd4dad8a3301ee0a6c",
     "src/judgment/doorway.ts": "6c5816df41f04b2fafa828de65f616536c315a2c7e346c5ead4295bb35a8bd2c",
     "src/judgment/index.ts": "890a8f854933f96266cc18a8cf5e8b8479abf871fde88f77d3a73fea1664d9d2",
-    "src/judgment/model-adapter.ts": "f6af8b3789c0d6547013a684945d4c9bfb299d0c8469c30f6a57eb2033db2a41",
+    "src/judgment/model-adapter.ts": "03ad30835785bbc6661885f3c7e166511d5a981ddbe47f2f4110bdae035cd3ca",
     "src/judgment/provider-path.ts": "d7e047a26dc6c599134fe4a28c9df892d2db2cf2b7ca1d5b869964aaf2a3cc12",
     "src/judgment/records.ts": "7f252b1917f9416d83f53371a7e585fa5c243c3b46d5db76ceacdd4ad6579524",
     "src/operator/boundary.ts": "c011cd9d4daa194f02f79dc06465afcca7a9187c6e0f006a34d1583ab0c3f246",
@@ -5329,7 +5329,7 @@
     "src/register/fact-schema.ts": "aae18ddf069e54b065e0fc1799874a8815a663da2ed87146855a7522d08dcb62",
     "src/register/generator.ts": "638fde09f07160f0d1b3e35982ac31d8ec98f577734ed68846052d00ed2dbb00",
     "src/register/governance.ts": "3195ae1512e7c1de7ad50f20fc13d0540debd3b42e5a02a5fb705e0fde2c42aa",
-    "src/register/index.ts": "6417fef654d914320badbe01f72a7afe5ff463833426c7e781ece5174c1eb1d1",
+    "src/register/index.ts": "53df6badf5685a15bd8df011081c8be354dd510a0188a3c24e4531acb2e8440e",
     "src/register/landing.ts": "115b4e76af6175803107d1c4ace19132355bdfcfbcaeaa82ddb52f36722c4a5d",
     "src/register/owner-contracts.ts": "51098748a53c467d902355de5a1d511c9beca7d027ab23cdd7995bf95b772f7c",
     "src/register/records.ts": "41856d75860be6da16b821abd42af447a26052ad8936165720d64deb66e9217d",
@@ -5339,7 +5339,7 @@
     "src/register/shape.ts": "746f2edcd161b2d2c7a691b1687f55403fe5c93b660fca842bf5d7e7b04344ca",
     "src/register/types.ts": "29689a7bff925b048827fec4439405a3fb4549759847e9a874cb620df28e3fa3",
     "src/register/workflow.ts": "78fccb3d6f8ed731408491027d94e038d5b429d98f17eaed03a72b87163c1660",
-    "src/rulegraph/graph.ts": "efc760f2800843dda77a24d35e2824aabe10d2795c772762b9ed039bae0efff1",
+    "src/rulegraph/graph.ts": "694e1f4e9e506d4677a2c848557ad371b635ac3edb416ddcd30ddf1d93a22e5c",
     "src/rungraph/boundary.ts": "c2a0e46514e2eaf075d39ab8a1d73656aaf4f471125e7ab237241a77486a638e",
     "src/rungraph/closure-records.ts": "c8eddf77efe1152eaeeac164c7f23225337acd2fb28cb3667bbed582b3f24e94",
     "src/rungraph/closure-service.ts": "0416ecd45e68b999652b0b94645743d7c292bd5aacb0ce97cc4e30bed17f9597",
@@ -5347,7 +5347,7 @@
     "src/rungraph/closure.ts": "5afc6360411fd8b6dd094b2cfb0f26229de031a4805031d0461f52175f5889f4",
     "src/rungraph/graph.ts": "3a231c2dfe43f93f1393adf4e465e8dc2fc875ad830c7a5d53b3a7c3a5a56935",
     "src/rungraph/identity.ts": "4991589335752e0f570461eb2779ab119f9dca4068f476ccd981c7d02237c0e9",
-    "src/rungraph/index.ts": "64fd1e0d7eca682570918e0c2e7f37436282b58e57d25341e6c4a0fdac19ead8",
+    "src/rungraph/index.ts": "a78ad0d5dcfaa1d73793bf3391c1d15404e5bb1fcec8ff7c5be9bfed4f123352",
     "src/rungraph/limits.ts": "92f7906006b49e7e3d6cfd0c689330f6266431aa7c39fd2c8d1f894c280ff231",
     "src/rungraph/records.ts": "a19ee9e9080106855ab640724e852a860bb844cf3a24b0ba9eb5404cbc8a6f90",
     "src/rungraph/registration.ts": "1c2908672d417d1d877c7ee841c7e8637d366dfbda26938bc6291ab75b183c97",
@@ -5357,13 +5357,13 @@
     "src/terms/resolver.ts": "efd058896539703b9e4a8da3c46ae3a5a9cc69531af4154889a188ee66afe700",
     "src/transport/authority.ts": "4195abbcd97ea8102f37585c641be3f500081d0cbe1a80500f57fc2a0ac0497d",
     "src/transport/boundary.ts": "8134d27c4e1a6a2f1dbeb9521ee1a6781ee529f3859a8ab7e7b3df10a5e0d854",
-    "src/transport/contracts.ts": "8c62d90ca0484e3b0c1239ad8cc1fc50fec1a75622615322d80361d897bd207e",
-    "src/transport/index.ts": "db036b81f8ff002da27091ef04edcdbfeca3cc7c2957da4bb81544b045953cba",
+    "src/transport/contracts.ts": "115d8b9db5ed2621ca2a4ef391f92a72019c9bcb5050ac8a9c9c1913d28409a2",
+    "src/transport/index.ts": "264957199ba95c83be2c02dedaeae43e1b00f0de210b513f1308b5a8bcb5e411",
     "src/transport/provider-settlement.ts": "c6a125e5c8e1c2ec7f701bb8f81c75f040ffa15f021b9b9099f7f720400c1896",
     "src/transport/records.ts": "a7cb625291381a4bc25b9bbf470adb5f7f8479677b748e50049a4b2320a472aa",
     "src/transport/settlement.ts": "e475862f5bea5eeee74a43f0487aeef48cb4b0f33009f8054311451c457df10e",
     "src/transport/telegram.ts": "b786ae8e5cad8dfbc6a4d413f001e53a4e4eb93499c0559613cee217245274c6",
-    "src/types/internal.ts": "e1da286617812bd08fc4c147af2b1ebfe2e5054257f3cce1bbf840eea98d6d8f",
+    "src/types/internal.ts": "421809400af16f8bb177b189c836ae008143d3b2e8c0e4d3e384015b172fafb7",
     "src/types/operations.ts": "5b157569f9254f03cc7fe0436678c0e1d205491433a393487d5442bbff0bd2e5",
     "src/types/ports.ts": "2940c83c29f95dc8636bca69ea4d6cbe1d896b5213666c2b47d35c14c9a57a95",
     "src/types/values.ts": "d3d5304ee1ef7c4e975161fab5f456ae180a75a274e6e389fc6d09c22dde475e",
@@ -5377,14 +5377,14 @@
     "src/verification/reconciliation.ts": "cb927f4990d05f480a6c6cf73ee8f234be955e348ea3c726969e29254ff1c910",
     "src/verification/records.ts": "a77e8995223a92b3b6d934b1c96fb79c8fa49d16605361b9f592dea72300e4e4",
     "src/verification/retention.ts": "77be6bea49a5e29eebd3a56c8b220afdd3d957edcb86c5d9ae121f31ad15bb26",
-    "src/verification/review.ts": "f4f885f6bbce74091f026183e95aa2cafeff0a1c8b3fd1612776f86991257b51",
+    "src/verification/review.ts": "9ad93ee5dc0f26ed234d57fcec14b72802fd51330f5cc42e8c36e244f1234efe",
     "src/verification/runtime.ts": "9a67d0b08ac9597a14ae59cf99c3ade3743177d3c0ea765d2cd9289d72f655f0",
     "src/verification/service.ts": "a74b9e34923ecc9c2865e9f31761276c3ba1e7165166d537dac7b69311fd49fc",
     "src/verification/storage.ts": "ceb0e81812f89ba58d54c6bf8c0c57a192dd2549fb6ce0a0a1bb0dd73d0d88b2",
     "src/verification/traces.ts": "f0e0f9dc44f37d2372a44391e1447e15935d454277279db8fc7016d423032acf",
     "tests/assembly/fixture.ts": "ca7c35798b577f6799e47940078651f142405deb72a1f0b7dfe916bb129cd759",
     "tests/assembly/genuine-production-fixture.ts": "d5508e2258f0476636e62aa31bb8ef05d3237e8714c74b1dda535997ff6fcd6c",
-    "tests/assembly/live-input-owner-fixture.ts": "e84ce2f5d82c5ef08272c5e0e36396b1e8c09e441c6245ce1d63c5d5f73be04d",
+    "tests/assembly/live-input-owner-fixture.ts": "bfad8f255b491cf39c0a9a2d881af25d3199b54500c6c8515cad6e505947a758",
     "tests/assembly/production-fixture.ts": "686a3c003e2440cfee1095617db25c6f6ac4408a47deb81d6afac71239373221",
     "tests/assembly/production-grounding-evidence.mjs": "fe04bc821f5fc640c9506565dcbb22589b774f4f8b8d03acbb0a139bb0e48896",
     "tests/assembly/production-grounding-process-evidence.mjs": "0ef7c60e58ca3d414d900291e57730fed3c5d61ca667875a7e133ea811eb6963",
@@ -5433,8 +5433,8 @@
     "tests/rungraph/production-grounding-adjudication-owner-fixture.ts": "f5f5f0172a660f65eb0a3b083b723c927da4bf1cfa7e01c560281e156019ba01",
     "tests/rungraph/production-grounding-adjudication.test.ts": "1acce235b4238a3148d990715c97dcb3f0665be359bb3f60ca8beac26ab073cc",
     "tests/rungraph/production-grounding-boundary.test.ts": "2816732e92b999fbe9337c8a44c65bc3cd24a1318944319ec11a3bfb614f991c",
-    "tests/rungraph/production-grounding-review.test.ts": "1d5c3743dcd47bb4e60d7d874be84a02a90caae1238188d5cf3ad951c88c5cd3",
-    "tests/rungraph/production-grounding-round3.test.ts": "6f7297b2c22373d64c2a780378ff7960ef62c210cc458aa05ca19f4c3915c322",
+    "tests/rungraph/production-grounding-review.test.ts": "36693602f19b2fc339cd7130b819f46006b4439694ed593d52f05d3080ec07fb",
+    "tests/rungraph/production-grounding-round3.test.ts": "2a779fcd53fad9aa3030806f73e8c97f1ed08c114ef62b98febe38b49c71434b",
     "tests/slice/acceptance.ts": "6b9bec57ae1589e147f69f618e79dd53bf4a3b6dfc417a38c1e7b9b95f95b87b",
     "tests/slice/boundaries.ts": "6fed144bb7907e98201b590d1cc6fc5c922ed72c02312cbb708e047d89ba781b",
     "tests/slice/harness.ts": "d075d61483dc3f965cb4859fc43b2ae0b5304e769acab6c28a9c0b562b0b48dc",

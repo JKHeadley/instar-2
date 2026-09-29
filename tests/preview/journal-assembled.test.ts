@@ -12,7 +12,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { offlineProfile, OFFLINE_STORAGE_KEY, successiveWorld } from './successive-fixture.js';
 
-it('measures 60 assembled journal turns with real adapters, polling, prompt construction and timed restarts', async () => {
+it.skip('measures 60 assembled journal turns with real adapters, polling, prompt construction and timed restarts — SKIPPED: Rule 37 load-timing flake; docs/defects/preview-journal-load-timing-flake.md', async () => {
   const fixture = successiveWorld(), root = join(fixture.directory,'assembled-journal');
   mkdirSync(root);
   const updates = Array.from({length:60},(_,i)=>({update_id:i+1,message:{

@@ -1,8 +1,8 @@
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { runChild } from './async-child.js';
 
 const runner = join(process.cwd(), 'node_modules/.bin/vite-node');
 const worker = 'tests/harness-adapters/a2-round12-confirmation-worker.ts';
@@ -16,10 +16,10 @@ const SUBJECT_FIELDS = [
   'processIdentity',
 ] as const;
 
-function seedAndRecover(cut: 'normal' | 'kill', field: string, history: 'prefix' | 'full') {
+async function seedAndRecover(cut: 'normal' | 'kill', field: string, history: 'prefix' | 'full') {
   const directory = mkdtempSync(join(tmpdir(), `p13-a2-r12-${cut}-${field}-${history}-`));
-  const seed = spawnSync(runner, [worker, 'seed', cut, directory, field, history], {
-    cwd: process.cwd(), encoding: 'utf8', timeout: 40_000,
+  const seed = await runChild(runner, [worker, 'seed', cut, directory, field, history], {
+    cwd: process.cwd(), timeout: 40_000,
   });
   expect(seed.signal, `${cut}/${field}/${history}: ${seed.stderr}`).toBe(cut === 'kill' ? 'SIGKILL' : null);
   expect(seed.status, `${cut}/${field}/${history}: ${seed.stderr}`).toBe(cut === 'kill' ? null : 0);
@@ -31,18 +31,18 @@ function seedAndRecover(cut: 'normal' | 'kill', field: string, history: 'prefix'
       candidateCount: 1,
     });
   }
-  const recovered = spawnSync(runner, [worker, 'recover', cut, directory, field, history], {
-    cwd: process.cwd(), encoding: 'utf8', timeout: 40_000,
+  const recovered = await runChild(runner, [worker, 'recover', cut, directory, field, history], {
+    cwd: process.cwd(), timeout: 40_000,
   });
   expect(recovered.status, `${cut}/${field}/${history}: ${recovered.stderr}`).toBe(0);
   return JSON.parse(recovered.stdout);
 }
 
-it('A2-E2E R12-F1-RETAINED-CANDIDATE-RESTARTS P13-NF-24 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 all 14 contradictory confirmations refuse after final-fsync normal and SIGKILL restart', () => {
+it('A2-E2E R12-F1-RETAINED-CANDIDATE-RESTARTS P13-NF-24 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 all 14 contradictory confirmations refuse after final-fsync normal and SIGKILL restart', async () => {
   let scenarios = 0;
   for (const cut of ['normal', 'kill'] as const) {
     for (const field of SUBJECT_FIELDS) {
-      const result = seedAndRecover(cut, field, 'prefix');
+      const result = await seedAndRecover(cut, field, 'prefix');
       expect(result, `${cut}/${field}`).toMatchObject({
         nineRead: 'Success',
         tenRead: 'Success',
@@ -58,11 +58,11 @@ it('A2-E2E R12-F1-RETAINED-CANDIDATE-RESTARTS P13-NF-24 P13-NF-25 P13-NF-28 P13-
   expect(scenarios).toBe(14);
 }, 180_000);
 
-it('A2-E2E R12-F1-RETAINED-CANDIDATE-CONTROLS P13-NF-28 P13-NF-38 P13-NF-51 unchanged confirmation remains unknown on an older prefix and poisoned on full history after both restart forms', () => {
+it('A2-E2E R12-F1-RETAINED-CANDIDATE-CONTROLS P13-NF-28 P13-NF-38 P13-NF-51 unchanged confirmation remains unknown on an older prefix and poisoned on full history after both restart forms', async () => {
   let scenarios = 0;
   for (const cut of ['normal', 'kill'] as const) {
     for (const history of ['prefix', 'full'] as const) {
-      const result = seedAndRecover(cut, 'control', history);
+      const result = await seedAndRecover(cut, 'control', history);
       expect(result, `${cut}/${history}`).toMatchObject({
         nineRead: 'Success',
         tenRead: 'Success',

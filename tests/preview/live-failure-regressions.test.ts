@@ -1,10 +1,11 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE, openPreviewJournal,
   type PreviewPorts } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(61);
@@ -169,7 +170,7 @@ it('memory denial: full-context review objects to a false no-memory claim and th
       // cint-2: unsure on every non-secret rule; a credential flag would hold under Rule 86's secrets exception.
       .map(id => [id, { type: 'noul', noul: id === 'credential' ? 0.01 : 0.5 }])) }, latencyMs: 0 }),
     escalate: async (candidate, _id, originalPrompt, reviewRules, _deadline, operation) => {
-      expect(originalPrompt).toContain("You have durable memory in this trial's encrypted local journal");
+      expect(originalPrompt).toContain('keeps accepted messages, summaries and validated memory changes in one encrypted local journal');
       // The revised candidate's own review asks only the held classes (Rules 6, 8).
       expect(reviewRules).toContain(operation === 'revision' ? 'defers_work' : 'claims_blocked');
       return candidate.includes('memory is unavailable')
@@ -179,11 +180,16 @@ it('memory denial: full-context review objects to a false no-memory claim and th
     }, revise: async ({ ruleIds }) => { expect(ruleIds).toEqual(['claims_blocked']);
       return { state: 'complete' as const, text: 'Yes: this trial keeps a durable journal of what you tell me.' }; },
     elapsedMs: () => 0 };
+    // As on the live runner, every turn carries the generated capability-note source.
+    ports.sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, { providerAttempts: 16, expiresAt: Date.UTC(2026, 9, 5) }).sources;
     const worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Can you remember what I tell you?')]); await worker.drain();
     worker.intake([update(2, 'What can this preview remember?')]); await worker.drain();
-    // The memory self-description piece states the trial memory as durable, journal-scoped memory.
-    expect(JSON.parse(packets[0]!).capability).toContain("You have durable memory in this trial's encrypted local journal");
+    // The memory self-description is the generated capability-note source every live turn carries;
+    // the packet field points at it rather than repeating a hand-written copy.
+    expect(JSON.parse(packets[0]!).capability).toContain('capability-note source');
+    expect(JSON.parse(packets[0]!).sources.find((s: { id: string }) => s.id === 'capability-note').text)
+      .toContain('keeps accepted messages, summaries and validated memory changes in one encrypted local journal');
     expect(sent).toEqual(['PREVIEW — Yes: this trial keeps a durable journal of what you tell me.',
       'PREVIEW — I can use this trial journal to remember earlier turns.']);
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['claims_blocked'], revised: true });

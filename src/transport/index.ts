@@ -13,3 +13,6 @@ export type { ThreadlineAdapter, ThreadlineFrame, ThreadlineRelay, ThreadlineKey
   ThreadlineSealedBox, ThreadlinePayload } from './threadline.js';
 export { createThreadlineKeyCustody, threadlineIdentityFromSeeds } from './threadline-custody.js';
 export type { ThreadlineIdentity, ThreadlinePeerKeys } from './threadline-custody.js';
+export type { ResourceSetSpine } from './resource-set.js';
+export { createResourceSetAuthority, createResourceSetSpine, registerResourceSetBodies, resourceSetSchemas, resourceSetRows,
+  resourceDomainHead, resourceDebited, resourceSetFactKind, setDomains } from './resource-set.js';

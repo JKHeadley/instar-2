@@ -54,7 +54,7 @@ const raw = fact => fact.body.record;
 // ---------------------------------------------------------------------------
 // Source packet: exact, pinned, versioned excerpts with provenance.
 
-export { SOURCE_EXCERPTS, CAPABILITY_NOTE_DATE, capabilityNote, sourcePacket, SOURCE_PINS } from './briefing.js';
+export { SOURCE_EXCERPTS, capabilityBriefing, sourcePacket, SOURCE_PINS } from './briefing.js';
 
 // ---------------------------------------------------------------------------
 // Durable successive sidecar: per-turn prepared packet references, holds, cursor.

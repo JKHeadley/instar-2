@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "owner": "preview",
+  "fixtures": [
+    {
+      "id": "PREVIEW-CONVERSATION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-agent.test.ts",
+        "hash": "sha256:c95af1d44a6b6af68bec120ca69d69e3967bda65f73845d92c025fcf09cd2c3f"
+      }
+    },
+    {
+      "id": "PREVIEW-DURABLE-MEMORY",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-memory-correction.test.ts",
+        "hash": "sha256:6e64cabe3af2d9d7dc92294ac85ef98b60c68ab512ebf441ba628d83c6e526d5"
+      }
+    },
+    {
+      "id": "PREVIEW-STATUS-COMMAND",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/status-command.test.ts",
+        "hash": "sha256:c344940cc7c7f40a38c0a62f8b25cd7a55b5a8f39efd205847f1434ef4e38d85"
+      }
+    },
+    {
+      "id": "PREVIEW-UPCOMING-DATE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-dated-memory.test.ts",
+        "hash": "sha256:ae0b880d2ef07e623aea8a80fc349be251674053a04b276935ac5cee794dd6a9"
+      }
+    },
+    {
+      "id": "PREVIEW-REQUESTED-ACTIONS",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-requested-action.test.ts",
+        "hash": "sha256:d304f3da0e02e7b791a87d4029a54051b741da95750cd9429c308a1f4b4fe95a"
+      }
+    },
+    {
+      "id": "PREVIEW-OWNED-OBLIGATIONS",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-obligations.test.ts",
+        "hash": "sha256:cf7c6dee85c153b0a75a5b9ae7bec5acc9447a657c503758904362b938d41937"
+      }
+    },
+    {
+      "id": "PREVIEW-TRIAL-GATES",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-spend-cap.test.ts",
+        "hash": "sha256:532fbaf03150b220b490e433c91dd8b274c0651022495460ae1771fbc4abdd1e"
+      }
+    },
+    {
+      "id": "PREVIEW-REPLY-CHECK",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/reply-check.test.ts",
+        "hash": "sha256:9f592d610bb3498d83e8f1d4d646ca50c5eea7c129f5309c500bcd6e42e53ccc"
+      }
+    },
+    {
+      "id": "PREVIEW-MODEL-JSON-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/model-json.test.ts",
+        "hash": "sha256:9b18ab68a89a46e5db31e6b8be4cd6b11500ed55ff2b3ea2558dd9bef9eac83f"
+      }
+    },
+    {
+      "id": "PREVIEW-PROVIDER-FAILURE-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/assembly/provider-failure.test.ts",
+        "hash": "sha256:bb47a74bb7ab784a4f73f6fb5c520d8b6c08c4d7563229313fcbcd9d993fa77d"
+      }
+    }
+  ],
+  "probes": [],
+  "decoders": [],
+  "documents": [],
+  "captures": [
+    {
+      "id": "PREVIEW-CAPTURE-CLAUDE-LIMIT-RESULT",
+      "origin": "captured",
+      "source": "Genuine Claude Code result captured 2026-09-24 from an account past its weekly quota; only session_id and uuid are redacted (tests/fixtures/provider-failure/README.md).",
+      "artifact": {
+        "path": "tests/fixtures/provider-failure/claude-limit-result.json",
+        "hash": "sha256:f1229eabd9f54947eea390f72a7a25e87d99136f1a12a303d53d08e210c0b929"
+      }
+    },
+    {
+      "id": "PREVIEW-CAPTURE-JEV-RESPONSE",
+      "origin": "synthetic",
+      "source": "Hand-written TypeSafe Jev response shape used by the offline tests; no genuine response bytes are committed yet.",
+      "artifact": {
+        "path": "tests/preview/fixtures/jev-response-synthetic.json",
+        "hash": "sha256:2c04c6ad7b0766bf9c7137bfcbec35973101919f4ebde1555d62cb3a9e1c25af"
+      }
+    }
+  ]
+}

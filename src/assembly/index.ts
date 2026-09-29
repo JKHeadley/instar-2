@@ -59,3 +59,6 @@ export type { InstallationReplayInput, InstallationReplayMode, InstallationRepla
 export { replayInstallationProjections } from './production-installation-replay.js';
 export type { InstallationImportPlan, InstallationImportStep } from './production-installation-import.js';
 export { importPreparedInstallationPackage, isIssuedInstallationImportPlan, planInstallationImport } from './production-installation-import.js';
+export { decodeProcessInventory, joinWorkingArea, launchMembership, startSeconds } from './process-inventory.js';
+export type { InventoryProcess, InventoryResource, InventoryStatus, LaunchRoot, Membership, MembershipReason, ProcessInventorySnapshot,
+  ResourceObservationState, WorkingDirectory } from './process-inventory.js';

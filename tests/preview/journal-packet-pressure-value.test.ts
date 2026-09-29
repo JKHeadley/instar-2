@@ -11,6 +11,9 @@ const source = (update: number) => `telegram:12345678:update:${update}`;
 /** cbuild-2: every operator packet now carries the always-offered summary and promise decisions
  * (Rule 10), a fixed addition that shifts each measured boundary by the same amount. */
 const GUIDANCE = 300; // cint-23-occam re-measure (every packet lost the summary decision): the whole test passes for offsets 180-410 in 10-byte steps; was 550 (two-item window 4592-4799)
+// cint-L3: build 1 moved the hand-written capability list to the generated capability-note source; against
+// cint-L2's (occam) capability text that removes 471 bytes from every packet, so the offset window moves by -471.
+const GUIDANCE_L3 = GUIDANCE - 471;
 
 it('measures which memories survive a capped packet after 5,000 turns', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-packet-pressure-')));
@@ -56,7 +59,7 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
     // from 3000/3500 bytes to 3750/4000 (measured windows 3665-3918 and 3919-4171). int13 keeps the
     // two turns just before a message recalled; the open question's own turn (5000) is one of them,
     // so the windows are 3850-4074 (one item) and 4075-4324 (two items, measured in 25-byte steps).
-    for (const limit of [3950 + GUIDANCE, 4200 + GUIDANCE, 6000 + GUIDANCE]) {
+    for (const limit of [3950 + GUIDANCE_L3, 4200 + GUIDANCE_L3, 6000 + GUIDANCE_L3]) {
       journal.view.limits.maxBytes = limit;
       const probe = worker.probe('What is the harbor key handoff status?');
       if ('reason' in probe) {
@@ -67,20 +70,20 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
       const kept = packet.recalled?.map(item => item.id) ?? [];
       process.stdout.write(`packet pressure ${limit}: bytes=${Buffer.byteLength(probe.context)} kept=${kept.map(id => id.split(':').at(-1)).join(',')} dropped=${probe.dropped.map(item => `${item.kind}:${item.source.split(':').at(-1)}`).join(',')} open=${packet.openQuestions?.length ?? 0}\n`);
       expect(Buffer.byteLength(probe.context)).toBeLessThanOrEqual(limit);
-      if (limit === 3950 + GUIDANCE) {
+      if (limit === 3950 + GUIDANCE_L3) {
         // Open question link wins the one-item boundary. cbuild-2: the Rule 110 continuity note rides in
         // every compacted packet here, so under this pressure the packet may keep no recall item at all;
         // whatever survives is still only the link.
         expect(kept.every(id => id === source(200))).toBe(true);
       }
-      if (limit === 4200 + GUIDANCE) {
+      if (limit === 4200 + GUIDANCE_L3) {
         // The unanswered question itself, carried as a continued turn, takes the second slot.
         expect(kept).toEqual([source(200), source(5000)]);
         expect(probe.dropped.filter(item => item.kind === 'recent').map(item => item.source))
           .toEqual(expect.arrayContaining([source(100), source(300), source(400), source(500)]));
       }
     }
-    journal.view.limits.maxBytes = 4200 + GUIDANCE;
+    journal.view.limits.maxBytes = 4200 + GUIDANCE_L3;
     const recentTurn = journal.view.turns.get(source(4998))!;
     const sent = recentTurn.sent!;
     delete recentTurn.sent;
