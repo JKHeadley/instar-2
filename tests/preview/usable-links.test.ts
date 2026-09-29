@@ -4,7 +4,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, CREDENTIAL_SHAPE_NOTICE, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE,
-  UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY, limitedAnswerText, reminderOverflowLine, summaryOverviewLead } from './journal-test-worker.js';
+  UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY, limitedAnswerText, requestOverflowLine } from './journal-test-worker.js';
 import { JEV_MODEL, LINK_SHAPE_REASON, REPLY_RULES, linkShapeRules } from './reply-check.js';
 import { machineLink } from './coherence-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -84,5 +84,5 @@ it('checks the final candidate: a revision that introduces a localhost link is r
 it('builds every fixed outbound template without a link the operator cannot open', () => withJournal(async journal => {
   for (const text of [CREDENTIAL_SHAPE_NOTICE, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY,
     limitedAnswerText(journal.view, 'turns', 1), limitedAnswerText(journal.view, 'calls', 3), limitedAnswerText(journal.view, 'replies', 2),
-    reminderOverflowLine(4), summaryOverviewLead]) expect(machineLink.test(text), text).toBe(false);
+    requestOverflowLine(4)]) expect(machineLink.test(text), text).toBe(false);
 }));

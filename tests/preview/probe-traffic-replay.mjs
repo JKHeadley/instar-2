@@ -9,7 +9,7 @@ out(`journal turns=${result.journal.turns} probeTurns=${result.journal.probeTurn
 for (const row of result.rows) {
   const blocks = Object.entries(row.blocks).map(([block, hits]) => `${block}:${hits}`).join(',') || '-';
   out(`${row.probeHits ? 'LEAK' : 'CLEAN'} ${row.question.padEnd(9)} ${row.surface.padEnd(26)} probeHits=${row.probeHits} blocks=${blocks}`
-    + `${row.control === null ? '' : ` control=${row.control}`}${row.periodTotal === undefined ? '' : ` periodTotal=${row.periodTotal}`}`
+    + `${row.control === null ? '' : ` control=${row.control}`}`
     + `${row.inventoryTotal === undefined ? '' : ` inventoryTotal=${row.inventoryTotal}`}${row.openQuestions === undefined ? '' : ` openQuestions=${row.openQuestions}`}`);
 }
 out(`summaries count=${result.summaries.count} withProbe=${result.summaries.withProbe} latestProbeHits=${result.summaries.probeHits} control=${result.summaries.controlJuniper}`);

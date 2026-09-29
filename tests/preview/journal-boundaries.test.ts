@@ -102,7 +102,7 @@ describe('Rule 96: fitting complete history is never replaced by a summary becau
 });
 
 describe('Rule 10: meaning decides which intentions reach judgment, never a keyword list', () => {
-  it('offers the summary-scheduling decision and bounded memory search whatever the wording', () => {
+  it('offers the later-request decision and bounded memory search whatever the wording', () => {
     const dir = root();
     try {
       const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
@@ -110,8 +110,9 @@ describe('Rule 10: meaning decides which intentions reach judgment, never a keyw
       summarize(journal, 31, 'The operator owns a vermilion bicycle.');
       const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
         model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
-      // A paraphrase with none of the old keywords (summar/recap/digest/brief).
-      expect(probe(worker, 'Send me a rundown tomorrow at noon').summaryDecision).toEqual(expect.any(String));
+      // A paraphrase with none of the old keywords (remind/summar/recap/digest/brief): the model judges whether it asks
+      // for something at a later time.
+      expect(probe(worker, 'Send me a rundown tomorrow at noon').datedDecision).toContain('remind:true');
       // No remember/recall/memory/know/learned word, yet the compacted history is searchable.
       const packet = probe(worker, 'What colour is my bicycle?');
       expect(packet.historyMode).toBe('summary-plus-recent');

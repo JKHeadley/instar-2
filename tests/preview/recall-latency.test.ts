@@ -82,7 +82,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // cint-23-occam re-pin: the email import route and the cross-topic digest were removed. The fixture's
     // channel items are conversation items (no email subject). Run on the base code with that same fixture,
     // the packet differs only by the absent crossTopicDigest and the memorySearch items that use its room.
-    expect(packetHash).toBe('ef908084d0b748cdf585ce7fc72842bc5096306fd6b94c286c055ec45da5fd8d');
+    // cint-23-occam step 2 re-pin: diffed field by field against step 1's packet, only three fields changed: the
+    // summaryDecision is gone, and the capability line and datedDecision describe requested actions generally.
+    expect(packetHash).toBe('9bb4bf29ba289f2f22b48b909819b04d456a753f0fa65c9050312f0172e9e787');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

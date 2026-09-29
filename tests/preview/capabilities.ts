@@ -11,7 +11,7 @@
  * experience (Rule 76), what enables it in a launch, the source files whose content is its
  * version, its test tiers, and the journal outcome a live-surface proof of it must show. A
  * missing join stays in the denominator as a gap. */
-import { PREVIEW_PROOF_PLANS, probeId, replyTurn, requestedSummaryTurn, statusTurn } from './proofs.js';
+import { PREVIEW_PROOF_PLANS, probeId, replyTurn, requestedActionTurn, statusTurn } from './proofs.js';
 import type { LiveProofRecord, PlanPosture, ProofRecord } from './proofs.js';
 import { isJournalUpdate } from './journal.js';
 import type { JournalView, Turn } from './journal.js';
@@ -34,7 +34,7 @@ export type PreviewDeclaration = FeatureDeclaration | OutcomeDeclaration | DutyD
 
 /** The journal outcome a live-surface proof of a capability must show. `desk` additionally needs the desk's
  * recorded semantic/arrival observation: an API acceptance alone cannot show that memory was used well. */
-export type OutcomeKind = 'reply' | 'reviewed-reply' | 'held-notice' | 'reminder' | 'requested-summary' | 'status'
+export type OutcomeKind = 'reply' | 'reviewed-reply' | 'held-notice' | 'requested-action' | 'status'
   | 'spend-cap-hold' | 'stop' | 'memory-change';
 export interface Acceptance { outcome: OutcomeKind; tier: 'journal-outcome' | 'desk-semantic' }
 export interface CapabilityMeta {
@@ -70,12 +70,12 @@ export const PREVIEW_CAPABILITY_META: Readonly<Record<string, CapabilityMeta>> =
     evidence: { unit: ['tests/preview/journal-memory-correction.test.ts', 'tests/preview/journal-undo-memory.test.ts'],
       integration: ['tests/preview/journal-people.test.ts', 'tests/preview/memory-export.test.ts'], procedure: 'tests/preview/memory-health-live-test.md' },
     acceptance: outcome('memory-change', 'desk-semantic') },
+  // The one general capability: what the operator asked for at a later time, answered then as an ordinary turn.
+  // Its id keeps the name its register declaration and live proofs already carry.
   'preview.reminders': { change: 'capability', enabledBy: 'default', sources: [...RUNNER, 'tests/preview/dated-memory.ts'],
-    evidence: { unit: ['tests/preview/journal-dated-memory.test.ts'], integration: ['tests/preview/journal-reminder-launcher.test.ts'],
-      procedure: 'tests/preview/dated-memory-live-test.md' }, acceptance: outcome('reminder') },
-  'preview.requested-summaries': { change: 'capability', enabledBy: 'default', sources: [...RUNNER],
-    evidence: { unit: ['tests/preview/journal-requested-summary-timing.test.ts'], integration: ['tests/preview/journal-requested-summary.test.ts'],
-      procedure: null }, acceptance: outcome('requested-summary') },
+    evidence: { unit: ['tests/preview/journal-requested-action.test.ts', 'tests/preview/journal-dated-memory.test.ts'],
+      integration: ['tests/preview/journal-reminder-launcher.test.ts'],
+      procedure: 'tests/preview/requested-action-live-test.md' }, acceptance: outcome('requested-action') },
   'preview.rolling-summary': { change: 'capability', enabledBy: 'default', sources: [...RUNNER, 'tests/preview/summary-check.ts', 'tests/preview/summary-faithfulness.ts'],
     evidence: { unit: ['tests/preview/summary-faithfulness.test.ts', 'tests/preview/journal-compaction.test.ts'],
       integration: ['tests/preview/summary-check.test.ts'], procedure: 'tests/preview/summary-supervisor-live-test.md' } },
@@ -303,14 +303,14 @@ export function resolveLiveProof(input: LiveProofInput): LiveProofResult {
     case 'reply': found = turn && replyTurn(turn) ? sent(turn) : null; break;
     case 'reviewed-reply': found = turn && replyTurn(turn) && turn.replyChecks?.some(check => check.verdict === 'pass') ? sent(turn) : null; break;
     case 'status': found = turn && statusTurn(turn) ? sent(turn) : null; break;
-    case 'requested-summary': found = turn && requestedSummaryTurn(turn) ? sent(turn) : null; break;
     case 'memory-change': found = turn && replyTurn(turn) && view.memory.some(change => change.trigger === turn.id) ? sent(turn) : null; break;
     case 'held-notice': found = turn?.heldNoticeSent !== undefined && turn.heldNoticeSentAt !== undefined
       ? { message: turn.heldNoticeSent, at: turn.heldNoticeSentAt } : null; break;
-    case 'reminder': {
-      const reminder = turn && [...view.reminders.values()].filter(item => item.sent !== undefined && item.sentAt !== undefined
-        && item.items.some(ref => ref.source === turn.id)).at(-1);
-      found = reminder ? { message: reminder.sent!, at: reminder.sentAt! } : null; break;
+    case 'requested-action': {
+      // The update names the operator's request message; the proof is the sent due turn that answered it.
+      const due = turn && view.order.filter(item => requestedActionTurn(item) && item.sent !== undefined
+        && item.requestedAction!.items.some(ref => ref.source === turn.id)).at(-1);
+      found = due ? sent(due) : null; break;
     }
     case 'spend-cap-hold': {
       const hold = turn && view.awayEvents.filter(event => event.kind === 'hold' && event.id === turn.id && CAP_HOLDS.has(event.reason ?? '')).at(-1);

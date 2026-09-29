@@ -14,7 +14,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules } from './briefing.js';
 import { projectionDigest } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, pendingRequestedReminders, reminderDue, activeSummaryGrants, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate} from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate} from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion } from './reply-check.js';
@@ -200,7 +200,6 @@ const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Lo
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
   replyTo: packet.replyTo ?? null,
-  ...(packet.period ? { period: packet.period, periodGuide: packet.periodGuide } : {}),
   people: packet.people ?? [], personAttributes: packet.personAttributes ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   lastNamedPerson: packet.lastNamedPerson ?? null,
   dated: packet.dated ?? [], datedScope: packet.datedScope ?? null, moreDated: packet.moreDated ?? 0,
@@ -501,22 +500,22 @@ async function main() {
         memory: s.memory ? s.memory.length : null })),
       commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
       mentionedDates: view.view.mentionedDates.size,
-      reminders: { intents: view.view.reminders.size,
-        ...(() => { const kinds = [...view.view.reminders.entries()].map(([key, item]) => reminderOutcome(view.view, key, item).kind);
-          return { accepted: kinds.filter(kind => kind === 'accepted').length, refused: kinds.filter(kind => kind === 'refused').length,
-            unknown: kinds.filter(kind => kind === 'unknown').length }; })(),
-        grant: view.view.reminderGrant,
-        requested: view.view.dated.filter(item => item.remind).length,
-        pending: pendingRequestedReminders(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
-          quote: redact(item.quote).text, due: `${reminderDue(item)} ${item.zone}` })),
-        cancelled: view.view.reminderCancels.length },
-      requestedSummaries: { requested: view.view.summaryGrants.length, cancelled: view.view.summaryCancels.length,
-        active: activeSummaryGrants(view.view).map(grant => ({ id: grant.id, sourceUpdate: view.view.turns.get(grant.source)?.update,
-          quote: redact(grant.quote).text, covers: grant.period, repeat: grant.repeat, time: grant.time, first: grant.first, zone: grant.zone })),
-        slots: view.view.order.filter(t => t.requestedSummary).map(t => ({ grant: t.requestedSummary.grant, slot: t.requestedSummary.slot,
-          late: t.requestedSummary.late ?? null, state: t.sent !== undefined ? 'accepted' : t.intent !== undefined ? 'UNKNOWN send'
-            : !activeSummaryGrants(view.view).some(grant => grant.id === t.requestedSummary.grant) ? 'withdrawn, not sent'
-            : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) },
+      // The one general capability: what the operator asked for at a later time, answered once when due. An older
+      // journal's fixed-text reminder batches count as earlier sends of it.
+      requestedActions: (() => {
+        const dueTurns = view.view.order.filter(t => t.requestedAction && !t.requestedAction.legacy);
+        const kinds = [...dueTurns.filter(t => t.intent !== undefined).map(t => sendOutcomeOf(view.view, replyTarget(t), t.sent).kind),
+          ...[...view.view.reminders.entries()].map(([key, item]) => reminderOutcome(view.view, key, item).kind)];
+        return { requested: view.view.dated.filter(item => item.remind).length, cancelled: view.view.reminderCancels.length,
+          accepted: kinds.filter(kind => kind === 'accepted').length, refused: kinds.filter(kind => kind === 'refused').length,
+          unknown: kinds.filter(kind => kind === 'unknown').length,
+          open: openRequests(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
+            quote: redact(item.quote).text, due: `${reminderDue(item)} ${item.zone}` })),
+          dueTurns: dueTurns.map(t => ({ update: t.update, requests: t.requestedAction.items.length + (t.requestedAction.overflow?.length ?? 0),
+            state: t.sent !== undefined ? 'accepted' : t.intent !== undefined ? unsentLabel(sendOutcomeOf(view.view, replyTarget(t), t.sent))
+              : actionWithdrawn(view.view, t) ? 'withdrawn, not sent'
+              : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) };
+      })(),
       dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
 
@@ -1198,7 +1197,7 @@ async function main() {
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
       // running: every operator message already waiting (a cancellation included) has been read and
       // settled first. A failed poll, a backlog or a cap leaves them pending.
-      background(() => updates.result.length === 0 ? worker.sendReminders() : worker.drain());
+      background(() => updates.result.length === 0 ? worker.sendRequested() : worker.drain());
       reportCap();
       if (worker.intakeHeld()) await waitHeld();
 

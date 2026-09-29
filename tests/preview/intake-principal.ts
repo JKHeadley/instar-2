@@ -14,8 +14,8 @@ export const TELEGRAM_ADAPTER: Readonly<Record<WriteOrigin, string>> = Object.fr
 export const SCHEDULER_ADAPTER = 'preview-scheduler';
 /** The runner itself, when it authors a model input (review or rolling-summary envelopes). */
 export const RUNNER_ADAPTER = 'preview-runner';
-export type SystemMethod = 'requested-summary-grant' | 'reply-review' | 'summary-review' | 'rolling-summary';
-const SYSTEM_METHODS: readonly SystemMethod[] = ['requested-summary-grant', 'reply-review', 'summary-review', 'rolling-summary'];
+export type SystemMethod = 'requested-action' | 'reply-review' | 'summary-review' | 'rolling-summary';
+const SYSTEM_METHODS: readonly SystemMethod[] = ['requested-action', 'reply-review', 'summary-review', 'rolling-summary'];
 /** The durable, replayable projection of a verified writer carried on every intake record. A
  * system writer also keeps the owner's signature, so replay re-verifies it instead of trusting a label. */
 export interface WriterRecord { id: string; kind: PrincipalKind; adapter: string; class: 'verified' | 'channel-attested';
@@ -62,11 +62,11 @@ export const writerBoundToRaw = (writer: WriterRecord, raw: string) => writer.re
   && writer.hash === sha(telegramRecord(writer.id, writer.kind));
 
 const ED25519_PKCS8_SEED_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
-/** Rule 29: the journal owner's verified system writers (the requested-summary scheduler and the
+/** Rule 29: the journal owner's verified system writers (the requested-action scheduler and the
  * runner's own review/summary inputs). Each is minted by the core decoder from a record the owner
  * SIGNS over the exact occurrence bytes, so its provenance class is `verified`, as the intake
  * contract requires of a system principal; the signature is kept and re-verified on replay. The
- * caller checks the occurrence's authority (for a summary slot, the operator's verified request). */
+ * caller checks the occurrence's authority (for a due turn, the operator's verified requests). */
 export function systemWriters(storageKey: Uint8Array, bot: string) {
   if (storageKey.byteLength !== 32 || !bot) throw Error('preview intake: system writer key or bot refused');
   const seed = createHmac('sha256', storageKey).update('instar-preview-system-writer-v1').digest();
@@ -75,7 +75,7 @@ export function systemWriters(storageKey: Uint8Array, bot: string) {
   const keyId = `preview-system:${sha(publicKey.export({ format: 'der', type: 'spki' }).toString('hex')).slice(7, 23)}`;
   const keys = { [keyId]: { algorithm: 'ed25519' as const, publicKey: publicKey.export({ format: 'pem', type: 'spki' }).toString(),
     methods: [...SYSTEM_METHODS], adapters: [SCHEDULER_ADAPTER, RUNNER_ADAPTER] } };
-  const identity = (method: SystemMethod) => method === 'requested-summary-grant'
+  const identity = (method: SystemMethod) => method === 'requested-action'
     ? { id: `preview-scheduler:${bot}`, adapter: SCHEDULER_ADAPTER } : { id: `preview-runner:${bot}`, adapter: RUNNER_ADAPTER };
   const recordOf = (id: string, method: SystemMethod, occurrence: string) =>
     JSON.stringify({ principal: { id, kind: 'system' }, recordType: `${method}:${sha(occurrence)}`, payload: { id, kind: 'system' } });

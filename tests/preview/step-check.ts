@@ -6,14 +6,12 @@ export const STEP_BOUNDARY_QUESTIONS = {
   wrong_admission: 'The journal admitted this message as the verified operator\'s message, but the recorded sender, chat or chat type does not match the operator binding shown in the evidence.',
   unfaithful_packet: 'The prepared packet does not carry the request it was prepared to answer: the request is missing from the packet, altered, or attributed to someone other than the operator.',
   not_due: 'The work was selected to run at a time the operator\'s recorded request does not schedule, or before the scheduled time shown in the evidence.',
-  unfaithful_reminder: 'The reminder line tells the operator something their recorded request did not ask to be reminded of, or changes what they asked.',
 } as const;
 export type StepQuestion = 'unsupported_effect' | keyof typeof STEP_BOUNDARY_QUESTIONS;
 /** The question a step key's boundary answers. */
 export function stepQuestionFor(step: string): StepQuestion {
   return step.startsWith('intake:') ? 'wrong_admission' : step.startsWith('prepare:') ? 'unfaithful_packet'
-    : step.startsWith('select-due:') || step.startsWith('reminder-due:') ? 'not_due'
-      : step.startsWith('reminder-send:') ? 'unfaithful_reminder' : 'unsupported_effect';
+    : step.startsWith('select-due:') ? 'not_due' : 'unsupported_effect';
 }
 export const stepQuestionsFor = (step: string): Record<string, { type: string; instructions: string }> => {
   const id = stepQuestionFor(step);

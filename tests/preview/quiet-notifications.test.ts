@@ -3,27 +3,24 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, OUTBOUND_DISPOSITIONS,
-  reminderOverflowLine, summaryOverflowLine, summaryOverviewLead, summaryOverviewOnlyLead } from './journal-test-worker.js';
+  REQUEST_ITEM_LIMIT, requestOverflowLine } from './journal-test-worker.js';
 
-// Rules 52/87 and P-14: one aggregate per topic and slot, overflow as an overview, no repeat of
+// Rules 52/87 and P-14: one push per conversation at a due point, overflow as a count line, no repeat of
 // unchanged status, and every push classified at the one send boundary.
 const key = new Uint8Array(32).fill(31);
 const zone = 'America/Los_Angeles';
 const start = Date.UTC(2026, 8, 26, 17);
 const sixPm = Date.UTC(2026, 8, 27, 1);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
-  grant: 'grant:summary', configurationDigest: 'sha256:summary', expires: Date.UTC(2026, 9, 10),
+  grant: 'grant:quiet', configurationDigest: 'sha256:quiet', expires: Date.UTC(2026, 9, 10),
   maxCalls: 60, maxReplies: 60, maxTurns: 60, maxBytes: 32768, cursor: 0 };
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     date: Math.floor(start / 1000) + id * 60, ...(thread === undefined ? {} : { message_thread_id: thread }) } });
 type Input = { id: string; question: string; context: string };
-let summaryRepeat = 160;
+let dueRepeat = 1;
 const decide = (input: Input) => {
-  if (input.question.startsWith('[Scheduled summary')) return JSON.stringify({ reply: 'Summary detail. '.repeat(summaryRepeat), memory: [], dated: [] });
-  const schedule = /^send me a summary of (today|yesterday) every day at (\d+ ?[ap]m)/u.exec(input.question);
-  if (schedule) return JSON.stringify({ reply: 'Okay.', memory: [], dated: [], summaries: [{ quote: input.question,
-    when: `every day at ${schedule[2]}`, period: schedule[1], repeat: 'daily' }] });
+  if (input.id.startsWith('requested-action:')) return JSON.stringify({ reply: 'Done. '.repeat(dueRepeat), memory: [], dated: [] });
   const reminder = /^remind me (today at \d+ ?[ap]m) to /u.exec(input.question);
   if (reminder) return JSON.stringify({ reply: 'Okay.', memory: [], dated: [{ quote: input.question, when: reminder[1], remind: true }] });
   return JSON.stringify({ reply: 'Noted.', memory: [], dated: [] });
@@ -38,38 +35,36 @@ const withHarness = async (run: (h: { state: { now: number; sent: { text: string
     model: async (input: Input) => decide(input), checkOutbound: () => {},
     send: async value => { state.sent.push({ text: value.expectedText, ...(value.disposition ? { disposition: value.disposition } : {}) });
       return state.sent.length; } });
-  try { await run({ state, journal, worker, path }); } finally { journal.close(); rmSync(root, { recursive: true, force: true }); summaryRepeat = 160; }
+  try { await run({ state, journal, worker, path }); } finally { journal.close(); rmSync(root, { recursive: true, force: true }); dueRepeat = 1; }
 };
-const tick = async (worker: ReturnType<typeof createJournalWorker>) => { await worker.drain(); await worker.sendReminders(); };
+const tick = async (worker: ReturnType<typeof createJournalWorker>) => { await worker.drain(); await worker.sendRequested(); };
 
-it('sends two oversized requested summaries due in one topic and slot as one push with an overview', () => withHarness(async ({ state, journal, worker }) => {
-  worker.intake([update(1, 'send me a summary of today every day at 6 pm', 17),
-    update(2, 'send me a summary of yesterday every day at 6 pm', 17)]);
-  await tick(worker);
-  const before = state.sent.length;
-  state.now = sixPm; await tick(worker); await tick(worker);
-  const pushes = state.sent.slice(before);
-  // The coverage reproduction measured two pushes (2705 and 2701 bytes) here before this build.
-  expect(pushes).toHaveLength(1);
-  expect(pushes[0]!.text).toContain(summaryOverviewLead);
-  expect(Buffer.byteLength(pushes[0]!.text)).toBeLessThanOrEqual(4096);
-  expect(journal.view.order.filter(turn => turn.requestedSummary && turn.intent === undefined)).toHaveLength(0);
-  // The overview's full summary text stays retained in the journal.
-  expect(journal.view.order.filter(turn => turn.requestedSummary).every(turn => turn.answer?.startsWith('Summary detail.'))).toBe(true);
-}));
-
-it('sends more due reminders than fit as one push with a count line, and none later', () => withHarness(async ({ state, journal, worker }) => {
-  const long = 'x'.repeat(300);
-  worker.intake(Array.from({ length: 16 }, (_, index) => update(10 + index, `remind me today at 5 pm to do task ${index} ${long}`, 9)));
+it('sends more due requests than are written out as one push with a count line, and none later', () => withHarness(async ({ state, journal, worker }) => {
+  worker.intake(Array.from({ length: 16 }, (_, index) => update(10 + index, `remind me today at 5 pm to do task ${index}`, 9)));
   await tick(worker);
   const before = state.sent.length;
   state.now = sixPm; await tick(worker); await tick(worker); await tick(worker);
   const pushes = state.sent.slice(before);
   expect(pushes).toHaveLength(1);
-  expect(pushes[0]!.text).toMatch(/\nAnd \d+ more reminders due now; ask me and I'll list them\.$/u);
-  const listed = (pushes[0]!.text.match(/PREVIEW reminder you asked for/gu) ?? []).length;
-  expect(pushes[0]!.text.endsWith(reminderOverflowLine(16 - listed))).toBe(true);
-  expect(journal.view.reminders.size).toBe(1);
+  expect((pushes[0]!.text.match(/^PREVIEW — You asked on /gmu) ?? [])).toHaveLength(REQUEST_ITEM_LIMIT);
+  expect(pushes[0]!.text).toContain(`\n${requestOverflowLine(16 - REQUEST_ITEM_LIMIT)}\n`);
+  expect(journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(1);
+}));
+
+it('keeps one push when a due answer is too long: a truthful line under the reason header, never a second push', () => withHarness(async ({ state, journal, worker }) => {
+  dueRepeat = 900;
+  worker.intake([update(1, 'remind me today at 5 pm to water the plants', 17)]);
+  await tick(worker);
+  const before = state.sent.length;
+  state.now = sixPm; await tick(worker); await tick(worker);
+  const pushes = state.sent.slice(before);
+  expect(pushes).toHaveLength(1);
+  expect(Buffer.byteLength(pushes[0]!.text)).toBeLessThanOrEqual(4096);
+  expect(pushes[0]!.text).toMatch(/^PREVIEW — You asked on .*\nMy answer was too long for one Telegram message, so I sent no part of it\. Ask me for a shorter one\.$/u);
+  // The full answer stays in the journal.
+  expect(journal.view.order.find(turn => turn.requestedAction)?.answer?.startsWith('Done.')).toBe(true);
+  await tick(worker);
+  expect(state.sent.slice(before)).toHaveLength(1);
 }));
 
 it('never pushes a held backlog: unchanged status stays on the pull surface, across restart', () => withHarness(async ({ state, journal, worker, path }) => {
@@ -88,58 +83,10 @@ it('never pushes a held backlog: unchanged status stays on the pull surface, acr
   reopened.close();
 }));
 
-for (const [repeat, mode] of [[200, 'overview'], [245, 'overview-only']] as const) {
-  it(`keeps one push per slot when the summaries are near the limit (${String(repeat)} repeats), bodies retained`, () => withHarness(async ({ state, journal, worker }) => {
-    summaryRepeat = repeat;
-    worker.intake([update(1, 'send me a summary of today every day at 6 pm', 17),
-      update(2, 'send me a summary of yesterday every day at 6 pm', 17),
-      update(3, 'remind me today at 5 pm to water the plants', 17)]);
-    await tick(worker);
-    const before = state.sent.length;
-    state.now = sixPm; await tick(worker); await tick(worker); await tick(worker);
-    const pushes = state.sent.slice(before);
-    // The review's reproduction: at 245 repeats both summaries fit alone but not together, and this drew two pushes.
-    expect(pushes).toHaveLength(1);
-    expect(Buffer.byteLength(pushes[0]!.text)).toBeLessThanOrEqual(4096);
-    // Room for the overview is reserved first; when not even one full summary fits beside it, the one
-    // message is a bounded overview naming both, with each full text kept.
-    expect(mode === 'overview' ? pushes[0]!.text.includes(summaryOverviewLead) && !pushes[0]!.text.startsWith(summaryOverviewOnlyLead)
-      : pushes[0]!.text.startsWith(summaryOverviewOnlyLead)).toBe(true);
-    // The due reminder joins the same message, in full or as a counted line, never a later push.
-    expect(pushes[0]!.text).toMatch(/water the plants|And 1 more reminder due now/u);
-    expect(journal.view.order.filter(turn => turn.requestedSummary && turn.intent === undefined)).toHaveLength(0);
-    expect(journal.view.order.filter(turn => turn.requestedSummary).every(turn => turn.answer?.startsWith('Summary detail.'))).toBe(true);
-    await tick(worker);
-    expect(state.sent.slice(before)).toHaveLength(1);
-  }));
-}
-
 it('classifies every push at the one send boundary; status is never a pushed kind', () => withHarness(async ({ state, worker }) => {
   // Only the held status is pull-only; the boundary refuses to push any status kind.
   expect(Object.entries(OUTBOUND_DISPOSITIONS).filter(([, disposition]) => disposition === 'status').map(([kind]) => kind))
     .toEqual(['held-notice']);
   worker.intake([update(1, 'hello')]); await tick(worker);
   expect(state.sent.map(item => item.disposition)).toEqual(['result']);
-}));
-
-it('keeps one push when the overview headers themselves exceed one message: the rest are counted', () => withHarness(async ({ state, journal, worker }) => {
-  // Review round 2 (MF5): eight same-slot requests, each quote under the 500-byte bound, drew two pushes.
-  const requests = Array.from({ length: 8 }, (_, i) => `send me a summary of today every day at 6 pm about item ${i} ${'x'.repeat(400)}`);
-  worker.intake(requests.map((text, i) => update(i + 1, text, 17)));
-  await tick(worker);
-  expect(journal.view.summaryGrants).toHaveLength(8);
-  const before = state.sent.length;
-  state.now = sixPm; await tick(worker); await tick(worker); await tick(worker);
-  const pushes = state.sent.slice(before);
-  expect(pushes).toHaveLength(1);
-  expect(pushes[0]!.text.startsWith(summaryOverviewOnlyLead)).toBe(true);
-  expect(Buffer.byteLength(pushes[0]!.text)).toBeLessThanOrEqual(4096);
-  const named = (pushes[0]!.text.match(/about item \d/gu) ?? []).length;
-  expect(named).toBeLessThan(8);
-  expect(pushes[0]!.text.endsWith(summaryOverflowLine(8 - named))).toBe(true);
-  // Every sibling is covered by that one intent; every full body stays retrievable.
-  expect(journal.view.order.filter(turn => turn.requestedSummary && turn.intent === undefined)).toHaveLength(0);
-  expect(journal.view.order.filter(turn => turn.requestedSummary).every(turn => turn.answer?.startsWith('Summary detail.'))).toBe(true);
-  await tick(worker);
-  expect(state.sent.slice(before)).toHaveLength(1);
 }));

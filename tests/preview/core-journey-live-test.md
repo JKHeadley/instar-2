@@ -2,7 +2,7 @@
 
 This is the one live procedure for the journal runner. It drives the talkable path end to end
 in the existing private preview chat: talk, recall, correct and forget, restart, a held answer,
-and a requested summary or reminder. The per-feature procedures in
+and a request for something at a later time. The per-feature procedures in
 [live-tests-archive/](live-tests-archive/) keep their scenario detail and recorded results as
 evidence; use one only when a change touches that scenario and this journey does not cover it.
 
@@ -30,13 +30,10 @@ Never reset a root and never resend an UNKNOWN effect.
 5. **Held answer.** Do not force a hold. If any reply in this journey was held, confirm
    its plain reason in `status.holds`, at most one held notice once one was due, and that
    the held answer later follows or is explained. Record “no hold occurred” otherwise.
-6. **Requested summary or reminder.** Ask “What did we talk about today?” and expect a
-   bounded recap marked partial if anything was omitted. Then ask “Remind me today at
-   HH:MM am/pm to stretch” (about 15 minutes ahead); the reply states the due time, `status.reminders.pending`
-   lists it, and exactly one reminder quoting the request arrives at that time. Details:
-   [requested-reminder-live-test.md](live-tests-archive/requested-reminder-live-test.md). A summary
-   asked for later (“send me a summary of today at HH:MM pm”) arrives once at that time with its
-   reason line; see [requested-summary-live-test.md](live-tests-archive/requested-summary-live-test.md).
+6. **Requested action.** Ask “Remind me today at HH:MM am/pm to stretch” (about 15 minutes
+   ahead); the reply states the due time and `status.requestedActions.open` lists it. At that time
+   exactly one message arrives: its first line quotes the request and when it was asked, then the
+   answer to it. Details: [requested-action-live-test.md](requested-action-live-test.md).
 
 Record the `status` excerpts after steps 1, 3, 4 and 6, every intent/result ID, any UNKNOWN,
 reply-check paths, and whether each answer matched the expected fact. A plain answer that

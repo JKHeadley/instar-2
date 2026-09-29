@@ -351,45 +351,7 @@
           "id": "P9-PREVIEW-reminder-delivered",
           "stage": "runtime"
         },
-        "portion": "Telegram's acceptance of the newest requested reminder, and no overdue reminder",
-        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
-      }
-    ]
-  },
-  {
-    "type": "Declaration",
-    "schemaVersion": 1,
-    "id": "preview.requested-summaries.delivered",
-    "kind": "critical outcomes",
-    "status": "live",
-    "requiredFacts": {
-      "probe": "P9-PREVIEW-requested-summary-delivered",
-      "cadence": 3600000
-    },
-    "profile": {
-      "type": "Profile",
-      "schemaVersion": 1,
-      "consequence": "external",
-      "reversibility": "irreversible",
-      "reach": "operator",
-      "surface": "chat",
-      "repeats": {
-        "kind": "no"
-      }
-    },
-    "standards": [
-      43
-    ],
-    "holds": [
-      {
-        "rule": 43,
-        "class": "partial",
-        "evidence": {
-          "kind": "probe",
-          "id": "P9-PREVIEW-requested-summary-delivered",
-          "stage": "runtime"
-        },
-        "portion": "Telegram's acceptance of the newest requested summary and its source time",
+        "portion": "Telegram's acceptance of the newest requested action's answer, and no requested action overdue",
         "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
       }
     ]

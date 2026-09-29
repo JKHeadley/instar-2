@@ -23,7 +23,7 @@ import { decodeVerificationRecord, deriveGuardPosture, deriveVerificationDue, me
 import type { GuardPosture, ProbePostureResolution, ProbeRecord, VerificationPlan } from '../../src/verification/index.js';
 import { isStatusCommand } from './status-command.js';
 import { loopHealth } from './obligations.js';
-import { durableProjection, packetDigest, reminderId } from './journal.js';
+import { durableProjection, packetDigest } from './journal.js';
 import type { JournalView, Turn } from './journal.js';
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
@@ -104,11 +104,12 @@ export function projectionSections(view: JournalView): Readonly<Record<string, s
     .map(([section, value]) => [section, hashOf(value)]));
 }
 
-/** Ordinary operator replies: accepted messages answered by the model (status pulls, requested summaries and fixed notices excluded). */
+/** Ordinary operator replies: accepted messages answered by the model (status pulls, requested actions and fixed notices excluded). */
 export const replyTurn = (turn: Turn) => turn.accepted && turn.answer !== undefined && !isStatusCommand(turn.text)
-  && turn.requestedSummary === undefined && turn.groupedInto === undefined && turn.noticeClass === undefined;
-export const statusTurn = (turn: Turn) => turn.accepted && turn.requestedSummary === undefined && isStatusCommand(turn.text);
-export const requestedSummaryTurn = (turn: Turn) => turn.requestedSummary !== undefined && turn.groupedInto === undefined;
+  && turn.requestedAction === undefined && turn.groupedInto === undefined && turn.noticeClass === undefined;
+export const statusTurn = (turn: Turn) => turn.accepted && turn.requestedAction === undefined && isStatusCommand(turn.text);
+/** A due turn answering the operator's own earlier requests (an older journal's summary turns excluded). */
+export const requestedActionTurn = (turn: Turn) => turn.requestedAction !== undefined && turn.requestedAction.legacy === undefined;
 /** Sent model answers and whether each reached its before-send reviewer (fixed projections excluded). */
 export function sentAnswers(view: JournalView) {
   const answers = view.order.filter(turn => turn.sent !== undefined && turn.answer !== undefined && !turn.noticeClass
@@ -242,16 +243,14 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
       .map(turn => ({ message: turn.heldNoticeSent, attemptAt: turn.heldSince ?? turn.at, acceptedAt: turn.heldNoticeSentAt })),
     ports.now(), 7 * DAY, 'held-reply notice')),
   cadence('reminder-delivered', 'critical-outcome', 'preview.reminders', 'telegram.bot-api', [43],
-    "Telegram's acceptance of the newest requested reminder, and no reminder overdue", HOUR, 7 * DAY, deliveryConfirmed, ports => {
+    "Telegram's acceptance of the newest requested action's answer, and no requested action overdue", HOUR, 7 * DAY, deliveryConfirmed, ports => {
       const view = ports.liveView(), at = ports.now(), health = loopHealth(view, at);
-      if (health.overdueReminders > 0 && health.inhibition === null)
-        return outcome('failed', { overdue: health.overdueReminders }, `${health.overdueReminders} reminders are overdue with nothing inhibiting them`, at);
-      return delivery([...view.reminders.values()].sort((a, b) => a.at - b.at)
-        .map(item => ({ message: item.sent, attemptAt: item.at, acceptedAt: item.sentAt })), at, 7 * DAY, 'reminder');
+      if (health.overdueRequests > 0 && health.inhibition === null)
+        return outcome('failed', { overdue: health.overdueRequests }, `${health.overdueRequests} requested actions are overdue with nothing inhibiting them`, at);
+      // An older journal's fixed-text reminder batches are earlier attempts of the same outcome.
+      return delivery([...[...view.reminders.values()].map(item => ({ message: item.sent, attemptAt: item.at, acceptedAt: item.sentAt })),
+        ...turnAttempts(view, requestedActionTurn)].sort((a, b) => a.attemptAt - b.attemptAt), at, 7 * DAY, 'requested action');
     }),
-  cadence('requested-summary-delivered', 'critical-outcome', 'preview.requested-summaries', 'telegram.bot-api', [43],
-    "Telegram's acceptance of the newest requested summary and its acceptance time", HOUR, 7 * DAY, deliveryConfirmed,
-    ports => delivery(turnAttempts(ports.liveView(), requestedSummaryTurn), ports.now(), 7 * DAY, 'requested summary')),
   cadence('status-answered', 'critical-outcome', 'preview.status-pull', 'telegram.bot-api', [43],
     "Telegram's acceptance of the newest status reply and its acceptance time", HOUR, 7 * DAY, deliveryConfirmed,
     ports => delivery(turnAttempts(ports.liveView(), statusTurn), ports.now(), 7 * DAY, 'status reply')),
@@ -472,24 +471,18 @@ export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.fre
       { step: 'send', supervisors: ['reply-review'] },
       { step: 'cleanup', supervisors: ['step-check'] },
     ] },
-  'requested-summary': { failureDirection: 'closed',
+  'requested-action': { failureDirection: 'closed',
     owner: 'the step supervisor validates due selection and preparation before the model call; reply review holds the send without a pass',
     steps: [
       { step: 'select-due', supervisors: ['step-check'] },
       { step: 'prepare-packet', supervisors: ['step-check'] },
-      { step: 'summarize', supervisors: ['reply-review', 'step-check'] },
+      { step: 'answer', supervisors: ['reply-review', 'step-check'] },
       { step: 'send', supervisors: ['reply-review'] },
     ] },
   'rolling-summary': { failureDirection: 'open', owner: 'the faithfulness verdict is recorded with each commit',
     steps: [
       { step: 'summarize', supervisors: ['summary-review', 'step-check'] },
       { step: 'commit-summary', supervisors: ['summary-review'] },
-    ] },
-  'requested-reminder': { failureDirection: 'open',
-    owner: 'the step supervisor validates due selection and the reminder line before the send; only a violation keeps it unsent',
-    steps: [
-      { step: 'select-due', supervisors: ['step-check'] },
-      { step: 'send', supervisors: ['step-check'] },
     ] },
 });
 
@@ -527,25 +520,20 @@ function operations(view: JournalView, pipeline: string, supervisors: ProofPorts
     intake: [['step-check', `intake:${turn.id}`]], 'prepare-packet': [['step-check', `prepare:${turn.id}`]],
     answer: [['reply-review', turn.id], ['step-check', `answer:${turn.id}`]], interpret: [['reply-review', turn.id]],
     send: [['reply-review', turn.id]], cleanup: [['step-check', `cleanup:${turn.id}`]] }));
-  if (pipeline === 'requested-summary') return view.order.filter(turn => requestedSummaryTurn(turn) && turn.intent !== undefined).map(turn => {
-    // The pre-model checks bound to the packet this summary was actually prepared with.
+  if (pipeline === 'requested-action') return view.order.filter(turn => requestedActionTurn(turn) && turn.intent !== undefined).map(turn => {
+    // The pre-model checks bound to the packet this due turn was actually prepared with.
     const packet = turn.prompt === undefined ? null : packetDigest(turn.prompt);
     const bound = (prefix: string) => [...view.stepChecks.keys()].filter(key => key.startsWith(`${prefix}:${turn.id}:`)
       && (packet === null || key.endsWith(`:${packet}`)));
     return byTurn(turn, { 'select-due': bound('select-due').map(key => ['step-check', key] as [Supervisor, string]),
       'prepare-packet': bound('prepare').map(key => ['step-check', key] as [Supervisor, string]),
-      summarize: [['reply-review', turn.id], ['step-check', `answer:${turn.id}`]], send: [['reply-review', turn.id]] });
+      answer: [['reply-review', turn.id], ['step-check', `answer:${turn.id}`]], send: [['reply-review', turn.id]] });
   });
   if (pipeline === 'rolling-summary') return view.summaries.map(summary => ({ id: `summary:${summary.through}`, states: {
     summarize: [stepState(view, 'summary-review', `summary:${summary.through}`, supervisors), stepState(view, 'step-check', `summary:${summary.through}`, supervisors)]
       .filter(item => item !== null).sort((a, b) => Number(b.state === 'validated') - Number(a.state === 'validated'))[0],
     'commit-summary': stepState(view, 'summary-review', `summary:${summary.through}`, supervisors) ?? undefined } }));
-  // One operation per requested reminder actually sent or attempted; a legacy morning batch has no reminder steps.
-  return [...view.reminders.entries()].flatMap(([key, batch]) => batch.requested ? batch.items.map(ref => {
-    const id = reminderId(ref);
-    return { id, states: { 'select-due': stepState(view, 'step-check', `reminder-due:${id}`, supervisors) ?? undefined,
-      send: stepState(view, 'step-check', `reminder-send:${id}`, supervisors) ?? undefined } };
-  }) : [{ id: `reminder:${key}`, states: {} }]);
+  return [];
 }
 export interface StepCoverageRow {
   boundary: string; supervisors: readonly Supervisor[];

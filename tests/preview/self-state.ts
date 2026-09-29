@@ -4,7 +4,7 @@
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { activeSummaryGrants, pendingRequestedReminders, replyTarget, sendOutcomeCounts, sendOutcomeOf, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { openRequests, replyTarget, sendOutcomeCounts, sendOutcomeOf, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`), and one per poll attempt that
  * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
@@ -211,16 +211,17 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
   // Only a time within the last 26 hours can fall on today's local date; older ones are never formatted.
   const isToday = (ms: number | null | undefined) => ms !== null && ms !== undefined && ms > 0
     && now - ms < 26 * 3_600_000 && ms <= now + 60_000 && parts(format, ms).day === today;
-  // A requested summary's turn is runner-authored, not an operator message.
-  const accepted = view.order.filter(turn => turn.accepted && !turn.editOf && !turn.requestedSummary);
+  // A requested action's due turn is runner-authored, not an operator message.
+  const accepted = view.order.filter(turn => turn.accepted && !turn.editOf && !turn.requestedAction);
   const edits = view.order.filter(turn => turn.accepted && turn.editOf).length;
-  const summarySends = view.order.filter(turn => turn.requestedSummary && turn.sent !== undefined);
   const count = (turns: readonly Turn[], when: (turn: Turn) => number | null | undefined) =>
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
   const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
-  const reminders = [...view.reminders.values()].filter(item => item.requested && item.sent !== undefined);
-  const remindersToday = reminders.filter(item => isToday(item.sentAt)).length;
+  // Requested actions sent, including an older journal's fixed-text reminder batches.
+  const requestSends = [...view.order.filter(turn => turn.requestedAction && !turn.requestedAction.legacy && turn.sent !== undefined).map(turn => turn.sentAt),
+    ...[...view.reminders.values()].filter(item => item.requested && item.sent !== undefined).map(item => item.sentAt)];
+  const requestsToday = requestSends.filter(isToday).length;
   const holds = new Map<string, number>();
   for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.expires))
     holds.set(notice, (holds.get(notice) ?? 0) + 1);
@@ -240,8 +241,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
     edits ? `Telegram edits recorded: ${String(edits)}; each revises an earlier message and opens no reply.` : '',
     `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
-    `Requested reminders Telegram accepted: ${String(remindersToday)} today, ${String(reminders.length)} in this trial; ${String(pendingRequestedReminders(view).length)} requested and not yet sent.`,
-    ...(view.summaryGrants.length ? [`Requested summaries Telegram accepted: ${String(summarySends.filter(turn => isToday(turn.sentAt)).length)} today, ${String(summarySends.length)} in this trial; ${String(activeSummaryGrants(view).length)} summary requests active.`] : []),
+    `Requested actions Telegram accepted: ${String(requestsToday)} today, ${String(requestSends.length)} in this trial; ${String(openRequests(view).length)} requested and not yet sent.`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
     `My memory: ${String(incoming.total)} accepted operator turns, ${String(view.summaries.length)} summaries and ${String(view.memory.length)} validated memory changes in this trial's encrypted local journal. It survives runner restarts and spans this trial's topics; I can recall it while the trial is active. The verified operator can ask me to correct or forget a recorded fact. Later reply packets withhold the old claim, but the original audit record remains in the journal. This is not production or other-agent memory.`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,

@@ -221,8 +221,8 @@ it('journals verified dated items once, surfaces them on the next due message, a
     const due = worker.probe('hello');
     if ('reason' in due) throw Error(due.reason);
     expect(JSON.parse(due.context).dated).toMatchObject([{ state: 'due', quote: 'Remind me about the invoice on Oct 1.' }]);
-    expect(JSON.parse(due.context).capability).toContain('explicitly asked for');
-    await worker.sendReminders();
+    expect(JSON.parse(due.context).capability).toContain('what the operator explicitly asked you to do at a later time');
+    await worker.sendRequested();
     expect(sends).toBe(1);
     now = Date.UTC(2026, 9, 2, 17);
     const overdue = worker.probe('hello');
@@ -452,7 +452,7 @@ it('withholds a corrected dated source and carries a replacement from the same v
     worker.intake([update(1, 'The invoice deadline is Oct 1.')]); await worker.drain();
     worker.intake([update(2, 'Actually, the invoice deadline is October 3.')]); await worker.drain();
     now = Date.UTC(2026, 9, 1, 17);
-    await worker.sendReminders();
+    await worker.sendRequested();
     expect(sends).toBe(2); // the old October 1 request was corrected before its due time.
     now = Date.UTC(2026, 9, 2, 17);
     const next = worker.probe('What is due?');
@@ -465,14 +465,14 @@ it('withholds a corrected dated source and carries a replacement from the same v
     if ('reason' in due) throw Error(due.reason);
     expect(JSON.parse(due.context).dated).toMatchObject([{ day: '2026-10-03', state: 'due' }]);
     expect(due.context).not.toContain('The invoice deadline is Oct 1.');
-    await worker.sendReminders();
-    expect(sends).toBe(3); // the requested replacement gets its own reminder.
+    await worker.sendRequested();
+    expect(sends).toBe(3); // the requested replacement is answered once, as its own due turn.
     worker.intake([update(3, 'Forget the invoice deadline.')]); await worker.drain();
     const forgotten = worker.probe('What is due?');
     if ('reason' in forgotten) throw Error(forgotten.reason);
     expect(JSON.parse(forgotten.context).dated).toBeUndefined();
     expect(forgotten.context).not.toContain('the invoice deadline is October 3.');
-    await worker.sendReminders();
+    await worker.sendRequested();
     expect(sends).toBe(4); // only the forget request's ordinary reply was added.
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

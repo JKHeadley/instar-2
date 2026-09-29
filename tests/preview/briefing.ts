@@ -15,7 +15,7 @@ export const SOURCE_EXCERPTS = Object.freeze([
   Object.freeze({ id: 'purpose:coherency', path: 'docs/00-the-purpose.md', start: '**Value — coherency is the root,',
     end: 'Alignment held by memory is not alignment.', title: 'Coherency is the root' }),
 ]);
-export const CAPABILITY_NOTE_DATE = '2026-09-27';
+export const CAPABILITY_NOTE_DATE = '2026-09-28';
 export function capabilityNote(limits: { providerAttempts: number; expiresAt: number }) {
   return `As of ${CAPABILITY_NOTE_DATE}: this is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. `
     + 'It keeps accepted messages, summaries and validated memory changes in one encrypted local journal across restarts and topics for this trial. '
@@ -24,9 +24,8 @@ export function capabilityNote(limits: { providerAttempts: number; expiresAt: nu
     + 'Ordinary answers use a subscription model; exact status and how are you doing commands read the durable journal without answer generation. '
     + 'It has no tools: it cannot browse, run code or act outside this chat. '
     + 'When a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; its mention is remembered across restarts. '
-    + 'When the operator explicitly asks to be reminded at a settled day and time, it sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit. '
-    + 'When the operator explicitly asks for a summary at a later time, once or repeatedly, it sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary. '
-    + 'It cannot schedule other work, send nudges or any other unprompted message. '
+    + 'When the operator explicitly asks for something at a settled later day and time (a reminder is one case), it answers that request once then as an ordinary reply through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit. '
+    + 'It runs no scheduled jobs of its own and sends no nudges, digests or any other unprompted message. '
 
     + `This trial allows at most ${limits.providerAttempts} model attempts, including any summaries, and ends at epoch millisecond ${limits.expiresAt}. `
     + 'Every reply is prefixed PREVIEW. Outcomes the system could not confirm (a model call or a delivery) are marked unknown, '

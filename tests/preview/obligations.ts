@@ -3,15 +3,15 @@
  * rebuilds it exactly, and every item stays open until a recorded cause closes it. */
 import { dueState } from './dated-memory.js';
 import { LOOP_REVISIT_MS, commitmentOpen, commitmentWaitsOn, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
-  openDirectives, openQuestionCandidates, pendingRequestedReminders, probeTurn, wallEpoch, type JournalView, type Turn } from './journal.js';
+  openDirectives, openQuestionCandidates, openRequests, probeTurn, wallEpoch, type JournalView, type Turn } from './journal.js';
 
 /** Measured engineering defaults (Rule 46/64): accepted work older than this, or no forward
  * progress for this long while work waits, is reported as overdue on the pull surface. */
 export const BACKLOG_AGE_LIMIT_MS = 30 * 60_000;
 export const PROGRESS_STALL_MS = 30 * 60_000;
 
-export type LoopKind = 'commitment' | 'directive' | 'blocker' | 'question' | 'reminder';
-export type LoopDefect = 'overdue-check-in' | 'overdue-recheck' | 'overdue-reminder' | 'undeclared-dependency';
+export type LoopKind = 'commitment' | 'directive' | 'blocker' | 'question' | 'request';
+export type LoopDefect = 'overdue-check-in' | 'overdue-recheck' | 'overdue-request' | 'undeclared-dependency';
 export interface OpenLoop { kind: LoopKind; id: string; source: string; owner: 'agent' | 'operator'; waitsOn: string;
   openedAt: number; /** Next resurfacing or due time; null when every packet carries it. */ nextAt: number | null;
   revisitDue: boolean; defect?: LoopDefect }
@@ -42,17 +42,18 @@ export function openLoops(view: JournalView, now: number): OpenLoop[] {
     if (source) loops.push({ kind: 'question', id: `question:${question.source}`, source: question.source, owner: 'agent',
       waitsOn: 'nothing', openedAt: source.at, nextAt: null, revisitDue: false });
   }
-  for (const item of pendingRequestedReminders(view)) {
+  // A request the operator asked to have done at a later time stays open until its answer is dispatched.
+  for (const item of openRequests(view)) {
     const dueAt = wallEpoch(item.day!, item.time ?? '09:00', item.zone);
-    loops.push({ kind: 'reminder', id: `reminder:${item.source}:${item.quote}`, source: item.source, owner: 'agent', waitsOn: 'date',
+    loops.push({ kind: 'request', id: `request:${item.source}:${item.quote}`, source: item.source, owner: 'agent', waitsOn: 'date',
       openedAt: view.turns.get(item.source)?.at ?? dueAt, nextAt: dueAt, revisitDue: now >= dueAt,
-      ...(now >= dueAt + BACKLOG_AGE_LIMIT_MS ? { defect: 'overdue-reminder' as const } : {}) });
+      ...(now >= dueAt + BACKLOG_AGE_LIMIT_MS ? { defect: 'overdue-request' as const } : {}) });
   }
   return loops.sort((a, b) => a.openedAt - b.openedAt || a.id.localeCompare(b.id));
 }
 
 export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; revisitDue: number;
-  overdueCheckIns: number; overdueRechecks: number; overdueReminders: number; undeclared: number; refusedCommitments: number;
+  overdueCheckIns: number; overdueRechecks: number; overdueRequests: number; undeclared: number; refusedCommitments: number;
   /** Accepted work not yet done: unanswered operator turns plus obligation work steps due now. */
   unfinished: number; unansweredTurns: number; dueWork: number;
   /** Work steps whose start has no result yet, results waiting for a reply to carry them, and scheduled future steps. */
@@ -75,7 +76,7 @@ export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; re
  * backlog; it never counts as completion. */
 export function loopHealth(view: JournalView, now: number): LoopHealth {
   const loops = openLoops(view, now);
-  const byKind = { commitment: 0, directive: 0, blocker: 0, question: 0, reminder: 0 } as Record<LoopKind, number>;
+  const byKind = { commitment: 0, directive: 0, blocker: 0, question: 0, request: 0 } as Record<LoopKind, number>;
   for (const loop of loops) byKind[loop.kind]++;
   const turns = view.order.filter(turn => turn.accepted && !probeTurn(view, turn) && !settled(view, turn));
   const schedule = obligationSchedule(view);
@@ -102,7 +103,7 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   return { open: loops.length, byKind, revisitDue: loops.filter(loop => loop.revisitDue && loop.kind === 'commitment').length,
     overdueCheckIns: loops.filter(loop => loop.defect === 'overdue-check-in').length,
     overdueRechecks: loops.filter(loop => loop.defect === 'overdue-recheck').length,
-    overdueReminders: loops.filter(loop => loop.defect === 'overdue-reminder').length,
+    overdueRequests: loops.filter(loop => loop.defect === 'overdue-request').length,
     undeclared: loops.filter(loop => loop.defect === 'undeclared-dependency').length, refusedCommitments: view.commitmentRefusals,
     unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
     workInFlight, awaitingDelivery, scheduledWork: future.length,
@@ -134,7 +135,7 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
     `Scheduled work: ${health.scheduledWork} waiting for their time${health.workInFlight ? `, ${health.workInFlight} in progress` : ''}${health.deliveryInhibition ? `; ${health.deliveryInhibition}` : ''}.`,
     ...health.waitingWork.slice(0, 3).map(item => `Waiting on ${item.waitsOn === 'operator' ? 'you' : 'an outside party'}: ${item.need}`),
     ...(health.deliveryUnknown ? [`Delivery unknown: ${health.deliveryUnknown} finished ${health.deliveryUnknown === 1 ? 'result was' : 'results were'} sent without a confirmed receipt; not resent and not counted as delivered.`] : []),
-    `Overdue: ${health.overdueCheckIns} check-ins, ${health.overdueRechecks} blocker rechecks, ${health.overdueReminders} reminders; corrections awaiting your next message: ${health.correctionsWaiting}.`,
+    `Overdue: ${health.overdueCheckIns} check-ins, ${health.overdueRechecks} blocker rechecks, ${health.overdueRequests} requested actions; corrections awaiting your next message: ${health.correctionsWaiting}.`,
     ...(health.undeclared || health.refusedCommitments
       ? [`Commitments without a declared dependency: ${health.undeclared} open (older records), ${health.refusedCommitments} refused at creation.`] : []),
     ...(health.rejectedDeclarations ? [`Declared obligations I could not record: ${health.rejectedDeclarations} (each sent only after a full review).`] : []),

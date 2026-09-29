@@ -142,44 +142,44 @@ it('records a stop live proof only after an observed latch with nothing sent pas
   expect(JSON.parse(harness.status().stdout).capabilities.find(row => row.id === 'preview.stop').outcomes[0]).toMatchObject({ posture: 'unavailable', confirmed: true });
 }, 60000);
 
-it("records a delivered requested summary's live proof through the command at its synthetic update, and reads it back", async () => {
+it("records a requested action's live proof by the operator's request message, bound to the sent due turn that answered it", async () => {
   const { mkdtempSync, realpathSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { createJournalWorker, openPreviewJournal } = await import('./journal-test-worker.js');
   const { appendProof } = await import('./proof-log.js');
   const { appendRun } = await import('./self-state.js');
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-live-proof-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-requested-action-live-proof-')));
   try {
-    const start = Date.UTC(2026, 8, 26, 17), daily = 'send me a summary of today every day at 6 pm';
+    const start = Date.UTC(2026, 8, 26, 17), request = 'remind me today at 6 pm to call Priya';
     let now = start;
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), Buffer.from(key, 'hex'), { kind: 'genesis', bot: '12345678', chat: '7654321',
-      operator: '7654321', grant: 'grant:summary', configurationDigest: 'sha256:summary', expires: Date.UTC(2026, 9, 10), maxCalls: 30, maxReplies: 30,
-      maxTurns: 30, maxBytes: 12000, cursor: 0 });
+      operator: '7654321', grant: 'grant:requested-action', configurationDigest: 'sha256:requested-action', expires: Date.UTC(2026, 9, 10), maxCalls: 30,
+      maxReplies: 30, maxTurns: 30, maxBytes: 12000, cursor: 0 });
     let sends = 0;
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles', checkOutbound: () => {},
-      model: async input => JSON.stringify(input.question.startsWith('[Scheduled summary') ? { reply: 'The day in brief.', memory: [], dated: [] }
-        : { reply: 'Okay.', memory: [], dated: [], summaries: [{ quote: daily, when: 'every day at 6 pm', period: 'today', repeat: 'daily' }] }),
+      model: async input => JSON.stringify(input.id.startsWith('requested-action:') ? { reply: 'Time to call Priya.', memory: [], dated: [] }
+        : { reply: 'Okay.', memory: [], dated: [{ quote: request, when: 'today at 6 pm', remind: true }] }),
       send: async () => ++sends });
-    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: daily, date: start / 1000 } }]);
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: request, date: start / 1000 } }]);
     await worker.drain();
-    now = Date.UTC(2026, 8, 27, 1); await worker.sendReminders();
-    const summary = journal.view.order.find(turn => turn.requestedSummary);
-    expect(summary).toMatchObject({ update: 1.0009765625, sent: 2 });
+    now = Date.UTC(2026, 8, 27, 1); await worker.sendRequested();
+    const due = journal.view.order.find(turn => turn.requestedAction);
+    expect(due).toMatchObject({ update: 1.0009765625, sent: 2 });
     journal.close();
     // The launch history that executed it: one run and its startup record carrying the capability versions.
     appendRun(join(root, 'runs.jsonl'), { v: 1, launch: start - 10, pid: 1 });
     appendProof(join(root, 'proofs.jsonl'), { v: 1, plan: 'startup', planVersion: 'p', generation: 'g1', startedAt: start - 20, completedAt: start - 20,
-      disposition: 'passed', observed: { stepCheck: false, agentState: false, 'version:preview.requested-summaries': 'v1' }, detail: '', observedAt: null, capture: null });
+      disposition: 'passed', observed: { stepCheck: false, agentState: false, 'version:preview.reminders': 'v1' }, detail: '', observedAt: null, capture: null });
     const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key };
-    const record = update => spawnSync(process.execPath, [...args, 'record-live-proof', '--root', root, '--capability', 'preview.requested-summaries',
+    const record = update => spawnSync(process.execPath, [...args, 'record-live-proof', '--root', root, '--capability', 'preview.reminders',
       '--update', String(update)], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 20000 });
-    expect(record(1).status).toBe(1); // the operator's source message is not the summary outcome
+    expect(record(due.update).status).toBe(1); // the due turn is not an operator request message
     expect(record(1.1).status).toBe(1); // off the journal's update grid
-    const recorded = record(summary.update);
+    const recorded = record(1);
     expect(recorded.status, recorded.stderr).toBe(0);
-    expect(JSON.parse(recorded.stdout)).toMatchObject({ capability: 'preview.requested-summaries', update: 1.0009765625, messageId: 2, version: 'v1' });
+    expect(JSON.parse(recorded.stdout)).toMatchObject({ capability: 'preview.reminders', update: 1, messageId: 2, version: 'v1' });
     const log = readProofs(join(root, 'proofs.jsonl'));
     expect(log).toMatchObject({ unreadable: 0, refused: [] });
-    expect(log.liveProofs).toEqual([expect.objectContaining({ update: 1.0009765625, capability: 'preview.requested-summaries' })]);
+    expect(log.liveProofs).toEqual([expect.objectContaining({ update: 1, capability: 'preview.reminders' })]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);

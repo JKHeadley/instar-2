@@ -55,7 +55,7 @@ describe('the preview inventory is register input', () => {
     expect(capabilityFindings(inventory, classify, NOW)).toEqual([]);
     const critical = inventory.capabilities.filter(c => classify(c.declaration.profile).critical).map(c => c.declaration.id);
     expect(critical.sort()).toEqual(['preview.durable-intake', 'preview.held-reply-notice', 'preview.reminders', 'preview.reply',
-      'preview.reply-review', 'preview.requested-summaries', 'preview.spend-cap', 'preview.status-pull', 'preview.stop']);
+      'preview.reply-review', 'preview.spend-cap', 'preview.status-pull', 'preview.stop']);
     for (const id of critical) expect(outcomesOf(inventory, id).length, id).toBeGreaterThan(0);
     for (const plan of PREVIEW_PROOF_PLANS) expect(inventory.outcomes.some(o => o.requiredFacts.probe === probeId(plan.id))
       || inventory.sentinels.some(o => o.requiredFacts.freshnessProbe === probeId(plan.id)), plan.id).toBe(true);
@@ -142,10 +142,11 @@ describe('a live proof binds the capability to its own actual outcome in the lau
     const result = proof('preview.reply', 1, view([question]), { launches, startups: [startup(NOW - 20, { version: 'old' }), startup(NOW + 40, { version: 'new' })] });
     expect(result).toMatchObject({ ok: true, record: { version: 'old' } });
   });
-  it('reminders, requested summaries and cap holds need their own outcomes', () => {
+  it('requested actions and cap holds need their own outcomes', () => {
     const asked = turn(3, { text: 'remind me at 5 to call Sam' });
-    const reminders = new Map([['r', { items: [{ source: 'u3', quote: 'call Sam', when: '17:00' }], text: 'x', day: '2026-09-22', at: NOW, sent: 21, sentAt: NOW + 2 }]]);
-    expect(proof('preview.reminders', 3, view([asked], { reminders } as Partial<JournalView>))).toMatchObject({ ok: true, record: { messageId: 21, observedAt: NOW + 2 } });
+    const due = turn(3.0009765625, { id: 'requested-action:0', sent: 21, sentAt: NOW + 2,
+      requestedAction: { items: [{ source: 'u3', quote: 'call Sam', when: '17:00' }] } });
+    expect(proof('preview.reminders', 3, view([asked, due]))).toMatchObject({ ok: true, record: { messageId: 21, observedAt: NOW + 2 } });
     const { answer: _answer, intent: _intent, ...held } = turn(4, {}) as Turn & { answer?: string; intent?: string };
     expect(proof('preview.spend-cap', 4, view([held]))).toMatchObject({ ok: false });
     expect(proof('preview.spend-cap', 4, view([held], { awayEvents: [{ kind: 'hold', at: NOW + 3, id: 'u4', reason: 'call cap' }] } as Partial<JournalView>)))
@@ -158,13 +159,15 @@ describe('a live proof binds the capability to its own actual outcome in the lau
     expect(proof('preview.stop', 1, withReminder(NOW + 70), latched)).toMatchObject({ ok: false });
     expect(proof('preview.stop', 1, withReminder(NOW + 40), latched)).toMatchObject({ ok: true, record: { capability: 'preview.stop' } });
   });
-  it('a requested summary proves itself at its own synthetic update, the journal\'s operation identity; an off-grid update refuses', () => {
-    const summary = turn(1.0009765625, { id: 'requested-summary:s:2026-09-22', text: '[Scheduled summary]', sent: 31, sentAt: NOW + 4,
-      requestedSummary: { grant: 's', slot: '2026-09-22', window: { from: '2026-09-22', through: '2026-09-22' } } as NonNullable<Turn['requestedSummary']> });
-    const v = view([turn(1, { sent: 11, sentAt: NOW }), summary]);
-    expect(proof('preview.requested-summaries', 1, v)).toMatchObject({ ok: false });
-    expect(proof('preview.requested-summaries', 1.0009765625, v)).toMatchObject({ ok: true, record: { update: 1.0009765625, messageId: 31 } });
-    expect(proof('preview.requested-summaries', 1.1, v)).toMatchObject({ ok: false, reason: expect.stringMatching(/update domain/u) });
+  it('a requested action proves itself by the sent due turn that answered the named request; an unanswered or off-grid update refuses', () => {
+    const due = turn(2.0009765625, { id: 'requested-action:0', text: '[Due now] remind me to call Sam', sent: 31, sentAt: NOW + 4,
+      requestedAction: { items: [{ source: 'u1', quote: 'remind me to call Sam', when: '17:00' }] } });
+    const answered = view([turn(1, { sent: 11, sentAt: NOW }), turn(2, { sent: 12, sentAt: NOW }), due]);
+    expect(proof('preview.reminders', 1, answered)).toMatchObject({ ok: true, record: { update: 1, messageId: 31 } });
+    expect(proof('preview.reminders', 2, answered)).toMatchObject({ ok: false });
+    const { sent: _sent, sentAt: _sentAt, ...unsent } = due;
+    expect(proof('preview.reminders', 1, view([turn(1, { sent: 11, sentAt: NOW }), unsent]))).toMatchObject({ ok: false });
+    expect(proof('preview.reminders', 1.1, answered)).toMatchObject({ ok: false, reason: expect.stringMatching(/update domain/u) });
   });
 });
 

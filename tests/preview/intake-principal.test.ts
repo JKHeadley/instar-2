@@ -36,7 +36,7 @@ it('mints a core VerifiedPrincipal bound to the exact update; admission needs th
   expect(admittedUpdate(g, other, principal).accepted).toBe(false);
   expect(admittedUpdate(g, update(3, 'hello'), principal).accepted).toBe(false);
   // A system writer (even a verified one) is never the operator.
-  const scheduler = systemWriters(key, '12345678').mint('requested-summary-grant', 'slot', 1000)!;
+  const scheduler = systemWriters(key, '12345678').mint('requested-action', 'slot', 1000)!;
   expect(scheduler).toMatchObject({ kind: 'system', id: 'preview-scheduler:12345678', provenance: { class: 'verified' } });
   expect(admittedUpdate(g, u, scheduler).accepted).toBe(false);
 });

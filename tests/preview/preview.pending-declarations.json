@@ -140,7 +140,7 @@
     "status": "live",
     "requiredFacts": {
       "metrics": [
-        "reminders",
+        "requestedActions",
         "dated"
       ],
       "liveProof": "live-proof:preview.reminders"
@@ -158,34 +158,6 @@
     },
     "standards": [
       8,
-      62
-    ],
-    "holds": []
-  },
-  {
-    "type": "Declaration",
-    "schemaVersion": 1,
-    "id": "preview.requested-summaries",
-    "kind": "features",
-    "status": "live",
-    "requiredFacts": {
-      "metrics": [
-        "requestedSummaries"
-      ],
-      "liveProof": "live-proof:preview.requested-summaries"
-    },
-    "profile": {
-      "type": "Profile",
-      "schemaVersion": 1,
-      "consequence": "external",
-      "reversibility": "irreversible",
-      "reach": "operator",
-      "surface": "chat",
-      "repeats": {
-        "kind": "unbounded"
-      }
-    },
-    "standards": [
       52,
       62
     ],
@@ -232,7 +204,6 @@
     "status": "live",
     "requiredFacts": {
       "metrics": [
-        "digest",
         "self",
         "obligations",
         "proofs"

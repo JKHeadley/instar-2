@@ -52,7 +52,7 @@ export const PLAN: readonly PlannedTurn[] = [
 export interface Question { id: string; surface: string; text: string; control?: RegExp }
 export const QUESTIONS: readonly Question[] = [
   { id: 'ordinary', surface: 'answer packet', text: 'Anything I should keep in mind for the house this week?' },
-  { id: 'week', surface: 'week summary', text: 'What did I tell you this week?', control: /niece Juniper/u },
+  { id: 'week', surface: 'answer packet (a week question)', text: 'What did I tell you this week?', control: /niece Juniper/u },
   { id: 'inventory', surface: 'memory inventory', text: 'What do you remember about me?', control: /whiteboard marker/u },
   { id: 'repeat', surface: 'repeat-question awareness', text: 'Have I asked you the same question more than once lately?' },
   { id: 'open', surface: 'open questions', text: 'Is there anything I asked that you still owe me an answer on?' },
@@ -62,13 +62,13 @@ export const QUESTIONS: readonly Question[] = [
 ];
 
 export interface SurfaceRow { question: string; surface: string; probeHits: number; blocks: Record<string, number>;
-  control: boolean | null; inventoryTotal?: number; periodTotal?: number; openQuestions?: number }
+  control: boolean | null; inventoryTotal?: number; openQuestions?: number }
 export interface ProbeReplayResult { rows: SurfaceRow[]; summaries: { count: number; withProbe: number; probeHits: number; controlJuniper: boolean };
   people: { total: number; fromProbe: number; control: boolean }; preferences: { active: number; fromProbe: number; control: boolean };
   commitments: { total: number; fromProbe: number }; journal: { turns: number; probeTurns: number; auditable: boolean };
   replayStable: boolean; sends: number; restarts: number }
 
-const BLOCKS = ['history', 'recalled', 'summary', 'period', 'inventory', 'memorySearch', 'openQuestions', 'commitments',
+const BLOCKS = ['history', 'recalled', 'summary', 'inventory', 'memorySearch', 'openQuestions', 'commitments',
   'people', 'preferences', 'contradictions', 'memory'] as const;
 
 function measure(question: Question, context: string): SurfaceRow {
@@ -78,12 +78,10 @@ function measure(question: Question, context: string): SurfaceRow {
     const hits = probeHits(JSON.stringify(packet[block]));
     if (hits) blocks[block] = hits;
   }
-  const period = packet.period as { total?: number } | undefined;
   const inventory = packet.inventory as { total?: number } | undefined;
   return { question: question.id, surface: question.surface, probeHits: probeHits(context), blocks,
     control: question.control ? question.control.test(context) : null,
     ...(inventory?.total === undefined ? {} : { inventoryTotal: inventory.total }),
-    ...(period?.total === undefined ? {} : { periodTotal: period.total }),
     ...(Array.isArray(packet.openQuestions) ? { openQuestions: packet.openQuestions.length } : {}) };
 }
 

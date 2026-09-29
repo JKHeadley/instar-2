@@ -1446,8 +1446,9 @@ it('recalls imported old-root turns with their original Telegram dates and drops
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
     // A narrower provider envelope still fits recall, after optional candidates yield.
     // int12: bound relative to the full first packet (which carries the old quote), so added
-    // reply instructions cannot shift it past the recall-drop window.
-    limit = Buffer.byteLength(contexts[0]!) - 600;
+    // reply instructions cannot shift it past the recall-drop window. cint-23-occam re-measured the
+    // window in 50-byte steps after the summary decision left the packet: 700-1500 (was 600).
+    limit = Buffer.byteLength(contexts[0]!) - 1100;
     worker.intake([update(11, 'Which pier does the ferry leave from, again?')]); await worker.drain();
     expect(journal.view.order.at(-1)?.sent).toBe(1);
     // The new unsummarized turn is mandatory. At this bound even a candidate-free

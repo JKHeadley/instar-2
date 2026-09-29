@@ -16,8 +16,7 @@ it('keeps desk probes auditable in the journal but out of every later memory sur
   for (const row of result.rows) expect({ question: row.question, probeHits: row.probeHits, blocks: row.blocks })
     .toEqual({ question: row.question, probeHits: 0, blocks: {} });
   const row = (id: string) => result.rows.find(item => item.question === id)!;
-  // Week recap and inventory counts: 29 and 32 before the fix; the difference is exactly the eight probes.
-  expect(row('week').periodTotal).toBe(21);
+  // Inventory count: 32 before the fix; the difference is exactly the eight probes.
   expect(row('inventory').inventoryTotal).toBe(24);
   // The failed canary is no longer an open operator question.
   expect(row('open').openQuestions).toBeUndefined();

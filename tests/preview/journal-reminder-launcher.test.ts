@@ -6,13 +6,14 @@ import { join } from 'node:path';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 
-// The reminder was due an hour ago; the cancellation (if any) is already waiting in
-// Telegram when the launcher starts. The model-attempt cap is full, so no provider runs.
+// The request was due an hour ago; the cancellation (if any) is already waiting in Telegram when the launcher
+// starts. No provider runs: the model-failure route answers every model call UNKNOWN, so the cancellation stays
+// unsettled and a due turn can only send its truthful loss line under the reason header.
 it.each([
   ['a queued cancellation', ['cancel']],
   ['a cancellation behind a benign update', ['benign', 'cancel']],
   ['an empty queue', []],
-])('reads %s before sending an overdue reminder', async (_name, queued) => {
+])('reads %s before answering an overdue requested action', async (_name, queued) => {
   const world = successiveWorld(), root = join(world.directory, 'reminder-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -37,7 +38,6 @@ it.each([
     model: async () => JSON.stringify({ reply: 'Okay.', memory: [], dated: [{ quote: request, when, remind: true }] }) });
   worker.intake([update(1, request)]); await worker.drain();
   expect(journal.view.dated).toMatchObject([{ remind: true }]);
-  while (journal.view.calls < 16) journal.append({ kind: 'legacy-call', at: start });
   journal.close();
   writeFileSync(updates, JSON.stringify(queued.map((kind, index) => kind === 'cancel'
     ? update(index + 2, 'cancel the Priya reminder') : update(index + 2, 'hello from someone else', operator + 1))));
@@ -50,7 +50,7 @@ it.each([
       endpoint.once('exit', code => reject(Error(`endpoint exited before listening: ${String(code)}`)));
     });
     const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
-      'tests/preview/journal-agent.mjs', 'run', '--root', root,
+      '--loader', './tests/preview/model-failure-loader.mjs', 'tests/preview/journal-agent.mjs', 'run', '--root', root,
       '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
@@ -60,18 +60,21 @@ it.each([
         INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-        INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` } });
+        INSTAR_PREVIEW_SIMULATE_UNKNOWN_ANSWER: '1', INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` } });
     expect(run.status, run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`, 'utf8') : '';
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
-    const requested = [...journal.view.reminders.values()].filter(item => item.requested);
+    const due = journal.view.order.filter(turn => turn.requestedAction);
     if (queued.includes('cancel')) {
-      expect(sends).not.toContain('PREVIEW reminder');
-      expect(journal.view.order.find(turn => turn.text === 'cancel the Priya reminder')?.held).toBe('call cap');
-      expect(requested.every(item => !item.sent)).toBe(true);
+      // The queued cancellation was read first; its UNKNOWN answer leaves it unsettled, so no due turn was created.
+      expect(sends).not.toContain('PREVIEW — You asked on');
+      expect(journal.view.order.find(turn => turn.text === 'cancel the Priya reminder')?.modelState).toBe('uncertain');
+      expect(due).toEqual([]);
     } else {
-      expect(sends.match(/PREVIEW reminder you asked for/gu)).toHaveLength(1);
+      expect(sends.match(/PREVIEW — You asked on/gu)).toHaveLength(1);
       expect(sends).toContain('call Priya');
+      expect(sends).toContain("I lost my answer to this: the model call's outcome is unknown");
+      expect(due).toHaveLength(1);
     }
     journal.close();
   } finally { endpoint.kill('SIGTERM'); }

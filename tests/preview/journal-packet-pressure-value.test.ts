@@ -10,7 +10,7 @@ const source = (update: number) => `telegram:12345678:update:${update}`;
 
 /** cbuild-2: every operator packet now carries the always-offered summary and promise decisions
  * (Rule 10), a fixed addition that shifts each measured boundary by the same amount. */
-const GUIDANCE = 550; // measured: two-item window 4592-4799 at this offset
+const GUIDANCE = 300; // cint-23-occam re-measure (every packet lost the summary decision): the whole test passes for offsets 180-410 in 10-byte steps; was 550 (two-item window 4592-4799)
 
 it('measures which memories survive a capped packet after 5,000 turns', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-packet-pressure-')));

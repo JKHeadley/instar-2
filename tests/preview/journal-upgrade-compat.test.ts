@@ -46,9 +46,10 @@ it('opens the frozen14 journal and answers identically; frozen13 refuses the ren
     expect(baseStatus.status, baseStatus.stderr).toBe(0);
     expect(nextStatus.status, nextStatus.stderr).toBe(0);
     const nextView = JSON.parse(nextStatus.stdout), baseView = JSON.parse(baseStatus.stdout);
-    // int11/int12 add status fields and plainer wording; the replayed journal state is unchanged.
+    // int11/int12 add status fields and plainer wording; the replayed journal state is unchanged. cint-23-occam
+    // removed the operator digest, so its status field is no longer reported.
     const { holds: nextHolds, self: nextSelf, ...nextState } = nextView;
-    const { holds: baseHolds, self: baseSelf, ...baseState } = baseView;
+    const { holds: baseHolds, self: baseSelf, digest: _removedDigest, ...baseState } = baseView;
     expect(nextState).toMatchObject(baseState);
     expect(nextHolds.map((item: { update: number }) => item.update)).toEqual(baseHolds.map((item: { update: number }) => item.update));
     for (const line of ['Operator messages received: 3 today, 3 in this trial', 'My replies Telegram accepted: 2 today, 2 in this trial'])

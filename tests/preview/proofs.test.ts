@@ -44,7 +44,7 @@ const delivered = { attempts: 1, accepted: 1, latestAccepted: true, latestReceip
 const SAMPLE: Record<string, Observed> = { startup: { identity: 12345678, boundBot: 12345678, cursor: 0, turns: 0 },
   'telegram-identity': { identity: 12345678, boundBot: 12345678 }, 'journal-restore': { sections: 30, cursor: 1, restored: true, differing: null },
   'reply-drain': { unfinished: 0, oldestUnfinishedAgeMs: null, backlogOverdue: false, inhibition: null },
-  'reply-delivered': delivered, 'held-notice-delivered': delivered, 'reminder-delivered': delivered, 'requested-summary-delivered': delivered,
+  'reply-delivered': delivered, 'held-notice-delivered': delivered, 'reminder-delivered': delivered,
   'status-answered': delivered, 'provider-outcomes': { observedCalls: 1, completed: 1 },
   'reply-review-reached': { sentAnswers: 1, reviewed: 1, unreviewed: 0 },
   'spend-cap-refusal': { calls: 5, maxCalls: 5, replies: 1, maxReplies: 5, refusals: 1 },
@@ -322,12 +322,12 @@ describe('every critical pipeline step, over its complete population (Rule 38)',
     const flagged = turn('u1', { sent: 1, sentAt: T0, replyChecks: [{ verdict: 'violation', ruleIds: [], confidence: 1, path: 'holding', latencyMs: 0 }] });
     expect(row(coverage({ order: [flagged], turns: new Map([['u1', flagged]]) })['operator-reply']!, 'send').state).toBe('failed');
   });
-  it('no business step is exempt: every roster step names a supervisor, and an unobserved reminder is missing with its open direction', () => {
-    const reminders = new Map([['r1', { items: [{ source: 'u1', quote: 'call Sam', when: 'at 5' }], text: 'x', day: '2026-09-22', at: T0,
-      requested: true, sent: 3, sentAt: T0 }]]);
-    const pipeline = coverage({ reminders: reminders as JournalView['reminders'] }, { ...supervisors, stepCheck: true })['requested-reminder']!;
-    expect(pipeline.failureDirection).toBe('open');
-    expect(pipeline.rows.map(r => [r.boundary, r.population, r.state])).toEqual([['select-due', 1, 'missing'], ['send', 1, 'missing']]);
+  it('no business step is exempt: every roster step names a supervisor, and an unobserved requested action is missing with its closed direction', () => {
+    const due = turn('requested-action:0', { update: 1.0009765625, sent: 3, sentAt: T0, requestedAction: { items: [{ source: 'u1', quote: 'call Sam', when: 'at 5' }] } });
+    const pipeline = coverage({ order: [due], turns: new Map([[due.id, due]]) }, { ...supervisors, stepCheck: true })['requested-action']!;
+    expect(pipeline.failureDirection).toBe('closed');
+    expect(pipeline.rows.map(r => [r.boundary, r.population, r.state])).toEqual([['select-due', 1, 'missing'], ['prepare-packet', 1, 'missing'],
+      ['answer', 1, 'missing'], ['send', 1, 'missing']]);
     for (const step of Object.values(CRITICAL_PIPELINES).flatMap(p => p.steps)) expect(step.supervisors.length, step.step).toBeGreaterThan(0);
     expect(Object.values(CRITICAL_PIPELINES).flatMap(p => p.steps).some(s => 'bootstrap' in s)).toBe(false);
     expect(Object.keys(stepCoverage(view({}), supervisors))).toEqual(Object.keys(CRITICAL_PIPELINES));

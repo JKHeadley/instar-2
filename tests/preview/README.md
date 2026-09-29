@@ -652,7 +652,7 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/recover-slot.mjs /ABSO
 
 **Core operator journey.** The one live procedure for this runner is
 [core-journey-live-test.md](core-journey-live-test.md): talk, recall, correct and forget,
-restart, a held answer, and a requested summary or reminder, in the existing private chat.
+restart, a held answer, and a request for something at a later time, in the existing private chat.
 Per-feature procedures added in rounds 11–12 live in
 [live-tests-archive/](live-tests-archive/) with their scenario cases and recorded results;
 use one only when a change touches a scenario the journey does not cover.
@@ -1157,7 +1157,7 @@ status request never changes pending memory decisions. For an operator-channel
 check, use [status-command-live-test.md](live-tests-archive/status-command-live-test.md).
 
 Each model call's packet carries `now`, the audience, the conversation history,
-a `capability` line (capped preview, answers and reminders the operator explicitly asked for, no tools, memory is this trial's
+a `capability` line (capped preview, answers plus what the operator explicitly asked for at a later time, no tools, memory is this trial's
 journal only) and `sources`: the three pinned purpose excerpts, the dated
 a `capability` line (capped preview, answer only, no tools, durable memory in this
 trial's encrypted local journal) and `sources`: the three pinned purpose excerpts, the dated
@@ -1240,8 +1240,8 @@ Updating the file needs no restart. Sample:
 ```md
 # Instar 2.0 — desk report
 What 2.0 is: Instar rebuilt so coherence is something an agent cannot lose.
-This preview: a private, capped Telegram trial. It answers and sends a reminder
-only when the operator asks for one; it has no tools and cannot browse. Its memory
+This preview: a private, capped Telegram trial. It answers, and acts at a later
+time only when the operator asks it to; it has no tools and cannot browse. Its memory
 is this trial's journal.
 This preview: a private, capped Telegram trial. It answers only; it has no tools,
 cannot act, browse or schedule. It recalls accepted turns, summaries and validated
@@ -1471,7 +1471,7 @@ open list carries the ten most recent. Each is shown inside its whole message or
 `from`, date, elapsed age, conversation and, for the agent's own reply, its delivery outcome.
 Closed and superseded items are excluded before ranking. The model addresses a related open
 item and its age; the packet says the preview has no tools, so it can only remember an item,
-never do or schedule it; only an explicit dated reminder request sends a reminder. It never calls an item done unless a message says so, and
+never do or schedule it; only an explicit request for a later time is answered then. It never calls an item done unless a message says so, and
 absence is not evidence. Under the context bound, optional evidence follows the current packet priority. `status` reports `commitments: {total, open}` and per summary
 `commitments` (`null` = none recorded) and `closed`; `inspect` shows the packet's `commitments`.
 This reuses the journal projection and recall function, with no new store, call or classifier.
@@ -1769,8 +1769,8 @@ An unresolved date gets a clarification. Later answer packets carry those absolu
 dates and ask the model to state them when relevant. The exact reply still passes the existing
 reply check and send intent.
 
-The capability line says plainly: this preview **sends a reminder only when the operator
-explicitly asks for one**. An item in memory is not a scheduled notification; the runner has no
+The capability line says plainly: this preview **acts at a later time only when the operator
+explicitly asks it to**. An item in memory is not a scheduled notification; the runner has no
 external scheduler or tools. It can mention a due or overdue item in a reply to the operator's next message.
 For Justin's supervised procedure, see [dated-memory-live-test.md](dated-memory-live-test.md).
 
@@ -1790,41 +1790,66 @@ Only the final send intent records which items were mentioned. A held check or
 holding reply records none. The intent is fsynced before Telegram dispatch, so
 even an UNKNOWN send cannot repeat the clause after replay. `status.mentionedDates`
 counts these durable intent markers. This is a reply aside, never an unprompted
-reminder or scheduled action. For the supervised private-chat procedure, see
+push or scheduled action; a due turn the runner starts never carries it. For the supervised private-chat procedure, see
 [upcoming-date-mention-live-test.md](live-tests-archive/upcoming-date-mention-live-test.md).
 
-### Reminders the operator asks for
+### What the operator asks for at a later time (requested actions)
 
-An explicit verified-operator request such as “remind me Friday at 9 am to call Priya” is the
-scoped grant for exactly that reminder. The model decides by meaning that the message asks to be
-reminded and marks the dated item `remind: true`; the runner grants it only for a settled local
-day and time that is still ahead and before trial expiry. A day-only request is due at 09:00 local.
-The item is journaled in the same fsynced answer frame as the decision, so a crash before the
-reply cannot lose it; replay refuses a `remind` mark on any other turn. The grant's fields are
-fixed by that record: who asked (the verified operator), when (the message time), what (the exact
-quoted clause), when due (day, time and zone), surface (this private chat or topic) and recovery
-(an UNKNOWN send is never retried). The immediate reply states the due time, or why the request
-was not granted (unsettled day or AM/PM, already past, or after the preview ends).
+The base platform ships no scheduled jobs of its own: no digests, no morning summaries, no mail
+checks. It allows one general thing: doing what the verified operator explicitly asked for, at the
+time they asked for it. A reminder is just the case "remind me to X"; "tell me Friday at 9 am
+whether the invoice is paid" is the same mechanism.
 
-At or after the due time, `sendReminders()` sends one message per topic holding every requested
-reminder due at that poll (Rule 52), each line
-`PREVIEW reminder you asked for on <asked local time>: "<request>" (due <day time zone>)`, which
-states its reason (Rule 54). A later reminder in the same topic gets its own message when it
-falls due. The runner fsyncs a `requested-reminder-intent` (consuming one reply slot) before
-dispatch and records Bot API acceptance only for the exact chat, topic and text. A crash or
-UNKNOWN result is never retried. Stop, expiry, the reply cap, the outbound secret check and
-unsettled memory requests hold it. So does any later verified-operator message whose meaning is
-not yet settled by a recorded decision (a call cap, an UNKNOWN or failed call, or a reply with no
-recorded decision). The launcher sends reminders only after a successful poll returned nothing
-new, so a cancellation already waiting in Telegram is read first. A dated item the operator did not ask to be reminded of is
-never pushed; nor is any summary, digest or nudge.
+**The grant.** An explicit verified-operator request such as “remind me Friday at 9 am to call
+Priya” is the scoped grant for exactly that request. The model decides by meaning that the message
+asks for something at a later time and marks the dated item `remind: true` (the field name is kept
+from the reminder mechanism this generalizes); the runner grants it only for a settled local day and
+time that is still ahead and before trial expiry. A day-only request is due at 09:00 local. The item
+is journaled in the same fsynced answer frame as the decision, so a crash before the reply cannot
+lose it; replay refuses a `remind` mark on any other turn. The grant's fields are fixed by that
+record: who asked (the verified operator), when (the message time), what (the exact quoted clause),
+when due (day, time and zone), and where (this private chat or topic). The immediate reply states the
+due time, or why nothing was scheduled (unsettled day or AM/PM, already past, or after the preview ends).
 
-A later verified-operator message cancels a pending reminder: the packet lists pending requests as
-`reminders` with ids, and the decision returns `cancelReminders`. A change is a cancel plus a new
-request. Forgetting, correcting or undoing the dated clause also removes its reminder. `status.reminders`
-reports intents, accepted, UNKNOWN, requested, pending and cancelled. The old trial-wide
-`--reminder-grant-reference` launch option is retired and refused; its journal frames still
-replay but authorize nothing. See [requested-reminder-live-test.md](live-tests-archive/requested-reminder-live-test.md).
+**The due turn.** `sendRequested()` is the one due point; the launcher calls it only after a
+successful poll returned nothing new, so a cancellation already waiting in Telegram is read and
+settled first. At that point every due request in one conversation becomes ONE fsynced `action-due`
+frame, written by the owner's verified scheduler principal (Rule 29) and carrying at most five
+requests, with the rest named only by a count line (Rule 52). The frame creates a runner-authored
+turn with no operator authority whose text is the operator's own request, framed with when it was
+asked and when it is due. The ordinary answer path then answers it: its due selection and prepared
+packet are validated when the step supervisor is on (fail closed), then the call and reply caps, the
+model call, the reply check and review, the outbound secret check, one exact send intent and the
+UNKNOWN fence. The reply's first lines state why it was sent (Rule 54):
+`PREVIEW — You asked on <asked local time>: "<request>" (due <day time zone>)`, then the answer. An
+UNKNOWN or failed model result sends a truthful line under the same header, never a made-up result;
+a model call that dies with no recorded outcome is an orphaned UNKNOWN and is never repeated. A
+request not yet due stays open; a later request in the same conversation gets its own turn when it
+falls due. A due turn is created only when its model call and its one reply fit the caps, and never
+while stopped, expired, an operator's memory decision is unresolved, or a later verified-operator
+message that may withdraw it is unsettled (a call cap, an UNKNOWN or failed call, or a reply with no
+recorded decision). A dated item the operator did not ask for is never pushed; nor is any summary,
+digest or nudge.
+
+**Cancel and change.** A later verified-operator message cancels an open request, including one
+already queued in a due turn that has not been sent: the packet lists open requests as `reminders`
+with ids, and the decision returns `cancelReminders`. A plain-text reply with no recorded decision
+enters the unresolved-decision recovery, which must return `cancelReminders` (`[]` keeps them) before
+anything is released. A queued due turn one of whose requests is withdrawn is never answered or sent;
+its other requests fall due again on their own. A change is a cancel plus a new request. Forgetting,
+correcting or undoing the dated clause also withdraws it. `status.requestedActions` reports requested,
+cancelled, accepted, refused and UNKNOWN sends, the open requests and each due turn's state
+(`accepted`, `delivery UNKNOWN`, `withdrawn, not sent`, `held (…)`, `model UNKNOWN`, `pending`).
+
+**Older journals.** Frames from the removed requested-summary feature (`summary-due`, summary grants
+and cancels, grouped summary intents) and from the earlier fixed-text reminder push
+(`requested-reminder-intent`, `reminder-intent`, `reminder-grant`) still replay. Their requests stay
+dispatched, their turns are never answered or sent again, and the runner refuses to write
+`summary-due` or `requested-reminder-intent` frames. The old trial-wide `--reminder-grant-reference`
+launch option is retired and refused. `removed-frames-compat.test.ts` writes such a journal with the
+last build that produced them and replays it on this one. For the supervised private-chat procedure,
+see [requested-action-live-test.md](requested-action-live-test.md).
+
 ### Host clock corrections
 
 The journal launcher samples wall time through one process clock that also advances with
@@ -1856,60 +1881,6 @@ notification is added. The cue is only a retrieval signal; it does not decide
 what the operator meant or authorize a send. The existing correction/forgetting
 projection withholds superseded quotes. A real-model answer still needs the
 supervised check in [numbers-and-units-live-test.md](live-tests-archive/numbers-and-units-live-test.md).
-
-### Summaries the operator asks for
-
-A summary the operator explicitly asks to receive later (“send me a summary of today every day at
-6 pm”, “summarize today at 6 pm”) is a result the operator requested, so Rule 87 lets the runner
-send it on its own when due; pull surfaces remain only for status never asked for. The model
-decides by meaning that a verified operator message is such a request and returns
-`summaries:[{quote, when, period, repeat}]` (`repeat` is `once`, `daily` or `weekly`; `period` is
-today, yesterday, this or last week or month, or the past N days). The runner settles the time
-and first due day from the exact `when` phrase and never guesses an unstated AM or PM. A stated
-start day of a repeating request (tomorrow, a weekday after “starting”, or YYYY-MM-DD) binds the
-first slot; a start or end qualification it cannot settle is refused, never dropped. It stores
-the grant (who, what, the covered period, time, zone, recurrence and conversation) in the same
-fsynced answer frame as the decision. The reply states the schedule, or why none was set: the time
-is unsettled, the period is unsupported, a one-off time has passed, or the preview ends first.
-The `summaryDecision` option appears only with a summary cue or an active request; the cue presents
-the option and never decides. A request for a summary *now* is answered now and schedules nothing.
-
-A requested summary is proactive, so it shares the reminders' one due-send point: `sendReminders()`,
-which the launcher calls only after a successful poll returned nothing new. An ordinary `drain()`
-never creates, generates or dispatches a summary, so a cancellation already waiting in Telegram
-(even behind other updates, or after a restart that interrupted a prepared summary) is read and
-settled first. At that point `sendReminders()` turns the latest due slot of each active grant into one fsynced
-`summary-due` frame. That frame creates a runner-authored turn with no operator authority, carrying
-the resolved calendar window. The ordinary answer path then handles it: reservation within the
-call cap, the model call, period evidence, reply check, one exact send intent and the UNKNOWN fence.
-The message's first line states why it was sent:
-`PREVIEW summary you asked for on <asked local time>: "<request>" (due <day time zone>)`.
-A held summary gets the existing one-shot held notice (`I'm holding the summary you asked for
-(due …)`). An UNKNOWN or failed model result gets a truthful line under the same header, never a
-made-up summary. Summaries due at the same slot in the same conversation go out as one message
-(in fitting parts if they exceed 4096 bytes), and requested reminders due at that poll in that
-conversation are appended as their fixed lines (Rule 52); the one intent records every summary it
-carries, so replay and the UNKNOWN fence cover all of them. Replay checks each slot frame: the grant must be
-active, the slot must be the latest due slot after the last one created, and no earlier slot may be
-waiting to send. It also checks the order position, window and late marker.
-
-Exactly once per due slot: a created slot is never created again; an UNKNOWN call or send is never
-retried; and an earlier slot not yet sent holds the next one, so there is no backlog. After
-downtime, only the latest missed slot is created. Its reason line says `sent late at …` and how many
-earlier due summaries were skipped, not sent. Stop, expiry, the call and reply caps, an unsettled
-later operator message and unresolved memory requests all hold creation. An already-created slot is
-rechecked before generation, before its send intent and before its held notice: it waits while a
-later operator message is unsettled, and is never sent once its request is cancelled or retired
-(`withdrawn, not sent` in status). A later verified-operator
-message changes or cancels a request (`cancelSummaries`, with the active requests listed as
-`summaryRequests`). While any requested push (a pending reminder or a summary with a send still
-ahead) is active, an operator reply with no recorded decision enters the same unresolved-decision
-recovery as for reminders: the recovery summary lists those `summaryRequests` and must return
-`cancelSummaries` (`[]` keeps them). Until that decision is recorded, or if recovery cannot produce
-a valid one, the summary is withheld. Forgetting or correcting the request clause retires it. `status.requestedSummaries`
-reports requests, cancellations, active schedules and each slot's state; self-state counts summary
-sends separately from replies. For Justin's supervised procedure, see
-[requested-summary-live-test.md](live-tests-archive/requested-summary-live-test.md).
 
 ### How the operator likes answers
 
@@ -2887,13 +2858,9 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   every model-written send as a signal feeding the revision; fixed templates carry no link.
 - **One classified send path (Rules 52, 87).** Every push goes through one boundary tagged
   `result` or `action-needed` (`OUTBOUND_DISPOSITIONS`); status, including an unchanged held
-  backlog, is pull-only and is never pushed. Requested summaries due in one topic and slot, and
-  requested reminders due then, go out as one message: room for the overview of what does not fit
-  (`summaryOverviewLead`) and for the reminder count line (`reminderOverflowLine`) is reserved
-  before any full body is chosen; when not even one full summary fits beside the rest the message
-  is a bounded overview (`summaryOverviewOnlyLead`), and summaries whose overview line does not fit
-  are counted in one line (`summaryOverflowLine`), never sent later. Every full text stays in the
-  journal.
+  backlog, is pull-only and is never pushed. Requests due together in one conversation become one
+  due turn and one message: at most five are written out and the rest are one count line
+  (`requestOverflowLine`), never sent later.
 - **Final-candidate link check (Rule 106).** The link-shape predicate also runs on the exact final
   text (after a revision or assembly); its findings are recorded as `release.final` against that
   text's digest. It advises; it never holds.
@@ -3148,17 +3115,6 @@ IDs without dumping the old packet. Earlier journal turns without a saved prompt
 missing. For the private operator procedure, see
 [why-did-you-say-live-test.md](why-did-you-say-live-test.md).
 
-### Period recaps
-
-A verified operator can ask for this or last week, this or last month, today,
-yesterday, the past 1–31 days, or an explicit `YYYY-MM-DD to YYYY-MM-DD` range
-of at most 31 days. The runner uses its installed time zone and shows at most
-twelve dated original turns, with an omission count, beside ordinary recall and
-the rolling summary. The calendar window is a candidate for the model to judge;
-ambiguous or conflicting periods use ordinary recall. `inspect` exposes the
-same bounded period evidence. Existing prompt, review, secret, cap, stop and
-send-intent gates apply. See [week-summary-request-live-test.md](live-tests-archive/week-summary-request-live-test.md).
-
 ### Summary and reply-review restart continuity
 
 `journal-summary-crash.test.ts` kills a real child process at each durable and
@@ -3175,7 +3131,6 @@ npx vitest run tests/preview/journal-summary-crash.test.ts --configLoader=runner
 
 Justin's supervised private-chat procedure is
 [crash-during-summary-live-test.md](live-tests-archive/crash-during-summary-live-test.md).
-send-intent gates apply. See [week-summary-request-live-test.md](week-summary-request-live-test.md).
 
 ### Desk probe turns stay out of memory
 
@@ -3190,8 +3145,8 @@ case, without a commit id, or from another sender are ordinary turns.
 A probe turn is still answered from its own message, sent once and kept verbatim
 in the journal. `status` counts it, `inspect` shows it and a Telegram Reply to it
 still resolves. It is never read back as operator memory. Later packets omit it
-from history, recall, rolling-summary input, period recaps, inventory, search,
-contradictions, open questions and the cross-conversation digest. Summary
+from history, recall, rolling-summary input, inventory, search,
+contradictions and open questions. Summary
 memory requests and pending dates skip it. Its own answer decision cannot record
 a preference, a correction or a dated item. A canary that says "I prefer short
 replies" no longer sets the operator's reply style. Summaries written before this
