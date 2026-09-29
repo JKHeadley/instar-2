@@ -82,6 +82,8 @@ export const STEP_SUPERVISOR_EXHAUSTED = 'step supervisor budget exhausted';
 export type MemorySourceKind = 'operator-stated' | 'channel-import' | 'inferred-by-summary';
 /** Runner-authored packet guidance for the single format re-ask (Rule 116); the operator's message is unchanged. */
 export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one JSON Decision object. Answer again and return only that object, with no text before or after it; put all reasoning inside reason.value.';
+/** Rules 57, 93, 116: a plain reply while an operator request is open records no decision on it; the same turn is asked once for one. */
+export const ANSWER_DECISION_REMINDER = 'reminders lists requests the verified operator made earlier that are still open, and your previous response to this same message was plain text, which records no decision about them. Answer again with one JSON Decision object whose conclusion.value is an object {"reply": your reply, "cancelReminders": [the ids this message itself cancels or changes, or [] when it cancels none]}; put all reasoning inside reason.value.';
 export const withFormatReminder = (context: string, reminder: string): string =>
   JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
@@ -543,7 +545,8 @@ export type JournalRecord =
   | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; usage?: ModelUsage; at: number }
   /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
-  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass: 'malformed'; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  /** A re-ask: the first answer was `malformed`, or (`undecided`, answer only) a plain reply while an operator request was open. */
+  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -1501,6 +1504,12 @@ export const wallEpoch = (day: string, time: string, zone: string) => {
   return wall - offset(wall - offset(wall));
 };
 /** Any requested action a later operator turn could still withdraw (Rules 57, 93). */
+/** An answer output carrying a reply decision object (`reply` text, or `reply.answer`); anything else is a plain reply. */
+const decisionShaped = (output: string) => { try {
+  const reply = (JSON.parse(output) as { reply?: unknown } | null)?.reply;
+  return typeof reply === 'string' || !!reply && typeof reply === 'object' && !Array.isArray(reply)
+    && typeof (reply as { answer?: unknown }).answer === 'string';
+} catch { return false; } };
 export const requestedPushesActive = (view: JournalView) => openRequests(view).length > 0;
 /** A runner-authored turn sorts after every earlier turn and before the next Telegram update. */
 const SYNTHETIC_UPDATE_STEP = 1 / 1024;
@@ -2479,7 +2488,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   if (row.kind === 'format-retry') {
     // Rules 42, 75: the refused first call stays visible (its failure class and usage), and the one re-ask is a
     // counted, token-reserved call under the same cap; it is never repeated and never follows a send.
-    if (row.failureClass !== 'malformed' || view.calls >= view.limits.maxCalls || turn.intent !== undefined)
+    if ((row.undecided === true ? row.failureClass !== undefined || row.role !== 'answer' : row.failureClass !== 'malformed')
+      || view.calls >= view.limits.maxCalls || turn.intent !== undefined)
       throw Error('preview journal: format retry order or cap');
     if (row.role === 'answer') {
       if (row.state !== 'complete' || !turn.reserved || turn.answer !== undefined || turn.modelState !== undefined || turn.answerRetried)
@@ -5142,6 +5152,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
                 ...(answer.usage ? { usage: answer.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
                 maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+              try { answer = await ports.model({ question, context: retryContext, id: turn.id,
+                ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
+              catch { continue; } // the retry reservation remains UNKNOWN
+            }
+          }
+          // Rules 57, 93, 116: a plain reply records no decision on an open operator request, so it would be held as an
+          // unresolved decision and never delivered as an answer. Ask the same turn once for the decision instead: the
+          // model, not a keyword, says whether the message cancels anything. A second plain reply keeps the recovery hold.
+          const plainText = typeof answer === 'string' ? answer : 'text' in answer ? answer.text : undefined;
+          if (plainText?.trim() && !decisionShaped(plainText) && !turn.answerRetried && fromOperator(turn)
+            && !turn.requestedAction && !probeTurn(journal.view, turn) && requestedPushesActive(journal.view)) {
+            const retryContext = withFormatReminder(context, ANSWER_DECISION_REMINDER);
+            let retryPrepared: string | undefined, preparable = true;
+            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
+            catch { preparable = false; }
+            if (preparable && !halted() && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+              journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', undecided: true,
+                ...(typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {}),
+                maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
               try { answer = await ports.model({ question, context: retryContext, id: turn.id,
                 ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
               catch { continue; } // the retry reservation remains UNKNOWN

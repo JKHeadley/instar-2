@@ -1855,9 +1855,11 @@ digest or nudge.
 
 **Cancel and change.** A later verified-operator message cancels an open request, including one
 already queued in a due turn that has not been sent: the packet lists open requests as `reminders`
-with ids, and the decision returns `cancelReminders`. A plain-text reply with no recorded decision
-enters the unresolved-decision recovery, which must return `cancelReminders` (`[]` keeps them) before
-anything is released. A queued due turn one of whose requests is withdrawn is never answered or sent;
+with ids, and the decision returns `cancelReminders`. A plain-text reply with no recorded decision is
+asked once more, on the same turn and under the same call cap, for the decision object (`reply` plus
+`cancelReminders`, `[]` when it cancels none), so an ordinary question is still answered while a request
+is open. A second plain reply enters the unresolved-decision recovery, which must return
+`cancelReminders` (`[]` keeps them) before anything is released. A queued due turn one of whose requests is withdrawn is never answered or sent;
 its other requests fall due again on their own. A change is a cancel plus a new request. Forgetting,
 correcting or undoing the dated clause also withdraws it. `status.requestedActions` reports requested,
 cancelled, accepted, refused and UNKNOWN sends, the open requests and each due turn's state

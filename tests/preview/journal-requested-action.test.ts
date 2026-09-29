@@ -3,7 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, openRequests, REQUEST_ITEM_LIMIT, requestOverflowLine } from './journal-test-worker.js';
+import { ANSWER_DECISION_REMINDER, createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests, REQUEST_ITEM_LIMIT,
+  requestOverflowLine } from './journal-test-worker.js';
 import type { openPreviewJournal as OpenJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(29);
@@ -40,6 +41,7 @@ const decide = (input: Input) => {
 };
 const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
   const state = { now: start, stopped: false, stopWhenQueued: false, fail: false, uncertain: false, plain: false, crashDue: false,
+    decideOnReask: false,
     plainText: 'Okay, I cancelled the Priya reminder.', summaryCancel: undefined as undefined | 'keep' | 'cancel' | 'omit',
     sent: [] as { text: string; thread?: number }[], dueCalls: 0 };
   let current: ReturnType<typeof OpenJournal> | undefined;
@@ -55,6 +57,9 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
         state.dueCalls++;
         if (state.crashDue) throw Error('crash during the due turn\'s model call');
       }
+      // decideOnReask: plain text first, then the decision the one re-ask asks for (a cancel, or none).
+      if (state.plain && state.decideOnReask && (JSON.parse(input.context) as { formatReminder?: string }).formatReminder === ANSWER_DECISION_REMINDER)
+        return /^cancel the /u.test(input.question) ? decide(input) : JSON.stringify({ reply: state.plainText, cancelReminders: [] });
       return state.uncertain ? { state: 'uncertain' as const } : state.plain ? state.plainText : decide(input); },
     checkOutbound: () => {},
     send: async (value: { expectedText: string; thread?: number }) => {
@@ -443,6 +448,49 @@ it('holds a request when a later operator message gets a plain-text reply with n
     expect(state.sent.some(item => item.text.includes('I cancelled'))).toBe(false); // no unfounded cancel claim.
     journal.close(); ({ journal, worker } = open());
     state.now = friday9 + 3600_000;
+    await worker.drain(); await worker.sendRequested();
+    expect(pushes()).toEqual([]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('answers an ordinary question that first gets a plain reply while a request is open, asking once for the decision', async () => {
+  // Live cint-L5 canary copy (2026-09-29 16:13): with "Remind me today at 2:45 pm" open, this exact probe got a plain reply
+  // and was sent the memory-undecided notice instead of its marker. Rules 14, 57, 93, 116.
+  const root = tmp('probe');
+  try {
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya)]); await worker.drain();
+    state.plain = true; state.decideOnReask = true; state.plainText = 'Your test marker is "probe-9f77778e."';
+    worker.intake([update(2, 'Canary-copy check 6312dd5a: my test marker is probe-9f77778e. What is my test marker? Reply with the marker.')]);
+    await worker.drain();
+    const probe = journal.view.order[1]!;
+    expect(probe).toMatchObject({ answerRetried: true, answer: 'Your test marker is "probe-9f77778e."' });
+    expect(probe.memoryPending).toBeUndefined();
+    expect(state.sent.at(-1)!.text).toContain('probe-9f77778e');
+    expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
+    // The decision recorded that the probe cancels nothing: the request still falls due, once.
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9; state.plain = false;
+    await worker.drain(); await worker.sendRequested();
+    expect(pushes()).toEqual([`${priyaHeader}\nDoing what you asked: ${priya}.`]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a plain-text cancellation cancelled when the one re-ask records it', async () => {
+  const root = tmp('reask-cancel');
+  try {
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya)]); await worker.drain();
+    state.plain = true; state.decideOnReask = true;
+    worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
+    expect(journal.view.order[1]).toMatchObject({ answerRetried: true });
+    expect(journal.view.reminderCancels).toHaveLength(1);
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9 + 3600_000; state.plain = false;
     await worker.drain(); await worker.sendRequested();
     expect(pushes()).toEqual([]);
     journal.close();
