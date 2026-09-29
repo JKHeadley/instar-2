@@ -17,6 +17,7 @@ Layer below: docs/07-the-declarations.md (P3-NF-25, the holds field), docs/06-th
 Bug class: a checker enforcing at the wrong stage
 Bug evidence: gate run on 0fcb14da and the post-check repair's diagnostic run (all 30 P3 contracts mapped once the seven were set aside)
 Hook bypass: none
+Deferral: scripts/check-register-contract-map.mjs:16 | not-a-deferral=the design assigns runtime-stage evidence to the runtime holder and live proof (P3-NF-25); the build keeps checking the declarations, and the live-proof step exercises these probes after deploy
 Convergence: none
 
 ## Closing block
