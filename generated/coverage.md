@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:39722b89088f1124cfc3482faefbac80d866ac5a3d1cc8b94f70a176ea728544
-Source commit: 5f8faf09b2c09363146b1c55359e65a1e48a52ac
+Register generation: sha256:5ae19ac660797297e83374a58309d104fa6783de974118274f17804129c7fe57
+Source commit: 0c59eb04ba9d7325dd760e4994bf17353bcf11fc
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -10,9 +10,9 @@ Authority: shape-only; entering-force verification required at consumption.
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
 | declared | 2 |
-| partial | 7 |
+| partial | 22 |
 | deferred | 2 |
-| gap | 111 |
+| gap | 110 |
 
 {
   "rules": [
@@ -6847,6 +6847,19 @@ Authority: shape-only; entering-force verification required at consumption.
         99
       ],
       "enforcedBy": [
+        "preview.durable-intake.restore",
+        "preview.durable-intake.startup",
+        "preview.durable-intake.store-agreements",
+        "preview.held-reply-notice.delivered",
+        "preview.reminders.delivered",
+        "preview.reply-review.reached",
+        "preview.reply.bot-identity",
+        "preview.reply.delivered",
+        "preview.reply.drained",
+        "preview.reply.provider-answers",
+        "preview.spend-cap.refusal",
+        "preview.status-pull.answered",
+        "preview.stop.honored",
         "rungraph.bound"
       ]
     },
@@ -13174,7 +13187,10 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "preview.sentinel.reply-review",
+        "preview.sentinel.summary-review"
+      ]
     },
     {
       "number": 90,
@@ -14944,11 +14960,6 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 89,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 9,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },
