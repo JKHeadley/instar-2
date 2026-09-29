@@ -1,9 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { beforeAll, expect, it as defineTest } from 'vitest';
-
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md. The shared setup runs
-// check-p16-additivity, so every case in this file is quarantined with it.
-const it = defineTest.skip;
+import { beforeAll, expect, it } from 'vitest';
 
 let result: Record<string, any>;
 

@@ -14,8 +14,7 @@ it('R5-STRUCTURAL-SLICE all 52 governing P13 rows have an executable or exact no
   expect(rows.filter(row => row.heldArms === 'NON-EXECUTABLE-UNTIL-slice-A2')).toHaveLength(8);
 });
 
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
-it.skip('P13-ADDITIVITY R5-F10 first-landing scope is inapplicable after A1 lands while structural checks remain', () => {
+it('P13-ADDITIVITY R5-F10 first-landing scope is inapplicable after A1 lands while structural checks remain', () => {
   const checked = checkP13Architecture();
   expect(checked.applicable).toBe(false);
   expect(checked.sourceFiles).toEqual(['admission.ts', 'contracts.ts', 'index.ts', 'records.ts']);
@@ -30,8 +29,7 @@ it('R5-F1 pending-work and completion witnesses are structurally NON-EXECUTABLE-
   expect(readFileSync('src/harness-adapters/index.ts', 'utf8')).not.toMatch(/completion|turnState|EvidenceHolder/);
 });
 
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
-it.skip('R5-F2 journal reading and rotation are structurally NON-EXECUTABLE-UNTIL-slice-A2', () => {
+it('R5-F2 journal reading and rotation are structurally NON-EXECUTABLE-UNTIL-slice-A2', () => {
   const checked = checkP13Architecture();
   expect(checked.sourceFiles).not.toContain('holder.ts');
   expect(checked.sourceFiles).not.toContain('adapter.ts');

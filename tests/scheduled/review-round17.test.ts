@@ -61,8 +61,7 @@ it('P15 round-seventeen F1 refuses duplicate, missing and extra identities at bo
     'explicit-single-row-audit/coverage').not.toThrow();
 });
 
-// Rule 37 quarantine: see docs/defects/stale-main-baseline-additivity.md
-it.skip('P15 round-seventeen F2 proves the complete current-main population including Part Sixteen A1', () => {
+it('P15 round-seventeen F2 proves the complete current-main population including Part Sixteen A1', () => {
   const baseline = p15AdditivityBaseline();
   const mainTip = execFileSync('git', ['rev-parse', 'main'], { encoding: 'utf8' }).trim();
   const mainFiles = execFileSync('git', ['ls-tree', '-r', '--name-only', mainTip, '--', 'src', 'tests'],
