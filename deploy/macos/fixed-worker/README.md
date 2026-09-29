@@ -10,8 +10,8 @@ Three results are reported separately per Mac, and none is claimed by this file:
 | Result | Meaning | Status |
 |---|---|---|
 | account prepared | inert hidden account + empty root-owned folders exist and `verify` passes | available (this stage) |
-| monitor installed | reviewed immutable release, keys and LaunchDaemon installed and verified | **held**: physical admission is held (native feasibility FAIL, installed service not wired; see "Disposition" below) |
-| confined launch verified | a genuine owner-admitted launch ran under the monitor and Nine accepted the evidence | refusing: owner bindings unavailable |
+| monitor installed | reviewed content-addressed release, keys, journal and LaunchDaemon installed; `verify` passes | **held**: the package, its dry run and verification exist; installation is the operator's (P-01), and the memory case must PASS in the administrator's feasibility run first |
+| confined launch verified | a genuine owner-admitted launch ran under the monitor and Nine accepted the evidence | refusing: owner reader inputs unavailable (see "Owner integration") |
 
 ## Stage 1 — inert account (accounts-only)
 
@@ -76,58 +76,109 @@ keys, and a synthetic inventory combined with `--apply`.
 
 - `scripts/fixed-native-worker-enforcer.c` (M2). Build command, recorded:
   `/usr/bin/clang -std=c11 -O2 -Wall -Wextra -Werror -o instar-worker-enforcer scripts/fixed-native-worker-enforcer.c`.
-  Its roles are `client`, `bootstrap`, `guard`, `supervise`, `journal-sync <path>`, `feasibility <case>` and `probe <payload>`.
-  `supervise` refuses (exit 78) until the reviewed release and the installed owner bindings exist.
-  `client` checks the kernel-attested peer of the control socket (`getpeereid` plus `LOCAL_PEERPID`)
-  before sending any byte; a peer that is not the supervisor account (uid 0 in the release build) is refused.
-  `journal-sync` is the durable journal primitive: `F_FULLFSYNC` of one regular, owner-only,
-  non-symlinked journal file and then its directory. Any other shape, or a failed flush, exits 2.
+  Roles: `client`, `channel <identity>`, `supervise`, `guard`, `bootstrap`, `journal-sync <path>`,
+  `feasibility <case> <profile> <scratch> [runtime] [uid gid]` and `probe <payload>`.
 - `deploy/macos/fixed-worker/worker.sb` (M3). A deny-by-default profile with two tokens,
-  `@RELEASE_DIR@` and `@SLOT_DIR@`, materialized at staging. It carries three measured, named
+  `@RELEASE_DIR@` and `@SLOT_DIR@`, materialized at installation. It carries three measured, named
   exceptions: read-data of `/`, the OpenSSL config file, and metadata on the release/slot parent folders.
 - `deploy/macos/fixed-worker/ai.instar.worker-monitor.plist` (M4). One token, `@RELEASE_DIR@`. Only
   the supervisor is kept alive, and no global resource keys are set.
 
-Run the feasibility cases on the staged binaries (unprivileged, isolated temp targets):
+### How a worker is held
+
+The supervisor (root, launchd) starts one **guard** per launch; the guard starts the worker as its
+own child and is also its ptrace tracer. The worker's trusted bootstrap asks to be traced, leads a
+new session (so it can neither join nor leave a process group), installs its limits, drops to the
+worker account and waits on a gate the guard opens only after checking, from the kernel, that the
+child is its own traced child under the worker identity. Then:
+
+| Bound | Mechanism | Who enforces |
+|---|---|---|
+| wall lifetime | immutable continuous-clock deadline in the guard's arguments | guard kills its unreaped child |
+| CPU time | `RLIMIT_CPU`; the kernel's `SIGXCPU` stops a traced process even when it ignores the signal | kernel signal, guard kill |
+| memory | fatal Jetsam footprint limit (`memorystatus_control`), applied before release and again at every exec stop, read back or refused | kernel, at the crossing |
+| processes | `RLIMIT_NPROC=1` for the worker account, plus the profile's `process-fork` denial | kernel |
+| files, scratch, core | `RLIMIT_NOFILE`, `RLIMIT_FSIZE=0`, `RLIMIT_CORE=0`, profile denies every write | kernel, sandbox |
+| supervisor liveness | 50 ms heartbeat; a lapse over 250 ms or a closed link ends the worker | guard |
+| owner liveness | once the owner attaches its channel, the heartbeat flows only while its last successful authority check is within 250 ms | supervisor stops the heartbeat, guard ends the worker |
+| guard death | the kernel kills a traced process whose tracer exits | kernel |
+| channel bytes | 2 MiB relay budget per launch (both directions), on top of the adapter's own limits | supervisor |
+
+No PID lookup kill exists anywhere: a parent's kill of its own unreaped child cannot reach another
+process, and the PID stays the same process through every exec. A Mach task right is not used; it
+does not survive exec (measured).
+
+### Feasibility results
+
+Run the cases on the staged binaries:
 `<release>/bin/instar-worker-enforcer feasibility all <release>/worker.sb <empty scratch dir> <release>/runtime/node`.
 A single FAIL keeps this worker mode unavailable. Do not broaden the mechanism to make it pass.
 
-Builder-local result on Studio, macOS 26.5.2 (25F84) arm64, 2026-09-24 (unprivileged, NOT installed-host evidence):
+Builder-local result on Studio, macOS 26.5.2 (25F84) arm64, 2026-09-28 (unprivileged, shipped deny-default
+profile, NOT installed-host evidence):
 
 | case | result |
 |---|---|
-| nowrite, permitted-read, network, children, gate, limit-raise | PASS |
-| memory | FAIL: the kernel rejects RLIMIT_AS below about 412 GiB, so the 8 GiB address-space ceiling cannot be installed. The bootstrap then refuses before release. |
-| cpu | FAIL: RLIMIT_CPU=1s with SIGXCPU ignored is not terminated by the kernel (8 s wall, 3 threads). |
-| task, task-runtime | FAIL: a task right taken before exec loses its binding after any exec, even a direct exec with no sandbox. |
-| guard (4 faults) | FAIL: the arm/ack/lapse logic runs, but termination depends on the lost task right. No PID-lookup kill is used. |
+| cpu | PASS: `RLIMIT_CPU`=1 s, `SIGXCPU` ignored, 3 threads; stopped by the kernel signal and killed by the guard in about 0.35 s |
+| task, task-runtime | PASS: the guard's deadline kill ends the original worker after bootstrap → sandbox-exec → enforcer / node |
+| escape | PASS: `setsid`/`setpgid` from inside refuse (the worker leads its own session) |
+| guard: supervisor-kill, supervisor-stop, guard-kill, deadline | PASS (worker ended after about 5, 144, 10 and 500 ms) |
+| nowrite, permitted-read, network, children, limit-raise | PASS |
+| gate, gate-refused | PASS: no heartbeat ends the worker within the lapse; an identity mismatch refuses before release |
+| memory | **UNVERIFIED (requires root)**. Unprivileged, the Jetsam spawn attribute is silently ignored (a child with a 256 MiB fatal limit touched 1 GiB) and `memorystatus_control` returns EPERM; the unprivileged guard therefore refuses before release. `RLIMIT_AS` is not used: the kernel rejects values below about 412 GiB. Unprivileged per-task CPU monitors are also not used: they are reset by exec and refused (EPERM) for another process. |
 
-### Disposition: hold physical admission
+The memory case can only be proven by the administrator's run, which names the worker account:
+`sudo <release>/bin/instar-worker-enforcer feasibility all <release>/worker.sb <empty scratch dir> <release>/runtime/node <worker uid> <worker gid>`.
+Every case, memory included, must PASS there before the monitor may be relied on. The limit
+readback makes a wrong command number or a silently ignored limit refuse, not run unbounded.
 
-On this macOS build the monitor is NOT installable, and nothing in this package is a
-functioning worker monitor that merely awaits owner data. What exists is separated as follows:
+### Service wiring
 
-- **Completed components (source + tests):** the inert-account script; the enforcer's
-  `client`, `bootstrap`, `guard`, `journal-sync` and feasibility roles as files; the deny-default
-  profile and plist as files; the M1 decision service and journal; the fixed read-only reader;
-  the mediated channel adapter; S8's locator resolver, client and receipt verification.
-- **Failed native feasibility (table above):** a finite memory ceiling, CPU termination and
-  identity-safe termination of the original worker through the shipped exec chain all FAIL, so
-  the guard fault cases FAIL. The passing T2 case that accepts `task=(PASS|FAIL)` proves that the
-  verdict is reported, not that termination works. Root-only alternatives and sleep/wake are
-  untested (no builder privilege).
-- **Missing service wiring:** `supervise` is a refusing stub (exit 78). It reads no installation
-  configuration, accepts no client connection, runs no owner service and connects no worker
-  channel. `createMonitorService` and `createInstalledChannelNativeContextIO` have no production
-  call site; the channel's `progress` hook is not yet forwarded to the guard heartbeat.
-- **Held activation:** installation, the immutable manifest, verification/rollback procedure,
-  and every owner input listed below.
+- `supervise` reads `/Library/Instar2/m4-launch/installation.conf` (root-owned, not group/other
+  writable, no symlink, exactly eight keys: `agent_uid`, `worker_uid`, `worker_gid`, `release_dir`,
+  `cpu_seconds`, `memory_mib`, `nofile`, `max_lifetime_ms`). Absent: exit 78 "installed owner bindings
+  unavailable"; anything else wrong: exit 78 "installed configuration invalid". Every per-slot bound comes
+  from this file, never from a request or the owner service.
+- It starts the owner decision service (`<release>/runtime/node <release>/scripts/fixed-native-worker-monitor.mjs service`)
+  on a private link and waits for `READY`; the service refuses unless its bindings in
+  `/Library/Instar2/m4-launch/service.json`, its signing key and its established journal are owned by
+  its account and not writable by others. Any later service failure ends the supervisor (launchd
+  restarts it; every guard ends its worker on the closed link).
+- The control socket accepts only the configured agent account. A frame is relayed to the service; the
+  service's native release leaf (`createNativeRelease`) asks the supervisor to `START` the worker with the
+  launch identity, the fixed handle and delivery reference and the installed lifetime (clamped to
+  `max_lifetime_ms`), and gets back the pid, uid, kernel unique id, start time and deadline ticks for the
+  signed receipt. `OBSERVE` reports running or the guard's terminal reason.
+- One accounted slot: a second start while a worker is live refuses (`slot-busy`).
+- The owner's channel end is `createAttachedWorkerChannel(<enforcer>, <launch identity>)`: the `channel`
+  role attaches once per launch (no reconnect), and its `progress` is the adapter's `progress` hook.
 
-Before monitor installation, a reviewed native mechanism must actually enforce a measured
-finite memory/CPU policy and original-process termination through the shipped exec chain and
-the single-role faults, and the supervisor/service/channel wiring plus its staged manifest must
-exist. This package does not raise the memory ceiling to the observed ~412 GiB, add watchers,
-re-sign Node or change the termination design. Real owner absence still refuses production launch.
+## Stage 2 — monitor release, install, verify
+
+`provision-fixed-native-worker.sh` builds and describes the installation; the builder and the agent
+never run `--apply`.
+
+1. `stage --out <dir> --runtime <pinned node> --cpu-seconds N --memory-mib N --nofile N --lifetime-ms N --max-lifetime-ms N`
+   (unprivileged, from a reviewed, built checkout). It builds the enforcer with the recorded command
+   and copies the runtime, the monitor module, the compiled owner code, the profile and plist
+   templates and the accepted limits into `<dir>/<release>`, where `<release>` is the SHA-256 of its
+   `MANIFEST` (the SHA-256 of every file). Re-staging the same inputs gives the same name. The limits
+   have no defaults: they are the approved installation allocation.
+2. `install --release <dir>/<release> --installation <id> --machine <id>` — dry run. It refuses unless the
+   accounts stage is provisioned, nothing of the monitor is installed, and the staged release matches its
+   name and manifest with no extra file. The plan embeds the exact bytes of the profile, installation.conf,
+   service.json and plist, so `plan.digest` binds content: copy the release, write its profile, write
+   installation.conf, create the receipt key (kept if it exists), write service.json, create the
+   established journal (kept if it exists), write the plist, bootstrap the service.
+3. After the operator's yes, through the administrative path:
+   `sudo scripts/provision-fixed-native-worker.sh install --release … --installation … --machine … --apply --plan-digest sha256:…`.
+   The copy step re-checks the copied bytes against the release name.
+4. `verify` — read-only: file owners and modes, the release against its manifest, the materialized
+   profile, the service running and the root-owned control socket; then it prints the administrator's
+   feasibility command above.
+5. `uninstall` (dry run, then `--apply --plan-digest`): stop the service and remove the plist, service.json,
+   installation.conf and the installed release. The receipt key and the journal are kept (history is
+   never deleted); `accounts-rollback` still refuses until the monitor is uninstalled.
 
 ## Owner integration (source only, refusing in production)
 
@@ -144,18 +195,14 @@ re-sign Node or change the termination design. Real owner absence still refuses 
 - Installed inputs still missing, so production has no admitted launch:
   - lane A capacity authority (impl-r1-m3i), and R6's genuine worker/control allocation (`workerCapacityInstance`);
   - the R4/R6 installed store/context/authority composition for the reader, and its installed owner watermark;
-  - the native release, which fails its feasibility gate above, and the `supervise` service wiring;
-  - the receipt keys and trust reference, and the journal genesis pinned by the manifest.
+  - the administrator's feasibility run proving the memory case on the installed host (unprovable unprivileged);
+  - the owner's trust reference for receipts (the installed `keys/receipt.pub`, key id `key:<installation>`) wired into S8's `trust()`;
+  - the production composition call site (M4-L-S7/S9 grants) that builds the channel adapter over
+    `createAttachedWorkerChannel` and binds the worker's delivery reference (today `native-context:<launch operation>`)
+    to the exact admitted context delivery.
+  The native release, the `supervise` service wiring, the receipt key and the journal genesis are
+  produced by stage 2 above.
 - The 250 ms lapse and 1,000 ms client figures are engineering candidates, not a measured accepted host policy.
-
-## Stage 2 — monitor install (refusing)
-
-`install`, `uninstall` refuse until the monitor release manifest (enforcer
-binary, runtime closure, `worker.sb`, `ai.instar.worker-monitor.plist`,
-installation config, receipt keys, accepted finite limits) is independently
-reviewed and its digests are desk-pinned. Installation verification, OS probe
-evidence and production activation are three separate reports; a refusing
-installed service is not a verified working launch.
 
 ## Operator question (desk presents once, with concrete per-host plans)
 
