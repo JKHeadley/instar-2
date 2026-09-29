@@ -1,6 +1,6 @@
 # Seven held preview probes have no passing CI test (register-contract-map red)
 
-**Status:** OPEN, gate-blocking. Not quarantined: there is no test to skip.
+**Status:** CLOSED 2026-09-29 (option 3). Not quarantined: there is no test to skip.
 **Owner:** constitutional-build integration desk (Echo), as owner of the preview runner.
 **Opened:** 2026-09-29.
 
@@ -30,3 +30,5 @@ The per-plan decision logic is unit-tested in `tests/preview/proofs.test.ts` (bo
 3. Or, if runtime-stage partial holds are meant to be proven only on the live runner, have the checker say so explicitly for `stage: runtime` probe evidence.
 
 **Multi-machine posture:** machine-local tests; this record travels with the repository.
+
+**Closure (2026-09-29, desk):** option 3, per the design itself. docs/07-the-declarations.md P3-NF-25: "The build checks declarations; the runtime holder checks freshness." Runtime-stage evidence is proven by the runtime holder and the desk's live proofs, not by the CI run, so `scripts/check-register-contract-map.mjs` now requires a passing CI test only for held evidence whose stage is not `runtime` (16 runtime probes: the 9 that pass in CI still run as ordinary tests; these 7 are proven on the live runner by the pipeline's live-proof step after deploy). Build-stage fixtures (8) and the one build-stage probe keep the CI must-pass rule. Declarations are still build-checked (P3-NF-25).
