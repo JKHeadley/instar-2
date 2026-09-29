@@ -93,3 +93,10 @@ it('P2-NF-71 identical approval and content replay collapses, never creates a fo
   const same = walkVersions([f.version, a, a]);
   expect(same.duplicates).toEqual([]); expect(same.collapsed).toEqual({}); expect(same.current.map(v => v.id)).toEqual(['a']);
 });
+it('Rule 90 a changed version reusing a collapsed alias id is an in-place mutation', () => {
+  const f = fixture(); const a = { ...f.version, id: 'a', supersedes: ['v1'] }, b = { ...a, id: 'b' };
+  // b collapsed to a; a different payload later carrying id b must not slip past as a new version.
+  const changed = { ...b, supersedes: [] as string[] };
+  expect(() => walkVersions([f.version, a, b, changed])).toThrow('in-place version mutation');
+  expect(walkVersions([f.version, a, b, b]).collapsed).toEqual({ b: 'a' });
+});

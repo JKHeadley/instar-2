@@ -120,6 +120,27 @@ it('Rule 90 a changed version recorded under an existing id is refused, never si
   expect(changed.version.id).toBe(s.first.version.id);
   refused(extractGovernedChain(s.spine([s.first, changed]), s.ctx), 'in-place version mutation');
 });
+function aliasThenSuccessor(successorId: string) {
+  const s = spineFixture();
+  // One replica records v2 as an identical replay of v1 (it collapses to v1) ...
+  const alias = value(decodeVersion({ ...s.first.version, id: 'v2', approvedIn: s.first.version.approvedIn.id },
+    s.ctx, s.f.scope, [s.first.version], s.landing));
+  const replay = { factId: s.record('version', alias).id, version: alias };
+  expect(rowsOf(value(extractGovernedChain(s.spine([s.first, replay]), s.ctx)).extract)).toHaveLength(1);
+  // ... another, unaware of that alias, decodes its own changed successor of v1.
+  const successor = s.version(successorId, { id: 'store', body: 'two' }, [s.first.version]);
+  return { s, replay, successor };
+}
+it('Rule 90 a changed version reusing a collapsed replay alias id is refused, never certified as stale history', () => {
+  const { s, replay, successor } = aliasThenSuccessor('v2');
+  refused(extractGovernedChain(s.spine([s.first, replay, successor]), s.ctx), 'in-place version mutation');
+});
+it('Rule 90 control: a fresh-id successor after a replay alias preserves both history rows', () => {
+  const { s, replay, successor } = aliasThenSuccessor('v3');
+  const extraction = value(extractGovernedChain(s.spine([s.first, replay, successor]), s.ctx));
+  expect(rowsOf(extraction.extract).map(r => [r.version, r.status])).toEqual([['v1', 'superseded'], ['v3', 'live']]);
+  expect(extraction.conflicts).toEqual([]);
+});
 it('Rules 26/90 a recorded fact id is not proof of a payload that fact never recorded', () => {
   const s = spineFixture();
   // Control: the same spine with every association recorded by its own fact is accepted.
