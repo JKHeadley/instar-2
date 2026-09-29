@@ -213,6 +213,16 @@ describe('compiled register build adapter lifecycle', () => {
     const script = resolve('scripts/build-register.mjs');
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
+      // The cases below run on a fixture clock (`--now 100`) against the copied real tree. A real
+      // model doorway's wall-clock verification time lies after that clock, so the deadline check
+      // reads it as a stale model map and refuses every case for a reason none of them tests. Its
+      // copied clock facts move to the fixture epoch; the case declarations are untouched. Rule 37.
+      for (const path of execFileSync('git', ['ls-files', '*.declarations.json'], { encoding: 'utf8' }).trim().split('\n')) {
+        const declarations = JSON.parse(readFileSync(join(root, path), 'utf8')) as { kind?: string; requiredFacts?: { models?: { verifiedAt: number }[]; subsidy?: { updatedAt: number } } }[];
+        const doorways = declarations.filter(d => d.kind === 'model doorways');
+        for (const d of doorways) { for (const model of d.requiredFacts?.models ?? []) model.verifiedAt = 0; if (d.requiredFacts?.subsidy) d.requiredFacts.subsidy.updatedAt = 0; }
+        if (doorways.length) writeFileSync(join(root, path), JSON.stringify(declarations, null, 2) + '\n');
+      }
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       git('init');
       const commit = () => { git('add', '.'); git('commit', '-qm', 'fixture source'); return git('rev-parse', 'HEAD').trim(); };
@@ -234,7 +244,12 @@ describe('compiled register build adapter lifecycle', () => {
         [declaration('fixture-holder', 'blocking sites', { authority: 'block', inspectedBy: 'check', ...rung, decidesAlone: 'governed-state', rungs: [] }, { profile }), 'rungs'],
         [declaration('fixture-holder', 'blocking sites', { authority: 'block', inspectedBy: 'check', rungs: [rung, { ...rung, failDirection: 'open' }] }, { profile }), null],
       ];
+      // A declared feature must carry its one capability line in its module README (R78/R84), and a
+      // README may describe only declared features; the feature cases carry that line, the others do not.
+      const readme = readFileSync(join(root, 'src/README.md'), 'utf8');
       for (const [d, error] of cases) {
+        writeFileSync(join(root, 'src/README.md'), (d as { kind: string }).kind === 'features'
+          ? `${readme}\n## Capabilities\n\n- \`fixture-feature\`: a test-only feature for the deadline cases.\n` : readme);
         writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([d])); const revision = commit();
         const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
         if (error) { expect(result.status, result.stderr).not.toBe(0); expect(result.stderr).toContain(error); }

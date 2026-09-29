@@ -96,3 +96,11 @@ The `it.skip` and its reason are removed; the full assertion set, the positive c
 refusal assertion, the cleanup and the 120,000 ms fixture budget are unchanged. The coverage
 residue named above is closed. Evidence is recorded in the unit report at
 `.instar/state/unit-u7.md`.
+
+**Batch cint-L4 (2026-09-29).** On the combined tree the un-quarantined case first failed for two
+reasons outside its subject, both from sources that landed after U7's base: the copied real
+`preview-subscription-claude` model doorway carries a wall-clock `verifiedAt`, which reads as a stale
+model map on the fixture clock (`--now 100`); and the R78/R84 capability-line check requires the
+fixture feature to carry one line in its module README. The fixture now moves the copied doorway's
+clock facts to the fixture epoch and gives the feature cases their README line (the other cases keep
+the README without it). Every case and assertion is unchanged; the case passes alone on cint-L4.
