@@ -15,6 +15,7 @@ export interface RecordContext {
   exists(path: string): boolean;
   read(path: string): string | null;
   resolvesEvidence(locator: string): boolean;
+  readEvidence(locator: string): string | null;
 }
 export interface Verdict { readonly errors: string[]; readonly notes: string[] }
 export interface LedgerEntry {
