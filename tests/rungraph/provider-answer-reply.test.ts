@@ -215,8 +215,7 @@ it('P10-SI-37 records near-valid malformed Decision insufficiency and settles fr
   expect(settlement.outcome.kind).toBe('happened');
 }, 30_000);
 
-// Rule 37 quarantine: see docs/defects/full-suite-load-timeouts.md
-it.skip.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)(
+it.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)(
   'P9-NF-66 reads historical assessment with %s capture loss while current use refuses', async kind => {
     const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
     const assessment: any = value(s.api.assessResponse(s.observed.operation));

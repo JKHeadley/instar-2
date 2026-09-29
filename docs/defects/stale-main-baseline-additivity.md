@@ -25,4 +25,6 @@ On branch `cint-1` (full runs retained as `/private/tmp/claude-501/cint1-livefix
 
 **Re-check on the cint-L2 merge (2026-09-28):** with the skip removed on the merged tree, every quarantined first-landing case again failed with `first landing: stale main baseline 14bc4a17…; HEAD descends from 04710832…`, including the e2e measurement setup (`.instar/lanes/cint-L2-merge-quar1.log`, `.instar/lanes/cint-L2-merge-quar2.log`). The quarantine stays.
 
+**Re-check on cint-L3b post-check repair (2026-09-29):** `HEAD` now contains the local and remote `main` tip `02753cdc`. `SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 compares 1313 signed legacy mutations on loop A1 first landing` is restored and passes (3/3 in `tests/transport/loop-main-head-mutation.test.ts`; it reports the comparison inapplicable because the unit is already on the current-main baseline), because `scripts/check-transport-contracts.mjs` requires it as seam evidence. That case is no longer covered here. The other cases listed above stay quarantined in this repair; with `main` now contained they are expected to pass and are the next to restore.
+
 **Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.
