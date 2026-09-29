@@ -2,7 +2,7 @@ import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { fixture, value, clone } from '../fixtures.js';
 import { consumeResult, decode } from '../../src/index.js';
 import type { Json, Result } from '../../src/index.js';
-import { decodeEnvelope, factId, genesisHash, signEnvelope } from '../../src/facts/index.js';
+import { decodeEnvelope, factId, genesisHash, governingRecordKind, signEnvelope } from '../../src/facts/index.js';
 import type { FactContext, FactEnvelope, FactSchema } from '../../src/facts/index.js';
 import { boundary } from '../../src/facts/boundary.js';
 export { value, clone };
@@ -40,6 +40,9 @@ export function factsFixture() {
     return fact({ segment: { machine: previous.machine, epoch: previous.segment.epoch, position: previous.segment.position + 1 },
       prevInSegment: previous.contentHash, predecessors: { inSegment: previous.id, frontier: {}, required: [] }, ...overrides }, context);
   }
+  // The fact kind a governing spine record must carry; its body commits to the recorded payload.
+  const governingSchema: FactSchema = { ...schema, kind: governingRecordKind,
+    fields: { role: { kind: 'text', maxLength: 16 }, hash: { kind: 'text', maxLength: 80 } } };
   const success = <T>(v: T): Result<T> => boundary('FixtureReceipt', null, c, () => v);
-  return { ...f, c, ctx, schema, wire, fact, next, success };
+  return { ...f, c, ctx, schema, governingSchema, wire, fact, next, success };
 }
