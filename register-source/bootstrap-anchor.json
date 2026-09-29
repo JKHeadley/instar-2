@@ -1,11 +1,11 @@
 {
   "phase": "converted-unanchored",
   "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
-  "shape": "sha256:9b11f3e33cdcc03e091aa12c3828f042b1c3591c5b03073a24457fef16713536",
+  "shape": "sha256:25ee29a3eac960ce783f87fe1cd329833c4643cab7cfa7195e44b09d363b688c",
   "documents": {
     "docs/01-the-rules.md": "sha256:d9e51b6d049d877511600b974eb334f4bfade433703cecda0545987579fbbb61",
     "docs/02-the-register.md": "sha256:206e4995e8707590f8bd07f643100fbb5cd4112ae6f8b466f314329b551f056b",
-    "docs/03-the-glossary.md": "sha256:e33d1368c609151951a0892c57b10ac3357fe5dc96ed68573974fafa2e1dcf9a",
+    "docs/03-the-glossary.md": "sha256:088932b96860c9f27a6b25e4493646bb16776fef20d779ea255e7efde86fe459",
     "docs/07-the-declarations.md": "sha256:c5cb704ed2245f433a1d385f4b9128aa0110ae2b2b33562ee40a5f097f20559e",
     "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:49e37e4f31009804f28a2dd38f67b3c894a5d662d3a4ea2d9c703310252492a0"
   },
