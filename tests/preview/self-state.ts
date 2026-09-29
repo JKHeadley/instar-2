@@ -1,6 +1,7 @@
 /** The preview's own state, derived at each turn from durable records only: the
  * journal projection and the root's append-only run log (`runs.jsonl`). Nothing
  * here is hand-edited; the desk's report is only about other work. */
+import { replyContextDigest, retrospectiveStatusLine } from './retrospective.js';
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
@@ -258,6 +259,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     heldReplyBrief(heldToday),
     `Held-answer notices attempted: ${String(heldNoticeCount)} (one per held turn; Telegram acceptance is not human receipt).`,
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
+    retrospectiveStatusLine(view, replyContextDigest(view)),
     `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.expires)}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',
     view.genesis.importSource !== undefined ? 'This journal was imported from an earlier preview root; imported turns keep their original content, and their times may be unknown.' : '',

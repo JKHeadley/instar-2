@@ -5,6 +5,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realp
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { productionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { canonical } from '../../src/index.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -25,6 +26,15 @@ const stateConfiguration = (root: string) => ({ ...base, root, expiresAt: SUBSCR
   replyWindowMs: 60000, errorLimit: 20, maxPendingTurns: 16, maxTrialTurns: 128 });
 const artifactBytes = Buffer.from('offline executable bytes');
 const model = 'claude-offline-exact-1';
+/** Source for a substitute provider module: registers the doorway the launcher selects by default,
+ * routed to the module's own `createClaudeCodeSubscriptionRoute`. */
+export const FIXTURE_DOORWAY = `import { SUBSCRIPTION_DOORWAYS } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
+export const subscriptionDoorway = id => {
+  if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error('subscription doorway ' + id + ' is not registered');
+  return { id, contract: SUBSCRIPTION_DOORWAYS[id].contract, create: input => createClaudeCodeSubscriptionRoute(input) };
+};`;
+
 export const offlineProfile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login',
   home: '/offline/home', configDirectory: '/offline/config', workingDirectory: '/offline/work',
   expectedAccount: 'offline@example.invalid', organization: 'offline-org', plan: 'max', loginProfileIdentity: 'offline-profile',

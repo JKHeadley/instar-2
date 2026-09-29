@@ -19,6 +19,9 @@ export async function createProductionHost() {
   const http = action === 'trace' ? await localProvider() : { requests: [], close: async () => {} };
   let ordinal = 0, providerAttempts = 0, fixture;
   const checkpoint = (stage, installed) => {
+    // The capture-durable point (a5a734fc) fires inside fixture construction with only the
+    // capture reference: no installed state exists yet and nothing physical was invoked.
+    if (stage === 'initial-capture-durable') return;
     if (recovery) throw Error('restart attempted a physical invocation');
     durableJSON(join(input.storageRoot, 'recorded-checkpoint.json'), recordedCheckpoint(installed, stage));
     const directory = process.env.INSTAR_U4_RECORDED_SNAPSHOTS;

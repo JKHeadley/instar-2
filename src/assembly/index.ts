@@ -14,6 +14,10 @@ export { bootProductionAssembly, inspectProductionAssemblyBindings, inspectOpene
   consumeProductionAssembly } from './production.js';
 export { createNativeHarnessAdapter } from './harness.js';
 export type { NativeHarnessDriverPort } from './harness.js';
+export { HARNESS_STALL_CLASSES, admitStallCoverage, stallCoverageGaps, unresolvedStallCases } from './stall-coverage.js';
+export type { HarnessStallClass, HarnessStallCoverage, StallCaseRef, StallCoverageRow } from './stall-coverage.js';
+export { COMPOSITE_SCRIPTS, DEVELOPMENT_TOOLS, admitToolProposal } from './tool-inventory.js';
+export type { AdmittedTool, DevelopmentTool, ToolOption, ToolPhase, ToolProposal, ToolScopes } from './tool-inventory.js';
 export { createProductionLaunchBoundary } from './production-launch-boundary.js';
 export type { ProductionLaunchBoundary } from './production-launch-boundary.js';
 export { contextDeliveryIdFor, createConfinedContextDeliveryDriver, createProductionGroundingReader } from './context-delivery.js';

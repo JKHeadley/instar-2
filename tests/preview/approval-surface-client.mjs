@@ -8,7 +8,15 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, unlinkS
 import { join, resolve } from 'node:path';
 import { ACT_RECORD, actChallenge, canonical, check, checkChallenge, nameFor, readOwnedFile, SURFACE, SURFACE_LIMITS, verifyAssertion,
   writeOnce } from '../../scripts/approval-surface-core.mjs';
-import { refusal, success } from '../../src/types/internal.js';
+// Rule 115: a shipped client reaches the core through its public ports only, so this port
+// implementation builds its own plain, frozen Result values (the core's port shape) instead of the
+// core-private sealing factory. Consumers read them only through `consumeResult`; nothing trusts a
+// verifier Result by the core's seal, so the adapter gains no core-issued standing.
+const frozen = value => { for (const child of Object.values(value)) if (child && typeof child === 'object' && !Object.isFrozen(child)) frozen(child);
+  return Object.freeze(value); };
+const success = value => frozen({ type: 'Result', schemaVersion: 1, kind: 'Success', value, capacity: { kind: 'none' } });
+const refusal = (detail, preserved) => frozen({ type: 'Result', schemaVersion: 1, kind: 'Refused', reason: 'decode', detail,
+  site: 'types.decode', failDirection: 'closed', preserved });
 
 export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentUid = process.getuid(), now }) {
   const storeDir = resolve(store), outboxDir = resolve(outbox), actsDir = join(storeDir, 'acts');

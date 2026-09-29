@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
@@ -39,6 +39,7 @@ global.fetch = async (url, init) => {
     writeFileSync(provider, `import { appendFileSync } from 'node:fs';
 export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+${FIXTURE_DOORWAY}
 const mode = ${JSON.stringify(mode)};
 export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value: { invoke: async prepared => {
   const envelope = JSON.parse(prepared), question = envelope.messages[0].content;

@@ -5,13 +5,14 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { previewTurnId } from './state.js';
+import { previewTurnId } from './durable-write.js';
 import { redact } from '../../src/recall/redact.js';
 import { namedTerms, selectRecall, selectSaidTurns, similarName, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
 import { composeRecall } from '../../src/recall/retrieve.js';
 import type { RecallRerankPort } from '../../src/recall/contracts.js';
 import { isoMinute } from '../../src/recall/ground.js';
+import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } from '../../src/awareness/work.js';
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
@@ -36,6 +37,7 @@ import type { IndependentSurfaceVerifierPort, MinimalDependency, SurfaceChalleng
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type Speaker } from './outbound-provenance.js';
+import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 
 
 
@@ -494,7 +496,7 @@ export type JournalRecord =
     /** Legacy (removed requested summaries): read on replay, never acted on. */
     summaryGrants?: LegacySummaryGrant[]; summaryCancels?: string[]; undo?: UndoTarget; unlabeledRecall?: boolean;
     conflict?: Pick<MemoryConflict, 'first' | 'second'>; askConflict?: string;
-    resolveConflict?: { askedBy: string; winner: string }; lastNamedPerson?: string; usage?: ModelUsage; latencyMs?: number;
+    resolveConflict?: { askedBy: string; winner: string }; lastNamedPerson?: string; reason?: string; usage?: ModelUsage; latencyMs?: number;
     /** Rule 93: standing directives this verified operator message gave, and directives it completed or superseded. */
     directives?: { quote: string; supersedes?: number }[]; directiveClosures?: { id: number; kind: 'Completed' | 'Superseded' }[];
     /** Proposed with the answer; each becomes durable only on the intent of a reply that actually says it. */
@@ -618,7 +620,14 @@ export type JournalRecord =
   | { kind: 'step-check-reserve'; step: string; evidence: string; at: number }
   | { kind: 'step-check'; step: string; result: StepCheckResult; at: number }
   /** The post-reply coherence check of one prepared reply; an empty list is a clean check. */
-  | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number };
+  | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number }
+  /** One bounded retrospective pass: its exact case population, then its validated result (or refusal/UNKNOWN). */
+  | { kind: 'retro-reserve'; pass: number; turnsSeen: number; cases: string[]; omitted: { case: string; reason: string }[]; eligible: number;
+    packetSha256: string; contextDigest: string; at: number }
+  | { kind: 'retro'; pass: number; state: 'complete' | 'failed' | 'unknown'; result?: RetroPass['result']; reason?: string; usage?: ModelUsage; at: number }
+  /** One bounded benchmark rerun of a promoted case under the current reply configuration, inside its pass. */
+  | { kind: 'retro-rerun-reserve'; pass: number; index: number; case: string; contextDigest: string; at: number }
+  | { kind: 'retro-rerun'; pass: number; index: number; state: 'complete' | 'failed' | 'unknown'; answer?: string; reason?: string; usage?: ModelUsage; at: number };
 
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
@@ -631,7 +640,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
-  answerMs?: number; sendMs?: number;
+  answerMs?: number; sendMs?: number; answerReason?: string;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string }; release?: ReplyRelease;
   revisionReviewReserved?: true; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string };
@@ -723,7 +732,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** Rule 89: signed outbound intents by speaker. */
   speakers: Record<Speaker, number>;
   /** Rules 41 and 75: counts of recorded model calls; the full records stay in the journal. */
-  modelCalls: ModelCallCounts }
+  modelCalls: ModelCallCounts;
+  /** Retrospective passes in journal order (plain records, so snapshots carry them verbatim). */
+  retroPasses: RetroPass[] }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
   if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
@@ -963,7 +974,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryChecks: new Map(saved.summaryChecks ?? []), summaryFaithfulness: new Map(saved.summaryFaithfulness ?? []), summaryReviews: new Set(saved.summaryReviews ?? []),
     callOutcomeCounts: new Map(saved.callOutcomeCounts ?? []), questionsReviewed: new Set(saved.questionsReviewed ?? []), tokenCurrent: new Map(saved.tokenCurrent ?? []), mentionedDates: new Set(saved.mentionedDates ?? []), reminders: new Map(saved.reminders ?? []), reminderGrant: saved.reminderGrant ?? null, reminderCancels: saved.reminderCancels ?? [],
     summaryGrants: (saved.summaryGrants ?? []).map(grant => ({ id: grant.id, source: grant.source })), stopChallenges: saved.stopChallenges ?? [], waiting: saved.waiting ?? [],
-    sendOutcomes: saved.sendOutcomes ?? [], speakers: saved.speakers ?? { agent: 0, infrastructure: 0 }, modelCalls: saved.modelCalls ?? emptyModelCalls() };
+    sendOutcomes: saved.sendOutcomes ?? [], speakers: saved.speakers ?? { agent: 0, infrastructure: 0 }, modelCalls: saved.modelCalls ?? emptyModelCalls(), retroPasses: saved.retroPasses ?? [] };
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -1494,6 +1505,9 @@ const operatorTurn = (view: JournalView, turn: Turn) => operatorWriter(view, tur
  * search, open questions, digests, preferences and dated items all skip it. */
 export const PROBE_TAG = /^(?:Build|Renewal|Canary) check [0-9a-f]{7,40}: /u;
 export const probeTurn = (view: JournalView, turn: Turn) => PROBE_TAG.test(turn.text) && operatorTurn(view, turn);
+/** The retrospective review's population: the operator's own messages (never probes, edits or runner-authored due turns) and their consequences. */
+export const retrospectiveCases = (view: JournalView) => retrospectivePopulation(view, turn => turn.accepted && !turn.editOf
+  && turn.requestedAction === undefined && operatorTurn(view, turn) && !probeTurn(view, turn));
 /** This phrase match only requests a capped model judgment; it never opens or closes a question. */
 export const unansweredCue = (reply: string) => /\b(?:I (?:don['’]t|do not) know|I(?:['’]m| am) not sure|I (?:can['’]t|cannot) answer)\b/iu.test(reply);
 export const projectMemoryText = (view: JournalView, value: string) => view.memory.reduce((text, change) => {
@@ -1632,6 +1646,12 @@ function checkChannelSourceCursor(view: JournalView, row: Extract<JournalRecord,
     || c.skipped < prior.skipped || c.file === prior.file && c.offset < prior.offset && row.reset !== true))
     throw Error('preview journal: invalid channel source cursor');
 }
+/** A benchmark rerun reservation: in order, inside the cap, for a reconstructable answer case only. */
+function checkRerunReserve(view: JournalView, row: Extract<JournalRecord, { kind: 'retro-rerun-reserve' }>): void {
+  const pass = view.retroPasses[row.pass];
+  if (!pass || pass.state !== undefined || row.index !== (pass.reruns?.length ?? 0) || !row.case.startsWith('answer:')
+    || view.calls >= view.limits.maxCalls) throw Error('preview journal: benchmark rerun order or cap');
+}
 function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { kind: 'call-outcome' }>): void {
   const summary = /^summary:(\d+(?:\.\d+)?)(:review)?$/.exec(row.id);
   const valid = row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
@@ -1639,6 +1659,9 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     : row.role === 'reply-review' ? row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
       || row.id.endsWith(':reply-revision') && !!view.turns.get(row.id.slice(0, -15))?.revisionReserved
       || row.id.endsWith(':revision-review') && !!view.turns.get(row.id.slice(0, -16))?.revisionReviewReserved
+    : /^retrospective:\d+(?::rerun:\d+)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
+      && (`retrospective:${String(pass.pass)}` === row.id || (pass.reruns ?? []).some(run => run.state === undefined
+        && `retrospective:${String(pass.pass)}:rerun:${String(run.index)}` === row.id)))
     : !!view.turns.get(row.id)?.reserved;
   const o = row.outcome;
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
@@ -2088,6 +2111,45 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     }
     return;
   }
+  if (row.kind === 'retro-reserve') {
+    const last = view.retroPasses.at(-1);
+    if (row.pass !== view.retroPasses.length || last?.state === undefined && last !== undefined
+      || view.calls >= view.limits.maxCalls) throw Error('preview journal: retrospective reservation order or cap');
+    reserveTokens(view, `retrospective:${String(row.pass)}`, 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++;
+    view.retroPasses.push({ pass: row.pass, at: row.at, turnsSeen: row.turnsSeen, cases: row.cases, omitted: row.omitted, eligible: row.eligible,
+      packetSha256: row.packetSha256, contextDigest: row.contextDigest });
+    return;
+  }
+  if (row.kind === 'retro') {
+    const pass = view.retroPasses[row.pass];
+    if (!pass || pass.state !== undefined || (row.state === 'complete') !== (row.result !== undefined)
+      || (pass.reruns ?? []).some(run => run.state === undefined))
+      throw Error('preview journal: retrospective result order');
+    settleTokens(view, `retrospective:${String(row.pass)}`, row.usage);
+    pass.state = row.state; pass.completedAt = row.at;
+    if (row.result) pass.result = row.result;
+    if (row.reason !== undefined) pass.reason = row.reason;
+    return;
+  }
+  if (row.kind === 'retro-rerun-reserve') {
+    checkRerunReserve(view, row);
+    const pass = view.retroPasses[row.pass]!;
+    reserveTokens(view, `retrospective:${String(row.pass)}:rerun:${String(row.index)}`, 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++;
+    pass.reruns = [...(pass.reruns ?? []), { index: row.index, case: row.case, contextDigest: row.contextDigest, at: row.at }];
+    return;
+  }
+  if (row.kind === 'retro-rerun') {
+    const run = view.retroPasses[row.pass]?.reruns?.[row.index];
+    if (!run || run.state !== undefined || (row.state === 'complete') !== (row.answer !== undefined))
+      throw Error('preview journal: benchmark rerun result order');
+    settleTokens(view, `retrospective:${String(row.pass)}:rerun:${String(row.index)}`, row.usage);
+    run.state = row.state; run.completedAt = row.at;
+    if (row.answer !== undefined) run.answer = row.answer;
+    if (row.reason !== undefined) run.reason = row.reason;
+    return;
+  }
   if (row.kind === 'step-check-start') {
     const boundary = row.boundaries?.length === 1 ? row.boundaries[0] : undefined;
     const cleanup = boundary === 'cleanup', business = boundary === 'business';
@@ -2390,7 +2452,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (row.lastNamedPerson !== undefined && (row.lastNamedPerson.trim() !== row.lastNamedPerson
       || !row.lastNamedPerson || Buffer.byteLength(row.lastNamedPerson) > 100 || !turn.accepted
       || !turn.text.includes(row.lastNamedPerson))) throw Error('preview journal: unsupported person cue');
-    turn.answer = row.text;
+    turn.answer = row.text; if (row.reason !== undefined) turn.answerReason = row.reason;
     if (row.promises?.some(item => !row.text.includes(item.quote) || (item.when !== undefined && !item.quote.includes(item.when)))
       || row.fulfills?.some(item => !row.text.includes(item.quote) || !view.commitments[item.id]?.agentPromise))
       throw Error('preview journal: unsupported promise proposal');
@@ -2639,7 +2701,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -2718,6 +2780,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent')
         && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
         throw Error('preview journal: outbound provenance refused');
+      // Checked before the durable write: a record its own projection would refuse must never reach the file.
+      if (row.kind === 'retro-rerun-reserve') checkRerunReserve(view!, row);
       if (row.kind === 'reply-review-reserve' && row.promptSha256
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
@@ -2726,7 +2790,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'reply-review-reserve'
-          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry')
+          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry'
+          || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve')
           && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
@@ -2739,7 +2804,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls() };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
       } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -2910,8 +2975,102 @@ export function renewJournalExpiry(journal: ReturnType<typeof openPreviewJournal
   journal.append({ kind: 'expiry', genesisHash: genesisHash(journal.view.genesis), ...input });
 }
 
+/**
+ * Concurrent owned work (Rules 9, 96, 114): the other preview runners this machine owns, projected into the
+ * existing awareness work/overlap view (src/awareness/work.ts) beside the current runner. The source is each
+ * runner root's own append-only run log (`runs.jsonl`): its latest launch row (pid, and the conversation it
+ * polls when recorded) and that launch's exit row. Open commitments or directives are deliberately not an
+ * input: they say what is owed, never which other worker is doing it.
+ */
+export interface OwnedLaunch { owner: string; launch: number; pid: number | null; conversation: string | null;
+  exit?: number; reason?: string }
+/** Whether a launch's recorded process is still that runner: `unknown` is never shown as running. */
+export type OwnedProcess = 'present' | 'absent' | 'unknown';
+/** Most rows one packet carries (the current runner plus the most relevant others). */
+export const CONCURRENT_WORK_ROWS = 6;
+/** Stopped or stale runners older than this are counted, not listed. */
+export const CONCURRENT_WORK_WINDOW_MS = 24 * 3_600_000;
+const CONCURRENT_WORK_TEXT = 120;
+
+/** The latest launch in one runner root's run log, with its exit when recorded. Torn lines are skipped. */
+export function latestOwnedLaunch(owner: string, runsText: string): OwnedLaunch | null {
+  let latest: OwnedLaunch | null = null;
+  const exits = new Map<number, { exit: number; reason: string }>();
+  for (const line of runsText.split('\n')) {
+    if (!line) continue;
+    let row: { v?: unknown; launch?: unknown; pid?: unknown; exit?: unknown; reason?: unknown; poll?: unknown;
+      work?: { conversation?: unknown } };
+    try { row = JSON.parse(line) as typeof row; } catch { continue; }
+    if (row === null || typeof row !== 'object' || row.v !== 1 || !Number.isSafeInteger(row.launch) || row.poll !== undefined) continue;
+    const launch = row.launch as number;
+    if (row.exit !== undefined) {
+      if (Number.isSafeInteger(row.exit) && typeof row.reason === 'string') exits.set(launch, { exit: row.exit as number, reason: row.reason });
+      continue;
+    }
+    if (latest && latest.launch >= launch) continue;
+    const conversation = typeof row.work?.conversation === 'string' ? row.work.conversation.slice(0, CONCURRENT_WORK_TEXT) : null;
+    latest = { owner, launch, pid: Number.isSafeInteger(row.pid) ? row.pid as number : null, conversation };
+  }
+  const ended = latest && exits.get(latest.launch);
+  return latest && ended ? { ...latest, ...ended } : latest;
+}
+
+/**
+ * The bounded packet item: the current runner's row and up to CONCURRENT_WORK_ROWS - 1 other owned runners,
+ * each honestly `running`, `stopped` (an exit row), `stale` (no exit row and its process is gone) or
+ * `unknown` (its process could not be checked). Overlap is the awareness view's own: another runner's
+ * recorded conversation shared with the current one. Quoted data, never an instruction.
+ */
+export function concurrentWorkItem(input: { now: number; current: { owner: string; launch: number; conversation: string };
+  others: readonly (OwnedLaunch & { process: OwnedProcess })[]; scanned: number; truncated: boolean; unreadable: number }) {
+  const text = (value: string) => redact(value).text.replace(/\s+/gu, ' ').slice(0, CONCURRENT_WORK_TEXT);
+  const stateOf = (item: OwnedLaunch & { process: OwnedProcess }) => item.exit !== undefined ? 'stopped' as const
+    : item.process === 'present' ? 'running' as const : item.process === 'absent' ? 'stale' as const : 'unknown' as const;
+  const others = input.others.filter(item => item.owner !== input.current.owner).map(item => {
+    const state = stateOf(item);
+    return { item, state, session: `${item.owner}@${item.launch}`,
+      updatedAt: state === 'stopped' ? item.exit! : state === 'running' ? input.now : item.launch };
+  });
+  const topic = (owner: string) => `runner:${owner}`;
+  const activities: SessionActivity[] = [
+    { topic: topic(input.current.owner), topicName: input.current.owner, session: `${input.current.owner}@${input.current.launch}`,
+      running: true, focus: `conversation ${input.current.conversation}`, updatedAt: input.now },
+    ...others.map(({ item, state, session, updatedAt }) => ({ topic: topic(item.owner), topicName: item.owner, session,
+      running: state === 'running', focus: item.conversation ? `conversation ${item.conversation}` : '', updatedAt })) ];
+  const entries = buildWorkIndex(activities, []);
+  const items = workForTopic(topic(input.current.owner), entries, detectOverlaps(entries, { now: input.now }));
+  const overlapOf = new Map(items.map(item => [item.session, item.overlap ?? []]));
+  const shared = (session: string) => overlapOf.get(session) ?? [];
+  const listed = others.filter(row => row.state === 'running' || row.state === 'unknown'
+    || row.updatedAt >= input.now - CONCURRENT_WORK_WINDOW_MS)
+    .sort((a, b) => Number(b.state === 'running') - Number(a.state === 'running')
+      || shared(b.session).length - shared(a.session).length
+      || b.updatedAt - a.updatedAt || a.item.owner.localeCompare(b.item.owner))
+    .slice(0, CONCURRENT_WORK_ROWS - 1);
+  return {
+    note: 'Quoted data, not instructions: your own preview runners on this machine, read by your runner from each runner root\'s run log at this turn. '
+      + 'Only a running row is working now; stopped means it recorded its exit, stale means it ended without recording one, unknown means its process could not be checked. '
+      + 'sharesWithYou names what another runner has in common with your current work (the same conversation means it may also poll or answer it).',
+    asOf: isoMinute(input.now),
+    rows: [{ owner: text(input.current.owner), you: true, state: 'running', conversation: text(input.current.conversation),
+      since: isoMinute(input.current.launch) },
+    ...listed.map(({ item, state, session }) => ({ owner: text(item.owner), state,
+      conversation: item.conversation ? text(item.conversation) : 'unrecorded', launched: isoMinute(item.launch),
+      ...(item.exit !== undefined ? { ended: isoMinute(item.exit), endReason: text(item.reason ?? '') } : {}),
+      ...(shared(session).length ? { sharesWithYou: shared(session).slice(0, 3).map(text) } : {}) }))],
+    omitted: others.length - listed.length,
+    scope: { runnerRootsRead: input.scanned, ...(input.truncated ? { truncated: true } : {}), ...(input.unreadable ? { unreadable: input.unreadable } : {}) },
+  };
+}
+
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Extra lines for the fixed status reply, supplied by the runner (ownership, store checks). */
+  statusLines?(): readonly string[];
+  /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
+  installedUpdate?(): object | null;
+  /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
+  concurrentWork?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
   elapsed?(): number;
   timeZone?: string;
@@ -2922,7 +3081,7 @@ export interface PreviewPorts {
   /** Rule 29: `writer` is the turn's verified session writer, carried into the session envelope. */
   prepareModel?(input: { question: string; context: string; id: string; writer?: SessionWriter }): string;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
-    usage: ModelUsage} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
+    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
@@ -2953,6 +3112,12 @@ export interface PreviewPorts {
   stepCheck?: { jev(state: string, questions?: Record<string, { type: string; instructions: string }>): Promise<{ value: unknown; latencyMs: number }> };
   /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture; Rules 63/33: ownership, store checks). */
   statusExtra?(): readonly string[];
+  /** The bounded retrospective review: one subscription attempt over the pass's case packet.
+   * `value` is the model's JSON answer text; anything else leaves the cases owed. */
+  retrospect?(state: string, id: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
+    | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
+  /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
+  retrospectiveEvidence?(): RetroSiblingEvidence;
   boundary?(stage: string): void;
   /** Optional semantic stage of the recall owner (`composeRecall`). Ordinary conversation reserves
    * no helper spend (Part 21 §7), so a charging port is refused as over budget; none is bound live. */
@@ -4275,6 +4440,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const preparedFor = (turn: Turn, includeRecorded = true) => {
     const question = redact(turn.text).text;
+    // Rules 9, 96, 114: the concurrent owned-work view is read once per preparation, never per packet variant.
+    const concurrentWork = fromOperator(turn) ? ports.concurrentWork?.() ?? null : null;
     const inventory = inventoryFor(turn);
     const contradictions = contradictionFor(turn);
     const pending = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(0, PREVIEW_CORRECTION_LIMIT);
@@ -4480,7 +4647,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as MemorySourceKind, source: 'channel-import',
           message: clean(redact(item.text).text, true).trim().slice(0, 1000), reply: '' }))];
         for (const datedBase of datedVariants(base)) {
+        const installedUpdate = fromOperator(turn) ? ports.installedUpdate?.() ?? null : null;
         const fullContext = JSON.stringify({ ...JSON.parse(datedBase) as object,
+          ...(installedUpdate ? { installedUpdate } : {}),
+          ...(concurrentWork ? { concurrentWork } : {}),
           ...(compact && summary ? continuityNote(summary.through) ?? {} : {}),
           // Rule 11: how much of the summarized history recall can reach by meaning, not only by words.
           ...(compact && summary ? { meaningIndexCoverage: meaningCoverage(summary.through) } : {}),
@@ -4710,7 +4880,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'status-answer', id: turn.id, text: STOP_CONFIRM_TEXT, prompt, at: ports.now() });
         }
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
-          const answer = statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC', ports.statusExtra?.() ?? []);
+          const answer = [statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC', ports.statusExtra?.() ?? []), ...(ports.statusLines?.() ?? [])].join('\n');
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },
@@ -4987,6 +5157,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(fromOperator(turn) && !probe && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
+              ...(typeof answer !== 'string' && answer.reason?.trim() ? { reason: redact(answer.reason.slice(0, 1000)).text } : {}),
               ...(typeof answer === 'string' ? {} : { usage: answer.usage }), latencyMs: answerMs, at: decisionAt });
             if (invalidMemory && !turn.memoryUndecided) {
               journal.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: ports.now() });
@@ -6260,6 +6431,61 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
     } finally { checkingSteps = false; }
   };
+  /** The bounded retrospective review (Rules 16, 19, 24, 25, 50, 51, 58, 85, 104, 108). One pass is
+   * one model attempt inside the trial cap, after replies. A reservation left by a crash is recorded
+   * UNKNOWN and never replayed; its cases stay owed, so interrupted review remains later work. */
+  let retrospecting = false;
+  const retrospect = async (contextDigest = replyContextDigest(journal.view)) => {
+    if (!ports.retrospect || retrospecting || journal.readOnly) return;
+    retrospecting = true;
+    try {
+      const last = journal.view.retroPasses.at(-1);
+      if (last && last.state === undefined) {
+        for (const run of last.reruns ?? []) if (run.state === undefined)
+          journal.append({ kind: 'retro-rerun', pass: last.pass, index: run.index, state: 'unknown', reason: 'interrupted before its result was recorded', at: ports.now() });
+        journal.append({ kind: 'retro', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded; never replayed', at: ports.now() });
+      }
+      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+      const population = retrospectiveCases(journal.view);
+      const evidence = ports.retrospectiveEvidence?.() ?? {};
+      const plan = retrospectivePlan(journal.view, population, ports.now(), contextDigest, evidence);
+      if (!plan) return;
+      gate();
+      const pass = journal.view.retroPasses.length;
+      journal.append({ kind: 'retro-reserve', pass, turnsSeen: journal.view.order.length, cases: plan.cases.map(item => item.id), omitted: plan.omitted,
+        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, at: ports.now() });
+      // Benchmark reruns: the promoted case's original question through the live reply assembly, as of that turn.
+      for (const [index, target] of plan.reruns.entries()) {
+        const id = `retrospective:${String(pass)}:rerun:${String(index)}`;
+        journal.append({ kind: 'retro-rerun-reserve', pass, index, case: target, contextDigest, at: ports.now() });
+        const turn = journal.view.turns.get(target.slice('answer:'.length));
+        const selected = turn ? preparedFor(turn) : { reason: 'source turn absent' };
+        if ('reason' in selected) { journal.append({ kind: 'retro-rerun', pass, index, state: 'failed', reason: `context unavailable: ${selected.reason}`, at: ports.now() }); continue; }
+        let answer: Awaited<ReturnType<PreviewPorts['model']>>;
+        try { gate(); answer = await ports.model({ question: selected.question, context: selected.context, id,
+          ...(selected.prepared === undefined ? {} : { prepared: selected.prepared }) }); }
+        catch { journal.append({ kind: 'retro-rerun', pass, index, state: 'unknown', reason: 'model call failed or was stopped', at: ports.now() }); continue; }
+        const usage = typeof answer !== 'string' && answer.usage ? { usage: answer.usage } : {};
+        const value = typeof answer === 'string' ? answer : 'text' in answer ? answer.text : undefined;
+        if (value !== undefined && value.trim()) journal.append({ kind: 'retro-rerun', pass, index, state: 'complete', answer: redact(value.slice(0, 4000)).text, ...usage, at: ports.now() });
+        else journal.append({ kind: 'retro-rerun', pass, index, state: typeof answer !== 'string' && answer.state === 'uncertain' ? 'unknown' : 'failed',
+          reason: typeof answer === 'string' ? 'empty answer' : `model ${'failureClass' in answer ? answer.failureClass ?? answer.state : answer.state ?? 'empty'}`, ...usage, at: ports.now() });
+      }
+      let answer: Awaited<ReturnType<NonNullable<PreviewPorts['retrospect']>>>;
+      try { gate(); answer = await ports.retrospect(plan.state, `retrospective:${String(pass)}`); }
+      catch { journal.append({ kind: 'retro', pass, state: 'unknown', reason: 'model call failed or was stopped; outcome unknown', at: ports.now() }); return; }
+      const usage = answer.usage ? { usage: answer.usage } : {};
+      if (answer.state === 'uncertain') { journal.append({ kind: 'retro', pass, state: 'unknown', reason: 'model outcome uncertain', ...usage, at: ports.now() }); return; }
+      if (!('value' in answer)) { journal.append({ kind: 'retro', pass, state: 'failed', reason: `model ${answer.failureClass ?? answer.state}`, ...usage, at: ports.now() }); return; }
+      let result;
+      try { result = validateRetrospective(JSON.parse(answer.value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')), plan, journal.view, pass, ports.now(), contextDigest); }
+      catch (error) {
+        const reason = error instanceof SyntaxError ? 'answer was not JSON' : error instanceof Error ? error.message : 'answer refused';
+        journal.append({ kind: 'retro', pass, state: 'failed', reason, ...usage, at: ports.now() }); return;
+      }
+      journal.append({ kind: 'retro', pass, state: 'complete', result, ...usage, at: ports.now() });
+    } finally { retrospecting = false; }
+  };
   /** The recorded requests a due turn's selection must agree with: each quote, when it was asked and when it was due. */
   const actionDueEvidence = (turn: Turn, step: string): object => ({ step, selectedAt: isoMinute(turn.at),
     requests: turn.requestedAction!.items.map(ref => {
@@ -6366,7 +6592,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
   const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await answerLimited(); };
-  return { intake, drain, minimal, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, probe,
+  return { intake, drain, minimal, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

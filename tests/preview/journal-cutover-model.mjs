@@ -1,5 +1,13 @@
 export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_DOORWAYS } from '../../src/assembly/production-provider.js';
+
+/** A registered test doorway: the real adapter's evidence contract with this fixture's route. */
+export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
+export const subscriptionDoorway = id => {
+  if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error(`subscription doorway ${id} is not registered`);
+  return { id, contract: SUBSCRIPTION_DOORWAYS[id].contract, create: input => createClaudeCodeSubscriptionRoute(input) };
+};
 
 export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value: {
   invoke: async prepared => {

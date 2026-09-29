@@ -404,3 +404,31 @@ export function createClaudeCodeSubscriptionRoute(input:
     return route;
   });
 }
+
+/** The adapter-owned parts of a subscription route's evidence contract. */
+export type SubscriptionDoorwayContract = Pick<ProviderAdapterEvidenceContract, 'parserReference' | 'parserVersion'
+  | 'terminalReasonField' | 'successfulFinalReplyReasons'>;
+/**
+ * Rule 30: a registered model doorway, selected by its id through one interface. A client names
+ * a doorway id and supplies the account, activation and bounds; the harness-specific parser,
+ * terminal fields and route construction stay inside this adapter module.
+ */
+export interface SubscriptionDoorway {
+  readonly id: string;
+  readonly contract: SubscriptionDoorwayContract;
+  create(input: Parameters<typeof createClaudeCodeSubscriptionRoute>[0]): Result<ConfinedProviderRoute>;
+}
+export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>> = Object.freeze({
+  'claude-code-subscription': Object.freeze({ id: 'claude-code-subscription',
+    contract: Object.freeze({ parserReference: 'claude-code-json-result', parserVersion: '1', terminalReasonField: 'subtype',
+      successfulFinalReplyReasons: Object.freeze(['success']) }),
+    create: createClaudeCodeSubscriptionRoute }),
+});
+/** The doorway an existing installation used before doorways were selectable. */
+export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
+/** Refuses an unregistered doorway rather than guessing one. */
+export function subscriptionDoorway(id: string): SubscriptionDoorway {
+  const doorway = Object.hasOwn(SUBSCRIPTION_DOORWAYS, id) ? SUBSCRIPTION_DOORWAYS[id] : undefined;
+  if (!doorway) throw new Error(`subscription doorway ${id} is not registered`);
+  return doorway;
+}

@@ -2,19 +2,23 @@
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { redact } from '../../src/recall/redact.js';
-import { durablePreviewWrite } from './state.js';
+import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
-import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
+import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
+import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
+  updatePacketItem } from './installation.js';
 import { projectionDigest } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder} from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
@@ -68,6 +72,7 @@ import { auditJournal } from './journal-audit.mjs';
 import { memoryReport } from './memory-export.js';
 
 import { stepQuestions } from './step-check.js';
+import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, standingGrantCandidates } from './retrospective.js';
 
 
 
@@ -203,9 +208,56 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const sources = ordinarySources;
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
-    return [...sources, selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
+    return [...sources, disciplineSource(view), selfStateSource(selfState(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
   };
 };
+/** The installed runner, read from this checkout: repository paths only, never outside it. */
+const repoRead = path => { try { return readFileSync(resolve(process.cwd(), path), 'utf8'); } catch { return null; } };
+const repoFile = path => { try { return lstatSync(resolve(process.cwd(), path)).isFile(); } catch { return false; } };
+/** Rule 59: the harness's silent-stop table is admitted, with every captured case resolved, before a launch. */
+const admitHarness = () => admitPreviewHarness(repoRead);
+/** Rules 26, 44: the exact code this process executes (import closure, loader, spawned children) and the checkout revision. */
+const installedCode = () => {
+  let revision = null;
+  try { revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: process.cwd(), encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim() || null; } catch { revision = null; }
+  return installedCodeOf(path => { try { return readFileSync(resolve(process.cwd(), path)); } catch { return null; } }, repoFile, revision);
+};
+/** Rules 9, 96, 114: the other runner roots beside this one (the same parent directory) are this machine's other
+ * owned preview runners. Each is read from its own run log only; a bounded number of roots and bytes. */
+const OWNED_ROOT_LIMIT = 256, OWNED_RUN_LOG_BYTES = 1024 * 1024;
+/** The conversation a runner polls, recorded on its launch row so a sibling can see a shared conversation. */
+const conversationOf = genesis => `telegram/bot-${genesis.bot}/chat-${genesis.chat}`;
+/** A launch with no exit row is running only while its recorded pid is still that root's runner. */
+const ownedProcess = (pid, root) => {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return 'unknown';
+  try {
+    const command = execFileSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 });
+    // A runner started with another spelling of the root cannot be matched: unknown, never guessed either way.
+    return !command.includes('journal-agent.mjs') ? 'absent' : command.includes(`--root ${root}`) ? 'present' : 'unknown';
+  } catch (error) { return error?.status === 1 ? 'absent' : 'unknown'; }
+};
+const ownedActivity = root => {
+  const parent = dirname(root);
+  let names = [];
+  try { names = readdirSync(parent).sort(); } catch { return { others: [], scanned: 0, truncated: false, unreadable: 1 }; }
+  const others = []; let scanned = 0, unreadable = 0;
+  for (const name of names.slice(0, OWNED_ROOT_LIMIT)) {
+    const sibling = join(parent, name), path = join(sibling, 'runs.jsonl');
+    if (sibling === root) continue;
+    let stat; try { stat = lstatSync(path); } catch { continue; }
+    if (!stat.isFile() || stat.size > OWNED_RUN_LOG_BYTES) { unreadable++; continue; }
+    let text; try { text = readFileSync(path, 'utf8'); } catch { unreadable++; continue; }
+    scanned++;
+    const launch = latestOwnedLaunch(name, text);
+    if (launch) others.push({ ...launch, process: launch.exit === undefined ? ownedProcess(launch.pid, sibling) : 'absent' });
+  }
+  return { others, scanned, truncated: names.length > OWNED_ROOT_LIMIT, unreadable };
+};
+/** What the agent is told about itself, independent of the trial's changing limits. */
+const briefingDigest = () => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
+  SOURCE_PINS, { providerAttempts: 0, expiresAt: 0 }).sources.map(source => source.text), ANSWER_INSTRUCTIONS]);
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
@@ -223,6 +275,7 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   continuity: packet.continuity ?? null,
 
   contradictions: packet.contradictions ?? [],
+  ...(packet.concurrentWork ? { concurrentWork: packet.concurrentWork } : {}),
   restartHandoff: packet.sources?.find(source => source.id === 'restart-handoff')?.text ?? null,
   recalled: packet.recalled?.length ?? 0, recalledIds: (packet.recalled ?? []).map(item => item.id ?? null), recalledSourceKinds: (packet.recalled ?? []).map(item => item.sourceKind), history: packet.history?.length ?? 0, historySourceKinds: (packet.history ?? []).map(item => item.sourceKind),
   replyProvenance: packet.replyProvenance ? { update: packet.replyProvenance.update,
@@ -272,11 +325,13 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review' : 'answer';
+const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+  : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
- * reply's held-class review is a reply review; the revision itself drafts an answer. */
+ * reply's held-class review is a reply review; the revision itself drafts an answer. A retrospective
+ * pass is its own judgment; its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
 const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
-  : /^summary:/u.test(id) ? 'summary' : 'answer';
+  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 /** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
@@ -299,6 +354,37 @@ const packetStatus = view => {
     dropped: last.packetDropped ?? 'unavailable in earlier reservation' };
 };
 
+/** The retrospective review's proof of running, its accounting, grades and open work (content-free except its own findings). */
+const retrospectiveView = (view, now) => { const digest = replyContextDigest(view);
+  const grades = [...latestGrades(view).values()];
+  return { passes: view.retroPasses.map(pass => ({ pass: pass.pass, at: pass.at,
+    state: pass.state ?? 'in-flight-or-unknown', reason: pass.reason ?? null, eligible: pass.eligible,
+    supplied: pass.cases.length, deferredByBound: pass.omitted.length,
+    inspected: pass.result ? pass.result.inspected.length : null, omittedByReview: pass.result ? pass.result.omitted.length : null,
+    accounting: passAccounting(pass), efficiency: pass.result?.efficiency.summary ?? null,
+    duties: pass.result?.duties.map(item => ({ duty: item.duty, disposition: item.disposition, note: item.note })) ?? [],
+    gravityWellsObserved: pass.result?.gravityWells.filter(item => item.observed).map(item => item.well) ?? [],
+    findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs, summary: item.summary, recurs: item.recurs ?? [],
+      rootCause: item.rootCause ?? null, structuralRemedy: item.structuralRemedy ?? null,
+      disposition: 'owner' in item.disposition ? `owned by ${item.disposition.owner}` : 'declined with reason' })) ?? [],
+    reruns: (pass.reruns ?? []).map(run => ({ index: run.index, case: run.case, state: run.state ?? 'in-flight-or-unknown' })) })),
+  grades: grades.map(({ grade, pass }) => ({ case: grade.case, pass, conclusion: grade.conclusion.assessment, reason: grade.reason.assessment,
+    outcome: grade.outcome.assessment, outcomeReason: grade.outcome.reason, rederivation: grade.rederivation ?? null, reassessment: grade.reassessment === true })),
+  pendingGrades: pendingGrades(view).length,
+  openFindings: openFindings(view).map(item => ({ id: item.id, duty: item.duty, next: 'next' in item.disposition ? item.disposition.next : null })),
+  feedbackDispositions: feedbackDispositions(view).map(item => ({ case: item.case, disposition: item.disposition, finding: item.finding ?? null,
+    evidence: item.evidence ?? [], reason: item.reason ?? null })),
+  standingGrantCandidates: standingGrantCandidates(view).map(item => ({ case: item.case, presentable: item.presentable,
+    recurrences: item.recurrences, scope: item.scope })),
+  promotedCases: promotedCases(view).map(item => ({ case: item.provenance.case, expected: item.expected, pass: item.provenance.pass,
+    contextDigest: item.provenance.contextDigest, pending: item.pending })),
+  benchmarkReruns: benchmarkReruns(view), rerunsDue: rerunsDue(view, digest).length, rerunDispositions: rerunDispositions(view, digest),
+  owed: (() => { const owed = owedCases(view, retrospectiveCases(view), now);
+    return { cases: owed.length, byCategory: Object.fromEntries(['message', 'decision', 'verdict', 'repair', 'authorization', 'open', 'rerun']
+      .map(category => [category, owed.filter(row => row.item.category === category).length])),
+      oldestSince: owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) === Number.MAX_SAFE_INTEGER ? null
+        : owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) }; })(),
+  contextDigest: digest, routeSelection: 'unmeasured' }; };
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
@@ -309,6 +395,9 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   const stepCheckEnabled = options['step-check'] === 'true';
+  if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
+  // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
+  const retrospectiveEnabled = options.retrospective !== 'false';
   if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
@@ -317,6 +406,8 @@ async function main() {
     writeFileSync(resolve(required(options, 'out')), `${JSON.stringify(sealed, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     return;
   }
+  // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.
+  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); }
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -439,6 +530,16 @@ async function main() {
           ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
           : null,
       packet: packetStatus(view.view),
+      installation: (() => {
+        const rows = installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), last = rows.filter(row => row.codeDigest !== UNRECORDED).at(-1);
+        if (!last) return null;
+        let installed = null; try { installed = installedCode(); } catch { installed = null; }
+        const update = installedUpdateFrom(rows, last, last.launch + 1);
+        return { lastLaunch: { revision: last.revision, codeDigest: last.codeDigest, files: last.files, launch: last.launch },
+          installed, stale: installed === null ? null : installed.codeDigest !== last.codeDigest,
+          harness: last.harness, doorway: last.doorway, stallClasses: last.stallClasses, briefingDigest: last.briefingDigest,
+          update, updateDelivered: update ? updateDelivery(update, view.view.order) : null };
+      })(),
 
       memoryHealth: memoryHealthLine(view.view),
 
@@ -568,6 +669,7 @@ async function main() {
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
+      retrospective: retrospectiveView(view.view, wallNow()),
       people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
         change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
@@ -644,6 +746,10 @@ async function main() {
             return { outcome: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
               ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })(),
           grounding: reply.grounding ?? null,
+          answerReason: reply.answerReason ?? null,
+          retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
+            return row ? { pass: row.pass, conclusion: row.grade.conclusion, reason: row.grade.reason, outcome: row.grade.outcome,
+              rederivation: row.grade.rederivation ?? null } : null; })(),
           ...(reply.continuity ? { continuity: reply.continuity } : {}) } : null,
         // Rules 11 and 110: the latest summary frontier and which operator updates the meaning index covers.
         summaryFrontier: view.view.summaries.at(-1)?.through ?? null,
@@ -724,7 +830,7 @@ async function main() {
     return;
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false;
-  let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null;
+  let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
   let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
   // Rule 63: the conversation fence. Losing it stops new work; an effect never dispatches without it.
@@ -895,7 +1001,10 @@ async function main() {
       }
       if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      return { state: 'complete', value, usage: result.usage };
+      // Rule 108: the stated reason is recorded beside the conclusion (build 8).
+      const reasonValue = decision.reason?.value;
+      const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
+      return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
     const proofLines = () => {
       if (!proofLaunch) return [];
@@ -916,13 +1025,20 @@ async function main() {
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
+      // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
+      installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
+      // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
+      concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
+        current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
+      statusLines: () => installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
+        installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const result = await invokeSubscription(prepared, id);
         if (result.state !== 'complete' || result.failureClass) return { ...result,
           ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
-        return { state: 'complete', text: result.value,
+        return { state: 'complete', text: result.value, ...(result.reason ? { reason: result.reason } : {}),
           usage: recordedUsage(result.usage) };
       },
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
@@ -996,6 +1112,10 @@ async function main() {
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: (text, questions) => callJev('jev-step-check', text, questions ?? stepQuestions) } } : {}),
+      ...(retrospectiveEnabled ? { retrospect: async (state, id) => {
+        const result = await invokeSubscription(modelEnvelope({ question: RETROSPECTIVE_QUESTION, context: state, id }), id);
+        return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
+      } } : {}),
       // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
       statusExtra: () => [...proofLines(), ...ownerLines()],
       // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
@@ -1081,7 +1201,13 @@ async function main() {
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = wallNow();
-    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid });
+    installation = { ...installedCode(), briefingDigest: briefingDigest(), harness: PREVIEW_JOURNAL_HARNESS,
+      stallClasses: PREVIEW_JOURNAL_STALL_COVERAGE.rows.length, doorway: options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY };
+    // An unreadable run log is refused by the Rule 55 check below, after this launch's row is appended.
+    let priorRuns = null;
+    try { priorRuns = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''; } catch { /* readRuns reports readFailed */ }
+    if (priorRuns !== null) installUpdate = installedUpdateFrom(installationRows(priorRuns), installation, launchedAt);
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) } });
     runs = readRuns(runsPath);
     // Rule 55: unrecoverable poll pressure fails the launcher closed; unavailable history never becomes a fresh episode.
     if (runs.readFailed) { endReason = 'run log unreadable'; pressureUnknown = true; throw Error('preview: run log unreadable'); }
@@ -1114,10 +1240,15 @@ async function main() {
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
     }
-        let summaryJob = null, stepJob = null;
+        let summaryJob = null, stepJob = null, retroJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
       stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
+    };
+    // After the summary pass: at most one bounded retrospective pass (the worker decides whether one is due).
+    const retrospectLater = () => {
+      if (!retrospectiveEnabled || retroJob) return;
+      retroJob = worker.retrospect().catch(() => {}).finally(() => { retroJob = null; });
     };
 
     const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
@@ -1128,7 +1259,7 @@ async function main() {
       try { worker.checkCoherence(); } catch { /* the unchecked reply is retried after the next drain */ }
       checkStepsLater();
       if (summaryJob) return;
-      summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).finally(() => { summaryJob = null; });
+      summaryJob = worker.summarizeIfNeeded().catch(() => {}).then(checkStepsLater).then(retrospectLater).finally(() => { summaryJob = null; });
     };
     // A reached cap is a local report, never the end of reachability: past it the minimal
     // reserve keeps reading and answering the operator (Rule 15).
@@ -1225,23 +1356,27 @@ async function main() {
     if (drainError && !signalled) throw drainError;
     await summaryJob;
     await stepJob;
+    await retroJob;
     if (stepCheckEnabled) await worker.checkSteps();
     reportCap();
     endReason ??= 'cycle limit reached';
     function modelRoute(operation) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       const policy = subscriptionConversationPolicy(options.model);
+      // Rule 30: the doorway is selected by its registered id; its parser and terminal contract stay in the adapter.
+      const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
       const contract = { reference: activation.reference, version: activation.profileDigest,
-        parserReference: 'claude-code-json-result', parserVersion: '1', endpoint: profile.loginProfileIdentity,
+        ...doorway.contract, successfulFinalReplyReasons: [...doorway.contract.successfulFinalReplyReasons],
+        endpoint: profile.loginProfileIdentity,
         account: profile.expectedAccount, credentialReference: profile.reference, controller: 'preview-journal',
-        sourceEvidence: [activation.reference], terminalEvidence: activation.reference, terminalReasonField: 'subtype',
-        successfulFinalReplyReasons: ['success'], strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
+        sourceEvidence: [activation.reference], terminalEvidence: activation.reference,
+        strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
       const physicalIO = createSubscriptionProviderIO({ repository: process.cwd(),
         stopped: () => workerStop.value || existsSync(stopPath) || !active() });
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
         { elapsed: () => performance.now(), at: wallNow });
-      return take(createClaudeCodeSubscriptionRoute({ context, credential: secretRef(profile.reference), profile,
+      return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
         io,
