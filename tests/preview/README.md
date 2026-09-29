@@ -16,7 +16,7 @@ The journal runner's capability briefing is generated from these lines and the f
 - `preview-upcoming-date-mention`: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
 - `preview-requested-reminders`: when the operator explicitly asks to be reminded at a settled day and time, sends one fixed reminder then, quoting the request; reminders due together in a topic share one message, inside the reply limit.
 - `preview-requested-summaries`: when the operator explicitly asks for a summary at a later time, once or repeatedly, sends one summary at each due time, quoting the request, through the same answer checks; after downtime it sends at most one late summary.
-- `preview-owned-obligations`: keeps the operator's standing instructions until the operator supersedes them or they are complete, never on a timer; tracks the deferrals, judgments and promises its own replies leave open and works them when due, keeping each result for the operator's next message rather than sending it unprompted; a cannot-do or needs-a-person claim stands only with a recorded investigation and is rechecked within 90 days.
+- `preview-owned-obligations`: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
 
 ## Prerequisites and exact invocation
 
