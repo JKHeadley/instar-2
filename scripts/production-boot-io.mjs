@@ -1,5 +1,5 @@
 // The fixed Ten physical host. No worker receives these OS ports.
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
   readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -64,26 +64,26 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
   const directory = join(root, '.telegram-sealed');
   mkdirSync(directory, { mode: 0o700, recursive: true });
   if (realpathSync(directory) !== directory) throw Error('telegram: sealed capture path substituted');
-  return Object.freeze({ invoke(input, credential) {
+  const launch = input => {
     const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs,
       captureDirectory: directory, identityBinding: input.identityBinding,
       ...(testEndpoint === null ? {} : { testEndpoint }) })).toString('base64url');
-    // A synchronous, sequential transport child through the same limit shim as every provider launch
+    // A transport child through the same limit shim as every provider launch
     // (Rule 60): kernel-held per-process CPU time and handles, and user-ID process headroom (not a tree
-    // bound: see resource-owner.mjs). It is sequential and waited on synchronously. Its V8 heap
-    // is capped through NODE_OPTIONS (argv is unchanged), and its elapsed time and output by the
-    // options below. Its RSS is not held by any unprivileged kernel limit on this host.
+    // bound: see resource-owner.mjs). Its V8 heap is capped through NODE_OPTIONS (argv is unchanged),
+    // and its elapsed time and output by the bounds below. Its RSS is not held by any unprivileged
+    // kernel limit on this host.
     const env = { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' };
     // The request stays at argv[1] (the file shim's label), as the recorded transports read it.
-    const child = spawnSync('/bin/sh', limitedFileArgv({ label: request, executable: process.execPath,
+    return { env, timeout: input.timeoutMs + 2000, argv: limitedFileArgv({ label: request, executable: process.execPath,
       args: [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
       handles: TRANSPORT_LIMITS.handleCount, cpuSeconds: Math.ceil((input.timeoutMs + 2000) / 1000) + 1,
-      processLimit: transportProcessLimit(), env }),
-      { input: credential, encoding: 'utf8', timeout: input.timeoutMs + 2000, maxBuffer: 2 * 1024 * 1024,
-        env, stdio: ['pipe', 'pipe', 'ignore'] });
-    if (child.status !== 0) return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
+      processLimit: transportProcessLimit(), env }) };
+  };
+  const settle = (status, stdout) => {
+    if (status !== 0) return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
     try {
-      const reply = JSON.parse(child.stdout);
+      const reply = JSON.parse(stdout);
       if (reply.kind === 'identity') {
         const match = /^capture:telegram:sealed-getMe:([a-f0-9]{64})$/.exec(reply.capture?.reference);
         if (!match) throw Error('sealed identity reference invalid');
@@ -95,7 +95,36 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       }
       return reply;
     } catch { return { kind: 'uncertain', limitation: 'transport', stage: 'sealed-capture' }; }
-  } });
+  };
+  const MAX_TRANSPORT_BYTES = 2 * 1024 * 1024;
+  return Object.freeze({
+    /** Sequential and waited on synchronously: short calls (identity, send, acknowledge). */
+    invoke(input, credential) {
+      const { env, timeout, argv } = launch(input);
+      const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
+        env, stdio: ['pipe', 'pipe', 'ignore'] });
+      return settle(child.status, child.stdout);
+    },
+    /** The same bounded child, awaited without blocking the event loop: the long poll. A synchronous
+     * long poll froze every concurrent launch's timers and exit events for its whole wait, so a
+     * finished provider preflight was judged timed out (live 2026-09-29, cint-L4). */
+    poll(input, credential) {
+      const { env, timeout, argv } = launch(input);
+      return new Promise(resolve => {
+        let child;
+        try { child = spawn('/bin/sh', argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
+        catch { resolve(settle(null, '')); return; }
+        let chunks = [], size = 0, failed = false;
+        const fail = () => { failed = true; chunks = []; try { child.kill('SIGKILL'); } catch { /* already gone */ } };
+        const timer = setTimeout(fail, timeout);
+        child.on('error', () => { clearTimeout(timer); resolve(settle(null, '')); });
+        child.stdin.on('error', fail);
+        child.stdout.on('data', chunk => { size += chunk.length; if (size > MAX_TRANSPORT_BYTES) fail(); else if (!failed) chunks.push(chunk); });
+        child.on('close', code => { clearTimeout(timer); resolve(settle(failed ? null : code, Buffer.concat(chunks).toString('utf8'))); });
+        child.stdin.end(credential, 'utf8');
+      });
+    },
+  });
 }
 
 /** The worker's physical boundary is the running installed process. Encrypted

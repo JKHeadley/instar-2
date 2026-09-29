@@ -1451,7 +1451,10 @@ async function main() {
       try { pollLimit = worker.pollLimit(); } catch { break; }
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       let result;
-      try { result = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
+      // The long poll is awaited asynchronously: a synchronous wait froze every concurrent launch's
+      // timers and exit events for up to its whole long-poll timeout (live 2026-09-29).
+      const poll = physical.poll ? (input, credential) => physical.poll(input, credential) : (input, credential) => physical.invoke(input, credential);
+      try { result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
         body: { offset: journal.view.cursor, limit: pollLimit,
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
           allowed_updates: ['message', 'edited_message', 'callback_query'] },
@@ -1515,7 +1518,9 @@ async function main() {
         stopped: () => workerStop.value || existsSync(stopPath) || !active(), work });
       const physicalIO = { ...launchIO, execute: async input => {
         const result = await launchIO.execute(input);
-        observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation));
+        // Only the model command is the exchange; the version and auth preflights print no result frame.
+        if (JSON.stringify(input.args) === JSON.stringify(policy.args))
+          observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation));
         return result;
       } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
