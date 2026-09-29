@@ -6122,11 +6122,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!force && !unreviewedQuestions(last.update).length && Buffer.byteLength(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
         // otherwise wait for history to grow; index them without summarizing anything new. A summary
-        // that just ran was already asked for these terms, so indexing waits for a later call.
+        // that just ran was already asked for these terms, so indexing waits for a later call. Only full
+        // batches run here (at most one call per eight unindexed messages); a smaller remainder is
+        // offered by the next due summary, which carries the backlog.
         if (summarized) return;
         const unoffered = journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
           && item.update <= previous && !indexed.has(item.id) && !journal.view.indexOffered.includes(item.id)).slice(0, INDEX_BACKLOG_LIMIT);
-        if (unoffered.length && await indexOnly(unoffered)) continue;
+        if (unoffered.length === INDEX_BACKLOG_LIMIT && await indexOnly(unoffered)) continue;
         return;
       }
       const candidates: { turn: Turn; bases: string[]; fallback: ReadonlySet<string> }[] = [];

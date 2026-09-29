@@ -39,9 +39,9 @@ function preBuild2(path: string, older: number) {
 }
 
 describe('Rule 11: the meaning index backfills summaries written before build 2', () => {
-  it('each later turn carries the backlog once, keeps the newest turn verbatim, and converges', async () => {
+  it('indexes the backlog in full batches without moving the summary frontier, and converges', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-backfill-')));
-    const older = 12, path = join(dir, 'journal.encrypted');
+    const older = 2 * INDEX_BACKLOG_LIMIT, path = join(dir, 'journal.encrypted');
     try {
       const journal = preBuild2(path, older);
       const summaryContexts: string[] = [], indexContexts: string[] = [], sent: string[] = [];
@@ -110,7 +110,7 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it('offers each backlog source once when the model returns no terms, and refuses out-of-order index records', async () => {
+  it('offers each source once, only in full batches, when the model returns no terms, and refuses out-of-order index records', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-backfill-')));
     const older = 12, path = join(dir, 'journal.encrypted');
     try {
@@ -125,11 +125,11 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
       for (let id = older + 1; id <= older + 4; id++) {
         worker.intake([update(id, `Short check-in ${id}.`)]); await worker.drain(); await worker.summarizeIfNeeded();
       }
-      const passes = Math.ceil(older / INDEX_BACKLOG_LIMIT);
-      expect(indexCalls).toBe(passes);
-      expect(journal.view.calls - calls).toBe(passes + 4);
+      // One full batch of eight; the remaining four wait for a due summary, which offers the backlog.
+      expect(indexCalls).toBe(1);
+      expect(journal.view.calls - calls).toBe(1 + 4);
       expect(journal.view.indexConcepts).toEqual([]);
-      expect(journal.view.indexOffered).toHaveLength(older);
+      expect(journal.view.indexOffered).toHaveLength(INDEX_BACKLOG_LIMIT);
 
       expect(() => journal.append({ kind: 'meaning-index', concepts: [], at: at + 200_000 })).toThrow('unsupported meaning terms');
       expect(() => journal.append({ kind: 'index-reserve', sources: [targetId], maxInputTokens: 10, maxOutputTokens: 10, at: at + 200_000 }))
