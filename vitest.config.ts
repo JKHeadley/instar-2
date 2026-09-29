@@ -13,6 +13,11 @@ const workerLimit = Math.max(1, Math.min(6, Math.floor(availableParallelism() / 
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
+    // test-tmp: before the fork pool starts, point TMPDIR at a per-run directory on RAM-
+    // backed storage (removed at teardown) so test fsyncs never swamp the real disk.
+    // INSTAR_TEST_REAL_DISK=1 opts out; `npm run test:durability` uses that to prove
+    // production storage on the real disk once per gate.
+    globalSetup: ['tests/setup/test-tmp.ts'],
     // nice-worker: best-effort priority reduction for each worker and its spawned children
     // (a resource optimization, never a correctness gate). yield-worker: an awaited
     // event-loop turn after every test case so the fork worker's task-update IPC can be

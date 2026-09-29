@@ -56,7 +56,9 @@ export function registerProfileSchedule(profile: string): void {
   const assertPair = async (pair: readonly [string, string], execution: ScheduleArtifact): Promise<void> => {
     expect(execution.firedCuts[0]).toBe(pair[0]);
     expect(execution.firedCuts.every(cut => pair.includes(cut))).toBe(true);
-    expect(execution.boots).toBe(execution.firedCuts.length + 1);
+    // A scheduled cut records its row before it kills, so one boot more than cuts + 1 means a
+    // boot was SIGKILLed from outside the schedule; the runner counts that as a boot.
+    expect(execution.boots, 'a boot died by SIGKILL without recording a cut').toBe(execution.firedCuts.length + 1);
     expect(execution.boots).toBeGreaterThanOrEqual(2);
     expect(withinExecution(execution.report, SLICE_INPUT)).toEqual([]);
     expect(acrossExecutions(await control(), execution.report)).toEqual([]);
