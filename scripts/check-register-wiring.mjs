@@ -20,6 +20,7 @@ const consumers = [
 
 // Scope of proof: statically imported core ports with literal kind/id arguments.
 // Computed ids and dynamic construction remain an explicit residual, not complete coverage.
+const parsedSources = new Map();
 function sourceProgram(sources) {
   // This is a closed source proof, not the worktree's build configuration. Every
   // import/re-export link must come from the supplied graph, including .d.ts.
@@ -34,8 +35,19 @@ function sourceProgram(sources) {
   host.directoryExists = p => [...files.keys()].some(f => f.startsWith(resolve(p) + '/'));
   host.readFile = p => files.get(resolve(p));
   host.realpath = p => resolve(p);
-  host.getSourceFile = (p, language) => files.has(resolve(p))
-    ? ts.createSourceFile(p, files.get(resolve(p)), language, true) : undefined;
+  host.getSourceFile = (p, language) => {
+    const path = resolve(p); if (!files.has(path)) return undefined;
+    // Content-addressed parse cache. A caller that scans the same closed graph many
+    // times with one file changed (the register wiring tests) otherwise re-parses every
+    // unchanged source for every scan, which is the measured cost behind the P4 owner
+    // source consumption timeouts. The key is (path, language, exact bytes), so a
+    // changed byte is a different entry and a stale parse is not representable.
+    // Rule 37.
+    const key = `${path}\u0000${language}\u0000${files.get(path)}`;
+    const parsed = parsedSources.get(key)
+      ?? ts.createSourceFile(p, files.get(path), language, true);
+    parsedSources.set(key, parsed); return parsed;
+  };
   const program = ts.createProgram([...files.keys()], options, host);
   program.resolveSourceModule = (specifier, from) => ts.resolveModuleName(specifier, from, options, host).resolvedModule?.resolvedFileName;
   return program;

@@ -22,6 +22,12 @@ import type { FactEnvelope } from '../../src/facts/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
 
+// The afterEach yield above only runs BETWEEN cases. One scenario is a minute or more of
+// owner work in a single case, so the fork worker's channel stays starved for the whole
+// case and the run reports `Timeout calling "onTaskUpdate"` as an unhandled runner error
+// while the case itself is merely slow. Yield at the scenario's phase boundaries as well.
+// Scheduling only: no owner behaviour or assertion changes. Rule 37.
+const yieldTurn = () => new Promise<void>(done => setImmediate(done));
 const raw = (fact: FactEnvelope) => (fact.body as unknown as { record: Record<string, unknown> }).record;
 const reference = (fact: FactEnvelope) => ({ owner: 'part-two' as const, name: 'FactEnvelope' as const,
   id: fact.id, kind: fact.kind, schemaVersion: fact.schemaVersion, contentHash: fact.contentHash });
@@ -84,6 +90,7 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
 
   for (const predicate of (hook.unknown ? ['operation-occurred'] : ['operation-occurred', 'charge-settled', 'old-executor-quiescent']))
     f.evidence(observed.operation, request.digest, predicate, predicate === 'charge-settled' ? 3 : undefined);
+  await yieldTurn();
   const facts = f.all();
   const requestFact = facts.find(fact => fact.id === request.payload.request.id)!;
   const preparedFact = facts.find(fact => fact.id === request.payload.prepared.id)!;
@@ -139,12 +146,14 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
       { predicate: 'response-completeness', sources: [f.th.principal.id], minimumStrength: 'observation', requiredContract: 'response-contract' },
     ] }));
 
+  await yieldTurn();
   if (hook.beforeAssessment) return { f, api, responseAssessment, subject, observed, request, providerObservation,
     modelCalls: () => modelCalls };
   const assessment = value(api.assessResponse(observed.operation));
   expect(value(api.assessResponse(observed.operation))).toEqual(assessment);
   const settlement = value(api.settle(observed.operation, assessment));
   const accounting = value(f.six.settle(f.fence, settlement));
+  await yieldTurn();
   const settlementFact = f.all().find(fact => fact.kind === 'effect-provider-ProviderEffectSettlement'
     && raw(fact).id === settlement.id)!;
   const accountingFact = f.all().find(fact => fact.kind === 'transport-SettlementApplication'
@@ -164,6 +173,7 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
   expect(accepted.chargeSettled).toBe(!hook.unknown);
   expect(accepted.required).toContain(assessment.id);
 
+  await yieldTurn();
   const replyGraph = value(createRunGraph({ ...f.deps, acceptedAnswer: api }));
   const acceptanceFact = f.all().find(fact => fact.id === acceptance.id)!;
   const opening = { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: acceptanceFact.id };
