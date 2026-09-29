@@ -699,16 +699,26 @@ it('rejects a legacy accepted nonoperator memory action even with a valid operat
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
-it('holds a later answer when the capped summary path cannot record a memory decision', async () => {
+it('settles a correction the capped summary path cannot decide as undecided and answers later turns with it flagged', async () => {
+  // A held correction holds only until its bounded summary attempts are exhausted; it never holds every later
+  // turn (the 2026-09-29 proof-room wedge; Rules 10, 14, 15). The later answer is told the correction is unsettled.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-pending-')));
   try {
     const w = world(root, 'missing');
     await w.say(1, 'My gym locker code is 3310.');
     await w.say(2, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toEqual([]);
-    await w.say(3, 'What is my gym locker code?');
     expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
-    expect(w.journal.view.order.at(-1)?.reserved).toBe(false);
+    await w.say(3, 'What is my gym locker code?');
+    expect([...w.journal.view.summaryFailures.values()]).toEqual([2]);
+    expect(w.journal.view.order[1]).toMatchObject({ memoryPending: true, memoryUndecided: true });
+    expect(w.journal.view.order[1]?.held).toBeUndefined();
+    expect(w.journal.view.order[1]?.intentBody).toBe(MEMORY_UNDECIDED_REPLY);
+    expect(w.journal.view.order[2]?.held).toBeUndefined();
+    expect(w.journal.view.order[2]?.intent).toBeDefined();
+    const packet = JSON.parse(w.prompts.get('What is my gym locker code?')!);
+    expect(packet.undecidedEdits).toMatchObject([{ current: 'Actually my gym locker code is 4412, not 3310.',
+      state: expect.stringContaining('correction judgment unresolved') }]);
     expect(w.journal.view.order[0]?.text).toBe('My gym locker code is 3310.');
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
