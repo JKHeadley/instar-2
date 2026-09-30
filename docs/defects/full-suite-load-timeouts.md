@@ -131,3 +131,12 @@ The root cause measured by U6 — an uncached `ts.transpileModule` on every chil
 - `tests/register/owner-references.test.ts`: 7/7 in 1.4 s; the two cases took 833 ms and 547 ms against their 10 s default.
 
 These isolated passes show headroom, not the original full-suite conditions; the Mama PC pipeline run is the full-suite evidence, and a recurrence reopens this record with the quarantine restored. The `intake-owner` and `journal-conversations` cases are already active, and `stage2-recovery` was closed by U6, so no case in this record remains quarantined. **Status:** CLOSED on cint-L4 (2026-09-29).
+
+## Recurrence 2026-09-29 (cb7-r90 gate on the Mama PC): the register normal-workflow case
+
+`tests/e2e/register.test.ts` › `… R1 normal extract and completion workflows invoke the provider and full graph ladder`
+timed out at 125 s against its 120 s budget. It is a fixture execution budget over a full-tree copy, a git commit of
+that tree and eleven register builds. The branch did not grow the work: isolated under `nice -n 10`,
+`--maxWorkers 1` it took 37.1 s on cb7-r90 and 51.2 s on the main tree it builds on. Earlier full-suite gates took
+41 s to 72 s. The budget is now 300 s, about 2.4 times the worst full-suite duration seen. Its body and assertions
+are unchanged, and no case is skipped.

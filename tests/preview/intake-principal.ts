@@ -18,7 +18,7 @@ export type SystemMethod = 'requested-action' | 'reply-review' | 'summary-review
 const SYSTEM_METHODS: readonly SystemMethod[] = ['requested-action', 'reply-review', 'summary-review', 'rolling-summary'];
 /** The durable, replayable projection of a verified writer carried on every intake record. A
  * system writer also keeps the owner's signature, so replay re-verifies it instead of trusting a label. */
-export interface WriterRecord { id: string; kind: PrincipalKind; adapter: string; class: 'verified' | 'channel-attested';
+export interface WriterRecord { id: string; kind: PrincipalKind; adapter: string; class: Provenance['class'];
   reference: string; hash: string; signature?: string }
 
 const sha = (text: string) => `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;

@@ -1,5 +1,5 @@
 // Rules 7/82/90, P2-NF-38..45/71. Approval is authority; landing is a checked locator.
-import { isValid, scopeIncludes } from '../index.js';
+import { isExplicitYes, isValid, scopeIncludes } from '../index.js';
 import type { Authorization, Json, Result, Scope } from '../index.js';
 import { boundary, encoding, fields, object, requireFact, string, strings } from './boundary.js';
 import type { FactContext, ConflictClass } from './contracts.js';
@@ -30,7 +30,7 @@ export function decodeVersion(input: unknown, context: FactContext, scope: Scope
     const base = string(v.base, 'base'), contentHash = encoding(v.content).hash;
     requireFact(contentHash === v.contentHash, 'version content hash differs', 'integrity');
     const authorization = context.decode.authorizations?.find(a => a.id === v.approvedIn);
-    requireFact(authorization && authorization.explicitYes.class === 'verified' && ['approval', 'review-approval', 'signed-yes', 'dashboard-yes'].includes(authorization.explicitYes.authenticated.recordType), 'approvedIn must name verified explicit yes, never merge', 'standing');
+    requireFact(authorization && isExplicitYes(authorization.explicitYes), 'approvedIn must name verified explicit yes, never merge', 'standing');
     requireFact(base === authorization.base, 'version base differs from approved base', 'stale-base');
     requireFact(isValid(authorization, context.decode.currentBase ?? base, contentHash, atApproval.now, atApproval.decode) === 'valid', 'approval content/base/standing invalid', 'stale-base');
     requireFact(scopeIncludes(authorization.action.scope, scope), 'approval scope does not cover version', 'standing');

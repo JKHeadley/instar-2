@@ -9,6 +9,8 @@ export interface SliceAssembly {
   readonly home: string; readonly bootIndex: number; readonly incarnation: string;
   readonly config: Readonly<Record<string, unknown>>;
   readonly registerChecks: readonly string[];
+  readonly registerLanding: { spine(): unknown };
+  readonly governance: { register: { extract: { rows: readonly { version: string; status: string; approvedIn: { id: string } }[] } } };
   readonly intake: { receive(raw: string, route: unknown): unknown; recover(id: string): unknown };
   readonly transport: Readonly<Record<string, (...args: never[]) => unknown>>;
   readonly effects: { readonly owner: string; settle(operation: string): unknown; inspect(): unknown;

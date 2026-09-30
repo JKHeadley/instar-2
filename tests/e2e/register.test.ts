@@ -204,9 +204,10 @@ describe('compiled register build adapter lifecycle', () => {
         await yieldToRunner();
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Full-tree workflow measured 63.4s at six workers and 81.9s under CPU stress.
-  // This is a fixture execution budget, not an owner/runtime latency requirement.
-  }, 120_000);
+  // Full-tree workflow measured 63.4s at six workers and 81.9s under CPU stress; 37s isolated and 125s inside
+  // the full Mama PC suite (2026-09-29, cb7-r90), past the old 120s. This is a fixture execution budget, not an
+  // owner/runtime latency requirement (docs/defects/full-suite-load-timeouts.md).
+  }, 300_000);
   it('P3-NF-09 P3-NF-13 P3-NF-19 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
