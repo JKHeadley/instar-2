@@ -176,7 +176,7 @@
       "id": "authorAndAppend",
       "module": {
         "path": "src/facts/index.ts",
-        "hash": "sha256:bc93e63f622f789537d5e455392e8888237ee97df3e1bd31974efb427c33aa05"
+        "hash": "sha256:036c8545ee3782920fe91610b4f81ae25c92e00298ea89ba0098a20c716776cc"
       },
       "artifact": {
         "path": "src/facts/store.ts",
@@ -187,22 +187,22 @@
       "id": "decode:Provenance",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:53bbf5411f45b30f170fb5de919d5424893da3e9d689364da2d1e91cd63aa2e8"
+        "hash": "sha256:27c7ca9bb26f39da722c7dd48d019c55f7a2a2e418ad9d33d54cdf13120301c4"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:4d54739398abb1ee9878c460559d48e17f930cf5facd2ee24a5b18fe4a5bf738"
+        "hash": "sha256:d2258d1f55b64c1536d5b196d9b113a7672cce7e1dbf0dde812e2f7d337ad7d6"
       }
     },
     {
       "id": "decode:VerifiedPrincipal",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:53bbf5411f45b30f170fb5de919d5424893da3e9d689364da2d1e91cd63aa2e8"
+        "hash": "sha256:27c7ca9bb26f39da722c7dd48d019c55f7a2a2e418ad9d33d54cdf13120301c4"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:4d54739398abb1ee9878c460559d48e17f930cf5facd2ee24a5b18fe4a5bf738"
+        "hash": "sha256:d2258d1f55b64c1536d5b196d9b113a7672cce7e1dbf0dde812e2f7d337ad7d6"
       }
     }
   ],
