@@ -1203,12 +1203,13 @@ const reminderMorning = (item: DatedItem, now: number) => {
 const requestedBatchKey = (batch: number) => JSON.stringify(['requested', batch]);
 /** What a reply's answer declared and what the runner refused, with the current capability read, for its
  * contextual review (Rules 6, 18, 20, 21, 23, 103). The review context redacts every string of it. */
-export const declaredObligations = (view: JournalView, id: string) => {
+export const declaredObligations = (view: JournalView, id: string, now: number) => {
   const turn = view.turns.get(id);
   // Rules 20-23, 99 (plan #111): a limit settled by an earlier reply and still open is already recorded. The answer is
   // told never to renew one, so a reply restating it is judged against that record, not held as unrecorded. One due
   // for recheck (or cleared) is not current evidence and is left out; past the bound the oldest are left out too.
-  const settled = turn ? recentWithin(openBlockers(view).filter(({ note }) => note.source !== id && note.recheckAt > turn.at)
+  // Due is judged at review time `now`, not intake: a message queued before the recheck date is reviewed after it.
+  const settled = turn ? recentWithin(openBlockers(view).filter(({ note }) => note.source !== id && note.recheckAt > now)
     .map(({ id: blocker, note }) => ({ id: blocker, kind: note.kind, claim: note.claim, avenues: note.avenues,
       constraint: note.constraint, outsideAction: note.outsideAction })), SETTLED_REVIEW_BYTES) : [];
   return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, settled, loops: turn?.answerLoops ?? [],

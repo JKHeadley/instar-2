@@ -1197,7 +1197,7 @@ async function main() {
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
-          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id));
+          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()));
           const context = formatRetry ? withFormatReminder(reviewContext, REVIEW_FORMAT_REMINDER) : reviewContext;
           const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
           // Rule 29: the review input is written by the runner, a verified system principal.

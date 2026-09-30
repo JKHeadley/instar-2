@@ -50,7 +50,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
         // prepared prompt is the bare packet, so it is wrapped the way the live envelope carries it.
         const envelope = JSON.stringify({ messages: [{ role: 'user', content: journal.view.turns.get(id)!.text },
           { role: 'context', content: JSON.stringify({ packet: JSON.parse(originalPrompt!) }) }] });
-        const context = JSON.parse(replyReviewContext(envelope, text, rules, declaredObligations(journal.view, id))) as Record<string, unknown>;
+        const context = JSON.parse(replyReviewContext(envelope, text, rules, declaredObligations(journal.view, id, clock.now))) as Record<string, unknown>;
         reviews.push(context);
         const verdict = review.verdict?.(context) ?? 'pass';
         return { verdict, ruleIds: verdict === 'pass' ? [] : [rules?.includes('defers_work') ? 'defers_work' : rules?.[0] ?? 'defers_work'],
@@ -75,11 +75,12 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
     send: async input => { if (options.receipt && !options.receipt(input.text)) return null; sent.push(input.text); return sent.length; },
     checkOutbound: () => {} });
   let next = options.nextUpdate ?? 1;
-  /** One operator message dated at the current clock, answered and summarized. */
-  const say = async (text: string) => {
+  /** One operator message dated at the current clock, answered and summarized. `queued` runs between intake and drain. */
+  const say = async (text: string, queued?: () => void) => {
     const id = next++;
     worker.intake([{ update_id: id, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
       date: Math.floor(clock.now / 1000) } }]);
+    queued?.();
     await worker.drain(); await worker.summarizeIfNeeded();
   };
   return { journal, worker, clock, say, contexts, path, reviews, work, sent };
@@ -707,6 +708,9 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
     ['settled limit on another matter', { reply: LIBRARY_CLAIM, claim: LIBRARY_CLAIM }, 'none', false],
     ['settled limit since cleared', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'cleared', false],
     ['settled limit due for recheck', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'due', false],
+    // Rule 99: queued a minute before the recheck date; reviewed a minute before it (fresh) or a minute after (due).
+    ['queued and reviewed before recheck', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'queued-fresh', true],
+    ['queued before recheck, reviewed after it', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'queued-due', false],
   ] as const) {
     const root = origin();
     try {
@@ -720,13 +724,16 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
       expect(openBlockers(w.journal.view), label).toHaveLength(1);
       if (between === 'cleared') await w.say('Bookings reopened, try again.');
       if (between === 'due') w.clock.now += 31 * DAY;
+      const due = w.journal.view.blockers[0]!.recheckAt;
+      if (between === 'queued-fresh' || between === 'queued-due') w.clock.now = due - 60_000;
       const before = w.reviews.length;
-      await w.say(DMV_ASK);
+      await w.say(DMV_ASK, () => { if (between === 'queued-due') w.clock.now = due + 60_000; });
       const turn = w.journal.view.order.find(item => item.text === DMV_ASK)!;
       expect(w.reviews.length, label).toBe(before + 1);
       expect(turn.answerBlocker, label).toBeUndefined();
       // Live 969389730: the writer relied on a settled record of a different action (looking up a bill, not paying it).
-      if (between === 'none') expect(w.contexts.get(DMV_ASK), label).toContain('A settled blocker covers only its own claim');
+      if (between === 'none' || between === 'queued-fresh') expect(w.contexts.get(DMV_ASK), label).toContain('A settled blocker covers only its own claim');
+      if (between.startsWith('queued')) expect(turn.at, label).toBeLessThan(due);
       if (sends) {
         expect(w.sent.at(-1), label).toBe(`PREVIEW — ${DMV_AGAIN}`);
         expect(turn.heldReview, label).toBeUndefined();
@@ -735,7 +742,7 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
         expect(turn.heldReview?.objections, label).toEqual(['unrecorded_blocker']);
       }
       const settled = (w.reviews.at(-1)!.declaredObligations as { settled: { claim: string }[] }).settled;
-      expect(settled.map(item => item.claim), label).toEqual(between === 'none' ? [first.claim] : []);
+      expect(settled.map(item => item.claim), label).toEqual(between === 'none' || between === 'queued-fresh' ? [first.claim] : []);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
