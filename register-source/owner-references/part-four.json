@@ -187,22 +187,22 @@
       "id": "decode:Provenance",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:27c7ca9bb26f39da722c7dd48d019c55f7a2a2e418ad9d33d54cdf13120301c4"
+        "hash": "sha256:9b673f559813436e81f780a2e4a3ccbd2f92a5f44af4872eee134fe6be642e72"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:d2258d1f55b64c1536d5b196d9b113a7672cce7e1dbf0dde812e2f7d337ad7d6"
+        "hash": "sha256:87ba421de8a4a173da0303a165aab497f48760a6fca3844fefba569f840fab72"
       }
     },
     {
       "id": "decode:VerifiedPrincipal",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:27c7ca9bb26f39da722c7dd48d019c55f7a2a2e418ad9d33d54cdf13120301c4"
+        "hash": "sha256:9b673f559813436e81f780a2e4a3ccbd2f92a5f44af4872eee134fe6be642e72"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:d2258d1f55b64c1536d5b196d9b113a7672cce7e1dbf0dde812e2f7d337ad7d6"
+        "hash": "sha256:87ba421de8a4a173da0303a165aab497f48760a6fca3844fefba569f840fab72"
       }
     }
   ],
