@@ -53,11 +53,13 @@ describe('pure constitutional operations', () => {
   });
   it('evaluates the same derivedFrom expressions supplied by the terms owner', () => {
     const f = fixture();
-    const critical: ProfileExpression = { any: [{ field: 'consequence', in: ['identity', 'security', 'money', 'control', 'external'] }, { all: [{ field: 'consequence', in: ['data'] }, { field: 'reversibility', in: ['irreversible'] }] }] };
+    // The purpose's single consequential-effect definition: critical and significant are the same expression.
+    const consequential: ProfileExpression = { any: [{ field: 'consequence', in: ['identity', 'security', 'money', 'control', 'external'] }, { field: 'reversibility', in: ['irreversible'] }, { field: 'reach', in: ['world'] }] };
     const userFacing: ProfileExpression = { any: [{ field: 'reach', in: ['user', 'operator'] }, { field: 'surface', in: ['chat', 'dashboard', 'link', 'device'] }] };
-    const terms: ProfileTermsReadPort = { owner: 'part-three', derivedFrom: { critical, userFacing, irreversible: { field: 'reversibility', in: ['irreversible'] }, significant: { any: [critical, userFacing, { field: 'reach', in: ['world'] }] } } };
-    expect(value(deriveProfile(value(decode('Profile', f.profileInput(), f.ctx)), terms, f.ctx.preserved))).toEqual({ critical: false, significant: true, userFacing: true, irreversible: false });
+    const terms: ProfileTermsReadPort = { owner: 'part-three', derivedFrom: { critical: consequential, userFacing, irreversible: { field: 'reversibility', in: ['irreversible'] }, significant: consequential } };
+    expect(value(deriveProfile(value(decode('Profile', f.profileInput(), f.ctx)), terms, f.ctx.preserved))).toEqual({ critical: false, significant: false, userFacing: true, irreversible: false });
     expect(value(deriveProfile(value(decode('Profile', f.profileInput({ consequence: 'data', reversibility: 'irreversible', reach: 'internal', surface: 'none' }), f.ctx)), terms, f.ctx.preserved))).toEqual({ critical: true, significant: true, userFacing: false, irreversible: true });
+    expect(value(deriveProfile(value(decode('Profile', f.profileInput({ consequence: 'attention', reversibility: 'irreversible', repeats: { kind: 'no' } }), f.ctx)), terms, f.ctx.preserved))).toEqual({ critical: true, significant: true, userFacing: true, irreversible: true });
     expect(value(deriveProfile(value(decode('Profile', f.profileInput({ consequence: 'none', reach: 'internal', surface: 'none' }), f.ctx)), terms, f.ctx.preserved))).toEqual({ critical: false, significant: false, userFacing: false, irreversible: false });
   });
 });

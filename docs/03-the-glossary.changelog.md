@@ -4,6 +4,12 @@ _Generated from `03-the-glossary.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 8 · 2026-09-27 · approved — Operator Justin (verified) approved with 'yes' at 10:04 PDT 2026-09-30 in topic 102965 (message 2321516), answering the 01:34 request that carried the exact sentence: 'I approve the exact glossary and derived-register correction linked in this request, making critical and significant follow the approved Purpose definition of consequential effects while keeping the separate live-proof requirement for user-facing work.' Linked change: commit 39ca1a90 (constitutional build 9, observer note 43).
+
+- **Critical and significant now both derive from the purpose's single consequential-effect definition: consequence in {identity, security, money, control, external}, or reversibility irreversible, or reach world. Significant no longer includes user-facing on its own; the four-together table names the user-facing, non-consequential cell.** — The purpose defines a consequential effect once and says significant and critical both resolve to it; the older formulas let an irreversible effect compute as noncritical and made visibility alone significant. _(docs/00-the-purpose.md, the consequential-effect rule; register-source/bootstrap-shape.json derivedFrom)_
+
+Approved in: PR #142.
+
 ## Revision 7 · 2026-09-04 · draft — part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **The profile-declaring kinds gain parser; the operator row's conversation clause reads: selected by the authenticated sender within the recorded conversation binding, established only by a verified act.** — An intake adapter's runaway case is a flood, and the old clause's plain reading licensed first-sender self-binding — the identity-bleed shape part four refuses. _(part four, shape amendments; review round 2)_
