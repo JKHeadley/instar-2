@@ -172,7 +172,7 @@ export function causalStanding(fact: FactEnvelope, context: FactContext, origin:
   }
   if (schema.authority === 'conferring') requireFact(schema.standing !== 'requester' && fact.provenance.class === 'verified', 'requester cannot confer authority', 'standing');
   // Bound directive exercise is reserved for part four's binding port; no local substitute.
-  requireFact(!(schema.authority === 'directive' && fact.provenance.class === 'channel-attested'), 'part-four bound directive admission port required', 'standing');
+  requireFact(!(schema.authority === 'directive' && fact.provenance.class !== 'verified'), 'part-four bound directive admission port required', 'standing');
   const grantIds = [...scoped.map(g => g.grant.id), ...historical.map(g => g.grant.view.id)];
   const relevant = [...context.revocations.map(v => ({ factId: v.factId, grantId: v.revocation.grantId })),
     ...(context.historicalRevocations ?? []).map(v => ({ factId: v.factId, grantId: v.revocation.view.grantId }))].filter(v => v.factId !== fact.id && grantIds.includes(v.grantId) && !ids.has(v.factId));

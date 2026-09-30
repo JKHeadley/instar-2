@@ -1,0 +1,5 @@
+# Protected paths (Part One, "Where the door for protected artifacts actually is"; plan of record row #101).
+# A change to any path below cannot merge without an approving review from the operator's own GitHub account.
+# The branch ruleset for main requires code-owner review; the agent's account cannot change that ruleset.
+/docs/     @JKHeadley
+/.github/  @JKHeadley

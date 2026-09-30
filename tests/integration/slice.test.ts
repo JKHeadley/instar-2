@@ -1,8 +1,9 @@
 import { afterAll, afterEach, it, expect } from 'vitest';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { consumeResult } from '../../src/index.js';
-import type { Result } from '../../src/index.js';
+import type { Authorization, Json, Result } from '../../src/index.js';
+import type { ExplicitYesInstallation, ExplicitYesRequest } from '../../src/operator/index.js';
 import { DECLARED_BOUNDARIES, PEER_STANDIN_ID, PROFILE_BOUNDARIES, RECOVERY_BOUNDARIES, SLICE_BOUNDARIES, UNREACHED_BOUNDARIES, cleanup, sliceAssembly } from '../slice/assembly-fixture.js';
 import { withinExecution } from '../slice/acceptance.js';
 import { SLICE_INPUT } from '../slice/harness.js';
@@ -34,6 +35,71 @@ it('P11-NF-43 P11-NF-49 the public boot path supplies real persistence, intake, 
   expect(a.service.journal().inbound).toHaveLength(1);
   expect((report as { settlement: { outcome: string } | null }).settlement?.outcome).toBe('happened');
   expect(PEER_STANDIN_ID).toContain('STAND-IN');
+}, 120000);
+
+it('P2-NF-38 option (C): declarations boot as shape-only bootstrap rows verified through the durable governing spine; a restart reuses it; its loss refuses', () => {
+  const a = sliceAssembly({ profile: 'reply' });
+  const spine = ok(a.registerLanding.spine()) as { versions: unknown[]; generations: unknown[] };
+  expect(spine.versions).toEqual([]);
+  expect(spine.generations).toHaveLength(1);
+  const rows = a.governance.register.extract.rows;
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.every(r => r.version.startsWith('bootstrap:') && r.status === 'live' && r.approvedIn.id === 'bootstrap:shape-only')).toBe(true);
+  a.install();
+  const b = sliceAssembly({ profile: 'reply' }, a.home);
+  expect(b.registerChecks).toEqual(['extract', 'force', 'current']);
+  // The same generation is already in force: the restart appends no second record.
+  expect((ok(b.registerLanding.spine()) as { generations: unknown[] }).generations).toHaveLength(1);
+  rmSync(join(a.home, 'governing'), { recursive: true });
+  expect(() => sliceAssembly({ profile: 'reply' }, a.home)).toThrow('governing segment lost while the fact log exists');
+}, 120000);
+
+it('P2-NF-38 the returned registerLanding lands an operator yes under the recorded genesis grant, a successor supersedes it, and both survive a restart', async () => {
+  // The slice composes the built package, so its sealed values are checked by that same module instance.
+  const { authorizationRequestDigest, canonical, decode } = await import(join(process.cwd(), 'dist/index.js')) as typeof import('../../src/index.js');
+  const { produceExplicitYes } = await import(join(process.cwd(), 'dist/operator/index.js')) as typeof import('../../src/operator/index.js');
+  type Landing = { land(yes: Authorization, version: Json, scope: Json, landing: Json, at: Json): Result<{ version: { id: string } }>;
+    spine(): Result<{ versions: { version: { id: string } }[]; generations: unknown[] }> };
+  type Composed = { registerLanding: Landing; decodeContext: { captures: Record<string, string>; currentBase: string };
+    alice: ExplicitYesRequest['approver']; bob: ExplicitYesRequest['requestedBy']; bindingGrant: { id: string; issuedAt: Json };
+    scope: ExplicitYesRequest['scope']; boundaryContext: Parameters<typeof produceExplicitYes>[4];
+    governance: { register: { extract: { rows: readonly { id: string; version: string; status: string }[] } } }; registerChecks: readonly string[] };
+  const a = sliceAssembly({ profile: 'reply' }) as unknown as Composed & { home: string; install(): unknown };
+  a.install();
+  // The landed content is a real declaration: a governed version must name a declared register entry.
+  const declaration = (JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8')) as Json[])[0] as { id: string } & Json;
+  const content = ok(canonical(declaration)) as { hash: `sha256:${string}`; bytes: string };
+  a.decodeContext.captures[content.hash] = content.bytes;
+  const base = a.decodeContext.currentBase;
+  const installation: ExplicitYesInstallation = { adapter: 'host', machine: 'machine-a', github: null, agentSpeaksAsOperatorInChat: false,
+    chat: { method: 'telegram-sender', boundChatId: 'chat', operatorAccountId: 'alice-account', agentHoldsNoAccess: true } };
+  const yes = (n: number) => {
+    const request: ExplicitYesRequest = { requestId: `req-${n}`, authorizationId: `auth-${n}`, approver: a.alice, requestedBy: a.bob,
+      under: a.bindingGrant.id, action: 'merge', scope: a.scope, artifact: content.hash, base, kind: { kind: 'approval' },
+      chatMessageId: `m-${n}`, head: null, issuedAt: 0, expiresAt: Number.MAX_SAFE_INTEGER,
+      requestDigest: authorizationRequestDigest({ approver: a.alice, action: { kind: 'merge', scope: a.scope }, artifact: content.hash, base }) };
+    const record = ok(produceExplicitYes(request, installation, { kind: 'chat-reply', chatId: 'chat', messageId: `r-${n}`,
+      replyToMessageId: `m-${n}`, senderAccountId: 'alice-account', text: 'yes', at: a.bindingGrant.issuedAt as never }, [], a.boundaryContext)) as
+      { reference: string; bytes: string; provenance: Json; authorization: Record<string, Json>; admission: never };
+    a.decodeContext.captures[record.reference] = record.bytes;
+    const context = { ...a.decodeContext, accountAssent: [record.admission] } as never;
+    const provenance = ok(decode('Provenance', record.provenance, context));
+    return ok(decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...record.authorization, explicitYes: provenance },
+      { ...(context as object), artifact: content.hash, provenance } as never)) as Authorization;
+  };
+  const land = (n: number, supersedes: string[]) => a.registerLanding.land(yes(n), { id: `v-${n}`, subject: declaration.id, content: declaration,
+    contentHash: content.hash, supersedes, base, landedIn: `merge-${n}` } as unknown as Json, a.scope as unknown as Json,
+  { owner: 'part-ten', merges: [{ commit: `merge-${n}`, onMain: true, parentCount: 2, reviewedBase: base }] } as unknown as Json, a.bindingGrant.issuedAt);
+  expect((ok(land(1, [])) as { version: { id: string } }).version.id).toBe('v-1');
+  expect((ok(land(2, ['v-1'])) as { version: { id: string } }).version.id).toBe('v-2');
+  const b = sliceAssembly({ profile: 'reply' }, a.home) as unknown as Composed;
+  expect(b.registerChecks).toEqual(['extract', 'force', 'current']);
+  const spine = ok(b.registerLanding.spine()) as { versions: { version: { id: string } }[]; generations: unknown[] };
+  expect(spine.versions.map(v => v.version.id)).toEqual(['v-1', 'v-2']);
+  // The changed extract entered force as a second generation; the bootstrap row and v-1 stay in history.
+  expect(spine.generations).toHaveLength(2);
+  expect(b.governance.register.extract.rows.filter(r => r.id === declaration.id).map(r => [r.version, r.status]))
+    .toEqual([[`bootstrap:${declaration.id}`, 'superseded'], ['v-1', 'superseded'], ['v-2', 'live']]);
 }, 120000);
 
 it('P11-NF-49 the independent assessment port is consulted, not a no-op: settlement refuses without its evidence', async () => {

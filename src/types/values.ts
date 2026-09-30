@@ -15,7 +15,7 @@ export type Clock = Measurement<'clock'>;
 export type GrantLiveness = 'live' | 'revoked' | 'expired' | 'not-yet-live';
 export type Provenance = Value<'Provenance'> & Readonly<{
   adapter: string; method: string; record: { reference: string; hash: Hash };
-  verifiedAt: Clock; machine: string; class: 'verified' | 'channel-attested';
+  verifiedAt: Clock; machine: string; class: 'verified' | 'channel-attested' | 'account-assented';
   authenticated: { principal: { id: string; kind: PrincipalKind }; recordType: string; payload: Json };
 }>;
 export type VerifiedPrincipal = Value<'VerifiedPrincipal'> & Readonly<{
