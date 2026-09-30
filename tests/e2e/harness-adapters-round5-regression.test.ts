@@ -11,6 +11,11 @@ type WorkerResult = Readonly<{
   stderr: string;
 }>;
 
+// Two serial vite-node spawns each transform the src tree; under a full
+// parallel suite a start can take far longer than the ~2s seen alone.
+const CHILD_MS = 25_000;
+const CASE_MS = 2 * CHILD_MS + 5_000;
+
 function run(scenario: 'frontier' | 'unknown-stream', mode: 'seed' | 'recover', cut: string,
   target: string, directory: string): Promise<WorkerResult> {
   return new Promise((resolve, reject) => {
@@ -21,8 +26,14 @@ function run(scenario: 'frontier' | 'unknown-stream', mode: 'seed' | 'recover', 
     let stderr = '';
     child.stdout.on('data', bytes => { stdout += String(bytes); });
     child.stderr.on('data', bytes => { stderr += String(bytes); });
-    child.on('error', reject);
-    child.on('exit', (code, signal) => resolve({ code, signal, stdout, stderr }));
+    // Bound each child so a stalled vite-node start fails with its phase and
+    // stderr instead of an opaque whole-test timeout (gate cint-L6 stall).
+    const deadline = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`${scenario} ${mode} ${cut} child stalled past ${CHILD_MS}ms: ${stderr}`));
+    }, CHILD_MS);
+    child.on('error', error => { clearTimeout(deadline); reject(error); });
+    child.on('exit', (code, signal) => { clearTimeout(deadline); resolve({ code, signal, stdout, stderr }); });
   });
 }
 
@@ -44,7 +55,7 @@ for (const target of ['probe-failed', 'process-exited'] as const) {
     }
     expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
     expect(JSON.parse(recovered.stdout)).toMatchObject({ liveness: { state: 'unknown' } });
-  }, 20_000);
+  }, CASE_MS);
 }
 
 it.each(cuts)('A2-E2E R5-F02 P13-NF-24 P13-NF-32 P13-NF-34 unknown stream survives %s cut without restoring old completion', async cut => {
@@ -62,4 +73,4 @@ it.each(cuts)('A2-E2E R5-F02 P13-NF-24 P13-NF-32 P13-NF-34 unknown stream surviv
   }
   expect(recovered, recovered.stderr).toMatchObject({ code: 0, signal: null });
   expect(JSON.parse(recovered.stdout)).toMatchObject({ completion: { state: 'pending' } });
-}, 20_000);
+}, CASE_MS);
