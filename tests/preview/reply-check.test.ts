@@ -1012,8 +1012,12 @@ it('reads one contextual finding per selected rule, refuses a dropped or added r
   for (const value of ['raw_path: PASS | fine', 'raw_path: PASS | a\ndefers_work: PASS | b\ncredential: PASS | c',
     'raw_path: PASS | a\nraw_path: VIOLATION | b', 'raw_path: MAYBE | a\ndefers_work: PASS | b', 'raw_path: PASS | a\nextra text'])
     expect(() => parseReplyReviewVerdict(value, both), value).toThrow('malformed');
-  // A combined line is still read, but carries no per-rule findings: one shared reason is not an independent result.
-  expect(parseReplyReviewVerdict('VIOLATION:raw_path | shows a path', both).findings).toBeUndefined();
+  // A new live review (rules selected) must answer per rule: a combined line drops the other rules' results.
+  for (const value of ['VIOLATION:raw_path | shows a path', 'PASS | all fine'])
+    expect(() => parseReplyReviewVerdict(value, both), value).toThrow('malformed');
+  // A historical combined line is still read, but carries no per-rule findings: one shared reason is not an independent result.
+  expect(parseReplyReviewVerdict('VIOLATION:raw_path | shows a path')).toMatchObject({ verdict: 'violation', ruleIds: ['raw_path'] });
+  expect(parseReplyReviewVerdict('VIOLATION:raw_path | shows a path').findings).toBeUndefined();
   expect(replyReviewQuestion(both)).toContain('exactly one line for every listed rule');
 });
 

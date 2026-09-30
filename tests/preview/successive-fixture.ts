@@ -34,6 +34,10 @@ export const subscriptionDoorway = id => {
   if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error('subscription doorway ' + id + ' is not registered');
   return { id, contract: SUBSCRIPTION_DOORWAYS[id].contract, create: input => createClaudeCodeSubscriptionRoute(input) };
 };`;
+/** Source for a fake reviewer's passing verdict: one `rule_id: PASS | reason` line for exactly the rules the
+ * live review question selected, the only form a new live review accepts (Rules 41, 58, 108). */
+export const PER_RULE_PASS = `const perRulePass = (question, reason) => Object.keys(JSON.parse(/on its own: (\\{.*?\\})\\. For raw_path/su
+  .exec(question)[1])).map(id => id + ': PASS | ' + reason).join('\\n');`;
 
 export const offlineProfile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'offline-login',
   home: '/offline/home', configDirectory: '/offline/config', workingDirectory: '/offline/work',

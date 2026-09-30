@@ -142,16 +142,17 @@ export const REVIEW_MALFORMED = 'preview: review malformed';
 export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because conclusion.value was not exactly one line per listed rule of the form rule_id: PASS | reason or rule_id: VIOLATION | reason. Return only the Decision object with those lines, no other text; put longer reasoning in reason.value.';
 export const REPLY_REVIEW_REASON_MAX = 600;
 /** The verdict lives inside the route's required Decision envelope: one exact line per selected rule
- * (`rule_id: PASS | reason`), so each rule keeps its own conclusion and reason. The earlier combined
- * line (`PASS | reason` / `VIOLATION:ids | reason`) is still read, honestly: it carries no findings,
- * because one shared reason is not an independent result for each rule. With `selected`, the per-rule
- * lines must name exactly those rules: a reviewer can neither drop a question nor add one. */
+ * (`rule_id: PASS | reason`), so each rule keeps its own conclusion and reason. With `selected` (a new
+ * live review), only the per-rule form is accepted and its lines must name exactly those rules: a
+ * reviewer can neither drop a question nor add one, and a combined line is a format miss. Without
+ * `selected` (historical records), the earlier combined line (`PASS | reason` / `VIOLATION:ids | reason`)
+ * is still read, honestly: it carries no findings, because one shared reason is not an independent result. */
 export function parseReplyReviewVerdict(value: string, selected?: readonly ReplyRule[]): { verdict: 'pass' | 'violation';
   ruleIds: ReplyRule[]; reason: string; findings?: ReplyFinding[] } {
   const text = value.trim();
   const combined = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,600})$/u.exec(text); // 600 = REPLY_REVIEW_REASON_MAX
   if (combined) {
-    if (!combined[3]?.trim()) throw Error(REVIEW_MALFORMED);
+    if (selected !== undefined || !combined[3]?.trim()) throw Error(REVIEW_MALFORMED);
     const ruleIds = combined[2] ? combined[2].split(',') as ReplyRule[] : [];
     if ((combined[1] === 'PASS' && ruleIds.length) || (combined[1] === 'VIOLATION' && !ruleIds.length)
       || new Set(ruleIds).size !== ruleIds.length || ruleIds.some(id => !Object.hasOwn(REPLY_RULES, id)))
