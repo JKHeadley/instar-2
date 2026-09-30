@@ -11,7 +11,7 @@ Suggested tier: critical
 Declared tier: critical
 Tier rationale: changes which settled evidence the live reply reviewer is shown, so what it holds or sends
 Side effects: none; a reply reviewed after a settled blocker's recheck date is now judged without that blocker, as the guide already states
-Undo and recovery: revert commit 1d2d1e1e with the pin refresh efd14ded, the register regeneration 8379f836 and this record
+Undo and recovery: revert commit 1d2d1e1e with the pin refresh efd14ded, the register regeneration 8379f836 and this record; the later main merge (111b2af8) is tree-neutral and can be dropped by resetting to bc1de5e0
 Multi-machine posture: machine-local, deliberately; the preview journal worker runs on the one preview machine
 Layer below: reviews/cint-L11-change-review.md (the batch this repairs); the runner's preview clock (tests/preview/clock.ts) is the review-time source, unchanged
 Bug class: live-path
@@ -19,6 +19,7 @@ Bug evidence: reproducer=tests/preview/journal-obligations.test.ts; live=/Users/
 Hook bypass: none
 Convergence: none
 Decision: cint-L11-freshness-at-review | the review time is the runner's existing clock passed as an argument, not a new clock service, so the selection matches when the evidence is used | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L11-PROGRESS.md
+Main merge: the Mama PC gate on bc1de5e0 failed 14 first-landing/additivity tests because main advanced to 15518cdb (the #143 promote-L9 merge) after this branch was cut from f52c7214. origin/main was merged in (111b2af8). 15518cdb has the same tree as f52c7214, so the merge changes no file; this record's range is extended to cover it, since a record over an empty subject is refused. The 13 failing files pass (82 tests); no test, pin or baseline was edited (Rules 37, 90).
 Prompt review: no prompt text changes; only which settled records reach the unchanged reply-review guide.
 
 Prompt finding: 849db3a6296a | protocol-literal | the runner's fixed reply when no memory is saved; the memory-list test asserts that fixed text (unchanged here)
