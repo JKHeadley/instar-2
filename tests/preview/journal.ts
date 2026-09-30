@@ -89,6 +89,15 @@ export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same messa
 export const withFormatReminder = (context: string, reminder: string): string =>
   JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
+/** Rule 7: the answer path's one statement of a memory decision item. Live 2026-09-30 (updates 969389720, 969389737)
+ * the terse prose guidance left the model to copy packet.memory's display rows (mode "corrected", no quote, a
+ * paraphrased replacement), which the validator refuses, so every correction after the first recorded one failed. */
+export const MEMORY_ITEM_SHAPE = 'Each memory item has exactly this shape: {"mode":"correct"|"forget"|"update"|"prefer",'
+  + '"source":<an id from memoryCandidates; for prefer, preferenceSource>,"quote":<the complete old clause copied word for word '
+  + 'from that source\'s message; for prefer, the style clause from the current message>,"replacement":<correct and update only: '
+  + 'the new clause copied word for word from the operator\'s current message>,"replies":<optional: ids of memoryCandidates whose '
+  + 'reply restates the old fact>,"summaryPassages":<optional: exact passages of the prior summary that express the old fact>}. '
+  + 'packet.memory lists changes already recorded, in a display shape; never copy that shape.';
 export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export const TOO_LONG_INPUT_NOTICE = 'PREVIEW — Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
@@ -4920,7 +4929,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Rule 11: how much of the summarized history recall can reach by meaning, not only by words.
           ...(compact && summary ? { meaningIndexCoverage: meaningCoverage(summary.through) } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
-          ...(fromOperator(turn) ? { memoryDecision: 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. correct/forget: offered source, exact old quote, replacement for correct, affected reply ids and summary passages; for an earlier answer use in:"reply" with its exact old reply and keep the question. '
+          ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update" with an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
             obligationDecision: OBLIGATION_DECISION, governingConstraints: GOVERNING_CONSTRAINTS, capabilities: PREVIEW_CAPABILITIES } : {}),
