@@ -17,6 +17,8 @@ describe('build action registry', () => {
     expect(actionRegistry({ ...owned, 'docs/other.json': '{}' })).toEqual({
       'preview.reply.hold': { protected: false, repository: false },
       'preview.reply.release': { protected: false, repository: false },
+      // OR1: the agent's one correction of an objected draft (parseReplyRevision's floor).
+      'preview.reply.revise': { protected: false, repository: false },
     });
     expect(actionRegistry({})).toEqual({});
   });

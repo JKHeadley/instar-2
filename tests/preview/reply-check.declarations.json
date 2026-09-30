@@ -59,7 +59,7 @@
           "preview.reply.hold",
           "preview.reply.release"
         ],
-        "default": "preview.reply.release"
+        "default": "preview.reply.hold"
       },
       "benchmark": "unmeasured"
     },
