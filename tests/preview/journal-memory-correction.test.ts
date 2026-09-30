@@ -710,7 +710,10 @@ it('settles a correction the capped summary path cannot decide as undecided and 
     expect(w.journal.view.memory).toEqual([]);
     expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
     await w.say(3, 'What is my gym locker code?');
-    expect([...w.journal.view.summaryFailures.values()]).toEqual([2]);
+    // Two attempts per span: two from the start, then, once the summary through #1 is accepted, two from that base.
+    expect([...w.journal.view.summaryFailures]).toEqual([[2, 4]]);
+    expect(w.journal.view.summaries.map(item => item.through)).toEqual([1]);
+    expect(w.journal.view.summarySpanFailures).toEqual([2, 2]);
     expect(w.journal.view.order[1]).toMatchObject({ memoryPending: true, memoryUndecided: true });
     expect(w.journal.view.order[1]?.held).toBeUndefined();
     expect(w.journal.view.order[1]?.intentBody).toBe(MEMORY_UNDECIDED_REPLY);

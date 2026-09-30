@@ -2312,8 +2312,10 @@ is UNKNOWN follows the existing `memory-undecided` path; the later summary
 does not silently turn that undecided request into a verified decision.
 
 A summary call is not UNKNOWN when its own physical outcome row proves that the
-writer finished successfully and only its output ran past the 2,048-token cap
-(`localLimit: output-cap`, exit 0, a `success` result frame). The provider still
+writer's call ended and its output ran past the 2,048-token cap
+(`localLimit: output-cap`: the process ended with an exit code and a final result frame
+whose reported output is over the cap; the exit code may be non-zero and the frame may be an
+error, as with the proof room's #496, which ended exit 1 after 8,192 tokens). The provider still
 reports that attempt as uncertain, and the journal records it as such. The next summary
 pass then settles it as a failed attempt with the recorded reason `summary output over
 the cap`. That settlement carries the provider's reported usage. The pass then offers
