@@ -68,6 +68,8 @@ export const SUMMARY_UNKNOWN_RECOVERY_MS = 60_000;
 /** Leave room under the 32 KiB provider prompt and 2048-token output ceilings. */
 export const SUMMARY_MAX_PROMPT_BYTES = 24 * 1024;
 export const SUMMARY_MAX_TURNS = 4;
+/** A byte-held turn is prepared again at least this often even when nothing that could make it fit changed. */
+export const HELD_REPREPARE_MS = 5 * 60_000;
 export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
 // Leave room for the candidate reply and review question when Jev needs the
 // existing full-context subscription review. The answer packet is its input.
@@ -1617,9 +1619,10 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
     return { reason: 'calls', limit: view.limits.maxCalls };
   if (view.replies >= view.limits.maxReplies || view.order.some(turn => turn.held === 'reply cap'))
     return { reason: 'replies', limit: view.limits.maxReplies };
+  // Genuine byte exhaustion only: nothing earlier can be summarized, or one turn is too large to summarize.
+  // A `summary unavailable:` hold is recoverable, resumes once a summary is accepted and is no cap (Rule 2).
   if (view.order.some(turn => turn.held === 'context overflow' || turn.held === 'prompt overflow'
-    || turn.held === 'summary oversized turn' || turn.held === 'summary unavailable: context overflow'
-    || turn.held === 'summary unavailable: prompt overflow')) return { reason: 'bytes', limit: view.limits.maxBytes };
+    || turn.held === 'summary oversized turn')) return { reason: 'bytes', limit: view.limits.maxBytes };
   return null;
 }
 /** Telegram may return 100 updates. Never request past the remaining durable turn slots. */
@@ -1655,7 +1658,10 @@ function capReportAllowed(view: JournalView, row: Extract<JournalRecord, { kind:
   if (row.level === 'near') return limit > 0 && limit === row.limit && used >= limit - Math.floor(limit / 5);
   if (row.level !== undefined) return false;
   const reached = reachedJournalCap(view);
-  return reached?.reason === row.reason && reached.limit === row.limit
+  // Earlier writers also reported a recoverable `summary unavailable:` hold as a bytes cap; their durable report replays.
+  const legacyBytes = row.reason === 'bytes' && row.limit === view.limits.maxBytes
+    && view.order.some(turn => turn.held?.startsWith('summary unavailable:'));
+  return legacyBytes || reached?.reason === row.reason && reached.limit === row.limit
     || limit > 0 && limit === row.limit && used >= limit;
 }
 const operatorEvent = (view: JournalView, at: number, update: number, detail: string) => {
@@ -2225,7 +2231,9 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       (note.sources ??= []).push({ source: link.source, quote: link.quote });
     }
     for (const closure of row.closed ?? []) if (closure.id < view.commitments.length && !view.closed.has(closure.id)) view.closed.set(closure.id, closure);
+    // An accepted summary is what a byte hold waits for (Rule 2): its turn is retried, never latched.
     for (const turn of view.heldTurns) if (turn.held === 'prompt overflow' || turn.held === 'context overflow'
+      || turn.held?.startsWith('summary unavailable:')
       || turn.update <= row.through && turn.held?.startsWith('summary faithfulness:')
       || turn.update <= row.through && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) {
       delete turn.held; view.heldTurns.delete(turn);
@@ -3313,6 +3321,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return datedMemo.value;
   };
   const elapsed = ports.elapsed ?? ports.now;
+  /** A byte-held turn's preparation is costly near its bound (live 2026-09-29: about 22 s of synchronous work,
+   * so the concurrent long poll's own timer judged every poll failed and the runner exited). It is prepared
+   * again only once a summary or a cap raise could make it fit, or after HELD_REPREPARE_MS. */
+  let heldPrepared: { id: string; key: string; at: number } | undefined;
+  const heldFitKey = () => `${String(journal.view.summaries.length)}:${String(journal.view.limits.maxBytes)}`;
   const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
     [through, ports.elapsed ? elapsed() : at]));
   // An orphaned reservation may have completed at the provider. Never repeat it.
@@ -5058,7 +5071,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
-          if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
+          const key = heldFitKey();
+          if (heldPrepared?.id === turn.id && heldPrepared.key === key && elapsed() - heldPrepared.at < HELD_REPREPARE_MS) {
+            // Nothing that could make it fit has changed: only the summary pass may release it.
+            await summarizeIfNeeded(true);
+            if (heldFitKey() === key) break;
+          } else if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
           delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         // A review hold recorded by an earlier build stays as recorded: its notice already went out,
@@ -5101,6 +5119,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ? `summary unavailable: ${selected.reason}` : selected.reason;
             if (priorHold !== reason) journal.append({kind:'hold',id:turn.id,reason,at:ports.now()});
             else { turn.held = reason; journal.view.heldTurns.add(turn); }
+            heldPrepared = { id: turn.id, key: heldFitKey(), at: elapsed() };
             break;
           }
           if (!('reason' in selected)) {
@@ -6234,7 +6253,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         return;
       }
       const candidates: { turn: Turn; bases: string[]; fallback: ReadonlySet<string> }[] = [];
-      for (const turn of pending.slice(0, SUMMARY_MAX_TURNS)) {
+      // Part 21 §6: a frontier that used its two attempts stays failed, with its originals kept in the journal.
+      // The bounded next action is another span, never the end of every later summary: one undecided span
+      // (live 2026-09-29, Jev 0.16) must not leave a long chat without any summary until it overflows.
+      const open = pending.filter(turn => (journal.view.summaryFailures.get(turn.update) ?? 0) < 2);
+      if (pending.length && !open.length) return;
+      for (const turn of open.slice(0, SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
         // Last resort, after every variant that carries them: the turn briefing sources (purpose excerpts,
         // capability note, self-state, desk report) describe the agent, not the conversation being
@@ -6266,7 +6290,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Recovery may only dispatch a frontier later than every UNKNOWN charge,
         // including when prompt overflow sends selection to a smaller prefix.
         if ([...unknown.keys()].some(frontier => through <= frontier)) continue;
-        if ((journal.view.summaryFailures.get(through) ?? 0) >= 2) return;
+        if ((journal.view.summaryFailures.get(through) ?? 0) >= 2) continue;
         const closable = openFor(through, 50).map(({ id, note, turn: source }) => ({ id, sourceLabel: turnLabel(source!), in: note.in, quote: note.quote }));
         const strictTrigger = journal.view.order.find(item => remembered(item) && fromOperator(item) && !item.memoryUndecided
           && (item.editOf || memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
