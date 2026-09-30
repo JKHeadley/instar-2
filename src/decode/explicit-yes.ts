@@ -1,9 +1,10 @@
 // Rules 28, 82, 98; Purpose "the agent never administers its own safeguards"; Part Eleven §2.
 // What counts as an explicit yes, decided in one place. Every reader of an `Authorization`'s
 // explicit yes (the Part One decoder, the Part Two version chain and register spine) asks here.
-import type { Hash, Provenance } from '../types/values.js';
-import type { AccountAssentAdmission } from '../types/ports.js';
-import { seal, trusted } from '../types/internal.js';
+import type { Authorization, Clock, Hash, Json, Provenance, Scope, VerifiedPrincipal } from '../types/values.js';
+import type { AccountAssentAdmission, ProvenanceInput } from '../types/ports.js';
+import { consumeResult, seal, trusted } from '../types/internal.js';
+import { canonical } from './canonical.js';
 
 /** The yes a signature or independently administered verifier proves. */
 export const verifiedYesRecordTypes: readonly string[] = Object.freeze(['approval', 'review-approval', 'signed-yes', 'dashboard-yes']);
@@ -29,14 +30,109 @@ type Declaration = Readonly<{ enabled: boolean }>;
 export function attestedClass(recordType: string, declaration: Declaration = accountAuthenticatedAssent): Provenance['class'] {
   return declaration.enabled && accountAssentRecordTypes.includes(recordType) ? 'account-assented' : 'channel-attested';
 }
+/** The durable authorization request the yes must name (the Part Four request the surface renders). */
+export interface ExplicitYesRequest {
+  readonly requestId: string; readonly requestDigest: Hash; readonly authorizationId: string;
+  readonly approver: VerifiedPrincipal; readonly requestedBy: VerifiedPrincipal; readonly under: string;
+  readonly action: string; readonly scope: Scope; readonly artifact: Hash; readonly base: string;
+  readonly kind: Authorization['kind'];
+  /** The request's own message in the bound chat, which a chat yes must reply to. */
+  readonly chatMessageId: string | null;
+  /** The exact head commit a review yes must cover. */
+  readonly head: string | null;
+  /** Unix-ms lifetime of the request; a yes outside it is refused. */
+  readonly issuedAt: number; readonly expiresAt: number;
+}
+/** Installed, pinned facts about where a yes may come from. */
+export interface ExplicitYesInstallation {
+  readonly adapter: string; readonly machine: string;
+  /** `agentHoldsNoAccess` is the current P-02 record for that account (no session, credential, delegated sender or recovery path). */
+  readonly chat: Readonly<{ method: string; boundChatId: string; operatorAccountId: string; agentHoldsNoAccess: boolean }>;
+  readonly github: Readonly<{ method: string; repository: string; operatorLogin: string; agentHoldsNoAccess: boolean }> | null;
+  /** True when a recorded P-05 grant lets the agent speak through the operator's chat account. */
+  readonly agentSpeaksAsOperatorInChat: boolean;
+}
+export type ExplicitYesObservation =
+  | Readonly<{ kind: 'chat-reply'; chatId: string; messageId: string; replyToMessageId: string | null;
+    senderAccountId: string; text: string; at: Clock }>
+  | Readonly<{ kind: 'github-review'; repository: string; pullRequest: number; pullRequestBody: string;
+    reviewId: string; commitId: string; state: string; reviewerLogin: string; at: Clock }>;
+export interface ExplicitYesRecord {
+  /** Custody reference naming the platform id the yes was recorded with. */
+  readonly reference: string; readonly bytes: string; readonly hash: Hash;
+  readonly provenance: ProvenanceInput;
+  /** The `Authorization` input, less `explicitYes` (the decoded provenance supplies it). */
+  readonly authorization: Readonly<Record<string, Json>>;
+  /** The one-use admission the decoder requires (`DecodeContext.accountAssent`) before it grants account assent. */
+  readonly admission: AccountAssentAdmission;
+}
+
+export const chatYesReference = (chatId: string, messageId: string) => `telegram:chat:${chatId}:message:${messageId}`;
+export const reviewYesReference = (repository: string, reviewId: string) => `github:${repository}:review:${reviewId}`;
+
+/** The exact reply grammar: `yes` or `approve`, optionally followed by this request's id; nothing else. */
+function chatSaysYes(text: string, requestId: string): boolean {
+  const tokens = text.trim().split(/\s+/);
+  return (tokens.length === 1 || tokens.length === 2 && tokens[1] === requestId) && ['yes', 'approve'].includes(tokens[0]!.toLowerCase());
+}
+function namesRequest(body: string, requestId: string): boolean {
+  return body.split(/[\s`*_()[\],;:]+/).includes(requestId);
+}
+function admit(condition: unknown, detail: string): asserts condition {
+  if (!condition) throw new Error(`explicit yes: ${detail}`);
+}
+
 /**
- * Issue the admission for one account-assented yes. Not exported by the package: the explicit-yes
- * producer (src/operator/explicit-yes.ts) is the single route, and calls it only after admitting
- * the exact recorded request and consuming the platform id once.
+ * THE single route that admits an account-assented yes (plan #91; Part Eleven §2): the operator
+ * account's reply in the bound chat to the request's own message, or, where a P-05 grant lets the
+ * agent speak through that chat account, the pinned operator GitHub account APPROVING a review of
+ * the request's exact head on a pull request naming the request. Each needs the P-02 record, falls
+ * inside the request's lifetime and is used once. Only after every check does it seal the one-use
+ * `AccountAssentAdmission` the decoder requires; the raw admission constructor is not exported, so
+ * no caller can issue account assent without these checks. Throws the refusal detail.
  */
-export function admitAccountAssent(fields: Omit<AccountAssentAdmission, 'type'>): AccountAssentAdmission {
-  return seal({ type: 'AccountAssentAdmission', reference: fields.reference, recordHash: fields.recordHash,
-    requestId: fields.requestId, requestDigest: fields.requestDigest, authorizationId: fields.authorizationId });
+export function admitExplicitYes(request: ExplicitYesRequest, installation: ExplicitYesInstallation,
+  observation: ExplicitYesObservation, consumed: readonly string[]): ExplicitYesRecord {
+  admit(request.approver.kind === 'person', 'the approver must be a person');
+  admit(request.approver.id !== request.requestedBy.id, 'the requester cannot approve its own request');
+  let reference: string, method: string, recordType: string, evidence: ProvenanceInput['evidence'];
+  if (observation.kind === 'chat-reply') {
+    admit(!installation.agentSpeaksAsOperatorInChat,
+      'a P-05 grant lets the agent speak as the operator in chat, so a chat reply is not the operator\'s yes; use the review path');
+    admit(observation.chatId === installation.chat.boundChatId, 'reply is not in the bound chat');
+    admit(installation.chat.agentHoldsNoAccess, 'no P-02 record that the agent holds no access to the operator chat account');
+    admit(observation.senderAccountId === installation.chat.operatorAccountId, 'reply is not from the verified operator account');
+    admit(request.chatMessageId !== null && observation.replyToMessageId === request.chatMessageId, 'reply does not answer this request\'s own message');
+    admit(chatSaysYes(observation.text, request.requestId), 'reply is not exactly "yes" (optionally with this request id)');
+    reference = chatYesReference(observation.chatId, observation.messageId);
+    method = installation.chat.method; recordType = 'operator-chat-yes'; evidence = { kind: 'channel', authenticated: true };
+  } else {
+    const github = installation.github;
+    admit(github, 'no pinned operator GitHub account is installed');
+    admit(github.agentHoldsNoAccess, 'no P-02 record that the agent holds no access to the operator GitHub account');
+    admit(observation.repository === github.repository, 'review is not on the pinned repository');
+    admit(request.head !== null && observation.commitId === request.head, 'review does not cover the request\'s exact head');
+    admit(observation.state === 'APPROVED', 'review is not an approval');
+    admit(observation.reviewerLogin.toLowerCase() === github.operatorLogin.toLowerCase(), 'review is not by the pinned operator GitHub account');
+    admit(namesRequest(observation.pullRequestBody, request.requestId), 'pull request body does not name this request');
+    reference = reviewYesReference(observation.repository, observation.reviewId);
+    method = github.method; recordType = 'operator-review-approval'; evidence = { kind: 'fetched-record', authenticated: true };
+  }
+  const at = observation.at.value;
+  admit(at >= request.issuedAt && at <= request.expiresAt, 'outside the request lifetime (expired or predates it)');
+  admit(!consumed.includes(reference), `${reference} was already used`);
+  const authorization = {
+    id: request.authorizationId, at: observation.at, approver: request.approver, under: request.under,
+    action: { kind: request.action, scope: request.scope }, artifact: request.artifact, base: request.base,
+    kind: request.kind, requestedBy: request.requestedBy, requestDigest: request.requestDigest,
+  } as unknown as Record<string, Json>;
+  const encoded = consumeResult(canonical({ principal: { id: request.approver.id, kind: request.approver.kind }, recordType, payload: authorization }),
+    { Success: value => value, Refused: refused => { throw new Error(`explicit yes: ${refused.detail}`); } });
+  const provenance: ProvenanceInput = { type: 'Provenance', schemaVersion: 1, adapter: installation.adapter, method,
+    record: { reference, hash: encoded.hash }, verifiedAt: observation.at, machine: installation.machine, evidence };
+  const admission: AccountAssentAdmission = seal({ type: 'AccountAssentAdmission', reference, recordHash: encoded.hash,
+    requestId: request.requestId, requestDigest: request.requestDigest, authorizationId: request.authorizationId });
+  return { reference, bytes: encoded.bytes, hash: encoded.hash, provenance, authorization, admission };
 }
 /** The issued admission for this exact record (reference and hash), or undefined. */
 export function admittedAccountAssent(admissions: readonly AccountAssentAdmission[] | undefined, reference: string, recordHash: Hash): AccountAssentAdmission | undefined {

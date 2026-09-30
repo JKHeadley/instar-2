@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { expect, it, vi } from 'vitest';
 import { authorizationRequestDigest, canonical, decode } from '../../src/index.js';
 import type { Hash, Json } from '../../src/index.js';
-import { accountAuthenticatedAssent, admitAccountAssent } from '../../src/decode/explicit-yes.js';
+import { accountAuthenticatedAssent } from '../../src/decode/explicit-yes.js';
 import { createFactStore, createRegisterLanding, createRegisterSpine, extractGovernedChain, governedExtract, positionVector } from '../../src/facts/index.js';
 import type { FactEnvelope, GoverningPayloadCustody, SegmentStoragePort } from '../../src/facts/index.js';
 import { produceExplicitYes } from '../../src/operator/index.js';
@@ -161,15 +161,19 @@ it('an account-assented yes never produces a principal; off, the same record is 
     evidence: { kind: 'channel', authenticated: true } };
   const principal = (p: unknown) => decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1, id: 'mallory', kind: 'person' },
     { ...s.f.ctx.decode, provenance: p as never });
-  const admission = admitAccountAssent({ reference: input.record.reference, recordHash: bytes.hash,
-    requestId: 'req-999', requestDigest: `sha256:${'c'.repeat(64)}`, authorizationId: 'authorization:req-999' });
-  const assented = value(decode('Provenance', input, { ...s.f.ctx.decode, accountAssent: [admission] }));
+  // The producer's admission for this record (its reference and hash); the producer is the only issuer.
+  const produced = value(produceExplicitYes(s.request('req-999', `sha256:${'c'.repeat(64)}`), installation, s.chat('req-999', '998'), [], s.f.c));
+  const admitted = { ...input, record: produced.provenance.record };
+  s.f.capture(produced.bytes, produced.reference);
+  const assented = value(decode('Provenance', admitted, { ...s.f.ctx.decode, accountAssent: [produced.admission] }));
   expect(assented.class).toBe('account-assented');
   // Without the producer's admission the same record is only channel-attested.
-  expect(value(decode('Provenance', input, s.f.ctx.decode)).class).toBe('channel-attested');
+  expect(value(decode('Provenance', admitted, s.f.ctx.decode)).class).toBe('channel-attested');
+  // An admission for a different record does not transfer to this one.
+  expect(value(decode('Provenance', input, { ...s.f.ctx.decode, accountAssent: [produced.admission] })).class).toBe('channel-attested');
   refused(principal(assented), 'never produces a principal');
   assent.enabled = false;
-  const attested = value(decode('Provenance', input, { ...s.f.ctx.decode, accountAssent: [admission] }));
+  const attested = value(decode('Provenance', input, s.f.ctx.decode));
   expect(attested.class).toBe('channel-attested');
   value(principal(attested));
 });
@@ -232,10 +236,9 @@ it('account assent comes only from the producer\'s admission of the exact reques
   };
   // A captured, authenticated record with the account-assent label but no admission: refused, nothing lands.
   refused(authorize(s.f.ctx.decode), 'admitted request');
-  // An admission for another request (same record) does not authorize this one.
-  const other = admitAccountAssent({ reference: 'chat-record-without-approval', recordHash: raw.hash as Hash,
-    requestId: 'req-other', requestDigest: `sha256:${'d'.repeat(64)}`, authorizationId: req.authorizationId });
-  refused(authorize({ ...s.f.ctx.decode, accountAssent: [other] }), 'exact request');
+  // A genuine admission of another request does not authorize this record.
+  const other = value(produceExplicitYes(s.request('req-other', first.hash), installation, s.chat('req-other', '950'), [], s.f.c));
+  refused(authorize({ ...s.f.ctx.decode, accountAssent: [other.admission] }), 'admitted request');
   // A look-alike admission object the producer did not issue is not trusted.
   const forged = { type: 'AccountAssentAdmission' as const, reference: 'chat-record-without-approval', recordHash: raw.hash as Hash,
     requestId: req.requestId, requestDigest: req.requestDigest, authorizationId: req.authorizationId };
