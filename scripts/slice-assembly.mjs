@@ -835,13 +835,17 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
   // Option (C) (plan #94): every declaration keeps a shape-only bootstrap row until an operator
   // yes lands a governed version of it through `registerLanding`. The register's own governing
   // records live in a dedicated durable segment, read BEFORE the fact log: decoding that log
-  // binds to the register generation, which these records decide. Its first record (the first
-  // entering-force) is the spine's genesis anchor.
+  // binds to the register generation, which these records decide. Its first fact (the recorded
+  // genesis grant, below) is the spine's genesis anchor.
   const bootstrap = declarations.map(d => ({ id: d.id, contentHash: hashOf(d) }));
   const governingContext = { site: 'facts.admit', preserved: decodeContext.preserved, decode: decodeContext,
     schemas: [{ version: 1, machineScope: 'shared', standing: 'requester', action: 'work', scope, causallyBound: false,
       requiredReferences: [], authority: 'none', kind: governingRecordKind,
-      fields: { role: { kind: 'text', maxLength: 16 }, hash: { kind: 'text', maxLength: 80 } } }],
+      fields: { role: { kind: 'text', maxLength: 16 }, hash: { kind: 'text', maxLength: 80 } } },
+    { version: 1, machineScope: 'shared', standing: 'requester', action: 'work', scope, causallyBound: false,
+      requiredReferences: [], authority: 'none', kind: 'genesis-grant',
+      fields: { grantId: { kind: 'text', maxLength: 1024 }, principalId: { kind: 'text', maxLength: 1024 },
+        grant: { kind: 'constitutional', type: 'StandingGrant' } } }],
     keys: [{ id: 'host', machine: config.machine, publicKey: PUBLIC_KEY, from: { epoch: 0, position: 0 } }],
     facts: [], grants: [], revocations: [], genesis: { hash: genesisHash, clock: genesisClock }, timeAnchors: [],
     captures: {}, folded: {}, ownedBodies: [] };
@@ -856,6 +860,19 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
   // Rule 2: the fact log is only ever written after this segment's first record, so a
   // non-empty log beside an empty segment means the governing history was lost. Refuse.
   if (!governingFacts().length && segmentSize() > 0) throw new Error('integrity: governing segment lost while the fact log exists');
+  // Rules 26/90: an approval landed through `registerLanding` is checked for standing at its own
+  // causal position, so the grant it is issued under must be a recorded fact in THIS segment's
+  // history. The installation's genesis grant (the same record the fact log carries) is written
+  // here once, as the segment's causal root, and restored into the context on every boot.
+  const governingGrant = () => governingFacts().find(f => f.kind === 'genesis-grant');
+  if (!governingGrant()) {
+    const grantContext = { ...governingContext, decode: { ...decodeContext, provenance: bindingGrant.source } };
+    take(authorAndAppend({ kind: 'genesis-grant', schemaVersion: 1, machine: config.machine,
+      principal: json(alice), provenance: json(bindingGrant.source), at: json(now()),
+      body: json({ grantId: bindingGrant.id, principalId: alice.id, grant: bindingGrant }), required: [] },
+    grantContext, createFactStore(grantContext, createTransportFileStorage(paths.governing, result)), PRIVATE_KEY));
+  }
+  governingContext.grants = [{ factId: governingGrant().id, grant: bindingGrant }];
   const emptySpine = { anchor: '', versions: [], approvals: [], generations: [], stalenessBoundMs: 1000000 };
   const headSpine = () => governingFacts().length ? take(openLanding(governingFacts()[0].id).spine()) : emptySpine;
   const extract = take(governedExtract(headSpine(), { ...governingContext, facts: governingFacts() }, bootstrap));

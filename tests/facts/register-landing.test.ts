@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { expect, it, vi } from 'vitest';
 import { authorizationRequestDigest, canonical, decode } from '../../src/index.js';
 import type { Hash, Json } from '../../src/index.js';
-import { accountAuthenticatedAssent } from '../../src/decode/explicit-yes.js';
+import { accountAuthenticatedAssent, admitAccountAssent } from '../../src/decode/explicit-yes.js';
 import { createFactStore, createRegisterLanding, createRegisterSpine, extractGovernedChain, governedExtract, positionVector } from '../../src/facts/index.js';
 import type { FactEnvelope, GoverningPayloadCustody, SegmentStoragePort } from '../../src/facts/index.js';
 import { produceExplicitYes } from '../../src/operator/index.js';
@@ -62,8 +62,9 @@ function setup() {
     install: ExplicitYesInstallation = installation) {
     const record = value(produceExplicitYes(req, install, observation, consumed, f.c));
     f.capture(record.bytes, record.reference);
-    const p = value(decode('Provenance', record.provenance, f.ctx.decode));
-    return decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...record.authorization, explicitYes: p }, { ...f.ctx.decode, provenance: p });
+    const decodeContext = { ...f.ctx.decode, accountAssent: [record.admission] };
+    const p = value(decode('Provenance', record.provenance, decodeContext));
+    return decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...record.authorization, explicitYes: p }, { ...decodeContext, provenance: p });
   }
   const version = (id: string, body: { c: Json; hash: Hash }, supersedes: readonly string[] = [], landedIn = 'merge-1') =>
     ({ id, subject: 'store', content: body.c, contentHash: body.hash, supersedes, base: 'base:1', landedIn });
@@ -160,11 +161,15 @@ it('an account-assented yes never produces a principal; off, the same record is 
     evidence: { kind: 'channel', authenticated: true } };
   const principal = (p: unknown) => decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1, id: 'mallory', kind: 'person' },
     { ...s.f.ctx.decode, provenance: p as never });
-  const assented = value(decode('Provenance', input, s.f.ctx.decode));
+  const admission = admitAccountAssent({ reference: input.record.reference, recordHash: bytes.hash,
+    requestId: 'req-999', requestDigest: `sha256:${'c'.repeat(64)}`, authorizationId: 'authorization:req-999' });
+  const assented = value(decode('Provenance', input, { ...s.f.ctx.decode, accountAssent: [admission] }));
   expect(assented.class).toBe('account-assented');
+  // Without the producer's admission the same record is only channel-attested.
+  expect(value(decode('Provenance', input, s.f.ctx.decode)).class).toBe('channel-attested');
   refused(principal(assented), 'never produces a principal');
   assent.enabled = false;
-  const attested = value(decode('Provenance', input, s.f.ctx.decode));
+  const attested = value(decode('Provenance', input, { ...s.f.ctx.decode, accountAssent: [admission] }));
   expect(attested.class).toBe('channel-attested');
   value(principal(attested));
 });
@@ -209,4 +214,50 @@ it('the shipped declaration is on while Part Eleven accepts an account-assented 
   expect(acceptsAssent && !refusesChat).toBe(true);
   expect(accountAuthenticatedAssent.enabled).toBe(acceptsAssent);
   expect(accountAuthenticatedAssent.name).toBe('account-authenticated-assent');
+});
+
+it('account assent comes only from the producer\'s admission of the exact request, never from a record label', () => {
+  const s = setup(), first = s.content('unapproved'), req = s.request('never-recorded', first.hash);
+  const authorization = { id: req.authorizationId, at: s.f.now, approver: req.approver, under: req.under,
+    action: { kind: req.action, scope: req.scope }, artifact: req.artifact, base: req.base,
+    kind: req.kind, requestedBy: req.requestedBy, requestDigest: req.requestDigest };
+  const raw = value(canonical({ principal: { id: req.approver.id, kind: req.approver.kind }, recordType: 'operator-chat-yes', payload: authorization }));
+  s.f.capture(raw.bytes, 'chat-record-without-approval');
+  const input = { type: 'Provenance', schemaVersion: 1, adapter: 'host', method: 'telegram-sender',
+    record: { reference: 'chat-record-without-approval', hash: raw.hash }, verifiedAt: s.f.now, machine: 'machine-a',
+    evidence: { kind: 'channel', authenticated: true } };
+  const authorize = (decodeContext: typeof s.f.ctx.decode) => {
+    const p = value(decode('Provenance', input, decodeContext));
+    return decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...authorization, explicitYes: p }, { ...decodeContext, provenance: p });
+  };
+  // A captured, authenticated record with the account-assent label but no admission: refused, nothing lands.
+  refused(authorize(s.f.ctx.decode), 'admitted request');
+  // An admission for another request (same record) does not authorize this one.
+  const other = admitAccountAssent({ reference: 'chat-record-without-approval', recordHash: raw.hash as Hash,
+    requestId: 'req-other', requestDigest: `sha256:${'d'.repeat(64)}`, authorizationId: req.authorizationId });
+  refused(authorize({ ...s.f.ctx.decode, accountAssent: [other] }), 'exact request');
+  // A look-alike admission object the producer did not issue is not trusted.
+  const forged = { type: 'AccountAssentAdmission' as const, reference: 'chat-record-without-approval', recordHash: raw.hash as Hash,
+    requestId: req.requestId, requestDigest: req.requestDigest, authorizationId: req.authorizationId };
+  refused(authorize({ ...s.f.ctx.decode, accountAssent: [forged] }), 'admitted request');
+  expect(value(s.open().spine()).versions).toHaveLength(0);
+  // The positive neighbor: the producer's admission of this exact request authorizes and lands.
+  const yes = value(s.authorize(req, s.chat('never-recorded')));
+  value(s.open().land(yes, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
+  expect(value(s.open().spine()).versions.map(v => v.version.id)).toEqual(['v1']);
+});
+
+it('a landing whose governing history records no grant for the approval refuses at its causal position', () => {
+  const s = setup(), first = s.content('one');
+  const yes = value(s.authorize(s.request('req-1', first.hash), s.chat('req-1')));
+  // Same provider shape, but the grant the yes was issued under is not a recorded fact in its history.
+  const rows: string[] = [], held = new Map<string, string>(), bareContext = { ...s.ctx, grants: [] };
+  const bare = createRegisterLanding({ context: bareContext, store: createFactStore(bareContext, { owner: 'part-ten', read: () => rows.map(r => JSON.parse(r) as unknown),
+    append: bytes => { rows.push(bytes); return s.f.success({ kind: 'local-durable' as const }); } }),
+  custody: { put: bytes => { const hash = value(canonical(JSON.parse(bytes))).hash; held.set(hash, bytes); return s.f.success(hash); }, get: hash => held.get(hash) },
+  author: { machine: 'machine-a', principal: s.f.alice as unknown as Json, provenance: s.f.alice.provenance as unknown as Json, privateKey },
+  anchor: s.root.id, stalenessBoundMs: 1000 });
+  refused(bare.land(yes, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json), 'standing invalid');
+  // The recorded grant is the positive neighbor.
+  value(s.open().land(yes, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
 });

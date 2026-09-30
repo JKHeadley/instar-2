@@ -7,10 +7,13 @@
 //      names the request, reached by a direct link.
 // Each yes needs the P-02 record that the agent holds no session, credential, delegated sender or
 // recovery path to the account; is recorded with its platform id (message id / review id); is used
-// once; and must fall inside the request's lifetime. This module only shapes the record; Part
-// One's decoder is still the authority that turns it into an `Authorization`.
+// once; and must fall inside the request's lifetime. This module is the single route that issues the
+// sealed one-use admission Part One requires before it grants account assent; Part One's decoder is
+// still the authority that turns the record into an `Authorization`.
 import { canonical } from '../index.js';
 import type { Authorization, BoundaryContext, Clock, Hash, Json, ProvenanceInput, Result, Scope, VerifiedPrincipal } from '../index.js';
+import type { AccountAssentAdmission } from '../types/ports.js';
+import { admitAccountAssent } from '../decode/explicit-yes.js';
 import { operatorBoundary, requireOperator, take } from './boundary.js';
 
 /** The durable authorization request the yes must name (the Part Four request the surface renders). */
@@ -46,6 +49,8 @@ export interface ExplicitYesRecord {
   readonly provenance: ProvenanceInput;
   /** The `Authorization` input, less `explicitYes` (the decoded provenance supplies it). */
   readonly authorization: Readonly<Record<string, Json>>;
+  /** The one-use admission Part One requires (`DecodeContext.accountAssent`) before it grants account assent. */
+  readonly admission: AccountAssentAdmission;
 }
 
 export const chatYesReference = (chatId: string, messageId: string) => `telegram:chat:${chatId}:message:${messageId}`;
@@ -101,6 +106,8 @@ export function produceExplicitYes(request: ExplicitYesRequest, installation: Ex
     const encoded = take(canonical({ principal: { id: request.approver.id, kind: request.approver.kind }, recordType, payload: authorization }));
     const provenance: ProvenanceInput = { type: 'Provenance', schemaVersion: 1, adapter: installation.adapter, method,
       record: { reference, hash: encoded.hash }, verifiedAt: observation.at, machine: installation.machine, evidence };
-    return { reference, bytes: encoded.bytes, hash: encoded.hash, provenance, authorization };
+    const admission = admitAccountAssent({ reference, recordHash: encoded.hash, requestId: request.requestId,
+      requestDigest: request.requestDigest, authorizationId: request.authorizationId });
+    return { reference, bytes: encoded.bytes, hash: encoded.hash, provenance, authorization, admission };
   });
 }

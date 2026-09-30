@@ -1,7 +1,9 @@
 // Rules 28, 82, 98; Purpose "the agent never administers its own safeguards"; Part Eleven §2.
 // What counts as an explicit yes, decided in one place. Every reader of an `Authorization`'s
 // explicit yes (the Part One decoder, the Part Two version chain and register spine) asks here.
-import type { Provenance } from '../types/values.js';
+import type { Hash, Provenance } from '../types/values.js';
+import type { AccountAssentAdmission } from '../types/ports.js';
+import { seal, trusted } from '../types/internal.js';
 
 /** The yes a signature or independently administered verifier proves. */
 export const verifiedYesRecordTypes: readonly string[] = Object.freeze(['approval', 'review-approval', 'signed-yes', 'dashboard-yes']);
@@ -26,6 +28,19 @@ type Declaration = Readonly<{ enabled: boolean }>;
 /** The class of an authenticated-channel record: `account-assented` only for a declared account yes. */
 export function attestedClass(recordType: string, declaration: Declaration = accountAuthenticatedAssent): Provenance['class'] {
   return declaration.enabled && accountAssentRecordTypes.includes(recordType) ? 'account-assented' : 'channel-attested';
+}
+/**
+ * Issue the admission for one account-assented yes. Not exported by the package: the explicit-yes
+ * producer (src/operator/explicit-yes.ts) is the single route, and calls it only after admitting
+ * the exact recorded request and consuming the platform id once.
+ */
+export function admitAccountAssent(fields: Omit<AccountAssentAdmission, 'type'>): AccountAssentAdmission {
+  return seal({ type: 'AccountAssentAdmission', reference: fields.reference, recordHash: fields.recordHash,
+    requestId: fields.requestId, requestDigest: fields.requestDigest, authorizationId: fields.authorizationId });
+}
+/** The issued admission for this exact record (reference and hash), or undefined. */
+export function admittedAccountAssent(admissions: readonly AccountAssentAdmission[] | undefined, reference: string, recordHash: Hash): AccountAssentAdmission | undefined {
+  return admissions?.find(a => trusted(a, 'AccountAssentAdmission') && a.reference === reference && a.recordHash === recordHash);
 }
 /** An explicit yes: a verified approval record, or a declared account-assented yes. */
 export function isExplicitYes(p: Provenance, declaration: Declaration = accountAuthenticatedAssent): boolean {

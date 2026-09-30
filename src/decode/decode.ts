@@ -7,7 +7,7 @@ import { canonicalText, hashText, snapshot } from './canonical.js';
 import { schemaRegistry } from './schema.js';
 import { runBoundary } from './framework.js';
 import { causalClock, childContext, sealInContext, sessionFor, trustedIn } from './session.js';
-import { accountAssentRecordTypes, attestedClass, isExplicitYes, isRepositoryYes, verifiedYesRecordTypes } from './explicit-yes.js';
+import { accountAssentRecordTypes, admittedAccountAssent, attestedClass, isExplicitYes, isRepositoryYes, verifiedYesRecordTypes } from './explicit-yes.js';
 
 type Obj = Record<string, T.Json>;
 function requireThat(condition: unknown, detail: string): asserts condition {
@@ -181,6 +181,8 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       } else {
         fields(e, ['kind', 'authenticated']); one(e.kind, ['channel', 'fetched-record'], 'evidence.kind');
         requireThat(e.authenticated === true, 'channel: unauthenticated or sender came from content'); authClass = attestedClass(String(raw.recordType));
+        // A record label alone never assigns account assent: the producer's admission of this exact record must be present.
+        if (authClass === 'account-assented' && !admittedAccountAssent(c.accountAssent, reference, record.hash as T.Hash)) authClass = 'channel-attested';
       }
       const { evidence: _e, ...rest } = v;
       return seal({ ...rest, class: authClass, authenticated: raw });
@@ -316,7 +318,12 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       tagged(v, type, ['id', 'at', 'approver', 'under', 'action', 'artifact', 'base', 'kind', 'requestedBy', 'explicitYes', 'requestDigest']); text(v.id, 'id');
       const p = provenance(c, false); requireThat(canonicalText(v.explicitYes) === canonicalText(p), 'explicitYes: provenance differs');
       one(p.authenticated.recordType, [...verifiedYesRecordTypes, ...accountAssentRecordTypes], 'explicitYes.recordType');
-      requireThat(isExplicitYes(p), 'provenance: verified required above requester (account-authenticated assent only under its enabled declaration)');
+      requireThat(isExplicitYes(p), 'provenance: verified required above requester (account-authenticated assent only under its enabled declaration and admitted request)');
+      // Live admission only; a historical session re-reads the class recorded when it was admitted.
+      if (p.class === 'account-assented' && !sessionFor(c)) {
+        const admitted = admittedAccountAssent(c.accountAssent, p.record.reference, p.record.hash);
+        requireThat(admitted && admitted.requestDigest === v.requestDigest && admitted.authorizationId === v.id, 'account assent: admission does not name this exact request');
+      }
       bound(v, p, ['explicitYes']);
       const approver = principal(v.approver, c); const requestedBy = principal(v.requestedBy, c); const at = clock(v.at, c);
       requireThat(approver.id === p.authenticated.principal.id && approver.kind === p.authenticated.principal.kind, 'approver: differs from authenticated record');

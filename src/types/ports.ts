@@ -9,6 +9,17 @@ export type RunReference = OwnedReference<'part-five', 'Run'>;
 export type LeaseReference = OwnedReference<'part-six', 'Lease'>;
 export type JudgmentRequestReference = OwnedReference<'part-seven', 'JudgmentRequest'>;
 
+/**
+ * The one-use admission of an account-assented yes (Purpose, "the agent never administers its own
+ * safeguards"; Part One `account-assented`). Issued only by the explicit-yes producer after it has
+ * checked the recorded request, the P-02 record, the reply/head relationship, the lifetime and prior
+ * platform-id consumption; Part One seals it, so a caller cannot construct one.
+ */
+export type AccountAssentAdmission = Readonly<{
+  type: 'AccountAssentAdmission'; reference: string; recordHash: Hash;
+  requestId: string; requestDigest: Hash; authorizationId: string;
+}>;
+
 export type RegisteredKeyInput = Readonly<{
   readonly methods: readonly string[];
   readonly adapters: readonly string[];
@@ -56,6 +67,8 @@ export interface DecodeContext {
   readonly grants?: readonly StandingGrant[];
   readonly revocations?: readonly Revocation[];
   readonly authorizations?: readonly Authorization[];
+  // Admissions the explicit-yes producer issued; an account-assent record without one is channel-attested.
+  readonly accountAssent?: readonly AccountAssentAdmission[];
   readonly directives?: readonly Directive[];
   readonly evidence?: readonly Evidence[];
   readonly currentBase?: string;
